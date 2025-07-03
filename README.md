@@ -1,11 +1,36 @@
-# MyProject2025
+# QuestDiamonds Minecraft Plugin
 
-Run the RPG adventure with `python3 surprise.py`.
-The game now takes place in a whimsical Cat World. Every weapon and piece of
-armor follows the feline theme and even changes the hero's appearance in the
-ASCII scene. The HUD reports wounds if health drops too low and critical hits
-can occur for both sides.
+QuestDiamonds is a simple Spigot plugin for Minecraft that introduces a quest to collect diamonds.
 
-During battles, actions animate with short sounds and light effects. On each
-level up you select from a stable list of active or passive skills. Check the
-glossary from the main menu to read about items, skills and monsters.
+## Features
+
+- Start a quest to collect a configurable number of diamonds.
+- Track your quest progress.
+- Receive an XP reward upon quest completion.
+
+## How to Build
+
+To build the plugin, you need Apache Maven installed.
+Navigate to the project's root directory and run the following command:
+
+```bash
+mvn package
+```
+This will generate a `QuestDiamonds-0.1.0.jar` file in the `target` directory.
+
+## How to Install
+
+1.  Place the generated `QuestDiamonds-0.1.0.jar` file into the `plugins/` folder of your Spigot server.
+2.  Restart or reload your server.
+
+## Commands
+
+-   `/quest start`: Starts the diamond collection quest for the player.
+-   `/quest status`: Shows the player their current progress in the diamond collection quest.
+
+## Configuration
+
+The quest parameters can be configured in the `config.yml` file located in `plugins/QuestDiamonds/config.yml` after the first run:
+
+-   `diamondsRequired`: The number of diamonds a player needs to collect (default: 10).
+-   `rewardXp`: The amount of XP awarded upon quest completion (default: 100).

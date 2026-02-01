@@ -1,0 +1,1397 @@
+/* ==========================================
+   ДіснейСайд Парк - Система бронювання
+   Парк Розваг | parkrozwag.com
+   ========================================== */
+
+:root {
+    --primary: #ff6b35;
+    --primary-dark: #e55a2b;
+    --secondary: #7b2cbf;
+    --accent: #00d4aa;
+    --accent-blue: #4cc9f0;
+    --accent-pink: #f72585;
+    --accent-yellow: #ffd60a;
+    --success: #2ecc71;
+    --warning: #f39c12;
+    --danger: #e74c3c;
+    --light: #f8f9fa;
+    --dark: #2c3e50;
+    --gray: #95a5a6;
+    --gradient-fun: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-sunset: linear-gradient(135deg, #ff6b35 0%, #f72585 100%);
+    --gradient-rainbow: linear-gradient(90deg, #ff6b35, #ffd60a, #2ecc71, #4cc9f0, #7b2cbf, #f72585);
+    --shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    --shadow-hover: 0 8px 25px rgba(0, 0, 0, 0.15);
+    --radius: 16px;
+    --radius-sm: 8px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Nunito', sans-serif;
+    background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+    min-height: 100vh;
+    color: var(--dark);
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ==========================================
+   Екран авторизації
+   ========================================== */
+
+.login-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f72585 100%);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+}
+
+.login-screen::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    animation: float 30s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    50% { transform: translate(-20px, -20px) rotate(5deg); }
+}
+
+.login-container {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 30px;
+    padding: 50px 40px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    position: relative;
+    z-index: 1;
+    animation: slideUp 0.6s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.login-logo {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.logo-icon {
+    font-size: 64px;
+    display: block;
+    animation: bounce 2s ease-in-out infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+.login-logo h1 {
+    font-size: 28px;
+    font-weight: 900;
+    background: var(--gradient-sunset);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-top: 10px;
+}
+
+.tagline {
+    color: var(--gray);
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+.login-form .form-group {
+    margin-bottom: 20px;
+}
+
+.login-form label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 700;
+    color: var(--dark);
+}
+
+.login-form input {
+    width: 100%;
+    padding: 15px 20px;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    font-size: 16px;
+    font-family: inherit;
+    transition: all 0.3s ease;
+}
+
+.login-form input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(255, 107, 53, 0.1);
+}
+
+.btn-login {
+    width: 100%;
+    padding: 16px;
+    background: var(--gradient-sunset);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.btn-login:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(255, 107, 53, 0.4);
+}
+
+.error-message {
+    color: var(--danger);
+    text-align: center;
+    margin-top: 15px;
+    font-weight: 600;
+}
+
+.login-footer {
+    text-align: center;
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+    color: var(--gray);
+    font-size: 13px;
+}
+
+/* ==========================================
+   Головний застосунок
+   ========================================== */
+
+.main-app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Шапка */
+.header {
+    background: white;
+    box-shadow: var(--shadow);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 15px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo-emoji {
+    font-size: 40px;
+    animation: swing 2s ease-in-out infinite;
+}
+
+@keyframes swing {
+    0%, 100% { transform: rotate(-5deg); }
+    50% { transform: rotate(5deg); }
+}
+
+.logo-text h1 {
+    font-size: 24px;
+    font-weight: 900;
+    background: var(--gradient-sunset);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.logo-text .subtitle {
+    font-size: 12px;
+    color: var(--gray);
+    font-weight: 600;
+}
+
+.user-panel {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.user-name {
+    font-weight: 700;
+    color: var(--dark);
+}
+
+.btn-logout {
+    padding: 10px 20px;
+    background: var(--light);
+    color: var(--dark);
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.btn-logout:hover {
+    background: var(--danger);
+    color: white;
+}
+
+/* Навігація */
+.nav-tabs {
+    background: white;
+    padding: 0 30px;
+    display: flex;
+    gap: 5px;
+    border-bottom: 3px solid var(--light);
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.nav-tab {
+    padding: 18px 25px;
+    background: none;
+    border: none;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--gray);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+    position: relative;
+}
+
+.nav-tab::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: var(--gradient-sunset);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
+}
+
+.nav-tab:hover {
+    color: var(--primary);
+}
+
+.nav-tab.active {
+    color: var(--primary);
+}
+
+.nav-tab.active::after {
+    transform: scaleX(1);
+}
+
+/* Контент */
+.content {
+    flex: 1;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 30px;
+    width: 100%;
+}
+
+.tab-content {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================
+   Форма бронювання
+   ========================================== */
+
+.booking-container {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
+.booking-header {
+    background: var(--gradient-fun);
+    color: white;
+    padding: 30px;
+    text-align: center;
+}
+
+.booking-header h2 {
+    font-size: 28px;
+    margin-bottom: 8px;
+}
+
+.booking-header p {
+    opacity: 0.9;
+}
+
+.booking-form {
+    padding: 30px;
+}
+
+.form-section {
+    margin-bottom: 35px;
+    padding-bottom: 25px;
+    border-bottom: 2px dashed #eee;
+}
+
+.form-section:last-of-type {
+    border-bottom: none;
+}
+
+.form-section h3 {
+    font-size: 18px;
+    margin-bottom: 20px;
+    color: var(--secondary);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 700;
+    color: var(--dark);
+    font-size: 14px;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    width: 100%;
+    padding: 14px 18px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 15px;
+    font-family: inherit;
+    transition: all 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(0, 212, 170, 0.1);
+}
+
+.form-group textarea {
+    resize: vertical;
+}
+
+/* День тижня */
+.day-badge {
+    display: inline-block;
+    padding: 12px 20px;
+    background: var(--light);
+    border-radius: 10px;
+    font-weight: 700;
+    color: var(--gray);
+}
+
+.day-badge.weekend {
+    background: linear-gradient(135deg, #ff6b35, #ffd60a);
+    color: white;
+}
+
+.day-badge.weekday {
+    background: var(--accent);
+    color: white;
+}
+
+/* Слоти часу */
+.time-slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.time-slot {
+    padding: 12px 22px;
+    background: var(--light);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--dark);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.time-slot:hover {
+    background: #fff;
+    border-color: var(--accent-blue);
+    transform: translateY(-2px);
+}
+
+.time-slot.selected {
+    background: var(--accent-blue);
+    color: white;
+    border-color: var(--accent-blue);
+}
+
+.time-slot.unavailable {
+    background: #f0f0f0;
+    color: #bbb;
+    cursor: not-allowed;
+    text-decoration: line-through;
+}
+
+/* Сітка програм */
+.programs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.program-card {
+    background: white;
+    border: 3px solid #eee;
+    border-radius: var(--radius);
+    padding: 25px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.program-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 5px;
+    background: var(--gradient-rainbow);
+}
+
+.program-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-hover);
+    border-color: var(--accent);
+}
+
+.program-card.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(0, 212, 170, 0.2);
+}
+
+.program-card .program-icon {
+    font-size: 48px;
+    margin-bottom: 15px;
+}
+
+.program-card .program-name {
+    font-size: 18px;
+    font-weight: 800;
+    margin-bottom: 8px;
+    color: var(--dark);
+}
+
+.program-card .program-desc {
+    font-size: 13px;
+    color: var(--gray);
+    margin-bottom: 15px;
+    line-height: 1.5;
+}
+
+.program-card .program-details {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+}
+
+.program-card .program-duration {
+    font-size: 13px;
+    color: var(--secondary);
+    font-weight: 600;
+}
+
+.program-card .program-price {
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--primary);
+}
+
+/* Додаткові послуги */
+.extras-list {
+    display: grid;
+    gap: 12px;
+}
+
+.extra-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px 20px;
+    background: var(--light);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.extra-item:hover {
+    background: #fff;
+    box-shadow: var(--shadow);
+}
+
+.extra-item input[type="checkbox"] {
+    display: none;
+}
+
+.extra-item .checkmark {
+    width: 24px;
+    height: 24px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.extra-item input:checked + .checkmark {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.extra-item input:checked + .checkmark::after {
+    content: '✓';
+    color: white;
+    font-weight: bold;
+}
+
+.extra-info {
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.extra-name {
+    font-weight: 600;
+}
+
+.extra-price {
+    font-weight: 700;
+    color: var(--primary);
+}
+
+/* Підсумок */
+.booking-summary {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: var(--radius);
+    padding: 25px;
+    margin-bottom: 25px;
+}
+
+.booking-summary h3 {
+    margin-bottom: 15px;
+    color: var(--dark);
+}
+
+.summary-details {
+    display: grid;
+    gap: 10px;
+}
+
+.summary-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px dashed #ddd;
+}
+
+.summary-row.total {
+    border-bottom: none;
+    padding-top: 15px;
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--primary);
+}
+
+/* Кнопка підтвердження */
+.btn-submit {
+    width: 100%;
+    padding: 20px;
+    background: var(--gradient-sunset);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.btn-submit:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 15px 40px rgba(255, 107, 53, 0.4);
+}
+
+.btn-submit:active {
+    transform: translateY(-1px);
+}
+
+/* ==========================================
+   Історія бронювань
+   ========================================== */
+
+.history-container {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 30px;
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 25px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid var(--light);
+}
+
+.history-header h2 {
+    color: var(--dark);
+}
+
+.history-filters {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.history-filters select,
+.history-filters input {
+    padding: 10px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.btn-export {
+    padding: 10px 20px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.btn-export:hover {
+    background: #00b894;
+}
+
+/* Список бронювань */
+.bookings-list {
+    display: grid;
+    gap: 15px;
+}
+
+.booking-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    gap: 20px;
+    align-items: center;
+    padding: 20px;
+    background: var(--light);
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.booking-item:hover {
+    background: #fff;
+    box-shadow: var(--shadow);
+}
+
+.booking-date-badge {
+    text-align: center;
+    padding: 15px;
+    background: var(--gradient-fun);
+    border-radius: 12px;
+    color: white;
+    min-width: 80px;
+}
+
+.booking-date-badge .day {
+    font-size: 28px;
+    font-weight: 900;
+    display: block;
+}
+
+.booking-date-badge .month {
+    font-size: 12px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.booking-info h4 {
+    font-size: 16px;
+    margin-bottom: 5px;
+}
+
+.booking-info p {
+    font-size: 13px;
+    color: var(--gray);
+}
+
+.booking-status {
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.booking-status.pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.booking-status.confirmed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.booking-status.completed {
+    background: #cce5ff;
+    color: #004085;
+}
+
+.booking-status.cancelled {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.booking-amount {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--primary);
+}
+
+.no-bookings {
+    text-align: center;
+    padding: 60px;
+    color: var(--gray);
+}
+
+.no-bookings span {
+    font-size: 64px;
+    display: block;
+    margin-bottom: 15px;
+}
+
+/* ==========================================
+   Програми (вітрина)
+   ========================================== */
+
+.programs-container {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 30px;
+}
+
+.programs-container h2 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: var(--dark);
+}
+
+.programs-showcase {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 25px;
+}
+
+.program-showcase-card {
+    background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    transition: all 0.3s ease;
+}
+
+.program-showcase-card:hover {
+    transform: translateY(-8px);
+    box-shadow: var(--shadow-hover);
+}
+
+.program-showcase-header {
+    padding: 30px;
+    text-align: center;
+    color: white;
+    position: relative;
+}
+
+.program-showcase-header.theme-adventure {
+    background: linear-gradient(135deg, #ff6b35, #ff9a44);
+}
+
+.program-showcase-header.theme-princess {
+    background: linear-gradient(135deg, #f72585, #b5179e);
+}
+
+.program-showcase-header.theme-superhero {
+    background: linear-gradient(135deg, #4361ee, #3a0ca3);
+}
+
+.program-showcase-header.theme-science {
+    background: linear-gradient(135deg, #00d4aa, #00b4d8);
+}
+
+.program-showcase-header.theme-party {
+    background: linear-gradient(135deg, #ffd60a, #ff9f1c);
+}
+
+.program-showcase-header.theme-vip {
+    background: linear-gradient(135deg, #7b2cbf, #9d4edd);
+}
+
+.program-showcase-header span {
+    font-size: 64px;
+    display: block;
+}
+
+.program-showcase-body {
+    padding: 25px;
+}
+
+.program-showcase-body h3 {
+    font-size: 20px;
+    margin-bottom: 10px;
+    color: var(--dark);
+}
+
+.program-showcase-body p {
+    color: var(--gray);
+    line-height: 1.6;
+    margin-bottom: 15px;
+}
+
+.program-showcase-body ul {
+    list-style: none;
+    margin-bottom: 20px;
+}
+
+.program-showcase-body li {
+    padding: 8px 0;
+    padding-left: 25px;
+    position: relative;
+    font-size: 14px;
+}
+
+.program-showcase-body li::before {
+    content: '✨';
+    position: absolute;
+    left: 0;
+}
+
+.program-showcase-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 15px;
+    border-top: 2px dashed #eee;
+}
+
+.program-showcase-footer .duration {
+    color: var(--secondary);
+    font-weight: 600;
+}
+
+.program-showcase-footer .price {
+    font-size: 24px;
+    font-weight: 900;
+    color: var(--primary);
+}
+
+/* ==========================================
+   Налаштування
+   ========================================== */
+
+.settings-container {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 30px;
+}
+
+.settings-container h2 {
+    margin-bottom: 30px;
+    color: var(--dark);
+}
+
+.settings-section {
+    margin-bottom: 35px;
+    padding-bottom: 25px;
+    border-bottom: 2px solid var(--light);
+}
+
+.settings-section h3 {
+    margin-bottom: 20px;
+    color: var(--secondary);
+}
+
+/* Список користувачів */
+.users-list {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.user-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background: var(--light);
+    border-radius: 10px;
+}
+
+.user-item .user-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.user-item .user-avatar {
+    width: 40px;
+    height: 40px;
+    background: var(--gradient-fun);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+}
+
+.user-item .user-role {
+    font-size: 12px;
+    padding: 4px 10px;
+    background: var(--accent);
+    color: white;
+    border-radius: 12px;
+}
+
+.user-item .user-role.admin {
+    background: var(--secondary);
+}
+
+.user-item .btn-delete-user {
+    padding: 8px 15px;
+    background: none;
+    border: 2px solid var(--danger);
+    color: var(--danger);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.user-item .btn-delete-user:hover {
+    background: var(--danger);
+    color: white;
+}
+
+.btn-add-user {
+    padding: 12px 25px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.btn-add-user:hover {
+    background: #00b894;
+}
+
+/* Статистика */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 20px;
+}
+
+.stat-card {
+    background: var(--light);
+    border-radius: var(--radius);
+    padding: 25px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow);
+}
+
+.stat-card .stat-icon {
+    font-size: 36px;
+    display: block;
+    margin-bottom: 10px;
+}
+
+.stat-card .stat-value {
+    font-size: 32px;
+    font-weight: 900;
+    color: var(--primary);
+    display: block;
+}
+
+.stat-card .stat-label {
+    font-size: 13px;
+    color: var(--gray);
+    font-weight: 600;
+}
+
+.btn-danger {
+    padding: 12px 25px;
+    background: var(--danger);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.btn-danger:hover {
+    background: #c0392b;
+}
+
+/* ==========================================
+   Модальні вікна
+   ========================================== */
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.modal-content {
+    background: white;
+    border-radius: var(--radius);
+    padding: 30px;
+    max-width: 450px;
+    width: 100%;
+    position: relative;
+    animation: modalIn 0.3s ease;
+}
+
+.modal-content.modal-large {
+    max-width: 600px;
+}
+
+@keyframes modalIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.modal-close {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 28px;
+    color: var(--gray);
+    cursor: pointer;
+    transition: color 0.3s ease;
+}
+
+.modal-close:hover {
+    color: var(--danger);
+}
+
+.modal-content h3 {
+    margin-bottom: 25px;
+    color: var(--dark);
+}
+
+/* Деталі бронювання в модалі */
+.booking-detail-header {
+    background: var(--gradient-fun);
+    margin: -30px -30px 25px;
+    padding: 25px 30px;
+    border-radius: var(--radius) var(--radius) 0 0;
+    color: white;
+}
+
+.booking-detail-header h3 {
+    color: white;
+    margin-bottom: 5px;
+}
+
+.booking-detail-header p {
+    opacity: 0.9;
+}
+
+.booking-detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.booking-detail-row:last-child {
+    border-bottom: none;
+}
+
+.booking-detail-row .label {
+    color: var(--gray);
+    font-weight: 600;
+}
+
+.booking-detail-row .value {
+    font-weight: 700;
+    color: var(--dark);
+}
+
+.booking-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 25px;
+}
+
+.booking-actions button {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.btn-confirm {
+    background: var(--success);
+    color: white;
+}
+
+.btn-cancel {
+    background: var(--danger);
+    color: white;
+}
+
+.btn-complete {
+    background: var(--accent-blue);
+    color: white;
+}
+
+/* ==========================================
+   Сповіщення
+   ========================================== */
+
+.notification {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    background: var(--dark);
+    color: white;
+    padding: 18px 30px;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    animation: slideIn 0.3s ease;
+    z-index: 1001;
+    font-weight: 600;
+}
+
+.notification.success {
+    background: var(--success);
+}
+
+.notification.error {
+    background: var(--danger);
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* ==========================================
+   Футер
+   ========================================== */
+
+.footer {
+    background: var(--dark);
+    color: white;
+    text-align: center;
+    padding: 20px;
+    font-size: 14px;
+}
+
+/* ==========================================
+   Адаптивність
+   ========================================== */
+
+@media (max-width: 768px) {
+    .header-content {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .nav-tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .nav-tab {
+        white-space: nowrap;
+        padding: 15px 18px;
+        font-size: 13px;
+    }
+
+    .content {
+        padding: 20px;
+    }
+
+    .booking-form {
+        padding: 20px;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .history-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .history-filters {
+        flex-direction: column;
+    }
+
+    .booking-item {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+
+    .booking-date-badge {
+        margin: 0 auto 10px;
+    }
+
+    .programs-showcase {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .login-container {
+        padding: 30px 20px;
+    }
+
+    .logo-text h1 {
+        font-size: 18px;
+    }
+
+    .time-slots {
+        justify-content: center;
+    }
+
+    .time-slot {
+        padding: 10px 16px;
+        font-size: 14px;
+    }
+}

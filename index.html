@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎢 ДіснейСайд Парк - Парк Розваг | Бронювання</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Екран авторизації -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-container">
+            <div class="login-logo">
+                <span class="logo-icon">🎡</span>
+                <h1>ДіснейСайд Парк</h1>
+                <p class="tagline">Парк Розваг для всієї родини</p>
+            </div>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="username">👤 Ім'я користувача</label>
+                    <input type="text" id="username" placeholder="Введіть логін" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">🔐 Пароль</label>
+                    <input type="password" id="password" placeholder="Введіть пароль" required>
+                </div>
+                <button type="submit" class="btn-login">Увійти в систему</button>
+                <p id="loginError" class="error-message"></p>
+            </form>
+            <div class="login-footer">
+                <p>🎠 Система бронювання дитячих програм</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Головний застосунок -->
+    <div id="mainApp" class="main-app hidden">
+        <!-- Шапка сайту -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-emoji">🎢</span>
+                    <div class="logo-text">
+                        <h1>ДіснейСайд Парк</h1>
+                        <span class="subtitle">parkrozwag.com</span>
+                    </div>
+                </div>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name">👋 Адмін</span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Навігація -->
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-tab="booking">📅 Нове бронювання</button>
+            <button class="nav-tab" data-tab="history">📋 Історія бронювань</button>
+            <button class="nav-tab" data-tab="programs">🎪 Програми</button>
+            <button class="nav-tab" data-tab="settings">⚙️ Налаштування</button>
+        </nav>
+
+        <!-- Контент -->
+        <main class="content">
+            <!-- Вкладка: Нове бронювання -->
+            <section id="bookingTab" class="tab-content active">
+                <div class="booking-container">
+                    <div class="booking-header">
+                        <h2>🎉 Створити нове бронювання</h2>
+                        <p>Оберіть програму та час для незабутнього свята!</p>
+                    </div>
+
+                    <form id="bookingForm" class="booking-form">
+                        <!-- Інформація про клієнта -->
+                        <div class="form-section">
+                            <h3>👨‍👩‍👧‍👦 Інформація про клієнта</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="clientName">Ім'я батьків</label>
+                                    <input type="text" id="clientName" placeholder="Введіть ім'я" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="clientPhone">Телефон</label>
+                                    <input type="tel" id="clientPhone" placeholder="+380 XX XXX XX XX" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="childName">Ім'я дитини (іменинника)</label>
+                                    <input type="text" id="childName" placeholder="Ім'я дитини" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="childAge">Вік дитини</label>
+                                    <input type="number" id="childAge" min="1" max="18" placeholder="Вік" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="guestsCount">Кількість гостей</label>
+                                <input type="number" id="guestsCount" min="1" max="50" placeholder="Кількість дітей" required>
+                            </div>
+                        </div>
+
+                        <!-- Вибір дати та часу -->
+                        <div class="form-section">
+                            <h3>📅 Дата та час</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="bookingDate">Дата</label>
+                                    <input type="date" id="bookingDate" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>День тижня</label>
+                                    <div id="dayOfWeek" class="day-badge">Оберіть дату</div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Оберіть час</label>
+                                <div class="time-slots" id="timeSlots">
+                                    <button type="button" class="time-slot" data-time="10:00">10:00</button>
+                                    <button type="button" class="time-slot" data-time="11:30">11:30</button>
+                                    <button type="button" class="time-slot" data-time="13:00">13:00</button>
+                                    <button type="button" class="time-slot" data-time="14:30">14:30</button>
+                                    <button type="button" class="time-slot" data-time="16:00">16:00</button>
+                                    <button type="button" class="time-slot" data-time="17:30">17:30</button>
+                                    <button type="button" class="time-slot" data-time="19:00">19:00</button>
+                                </div>
+                                <input type="hidden" id="selectedTime" required>
+                            </div>
+                        </div>
+
+                        <!-- Вибір програми -->
+                        <div class="form-section">
+                            <h3>🎪 Оберіть програму</h3>
+                            <div class="programs-grid" id="programsGrid">
+                                <!-- Програми генеруються через JS -->
+                            </div>
+                            <input type="hidden" id="selectedProgram" required>
+                        </div>
+
+                        <!-- Додаткові послуги -->
+                        <div class="form-section">
+                            <h3>🎁 Додаткові послуги</h3>
+                            <div class="extras-list">
+                                <label class="extra-item">
+                                    <input type="checkbox" name="extras" value="cake">
+                                    <span class="checkmark"></span>
+                                    <span class="extra-info">
+                                        <span class="extra-name">🎂 Святковий торт</span>
+                                        <span class="extra-price">+500 грн</span>
+                                    </span>
+                                </label>
+                                <label class="extra-item">
+                                    <input type="checkbox" name="extras" value="balloons">
+                                    <span class="checkmark"></span>
+                                    <span class="extra-info">
+                                        <span class="extra-name">🎈 Кульки з гелієм (20 шт)</span>
+                                        <span class="extra-price">+300 грн</span>
+                                    </span>
+                                </label>
+                                <label class="extra-item">
+                                    <input type="checkbox" name="extras" value="photo">
+                                    <span class="checkmark"></span>
+                                    <span class="extra-info">
+                                        <span class="extra-name">📸 Фотограф (1 година)</span>
+                                        <span class="extra-price">+800 грн</span>
+                                    </span>
+                                </label>
+                                <label class="extra-item">
+                                    <input type="checkbox" name="extras" value="candy">
+                                    <span class="checkmark"></span>
+                                    <span class="extra-info">
+                                        <span class="extra-name">🍭 Солодкий стіл</span>
+                                        <span class="extra-price">+600 грн</span>
+                                    </span>
+                                </label>
+                                <label class="extra-item">
+                                    <input type="checkbox" name="extras" value="animator">
+                                    <span class="checkmark"></span>
+                                    <span class="extra-info">
+                                        <span class="extra-name">🤡 Додатковий аніматор</span>
+                                        <span class="extra-price">+700 грн</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Коментар -->
+                        <div class="form-section">
+                            <h3>💬 Примітки</h3>
+                            <div class="form-group">
+                                <textarea id="bookingNotes" rows="3" placeholder="Особливі побажання, алергії, тематика свята..."></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Підсумок -->
+                        <div class="booking-summary">
+                            <h3>💰 Підсумок</h3>
+                            <div class="summary-details">
+                                <div class="summary-row">
+                                    <span>Програма:</span>
+                                    <span id="summaryProgram">-</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span>Додаткові послуги:</span>
+                                    <span id="summaryExtras">0 грн</span>
+                                </div>
+                                <div class="summary-row total">
+                                    <span>Всього:</span>
+                                    <span id="summaryTotal">0 грн</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-submit">
+                            <span>✨ Підтвердити бронювання</span>
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Вкладка: Історія бронювань -->
+            <section id="historyTab" class="tab-content">
+                <div class="history-container">
+                    <div class="history-header">
+                        <h2>📋 Історія бронювань</h2>
+                        <div class="history-filters">
+                            <select id="filterStatus">
+                                <option value="all">Всі статуси</option>
+                                <option value="pending">⏳ Очікує</option>
+                                <option value="confirmed">✅ Підтверджено</option>
+                                <option value="completed">🎉 Завершено</option>
+                                <option value="cancelled">❌ Скасовано</option>
+                            </select>
+                            <select id="filterDay">
+                                <option value="all">Всі дні</option>
+                                <option value="1">Понеділок</option>
+                                <option value="2">Вівторок</option>
+                                <option value="3">Середа</option>
+                                <option value="4">Четвер</option>
+                                <option value="5">П'ятниця</option>
+                                <option value="6">Субота</option>
+                                <option value="0">Неділя</option>
+                            </select>
+                            <input type="date" id="filterDate" placeholder="Фільтр за датою">
+                            <button id="exportBtn" class="btn-export">📥 Експорт</button>
+                        </div>
+                    </div>
+                    <div class="bookings-list" id="bookingsList">
+                        <!-- Бронювання генеруються через JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Вкладка: Програми -->
+            <section id="programsTab" class="tab-content">
+                <div class="programs-container">
+                    <h2>🎪 Наші дитячі програми</h2>
+                    <div class="programs-showcase" id="programsShowcase">
+                        <!-- Програми генеруються через JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Вкладка: Налаштування -->
+            <section id="settingsTab" class="tab-content">
+                <div class="settings-container">
+                    <h2>⚙️ Налаштування системи</h2>
+
+                    <div class="settings-section">
+                        <h3>👥 Керування користувачами</h3>
+                        <div class="users-list" id="usersList">
+                            <!-- Користувачі генеруються через JS -->
+                        </div>
+                        <button id="addUserBtn" class="btn-add-user">+ Додати користувача</button>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3>📊 Статистика</h3>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <span class="stat-icon">📅</span>
+                                <span class="stat-value" id="statTotal">0</span>
+                                <span class="stat-label">Всього бронювань</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-icon">⏳</span>
+                                <span class="stat-value" id="statPending">0</span>
+                                <span class="stat-label">Очікують</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-icon">✅</span>
+                                <span class="stat-value" id="statConfirmed">0</span>
+                                <span class="stat-label">Підтверджено</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-icon">💰</span>
+                                <span class="stat-value" id="statRevenue">0</span>
+                                <span class="stat-label">Виручка (грн)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3>🗑️ Управління даними</h3>
+                        <button id="clearDataBtn" class="btn-danger">Очистити всі бронювання</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Футер -->
+        <footer class="footer">
+            <p>🎢 ДіснейСайд Парк © 2024 | parkrozwag.com | Система бронювання v1.0</p>
+        </footer>
+    </div>
+
+    <!-- Модальне вікно додавання користувача -->
+    <div id="addUserModal" class="modal hidden">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3>👤 Додати нового користувача</h3>
+            <form id="addUserForm">
+                <div class="form-group">
+                    <label>Логін</label>
+                    <input type="text" id="newUsername" required>
+                </div>
+                <div class="form-group">
+                    <label>Пароль</label>
+                    <input type="password" id="newPassword" required>
+                </div>
+                <div class="form-group">
+                    <label>Роль</label>
+                    <select id="newUserRole">
+                        <option value="operator">Оператор</option>
+                        <option value="admin">Адміністратор</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-submit">Додати</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модальне вікно деталей бронювання -->
+    <div id="bookingModal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <span class="modal-close">&times;</span>
+            <div id="bookingDetails">
+                <!-- Деталі бронювання генеруються через JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Сповіщення -->
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

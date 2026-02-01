@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Парк Закревського Періоду | Система бронювання</title>
+    <title>Парк Закревського Періоду | Бронювання</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
@@ -15,7 +15,7 @@
             <div class="login-logo">
                 <span class="logo-icon">🦖</span>
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання розваг</p>
+                <p class="tagline">Система бронювання</p>
             </div>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
@@ -41,7 +41,6 @@
                     <span class="logo-emoji">🦖</span>
                     <div class="logo-text">
                         <h1>Парк Закревського Періоду</h1>
-                        <span class="subtitle">center-rozvag.com.ua</span>
                     </div>
                 </div>
                 <div class="user-panel">
@@ -51,242 +50,135 @@
             </div>
         </header>
 
-        <!-- Навігація -->
-        <nav class="nav-tabs">
-            <button class="nav-tab active" data-tab="timeline">📅 Таймлайн</button>
-            <button class="nav-tab" data-tab="booking">➕ Бронювання</button>
-            <button class="nav-tab" data-tab="programs">📋 Програми</button>
-            <button class="nav-tab" data-tab="settings">⚙️ Налаштування</button>
-        </nav>
+        <!-- Основний контент - Таймлайн -->
+        <main class="main-content">
+            <!-- Панель керування -->
+            <div class="control-panel">
+                <div class="date-controls">
+                    <button id="prevDay" class="btn-nav">◀</button>
+                    <input type="date" id="timelineDate">
+                    <span id="dayOfWeekLabel" class="day-label"></span>
+                    <button id="nextDay" class="btn-nav">▶</button>
+                </div>
+                <div class="action-buttons">
+                    <button id="exportTimelineBtn" class="btn-export">📥 Експорт</button>
+                </div>
+            </div>
 
-        <!-- Контент -->
-        <main class="content">
-            <!-- Вкладка: Таймлайн -->
-            <section id="timelineTab" class="tab-content active">
-                <div class="timeline-container">
-                    <div class="timeline-header">
-                        <div class="timeline-controls">
-                            <button id="prevDay" class="btn-nav">◀ Попередній</button>
-                            <div class="date-selector">
-                                <input type="date" id="timelineDate">
-                                <span id="dayOfWeekLabel" class="day-label"></span>
-                            </div>
-                            <button id="nextDay" class="btn-nav">Наступний ▶</button>
-                        </div>
-                        <div class="timeline-actions">
-                            <button id="addLineBtn" class="btn-action btn-add">+ Додати лінію</button>
-                            <button id="exportTimelineBtn" class="btn-action btn-export">📥 Експорт</button>
-                        </div>
+            <!-- Попередження -->
+            <div id="warningBanner" class="warning-banner hidden">
+                <span id="warningText"></span>
+                <button id="closeWarning" class="btn-close-warning">✕</button>
+            </div>
+
+            <!-- Таймлайн -->
+            <div class="timeline-container">
+                <div class="timeline-scroll" id="timelineScroll">
+                    <div class="time-scale" id="timeScale"></div>
+                    <div class="timeline-lines" id="timelineLines"></div>
+                    <!-- Кнопка додати лінію -->
+                    <button id="addLineBtn" class="btn-add-line-big">
+                        <span>+</span>
+                        <span>Додати аніматора</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Легенда -->
+            <div class="legend">
+                <span class="legend-item"><span class="dot quest"></span>Квести</span>
+                <span class="legend-item"><span class="dot animation"></span>Анімація</span>
+                <span class="legend-item"><span class="dot show"></span>Шоу</span>
+                <span class="legend-item"><span class="dot masterclass"></span>МК</span>
+                <span class="legend-item"><span class="dot pinata"></span>Піньята</span>
+            </div>
+        </main>
+
+        <!-- Бокова панель бронювання -->
+        <aside id="bookingPanel" class="booking-panel hidden">
+            <div class="panel-header">
+                <h3>Нове бронювання</h3>
+                <button id="closePanel" class="btn-close">✕</button>
+            </div>
+
+            <form id="bookingForm" class="booking-form">
+                <!-- Обрані час та лінія -->
+                <div class="selected-info">
+                    <div class="info-item">
+                        <span class="info-label">Час:</span>
+                        <span id="selectedTimeDisplay" class="info-value">-</span>
                     </div>
-
-                    <div class="timeline-wrapper">
-                        <div class="timeline-scroll" id="timelineScroll">
-                            <!-- Шкала часу -->
-                            <div class="time-scale" id="timeScale">
-                                <!-- Генерується через JS -->
-                            </div>
-                            <!-- Лінії активів -->
-                            <div class="timeline-lines" id="timelineLines">
-                                <!-- Генерується через JS -->
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Легенда -->
-                    <div class="timeline-legend">
-                        <h4>Легенда:</h4>
-                        <div class="legend-items">
-                            <span class="legend-item"><span class="legend-color quest"></span> Квести</span>
-                            <span class="legend-item"><span class="legend-color animation"></span> Анімація</span>
-                            <span class="legend-item"><span class="legend-color show"></span> Wow-Шоу</span>
-                            <span class="legend-item"><span class="legend-color masterclass"></span> Майстер-клас</span>
-                            <span class="legend-item"><span class="legend-color other"></span> Інше</span>
-                        </div>
+                    <div class="info-item">
+                        <span class="info-label">Аніматор:</span>
+                        <span id="selectedLineDisplay" class="info-value">-</span>
                     </div>
                 </div>
-            </section>
+                <input type="hidden" id="bookingTime">
+                <input type="hidden" id="bookingLine">
 
-            <!-- Вкладка: Бронювання -->
-            <section id="bookingTab" class="tab-content">
-                <div class="booking-container">
-                    <div class="booking-header">
-                        <h2>Створити бронювання</h2>
-                    </div>
-
-                    <form id="bookingForm" class="booking-form">
-                        <!-- Клієнт -->
-                        <div class="form-section">
-                            <h3>Інформація про клієнта</h3>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="clientName">Ім'я</label>
-                                    <input type="text" id="clientName" placeholder="Ім'я клієнта" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="clientPhone">Телефон</label>
-                                    <input type="tel" id="clientPhone" placeholder="+380..." required>
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="childName">Ім'я дитини</label>
-                                    <input type="text" id="childName" placeholder="Іменинник">
-                                </div>
-                                <div class="form-group">
-                                    <label for="childAge">Вік</label>
-                                    <input type="number" id="childAge" min="1" max="18" placeholder="Років">
-                                </div>
-                                <div class="form-group">
-                                    <label for="guestsCount">Гостей</label>
-                                    <input type="number" id="guestsCount" min="1" max="50" placeholder="Кількість">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Дата та час -->
-                        <div class="form-section">
-                            <h3>Дата та час</h3>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="bookingDate">Дата</label>
-                                    <input type="date" id="bookingDate" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="bookingTime">Час початку</label>
-                                    <select id="bookingTime" required>
-                                        <!-- Генерується через JS -->
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="bookingLine">Лінія (актив)</label>
-                                    <select id="bookingLine" required>
-                                        <!-- Генерується через JS -->
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Програма -->
-                        <div class="form-section">
-                            <h3>Програма</h3>
-                            <div class="form-group">
-                                <label for="programCategory">Категорія</label>
-                                <select id="programCategory" required>
-                                    <option value="">Оберіть категорію</option>
-                                    <option value="quest">Квести</option>
-                                    <option value="animation">Анімація</option>
-                                    <option value="show">Wow-Шоу</option>
-                                    <option value="masterclass">Майстер-класи</option>
-                                    <option value="pinata">Піньяти</option>
-                                    <option value="photo">Фото послуги</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="programSelect">Програма</label>
-                                <select id="programSelect" required disabled>
-                                    <option value="">Спочатку оберіть категорію</option>
-                                </select>
-                            </div>
-                            <div id="programInfo" class="program-info hidden">
-                                <!-- Інформація про програму -->
-                            </div>
-                        </div>
-
-                        <!-- Примітки -->
-                        <div class="form-section">
-                            <h3>Примітки</h3>
-                            <textarea id="bookingNotes" rows="2" placeholder="Додаткова інформація..."></textarea>
-                        </div>
-
-                        <!-- Підсумок -->
-                        <div class="booking-summary">
-                            <div class="summary-row">
-                                <span>Програма:</span>
-                                <span id="summaryProgram">-</span>
-                            </div>
-                            <div class="summary-row">
-                                <span>Тривалість:</span>
-                                <span id="summaryDuration">-</span>
-                            </div>
-                            <div class="summary-row total">
-                                <span>Вартість:</span>
-                                <span id="summaryPrice">0 грн</span>
-                            </div>
-                        </div>
-
-                        <button type="submit" class="btn-submit">Додати бронювання</button>
-                    </form>
+                <!-- Кімната -->
+                <div class="form-section">
+                    <label>Кімната</label>
+                    <select id="roomSelect" required>
+                        <option value="">Оберіть кімнату</option>
+                        <optgroup label="Кімнати">
+                            <option value="Marvel">Marvel</option>
+                            <option value="Ninja">Ninja</option>
+                            <option value="Minecraft">Minecraft</option>
+                            <option value="Monster High">Monster High</option>
+                            <option value="Elsa">Elsa</option>
+                            <option value="Растішка">Растішка</option>
+                            <option value="Rock">Rock</option>
+                            <option value="Minion">Minion</option>
+                        </optgroup>
+                        <optgroup label="Дивани">
+                            <option value="Диван 1">Диван 1</option>
+                            <option value="Диван 2">Диван 2</option>
+                            <option value="Диван 3">Диван 3</option>
+                            <option value="Диван 4">Диван 4</option>
+                        </optgroup>
+                    </select>
                 </div>
-            </section>
 
-            <!-- Вкладка: Програми -->
-            <section id="programsTab" class="tab-content">
-                <div class="programs-container">
-                    <h2>Всі програми</h2>
-
-                    <div class="programs-filter">
-                        <button class="filter-btn active" data-filter="all">Всі</button>
-                        <button class="filter-btn" data-filter="quest">Квести</button>
-                        <button class="filter-btn" data-filter="animation">Анімація</button>
-                        <button class="filter-btn" data-filter="show">Wow-Шоу</button>
-                        <button class="filter-btn" data-filter="masterclass">Майстер-класи</button>
-                        <button class="filter-btn" data-filter="pinata">Піньяти</button>
-                        <button class="filter-btn" data-filter="photo">Фото</button>
-                    </div>
-
-                    <div class="programs-list" id="programsList">
+                <!-- Програми іконками -->
+                <div class="form-section">
+                    <label>Програма</label>
+                    <div class="programs-icons" id="programsIcons">
                         <!-- Генерується через JS -->
                     </div>
+                    <input type="hidden" id="selectedProgram">
                 </div>
-            </section>
 
-            <!-- Вкладка: Налаштування -->
-            <section id="settingsTab" class="tab-content">
-                <div class="settings-container">
-                    <h2>Налаштування</h2>
-
-                    <div class="settings-section">
-                        <h3>Лінії (активи)</h3>
-                        <div class="lines-manager" id="linesManager">
-                            <!-- Генерується через JS -->
-                        </div>
-                        <button id="addLineSettings" class="btn-add-line">+ Додати лінію</button>
+                <!-- Інфо про обрану програму -->
+                <div id="programDetails" class="program-details hidden">
+                    <div class="detail-row">
+                        <span>Тривалість:</span>
+                        <span id="detailDuration">-</span>
                     </div>
-
-                    <div class="settings-section">
-                        <h3>Користувачі</h3>
-                        <div class="users-list" id="usersList"></div>
-                        <button id="addUserBtn" class="btn-add-user">+ Додати користувача</button>
+                    <div class="detail-row">
+                        <span>Ведучих:</span>
+                        <span id="detailHosts">-</span>
                     </div>
-
-                    <div class="settings-section">
-                        <h3>Статистика</h3>
-                        <div class="stats-grid">
-                            <div class="stat-card">
-                                <span class="stat-value" id="statTotal">0</span>
-                                <span class="stat-label">Всього бронювань</span>
-                            </div>
-                            <div class="stat-card">
-                                <span class="stat-value" id="statToday">0</span>
-                                <span class="stat-label">Сьогодні</span>
-                            </div>
-                            <div class="stat-card">
-                                <span class="stat-value" id="statWeek">0</span>
-                                <span class="stat-label">Цей тиждень</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="settings-section">
-                        <h3>Дані</h3>
-                        <div class="data-actions">
-                            <button id="exportAllBtn" class="btn-export">📥 Експорт всіх бронювань</button>
-                            <button id="clearDataBtn" class="btn-danger">🗑️ Очистити дані</button>
-                        </div>
+                    <div class="detail-row">
+                        <span>Ціна:</span>
+                        <span id="detailPrice">-</span>
                     </div>
                 </div>
-            </section>
-        </main>
+
+                <!-- Попередження про 2 ведучих -->
+                <div id="hostsWarning" class="hosts-warning hidden">
+                    ⚠️ Ця програма потребує 2 ведучих! Переконайтесь, що обидва аніматори вільні.
+                </div>
+
+                <!-- Примітки -->
+                <div class="form-section">
+                    <label>Примітки (опційно)</label>
+                    <input type="text" id="bookingNotes" placeholder="Додаткова інформація...">
+                </div>
+
+                <button type="submit" class="btn-submit">Додати бронювання</button>
+            </form>
+        </aside>
     </div>
 
     <!-- Модальне вікно деталей бронювання -->
@@ -297,48 +189,25 @@
         </div>
     </div>
 
-    <!-- Модальне вікно додавання користувача -->
-    <div id="addUserModal" class="modal hidden">
-        <div class="modal-content">
-            <span class="modal-close">&times;</span>
-            <h3>Додати користувача</h3>
-            <form id="addUserForm">
-                <div class="form-group">
-                    <label>Логін</label>
-                    <input type="text" id="newUsername" required>
-                </div>
-                <div class="form-group">
-                    <label>Пароль</label>
-                    <input type="password" id="newPassword" required>
-                </div>
-                <div class="form-group">
-                    <label>Роль</label>
-                    <select id="newUserRole">
-                        <option value="operator">Оператор</option>
-                        <option value="admin">Адміністратор</option>
-                    </select>
-                </div>
-                <button type="submit" class="btn-submit">Додати</button>
-            </form>
-        </div>
-    </div>
-
     <!-- Модальне вікно редагування лінії -->
     <div id="editLineModal" class="modal hidden">
         <div class="modal-content">
             <span class="modal-close">&times;</span>
-            <h3>Редагувати лінію</h3>
+            <h3>Редагувати аніматора</h3>
             <form id="editLineForm">
                 <input type="hidden" id="editLineId">
                 <div class="form-group">
-                    <label>Назва лінії</label>
-                    <input type="text" id="editLineName" required>
+                    <label>Ім'я аніматора</label>
+                    <input type="text" id="editLineName" placeholder="Наприклад: Женя" required>
                 </div>
                 <div class="form-group">
                     <label>Колір</label>
                     <input type="color" id="editLineColor" value="#4CAF50">
                 </div>
-                <button type="submit" class="btn-submit">Зберегти</button>
+                <div class="form-buttons">
+                    <button type="submit" class="btn-submit">Зберегти</button>
+                    <button type="button" id="deleteLineBtn" class="btn-danger">Видалити</button>
+                </div>
             </form>
         </div>
     </div>

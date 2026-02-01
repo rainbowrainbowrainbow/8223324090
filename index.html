@@ -15,7 +15,7 @@
             <div class="login-logo">
                 <span class="logo-icon">🦖</span>
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання</p>
+                <p class="tagline">Система бронювання v2.0</p>
             </div>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
@@ -44,6 +44,7 @@
                     </div>
                 </div>
                 <div class="user-panel">
+                    <button id="settingsBtn" class="btn-settings" title="Налаштування">⚙️</button>
                     <span id="currentUser" class="user-name"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
@@ -57,11 +58,14 @@
                 <div class="date-controls">
                     <button id="prevDay" class="btn-nav">◀</button>
                     <input type="date" id="timelineDate">
-                    <span id="dayOfWeekLabel" class="day-label"></span>
+                    <div class="day-info">
+                        <span id="dayOfWeekLabel" class="day-label"></span>
+                        <span id="workingHours" class="working-hours">12:00-20:00</span>
+                    </div>
                     <button id="nextDay" class="btn-nav">▶</button>
                 </div>
                 <div class="action-buttons">
-                    <button id="exportTimelineBtn" class="btn-export">📥 Експорт</button>
+                    <button id="exportTimelineBtn" class="btn-export">🖼️ Експорт PNG</button>
                 </div>
             </div>
 
@@ -91,6 +95,7 @@
                 <span class="legend-item"><span class="dot show"></span>Шоу</span>
                 <span class="legend-item"><span class="dot masterclass"></span>МК</span>
                 <span class="legend-item"><span class="dot pinata"></span>Піньята</span>
+                <span class="legend-item"><span class="dot custom"></span>Інше</span>
             </div>
         </main>
 
@@ -165,9 +170,31 @@
                     </div>
                 </div>
 
+                <!-- Кастомна програма -->
+                <div id="customProgramSection" class="custom-program-section hidden">
+                    <div class="form-section">
+                        <label>Назва позиції</label>
+                        <input type="text" id="customName" placeholder="Наприклад: Особлива подія">
+                    </div>
+                    <div class="form-section">
+                        <label>Тривалість (хв)</label>
+                        <input type="number" id="customDuration" value="30" min="15" step="15">
+                    </div>
+                </div>
+
+                <!-- Вибір другого аніматора -->
+                <div id="secondAnimatorSection" class="second-animator-section hidden">
+                    <div class="form-section">
+                        <label>Другий аніматор</label>
+                        <select id="secondAnimatorSelect">
+                            <option value="">Оберіть другого аніматора</option>
+                        </select>
+                    </div>
+                </div>
+
                 <!-- Попередження про 2 ведучих -->
                 <div id="hostsWarning" class="hosts-warning hidden">
-                    ⚠️ Ця програма потребує 2 ведучих! Переконайтесь, що обидва аніматори вільні.
+                    ⚠️ Ця програма потребує 2 ведучих!
                 </div>
 
                 <!-- Примітки -->
@@ -209,6 +236,31 @@
                     <button type="button" id="deleteLineBtn" class="btn-danger">Видалити</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Модальне вікно налаштувань -->
+    <div id="settingsModal" class="modal hidden">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3>⚙️ Налаштування</h3>
+            <div class="settings-section">
+                <h4>Google Sheets інтеграція</h4>
+                <p class="settings-info">
+                    Для автоматичного завантаження аніматорів з графіку,
+                    потрібно налаштувати Google Sheets API.
+                </p>
+                <div class="form-group">
+                    <label>API ключ Google</label>
+                    <input type="text" id="googleApiKey" placeholder="AIza...">
+                </div>
+                <p class="settings-help">
+                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank">
+                        Отримати API ключ →
+                    </a>
+                </p>
+            </div>
+            <button id="saveSettingsBtn" class="btn-submit">Зберегти налаштування</button>
         </div>
     </div>
 

@@ -1,46 +1,50 @@
 /**
  * Парк Закревського Періоду - Система бронювання
+ * v2.0 - з інтеграцією Google Sheets
  */
 
 // ==========================================
-// ПРОГРАМИ (з кількістю ведучих)
+// ПРОГРАМИ (з тривалістю в назві)
 // ==========================================
 
 const PROGRAMS = [
     // Квести
-    { id: 'kv1', code: 'КВ1', name: 'Легендарний тренд', icon: '🎭', category: 'quest', duration: 60, price: 2200, hosts: 1 },
-    { id: 'kv4', code: 'КВ4', name: 'Шпигунська історія', icon: '🕵️', category: 'quest', duration: 60, price: 2800, hosts: 2 },
-    { id: 'kv5', code: 'КВ5', name: 'Щенячий патруль', icon: '🐕', category: 'quest', duration: 60, price: 2700, hosts: 2 },
-    { id: 'kv6', code: 'КВ6', name: 'Лісова Академія', icon: '🌲', category: 'quest', duration: 90, price: 2100, hosts: 1 },
-    { id: 'kv7', code: 'КВ7', name: 'Гра в Кальмара', icon: '🦑', category: 'quest', duration: 60, price: 3300, hosts: 2 },
-    { id: 'kv8', code: 'КВ8', name: 'MineCraft 2', icon: '⛏️', category: 'quest', duration: 60, price: 2900, hosts: 2 },
-    { id: 'kv9', code: 'КВ9', name: 'Ліга Сітла', icon: '🦇', category: 'quest', duration: 60, price: 2500, hosts: 2 },
-    { id: 'kv10', code: 'КВ10', name: 'Бібліотека Чарів', icon: '📚', category: 'quest', duration: 60, price: 3000, hosts: 2 },
-    { id: 'kv11', code: 'КВ11', name: 'Секретна скарбів', icon: '💎', category: 'quest', duration: 60, price: 2500, hosts: 2 },
+    { id: 'kv1', code: 'КВ1', label: 'КВ1(60)', name: 'Легендарний тренд', icon: '🎭', category: 'quest', duration: 60, price: 2200, hosts: 1 },
+    { id: 'kv4', code: 'КВ4', label: 'КВ4(60)', name: 'Шпигунська історія', icon: '🕵️', category: 'quest', duration: 60, price: 2800, hosts: 2 },
+    { id: 'kv5', code: 'КВ5', label: 'КВ5(60)', name: 'Щенячий патруль', icon: '🐕', category: 'quest', duration: 60, price: 2700, hosts: 2 },
+    { id: 'kv6', code: 'КВ6', label: 'КВ6(90)', name: 'Лісова Академія', icon: '🌲', category: 'quest', duration: 90, price: 2100, hosts: 1 },
+    { id: 'kv7', code: 'КВ7', label: 'КВ7(60)', name: 'Гра в Кальмара', icon: '🦑', category: 'quest', duration: 60, price: 3300, hosts: 2 },
+    { id: 'kv8', code: 'КВ8', label: 'КВ8(60)', name: 'MineCraft 2', icon: '⛏️', category: 'quest', duration: 60, price: 2900, hosts: 2 },
+    { id: 'kv9', code: 'КВ9', label: 'КВ9(60)', name: 'Ліга Сітла', icon: '🦇', category: 'quest', duration: 60, price: 2500, hosts: 2 },
+    { id: 'kv10', code: 'КВ10', label: 'КВ10(60)', name: 'Бібліотека Чарів', icon: '📚', category: 'quest', duration: 60, price: 3000, hosts: 2 },
+    { id: 'kv11', code: 'КВ11', label: 'КВ11(60)', name: 'Секретна скарбів', icon: '💎', category: 'quest', duration: 60, price: 2500, hosts: 2 },
 
     // Анімація
-    { id: 'anim60', code: 'АНІМ', name: 'Анімація 60хв', icon: '🎪', category: 'animation', duration: 60, price: 1500, hosts: 1 },
-    { id: 'anim120', code: 'АНІМ', name: 'Анімація 120хв', icon: '🎪', category: 'animation', duration: 120, price: 2500, hosts: 1 },
-    { id: 'anim_extra', code: 'АНІМ+', name: 'Додатк. аніматор', icon: '👯', category: 'animation', duration: 60, price: 700, hosts: 1 },
+    { id: 'anim60', code: 'АН', label: 'АН(60)', name: 'Анімація 60хв', icon: '🎪', category: 'animation', duration: 60, price: 1500, hosts: 1 },
+    { id: 'anim120', code: 'АН', label: 'АН(120)', name: 'Анімація 120хв', icon: '🎪', category: 'animation', duration: 120, price: 2500, hosts: 1 },
+    { id: 'anim_extra', code: '+Вед', label: '+Вед(60)', name: 'Додатк. аніматор', icon: '👯', category: 'animation', duration: 60, price: 700, hosts: 1 },
 
     // Шоу
-    { id: 'bubble', code: 'ШОУ', name: 'Бульбашки', icon: '🫧', category: 'show', duration: 30, price: 2400, hosts: 1 },
-    { id: 'neon_bubble', code: 'ШОУ', name: 'Неон-бульбашки', icon: '✨', category: 'show', duration: 30, price: 2700, hosts: 1 },
-    { id: 'paper', code: 'ШОУ', name: 'Паперове шоу', icon: '📄', category: 'show', duration: 30, price: 2900, hosts: 2 },
-    { id: 'dry_ice', code: 'ШОУ', name: 'Сухий лід', icon: '❄️', category: 'show', duration: 40, price: 4400, hosts: 1 },
-    { id: 'football', code: 'ШОУ', name: 'Футбол шоу', icon: '⚽', category: 'show', duration: 90, price: 3800, hosts: 1 },
-    { id: 'mafia', code: 'ШОУ', name: 'Мафія', icon: '🎩', category: 'show', duration: 90, price: 2700, hosts: 1 },
+    { id: 'bubble', code: 'Бульб', label: 'Бульб(30)', name: 'Шоу бульбашок', icon: '🫧', category: 'show', duration: 30, price: 2400, hosts: 1 },
+    { id: 'neon_bubble', code: 'Неон', label: 'Неон(30)', name: 'Неон-бульбашки', icon: '✨', category: 'show', duration: 30, price: 2700, hosts: 1 },
+    { id: 'paper', code: 'Папір', label: 'Папір(30)', name: 'Паперове шоу', icon: '📄', category: 'show', duration: 30, price: 2900, hosts: 2 },
+    { id: 'dry_ice', code: 'Лід', label: 'Лід(40)', name: 'Сухий лід', icon: '❄️', category: 'show', duration: 40, price: 4400, hosts: 1 },
+    { id: 'football', code: 'Футб', label: 'Футб(90)', name: 'Футбол шоу', icon: '⚽', category: 'show', duration: 90, price: 3800, hosts: 1 },
+    { id: 'mafia', code: 'Мафія', label: 'Мафія(90)', name: 'Мафія', icon: '🎩', category: 'show', duration: 90, price: 2700, hosts: 1 },
 
     // Майстер-класи
-    { id: 'mk_slime', code: 'МК', name: 'Слайми', icon: '🧪', category: 'masterclass', duration: 45, price: 390, hosts: 1, perChild: true },
-    { id: 'mk_pizza', code: 'МК', name: 'Піца', icon: '🍕', category: 'masterclass', duration: 45, price: 290, hosts: 1, perChild: true },
-    { id: 'mk_cookie', code: 'МК', name: 'Пряники', icon: '🍪', category: 'masterclass', duration: 60, price: 300, hosts: 1, perChild: true },
-    { id: 'mk_cupcake', code: 'МК', name: 'Капкейки', icon: '🧁', category: 'masterclass', duration: 120, price: 450, hosts: 1, perChild: true },
+    { id: 'mk_slime', code: 'МК', label: 'Слайм(45)', name: 'МК Слайми', icon: '🧪', category: 'masterclass', duration: 45, price: 390, hosts: 1, perChild: true },
+    { id: 'mk_pizza', code: 'МК', label: 'Піца(45)', name: 'МК Піца', icon: '🍕', category: 'masterclass', duration: 45, price: 290, hosts: 1, perChild: true },
+    { id: 'mk_cookie', code: 'МК', label: 'Прян(60)', name: 'МК Пряники', icon: '🍪', category: 'masterclass', duration: 60, price: 300, hosts: 1, perChild: true },
+    { id: 'mk_cupcake', code: 'МК', label: 'Капк(120)', name: 'МК Капкейки', icon: '🧁', category: 'masterclass', duration: 120, price: 450, hosts: 1, perChild: true },
 
     // Піньята
-    { id: 'pinata', code: 'ПІН', name: 'Піньята', icon: '🪅', category: 'pinata', duration: 15, price: 700, hosts: 1 },
-    { id: 'pinata_custom', code: 'ПІН', name: 'Піньята нест.', icon: '🎊', category: 'pinata', duration: 15, price: 1000, hosts: 1 },
-    { id: 'pinata_party', code: 'ПІН', name: 'Піньята паті', icon: '🎉', category: 'pinata', duration: 15, price: 2000, hosts: 1 }
+    { id: 'pinata', code: 'Пін', label: 'Пін(15)', name: 'Піньята', icon: '🪅', category: 'pinata', duration: 15, price: 700, hosts: 1 },
+    { id: 'pinata_custom', code: 'Пін', label: 'ПінН(15)', name: 'Піньята нестанд.', icon: '🎊', category: 'pinata', duration: 15, price: 1000, hosts: 1 },
+    { id: 'pinata_party', code: 'Пін', label: 'ПінП(15)', name: 'Піньята паті', icon: '🎉', category: 'pinata', duration: 15, price: 2000, hosts: 1 },
+
+    // Кастомна позиція
+    { id: 'custom', code: 'Інше', label: 'Інше', name: 'Інше (вкажіть)', icon: '✏️', category: 'custom', duration: 30, price: 0, hosts: 1, isCustom: true }
 ];
 
 // ==========================================
@@ -53,15 +57,23 @@ const CONFIG = {
         BOOKINGS: 'pzp_bookings',
         LINES: 'pzp_lines',
         CURRENT_USER: 'pzp_current_user',
-        SESSION: 'pzp_session'
+        SESSION: 'pzp_session',
+        GOOGLE_SHEETS: 'pzp_google_sheets'
     },
     TIMELINE: {
-        START_HOUR: 9,
-        END_HOUR: 21,
+        WEEKDAY_START: 12,
+        WEEKDAY_END: 20,
+        WEEKEND_START: 10,
+        WEEKEND_END: 20,
         CELL_WIDTH: 50,
         CELL_MINUTES: 15
     },
-    MIN_PAUSE: 15 // Мінімальна пауза між програмами
+    MIN_PAUSE: 15,
+    GOOGLE_SHEETS: {
+        SPREADSHEET_ID: '1weBVsUPexq16DrjGzE9X-31FmkJ4dDQxMNatEw9QOMs',
+        SHEET_NAME: 'Місяць',
+        API_KEY: '' // Потрібно додати API ключ
+    }
 };
 
 const DAYS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
@@ -74,6 +86,7 @@ let currentUser = null;
 let selectedDate = new Date();
 let selectedCell = null;
 let selectedLineId = null;
+let animatorsFromSheet = []; // Аніматори з Google Sheets
 
 // ==========================================
 // ІНІЦІАЛІЗАЦІЯ
@@ -98,13 +111,98 @@ function initializeDefaultData() {
         localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify([]));
     }
 
-    // 2 лінії за замовчуванням
+    // 3 лінії за замовчуванням
     if (!localStorage.getItem(CONFIG.STORAGE.LINES)) {
         localStorage.setItem(CONFIG.STORAGE.LINES, JSON.stringify([
             { id: 'line1', name: 'Аніматор 1', color: '#4CAF50' },
-            { id: 'line2', name: 'Аніматор 2', color: '#2196F3' }
+            { id: 'line2', name: 'Аніматор 2', color: '#2196F3' },
+            { id: 'line3', name: 'Аніматор 3', color: '#FF9800' }
         ]));
     }
+}
+
+// ==========================================
+// GOOGLE SHEETS ІНТЕГРАЦІЯ
+// ==========================================
+
+async function fetchAnimatorsFromSheet() {
+    const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.GOOGLE_SHEETS) || '{}');
+    const apiKey = settings.apiKey || CONFIG.GOOGLE_SHEETS.API_KEY;
+
+    if (!apiKey) {
+        console.log('Google Sheets API ключ не налаштовано');
+        return;
+    }
+
+    const spreadsheetId = CONFIG.GOOGLE_SHEETS.SPREADSHEET_ID;
+    const sheetName = CONFIG.GOOGLE_SHEETS.SHEET_NAME;
+
+    try {
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}?key=${apiKey}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error('Помилка завантаження даних з Google Sheets');
+        }
+
+        const data = await response.json();
+        parseAnimatorsSchedule(data.values);
+
+    } catch (error) {
+        console.error('Помилка Google Sheets:', error);
+    }
+}
+
+function parseAnimatorsSchedule(rows) {
+    if (!rows || rows.length < 2) return;
+
+    // Перший рядок - заголовки з датами
+    const headers = rows[0];
+    const today = formatDate(selectedDate);
+
+    // Знаходимо колонку з сьогоднішньою датою
+    let todayColumn = -1;
+    for (let i = 0; i < headers.length; i++) {
+        if (headers[i] && headers[i].includes(selectedDate.getDate().toString())) {
+            todayColumn = i;
+            break;
+        }
+    }
+
+    // Якщо знайшли колонку - збираємо імена аніматорів які мають "1"
+    animatorsFromSheet = [];
+    if (todayColumn > 0) {
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            const name = row[0]; // Ім'я аніматора в першій колонці
+            const value = row[todayColumn];
+
+            if (name && value === '1') {
+                animatorsFromSheet.push(name);
+            }
+        }
+    }
+
+    // Оновити лінії відповідно до аніматорів на зміні
+    updateLinesFromSheet();
+}
+
+function updateLinesFromSheet() {
+    if (animatorsFromSheet.length === 0) return;
+
+    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
+
+    // Оновити імена ліній відповідно до аніматорів на зміні
+    const updatedLines = animatorsFromSheet.map((name, index) => ({
+        id: lines[index]?.id || 'line' + Date.now() + index,
+        name: name,
+        color: colors[index % colors.length],
+        fromSheet: true
+    }));
+
+    localStorage.setItem(CONFIG.STORAGE.LINES, JSON.stringify(updatedLines));
+    renderTimeline();
 }
 
 // ==========================================
@@ -159,6 +257,7 @@ function showMainApp() {
 
     initializeTimeline();
     renderProgramIcons();
+    fetchAnimatorsFromSheet(); // Завантажити аніматорів з Google Sheets
 }
 
 // ==========================================
@@ -182,10 +281,11 @@ function initializeEventListeners() {
     document.getElementById('timelineDate').addEventListener('change', (e) => {
         selectedDate = new Date(e.target.value);
         renderTimeline();
+        fetchAnimatorsFromSheet();
     });
 
     document.getElementById('addLineBtn').addEventListener('click', addNewLine);
-    document.getElementById('exportTimelineBtn').addEventListener('click', exportTimeline);
+    document.getElementById('exportTimelineBtn').addEventListener('click', exportTimelineImage);
 
     // Панель бронювання
     document.getElementById('closePanel').addEventListener('click', closeBookingPanel);
@@ -195,10 +295,27 @@ function initializeEventListeners() {
     document.getElementById('editLineForm').addEventListener('submit', handleEditLine);
     document.getElementById('deleteLineBtn').addEventListener('click', deleteLine);
 
+    // Налаштування Google Sheets
+    const settingsBtn = document.getElementById('settingsBtn');
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', openSettingsModal);
+    }
+
+    const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+    if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', saveGoogleSettings);
+    }
+
     // Попередження
     document.getElementById('closeWarning').addEventListener('click', () => {
         document.getElementById('warningBanner').classList.add('hidden');
     });
+
+    // Кастомна програма
+    const customDuration = document.getElementById('customDuration');
+    if (customDuration) {
+        customDuration.addEventListener('change', updateCustomDuration);
+    }
 
     // Модалі
     document.querySelectorAll('.modal-close').forEach(btn => {
@@ -214,10 +331,19 @@ function initializeEventListeners() {
 // ТАЙМЛАЙН
 // ==========================================
 
+function getTimeRange() {
+    const dayOfWeek = selectedDate.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+    return {
+        start: isWeekend ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START,
+        end: isWeekend ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END
+    };
+}
+
 function initializeTimeline() {
     selectedDate = new Date();
     document.getElementById('timelineDate').value = formatDate(selectedDate);
-    renderTimeScale();
     renderTimeline();
 }
 
@@ -225,22 +351,33 @@ function renderTimeScale() {
     const container = document.getElementById('timeScale');
     container.innerHTML = '';
 
-    for (let h = CONFIG.TIMELINE.START_HOUR; h < CONFIG.TIMELINE.END_HOUR; h++) {
+    const { start, end } = getTimeRange();
+
+    for (let h = start; h < end; h++) {
         for (let m = 0; m < 60; m += CONFIG.TIMELINE.CELL_MINUTES) {
             const mark = document.createElement('div');
-            mark.className = 'time-mark' + (m === 0 ? ' hour' : '');
-            mark.textContent = m === 0 ? `${h}:00` : '';
+            mark.className = 'time-mark' + (m === 0 ? ' hour' : ' half');
+            mark.textContent = `${h}:${String(m).padStart(2, '0')}`;
             container.appendChild(mark);
         }
     }
 }
 
 function renderTimeline() {
+    renderTimeScale();
+
     const container = document.getElementById('timelineLines');
     const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
     const bookings = getBookingsForDate(selectedDate);
+    const { start } = getTimeRange();
 
     document.getElementById('dayOfWeekLabel').textContent = DAYS[selectedDate.getDay()];
+
+    // Показати час роботи
+    const dayOfWeek = selectedDate.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    document.getElementById('workingHours').textContent = isWeekend ? '10:00-20:00' : '12:00-20:00';
+
     container.innerHTML = '';
 
     lines.forEach(line => {
@@ -250,7 +387,7 @@ function renderTimeline() {
         lineEl.innerHTML = `
             <div class="line-header" style="border-left-color: ${line.color}" data-line-id="${line.id}">
                 <span class="line-name">${line.name}</span>
-                <span class="line-sub">натисніть для редагування</span>
+                <span class="line-sub">${line.fromSheet ? '📅 на зміні' : 'редагувати'}</span>
             </div>
             <div class="line-grid" data-line-id="${line.id}">
                 ${renderGridCells(line.id)}
@@ -260,7 +397,7 @@ function renderTimeline() {
         // Бронювання
         const lineGrid = lineEl.querySelector('.line-grid');
         const lineBookings = bookings.filter(b => b.lineId === line.id);
-        lineBookings.forEach(b => lineGrid.appendChild(createBookingBlock(b)));
+        lineBookings.forEach(b => lineGrid.appendChild(createBookingBlock(b, start)));
 
         container.appendChild(lineEl);
 
@@ -280,31 +417,28 @@ function renderTimeline() {
 
 function renderGridCells(lineId) {
     let html = '';
-    for (let h = CONFIG.TIMELINE.START_HOUR; h < CONFIG.TIMELINE.END_HOUR; h++) {
+    const { start, end } = getTimeRange();
+
+    for (let h = start; h < end; h++) {
         for (let m = 0; m < 60; m += CONFIG.TIMELINE.CELL_MINUTES) {
             const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-            html += `<div class="grid-cell${m === 0 ? ' hour' : ''}" data-time="${time}" data-line="${lineId}"></div>`;
+            html += `<div class="grid-cell${m === 0 ? ' hour' : m === 30 ? ' half' : ''}" data-time="${time}" data-line="${lineId}"></div>`;
         }
     }
     return html;
 }
 
 function selectCell(cell) {
-    // Зняти попередній вибір
     document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
-
-    // Виділити нову клітинку
     cell.classList.add('selected');
     selectedCell = cell;
     selectedLineId = cell.dataset.line;
-
-    // Відкрити панель бронювання
     openBookingPanel(cell.dataset.time, cell.dataset.line);
 }
 
-function createBookingBlock(booking) {
+function createBookingBlock(booking, startHour) {
     const block = document.createElement('div');
-    const startMin = timeToMinutes(booking.time) - timeToMinutes(`${CONFIG.TIMELINE.START_HOUR}:00`);
+    const startMin = timeToMinutes(booking.time) - timeToMinutes(`${startHour}:00`);
     const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
     const width = (booking.duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
 
@@ -312,8 +446,11 @@ function createBookingBlock(booking) {
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 
+    // Показати другого ведучого якщо є
+    const hostsInfo = booking.hosts > 1 && booking.secondAnimator ? ` +${booking.secondAnimator}` : '';
+
     block.innerHTML = `
-        <div class="title">${booking.programCode}: ${booking.room}</div>
+        <div class="title">${booking.label || booking.programCode}: ${booking.room}${hostsInfo}</div>
         <div class="subtitle">${booking.time}</div>
     `;
 
@@ -325,6 +462,7 @@ function changeDate(days) {
     selectedDate.setDate(selectedDate.getDate() + days);
     document.getElementById('timelineDate').value = formatDate(selectedDate);
     renderTimeline();
+    fetchAnimatorsFromSheet();
 }
 
 function getBookingsForDate(date) {
@@ -352,6 +490,8 @@ function openBookingPanel(time, lineId) {
     document.querySelectorAll('.program-icon').forEach(i => i.classList.remove('selected'));
     document.getElementById('programDetails').classList.add('hidden');
     document.getElementById('hostsWarning').classList.add('hidden');
+    document.getElementById('customProgramSection').classList.add('hidden');
+    document.getElementById('secondAnimatorSection').classList.add('hidden');
 
     document.getElementById('bookingPanel').classList.remove('hidden');
     document.querySelector('.main-content').classList.add('panel-open');
@@ -373,7 +513,7 @@ function renderProgramIcons() {
         icon.dataset.programId = p.id;
         icon.innerHTML = `
             <span class="icon">${p.icon}</span>
-            <span class="name">${p.code}</span>
+            <span class="name">${p.label}</span>
         `;
 
         icon.addEventListener('click', () => selectProgram(p.id));
@@ -397,12 +537,44 @@ function selectProgram(programId) {
     document.getElementById('detailPrice').textContent = priceText;
     document.getElementById('programDetails').classList.remove('hidden');
 
-    // Попередження про 2 ведучих
+    // Кастомна програма
+    if (program.isCustom) {
+        document.getElementById('customProgramSection').classList.remove('hidden');
+    } else {
+        document.getElementById('customProgramSection').classList.add('hidden');
+    }
+
+    // Попередження про 2 ведучих та вибір другого аніматора
     if (program.hosts > 1) {
         document.getElementById('hostsWarning').classList.remove('hidden');
+        document.getElementById('secondAnimatorSection').classList.remove('hidden');
+        populateSecondAnimatorSelect();
     } else {
         document.getElementById('hostsWarning').classList.add('hidden');
+        document.getElementById('secondAnimatorSection').classList.add('hidden');
     }
+}
+
+function populateSecondAnimatorSelect() {
+    const select = document.getElementById('secondAnimatorSelect');
+    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const currentLineId = document.getElementById('bookingLine').value;
+
+    select.innerHTML = '<option value="">Оберіть другого аніматора</option>';
+
+    lines.forEach(line => {
+        if (line.id !== currentLineId) {
+            const option = document.createElement('option');
+            option.value = line.name;
+            option.textContent = line.name;
+            select.appendChild(option);
+        }
+    });
+}
+
+function updateCustomDuration() {
+    const duration = parseInt(document.getElementById('customDuration').value) || 30;
+    document.getElementById('detailDuration').textContent = `${duration} хв`;
 }
 
 function handleBookingSubmit(e) {
@@ -425,8 +597,18 @@ function handleBookingSubmit(e) {
     const time = document.getElementById('bookingTime').value;
     const lineId = document.getElementById('bookingLine').value;
 
+    // Визначити тривалість (для кастомної програми)
+    let duration = program.duration;
+    let label = program.label;
+
+    if (program.isCustom) {
+        duration = parseInt(document.getElementById('customDuration').value) || 30;
+        const customName = document.getElementById('customName').value || 'Інше';
+        label = `${customName}(${duration})`;
+    }
+
     // Перевірка на накладання та паузу
-    const conflict = checkConflicts(lineId, time, program.duration);
+    const conflict = checkConflicts(lineId, time, duration);
 
     if (conflict.overlap) {
         showNotification('❌ ПОМИЛКА: Цей час вже зайнятий!', 'error');
@@ -437,6 +619,9 @@ function handleBookingSubmit(e) {
         showWarning('⚠️ УВАГА! Немає 15-хвилинної паузи між програмами. Це ДУЖЕ НЕБАЖАНО!');
     }
 
+    // Другий аніматор
+    const secondAnimator = program.hosts > 1 ? document.getElementById('secondAnimatorSelect').value : null;
+
     // Створити бронювання
     const booking = {
         id: 'BK' + Date.now().toString(36).toUpperCase(),
@@ -445,11 +630,13 @@ function handleBookingSubmit(e) {
         lineId: lineId,
         programId: programId,
         programCode: program.code,
-        programName: program.name,
+        label: label,
+        programName: program.isCustom ? (document.getElementById('customName').value || 'Інше') : program.name,
         category: program.category,
-        duration: program.duration,
+        duration: duration,
         price: program.price,
         hosts: program.hosts,
+        secondAnimator: secondAnimator,
         room: room,
         notes: document.getElementById('bookingNotes').value,
         createdAt: new Date().toISOString()
@@ -458,6 +645,23 @@ function handleBookingSubmit(e) {
     const bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
     bookings.push(booking);
     localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify(bookings));
+
+    // Якщо потрібно 2 ведучих - створити бронювання для другого аніматора
+    if (program.hosts > 1 && secondAnimator) {
+        const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+        const secondLine = lines.find(l => l.name === secondAnimator);
+
+        if (secondLine) {
+            const secondBooking = {
+                ...booking,
+                id: 'BK' + (Date.now() + 1).toString(36).toUpperCase(),
+                lineId: secondLine.id,
+                linkedTo: booking.id
+            };
+            bookings.push(secondBooking);
+            localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify(bookings));
+        }
+    }
 
     closeBookingPanel();
     renderTimeline();
@@ -476,13 +680,11 @@ function checkConflicts(lineId, time, duration) {
         const start = timeToMinutes(b.time);
         const end = start + b.duration;
 
-        // Перевірка на накладання
         if (newStart < end && newEnd > start) {
             overlap = true;
             break;
         }
 
-        // Перевірка на паузу (мінімум 15 хв)
         if (newStart === end || newEnd === start) {
             noPause = true;
         }
@@ -514,10 +716,12 @@ function showBookingDetails(bookingId) {
     if (!booking) return;
 
     const endTime = addMinutesToTime(booking.time, booking.duration);
+    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const line = lines.find(l => l.id === booking.lineId);
 
     document.getElementById('bookingDetails').innerHTML = `
         <div class="booking-detail-header">
-            <h3>${booking.programCode}: ${booking.programName}</h3>
+            <h3>${booking.label || booking.programCode}: ${booking.programName}</h3>
             <p>${booking.room}</p>
         </div>
         <div class="booking-detail-row">
@@ -529,8 +733,12 @@ function showBookingDetails(bookingId) {
             <span class="value">${booking.time} - ${endTime}</span>
         </div>
         <div class="booking-detail-row">
+            <span class="label">Аніматор:</span>
+            <span class="value">${line ? line.name : '-'}</span>
+        </div>
+        <div class="booking-detail-row">
             <span class="label">Ведучих:</span>
-            <span class="value">${booking.hosts}</span>
+            <span class="value">${booking.hosts}${booking.secondAnimator ? ` (+ ${booking.secondAnimator})` : ''}</span>
         </div>
         <div class="booking-detail-row">
             <span class="label">Ціна:</span>
@@ -549,7 +757,13 @@ function deleteBooking(bookingId) {
     if (!confirm('Видалити це бронювання?')) return;
 
     let bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
-    bookings = bookings.filter(b => b.id !== bookingId);
+
+    // Видалити також пов'язане бронювання (для другого аніматора)
+    const booking = bookings.find(b => b.id === bookingId);
+    if (booking) {
+        bookings = bookings.filter(b => b.id !== bookingId && b.linkedTo !== bookingId);
+    }
+
     localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify(bookings));
 
     closeAllModals();
@@ -625,42 +839,142 @@ function deleteLine() {
 }
 
 // ==========================================
-// ЕКСПОРТ
+// НАЛАШТУВАННЯ
 // ==========================================
 
-function exportTimeline() {
+function openSettingsModal() {
+    const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.GOOGLE_SHEETS) || '{}');
+    document.getElementById('googleApiKey').value = settings.apiKey || '';
+    document.getElementById('settingsModal').classList.remove('hidden');
+}
+
+function saveGoogleSettings() {
+    const apiKey = document.getElementById('googleApiKey').value;
+    localStorage.setItem(CONFIG.STORAGE.GOOGLE_SHEETS, JSON.stringify({ apiKey }));
+    closeAllModals();
+    showNotification('Налаштування збережено', 'success');
+    fetchAnimatorsFromSheet();
+}
+
+// ==========================================
+// ЕКСПОРТ У КАРТИНКУ
+// ==========================================
+
+function exportTimelineImage() {
     const bookings = getBookingsForDate(selectedDate);
-    if (bookings.length === 0) {
-        showNotification('Немає бронювань', 'error');
-        return;
+    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const { start, end } = getTimeRange();
+
+    // Створити canvas для A4
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // A4 розмір в пікселях (300dpi)
+    const dpi = 150;
+    canvas.width = 297 * dpi / 25.4; // ~1754px
+    canvas.height = 210 * dpi / 25.4; // ~1240px (landscape)
+
+    const padding = 40;
+    const headerHeight = 80;
+    const lineHeight = (canvas.height - headerHeight - padding * 2) / Math.max(lines.length, 1);
+    const timeWidth = 120;
+    const cellWidth = (canvas.width - padding * 2 - timeWidth) / ((end - start) * 4); // 4 слоти на годину
+
+    // Фон
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Заголовок
+    ctx.fillStyle = '#00A651';
+    ctx.fillRect(0, 0, canvas.width, headerHeight);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 28px Arial';
+    ctx.fillText(`🦖 Парк Закревського Періоду - Таймлайн`, padding, 35);
+
+    ctx.font = '20px Arial';
+    ctx.fillText(`${formatDate(selectedDate)} (${DAYS[selectedDate.getDay()]})`, padding, 60);
+
+    // Шкала часу
+    ctx.fillStyle = '#333333';
+    ctx.font = 'bold 14px Arial';
+
+    for (let h = start; h < end; h++) {
+        for (let m = 0; m < 60; m += 30) {
+            const x = padding + timeWidth + ((h - start) * 4 + m / 15) * cellWidth;
+            ctx.fillStyle = m === 0 ? '#333333' : '#888888';
+            ctx.font = m === 0 ? 'bold 14px Arial' : '12px Arial';
+            ctx.fillText(`${h}:${String(m).padStart(2, '0')}`, x, headerHeight + padding - 10);
+        }
     }
 
-    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
-    let content = `ТАЙМЛАЙН: ${formatDate(selectedDate)} (${DAYS[selectedDate.getDay()]})\n`;
-    content += '='.repeat(50) + '\n\n';
+    // Лінії аніматорів
+    lines.forEach((line, index) => {
+        const y = headerHeight + padding + index * lineHeight;
 
-    lines.forEach(line => {
+        // Фон лінії
+        ctx.fillStyle = index % 2 === 0 ? '#F5F5F5' : '#FFFFFF';
+        ctx.fillRect(padding, y, canvas.width - padding * 2, lineHeight);
+
+        // Ім'я аніматора
+        ctx.fillStyle = line.color;
+        ctx.fillRect(padding, y, 4, lineHeight);
+
+        ctx.fillStyle = '#333333';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText(line.name, padding + 12, y + lineHeight / 2 + 5);
+
+        // Бронювання
         const lineBookings = bookings.filter(b => b.lineId === line.id);
-        if (lineBookings.length > 0) {
-            content += `👤 ${line.name}\n`;
-            content += '-'.repeat(30) + '\n';
+        lineBookings.forEach(booking => {
+            const startMin = timeToMinutes(booking.time) - timeToMinutes(`${start}:00`);
+            const bx = padding + timeWidth + (startMin / 15) * cellWidth;
+            const bw = (booking.duration / 15) * cellWidth - 4;
+            const by = y + 8;
+            const bh = lineHeight - 16;
 
-            lineBookings.sort((a, b) => a.time.localeCompare(b.time));
-            lineBookings.forEach(b => {
-                const end = addMinutesToTime(b.time, b.duration);
-                content += `  ${b.time}-${end} | ${b.programCode}: ${b.programName} | ${b.room}\n`;
-            });
-            content += '\n';
-        }
+            // Колір категорії
+            const colors = {
+                quest: '#9C27B0',
+                animation: '#00BCD4',
+                show: '#FF5722',
+                masterclass: '#8BC34A',
+                pinata: '#E91E63',
+                custom: '#607D8B'
+            };
+
+            ctx.fillStyle = colors[booking.category] || '#607D8B';
+            ctx.beginPath();
+            ctx.roundRect(bx, by, bw, bh, 6);
+            ctx.fill();
+
+            // Текст
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 12px Arial';
+            const text = `${booking.label || booking.programCode}: ${booking.room}`;
+            ctx.fillText(text, bx + 6, by + bh / 2 + 4, bw - 12);
+        });
     });
 
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    // Сітка
+    ctx.strokeStyle = '#E0E0E0';
+    ctx.lineWidth = 1;
+
+    for (let h = start; h <= end; h++) {
+        const x = padding + timeWidth + (h - start) * 4 * cellWidth;
+        ctx.beginPath();
+        ctx.moveTo(x, headerHeight + padding);
+        ctx.lineTo(x, canvas.height - padding);
+        ctx.stroke();
+    }
+
+    // Завантажити
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `timeline_${formatDate(selectedDate)}.txt`;
+    link.download = `timeline_${formatDate(selectedDate)}.png`;
+    link.href = canvas.toDataURL('image/png');
     link.click();
 
-    showNotification('Експортовано', 'success');
+    showNotification('Таймлайн експортовано як картинку!', 'success');
 }
 
 // ==========================================

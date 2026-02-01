@@ -1,93 +1,114 @@
 /* ==========================================
-   Парк Закревського Періоду - Система бронювання
+   Парк Закревського Періоду - Система бронювання v2.0
+   Оновлений стильний дизайн
    ========================================== */
 
 :root {
     --primary: #00A651;
     --primary-dark: #008C45;
+    --primary-light: #E8F5E9;
     --quest: #9C27B0;
     --animation: #00BCD4;
     --show: #FF5722;
     --masterclass: #8BC34A;
     --pinata: #E91E63;
-    --photo: #607D8B;
+    --custom: #607D8B;
     --success: #4CAF50;
     --warning: #FF9800;
     --danger: #F44336;
-    --light: #F5F5F5;
-    --dark: #212121;
-    --gray: #757575;
+    --light: #F8F9FA;
+    --dark: #1A1A2E;
+    --gray: #6C757D;
+    --gray-light: #ADB5BD;
     --white: #FFFFFF;
-    --shadow: 0 2px 8px rgba(0,0,0,0.1);
-    --radius: 12px;
-    --radius-sm: 8px;
+    --shadow: 0 4px 20px rgba(0,0,0,0.08);
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
+    --radius: 16px;
+    --radius-sm: 10px;
+    --radius-xs: 6px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-    font-family: 'Nunito', sans-serif;
-    background: var(--light);
+    font-family: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: linear-gradient(135deg, #F5F7FA 0%, #E4E8EB 100%);
     color: var(--dark);
     min-height: 100vh;
     font-size: 14px;
+    line-height: 1.5;
 }
 
 .hidden { display: none !important; }
 
-/* Авторизація */
+/* ==========================================
+   АВТОРИЗАЦІЯ
+   ========================================== */
+
 .login-screen {
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #004D25 100%);
     padding: 20px;
 }
 
 .login-container {
     background: var(--white);
     border-radius: var(--radius);
-    padding: 40px 30px;
+    padding: 48px 36px;
     width: 100%;
-    max-width: 380px;
-    box-shadow: var(--shadow);
+    max-width: 400px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 }
 
-.login-logo { text-align: center; margin-bottom: 30px; }
-.logo-icon { font-size: 56px; display: block; }
-.login-logo h1 { font-size: 20px; font-weight: 800; color: var(--primary); margin-top: 10px; }
-.tagline { color: var(--gray); font-size: 13px; margin-top: 5px; }
+.login-logo { text-align: center; margin-bottom: 36px; }
+.logo-icon { font-size: 64px; display: block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1)); }
+.login-logo h1 { font-size: 22px; font-weight: 900; color: var(--primary); margin-top: 12px; }
+.tagline { color: var(--gray); font-size: 13px; margin-top: 6px; font-weight: 600; }
 
-.login-form .form-group { margin-bottom: 16px; }
-.login-form label { display: block; margin-bottom: 6px; font-weight: 700; font-size: 13px; }
+.login-form .form-group { margin-bottom: 20px; }
+.login-form label { display: block; margin-bottom: 8px; font-weight: 700; font-size: 13px; color: var(--dark); }
 .login-form input {
     width: 100%;
-    padding: 12px 16px;
-    border: 2px solid #E0E0E0;
+    padding: 14px 18px;
+    border: 2px solid #E9ECEF;
     border-radius: var(--radius-sm);
     font-size: 15px;
     font-family: inherit;
+    transition: all 0.2s ease;
 }
-.login-form input:focus { outline: none; border-color: var(--primary); }
+.login-form input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0, 166, 81, 0.1);
+}
 
 .btn-login {
     width: 100%;
-    padding: 14px;
-    background: var(--primary);
+    padding: 16px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: var(--white);
     border: none;
     border-radius: var(--radius-sm);
     font-size: 16px;
-    font-weight: 700;
+    font-weight: 800;
     cursor: pointer;
     font-family: inherit;
-    margin-top: 8px;
+    margin-top: 12px;
+    transition: all 0.2s ease;
 }
-.btn-login:hover { background: var(--primary-dark); }
-.error-message { color: var(--danger); text-align: center; margin-top: 12px; font-weight: 600; }
+.btn-login:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 166, 81, 0.3);
+}
+.error-message { color: var(--danger); text-align: center; margin-top: 16px; font-weight: 600; font-size: 13px; }
 
-/* Головний застосунок */
+/* ==========================================
+   ГОЛОВНИЙ ЗАСТОСУНОК
+   ========================================== */
+
 .main-app {
     min-height: 100vh;
     display: flex;
@@ -97,49 +118,75 @@ body {
 /* Шапка */
 .header {
     background: var(--white);
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow-sm);
     position: sticky;
     top: 0;
     z-index: 100;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
 }
 
 .header-content {
-    padding: 12px 20px;
+    padding: 14px 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    max-width: 1800px;
+    margin: 0 auto;
 }
 
-.logo { display: flex; align-items: center; gap: 10px; }
-.logo-emoji { font-size: 28px; }
-.logo-text h1 { font-size: 16px; font-weight: 800; color: var(--primary); }
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-emoji { font-size: 32px; }
+.logo-text h1 {
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--primary);
+    letter-spacing: -0.3px;
+}
 
 .user-panel { display: flex; align-items: center; gap: 12px; }
-.user-name { font-weight: 600; font-size: 13px; color: var(--gray); }
+.user-name { font-weight: 700; font-size: 13px; color: var(--dark); }
+
+.btn-settings {
+    width: 40px;
+    height: 40px;
+    background: var(--light);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.btn-settings:hover { background: #E9ECEF; }
 
 .btn-logout {
-    padding: 8px 16px;
+    padding: 10px 18px;
     background: var(--light);
     color: var(--dark);
     border: none;
     border-radius: var(--radius-sm);
-    font-weight: 600;
+    font-weight: 700;
     font-size: 13px;
     cursor: pointer;
     font-family: inherit;
+    transition: all 0.2s;
 }
 .btn-logout:hover { background: var(--danger); color: var(--white); }
 
-/* Основний контент */
+/* ==========================================
+   ОСНОВНИЙ КОНТЕНТ
+   ========================================== */
+
 .main-content {
     flex: 1;
-    padding: 16px;
-    padding-right: 16px;
+    padding: 20px 24px;
+    max-width: 1800px;
+    margin: 0 auto;
+    width: 100%;
     transition: padding-right 0.3s;
 }
 
 .main-content.panel-open {
-    padding-right: 340px;
+    padding-right: 360px;
 }
 
 /* Панель керування */
@@ -147,69 +194,95 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 16px;
 }
 
 .date-controls {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 
 .btn-nav {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     background: var(--white);
-    border: 2px solid #E0E0E0;
+    border: 2px solid #E9ECEF;
     border-radius: var(--radius-sm);
     font-size: 16px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: all 0.2s;
+    color: var(--dark);
 }
-.btn-nav:hover { border-color: var(--primary); color: var(--primary); }
+.btn-nav:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-light);
+}
 
 input[type="date"] {
-    padding: 10px 14px;
+    padding: 12px 16px;
     border: 2px solid var(--primary);
     border-radius: var(--radius-sm);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
     font-family: inherit;
+    background: var(--white);
+    color: var(--dark);
+}
+
+.day-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .day-label {
-    padding: 10px 16px;
-    background: var(--primary);
+    padding: 8px 20px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: var(--white);
     border-radius: var(--radius-sm);
-    font-weight: 700;
+    font-weight: 800;
     font-size: 14px;
+    text-align: center;
+}
+
+.working-hours {
+    font-size: 11px;
+    color: var(--gray);
+    text-align: center;
+    font-weight: 600;
 }
 
 .btn-export {
-    padding: 10px 20px;
-    background: #2196F3;
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #2196F3 0%, #1565C0 100%);
     color: var(--white);
     border: none;
     border-radius: var(--radius-sm);
     font-weight: 700;
-    font-size: 13px;
+    font-size: 14px;
     cursor: pointer;
     font-family: inherit;
+    transition: all 0.2s;
 }
-.btn-export:hover { background: #1976D2; }
+.btn-export:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(33, 150, 243, 0.3);
+}
 
 /* Попередження */
 .warning-banner {
-    background: #FFF3E0;
+    background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%);
     border: 2px solid var(--warning);
     border-radius: var(--radius-sm);
-    padding: 12px 16px;
-    margin-bottom: 16px;
+    padding: 14px 20px;
+    margin-bottom: 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -218,7 +291,7 @@ input[type="date"] {
 }
 
 .warning-banner.danger {
-    background: #FFEBEE;
+    background: linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%);
     border-color: var(--danger);
     color: var(--danger);
 }
@@ -226,12 +299,17 @@ input[type="date"] {
 .btn-close-warning {
     background: none;
     border: none;
-    font-size: 18px;
+    font-size: 20px;
     cursor: pointer;
     color: inherit;
+    opacity: 0.7;
 }
+.btn-close-warning:hover { opacity: 1; }
 
-/* Таймлайн */
+/* ==========================================
+   ТАЙМЛАЙН
+   ========================================== */
+
 .timeline-container {
     background: var(--white);
     border-radius: var(--radius);
@@ -241,71 +319,78 @@ input[type="date"] {
 
 .timeline-scroll {
     overflow-x: auto;
-    padding: 16px;
+    padding: 20px;
     -webkit-overflow-scrolling: touch;
 }
 
 /* Шкала часу */
 .time-scale {
     display: flex;
-    margin-bottom: 8px;
-    margin-left: 100px;
+    margin-bottom: 12px;
+    margin-left: 110px;
 }
 
 .time-mark {
     width: 50px;
     min-width: 50px;
     text-align: center;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--gray);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--gray-light);
 }
 
 .time-mark.hour {
     color: var(--dark);
     font-size: 12px;
+    font-weight: 800;
+}
+
+.time-mark.half {
+    color: var(--gray);
+    font-size: 10px;
 }
 
 /* Лінії */
 .timeline-lines {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }
 
 .timeline-line {
     display: flex;
     align-items: stretch;
-    min-height: 56px;
+    min-height: 64px;
 }
 
 .line-header {
-    width: 100px;
-    min-width: 100px;
-    padding: 8px;
-    background: var(--light);
+    width: 110px;
+    min-width: 110px;
+    padding: 10px 12px;
+    background: linear-gradient(135deg, #F8F9FA 0%, #E9ECEF 100%);
     border-radius: var(--radius-sm) 0 0 var(--radius-sm);
     display: flex;
     flex-direction: column;
     justify-content: center;
     cursor: pointer;
-    border-left: 4px solid var(--primary);
-    transition: background 0.2s;
+    border-left: 5px solid var(--primary);
+    transition: all 0.2s;
 }
 
 .line-header:hover {
-    background: #E8E8E8;
+    background: linear-gradient(135deg, #E9ECEF 0%, #DEE2E6 100%);
 }
 
 .line-name {
-    font-weight: 700;
-    font-size: 13px;
+    font-weight: 800;
+    font-size: 14px;
     color: var(--dark);
 }
 
 .line-sub {
     font-size: 10px;
     color: var(--gray);
+    margin-top: 2px;
 }
 
 /* Сітка */
@@ -313,38 +398,43 @@ input[type="date"] {
     flex: 1;
     display: flex;
     position: relative;
-    background: #FAFAFA;
-    border: 1px solid #E0E0E0;
+    background: #FAFBFC;
+    border: 1px solid #E9ECEF;
+    border-left: none;
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
 .grid-cell {
     width: 50px;
     min-width: 50px;
-    border-right: 1px solid #EEEEEE;
+    border-right: 1px solid #F1F3F4;
     cursor: pointer;
     transition: background 0.15s;
 }
 
 .grid-cell:hover {
-    background: rgba(0, 166, 81, 0.15);
+    background: rgba(0, 166, 81, 0.12);
 }
 
 .grid-cell.selected {
-    background: rgba(0, 166, 81, 0.3);
+    background: rgba(0, 166, 81, 0.25);
 }
 
 .grid-cell.hour {
-    border-right: 1px solid #E0E0E0;
+    border-right: 2px solid #DEE2E6;
+}
+
+.grid-cell.half {
+    border-right: 1px dashed #E9ECEF;
 }
 
 /* Бронювання блоки */
 .booking-block {
     position: absolute;
-    top: 4px;
-    bottom: 4px;
-    border-radius: 6px;
-    padding: 4px 8px;
+    top: 6px;
+    bottom: 6px;
+    border-radius: var(--radius-xs);
+    padding: 6px 10px;
     color: var(--white);
     font-size: 11px;
     font-weight: 700;
@@ -354,29 +444,34 @@ input[type="date"] {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+    transition: all 0.15s;
 }
 
 .booking-block:hover {
-    transform: scale(1.02);
+    transform: scale(1.03) translateY(-1px);
     z-index: 20;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
 }
 
-.booking-block.quest { background: var(--quest); }
-.booking-block.animation { background: var(--animation); }
-.booking-block.show { background: var(--show); }
-.booking-block.masterclass { background: var(--masterclass); }
-.booking-block.pinata { background: var(--pinata); }
+.booking-block.quest { background: linear-gradient(135deg, var(--quest) 0%, #7B1FA2 100%); }
+.booking-block.animation { background: linear-gradient(135deg, var(--animation) 0%, #0097A7 100%); }
+.booking-block.show { background: linear-gradient(135deg, var(--show) 0%, #E64A19 100%); }
+.booking-block.masterclass { background: linear-gradient(135deg, var(--masterclass) 0%, #689F38 100%); }
+.booking-block.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #C2185B 100%); }
+.booking-block.custom { background: linear-gradient(135deg, var(--custom) 0%, #455A64 100%); }
 
 .booking-block .title {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: 12px;
 }
 
 .booking-block .subtitle {
-    font-size: 9px;
-    opacity: 0.9;
+    font-size: 10px;
+    opacity: 0.85;
+    margin-top: 2px;
 }
 
 /* Кнопка додати лінію */
@@ -384,12 +479,12 @@ input[type="date"] {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 10px;
     width: 100%;
-    padding: 16px;
-    margin-top: 12px;
+    padding: 18px;
+    margin-top: 16px;
     background: var(--light);
-    border: 3px dashed #BDBDBD;
+    border: 3px dashed #CED4DA;
     border-radius: var(--radius-sm);
     font-size: 14px;
     font-weight: 700;
@@ -402,11 +497,11 @@ input[type="date"] {
 .btn-add-line-big:hover {
     border-color: var(--primary);
     color: var(--primary);
-    background: rgba(0, 166, 81, 0.05);
+    background: var(--primary-light);
 }
 
 .btn-add-line-big span:first-child {
-    font-size: 24px;
+    font-size: 28px;
     font-weight: 900;
 }
 
@@ -414,42 +509,49 @@ input[type="date"] {
 .legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 16px;
-    margin-top: 16px;
-    padding: 12px 16px;
+    gap: 20px;
+    margin-top: 20px;
+    padding: 16px 20px;
     background: var(--white);
     border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
 }
 
 .legend-item {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     font-size: 12px;
     font-weight: 600;
+    color: var(--dark);
 }
 
 .legend .dot {
-    width: 14px;
-    height: 14px;
-    border-radius: 4px;
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-xs);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.dot.quest { background: var(--quest); }
-.dot.animation { background: var(--animation); }
-.dot.show { background: var(--show); }
-.dot.masterclass { background: var(--masterclass); }
-.dot.pinata { background: var(--pinata); }
+.dot.quest { background: linear-gradient(135deg, var(--quest) 0%, #7B1FA2 100%); }
+.dot.animation { background: linear-gradient(135deg, var(--animation) 0%, #0097A7 100%); }
+.dot.show { background: linear-gradient(135deg, var(--show) 0%, #E64A19 100%); }
+.dot.masterclass { background: linear-gradient(135deg, var(--masterclass) 0%, #689F38 100%); }
+.dot.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #C2185B 100%); }
+.dot.custom { background: linear-gradient(135deg, var(--custom) 0%, #455A64 100%); }
 
-/* Бокова панель */
+/* ==========================================
+   БОКОВА ПАНЕЛЬ
+   ========================================== */
+
 .booking-panel {
     position: fixed;
-    top: 60px;
+    top: 68px;
     right: 0;
-    width: 320px;
-    height: calc(100vh - 60px);
+    width: 340px;
+    height: calc(100vh - 68px);
     background: var(--white);
-    box-shadow: -4px 0 20px rgba(0,0,0,0.1);
+    box-shadow: -8px 0 30px rgba(0,0,0,0.1);
     z-index: 90;
     overflow-y: auto;
     animation: slideIn 0.3s ease;
@@ -464,8 +566,8 @@ input[type="date"] {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px;
-    border-bottom: 1px solid #E0E0E0;
+    padding: 18px 20px;
+    border-bottom: 1px solid #E9ECEF;
     position: sticky;
     top: 0;
     background: var(--white);
@@ -473,13 +575,14 @@ input[type="date"] {
 }
 
 .panel-header h3 {
-    font-size: 16px;
+    font-size: 17px;
+    font-weight: 800;
     color: var(--dark);
 }
 
 .btn-close {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     background: var(--light);
     border: none;
     border-radius: 50%;
@@ -488,57 +591,64 @@ input[type="date"] {
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: all 0.2s;
 }
 .btn-close:hover { background: var(--danger); color: var(--white); }
 
 .booking-form {
-    padding: 16px;
+    padding: 20px;
 }
 
 .selected-info {
-    background: var(--light);
+    background: linear-gradient(135deg, var(--primary-light) 0%, #C8E6C9 100%);
     border-radius: var(--radius-sm);
-    padding: 12px;
-    margin-bottom: 16px;
+    padding: 14px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(0, 166, 81, 0.2);
 }
 
 .info-item {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
 
 .info-item:last-child { margin-bottom: 0; }
 
 .info-label { color: var(--gray); font-size: 13px; }
-.info-value { font-weight: 700; font-size: 13px; }
+.info-value { font-weight: 800; font-size: 14px; color: var(--dark); }
 
 .form-section {
-    margin-bottom: 16px;
+    margin-bottom: 18px;
 }
 
 .form-section label {
     display: block;
     margin-bottom: 8px;
     font-weight: 700;
-    font-size: 13px;
+    font-size: 12px;
     color: var(--gray);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .form-section select,
 .form-section input {
     width: 100%;
-    padding: 10px 12px;
-    border: 2px solid #E0E0E0;
+    padding: 12px 14px;
+    border: 2px solid #E9ECEF;
     border-radius: var(--radius-sm);
     font-size: 14px;
     font-family: inherit;
+    transition: all 0.2s;
+    background: var(--white);
 }
 
 .form-section select:focus,
 .form-section input:focus {
     outline: none;
     border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0, 166, 81, 0.1);
 }
 
 /* Програми іконками */
@@ -559,17 +669,19 @@ input[type="date"] {
     border-radius: var(--radius-sm);
     cursor: pointer;
     transition: all 0.2s;
-    min-height: 70px;
+    min-height: 72px;
 }
 
 .program-icon:hover {
     border-color: var(--primary);
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 .program-icon.selected {
     border-color: var(--primary);
-    background: rgba(0, 166, 81, 0.1);
+    background: var(--primary-light);
+    box-shadow: 0 4px 12px rgba(0, 166, 81, 0.2);
 }
 
 .program-icon .icon {
@@ -586,124 +698,184 @@ input[type="date"] {
 }
 
 /* Кольори іконок програм */
-.program-icon.quest { border-left: 3px solid var(--quest); }
-.program-icon.animation { border-left: 3px solid var(--animation); }
-.program-icon.show { border-left: 3px solid var(--show); }
-.program-icon.masterclass { border-left: 3px solid var(--masterclass); }
-.program-icon.pinata { border-left: 3px solid var(--pinata); }
+.program-icon.quest { border-left: 4px solid var(--quest); }
+.program-icon.animation { border-left: 4px solid var(--animation); }
+.program-icon.show { border-left: 4px solid var(--show); }
+.program-icon.masterclass { border-left: 4px solid var(--masterclass); }
+.program-icon.pinata { border-left: 4px solid var(--pinata); }
+.program-icon.custom { border-left: 4px solid var(--custom); }
 
 /* Деталі програми */
 .program-details {
     background: var(--light);
     border-radius: var(--radius-sm);
-    padding: 12px;
-    margin-bottom: 16px;
+    padding: 14px;
+    margin-bottom: 18px;
 }
 
 .detail-row {
     display: flex;
     justify-content: space-between;
     font-size: 13px;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
+    color: var(--gray);
 }
 
 .detail-row:last-child { margin-bottom: 0; }
-.detail-row span:last-child { font-weight: 700; }
+.detail-row span:last-child { font-weight: 800; color: var(--dark); }
+
+/* Кастомна програма */
+.custom-program-section {
+    background: #FFF8E1;
+    border: 1px solid #FFE082;
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+}
+
+.custom-program-section .form-section {
+    margin-bottom: 12px;
+}
+
+.custom-program-section .form-section:last-child {
+    margin-bottom: 0;
+}
+
+/* Другий аніматор */
+.second-animator-section {
+    background: #E3F2FD;
+    border: 1px solid #90CAF9;
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+}
+
+.second-animator-section .form-section {
+    margin-bottom: 0;
+}
 
 /* Попередження про ведучих */
 .hosts-warning {
-    background: #FFF8E1;
+    background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%);
     border: 2px solid var(--warning);
     border-radius: var(--radius-sm);
-    padding: 12px;
-    margin-bottom: 16px;
+    padding: 14px;
+    margin-bottom: 18px;
     font-size: 12px;
     font-weight: 700;
-    color: #F57C00;
+    color: #E65100;
 }
 
 /* Кнопка сабміт */
 .btn-submit {
     width: 100%;
-    padding: 14px;
-    background: var(--primary);
+    padding: 16px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: var(--white);
     border: none;
     border-radius: var(--radius-sm);
     font-size: 15px;
-    font-weight: 700;
+    font-weight: 800;
     cursor: pointer;
     font-family: inherit;
+    transition: all 0.2s;
 }
-.btn-submit:hover { background: var(--primary-dark); }
+.btn-submit:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 166, 81, 0.3);
+}
 
-/* Модальні вікна */
+/* ==========================================
+   МОДАЛЬНІ ВІКНА
+   ========================================== */
+
 .modal {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
-    padding: 16px;
+    padding: 20px;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 .modal-content {
     background: var(--white);
     border-radius: var(--radius);
-    padding: 24px;
-    max-width: 400px;
+    padding: 28px;
+    max-width: 440px;
     width: 100%;
     position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
 }
 
 .modal-close {
     position: absolute;
-    top: 12px;
-    right: 16px;
-    font-size: 24px;
-    color: var(--gray);
+    top: 16px;
+    right: 20px;
+    font-size: 28px;
+    color: var(--gray-light);
     cursor: pointer;
+    transition: color 0.2s;
 }
 .modal-close:hover { color: var(--danger); }
 
 .modal-content h3 {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--dark);
 }
 
 .form-group {
-    margin-bottom: 16px;
+    margin-bottom: 18px;
 }
 
 .form-group label {
     display: block;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     font-weight: 700;
     font-size: 13px;
+    color: var(--dark);
 }
 
 .form-group input {
     width: 100%;
-    padding: 10px 12px;
-    border: 2px solid #E0E0E0;
+    padding: 12px 14px;
+    border: 2px solid #E9ECEF;
     border-radius: var(--radius-sm);
     font-size: 14px;
     font-family: inherit;
+    transition: all 0.2s;
 }
 
 .form-group input:focus {
     outline: none;
     border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0, 166, 81, 0.1);
 }
 
 .form-buttons {
     display: flex;
     gap: 12px;
-    margin-top: 20px;
+    margin-top: 24px;
 }
 
 .form-buttons button {
@@ -711,94 +883,158 @@ input[type="date"] {
 }
 
 .btn-danger {
-    padding: 12px;
-    background: var(--danger);
+    padding: 14px;
+    background: linear-gradient(135deg, var(--danger) 0%, #C62828 100%);
     color: var(--white);
     border: none;
     border-radius: var(--radius-sm);
     font-weight: 700;
     cursor: pointer;
     font-family: inherit;
+    transition: all 0.2s;
+}
+.btn-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(244, 67, 54, 0.3);
 }
 
 /* Деталі бронювання */
 .booking-detail-header {
-    background: var(--primary);
-    margin: -24px -24px 20px;
-    padding: 20px 24px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    margin: -28px -28px 24px;
+    padding: 24px 28px;
     border-radius: var(--radius) var(--radius) 0 0;
     color: var(--white);
 }
 
 .booking-detail-header h3 {
     color: var(--white);
-    margin-bottom: 4px;
+    margin-bottom: 6px;
+    font-size: 18px;
 }
 
 .booking-detail-row {
     display: flex;
     justify-content: space-between;
-    padding: 10px 0;
-    border-bottom: 1px solid #EEEEEE;
+    padding: 12px 0;
+    border-bottom: 1px solid #F1F3F4;
     font-size: 13px;
 }
 
 .booking-detail-row:last-child { border-bottom: none; }
 .booking-detail-row .label { color: var(--gray); }
-.booking-detail-row .value { font-weight: 700; }
+.booking-detail-row .value { font-weight: 700; color: var(--dark); }
 
 .booking-actions {
-    margin-top: 20px;
+    margin-top: 24px;
 }
 
 .booking-actions button {
     width: 100%;
-    padding: 12px;
-    background: var(--danger);
+    padding: 14px;
+    background: linear-gradient(135deg, var(--danger) 0%, #C62828 100%);
     color: var(--white);
     border: none;
     border-radius: var(--radius-sm);
     font-weight: 700;
     cursor: pointer;
     font-family: inherit;
+    transition: all 0.2s;
+}
+.booking-actions button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(244, 67, 54, 0.3);
 }
 
-/* Сповіщення */
+/* Налаштування */
+.settings-section {
+    margin-bottom: 24px;
+}
+
+.settings-section h4 {
+    font-size: 14px;
+    color: var(--dark);
+    margin-bottom: 12px;
+}
+
+.settings-info {
+    font-size: 13px;
+    color: var(--gray);
+    margin-bottom: 16px;
+    line-height: 1.6;
+}
+
+.settings-help {
+    margin-top: 12px;
+    font-size: 13px;
+}
+
+.settings-help a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.settings-help a:hover {
+    text-decoration: underline;
+}
+
+/* ==========================================
+   СПОВІЩЕННЯ
+   ========================================== */
+
 .notification {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
+    bottom: 24px;
+    right: 24px;
     background: var(--dark);
     color: var(--white);
-    padding: 14px 24px;
+    padding: 16px 28px;
     border-radius: var(--radius-sm);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
     z-index: 1001;
-    font-weight: 600;
+    font-weight: 700;
     animation: slideUp 0.3s ease;
 }
 
-.notification.success { background: var(--success); }
-.notification.error { background: var(--danger); }
-.notification.warning { background: var(--warning); }
+.notification.success { background: linear-gradient(135deg, var(--success) 0%, #388E3C 100%); }
+.notification.error { background: linear-gradient(135deg, var(--danger) 0%, #C62828 100%); }
+.notification.warning { background: linear-gradient(135deg, var(--warning) 0%, #F57C00 100%); }
 
-@keyframes slideUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
+/* ==========================================
+   АДАПТИВНІСТЬ
+   ========================================== */
 
-/* Адаптивність */
-@media (max-width: 768px) {
-    .main-content.panel-open { padding-right: 16px; }
+@media (max-width: 1024px) {
+    .main-content.panel-open { padding-right: 24px; }
 
     .booking-panel {
         width: 100%;
         top: 0;
         height: 100vh;
     }
+}
 
+@media (max-width: 768px) {
+    .header-content { padding: 12px 16px; }
+    .logo-text h1 { font-size: 14px; }
+    .logo-emoji { font-size: 24px; }
+
+    .main-content { padding: 16px; }
     .control-panel { flex-direction: column; align-items: stretch; }
-    .date-controls { justify-content: center; }
+    .date-controls { justify-content: center; flex-wrap: wrap; }
 
     .programs-icons { grid-template-columns: repeat(3, 1fr); }
+
+    .timeline-scroll { padding: 12px; }
+    .time-scale { margin-left: 90px; }
+    .line-header { width: 90px; min-width: 90px; }
+    .line-name { font-size: 12px; }
+}
+
+@media (max-width: 480px) {
+    .programs-icons { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .program-icon { min-height: 64px; padding: 8px 2px; }
+    .program-icon .icon { font-size: 20px; }
+    .program-icon .name { font-size: 8px; }
 }

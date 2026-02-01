@@ -64,7 +64,7 @@ body {
 }
 
 .login-logo { text-align: center; margin-bottom: 36px; }
-.logo-icon { font-size: 64px; display: block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1)); }
+.logo-img { width: 100px; height: 100px; object-fit: contain; display: block; margin: 0 auto; }
 .login-logo h1 { font-size: 22px; font-weight: 900; color: var(--primary); margin-top: 12px; }
 .tagline { color: var(--gray); font-size: 13px; margin-top: 6px; font-weight: 600; }
 
@@ -135,7 +135,7 @@ body {
 }
 
 .logo { display: flex; align-items: center; gap: 12px; }
-.logo-emoji { font-size: 32px; }
+.logo-img-small { width: 40px; height: 40px; object-fit: contain; }
 .logo-text h1 {
     font-size: 18px;
     font-weight: 900;
@@ -145,18 +145,6 @@ body {
 
 .user-panel { display: flex; align-items: center; gap: 12px; }
 .user-name { font-weight: 700; font-size: 13px; color: var(--dark); }
-
-.btn-settings {
-    width: 40px;
-    height: 40px;
-    background: var(--light);
-    border: none;
-    border-radius: var(--radius-sm);
-    font-size: 18px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.btn-settings:hover { background: #E9ECEF; }
 
 .btn-logout {
     padding: 10px 18px;
@@ -944,39 +932,6 @@ input[type="date"] {
 .booking-actions button:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(244, 67, 54, 0.3);
-}
-
-/* Налаштування */
-.settings-section {
-    margin-bottom: 24px;
-}
-
-.settings-section h4 {
-    font-size: 14px;
-    color: var(--dark);
-    margin-bottom: 12px;
-}
-
-.settings-info {
-    font-size: 13px;
-    color: var(--gray);
-    margin-bottom: 16px;
-    line-height: 1.6;
-}
-
-.settings-help {
-    margin-top: 12px;
-    font-size: 13px;
-}
-
-.settings-help a {
-    color: var(--primary);
-    text-decoration: none;
-    font-weight: 600;
-}
-
-.settings-help a:hover {
-    text-decoration: underline;
 }
 
 /* ==========================================

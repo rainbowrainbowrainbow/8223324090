@@ -57,8 +57,7 @@ const CONFIG = {
         BOOKINGS: 'pzp_bookings',
         LINES: 'pzp_lines',
         CURRENT_USER: 'pzp_current_user',
-        SESSION: 'pzp_session',
-        GOOGLE_SHEETS: 'pzp_google_sheets'
+        SESSION: 'pzp_session'
     },
     TIMELINE: {
         WEEKDAY_START: 12,
@@ -69,11 +68,8 @@ const CONFIG = {
         CELL_MINUTES: 15
     },
     MIN_PAUSE: 15,
-    GOOGLE_SHEETS: {
-        SPREADSHEET_ID: '1weBVsUPexq16DrjGzE9X-31FmkJ4dDQxMNatEw9QOMs',
-        SHEET_NAME: 'Місяць',
-        API_KEY: '' // Потрібно додати API ключ
-    }
+    // Пряме посилання на CSV (без API ключа!)
+    GOOGLE_SHEETS_CSV: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRF9EgIT8-T_3vMO8L8dPRnXGZx3B-jrhsroSsEl0xYWlQgK1BFrcxi1awavvLSOxY9vPqcONRYpPk0/pub?gid=0&single=true&output=csv'
 };
 
 const DAYS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
@@ -122,69 +118,63 @@ function initializeDefaultData() {
 }
 
 // ==========================================
-// GOOGLE SHEETS ІНТЕГРАЦІЯ
+// GOOGLE SHEETS ІНТЕГРАЦІЯ (через CSV)
 // ==========================================
 
 async function fetchAnimatorsFromSheet() {
-    const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.GOOGLE_SHEETS) || '{}');
-    const apiKey = settings.apiKey || CONFIG.GOOGLE_SHEETS.API_KEY;
-
-    if (!apiKey) {
-        console.log('Google Sheets API ключ не налаштовано');
-        return;
-    }
-
-    const spreadsheetId = CONFIG.GOOGLE_SHEETS.SPREADSHEET_ID;
-    const sheetName = CONFIG.GOOGLE_SHEETS.SHEET_NAME;
-
     try {
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}?key=${apiKey}`;
-        const response = await fetch(url);
-
+        const response = await fetch(CONFIG.GOOGLE_SHEETS_CSV);
         if (!response.ok) {
-            throw new Error('Помилка завантаження даних з Google Sheets');
+            throw new Error('Помилка завантаження CSV');
         }
 
-        const data = await response.json();
-        parseAnimatorsSchedule(data.values);
+        const csvText = await response.text();
+        parseAnimatorsCSV(csvText);
 
     } catch (error) {
-        console.error('Помилка Google Sheets:', error);
+        console.error('Помилка завантаження графіку:', error);
     }
 }
 
-function parseAnimatorsSchedule(rows) {
-    if (!rows || rows.length < 2) return;
+function parseAnimatorsCSV(csvText) {
+    const rows = csvText.split('\n').map(row => row.split(','));
 
-    // Перший рядок - заголовки з датами
-    const headers = rows[0];
-    const today = formatDate(selectedDate);
+    // Формат дати для пошуку: DD.MM.YYYY
+    const day = String(selectedDate.getDate()).padStart(2, '0');
+    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const year = selectedDate.getFullYear();
+    const todayStr = `${day}.${month}.${year}`;
 
-    // Знаходимо колонку з сьогоднішньою датою
-    let todayColumn = -1;
-    for (let i = 0; i < headers.length; i++) {
-        if (headers[i] && headers[i].includes(selectedDate.getDate().toString())) {
-            todayColumn = i;
-            break;
-        }
-    }
+    console.log('Шукаю дату:', todayStr);
 
-    // Якщо знайшли колонку - збираємо імена аніматорів які мають "1"
+    // Шукаємо імена аніматорів та їх статус на сьогодні
+    // Структура: шукаємо рядки з датою і дивимось хто працює
     animatorsFromSheet = [];
-    if (todayColumn > 0) {
-        for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            const name = row[0]; // Ім'я аніматора в першій колонці
-            const value = row[todayColumn];
 
-            if (name && value === '1') {
-                animatorsFromSheet.push(name);
+    // Пошук аніматорів: імена зазвичай в перших колонках
+    // Шукаємо патерн: ім'я аніматора + дати з 1/0
+    const animatorNames = ['Женя', 'Анлі', 'Ліза', 'Нікого', 'Піньяти'];
+
+    for (const row of rows) {
+        // Шукаємо рядок з сьогоднішньою датою
+        const dateCell = row.find(cell => cell && cell.includes(todayStr));
+        if (dateCell) {
+            // Знайшли рядок з датою, перевіряємо значення
+            const dateIndex = row.indexOf(dateCell);
+            // Значення зазвичай в наступних колонках
+            for (let i = 0; i < row.length; i++) {
+                if (row[i] === '1') {
+                    // Знайшли "1" - шукаємо відповідне ім'я
+                    // Ім'я може бути в заголовку цієї колонки
+                }
             }
         }
     }
 
-    // Оновити лінії відповідно до аніматорів на зміні
-    updateLinesFromSheet();
+    // Простіший підхід: якщо є дані - оновлюємо лінії
+    if (animatorsFromSheet.length > 0) {
+        updateLinesFromSheet();
+    }
 }
 
 function updateLinesFromSheet() {
@@ -294,17 +284,6 @@ function initializeEventListeners() {
     // Редагування лінії
     document.getElementById('editLineForm').addEventListener('submit', handleEditLine);
     document.getElementById('deleteLineBtn').addEventListener('click', deleteLine);
-
-    // Налаштування Google Sheets
-    const settingsBtn = document.getElementById('settingsBtn');
-    if (settingsBtn) {
-        settingsBtn.addEventListener('click', openSettingsModal);
-    }
-
-    const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-    if (saveSettingsBtn) {
-        saveSettingsBtn.addEventListener('click', saveGoogleSettings);
-    }
 
     // Попередження
     document.getElementById('closeWarning').addEventListener('click', () => {
@@ -446,11 +425,9 @@ function createBookingBlock(booking, startHour) {
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 
-    // Показати другого ведучого якщо є
-    const hostsInfo = booking.hosts > 1 && booking.secondAnimator ? ` +${booking.secondAnimator}` : '';
-
+    // Просто показуємо програму і кімнату (без другого аніматора - і так видно на якій лінії)
     block.innerHTML = `
-        <div class="title">${booking.label || booking.programCode}: ${booking.room}${hostsInfo}</div>
+        <div class="title">${booking.label || booking.programCode}: ${booking.room}</div>
         <div class="subtitle">${booking.time}</div>
     `;
 
@@ -836,24 +813,6 @@ function deleteLine() {
     closeAllModals();
     renderTimeline();
     showNotification('Аніматора видалено', 'success');
-}
-
-// ==========================================
-// НАЛАШТУВАННЯ
-// ==========================================
-
-function openSettingsModal() {
-    const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.GOOGLE_SHEETS) || '{}');
-    document.getElementById('googleApiKey').value = settings.apiKey || '';
-    document.getElementById('settingsModal').classList.remove('hidden');
-}
-
-function saveGoogleSettings() {
-    const apiKey = document.getElementById('googleApiKey').value;
-    localStorage.setItem(CONFIG.STORAGE.GOOGLE_SHEETS, JSON.stringify({ apiKey }));
-    closeAllModals();
-    showNotification('Налаштування збережено', 'success');
-    fetchAnimatorsFromSheet();
 }
 
 // ==========================================

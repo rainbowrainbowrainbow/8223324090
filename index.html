@@ -13,7 +13,7 @@
     <div id="loginScreen" class="login-screen">
         <div class="login-container">
             <div class="login-logo">
-                <span class="logo-icon">🦖</span>
+                <img src="logo.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
                 <p class="tagline">Система бронювання v2.0</p>
             </div>
@@ -38,13 +38,12 @@
         <header class="header">
             <div class="header-content">
                 <div class="logo">
-                    <span class="logo-emoji">🦖</span>
+                    <img src="logo.png" alt="Логотип" class="logo-img-small">
                     <div class="logo-text">
                         <h1>Парк Закревського Періоду</h1>
                     </div>
                 </div>
                 <div class="user-panel">
-                    <button id="settingsBtn" class="btn-settings" title="Налаштування">⚙️</button>
                     <span id="currentUser" class="user-name"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
@@ -236,31 +235,6 @@
                     <button type="button" id="deleteLineBtn" class="btn-danger">Видалити</button>
                 </div>
             </form>
-        </div>
-    </div>
-
-    <!-- Модальне вікно налаштувань -->
-    <div id="settingsModal" class="modal hidden">
-        <div class="modal-content">
-            <span class="modal-close">&times;</span>
-            <h3>⚙️ Налаштування</h3>
-            <div class="settings-section">
-                <h4>Google Sheets інтеграція</h4>
-                <p class="settings-info">
-                    Для автоматичного завантаження аніматорів з графіку,
-                    потрібно налаштувати Google Sheets API.
-                </p>
-                <div class="form-group">
-                    <label>API ключ Google</label>
-                    <input type="text" id="googleApiKey" placeholder="AIza...">
-                </div>
-                <p class="settings-help">
-                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank">
-                        Отримати API ключ →
-                    </a>
-                </p>
-            </div>
-            <button id="saveSettingsBtn" class="btn-submit">Зберегти налаштування</button>
         </div>
     </div>
 

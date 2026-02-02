@@ -39,7 +39,7 @@ const PROGRAMS = [
     { id: 'mk_cupcake', code: 'МК', label: 'Капк(120)', name: 'МК Капкейки', icon: '🧁', category: 'masterclass', duration: 120, price: 450, hosts: 1, perChild: true, fillers: ['Крем', 'Топінги', 'Декор'] },
 
     // Піньята (одна позиція)
-    { id: 'pinata', code: 'Пін', label: 'Пін(15)', name: 'Піньята', icon: '🪅', category: 'pinata', duration: 15, price: 700, hosts: 1 },
+    { id: 'pinata', code: 'Пін', label: 'Пін(15)', name: 'Піньята', icon: '🎊', category: 'pinata', duration: 15, price: 700, hosts: 1, hasFiller: true },
 
     // Кастомна позиція
     { id: 'custom', code: 'Інше', label: 'Інше', name: 'Інше (вкажіть)', icon: '✏️', category: 'custom', duration: 30, price: 0, hosts: 1, isCustom: true }
@@ -556,7 +556,7 @@ function getBookingsForDate(date) {
 // ==========================================
 
 function openBookingPanel(time, lineId) {
-    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const lines = getLinesForDate(selectedDate);
     const line = lines.find(l => l.id === lineId);
 
     document.getElementById('selectedTimeDisplay').textContent = time;
@@ -573,6 +573,7 @@ function openBookingPanel(time, lineId) {
     document.getElementById('hostsWarning').classList.add('hidden');
     document.getElementById('customProgramSection').classList.add('hidden');
     document.getElementById('secondAnimatorSection').classList.add('hidden');
+    document.getElementById('pinataFillerSection').classList.add('hidden');
 
     document.getElementById('bookingPanel').classList.remove('hidden');
     document.querySelector('.main-content').classList.add('panel-open');
@@ -625,6 +626,14 @@ function selectProgram(programId) {
         document.getElementById('customProgramSection').classList.add('hidden');
     }
 
+    // Вибір наповнювача піньяти
+    if (program.hasFiller) {
+        document.getElementById('pinataFillerSection').classList.remove('hidden');
+        document.getElementById('pinataFillerSelect').value = '';
+    } else {
+        document.getElementById('pinataFillerSection').classList.add('hidden');
+    }
+
     // Попередження про 2 ведучих та вибір другого аніматора
     if (program.hosts > 1) {
         document.getElementById('hostsWarning').classList.remove('hidden');
@@ -638,7 +647,7 @@ function selectProgram(programId) {
 
 function populateSecondAnimatorSelect() {
     const select = document.getElementById('secondAnimatorSelect');
-    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const lines = getLinesForDate(selectedDate);
     const currentLineId = document.getElementById('bookingLine').value;
 
     select.innerHTML = '<option value="">Оберіть другого аніматора</option>';
@@ -688,6 +697,17 @@ function handleBookingSubmit(e) {
         label = `${customName}(${duration})`;
     }
 
+    // Піньята з наповнювачем
+    let pinataFiller = '';
+    if (program.hasFiller) {
+        pinataFiller = document.getElementById('pinataFillerSelect').value;
+        if (!pinataFiller) {
+            showNotification('Оберіть наповнювач для піньяти', 'error');
+            return;
+        }
+        label = `Пін+${pinataFiller}`;
+    }
+
     // Перевірка на накладання та паузу
     const conflict = checkConflicts(lineId, time, duration);
 
@@ -718,6 +738,7 @@ function handleBookingSubmit(e) {
         price: program.price,
         hosts: program.hosts,
         secondAnimator: secondAnimator,
+        pinataFiller: pinataFiller,
         room: room,
         notes: document.getElementById('bookingNotes').value,
         createdBy: currentUser ? currentUser.username : '',
@@ -801,7 +822,8 @@ function showBookingDetails(bookingId) {
     if (!booking) return;
 
     const endTime = addMinutesToTime(booking.time, booking.duration);
-    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const bookingDate = new Date(booking.date);
+    const lines = getLinesForDate(bookingDate);
     const line = lines.find(l => l.id === booking.lineId);
 
     document.getElementById('bookingDetails').innerHTML = `
@@ -971,7 +993,7 @@ function deleteLine() {
 
 function exportTimelineImage() {
     const bookings = getBookingsForDate(selectedDate);
-    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const lines = getLinesForDate(selectedDate);
     const { start, end } = getTimeRange();
 
     // Створити canvas для A4

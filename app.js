@@ -137,9 +137,21 @@ async function fetchAnimatorsFromSheet() {
 }
 
 function parseAnimatorsCSV(csvText) {
-    const rows = csvText.split('\n').map(row => row.split(','));
+    // Парсимо CSV
+    const rows = csvText.split('\n').map(row => {
+        const cells = [];
+        let cell = '';
+        let inQuotes = false;
+        for (const char of row) {
+            if (char === '"') inQuotes = !inQuotes;
+            else if (char === ',' && !inQuotes) { cells.push(cell.trim()); cell = ''; }
+            else cell += char;
+        }
+        cells.push(cell.trim());
+        return cells;
+    });
 
-    // Формат дати для пошуку: DD.MM.YYYY
+    // Формат дати: DD.MM.YYYY
     const day = String(selectedDate.getDate()).padStart(2, '0');
     const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
     const year = selectedDate.getFullYear();
@@ -147,34 +159,52 @@ function parseAnimatorsCSV(csvText) {
 
     console.log('Шукаю дату:', todayStr);
 
-    // Шукаємо імена аніматорів та їх статус на сьогодні
-    // Структура: шукаємо рядки з датою і дивимось хто працює
-    animatorsFromSheet = [];
-
-    // Пошук аніматорів: імена зазвичай в перших колонках
-    // Шукаємо патерн: ім'я аніматора + дати з 1/0
-    const animatorNames = ['Женя', 'Анлі', 'Ліза', 'Нікого', 'Піньяти'];
-
-    for (const row of rows) {
-        // Шукаємо рядок з сьогоднішньою датою
-        const dateCell = row.find(cell => cell && cell.includes(todayStr));
-        if (dateCell) {
-            // Знайшли рядок з датою, перевіряємо значення
-            const dateIndex = row.indexOf(dateCell);
-            // Значення зазвичай в наступних колонках
-            for (let i = 0; i < row.length; i++) {
-                if (row[i] === '1') {
-                    // Знайшли "1" - шукаємо відповідне ім'я
-                    // Ім'я може бути в заголовку цієї колонки
-                }
-            }
+    // Шукаємо рядок заголовків з іменами (містить "Женя" або "Анлі")
+    let headerRow = null;
+    let headerIdx = -1;
+    for (let i = 0; i < rows.length; i++) {
+        if (rows[i].includes('Женя') || rows[i].includes('Анлі')) {
+            headerRow = rows[i];
+            headerIdx = i;
+            break;
         }
     }
 
-    // Простіший підхід: якщо є дані - оновлюємо лінії
-    if (animatorsFromSheet.length > 0) {
-        updateLinesFromSheet();
+    if (!headerRow) {
+        console.log('Заголовок не знайдено');
+        return;
     }
+
+    // Збираємо аніматорів (колонки після "День", крім "Нікого")
+    const animators = [];
+    let startCol = headerRow.indexOf('День') + 1;
+    if (startCol === 0) startCol = 5;
+
+    for (let j = startCol; j < headerRow.length; j++) {
+        const name = headerRow[j];
+        if (name && name !== '' && !name.includes('Нікого')) {
+            animators.push({ name, col: j });
+        }
+    }
+
+    console.log('Аніматори:', animators.map(a => a.name));
+
+    // Шукаємо рядок з сьогоднішньою датою
+    animatorsFromSheet = [];
+    for (let i = headerIdx + 1; i < rows.length; i++) {
+        if (rows[i].some(c => c && c.includes(todayStr))) {
+            console.log('Дата знайдена, рядок:', rows[i]);
+            for (const a of animators) {
+                if (rows[i][a.col] === '1') {
+                    animatorsFromSheet.push(a.name);
+                }
+            }
+            break;
+        }
+    }
+
+    console.log('На зміні:', animatorsFromSheet);
+    if (animatorsFromSheet.length > 0) updateLinesFromSheet();
 }
 
 function updateLinesFromSheet() {

@@ -64,6 +64,7 @@
                     <button id="nextDay" class="btn-nav">▶</button>
                 </div>
                 <div class="action-buttons">
+                    <button id="historyBtn" class="btn-history hidden">📋 Історія</button>
                     <button id="exportTimelineBtn" class="btn-export">🖼️ Експорт PNG</button>
                 </div>
             </div>
@@ -140,6 +141,9 @@
                             <option value="Диван 2">Диван 2</option>
                             <option value="Диван 3">Диван 3</option>
                             <option value="Диван 4">Диван 4</option>
+                        </optgroup>
+                        <optgroup label="Інше">
+                            <option value="Інше">Інше (вказати в примітках)</option>
                         </optgroup>
                     </select>
                 </div>
@@ -235,6 +239,15 @@
                     <button type="button" id="deleteLineBtn" class="btn-danger">Видалити</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Модальне вікно історії -->
+    <div id="historyModal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <span class="modal-close">&times;</span>
+            <h3>📋 Історія змін</h3>
+            <div id="historyList" class="history-list"></div>
         </div>
     </div>
 

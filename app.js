@@ -1,6 +1,6 @@
 /**
  * Парк Закревського Періоду - Система бронювання
- * v2.0 - з інтеграцією Google Sheets
+ * v2.2 - оновлені логіни, історія змін, примітки
  */
 
 // ==========================================
@@ -25,23 +25,21 @@ const PROGRAMS = [
     { id: 'anim_extra', code: '+Вед', label: '+Вед(60)', name: 'Додатк. аніматор', icon: '👯', category: 'animation', duration: 60, price: 700, hosts: 1 },
 
     // Шоу
-    { id: 'bubble', code: 'Бульб', label: 'Бульб(30)', name: 'Шоу бульбашок', icon: '🫧', category: 'show', duration: 30, price: 2400, hosts: 1 },
+    { id: 'bubble', code: 'Бульб', label: 'Бульб(30)', name: 'Шоу бульбашок', icon: '🔵', category: 'show', duration: 30, price: 2400, hosts: 1 },
     { id: 'neon_bubble', code: 'Неон', label: 'Неон(30)', name: 'Неон-бульбашки', icon: '✨', category: 'show', duration: 30, price: 2700, hosts: 1 },
     { id: 'paper', code: 'Папір', label: 'Папір(30)', name: 'Паперове шоу', icon: '📄', category: 'show', duration: 30, price: 2900, hosts: 2 },
     { id: 'dry_ice', code: 'Лід', label: 'Лід(40)', name: 'Сухий лід', icon: '❄️', category: 'show', duration: 40, price: 4400, hosts: 1 },
     { id: 'football', code: 'Футб', label: 'Футб(90)', name: 'Футбол шоу', icon: '⚽', category: 'show', duration: 90, price: 3800, hosts: 1 },
     { id: 'mafia', code: 'Мафія', label: 'Мафія(90)', name: 'Мафія', icon: '🎩', category: 'show', duration: 90, price: 2700, hosts: 1 },
 
-    // Майстер-класи
-    { id: 'mk_slime', code: 'МК', label: 'Слайм(45)', name: 'МК Слайми', icon: '🧪', category: 'masterclass', duration: 45, price: 390, hosts: 1, perChild: true },
-    { id: 'mk_pizza', code: 'МК', label: 'Піца(45)', name: 'МК Піца', icon: '🍕', category: 'masterclass', duration: 45, price: 290, hosts: 1, perChild: true },
-    { id: 'mk_cookie', code: 'МК', label: 'Прян(60)', name: 'МК Пряники', icon: '🍪', category: 'masterclass', duration: 60, price: 300, hosts: 1, perChild: true },
-    { id: 'mk_cupcake', code: 'МК', label: 'Капк(120)', name: 'МК Капкейки', icon: '🧁', category: 'masterclass', duration: 120, price: 450, hosts: 1, perChild: true },
+    // Майстер-класи (з наповнювачами)
+    { id: 'mk_slime', code: 'МК', label: 'Слайм(45)', name: 'МК Слайми', icon: '🧪', category: 'masterclass', duration: 45, price: 390, hosts: 1, perChild: true, fillers: ['Блискітки', 'Кульки', 'Фарба'] },
+    { id: 'mk_pizza', code: 'МК', label: 'Піца(45)', name: 'МК Піца', icon: '🍕', category: 'masterclass', duration: 45, price: 290, hosts: 1, perChild: true, fillers: ['Сир', 'Ковбаса', 'Гриби', 'Овочі'] },
+    { id: 'mk_cookie', code: 'МК', label: 'Прян(60)', name: 'МК Пряники', icon: '🍪', category: 'masterclass', duration: 60, price: 300, hosts: 1, perChild: true, fillers: ['Глазур', 'Посипка', 'Шоколад'] },
+    { id: 'mk_cupcake', code: 'МК', label: 'Капк(120)', name: 'МК Капкейки', icon: '🧁', category: 'masterclass', duration: 120, price: 450, hosts: 1, perChild: true, fillers: ['Крем', 'Топінги', 'Декор'] },
 
-    // Піньята
+    // Піньята (одна позиція)
     { id: 'pinata', code: 'Пін', label: 'Пін(15)', name: 'Піньята', icon: '🪅', category: 'pinata', duration: 15, price: 700, hosts: 1 },
-    { id: 'pinata_custom', code: 'Пін', label: 'ПінН(15)', name: 'Піньята нестанд.', icon: '🎊', category: 'pinata', duration: 15, price: 1000, hosts: 1 },
-    { id: 'pinata_party', code: 'Пін', label: 'ПінП(15)', name: 'Піньята паті', icon: '🎉', category: 'pinata', duration: 15, price: 2000, hosts: 1 },
 
     // Кастомна позиція
     { id: 'custom', code: 'Інше', label: 'Інше', name: 'Інше (вкажіть)', icon: '✏️', category: 'custom', duration: 30, price: 0, hosts: 1, isCustom: true }
@@ -56,8 +54,10 @@ const CONFIG = {
         USERS: 'pzp_users',
         BOOKINGS: 'pzp_bookings',
         LINES: 'pzp_lines',
+        LINES_BY_DATE: 'pzp_lines_by_date', // Лінії окремо для кожного дня
         CURRENT_USER: 'pzp_current_user',
-        SESSION: 'pzp_session'
+        SESSION: 'pzp_session',
+        HISTORY: 'pzp_history' // Історія змін
     },
     TIMELINE: {
         WEEKDAY_START: 12,
@@ -97,10 +97,16 @@ function initializeApp() {
 }
 
 function initializeDefaultData() {
-    if (!localStorage.getItem(CONFIG.STORAGE.USERS)) {
-        localStorage.setItem(CONFIG.STORAGE.USERS, JSON.stringify([
-            { username: 'admin', password: 'admin123', role: 'admin', name: 'Адміністратор' }
-        ]));
+    // Оновлені користувачі
+    localStorage.setItem(CONFIG.STORAGE.USERS, JSON.stringify([
+        { username: 'Vitalina', password: 'Vitalina109', role: 'user', name: 'Віталіна' },
+        { username: 'Dasha', password: 'Dasha743', role: 'user', name: 'Даша' },
+        { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
+        { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' }
+    ]));
+
+    if (!localStorage.getItem(CONFIG.STORAGE.HISTORY)) {
+        localStorage.setItem(CONFIG.STORAGE.HISTORY, JSON.stringify([]));
     }
 
     if (!localStorage.getItem(CONFIG.STORAGE.BOOKINGS)) {
@@ -221,8 +227,63 @@ function updateLinesFromSheet() {
         fromSheet: true
     }));
 
-    localStorage.setItem(CONFIG.STORAGE.LINES, JSON.stringify(updatedLines));
+    saveLinesForDate(selectedDate, updatedLines);
     renderTimeline();
+}
+
+// ==========================================
+// ЛІНІЇ ПО ДАТАХ
+// ==========================================
+
+function getLinesForDate(date) {
+    const dateStr = formatDate(date);
+    const linesByDate = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES_BY_DATE) || '{}');
+
+    if (linesByDate[dateStr]) {
+        return linesByDate[dateStr];
+    }
+
+    // Якщо немає ліній для цієї дати - створити за замовчуванням
+    const defaultLines = [
+        { id: 'line1_' + dateStr, name: 'Аніматор 1', color: '#4CAF50' },
+        { id: 'line2_' + dateStr, name: 'Аніматор 2', color: '#2196F3' },
+        { id: 'line3_' + dateStr, name: 'Аніматор 3', color: '#FF9800' }
+    ];
+    saveLinesForDate(date, defaultLines);
+    return defaultLines;
+}
+
+function saveLinesForDate(date, lines) {
+    const dateStr = formatDate(date);
+    const linesByDate = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES_BY_DATE) || '{}');
+    linesByDate[dateStr] = lines;
+    localStorage.setItem(CONFIG.STORAGE.LINES_BY_DATE, JSON.stringify(linesByDate));
+}
+
+// ==========================================
+// ІСТОРІЯ ЗМІН
+// ==========================================
+
+function logHistory(action, data) {
+    const history = JSON.parse(localStorage.getItem(CONFIG.STORAGE.HISTORY) || '[]');
+    history.unshift({
+        id: Date.now(),
+        action: action,
+        user: currentUser ? currentUser.username : 'unknown',
+        data: data,
+        timestamp: new Date().toISOString()
+    });
+    // Зберігати тільки останні 500 записів
+    if (history.length > 500) history.pop();
+    localStorage.setItem(CONFIG.STORAGE.HISTORY, JSON.stringify(history));
+}
+
+function getHistory() {
+    return JSON.parse(localStorage.getItem(CONFIG.STORAGE.HISTORY) || '[]');
+}
+
+function canViewHistory() {
+    return currentUser && (currentUser.username === 'Natalia' || currentUser.username === 'Sergey');
 }
 
 // ==========================================
@@ -306,6 +367,7 @@ function initializeEventListeners() {
 
     document.getElementById('addLineBtn').addEventListener('click', addNewLine);
     document.getElementById('exportTimelineBtn').addEventListener('click', exportTimelineImage);
+    document.getElementById('historyBtn').addEventListener('click', showHistory);
 
     // Панель бронювання
     document.getElementById('closePanel').addEventListener('click', closeBookingPanel);
@@ -376,9 +438,15 @@ function renderTimeline() {
     renderTimeScale();
 
     const container = document.getElementById('timelineLines');
-    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const lines = getLinesForDate(selectedDate);
     const bookings = getBookingsForDate(selectedDate);
     const { start } = getTimeRange();
+
+    // Показати/сховати кнопку історії
+    const historyBtn = document.getElementById('historyBtn');
+    if (historyBtn) {
+        historyBtn.classList.toggle('hidden', !canViewHistory());
+    }
 
     document.getElementById('dayOfWeekLabel').textContent = DAYS[selectedDate.getDay()];
 
@@ -455,10 +523,16 @@ function createBookingBlock(booking, startHour) {
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 
-    // Просто показуємо програму і кімнату (без другого аніматора - і так видно на якій лінії)
+    // Перша літера логіну користувача
+    const userLetter = booking.createdBy ? booking.createdBy.charAt(0).toUpperCase() : '';
+    // Примітка якщо є
+    const noteText = booking.notes ? `<div class="note-text">${booking.notes}</div>` : '';
+
     block.innerHTML = `
+        <div class="user-letter">${userLetter}</div>
         <div class="title">${booking.label || booking.programCode}: ${booking.room}</div>
         <div class="subtitle">${booking.time}</div>
+        ${noteText}
     `;
 
     block.addEventListener('click', () => showBookingDetails(booking.id));
@@ -646,6 +720,7 @@ function handleBookingSubmit(e) {
         secondAnimator: secondAnimator,
         room: room,
         notes: document.getElementById('bookingNotes').value,
+        createdBy: currentUser ? currentUser.username : '',
         createdAt: new Date().toISOString()
     };
 
@@ -653,9 +728,12 @@ function handleBookingSubmit(e) {
     bookings.push(booking);
     localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify(bookings));
 
+    // Записати в історію
+    logHistory('create', booking);
+
     // Якщо потрібно 2 ведучих - створити бронювання для другого аніматора
     if (program.hosts > 1 && secondAnimator) {
-        const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+        const lines = getLinesForDate(selectedDate);
         const secondLine = lines.find(l => l.name === secondAnimator);
 
         if (secondLine) {
@@ -768,6 +846,8 @@ function deleteBooking(bookingId) {
     // Видалити також пов'язане бронювання (для другого аніматора)
     const booking = bookings.find(b => b.id === bookingId);
     if (booking) {
+        // Записати в історію
+        logHistory('delete', booking);
         bookings = bookings.filter(b => b.id !== bookingId && b.linkedTo !== bookingId);
     }
 
@@ -779,26 +859,66 @@ function deleteBooking(bookingId) {
 }
 
 // ==========================================
-// ЛІНІЇ (АНІМАТОРИ)
+// ПОКАЗ ІСТОРІЇ
+// ==========================================
+
+function showHistory() {
+    if (!canViewHistory()) return;
+
+    const history = getHistory();
+    const modal = document.getElementById('historyModal');
+    const container = document.getElementById('historyList');
+
+    let html = '';
+    if (history.length === 0) {
+        html = '<p class="no-history">Історія порожня</p>';
+    } else {
+        history.slice(0, 100).forEach(item => {
+            const date = new Date(item.timestamp).toLocaleString('uk-UA');
+            const actionText = item.action === 'create' ? 'Створено' : 'Видалено';
+            const actionClass = item.action === 'create' ? 'action-create' : 'action-delete';
+
+            html += `
+                <div class="history-item ${actionClass}">
+                    <div class="history-header">
+                        <span class="history-action">${actionText}</span>
+                        <span class="history-user">${item.user}</span>
+                        <span class="history-date">${date}</span>
+                    </div>
+                    <div class="history-details">
+                        ${item.data.label || item.data.programCode}: ${item.data.room} (${item.data.date} ${item.data.time})
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    container.innerHTML = html;
+    modal.classList.remove('hidden');
+}
+
+// ==========================================
+// ЛІНІЇ (АНІМАТОРИ) - окремо для кожного дня
 // ==========================================
 
 function addNewLine() {
-    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const lines = getLinesForDate(selectedDate);
     const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
+    const dateStr = formatDate(selectedDate);
 
     lines.push({
-        id: 'line' + Date.now(),
+        id: 'line' + Date.now() + '_' + dateStr,
         name: `Аніматор ${lines.length + 1}`,
         color: colors[lines.length % colors.length]
     });
 
-    localStorage.setItem(CONFIG.STORAGE.LINES, JSON.stringify(lines));
+    saveLinesForDate(selectedDate, lines);
     renderTimeline();
     showNotification('Аніматора додано', 'success');
 }
 
 function editLineModal(lineId) {
-    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const lines = getLinesForDate(selectedDate);
     const line = lines.find(l => l.id === lineId);
     if (!line) return;
 
@@ -812,13 +932,13 @@ function handleEditLine(e) {
     e.preventDefault();
 
     const lineId = document.getElementById('editLineId').value;
-    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const lines = getLinesForDate(selectedDate);
     const index = lines.findIndex(l => l.id === lineId);
 
     if (index !== -1) {
         lines[index].name = document.getElementById('editLineName').value;
         lines[index].color = document.getElementById('editLineColor').value;
-        localStorage.setItem(CONFIG.STORAGE.LINES, JSON.stringify(lines));
+        saveLinesForDate(selectedDate, lines);
 
         closeAllModals();
         renderTimeline();
@@ -828,7 +948,7 @@ function handleEditLine(e) {
 
 function deleteLine() {
     const lineId = document.getElementById('editLineId').value;
-    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
+    const lines = getLinesForDate(selectedDate);
 
     if (lines.length <= 1) {
         showNotification('Має бути хоча б один аніматор', 'error');
@@ -838,7 +958,7 @@ function deleteLine() {
     if (!confirm('Видалити цього аніматора?')) return;
 
     const newLines = lines.filter(l => l.id !== lineId);
-    localStorage.setItem(CONFIG.STORAGE.LINES, JSON.stringify(newLines));
+    saveLinesForDate(selectedDate, newLines);
 
     closeAllModals();
     renderTimeline();

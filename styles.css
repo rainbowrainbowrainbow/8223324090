@@ -264,6 +264,24 @@ input[type="date"] {
     box-shadow: 0 8px 24px rgba(33, 150, 243, 0.3);
 }
 
+/* Кнопка історії */
+.btn-history {
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.btn-history:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(156, 39, 176, 0.3);
+}
+
 /* Попередження */
 .warning-banner {
     background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%);
@@ -460,6 +478,35 @@ input[type="date"] {
     font-size: 10px;
     opacity: 0.85;
     margin-top: 2px;
+}
+
+/* Літера користувача */
+.booking-block .user-letter {
+    position: absolute;
+    top: 3px;
+    right: 5px;
+    font-size: 9px;
+    font-weight: 800;
+    opacity: 0.7;
+    background: rgba(255,255,255,0.25);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Примітки на блоці */
+.booking-block .note-text {
+    font-size: 9px;
+    font-weight: 600;
+    opacity: 0.9;
+    margin-top: 2px;
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Кнопка додати лінію */
@@ -932,6 +979,75 @@ input[type="date"] {
 .booking-actions button:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(244, 67, 54, 0.3);
+}
+
+/* Модальне вікно історії */
+.modal-large {
+    max-width: 600px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.history-list {
+    overflow-y: auto;
+    max-height: 500px;
+}
+
+.history-item {
+    padding: 14px;
+    margin-bottom: 10px;
+    border-radius: var(--radius-sm);
+    background: var(--light);
+    border-left: 4px solid var(--gray);
+}
+
+.history-item.action-create {
+    border-left-color: var(--success);
+    background: #E8F5E9;
+}
+
+.history-item.action-delete {
+    border-left-color: var(--danger);
+    background: #FFEBEE;
+}
+
+.history-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.history-action {
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.action-create .history-action { color: var(--success); }
+.action-delete .history-action { color: var(--danger); }
+
+.history-user {
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.history-date {
+    color: var(--gray);
+    margin-left: auto;
+}
+
+.history-details {
+    font-size: 13px;
+    color: var(--dark);
+    font-weight: 600;
+}
+
+.no-history {
+    text-align: center;
+    color: var(--gray);
+    padding: 40px;
 }
 
 /* ==========================================

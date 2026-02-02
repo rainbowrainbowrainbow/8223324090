@@ -367,7 +367,11 @@ function initializeEventListeners() {
 
     document.getElementById('addLineBtn').addEventListener('click', addNewLine);
     document.getElementById('exportTimelineBtn').addEventListener('click', exportTimelineImage);
-    document.getElementById('historyBtn').addEventListener('click', showHistory);
+
+    const historyBtnEl = document.getElementById('historyBtn');
+    if (historyBtnEl) {
+        historyBtnEl.addEventListener('click', showHistory);
+    }
 
     // Панель бронювання
     document.getElementById('closePanel').addEventListener('click', closeBookingPanel);

@@ -459,7 +459,8 @@ input[type="date"] {
 }
 
 .day-section-content {
-    padding: 12px 20px;
+    padding: 12px 16px;
+    overflow-x: auto;
 }
 
 .no-bookings {
@@ -470,52 +471,109 @@ input[type="date"] {
     font-style: italic;
 }
 
-.bookings-list {
+/* Міні-таймлайн для мультиденного режиму */
+.mini-time-scale {
+    display: flex;
+    margin-left: 80px;
+    margin-bottom: 6px;
+}
+
+.mini-time-mark {
+    width: 120px; /* 4 клітинки по 30px */
+    min-width: 120px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--gray);
+    text-align: left;
+}
+
+.mini-time-mark.end {
+    width: auto;
+    min-width: auto;
+}
+
+.mini-timeline-lines {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
-.booking-item {
+.mini-timeline-line {
+    display: flex;
+    align-items: stretch;
+    min-height: 36px;
+}
+
+.mini-line-header {
+    width: 80px;
+    min-width: 80px;
+    padding: 6px 8px;
+    background: var(--light);
+    border-radius: var(--radius-xs) 0 0 var(--radius-xs);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--dark);
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all 0.2s;
-    color: var(--white);
-    font-size: 13px;
+    border-left: 4px solid var(--primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.booking-item:hover {
-    transform: translateX(4px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
-.booking-item.quest { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); }
-.booking-item.animation { background: linear-gradient(135deg, #039BE5 0%, #0277BD 100%); }
-.booking-item.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
-.booking-item.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
-.booking-item.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
-.booking-item.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
-
-.booking-item .booking-time {
-    font-weight: 800;
-    min-width: 50px;
-}
-
-.booking-item .booking-info {
+.mini-line-grid {
     flex: 1;
-    font-weight: 600;
+    position: relative;
+    background: #FAFBFC;
+    border: 1px solid #E9ECEF;
+    border-left: none;
+    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+    min-height: 36px;
+    /* Сітка годин */
+    background-image: repeating-linear-gradient(
+        to right,
+        #E9ECEF 0px,
+        #E9ECEF 1px,
+        transparent 1px,
+        transparent 120px
+    );
 }
 
-.booking-item .booking-animator {
-    font-size: 11px;
-    opacity: 0.85;
-    background: rgba(255,255,255,0.2);
-    padding: 4px 8px;
+.mini-booking-block {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
     border-radius: 4px;
+    padding: 2px 6px;
+    color: var(--white);
+    font-size: 10px;
+    font-weight: 700;
+    overflow: hidden;
+    cursor: pointer;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    transition: all 0.15s;
+}
+
+.mini-booking-block:hover {
+    transform: scale(1.05);
+    z-index: 20;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.mini-booking-block.quest { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); }
+.mini-booking-block.animation { background: linear-gradient(135deg, #039BE5 0%, #0277BD 100%); }
+.mini-booking-block.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
+.mini-booking-block.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
+.mini-booking-block.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
+.mini-booking-block.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
+
+.mini-booking-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Кнопка історії */

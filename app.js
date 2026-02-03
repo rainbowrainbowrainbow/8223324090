@@ -723,9 +723,8 @@ function createBookingBlock(booking, startHour) {
     return block;
 }
 
-// Режим декількох днів
+// Режим декількох днів - з міні-таймлайнами
 async function renderMultiDayTimeline() {
-    const timelineContainer = document.querySelector('.timeline-container');
     const timeScaleEl = document.getElementById('timeScale');
     const linesContainer = document.getElementById('timelineLines');
     const addLineBtn = document.getElementById('addLineBtn');
@@ -762,9 +761,17 @@ async function renderMultiDayTimeline() {
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
         const start = isWeekend ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START;
         const end = isWeekend ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END;
+        const cellWidth = 30; // Менші клітинки для компактності
 
         const lines = await getLinesForDate(date);
         const bookings = await getBookingsForDate(date);
+
+        // Шкала часу для цього дня
+        let timeScaleHtml = '<div class="mini-time-scale">';
+        for (let h = start; h <= end; h++) {
+            timeScaleHtml += `<div class="mini-time-mark${h === end ? ' end' : ''}">${h}:00</div>`;
+        }
+        timeScaleHtml += '</div>';
 
         multiDayHtml += `
             <div class="day-section" data-date="${formatDate(date)}">
@@ -773,27 +780,49 @@ async function renderMultiDayTimeline() {
                     <span class="date-label">${formatDate(date)} (${isWeekend ? '10:00-20:00' : '12:00-20:00'})</span>
                 </div>
                 <div class="day-section-content">
+                    ${timeScaleHtml}
+                    <div class="mini-timeline-lines">
         `;
 
-        // Компактний вигляд бронювань
-        if (bookings.length === 0) {
-            multiDayHtml += '<div class="no-bookings">Немає бронювань</div>';
-        } else {
-            multiDayHtml += '<div class="bookings-list">';
-            for (const b of bookings) {
-                const line = lines.find(l => l.id === b.lineId);
+        // Лінії аніматорів з міні-таймлайнами
+        for (const line of lines) {
+            const lineBookings = bookings.filter(b => b.lineId === line.id);
+
+            multiDayHtml += `
+                <div class="mini-timeline-line">
+                    <div class="mini-line-header" style="border-left-color: ${line.color}">
+                        ${line.name}
+                    </div>
+                    <div class="mini-line-grid" data-start="${start}" data-end="${end}">
+            `;
+
+            // Бронювання на цій лінії
+            for (const b of lineBookings) {
+                const startMin = timeToMinutes(b.time) - timeToMinutes(`${start}:00`);
+                const left = (startMin / 60) * (cellWidth * 4); // 4 клітинки на годину
+                const width = (b.duration / 60) * (cellWidth * 4) - 2;
+
                 multiDayHtml += `
-                    <div class="booking-item ${b.category}" data-booking-id="${b.id}">
-                        <span class="booking-time">${b.time}</span>
-                        <span class="booking-info">${b.label || b.programCode}: ${b.room}</span>
-                        <span class="booking-animator">${line ? line.name : '-'}</span>
+                    <div class="mini-booking-block ${b.category}"
+                         style="left: ${left}px; width: ${width}px;"
+                         data-booking-id="${b.id}"
+                         title="${b.label || b.programCode}: ${b.room} (${b.time})">
+                        <span class="mini-booking-text">${b.label || b.programCode}</span>
                     </div>
                 `;
             }
-            multiDayHtml += '</div>';
+
+            multiDayHtml += `
+                    </div>
+                </div>
+            `;
         }
 
-        multiDayHtml += '</div></div>';
+        if (lines.length === 0) {
+            multiDayHtml += '<div class="no-bookings">Немає аніматорів</div>';
+        }
+
+        multiDayHtml += '</div></div></div>';
     }
 
     multiDayHtml += '</div>';
@@ -802,10 +831,19 @@ async function renderMultiDayTimeline() {
     linesContainer.innerHTML = multiDayHtml;
 
     // Додати обробники кліків на бронювання
-    document.querySelectorAll('.booking-item').forEach(item => {
+    document.querySelectorAll('.mini-booking-block').forEach(item => {
         item.addEventListener('click', () => {
             const bookingId = item.dataset.bookingId;
-            showBookingDetails(bookingId);
+            // Знайти дату для цього бронювання
+            const daySection = item.closest('.day-section');
+            if (daySection) {
+                const dateStr = daySection.dataset.date;
+                // Тимчасово змінити selectedDate для показу деталей
+                const originalDate = new Date(selectedDate);
+                selectedDate = new Date(dateStr);
+                showBookingDetails(bookingId);
+                selectedDate = originalDate;
+            }
         });
     });
 }

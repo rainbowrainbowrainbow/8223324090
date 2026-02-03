@@ -113,12 +113,11 @@ function initializeDefaultData() {
         localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify([]));
     }
 
-    // 3 лінії за замовчуванням
+    // 2 лінії за замовчуванням
     if (!localStorage.getItem(CONFIG.STORAGE.LINES)) {
         localStorage.setItem(CONFIG.STORAGE.LINES, JSON.stringify([
             { id: 'line1', name: 'Аніматор 1', color: '#4CAF50' },
-            { id: 'line2', name: 'Аніматор 2', color: '#2196F3' },
-            { id: 'line3', name: 'Аніматор 3', color: '#FF9800' }
+            { id: 'line2', name: 'Аніматор 2', color: '#2196F3' }
         ]));
     }
 }
@@ -243,11 +242,10 @@ function getLinesForDate(date) {
         return linesByDate[dateStr];
     }
 
-    // Якщо немає ліній для цієї дати - створити за замовчуванням
+    // Якщо немає ліній для цієї дати - створити за замовчуванням (2 лінії)
     const defaultLines = [
         { id: 'line1_' + dateStr, name: 'Аніматор 1', color: '#4CAF50' },
-        { id: 'line2_' + dateStr, name: 'Аніматор 2', color: '#2196F3' },
-        { id: 'line3_' + dateStr, name: 'Аніматор 3', color: '#FF9800' }
+        { id: 'line2_' + dateStr, name: 'Аніматор 2', color: '#2196F3' }
     ];
     saveLinesForDate(date, defaultLines);
     return defaultLines;
@@ -717,7 +715,10 @@ function handleBookingSubmit(e) {
         label = `Пін+${pinataFiller}`;
     }
 
-    // Перевірка на накладання та паузу
+    // Другий аніматор
+    const secondAnimator = program.hosts > 1 ? document.getElementById('secondAnimatorSelect').value : null;
+
+    // Перевірка на накладання та паузу (перечитуємо дані!)
     const conflict = checkConflicts(lineId, time, duration);
 
     if (conflict.overlap) {
@@ -725,12 +726,22 @@ function handleBookingSubmit(e) {
         return;
     }
 
+    // Якщо є другий аніматор - перевірити конфлікти і для нього
+    if (secondAnimator) {
+        const lines = getLinesForDate(selectedDate);
+        const secondLine = lines.find(l => l.name === secondAnimator);
+        if (secondLine) {
+            const secondConflict = checkConflicts(secondLine.id, time, duration);
+            if (secondConflict.overlap) {
+                showNotification(`❌ ПОМИЛКА: Час зайнятий у ${secondAnimator}!`, 'error');
+                return;
+            }
+        }
+    }
+
     if (conflict.noPause) {
         showWarning('⚠️ УВАГА! Немає 15-хвилинної паузи між програмами. Це ДУЖЕ НЕБАЖАНО!');
     }
-
-    // Другий аніматор
-    const secondAnimator = program.hosts > 1 ? document.getElementById('secondAnimatorSelect').value : null;
 
     // Створити бронювання
     const booking = {
@@ -1047,6 +1058,11 @@ function exportTimelineImage() {
             ctx.fillText(`${h}:${String(m).padStart(2, '0')}`, x, headerHeight + padding - 10);
         }
     }
+    // Додати мітку 20:00
+    ctx.fillStyle = '#333333';
+    ctx.font = 'bold 14px Arial';
+    const endX = padding + timeWidth + ((end - start) * 4) * cellWidth;
+    ctx.fillText(`${end}:00`, endX, headerHeight + padding - 10);
 
     // Лінії аніматорів
     lines.forEach((line, index) => {

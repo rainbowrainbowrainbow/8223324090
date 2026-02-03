@@ -7,19 +7,20 @@
     --primary: #00A651;
     --primary-dark: #008C45;
     --primary-light: #E8F5E9;
-    --quest: #9C27B0;
-    --animation: #00BCD4;
-    --show: #FF5722;
-    --masterclass: #8BC34A;
-    --pinata: #E91E63;
-    --custom: #607D8B;
-    --success: #4CAF50;
-    --warning: #FF9800;
-    --danger: #F44336;
+    /* Більш контрастні кольори категорій */
+    --quest: #7B1FA2;       /* Темніший фіолетовий */
+    --animation: #0288D1;    /* Більш насичений синій */
+    --show: #D84315;         /* Темніший помаранчевий */
+    --masterclass: #558B2F;  /* Темніший зелений */
+    --pinata: #AD1457;       /* Темніший рожевий */
+    --custom: #37474F;       /* Темніший сірий */
+    --success: #2E7D32;
+    --warning: #EF6C00;
+    --danger: #C62828;
     --light: #F8F9FA;
     --dark: #1A1A2E;
-    --gray: #6C757D;
-    --gray-light: #ADB5BD;
+    --gray: #5A6268;
+    --gray-light: #868E96;
     --white: #FFFFFF;
     --shadow: 0 4px 20px rgba(0,0,0,0.08);
     --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
@@ -68,18 +69,48 @@ body {
 .login-logo h1 { font-size: 22px; font-weight: 900; color: var(--primary); margin-top: 12px; }
 .tagline { color: var(--gray); font-size: 13px; margin-top: 6px; font-weight: 600; }
 
-.changelog {
+/* Changelog - скритий за замовчуванням */
+.changelog-details {
+    margin-bottom: 24px;
+}
+
+.changelog-summary {
+    cursor: pointer;
+    padding: 10px 14px;
     background: var(--light);
     border-radius: var(--radius-sm);
-    padding: 14px 18px;
-    margin-bottom: 24px;
-    font-size: 12px;
-}
-.changelog-title {
-    font-weight: 800;
+    font-weight: 700;
+    font-size: 13px;
     color: var(--primary);
-    margin-bottom: 8px;
+    transition: all 0.2s;
+    list-style: none;
 }
+
+.changelog-summary::-webkit-details-marker {
+    display: none;
+}
+
+.changelog-summary::before {
+    content: "▶ ";
+    font-size: 10px;
+}
+
+.changelog-details[open] .changelog-summary::before {
+    content: "▼ ";
+}
+
+.changelog-summary:hover {
+    background: var(--primary-light);
+}
+
+.changelog {
+    background: var(--light);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    padding: 14px 18px;
+    font-size: 12px;
+    margin-top: -4px;
+}
+
 .changelog ul {
     list-style: none;
     color: var(--gray);
@@ -189,6 +220,44 @@ body {
 }
 .btn-logout:hover { background: var(--danger); color: var(--white); }
 
+/* Кнопка аніматорів (тільки для Сергія) */
+.btn-animators {
+    padding: 10px 18px;
+    background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.btn-animators:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(255, 152, 0, 0.3);
+}
+
+/* Управління аніматорами */
+.animators-management textarea {
+    width: 100%;
+    padding: 14px;
+    border: 2px solid #E9ECEF;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 200px;
+}
+.animators-management textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0, 166, 81, 0.1);
+}
+.animators-management .btn-submit {
+    margin-top: 16px;
+}
+
 /* ==========================================
    ОСНОВНИЙ КОНТЕНТ
    ========================================== */
@@ -276,6 +345,72 @@ input[type="date"] {
     font-weight: 600;
 }
 
+/* Перемикач режимів перегляду */
+.view-mode-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.view-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.view-mode-toggle input {
+    display: none;
+}
+
+.toggle-slider {
+    width: 44px;
+    height: 24px;
+    background: #CED4DA;
+    border-radius: 12px;
+    position: relative;
+    transition: all 0.3s;
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    background: var(--white);
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: all 0.3s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.view-mode-toggle input:checked + .toggle-slider {
+    background: var(--primary);
+}
+
+.view-mode-toggle input:checked + .toggle-slider::before {
+    left: 22px;
+}
+
+.toggle-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dark);
+}
+
+.days-select {
+    padding: 8px 12px;
+    border: 2px solid var(--primary);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    background: var(--white);
+    cursor: pointer;
+}
+
 .btn-export {
     padding: 12px 24px;
     background: linear-gradient(135deg, #2196F3 0%, #1565C0 100%);
@@ -291,6 +426,96 @@ input[type="date"] {
 .btn-export:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(33, 150, 243, 0.3);
+}
+
+/* Мультиденний таймлайн */
+.multi-day-container {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.day-section {
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
+.day-section-header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: var(--white);
+    padding: 12px 20px;
+    font-weight: 800;
+    font-size: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.day-section-header .date-label {
+    font-size: 13px;
+    opacity: 0.9;
+}
+
+.day-section-content {
+    padding: 12px 20px;
+}
+
+.no-bookings {
+    color: var(--gray);
+    font-size: 13px;
+    text-align: center;
+    padding: 16px;
+    font-style: italic;
+}
+
+.bookings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.booking-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--white);
+    font-size: 13px;
+}
+
+.booking-item:hover {
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.booking-item.quest { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); }
+.booking-item.animation { background: linear-gradient(135deg, #039BE5 0%, #0277BD 100%); }
+.booking-item.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
+.booking-item.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
+.booking-item.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
+.booking-item.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
+
+.booking-item .booking-time {
+    font-weight: 800;
+    min-width: 50px;
+}
+
+.booking-item .booking-info {
+    flex: 1;
+    font-weight: 600;
+}
+
+.booking-item .booking-animator {
+    font-size: 11px;
+    opacity: 0.85;
+    background: rgba(255,255,255,0.2);
+    padding: 4px 8px;
+    border-radius: 4px;
 }
 
 /* Кнопка історії */
@@ -489,12 +714,12 @@ input[type="date"] {
     box-shadow: 0 6px 16px rgba(0,0,0,0.25);
 }
 
-.booking-block.quest { background: linear-gradient(135deg, var(--quest) 0%, #7B1FA2 100%); }
-.booking-block.animation { background: linear-gradient(135deg, var(--animation) 0%, #0097A7 100%); }
-.booking-block.show { background: linear-gradient(135deg, var(--show) 0%, #E64A19 100%); }
-.booking-block.masterclass { background: linear-gradient(135deg, var(--masterclass) 0%, #689F38 100%); }
-.booking-block.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #C2185B 100%); }
-.booking-block.custom { background: linear-gradient(135deg, var(--custom) 0%, #455A64 100%); }
+.booking-block.quest { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); }
+.booking-block.animation { background: linear-gradient(135deg, #039BE5 0%, #0277BD 100%); }
+.booking-block.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
+.booking-block.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
+.booking-block.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
+.booking-block.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
 
 .booking-block .title {
     white-space: nowrap;
@@ -597,12 +822,12 @@ input[type="date"] {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.dot.quest { background: linear-gradient(135deg, var(--quest) 0%, #7B1FA2 100%); }
-.dot.animation { background: linear-gradient(135deg, var(--animation) 0%, #0097A7 100%); }
-.dot.show { background: linear-gradient(135deg, var(--show) 0%, #E64A19 100%); }
-.dot.masterclass { background: linear-gradient(135deg, var(--masterclass) 0%, #689F38 100%); }
-.dot.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #C2185B 100%); }
-.dot.custom { background: linear-gradient(135deg, var(--custom) 0%, #455A64 100%); }
+.dot.quest { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); }
+.dot.animation { background: linear-gradient(135deg, #039BE5 0%, #0277BD 100%); }
+.dot.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
+.dot.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
+.dot.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
+.dot.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
 
 /* ==========================================
    БОКОВА ПАНЕЛЬ
@@ -761,13 +986,13 @@ input[type="date"] {
     color: var(--dark);
 }
 
-/* Кольори іконок програм */
-.program-icon.quest { border-left: 4px solid var(--quest); }
-.program-icon.animation { border-left: 4px solid var(--animation); }
-.program-icon.show { border-left: 4px solid var(--show); }
-.program-icon.masterclass { border-left: 4px solid var(--masterclass); }
-.program-icon.pinata { border-left: 4px solid var(--pinata); }
-.program-icon.custom { border-left: 4px solid var(--custom); }
+/* Кольори іконок програм - яскраві та контрастні */
+.program-icon.quest { border-left: 4px solid #9C27B0; background: #F3E5F5; }
+.program-icon.animation { border-left: 4px solid #039BE5; background: #E1F5FE; }
+.program-icon.show { border-left: 4px solid #F4511E; background: #FBE9E7; }
+.program-icon.masterclass { border-left: 4px solid #7CB342; background: #F1F8E9; }
+.program-icon.pinata { border-left: 4px solid #EC407A; background: #FCE4EC; }
+.program-icon.custom { border-left: 4px solid #546E7A; background: #ECEFF1; }
 
 /* Деталі програми */
 .program-details {
@@ -1121,8 +1346,48 @@ input[type="date"] {
     .logo-emoji { font-size: 24px; }
 
     .main-content { padding: 16px; }
-    .control-panel { flex-direction: column; align-items: stretch; }
-    .date-controls { justify-content: center; flex-wrap: wrap; }
+    .control-panel { flex-direction: column; align-items: stretch; gap: 12px; }
+
+    /* Фікс для стрілочок - залишаємо в одному рядку */
+    .date-controls {
+        display: flex;
+        justify-content: center;
+        flex-wrap: nowrap;
+        gap: 6px;
+        width: 100%;
+    }
+
+    .date-controls .btn-nav {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        flex-shrink: 0;
+    }
+
+    .date-controls input[type="date"] {
+        flex: 1;
+        min-width: 120px;
+        max-width: 140px;
+        padding: 10px 8px;
+        font-size: 13px;
+    }
+
+    .date-controls .day-info {
+        flex: 1;
+        min-width: 80px;
+        max-width: 100px;
+    }
+
+    .day-label {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+    }
 
     .programs-icons { grid-template-columns: repeat(3, 1fr); }
 
@@ -1130,6 +1395,13 @@ input[type="date"] {
     .time-scale { margin-left: 90px; }
     .line-header { width: 90px; min-width: 90px; }
     .line-name { font-size: 12px; }
+
+    /* Кнопки в header на мобільному */
+    .user-panel { gap: 8px; }
+    .btn-animators, .btn-logout {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -1137,4 +1409,16 @@ input[type="date"] {
     .program-icon { min-height: 64px; padding: 8px 2px; }
     .program-icon .icon { font-size: 20px; }
     .program-icon .name { font-size: 8px; }
+
+    /* Ще менше на зовсім маленьких екранах */
+    .date-controls input[type="date"] {
+        min-width: 100px;
+        max-width: 120px;
+        font-size: 12px;
+    }
+
+    .day-info { display: none; }
+
+    .logo-text h1 { display: none; }
+    .logo-img-small { width: 32px; height: 32px; }
 }

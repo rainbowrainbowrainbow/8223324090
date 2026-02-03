@@ -85,6 +85,8 @@ let selectedLineId = null;
 let animatorsFromSheet = []; // Аніматори з Google Sheets
 let cachedBookings = {}; // Кеш бронювань по датах
 let cachedLines = {}; // Кеш ліній по датах
+let multiDayMode = false; // Режим декількох днів
+let daysToShow = 3; // Кількість днів для показу
 
 // ==========================================
 // API ФУНКЦІЇ (PostgreSQL)
@@ -448,6 +450,16 @@ function showMainApp() {
     document.getElementById('mainApp').classList.remove('hidden');
     document.getElementById('currentUser').textContent = currentUser.name;
 
+    // Показати кнопку "Аніматори" тільки для Сергія
+    const animatorsBtn = document.getElementById('animatorsTabBtn');
+    if (animatorsBtn) {
+        if (currentUser.username === 'Sergey') {
+            animatorsBtn.classList.remove('hidden');
+        } else {
+            animatorsBtn.classList.add('hidden');
+        }
+    }
+
     initializeTimeline();
     renderProgramIcons();
     fetchAnimatorsFromSheet(); // Завантажити аніматорів з Google Sheets
@@ -480,6 +492,25 @@ function initializeEventListeners() {
     document.getElementById('addLineBtn').addEventListener('click', addNewLine);
     document.getElementById('exportTimelineBtn').addEventListener('click', exportTimelineImage);
 
+    // Режим декількох днів
+    const multiDayModeCheckbox = document.getElementById('multiDayMode');
+    const daysCountSelect = document.getElementById('daysCount');
+
+    if (multiDayModeCheckbox) {
+        multiDayModeCheckbox.addEventListener('change', (e) => {
+            multiDayMode = e.target.checked;
+            daysCountSelect.classList.toggle('hidden', !multiDayMode);
+            renderTimeline();
+        });
+    }
+
+    if (daysCountSelect) {
+        daysCountSelect.addEventListener('change', (e) => {
+            daysToShow = parseInt(e.target.value);
+            renderTimeline();
+        });
+    }
+
     const historyBtnEl = document.getElementById('historyBtn');
     if (historyBtnEl) {
         historyBtnEl.addEventListener('click', showHistory);
@@ -492,6 +523,28 @@ function initializeEventListeners() {
     // Редагування лінії
     document.getElementById('editLineForm').addEventListener('submit', handleEditLine);
     document.getElementById('deleteLineBtn').addEventListener('click', deleteLine);
+
+    // Вибір аніматора зі списку
+    const editLineNameSelect = document.getElementById('editLineNameSelect');
+    if (editLineNameSelect) {
+        editLineNameSelect.addEventListener('change', (e) => {
+            if (e.target.value) {
+                document.getElementById('editLineName').value = e.target.value;
+            }
+        });
+    }
+
+    // Кнопка управління аніматорами (тільки для Сергія)
+    const animatorsTabBtn = document.getElementById('animatorsTabBtn');
+    if (animatorsTabBtn) {
+        animatorsTabBtn.addEventListener('click', showAnimatorsModal);
+    }
+
+    // Збереження списку аніматорів
+    const saveAnimatorsBtn = document.getElementById('saveAnimatorsBtn');
+    if (saveAnimatorsBtn) {
+        saveAnimatorsBtn.addEventListener('click', saveAnimatorsList);
+    }
 
     // Попередження
     document.getElementById('closeWarning').addEventListener('click', () => {
@@ -556,6 +609,16 @@ function renderTimeScale() {
 }
 
 async function renderTimeline() {
+    // Показати кнопку додати аніматора
+    const addLineBtn = document.getElementById('addLineBtn');
+    if (addLineBtn) addLineBtn.style.display = '';
+
+    // Режим декількох днів
+    if (multiDayMode) {
+        await renderMultiDayTimeline();
+        return;
+    }
+
     renderTimeScale();
 
     const container = document.getElementById('timelineLines');
@@ -658,6 +721,93 @@ function createBookingBlock(booking, startHour) {
 
     block.addEventListener('click', () => showBookingDetails(booking.id));
     return block;
+}
+
+// Режим декількох днів
+async function renderMultiDayTimeline() {
+    const timelineContainer = document.querySelector('.timeline-container');
+    const timeScaleEl = document.getElementById('timeScale');
+    const linesContainer = document.getElementById('timelineLines');
+    const addLineBtn = document.getElementById('addLineBtn');
+
+    // Сховати елементи одноденного режиму
+    if (timeScaleEl) timeScaleEl.innerHTML = '';
+    if (linesContainer) linesContainer.innerHTML = '';
+    if (addLineBtn) addLineBtn.style.display = 'none';
+
+    // Показати/сховати кнопку історії
+    const historyBtn = document.getElementById('historyBtn');
+    if (historyBtn) {
+        historyBtn.classList.toggle('hidden', !canViewHistory());
+    }
+
+    // Генерувати дати
+    const dates = [];
+    const startDate = new Date(selectedDate);
+    for (let i = 0; i < daysToShow; i++) {
+        const d = new Date(startDate);
+        d.setDate(startDate.getDate() + i);
+        dates.push(d);
+    }
+
+    // Оновити інформацію про період
+    document.getElementById('dayOfWeekLabel').textContent = `${daysToShow} днів`;
+    document.getElementById('workingHours').textContent = `${formatDate(dates[0])} - ${formatDate(dates[dates.length - 1])}`;
+
+    // Створити контейнер для мультиденного відображення
+    let multiDayHtml = '<div class="multi-day-container">';
+
+    for (const date of dates) {
+        const dayOfWeek = date.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const start = isWeekend ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START;
+        const end = isWeekend ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END;
+
+        const lines = await getLinesForDate(date);
+        const bookings = await getBookingsForDate(date);
+
+        multiDayHtml += `
+            <div class="day-section" data-date="${formatDate(date)}">
+                <div class="day-section-header">
+                    <span>${DAYS[dayOfWeek]}</span>
+                    <span class="date-label">${formatDate(date)} (${isWeekend ? '10:00-20:00' : '12:00-20:00'})</span>
+                </div>
+                <div class="day-section-content">
+        `;
+
+        // Компактний вигляд бронювань
+        if (bookings.length === 0) {
+            multiDayHtml += '<div class="no-bookings">Немає бронювань</div>';
+        } else {
+            multiDayHtml += '<div class="bookings-list">';
+            for (const b of bookings) {
+                const line = lines.find(l => l.id === b.lineId);
+                multiDayHtml += `
+                    <div class="booking-item ${b.category}" data-booking-id="${b.id}">
+                        <span class="booking-time">${b.time}</span>
+                        <span class="booking-info">${b.label || b.programCode}: ${b.room}</span>
+                        <span class="booking-animator">${line ? line.name : '-'}</span>
+                    </div>
+                `;
+            }
+            multiDayHtml += '</div>';
+        }
+
+        multiDayHtml += '</div></div>';
+    }
+
+    multiDayHtml += '</div>';
+
+    // Вставити в контейнер
+    linesContainer.innerHTML = multiDayHtml;
+
+    // Додати обробники кліків на бронювання
+    document.querySelectorAll('.booking-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const bookingId = item.dataset.bookingId;
+            showBookingDetails(bookingId);
+        });
+    });
 }
 
 function changeDate(days) {
@@ -1090,7 +1240,59 @@ async function editLineModal(lineId) {
     document.getElementById('editLineId').value = line.id;
     document.getElementById('editLineName').value = line.name;
     document.getElementById('editLineColor').value = line.color;
+
+    // Заповнити випадаючий список аніматорів
+    populateAnimatorsSelect();
+
     document.getElementById('editLineModal').classList.remove('hidden');
+}
+
+// Отримати збережений список аніматорів
+function getSavedAnimators() {
+    const saved = localStorage.getItem('pzp_animators_list');
+    if (saved) {
+        return JSON.parse(saved);
+    }
+    // Список за замовчуванням
+    return ['Женя', 'Анлі', 'Маша', 'Діма', 'Оля', 'Катя', 'Настя', 'Саша'];
+}
+
+// Зберегти список аніматорів
+function saveAnimatorsList() {
+    const textarea = document.getElementById('animatorsList');
+    const names = textarea.value.split('\n').map(n => n.trim()).filter(n => n.length > 0);
+
+    if (names.length === 0) {
+        showNotification('Введіть хоча б одного аніматора', 'error');
+        return;
+    }
+
+    localStorage.setItem('pzp_animators_list', JSON.stringify(names));
+    closeAllModals();
+    showNotification('Список аніматорів збережено!', 'success');
+}
+
+// Показати модальне вікно управління аніматорами
+function showAnimatorsModal() {
+    const animators = getSavedAnimators();
+    document.getElementById('animatorsList').value = animators.join('\n');
+    document.getElementById('animatorsModal').classList.remove('hidden');
+}
+
+// Заповнити select з аніматорами
+function populateAnimatorsSelect() {
+    const select = document.getElementById('editLineNameSelect');
+    if (!select) return;
+
+    const animators = getSavedAnimators();
+
+    select.innerHTML = '<option value="">Оберіть аніматора</option>';
+    animators.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+    });
 }
 
 async function handleEditLine(e) {
@@ -1164,7 +1366,7 @@ async function exportTimelineImage() {
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 28px Arial';
-    ctx.fillText(`🦖 Парк Закревського Періоду - Таймлайн`, padding, 35);
+    ctx.fillText(`Парк Закревського Періоду - Таймлайн`, padding, 35);
 
     ctx.font = '20px Arial';
     ctx.fillText(`${formatDate(selectedDate)} (${DAYS[selectedDate.getDay()]})`, padding, 60);

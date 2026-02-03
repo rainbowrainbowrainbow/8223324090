@@ -17,16 +17,19 @@
                 <h1>Парк Закревського Періоду</h1>
                 <p class="tagline">Система бронювання v2.6</p>
             </div>
-            <div class="changelog">
-                <p class="changelog-title">Останні оновлення:</p>
-                <ul>
-                    <li>PostgreSQL синхронізація між користувачами</li>
-                    <li>Перевірка конфліктів другого аніматора</li>
-                    <li>Експорт таймлайну до 20:00</li>
-                    <li>2 лінії за замовчуванням</li>
-                    <li>Піньята з наповнювачами</li>
-                </ul>
-            </div>
+            <details class="changelog-details">
+                <summary class="changelog-summary">📋 Оновлення v2.6</summary>
+                <div class="changelog">
+                    <ul>
+                        <li>PostgreSQL синхронізація між користувачами</li>
+                        <li>Перевірка конфліктів другого аніматора</li>
+                        <li>Експорт таймлайну до 20:00</li>
+                        <li>2 лінії за замовчуванням</li>
+                        <li>Піньята з наповнювачами</li>
+                        <li>Режим перегляду декількох днів</li>
+                    </ul>
+                </div>
+            </details>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -54,6 +57,7 @@
                     </div>
                 </div>
                 <div class="user-panel">
+                    <button id="animatorsTabBtn" class="btn-animators hidden">👥 Аніматори</button>
                     <span id="currentUser" class="user-name"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
@@ -72,6 +76,18 @@
                         <span id="workingHours" class="working-hours">12:00-20:00</span>
                     </div>
                     <button id="nextDay" class="btn-nav">▶</button>
+                </div>
+                <div class="view-mode-controls">
+                    <label class="view-mode-toggle">
+                        <input type="checkbox" id="multiDayMode">
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">Декілька днів</span>
+                    </label>
+                    <select id="daysCount" class="days-select hidden">
+                        <option value="3">3 дні</option>
+                        <option value="5">5 днів</option>
+                        <option value="7">7 днів</option>
+                    </select>
                 </div>
                 <div class="action-buttons">
                     <button id="historyBtn" class="btn-history hidden">📋 Історія</button>
@@ -278,8 +294,14 @@
             <form id="editLineForm">
                 <input type="hidden" id="editLineId">
                 <div class="form-group">
-                    <label>Ім'я аніматора</label>
-                    <input type="text" id="editLineName" placeholder="Наприклад: Женя" required>
+                    <label>Аніматор</label>
+                    <select id="editLineNameSelect">
+                        <option value="">Оберіть аніматора</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Або введіть вручну</label>
+                    <input type="text" id="editLineName" placeholder="Наприклад: Женя">
                 </div>
                 <div class="form-group">
                     <label>Колір</label>
@@ -290,6 +312,21 @@
                     <button type="button" id="deleteLineBtn" class="btn-danger">Видалити</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Модальне вікно управління аніматорами (тільки для Сергія) -->
+    <div id="animatorsModal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <span class="modal-close">&times;</span>
+            <h3>👥 Управління аніматорами</h3>
+            <div class="animators-management">
+                <div class="form-group">
+                    <label>Список аніматорів (по одному на рядок)</label>
+                    <textarea id="animatorsList" rows="10" placeholder="Женя&#10;Анлі&#10;Маша&#10;..."></textarea>
+                </div>
+                <button type="button" id="saveAnimatorsBtn" class="btn-submit">Зберегти список</button>
+            </div>
         </div>
     </div>
 

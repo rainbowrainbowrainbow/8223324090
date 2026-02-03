@@ -682,8 +682,8 @@ async function getBookingsForDate(date) {
 // ПАНЕЛЬ БРОНЮВАННЯ
 // ==========================================
 
-function openBookingPanel(time, lineId) {
-    const lines = getLinesForDate(selectedDate);
+async function openBookingPanel(time, lineId) {
+    const lines = await getLinesForDate(selectedDate);
     const line = lines.find(l => l.id === lineId);
 
     document.getElementById('selectedTimeDisplay').textContent = time;
@@ -772,9 +772,9 @@ function selectProgram(programId) {
     }
 }
 
-function populateSecondAnimatorSelect() {
+async function populateSecondAnimatorSelect() {
     const select = document.getElementById('secondAnimatorSelect');
-    const lines = getLinesForDate(selectedDate);
+    const lines = await getLinesForDate(selectedDate);
     const currentLineId = document.getElementById('bookingLine').value;
 
     select.innerHTML = '<option value="">Оберіть другого аніматора</option>';
@@ -958,14 +958,14 @@ function showWarning(text) {
 // ДЕТАЛІ БРОНЮВАННЯ
 // ==========================================
 
-function showBookingDetails(bookingId) {
-    const bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
+async function showBookingDetails(bookingId) {
+    const bookings = await getBookingsForDate(selectedDate);
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
 
     const endTime = addMinutesToTime(booking.time, booking.duration);
     const bookingDate = new Date(booking.date);
-    const lines = getLinesForDate(bookingDate);
+    const lines = await getLinesForDate(bookingDate);
     const line = lines.find(l => l.id === booking.lineId);
 
     document.getElementById('bookingDetails').innerHTML = `
@@ -1134,9 +1134,9 @@ async function deleteLine() {
 // ЕКСПОРТ У КАРТИНКУ
 // ==========================================
 
-function exportTimelineImage() {
-    const bookings = getBookingsForDate(selectedDate);
-    const lines = getLinesForDate(selectedDate);
+async function exportTimelineImage() {
+    const bookings = await getBookingsForDate(selectedDate);
+    const lines = await getLinesForDate(selectedDate);
     const { start, end } = getTimeRange();
 
     // Створити canvas для A4

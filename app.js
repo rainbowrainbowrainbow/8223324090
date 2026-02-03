@@ -1,6 +1,6 @@
 /**
  * Парк Закревського Періоду - Система бронювання
- * v2.2 - оновлені логіни, історія змін, примітки
+ * v2.6 - PostgreSQL синхронізація
  */
 
 // ==========================================
@@ -83,6 +83,128 @@ let selectedDate = new Date();
 let selectedCell = null;
 let selectedLineId = null;
 let animatorsFromSheet = []; // Аніматори з Google Sheets
+let cachedBookings = {}; // Кеш бронювань по датах
+let cachedLines = {}; // Кеш ліній по датах
+
+// ==========================================
+// API ФУНКЦІЇ (PostgreSQL)
+// ==========================================
+
+const API_BASE = '/api';
+
+async function apiGetBookings(date) {
+    try {
+        const response = await fetch(`${API_BASE}/bookings/${date}`);
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getBookings error:', err);
+        // Fallback to localStorage
+        const bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
+        return bookings.filter(b => b.date === date);
+    }
+}
+
+async function apiCreateBooking(booking) {
+    try {
+        const response = await fetch(`${API_BASE}/bookings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(booking)
+        });
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API createBooking error:', err);
+        // Fallback to localStorage
+        const bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
+        bookings.push(booking);
+        localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify(bookings));
+        return { success: true, id: booking.id };
+    }
+}
+
+async function apiDeleteBooking(id) {
+    try {
+        const response = await fetch(`${API_BASE}/bookings/${id}`, {
+            method: 'DELETE'
+        });
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API deleteBooking error:', err);
+        // Fallback to localStorage
+        let bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
+        bookings = bookings.filter(b => b.id !== id && b.linkedTo !== id);
+        localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify(bookings));
+        return { success: true };
+    }
+}
+
+async function apiGetLines(date) {
+    try {
+        const response = await fetch(`${API_BASE}/lines/${date}`);
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getLines error:', err);
+        // Fallback to localStorage
+        const linesByDate = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES_BY_DATE) || '{}');
+        if (linesByDate[date]) return linesByDate[date];
+        return [
+            { id: 'line1_' + date, name: 'Аніматор 1', color: '#4CAF50' },
+            { id: 'line2_' + date, name: 'Аніматор 2', color: '#2196F3' }
+        ];
+    }
+}
+
+async function apiSaveLines(date, lines) {
+    try {
+        const response = await fetch(`${API_BASE}/lines/${date}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(lines)
+        });
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API saveLines error:', err);
+        // Fallback to localStorage
+        const linesByDate = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES_BY_DATE) || '{}');
+        linesByDate[date] = lines;
+        localStorage.setItem(CONFIG.STORAGE.LINES_BY_DATE, JSON.stringify(linesByDate));
+        return { success: true };
+    }
+}
+
+async function apiGetHistory() {
+    try {
+        const response = await fetch(`${API_BASE}/history`);
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getHistory error:', err);
+        return JSON.parse(localStorage.getItem(CONFIG.STORAGE.HISTORY) || '[]');
+    }
+}
+
+async function apiAddHistory(action, user, data) {
+    try {
+        const response = await fetch(`${API_BASE}/history`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, user, data })
+        });
+        if (!response.ok) throw new Error('API error');
+    } catch (err) {
+        console.error('API addHistory error:', err);
+        // Fallback to localStorage
+        const history = JSON.parse(localStorage.getItem(CONFIG.STORAGE.HISTORY) || '[]');
+        history.unshift({ id: Date.now(), action, user, data, timestamp: new Date().toISOString() });
+        if (history.length > 500) history.pop();
+        localStorage.setItem(CONFIG.STORAGE.HISTORY, JSON.stringify(history));
+    }
+}
 
 // ==========================================
 // ІНІЦІАЛІЗАЦІЯ
@@ -212,50 +334,42 @@ function parseAnimatorsCSV(csvText) {
     if (animatorsFromSheet.length > 0) updateLinesFromSheet();
 }
 
-function updateLinesFromSheet() {
+async function updateLinesFromSheet() {
     if (animatorsFromSheet.length === 0) return;
 
-    const lines = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES) || '[]');
     const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
 
-    // Оновити імена ліній відповідно до аніматорів на зміні
+    // Оновити імена ліній відповідно до аніматорів на зміну
     const updatedLines = animatorsFromSheet.map((name, index) => ({
-        id: lines[index]?.id || 'line' + Date.now() + index,
+        id: 'line' + Date.now() + index + '_' + formatDate(selectedDate),
         name: name,
         color: colors[index % colors.length],
         fromSheet: true
     }));
 
-    saveLinesForDate(selectedDate, updatedLines);
-    renderTimeline();
+    await saveLinesForDate(selectedDate, updatedLines);
+    await renderTimeline();
 }
 
 // ==========================================
 // ЛІНІЇ ПО ДАТАХ
 // ==========================================
 
-function getLinesForDate(date) {
+async function getLinesForDate(date) {
     const dateStr = formatDate(date);
-    const linesByDate = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES_BY_DATE) || '{}');
-
-    if (linesByDate[dateStr]) {
-        return linesByDate[dateStr];
+    // Перевірити кеш
+    if (cachedLines[dateStr]) {
+        return cachedLines[dateStr];
     }
-
-    // Якщо немає ліній для цієї дати - створити за замовчуванням (2 лінії)
-    const defaultLines = [
-        { id: 'line1_' + dateStr, name: 'Аніматор 1', color: '#4CAF50' },
-        { id: 'line2_' + dateStr, name: 'Аніматор 2', color: '#2196F3' }
-    ];
-    saveLinesForDate(date, defaultLines);
-    return defaultLines;
+    const lines = await apiGetLines(dateStr);
+    cachedLines[dateStr] = lines;
+    return lines;
 }
 
-function saveLinesForDate(date, lines) {
+async function saveLinesForDate(date, lines) {
     const dateStr = formatDate(date);
-    const linesByDate = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES_BY_DATE) || '{}');
-    linesByDate[dateStr] = lines;
-    localStorage.setItem(CONFIG.STORAGE.LINES_BY_DATE, JSON.stringify(linesByDate));
+    cachedLines[dateStr] = lines;
+    await apiSaveLines(dateStr, lines);
 }
 
 // ==========================================
@@ -441,12 +555,12 @@ function renderTimeScale() {
     container.appendChild(endMark);
 }
 
-function renderTimeline() {
+async function renderTimeline() {
     renderTimeScale();
 
     const container = document.getElementById('timelineLines');
-    const lines = getLinesForDate(selectedDate);
-    const bookings = getBookingsForDate(selectedDate);
+    const lines = await getLinesForDate(selectedDate);
+    const bookings = await getBookingsForDate(selectedDate);
     const { start } = getTimeRange();
 
     // Показати/сховати кнопку історії
@@ -553,9 +667,15 @@ function changeDate(days) {
     fetchAnimatorsFromSheet();
 }
 
-function getBookingsForDate(date) {
-    const bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
-    return bookings.filter(b => b.date === formatDate(date));
+async function getBookingsForDate(date) {
+    const dateStr = formatDate(date);
+    // Перевірити кеш
+    if (cachedBookings[dateStr]) {
+        return cachedBookings[dateStr];
+    }
+    const bookings = await apiGetBookings(dateStr);
+    cachedBookings[dateStr] = bookings;
+    return bookings;
 }
 
 // ==========================================
@@ -674,7 +794,7 @@ function updateCustomDuration() {
     document.getElementById('detailDuration').textContent = `${duration} хв`;
 }
 
-function handleBookingSubmit(e) {
+async function handleBookingSubmit(e) {
     e.preventDefault();
 
     const programId = document.getElementById('selectedProgram').value;
@@ -718,8 +838,10 @@ function handleBookingSubmit(e) {
     // Другий аніматор
     const secondAnimator = program.hosts > 1 ? document.getElementById('secondAnimatorSelect').value : null;
 
-    // Перевірка на накладання та паузу (перечитуємо дані!)
-    const conflict = checkConflicts(lineId, time, duration);
+    // Перевірка на накладання та паузу (перечитуємо дані з сервера!)
+    // Очистити кеш щоб отримати свіжі дані
+    delete cachedBookings[formatDate(selectedDate)];
+    const conflict = await checkConflicts(lineId, time, duration);
 
     if (conflict.overlap) {
         showNotification('❌ ПОМИЛКА: Цей час вже зайнятий!', 'error');
@@ -728,10 +850,10 @@ function handleBookingSubmit(e) {
 
     // Якщо є другий аніматор - перевірити конфлікти і для нього
     if (secondAnimator) {
-        const lines = getLinesForDate(selectedDate);
+        const lines = await getLinesForDate(selectedDate);
         const secondLine = lines.find(l => l.name === secondAnimator);
         if (secondLine) {
-            const secondConflict = checkConflicts(secondLine.id, time, duration);
+            const secondConflict = await checkConflicts(secondLine.id, time, duration);
             if (secondConflict.overlap) {
                 showNotification(`❌ ПОМИЛКА: Час зайнятий у ${secondAnimator}!`, 'error');
                 return;
@@ -765,16 +887,14 @@ function handleBookingSubmit(e) {
         createdAt: new Date().toISOString()
     };
 
-    const bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
-    bookings.push(booking);
-    localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify(bookings));
+    await apiCreateBooking(booking);
 
     // Записати в історію
-    logHistory('create', booking);
+    await apiAddHistory('create', currentUser?.username, booking);
 
     // Якщо потрібно 2 ведучих - створити бронювання для другого аніматора
     if (program.hosts > 1 && secondAnimator) {
-        const lines = getLinesForDate(selectedDate);
+        const lines = await getLinesForDate(selectedDate);
         const secondLine = lines.find(l => l.name === secondAnimator);
 
         if (secondLine) {
@@ -784,18 +904,20 @@ function handleBookingSubmit(e) {
                 lineId: secondLine.id,
                 linkedTo: booking.id
             };
-            bookings.push(secondBooking);
-            localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify(bookings));
+            await apiCreateBooking(secondBooking);
         }
     }
 
+    // Очистити кеш і перемалювати
+    delete cachedBookings[formatDate(selectedDate)];
     closeBookingPanel();
-    renderTimeline();
+    await renderTimeline();
     showNotification('Бронювання створено!', 'success');
 }
 
-function checkConflicts(lineId, time, duration) {
-    const bookings = getBookingsForDate(selectedDate).filter(b => b.lineId === lineId);
+async function checkConflicts(lineId, time, duration) {
+    const allBookings = await getBookingsForDate(selectedDate);
+    const bookings = allBookings.filter(b => b.lineId === lineId);
     const newStart = timeToMinutes(time);
     const newEnd = newStart + duration;
 
@@ -880,23 +1002,24 @@ function showBookingDetails(bookingId) {
     document.getElementById('bookingModal').classList.remove('hidden');
 }
 
-function deleteBooking(bookingId) {
+async function deleteBooking(bookingId) {
     if (!confirm('Видалити це бронювання?')) return;
 
-    let bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
-
-    // Видалити також пов'язане бронювання (для другого аніматора)
+    // Отримати дані бронювання для історії
+    const bookings = await getBookingsForDate(selectedDate);
     const booking = bookings.find(b => b.id === bookingId);
+
     if (booking) {
         // Записати в історію
-        logHistory('delete', booking);
-        bookings = bookings.filter(b => b.id !== bookingId && b.linkedTo !== bookingId);
+        await apiAddHistory('delete', currentUser?.username, booking);
     }
 
-    localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify(bookings));
+    await apiDeleteBooking(bookingId);
 
+    // Очистити кеш і перемалювати
+    delete cachedBookings[formatDate(selectedDate)];
     closeAllModals();
-    renderTimeline();
+    await renderTimeline();
     showNotification('Бронювання видалено', 'success');
 }
 
@@ -904,10 +1027,10 @@ function deleteBooking(bookingId) {
 // ПОКАЗ ІСТОРІЇ
 // ==========================================
 
-function showHistory() {
+async function showHistory() {
     if (!canViewHistory()) return;
 
-    const history = getHistory();
+    const history = await apiGetHistory();
     const modal = document.getElementById('historyModal');
     const container = document.getElementById('historyList');
 
@@ -928,7 +1051,7 @@ function showHistory() {
                         <span class="history-date">${date}</span>
                     </div>
                     <div class="history-details">
-                        ${item.data.label || item.data.programCode}: ${item.data.room} (${item.data.date} ${item.data.time})
+                        ${item.data?.label || item.data?.programCode || ''}: ${item.data?.room || ''} (${item.data?.date || ''} ${item.data?.time || ''})
                     </div>
                 </div>
             `;
@@ -943,8 +1066,8 @@ function showHistory() {
 // ЛІНІЇ (АНІМАТОРИ) - окремо для кожного дня
 // ==========================================
 
-function addNewLine() {
-    const lines = getLinesForDate(selectedDate);
+async function addNewLine() {
+    const lines = await getLinesForDate(selectedDate);
     const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
     const dateStr = formatDate(selectedDate);
 
@@ -954,13 +1077,13 @@ function addNewLine() {
         color: colors[lines.length % colors.length]
     });
 
-    saveLinesForDate(selectedDate, lines);
-    renderTimeline();
+    await saveLinesForDate(selectedDate, lines);
+    await renderTimeline();
     showNotification('Аніматора додано', 'success');
 }
 
-function editLineModal(lineId) {
-    const lines = getLinesForDate(selectedDate);
+async function editLineModal(lineId) {
+    const lines = await getLinesForDate(selectedDate);
     const line = lines.find(l => l.id === lineId);
     if (!line) return;
 
@@ -970,27 +1093,27 @@ function editLineModal(lineId) {
     document.getElementById('editLineModal').classList.remove('hidden');
 }
 
-function handleEditLine(e) {
+async function handleEditLine(e) {
     e.preventDefault();
 
     const lineId = document.getElementById('editLineId').value;
-    const lines = getLinesForDate(selectedDate);
+    const lines = await getLinesForDate(selectedDate);
     const index = lines.findIndex(l => l.id === lineId);
 
     if (index !== -1) {
         lines[index].name = document.getElementById('editLineName').value;
         lines[index].color = document.getElementById('editLineColor').value;
-        saveLinesForDate(selectedDate, lines);
+        await saveLinesForDate(selectedDate, lines);
 
         closeAllModals();
-        renderTimeline();
+        await renderTimeline();
         showNotification('Збережено', 'success');
     }
 }
 
-function deleteLine() {
+async function deleteLine() {
     const lineId = document.getElementById('editLineId').value;
-    const lines = getLinesForDate(selectedDate);
+    const lines = await getLinesForDate(selectedDate);
 
     if (lines.length <= 1) {
         showNotification('Має бути хоча б один аніматор', 'error');
@@ -1000,10 +1123,10 @@ function deleteLine() {
     if (!confirm('Видалити цього аніматора?')) return;
 
     const newLines = lines.filter(l => l.id !== lineId);
-    saveLinesForDate(selectedDate, newLines);
+    await saveLinesForDate(selectedDate, newLines);
 
     closeAllModals();
-    renderTimeline();
+    await renderTimeline();
     showNotification('Аніматора видалено', 'success');
 }
 

@@ -436,6 +436,11 @@ function renderTimeScale() {
             container.appendChild(mark);
         }
     }
+    // Додати мітку кінця робочого дня
+    const endMark = document.createElement('div');
+    endMark.className = 'time-mark hour end-mark';
+    endMark.textContent = `${end}:00`;
+    container.appendChild(endMark);
 }
 
 function renderTimeline() {

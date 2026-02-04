@@ -22,7 +22,7 @@ const PROGRAMS = [
     // Анімація
     { id: 'anim60', code: 'АН', label: 'АН(60)', name: 'Анімація 60хв', icon: '🎪', category: 'animation', duration: 60, price: 1500, hosts: 1 },
     { id: 'anim120', code: 'АН', label: 'АН(120)', name: 'Анімація 120хв', icon: '🎪', category: 'animation', duration: 120, price: 2500, hosts: 1 },
-    { id: 'anim_extra', code: '+Вед', label: '+Вед(60)', name: 'Додатк. аніматор', icon: '👯', category: 'animation', duration: 60, price: 700, hosts: 1 },
+    { id: 'anim_extra', code: '+Вед', label: '+Вед(60)', name: 'Додатковий ведучий', icon: '👯', category: 'animation', duration: 60, price: 700, hosts: 1 },
 
     // Шоу
     { id: 'bubble', code: 'Бульб', label: 'Бульб(30)', name: 'Шоу бульбашок', icon: '🔵', category: 'show', duration: 30, price: 2400, hosts: 1 },
@@ -429,7 +429,7 @@ function getHistory() {
 }
 
 function canViewHistory() {
-    return currentUser && (currentUser.username === 'Natalia' || currentUser.username === 'Sergey');
+    return currentUser !== null;
 }
 
 // ==========================================
@@ -936,7 +936,7 @@ async function openBookingPanel(time, lineId) {
     document.getElementById('secondAnimatorSection').classList.add('hidden');
     document.getElementById('pinataFillerSection').classList.add('hidden');
 
-    // Скинути toggle другого ведучого
+    // Скинути toggle додаткового ведучого
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle) {
         extraHostToggle.checked = false;
@@ -1195,7 +1195,7 @@ async function handleBookingSubmit(e) {
         }
     }
 
-    // Додатковий ведучий (+700 грн) - якщо toggle увімкнено
+    // Додатковий ведучий (700 грн/год) - якщо toggle увімкнено
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle && extraHostToggle.checked) {
         const extraHostAnimator = document.getElementById('extraHostAnimatorSelect').value;
@@ -1204,7 +1204,9 @@ async function handleBookingSubmit(e) {
             const extraLine = lines.find(l => l.name === extraHostAnimator);
 
             if (extraLine) {
-                const extraProgram = PROGRAMS.find(p => p.id === 'anim_extra');
+                // Тривалість = тривалість основної програми, ціна = 700 грн/год
+                const extraDuration = duration;
+                const extraPrice = Math.round(700 * (extraDuration / 60));
                 const extraBooking = {
                     id: 'BK' + (Date.now() + 2).toString(36).toUpperCase(),
                     date: formatDate(selectedDate),
@@ -1212,11 +1214,11 @@ async function handleBookingSubmit(e) {
                     lineId: extraLine.id,
                     programId: 'anim_extra',
                     programCode: '+Вед',
-                    label: '+Вед(60)',
-                    programName: 'Додатк. аніматор',
+                    label: `+Вед(${extraDuration})`,
+                    programName: 'Додатковий ведучий',
                     category: 'animation',
-                    duration: extraProgram ? extraProgram.duration : 60,
-                    price: 700,
+                    duration: extraDuration,
+                    price: extraPrice,
                     hosts: 1,
                     room: room,
                     linkedTo: booking.id,
@@ -1341,35 +1343,49 @@ async function deleteBooking(bookingId) {
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
 
-    // Знайти пов'язані бронювання (другий ведучий / додатковий аніматор)
-    const linkedBookings = bookings.filter(b => b.linkedTo === bookingId);
-    const hasLinked = linkedBookings.length > 0;
+    // Глибокий пошук всіх пов'язаних бронювань
+    // 1. Якщо видаляємо головне — знайти всі linkedTo === bookingId
+    // 2. Якщо видаляємо linked — знайти головне (booking.linkedTo) і всі його linked
+    let mainBookingId = bookingId;
+    let allToDelete = [];
+
+    if (booking.linkedTo) {
+        // Ми видаляємо пов'язане — знайти головне і всі інші пов'язані
+        mainBookingId = booking.linkedTo;
+        const mainBooking = bookings.find(b => b.id === mainBookingId);
+        if (mainBooking) {
+            allToDelete = bookings.filter(b => b.linkedTo === mainBookingId);
+            allToDelete.push(mainBooking);
+        } else {
+            allToDelete = [booking];
+        }
+    } else {
+        // Ми видаляємо головне — знайти всі пов'язані
+        allToDelete = bookings.filter(b => b.linkedTo === bookingId);
+        allToDelete.push(booking);
+    }
+
+    const othersCount = allToDelete.length - 1;
 
     // Підтвердження видалення (кастомний confirm для iOS)
-    const confirmMsg = hasLinked
-        ? `Видалити це бронювання разом з ${linkedBookings.length} пов'язаним(и)?`
+    const confirmMsg = othersCount > 0
+        ? `Видалити це бронювання разом з ${othersCount} пов'язаним(и)?`
         : 'Видалити це бронювання?';
 
     const confirmed = await customConfirm(confirmMsg, 'Видалення бронювання');
     if (!confirmed) return;
 
-    // Записати в історію
-    await apiAddHistory('delete', currentUser?.username, booking);
-
-    // Видалити основне бронювання
-    await apiDeleteBooking(bookingId);
-
-    // Видалити пов'язані бронювання
-    for (const linked of linkedBookings) {
-        await apiAddHistory('delete', currentUser?.username, { ...linked, deletedWith: bookingId });
-        await apiDeleteBooking(linked.id);
+    // Видалити всі пов'язані бронювання
+    for (const b of allToDelete) {
+        await apiAddHistory('delete', currentUser?.username, b);
+        await apiDeleteBooking(b.id);
     }
 
     // Очистити кеш і перемалювати
     delete cachedBookings[formatDate(selectedDate)];
     closeAllModals();
     await renderTimeline();
-    showNotification(hasLinked ? 'Бронювання та пов\'язані видалено' : 'Бронювання видалено', 'success');
+    showNotification(othersCount > 0 ? `Видалено ${allToDelete.length} бронювань` : 'Бронювання видалено', 'success');
 }
 
 async function shiftBookingTime(bookingId, minutes) {
@@ -1405,21 +1421,48 @@ async function shiftBookingTime(bookingId, minutes) {
         }
     }
 
-    // Оновити час бронювання
-    booking.time = newTime;
+    // Знайти пов'язані бронювання (другий/додатковий ведучий)
+    const linkedBookings = bookings.filter(b => b.linkedTo === bookingId);
 
-    // Видалити старе і створити нове (бо API не має update)
+    // Перевірити накладки для пов'язаних теж
+    for (const linked of linkedBookings) {
+        const linkedNewTime = addMinutesToTime(linked.time, minutes);
+        const linkedNewStart = timeToMinutes(linkedNewTime);
+        const linkedNewEnd = linkedNewStart + linked.duration;
+
+        const linkedOthers = bookings.filter(b => b.lineId === linked.lineId && b.id !== linked.id);
+        for (const other of linkedOthers) {
+            const start = timeToMinutes(other.time);
+            const end = start + other.duration;
+            if (linkedNewStart < end && linkedNewEnd > start) {
+                showNotification(`Неможливо перенести - накладка у пов'язаного аніматора!`, 'error');
+                return;
+            }
+        }
+    }
+
+    // Оновити основне бронювання
+    const newBooking = { ...booking, time: newTime };
     await apiDeleteBooking(bookingId);
-    await apiCreateBooking(booking);
+    await apiCreateBooking(newBooking);
+
+    // Оновити пов'язані бронювання разом
+    for (const linked of linkedBookings) {
+        const linkedNewTime = addMinutesToTime(linked.time, minutes);
+        const updatedLinked = { ...linked, time: linkedNewTime, linkedTo: newBooking.id };
+        await apiDeleteBooking(linked.id);
+        await apiCreateBooking(updatedLinked);
+    }
 
     // Записати в історію
-    await apiAddHistory('shift', currentUser?.username, { ...booking, shiftMinutes: minutes });
+    await apiAddHistory('shift', currentUser?.username, { ...newBooking, shiftMinutes: minutes });
 
     // Очистити кеш і перемалювати
     delete cachedBookings[formatDate(selectedDate)];
     closeAllModals();
     await renderTimeline();
-    showNotification(`Час перенесено на ${minutes > 0 ? '+' : ''}${minutes} хв`, 'success');
+    const linkedMsg = linkedBookings.length > 0 ? ` (+ ${linkedBookings.length} пов'язаних)` : '';
+    showNotification(`Час перенесено на ${minutes > 0 ? '+' : ''}${minutes} хв${linkedMsg}`, 'success');
 }
 
 // ==========================================

@@ -151,6 +151,8 @@
                 <input type="hidden" id="bookingTime">
                 <input type="hidden" id="bookingLine">
 
+                <!-- ===== БЛОК 1: Списки та налаштування (вгорі) ===== -->
+
                 <!-- Кімната -->
                 <div class="form-section">
                     <label>Кімната</label>
@@ -179,6 +181,35 @@
                         </optgroup>
                     </select>
                 </div>
+
+                <!-- Вибір костюма -->
+                <div class="form-section">
+                    <label>Костюм (опційно)</label>
+                    <select id="costumeSelect">
+                        <option value="">Без костюма</option>
+                    </select>
+                </div>
+
+                <!-- Toggle додатковий ведучий (700 грн/год) -->
+                <div id="extraHostSection" class="extra-host-section">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="extraHostToggle">
+                        <span class="toggle-text">Додати додаткового ведучого (700 грн/год)</span>
+                    </label>
+                    <div id="extraHostAnimatorSection" class="hidden">
+                        <select id="extraHostAnimatorSelect">
+                            <option value="">Оберіть аніматора</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Примітки -->
+                <div class="form-section">
+                    <label>Примітки (опційно)</label>
+                    <input type="text" id="bookingNotes" placeholder="Додаткова інформація...">
+                </div>
+
+                <!-- ===== БЛОК 2: Програма (нижче) ===== -->
 
                 <!-- Програми іконками -->
                 <div class="form-section">
@@ -258,7 +289,7 @@
                     </div>
                 </div>
 
-                <!-- Вибір другого аніматора -->
+                <!-- Вибір другого аніматора (для програм з hosts > 1) -->
                 <div id="secondAnimatorSection" class="second-animator-section hidden">
                     <div class="form-section">
                         <label>Другий аніматор</label>
@@ -271,33 +302,6 @@
                 <!-- Попередження про 2 ведучих -->
                 <div id="hostsWarning" class="hosts-warning hidden">
                     ⚠️ Ця програма потребує 2 ведучих!
-                </div>
-
-                <!-- Toggle другий ведучий (+700 грн) -->
-                <div id="extraHostSection" class="extra-host-section">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="extraHostToggle">
-                        <span class="toggle-text">Додати другого ведучого (+700 грн)</span>
-                    </label>
-                    <div id="extraHostAnimatorSection" class="hidden">
-                        <select id="extraHostAnimatorSelect">
-                            <option value="">Оберіть аніматора</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Вибір костюма -->
-                <div class="form-section">
-                    <label>Костюм (опційно)</label>
-                    <select id="costumeSelect">
-                        <option value="">Без костюма</option>
-                    </select>
-                </div>
-
-                <!-- Примітки -->
-                <div class="form-section">
-                    <label>Примітки (опційно)</label>
-                    <input type="text" id="bookingNotes" placeholder="Додаткова інформація...">
                 </div>
 
                 <button type="submit" class="btn-submit">Додати бронювання</button>

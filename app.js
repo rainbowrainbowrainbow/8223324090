@@ -1,6 +1,6 @@
 /**
  * Парк Закревського Періоду - Система бронювання
- * v3.0 - Великий реліз
+ * v3.1 - Розважальні програми + viewer role
  */
 
 // ==========================================
@@ -9,44 +9,52 @@
 
 const PROGRAMS = [
     // Квести
-    { id: 'kv1', code: 'КВ1', label: 'КВ1(60)', name: 'Легендарний тренд', icon: '🎭', category: 'quest', duration: 60, price: 2200, hosts: 1 },
-    { id: 'kv4', code: 'КВ4', label: 'КВ4(60)', name: 'Шпигунська історія', icon: '🕵️', category: 'quest', duration: 60, price: 2800, hosts: 2 },
-    { id: 'kv5', code: 'КВ5', label: 'КВ5(60)', name: 'Щенячий патруль', icon: '🐕', category: 'quest', duration: 60, price: 2700, hosts: 2 },
-    { id: 'kv6', code: 'КВ6', label: 'КВ6(90)', name: 'Лісова Академія', icon: '🌲', category: 'quest', duration: 90, price: 2100, hosts: 1 },
-    { id: 'kv7', code: 'КВ7', label: 'КВ7(60)', name: 'Гра в Кальмара', icon: '🦑', category: 'quest', duration: 60, price: 3300, hosts: 2 },
-    { id: 'kv8', code: 'КВ8', label: 'КВ8(60)', name: 'MineCraft 2', icon: '⛏️', category: 'quest', duration: 60, price: 2900, hosts: 2 },
-    { id: 'kv9', code: 'КВ9', label: 'КВ9(60)', name: 'Ліга Сітла', icon: '🦇', category: 'quest', duration: 60, price: 2500, hosts: 2 },
-    { id: 'kv10', code: 'КВ10', label: 'КВ10(60)', name: 'Бібліотека Чарів', icon: '📚', category: 'quest', duration: 60, price: 3000, hosts: 2 },
-    { id: 'kv11', code: 'КВ11', label: 'КВ11(60)', name: 'Секретна скарбів', icon: '💎', category: 'quest', duration: 60, price: 2500, hosts: 2 },
+    { id: 'kv1', code: 'КВ1', label: 'КВ1(60)', name: 'Легендарний тренд', icon: '🎭', category: 'quest', duration: 60, price: 2200, hosts: 1, age: '5-10р', kids: '4-10', description: 'Сучасна блогерська пригода на 60 хвилин: діти проходять серію веселих челенджів, знімають короткі відео «як у TikTok/YouTube», навчаються простим зйомкам і працюють у команді з ведучим-блогером. Наприкінці отримуєте змонтований ролик до 1 хв для пам\'яті, ролік робить до 2 тижнів.' },
+    { id: 'kv4', code: 'КВ4', label: 'КВ4(60)', name: 'Шпигунська історія', icon: '🕵️', category: 'quest', duration: 60, price: 2800, hosts: 2, age: '5-12р', kids: '4-10', description: 'Детективна історія про викрадену картину: за 60 хвилин діти вчаться помічати деталі, працюють із простими шифрами, збирають «докази» та організовують спостереження за підозрюваним. Кульмінація — командне розкриття справи та короткий брифінг від ведучого.' },
+    { id: 'kv5', code: 'КВ5', label: 'КВ5(60)', name: 'Щенячий патруль', icon: '🐕', category: 'quest', duration: 60, price: 2700, hosts: 2, age: '3-7р', kids: '3-10', description: 'У Парку зникла улюблена іграшка — Гусак. Команду очолюють знайомі дітям герої Чейз і Скай. На учасників чекає польовий іспит: пошук стендів-лап по території, дешифрування A5-вставками, збір «збирачок» із літерами та фінальна загадка в УФ-кімнаті. Завдання прокачують турботу, координацію й уважність до деталей. У фіналі — повернення Гусака та вручення Посвідчень рятувальників кожній дитині.' },
+    { id: 'kv6', code: 'КВ6', label: 'КВ6(90)', name: 'Лісова Академія', icon: '🌲', category: 'quest', duration: 90, price: 2100, hosts: 1, age: '4-10р', kids: '4-10', description: 'Магічна пригода з Мавкою на 90 хвилин: діти проходять 4 іспити стихій (Земля, Вода, Вогонь, Повітря), збирають таємничі амулети, розгадують загадки лісу та відкривають Скриньку Гармонії з УФ-кодами. Фінал — творчий майстер-клас: кожна дитина створює власну гру "Хрестики-нолики" з розмальованих камінців у тканевому мішечку, яку забирає додому. Ведуча в образі Мавки проводить урочисту посвяту в Хранителі Гармонії та вручає дипломи.' },
+    { id: 'kv7', code: 'КВ7', label: 'КВ7(60)', name: 'Гра в Кальмара', icon: '🦑', category: 'quest', duration: 60, price: 3300, hosts: 2, age: '5-12р', kids: '5-16', description: 'Командний квест, натхнений оригінальною франшизою. Ведучі в інтерактивних костюмах створюють впізнавану атмосферу без «жорстких» моментів. Етапи програми: стрілецький рубіж, мега-лабіринт із контрольними точками, зона реакції зі світло- та звуковими сигналами, кімната з пошуком підказок і складанням послідовності, естафета точності. Фінал — командний спринт через три міні-станції, підсумкове табло результатів і вручення стікерів.' },
+    { id: 'kv8', code: 'КВ8', label: 'КВ8(60)', name: 'MineCraft 2', icon: '⛏️', category: 'quest', duration: 60, price: 2900, hosts: 2, age: '6-12р', kids: '5-10', description: 'Minecraft-квест — не за екраном, а в реальному парку! Початок з міні майстеркласу: кожна дитина створює та забирає власний нікнейм для пригоди. Квест розгортається навколо загрози: Кріпер створив бомбу-статую, яка може знищити парк. На героїв чекають стратегічні задачі, конструкції, командна робота і атмосфера гри, де мета — врятувати парк і здолати Кріпера.' },
+    { id: 'kv9', code: 'КВ9', label: 'КВ9(60)', name: 'Ліга Світла', icon: '🦇', category: 'quest', duration: 60, price: 2500, hosts: 2, age: '4-10р', kids: '3-10', description: 'Місто згасло — зникли «іскри» енергії. Команди проходять станції спритності, кмітливості та взаємодопомоги, щоб зібрати іскри й перезапустити Світловий Щит міста. Наприкінці діти формують власний Кодекс Героя і проходять урочисту посвяту.' },
+    { id: 'kv10', code: 'КВ10', label: 'КВ10(60)', name: 'Бібліотека Чарів', icon: '📚', category: 'quest', duration: 60, price: 3000, hosts: 2, age: '5-16р', kids: '3-10', description: 'Діти отримують карту каталогу з порожніми осередками — у кожен треба повернути відповідну сторінку. Підказки знайдете в «нотатках автора», на форзацах і в схованках між полицями. Сторінки з\'єднуються в єдиний ланцюжок, що вказує на фінальний стенд. Завершіть збір — і том сам «розповість», що тримав у собі.' },
+    { id: 'kv11', code: 'КВ11', label: 'КВ11(60)', name: 'Секретна скарбів', icon: '💎', category: 'quest', duration: 60, price: 2500, hosts: 2, age: '5-12р', kids: '4-10', description: 'Фінал — Джейн оголошує "Церемонію Посвяти": кожна дитина проходить крізь "арку мечів" (бутафорія) і отримує піратське ім\'я та медаль. Скриня з трофеями, загальне фото з піратським салютом.' },
 
     // Анімація
-    { id: 'anim60', code: 'АН', label: 'АН(60)', name: 'Анімація 60хв', icon: '🎪', category: 'animation', duration: 60, price: 1500, hosts: 1 },
-    { id: 'anim120', code: 'АН', label: 'АН(120)', name: 'Анімація 120хв', icon: '🎪', category: 'animation', duration: 120, price: 2500, hosts: 1 },
-    { id: 'anim_extra', code: '+Вед', label: '+Вед(60)', name: 'Додатковий ведучий', icon: '👯', category: 'animation', duration: 60, price: 700, hosts: 1 },
+    { id: 'anim60', code: 'АН', label: 'АН(60)', name: 'Анімація 60хв', icon: '🎪', category: 'animation', duration: 60, price: 1500, hosts: 1, age: '3-9р', kids: '2-8', description: 'Рухливі ігри, танці та конкурси з яскравим реквізитом; ведучий у костюмі улюбленого героя; у фіналі — кульки-мечі або тваринки для кожного.' },
+    { id: 'anim120', code: 'АН', label: 'АН(120)', name: 'Анімація 120хв', icon: '🎪', category: 'animation', duration: 120, price: 2500, hosts: 1, age: '3-9р', kids: '2-8', description: 'Входить аквагрим; ще більше розваг — дітям точно вистачить часу на улюблені ігри.' },
+    { id: 'anim_extra', code: '+Вед', label: '+Вед(60)', name: 'Додатковий ведучий', icon: '👯', category: 'animation', duration: 60, price: 700, hosts: 1, description: 'Рекомендуємо, коли дітей багато або вони різного віку.' },
 
     // Шоу
-    { id: 'bubble', code: 'Бульб', label: 'Бульб(30)', name: 'Шоу бульбашок', icon: '🔵', category: 'show', duration: 30, price: 2400, hosts: 1 },
-    { id: 'neon_bubble', code: 'Неон', label: 'Неон(30)', name: 'Неон-бульбашки', icon: '✨', category: 'show', duration: 30, price: 2700, hosts: 1 },
-    { id: 'paper', code: 'Папір', label: 'Папір(30)', name: 'Паперове шоу', icon: '📄', category: 'show', duration: 30, price: 2900, hosts: 2 },
-    { id: 'dry_ice', code: 'Лід', label: 'Лід(40)', name: 'Сухий лід', icon: '❄️', category: 'show', duration: 40, price: 4400, hosts: 1 },
-    { id: 'football', code: 'Футб', label: 'Футб(90)', name: 'Футбол шоу', icon: '⚽', category: 'show', duration: 90, price: 3800, hosts: 1 },
-    { id: 'mafia', code: 'Мафія', label: 'Мафія(90)', name: 'Мафія', icon: '🎩', category: 'show', duration: 90, price: 2700, hosts: 1 },
+    { id: 'bubble', code: 'Бульб', label: 'Бульб(30)', name: 'Бульбашкове шоу', icon: '🔵', category: 'show', duration: 30, price: 2400, hosts: 1, age: '2-6р', kids: '2-16', description: 'Ефектні трюки з мильними бульбашками — гігантські кулі, «бульбашка в бульбашці», інтерактивні ігри з дітьми.' },
+    { id: 'neon_bubble', code: 'Неон', label: 'Неон(30)', name: 'Шоу неон-бульбашок', icon: '✨', category: 'show', duration: 30, price: 2700, hosts: 1, age: '2-8р', kids: '2-16', description: 'УФ-світло і бульбашки, що світяться — трюки з димом, великі кулі та фінальний неоновий «дощ».' },
+    { id: 'paper', code: 'Папір', label: 'Папір(30)', name: 'Паперове Неон-шоу', icon: '📄', category: 'show', duration: 30, price: 2900, hosts: 2, age: '4-12р', kids: '4-14', description: 'Танцювальна вечірка під УФ-лампами з паперовим вибухом, флешмобами та груповим фото в неон-стилі.' },
+    { id: 'dry_ice', code: 'Лід', label: 'Лід(40)', name: 'Шоу з сухим льодом', icon: '❄️', category: 'show', duration: 40, price: 4400, hosts: 1, age: '4-10р', kids: '2-16', description: 'Інтерактивна наука — густий туман, заморожування предметів і безпечний «льодовий вулкан».' },
+    { id: 'football', code: 'Футб', label: 'Футб(90)', name: 'Футбольне шоу', icon: '⚽', category: 'show', duration: 90, price: 3800, hosts: 1, age: '5-12р', kids: '2-16', description: 'Два ведучі (тренер і персонаж), естафети й конкурси з м\'ячами, трюки і фінальний міні-матч.' },
+    { id: 'mafia', code: 'Мафія', label: 'Мафія(90)', name: 'Мафія', icon: '🎩', category: 'show', duration: 90, price: 2700, hosts: 1, age: '4-10р', kids: '2-16', description: 'Дитяча детективна гра з ведучим — пояснення правил, розподіл ролей, 6–10 інтригуючих раундів і фінальне визначення переможців.' },
+
+    // Фото послуги
+    { id: 'photo60', code: 'Фото', label: 'Фото(60)', name: 'Фотосесія 60хв', icon: '📸', category: 'photo', duration: 60, price: 1600, hosts: 1, description: 'Професійний фотограф зафіксує всі яскраві моменти свята; 50–80 оброблених фотографій. Чекати до тижня.' },
+    { id: 'photo_magnets', code: 'Фото+', label: 'Фото+(60)', name: 'Фотосесія + магніти', icon: '📸', category: 'photo', duration: 60, price: 2600, hosts: 1, description: 'Фотосесія 60 хв + у цей же день друкуємо 5 фото-магнітів для всіх гостей.' },
+    { id: 'photo_magnet_extra', code: 'Магн', label: 'Магн', name: 'Додатковий магніт', icon: '🧲', category: 'photo', duration: 0, price: 2000, hosts: 0, description: 'Коли дітей більше п\'яти — замовляйте додаткові магніти, щоб кожен гість отримав свій сувенір.' },
+    { id: 'video', code: 'Відео', label: 'Відео', name: 'Аніматорська відеозйомка', icon: '🎥', category: 'photo', duration: 0, price: 6000, hosts: 0, description: 'Аніматор зніме динамічне відео (≈90 сек) прямо під час програми; змонтований ролик — протягом тижня.' },
 
     // Майстер-класи
-    { id: 'mk_candy', code: 'МК', label: 'Цукерки(90)', name: 'МК Цукерки', icon: '🍬', category: 'masterclass', duration: 90, price: 0, hosts: 1, perChild: true },
-    { id: 'mk_thermomosaic', code: 'МК', label: 'Термо(45)', name: 'МК Термомозаїка', icon: '🔲', category: 'masterclass', duration: 45, price: 0, hosts: 1, perChild: true },
-    { id: 'mk_slime', code: 'МК', label: 'Слайм(45)', name: 'МК Слайми', icon: '🧪', category: 'masterclass', duration: 45, price: 0, hosts: 1, perChild: true },
-    { id: 'mk_tshirt', code: 'МК', label: 'Футб(90)', name: 'МК Розпис футболок', icon: '👕', category: 'masterclass', duration: 90, price: 0, hosts: 1, perChild: true },
-    { id: 'mk_cookie', code: 'МК', label: 'Прян(60)', name: 'МК Розпис пряників', icon: '🍪', category: 'masterclass', duration: 60, price: 0, hosts: 1, perChild: true },
-    { id: 'mk_ecobag', code: 'МК', label: 'Сумки(75)', name: 'МК Розпис еко-сумок', icon: '👜', category: 'masterclass', duration: 75, price: 0, hosts: 1, perChild: true },
-    { id: 'mk_pizza_classic', code: 'МК', label: 'Піца(45)', name: 'МК Класична піца', icon: '🍕', category: 'masterclass', duration: 45, price: 0, hosts: 1, perChild: true },
-    { id: 'mk_pizza_custom', code: 'МК', label: 'ПіцаК(45)', name: 'МК Кастомна піца', icon: '🍕', category: 'masterclass', duration: 45, price: 0, hosts: 1, perChild: true },
-    { id: 'mk_cakepops', code: 'МК', label: 'Кейки(90)', name: 'МК Кейк-попси', icon: '🍡', category: 'masterclass', duration: 90, price: 0, hosts: 1, perChild: true },
-    { id: 'mk_cupcake', code: 'МК', label: 'Капк(120)', name: 'МК Капкейки', icon: '🧁', category: 'masterclass', duration: 120, price: 0, hosts: 1, perChild: true },
-    { id: 'mk_soap', code: 'МК', label: 'Мило(90)', name: 'МК Миловаріння', icon: '🧼', category: 'masterclass', duration: 90, price: 0, hosts: 1, perChild: true },
+    { id: 'mk_candy', code: 'МК', label: 'Цукерки(90)', name: 'МК Цукерки', icon: '🍬', category: 'masterclass', duration: 90, price: 370, hosts: 1, perChild: true, age: 'від 7р', kids: '5-25', description: 'Солодка подорож у світ шоколаду: діти дізнаються цікаві факти про історію какао і технологію виготовлення цукерок, власноруч формують свої ласощі. В кінці майстер-класу кожен маленький шоколатьє акуратно упакує створені цукерки в спеціальні подарункові коробочки, щоб потішити рідних і друзів.' },
+    { id: 'mk_thermomosaic', code: 'МК', label: 'Термо(45)', name: 'МК Термомозаїка', icon: '🔲', category: 'masterclass', duration: 45, price: 390, hosts: 1, perChild: true, age: 'від 5р', kids: '5-50', description: 'Діти розташовують кольорові пластикові намистини у заздалегідь підготовлені шаблони. Потім під пильним наглядом праскою вони фіксують композиції, завдяки чому намистинки зварюються в міцне кольорове панно. Кожен учасник забирає додому свій унікальний аксесуар — підставку, брелок або прикрасу.' },
+    { id: 'mk_slime', code: 'МК', label: 'Слайм(45)', name: 'МК Слайми', icon: '🧪', category: 'masterclass', duration: 45, price: 390, hosts: 1, perChild: true, age: 'від 4р', kids: '5-50', description: 'Учасники власноруч виробляють слайм із бажаною консистенцією, кольором і ефектами, а також мають змогу оформити баночку з авторською етикеткою. Під час заняття діти вивчають базові принципи виготовлення слаймів, вчаться підбирати компоненти і зберігати готовий виріб.' },
+    { id: 'mk_tshirt', code: 'МК', label: 'Футб(90)', name: 'МК Розпис футболок', icon: '👕', category: 'masterclass', duration: 90, price: 450, hosts: 1, perChild: true, age: 'від 6р', kids: '5-25', description: 'Цей майстер-клас не вимагає навичок художника — діти працюють за готовими шаблонами або можуть обрати власну тему для розпису. Вони навчаються поєднувати кольори і стильні елементи, створюючи персональний дизайн, який витримує до 50 прань. В результаті кожен отримує унікальну річ, яку можна носити з гордістю.' },
+    { id: 'mk_cookie', code: 'МК', label: 'Прян(60)', name: 'МК Розпис пряників', icon: '🍪', category: 'masterclass', duration: 60, price: 300, hosts: 1, perChild: true, age: 'від 5р', kids: '5-50', description: 'Майстер-клас із розпису складається з творчої роботи над трьома ароматними пряниками, які заздалегідь випікають для кожного. Діти вчаться акуратно працювати з глазур\'ю, створюють красиві малюнки та отримують смачні сувеніри.' },
+    { id: 'mk_ecobag', code: 'МК', label: 'Сумки(75)', name: 'МК Розпис еко-сумок', icon: '👜', category: 'masterclass', duration: 75, price: 390, hosts: 1, perChild: true, age: 'від 4р', kids: '5-50', description: 'За час заняття учасники прикрашають екологічні сумки стильними малюнками, вчаться гармонійно поєднувати кольори й форми. Кожен створює унікальний шопер, який стане і модним, і корисним подарунком.' },
+    { id: 'mk_pizza_classic', code: 'МК', label: 'Піца(45)', name: 'МК Класична піца', icon: '🍕', category: 'masterclass', duration: 45, price: 290, hosts: 1, perChild: true, age: 'від 4р', kids: '5-20', description: 'Діти готують справжню італійську піцу з нуля, використовуючи свіже тісто, томатний соус, моцарелу, ковбаски, свіжі помідори. За годину учасники вчаться розкочувати тісто, рівномірно розподіляти інгредієнти та контролювати процес випікання, отримуючи ароматну піцу власного приготування.' },
+    { id: 'mk_pizza_custom', code: 'МК', label: 'ПіцаК(45)', name: 'МК Кастомна піца', icon: '🍕', category: 'masterclass', duration: 45, price: 430, hosts: 1, perChild: true, age: 'від 4р', kids: '5-29', description: 'Персоналізована піца за власним рецептом: діти експериментують із смаками, додаючи кукурудзу, копчену курку, цибулю, перець чи зелень на свій розсуд. Гнучкий підхід дозволяє замінити будь-які інгредієнти на ті, що більше подобаються, створюючи справді авторський кулінарний витвір.' },
+    { id: 'mk_cakepops', code: 'МК', label: 'Кейки(90)', name: 'МК Кейк-попси', icon: '🍡', category: 'masterclass', duration: 90, price: 330, hosts: 1, perChild: true, age: 'від 6р', kids: '5-50', description: 'Діти ліплять бісквітні кульки, занурюють їх у шоколадну глазур і прикрашають кольоровими посипками, а потім акуратно пакують по кілька штук у стильні коробочки. Кожен виготовляє 3 вироби, щоб вистачило і скуштувати, і поділитись.' },
+    { id: 'mk_cupcake', code: 'МК', label: 'Капк(120)', name: 'МК Капкейки', icon: '🧁', category: 'masterclass', duration: 120, price: 450, hosts: 1, perChild: true, age: 'від 4р', kids: '5-20', description: 'На основі свіжовипічених капкейків, підготовлених майстром заздалегідь, діти створюють яскраві десерти з використанням різних видів крему, топерів і кондитерських прикрас. Кожен учасник декорує власні капкейки згідно з своєю фантазією.' },
+    { id: 'mk_soap', code: 'МК', label: 'Мило(90)', name: 'МК Миловаріння', icon: '🧼', category: 'masterclass', duration: 90, price: 450, hosts: 1, perChild: true, age: 'від 6р', kids: '5-20', description: 'Діти знайомляться з основами натурального миловаріння, обирають ароматні добавки, барвники та формочки для створення унікальних виробів. Учасники дізнаються секрети виготовлення мила своїми руками та красиво пакують готові шматочки, щоб подарувати друзям або залишити собі.' },
 
-    // Піньята (одна позиція)
-    { id: 'pinata', code: 'Пін', label: 'Пін(15)', name: 'Піньята', icon: '🎊', category: 'pinata', duration: 15, price: 700, hosts: 1, hasFiller: true },
+    // Піньяти
+    { id: 'pinata', code: 'Пін', label: 'Пін(15)', name: 'Піньята', icon: '🎊', category: 'pinata', duration: 15, price: 700, hosts: 1, hasFiller: true, age: '2-99р', kids: 'до 15', description: 'Будь-яка кругла піньята з каталогу на ваш вибір; наповнена цукерками та сюрпризами; розрахована на компанію до 15 дітей.' },
+    { id: 'pinata_custom', code: 'ПінН', label: 'ПінН(15)', name: 'Піньята Нестандартна', icon: '🎊', category: 'pinata', duration: 15, price: 1000, hosts: 1, hasFiller: true, age: '2-99р', kids: 'до 15', description: 'Унікальна форма з особливого розділу або піньята на індивідуальне замовлення; втілюємо вашу ідею у життя.' },
+    { id: 'pinata_party', code: 'ПінП', label: 'ПінП(15)', name: 'Піньята Паті', icon: '🎉', category: 'pinata', duration: 15, price: 2000, hosts: 1, hasFiller: true, age: '2-99р', kids: 'до 30', description: 'Велика святкова піньята для великих компаній; вміщує більше цукерок та подарунків; ідеально для вечірки до 30 дітей.' },
 
     // Кастомна позиція
     { id: 'custom', code: 'Інше', label: 'Інше', name: 'Інше (вкажіть)', icon: '✏️', category: 'custom', duration: 30, price: 0, hosts: 1, isCustom: true }
@@ -258,7 +266,8 @@ function initializeDefaultData() {
         { username: 'Vitalina', password: 'Vitalina109', role: 'user', name: 'Віталіна' },
         { username: 'Dasha', password: 'Dasha743', role: 'user', name: 'Даша' },
         { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
-        { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' }
+        { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
+        { username: 'Animator', password: 'Animator612', role: 'viewer', name: 'Аніматор' }
     ]));
 
     if (!localStorage.getItem(CONFIG.STORAGE.HISTORY)) {
@@ -477,6 +486,10 @@ function showLoginScreen() {
     document.getElementById('mainApp').classList.add('hidden');
 }
 
+function isViewer() {
+    return currentUser && currentUser.role === 'viewer';
+}
+
 function showMainApp() {
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('mainApp').classList.remove('hidden');
@@ -485,11 +498,21 @@ function showMainApp() {
     // Показати кнопку "Аніматори" тільки для Сергія
     const animatorsBtn = document.getElementById('animatorsTabBtn');
     if (animatorsBtn) {
-        if (currentUser.username === 'Sergey') {
-            animatorsBtn.classList.remove('hidden');
-        } else {
-            animatorsBtn.classList.add('hidden');
-        }
+        animatorsBtn.classList.toggle('hidden', currentUser.username !== 'Sergey');
+    }
+
+    // Показати/сховати кнопку "Розважальні програми"
+    const programsTabBtn = document.getElementById('programsTabBtn');
+    if (programsTabBtn) {
+        programsTabBtn.classList.remove('hidden');
+    }
+
+    // Viewer: сховати кнопки редагування
+    if (isViewer()) {
+        const addLineBtn = document.getElementById('addLineBtn');
+        if (addLineBtn) addLineBtn.style.display = 'none';
+        const exportBtn = document.getElementById('exportTimelineBtn');
+        if (exportBtn) exportBtn.style.display = 'none';
     }
 
     initializeTimeline();
@@ -580,6 +603,12 @@ function initializeEventListeners() {
         animatorsTabBtn.addEventListener('click', showAnimatorsModal);
     }
 
+    // Кнопка "Розважальні програми"
+    const programsTabBtn = document.getElementById('programsTabBtn');
+    if (programsTabBtn) {
+        programsTabBtn.addEventListener('click', showProgramsCatalog);
+    }
+
     // Збереження списку аніматорів
     const saveAnimatorsBtn = document.getElementById('saveAnimatorsBtn');
     if (saveAnimatorsBtn) {
@@ -663,9 +692,9 @@ function renderTimeScale() {
 }
 
 async function renderTimeline() {
-    // Показати кнопку додати аніматора
+    // Показати кнопку додати аніматора (не для viewer)
     const addLineBtn = document.getElementById('addLineBtn');
-    if (addLineBtn) addLineBtn.style.display = '';
+    if (addLineBtn) addLineBtn.style.display = isViewer() ? 'none' : '';
 
     // Режим декількох днів
     if (multiDayMode) {
@@ -744,6 +773,7 @@ function renderGridCells(lineId) {
 }
 
 function selectCell(cell) {
+    if (isViewer()) return; // Viewer не може створювати бронювання
     document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
     cell.classList.add('selected');
     selectedCell = cell;
@@ -969,17 +999,42 @@ function renderProgramIcons() {
     const container = document.getElementById('programsIcons');
     container.innerHTML = '';
 
-    PROGRAMS.forEach(p => {
-        const icon = document.createElement('div');
-        icon.className = `program-icon ${p.category}`;
-        icon.dataset.programId = p.id;
-        icon.innerHTML = `
-            <span class="icon">${p.icon}</span>
-            <span class="name">${p.label}</span>
-        `;
+    const categoryOrder = ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata', 'custom'];
+    const categoryNames = {
+        animation: 'Анімація',
+        show: 'Wow-Шоу',
+        quest: 'Квести',
+        photo: 'Фото послуги',
+        masterclass: 'Майстер-класи',
+        pinata: 'Піньяти',
+        custom: 'Інше'
+    };
 
-        icon.addEventListener('click', () => selectProgram(p.id));
-        container.appendChild(icon);
+    categoryOrder.forEach(cat => {
+        const programs = PROGRAMS.filter(p => p.category === cat);
+        if (programs.length === 0) return;
+
+        // Заголовок категорії
+        const header = document.createElement('div');
+        header.className = 'category-header';
+        header.textContent = categoryNames[cat] || cat;
+        container.appendChild(header);
+
+        // Іконки програм
+        const grid = document.createElement('div');
+        grid.className = 'category-grid';
+        programs.forEach(p => {
+            const icon = document.createElement('div');
+            icon.className = `program-icon ${p.category}`;
+            icon.dataset.programId = p.id;
+            icon.innerHTML = `
+                <span class="icon">${p.icon}</span>
+                <span class="name">${p.label}</span>
+            `;
+            icon.addEventListener('click', () => selectProgram(p.id));
+            grid.appendChild(icon);
+        });
+        container.appendChild(grid);
     });
 }
 
@@ -994,9 +1049,15 @@ function selectProgram(programId) {
 
     // Показати деталі
     const priceText = program.perChild ? `${program.price} грн/дит` : `${program.price} грн`;
-    document.getElementById('detailDuration').textContent = `${program.duration} хв`;
+    document.getElementById('detailDuration').textContent = program.duration > 0 ? `${program.duration} хв` : '—';
     document.getElementById('detailHosts').textContent = program.hosts;
     document.getElementById('detailPrice').textContent = priceText;
+
+    const ageEl = document.getElementById('detailAge');
+    const kidsEl = document.getElementById('detailKids');
+    if (ageEl) ageEl.textContent = program.age || '—';
+    if (kidsEl) kidsEl.textContent = program.kids || '—';
+
     document.getElementById('programDetails').classList.remove('hidden');
 
     // Кастомна програма
@@ -1298,6 +1359,29 @@ async function showBookingDetails(bookingId) {
     const lines = await getLinesForDate(bookingDate);
     const line = lines.find(l => l.id === booking.lineId);
 
+    // Знайти програму для опису
+    const program = PROGRAMS.find(p => p.id === booking.programId);
+    const descriptionHtml = program && program.description
+        ? `<div class="booking-detail-description"><span class="label">Опис:</span><p>${program.description}</p></div>`
+        : '';
+
+    const editControls = isViewer() ? '' : `
+        <div class="booking-time-shift">
+            <span class="label">Перенести час:</span>
+            <div class="time-shift-buttons">
+                <button onclick="shiftBookingTime('${booking.id}', -30)">-30</button>
+                <button onclick="shiftBookingTime('${booking.id}', -15)">-15</button>
+                <button onclick="shiftBookingTime('${booking.id}', 15)">+15</button>
+                <button onclick="shiftBookingTime('${booking.id}', 30)">+30</button>
+                <button onclick="shiftBookingTime('${booking.id}', 45)">+45</button>
+                <button onclick="shiftBookingTime('${booking.id}', 60)">+60</button>
+            </div>
+        </div>
+        <div class="booking-actions">
+            <button onclick="deleteBooking('${booking.id}')">Видалити бронювання</button>
+        </div>
+    `;
+
     document.getElementById('bookingDetails').innerHTML = `
         <div class="booking-detail-header">
             <h3>${booking.label || booking.programCode}: ${booking.programName}</h3>
@@ -1326,20 +1410,8 @@ async function showBookingDetails(bookingId) {
             <span class="value">${booking.price} грн</span>
         </div>
         ${booking.notes ? `<div class="booking-detail-row"><span class="label">Примітки:</span><span class="value">${booking.notes}</span></div>` : ''}
-        <div class="booking-time-shift">
-            <span class="label">Перенести час:</span>
-            <div class="time-shift-buttons">
-                <button onclick="shiftBookingTime('${booking.id}', -30)">-30</button>
-                <button onclick="shiftBookingTime('${booking.id}', -15)">-15</button>
-                <button onclick="shiftBookingTime('${booking.id}', 15)">+15</button>
-                <button onclick="shiftBookingTime('${booking.id}', 30)">+30</button>
-                <button onclick="shiftBookingTime('${booking.id}', 45)">+45</button>
-                <button onclick="shiftBookingTime('${booking.id}', 60)">+60</button>
-            </div>
-        </div>
-        <div class="booking-actions">
-            <button onclick="deleteBooking('${booking.id}')">Видалити бронювання</button>
-        </div>
+        ${descriptionHtml}
+        ${editControls}
     `;
 
     document.getElementById('bookingModal').classList.remove('hidden');
@@ -1507,6 +1579,68 @@ async function showHistory() {
             `;
         });
     }
+
+    container.innerHTML = html;
+    modal.classList.remove('hidden');
+}
+
+// ==========================================
+// РОЗВАЖАЛЬНІ ПРОГРАМИ (вкладка)
+// ==========================================
+
+function showProgramsCatalog() {
+    const modal = document.getElementById('programsCatalogModal');
+    const container = document.getElementById('programsCatalogList');
+
+    const categoryOrder = ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata'];
+    const categoryNames = {
+        animation: 'Анімаційні розважальні програми',
+        show: 'Wow-Шоу',
+        quest: 'Квести',
+        photo: 'Фото послуги',
+        masterclass: 'Майстер-класи',
+        pinata: 'Піньяти'
+    };
+    const categoryIcons = {
+        animation: '🎪', show: '✨', quest: '🗝️', photo: '📸', masterclass: '🎨', pinata: '🎊'
+    };
+
+    let html = '';
+
+    categoryOrder.forEach(cat => {
+        const programs = PROGRAMS.filter(p => p.category === cat);
+        if (programs.length === 0) return;
+
+        html += `<div class="catalog-category">
+            <h4 class="catalog-category-title ${cat}">${categoryIcons[cat] || ''} ${categoryNames[cat]}</h4>
+            <div class="catalog-programs">`;
+
+        programs.forEach(p => {
+            const priceText = p.perChild ? `${p.price} грн/дит` : `${p.price} грн`;
+            const durationText = p.duration > 0 ? `${p.duration} хв` : '';
+            const hostsText = p.hosts > 0 ? `${p.hosts} вед.` : '';
+            const infoItems = [durationText, hostsText].filter(Boolean).join(', ');
+
+            html += `
+                <div class="catalog-program-card ${cat}">
+                    <div class="catalog-program-header">
+                        <span class="catalog-icon">${p.icon}</span>
+                        <div class="catalog-program-info">
+                            <span class="catalog-program-name">${p.name}</span>
+                            <span class="catalog-program-meta">${priceText}${infoItems ? ' · ' + infoItems : ''}</span>
+                        </div>
+                    </div>
+                    ${p.age || p.kids ? `<div class="catalog-program-tags">
+                        ${p.age ? `<span class="catalog-tag age">${p.age}</span>` : ''}
+                        ${p.kids ? `<span class="catalog-tag kids">${p.kids} діт</span>` : ''}
+                    </div>` : ''}
+                    ${p.description ? `<p class="catalog-program-desc">${p.description}</p>` : ''}
+                </div>
+            `;
+        });
+
+        html += `</div></div>`;
+    });
 
     container.innerHTML = html;
     modal.classList.remove('hidden');
@@ -1719,6 +1853,7 @@ async function exportTimelineImage() {
                 quest: '#9C27B0',
                 animation: '#00BCD4',
                 show: '#FF5722',
+                photo: '#00ACC1',
                 masterclass: '#8BC34A',
                 pinata: '#E91E63',
                 custom: '#607D8B'

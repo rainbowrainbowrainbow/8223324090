@@ -13,6 +13,7 @@
     --show: #D84315;         /* Темніший помаранчевий */
     --masterclass: #558B2F;  /* Темніший зелений */
     --pinata: #AD1457;       /* Темніший рожевий */
+    --photo: #00838F;        /* Темний бірюзовий */
     --custom: #37474F;       /* Темніший сірий */
     --success: #2E7D32;
     --warning: #EF6C00;
@@ -581,6 +582,7 @@ input[type="date"] {
 .mini-booking-block.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
 .mini-booking-block.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
 .mini-booking-block.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
+.mini-booking-block.photo { background: linear-gradient(135deg, #00ACC1 0%, #00838F 100%); }
 .mini-booking-block.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
 
 .mini-booking-text {
@@ -790,6 +792,7 @@ input[type="date"] {
 .booking-block.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
 .booking-block.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
 .booking-block.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
+.booking-block.photo { background: linear-gradient(135deg, #00ACC1 0%, #00838F 100%); }
 .booking-block.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
 
 .booking-block .title {
@@ -898,6 +901,7 @@ input[type="date"] {
 .dot.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
 .dot.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
 .dot.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
+.dot.photo { background: linear-gradient(135deg, #00ACC1 0%, #00838F 100%); }
 .dot.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
 
 /* ==========================================
@@ -1063,6 +1067,7 @@ input[type="date"] {
 .program-icon.show { border-left: 4px solid #F4511E; background: #FBE9E7; }
 .program-icon.masterclass { border-left: 4px solid #7CB342; background: #F1F8E9; }
 .program-icon.pinata { border-left: 4px solid #EC407A; background: #FCE4EC; }
+.program-icon.photo { border-left: 4px solid #00ACC1; background: #E0F7FA; }
 .program-icon.custom { border-left: 4px solid #546E7A; background: #ECEFF1; }
 
 /* Деталі програми */
@@ -1629,4 +1634,202 @@ input[type="date"] {
 
     .logo-text h1 { display: none; }
     .logo-img-small { width: 32px; height: 32px; }
+}
+
+/* ==========================================
+   КНОПКА РОЗВАЖАЛЬНІ ПРОГРАМИ
+   ========================================== */
+
+.btn-programs {
+    padding: 10px 18px;
+    background: linear-gradient(135deg, #7B1FA2 0%, #6A1B9A 100%);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.btn-programs:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(123, 31, 162, 0.3);
+}
+
+/* ==========================================
+   КАТЕГОРІЇ В ФОРМІ БРОНЮВАННЯ
+   ========================================== */
+
+.programs-icons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.category-header {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--gray);
+    padding: 8px 0 4px;
+    border-bottom: 1px solid #E9ECEF;
+    margin-top: 4px;
+}
+
+.category-header:first-child {
+    margin-top: 0;
+}
+
+.category-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+
+/* ==========================================
+   КАТАЛОГ ПРОГРАМ (модальне вікно)
+   ========================================== */
+
+.modal-catalog {
+    max-width: 650px;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.catalog-list {
+    margin-top: 16px;
+}
+
+.catalog-category {
+    margin-bottom: 24px;
+}
+
+.catalog-category-title {
+    font-size: 15px;
+    font-weight: 800;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 12px;
+    color: var(--white);
+}
+
+.catalog-category-title.animation { background: linear-gradient(135deg, #039BE5 0%, #0277BD 100%); }
+.catalog-category-title.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
+.catalog-category-title.quest { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); }
+.catalog-category-title.photo { background: linear-gradient(135deg, #00ACC1 0%, #00838F 100%); }
+.catalog-category-title.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
+.catalog-category-title.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
+
+.catalog-programs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.catalog-program-card {
+    background: var(--light);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    border-left: 4px solid var(--gray);
+}
+
+.catalog-program-card.animation { border-left-color: #039BE5; }
+.catalog-program-card.show { border-left-color: #F4511E; }
+.catalog-program-card.quest { border-left-color: #9C27B0; }
+.catalog-program-card.photo { border-left-color: #00ACC1; }
+.catalog-program-card.masterclass { border-left-color: #7CB342; }
+.catalog-program-card.pinata { border-left-color: #EC407A; }
+
+.catalog-program-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.catalog-icon {
+    font-size: 24px;
+}
+
+.catalog-program-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.catalog-program-name {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--dark);
+}
+
+.catalog-program-meta {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.catalog-program-tags {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.catalog-tag {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: #E3F2FD;
+    color: #1565C0;
+}
+
+.catalog-tag.kids {
+    background: #F3E5F5;
+    color: #7B1FA2;
+}
+
+.catalog-program-desc {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--gray);
+    margin-top: 6px;
+}
+
+/* ==========================================
+   ОПИС В ДЕТАЛЯХ БРОНЮВАННЯ
+   ========================================== */
+
+.booking-detail-description {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #E0E0E0;
+}
+
+.booking-detail-description .label {
+    display: block;
+    font-size: 12px;
+    color: var(--gray);
+    margin-bottom: 6px;
+}
+
+.booking-detail-description p {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--dark);
+}
+
+/* ==========================================
+   АДАПТИВНІСТЬ НОВИХ ЕЛЕМЕНТІВ
+   ========================================== */
+
+@media (max-width: 768px) {
+    .category-grid { grid-template-columns: repeat(3, 1fr); }
+    .btn-programs { padding: 8px 12px; font-size: 12px; }
+    .modal-catalog { max-height: 90vh; }
+}
+
+@media (max-width: 480px) {
+    .category-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
 }

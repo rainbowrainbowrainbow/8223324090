@@ -69,58 +69,71 @@ body {
 .login-logo h1 { font-size: 22px; font-weight: 900; color: var(--primary); margin-top: 12px; }
 .tagline { color: var(--gray); font-size: 13px; margin-top: 6px; font-weight: 600; }
 
-/* Changelog - скритий за замовчуванням */
-.changelog-details {
-    margin-bottom: 24px;
-}
-
-.changelog-summary {
-    cursor: pointer;
-    padding: 10px 14px;
+/* Кнопка Changelog */
+.btn-changelog {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 20px;
     background: var(--light);
+    border: 2px solid var(--primary-light);
     border-radius: var(--radius-sm);
     font-weight: 700;
     font-size: 13px;
     color: var(--primary);
+    cursor: pointer;
+    font-family: inherit;
     transition: all 0.2s;
-    list-style: none;
 }
 
-.changelog-summary::-webkit-details-marker {
-    display: none;
-}
-
-.changelog-summary::before {
-    content: "▶ ";
-    font-size: 10px;
-}
-
-.changelog-details[open] .changelog-summary::before {
-    content: "▼ ";
-}
-
-.changelog-summary:hover {
+.btn-changelog:hover {
     background: var(--primary-light);
+    border-color: var(--primary);
 }
 
-.changelog {
-    background: var(--light);
-    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-    padding: 14px 18px;
-    font-size: 12px;
-    margin-top: -4px;
+/* Модальне вікно Changelog */
+.modal-changelog {
+    max-width: 500px;
+    max-height: 80vh;
+    overflow-y: auto;
 }
 
-.changelog ul {
+.changelog-list {
+    margin-top: 16px;
+}
+
+.changelog-section {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #E0E0E0;
+}
+
+.changelog-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.changelog-section h4 {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 10px;
+}
+
+.changelog-section ul {
     list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.changelog-section li {
+    padding: 4px 0 4px 16px;
+    position: relative;
+    font-size: 13px;
     color: var(--gray);
 }
-.changelog li {
-    padding: 3px 0;
-    padding-left: 16px;
-    position: relative;
-}
-.changelog li::before {
+
+.changelog-section li::before {
     content: "•";
     position: absolute;
     left: 0;

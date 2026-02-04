@@ -1,6 +1,6 @@
 /**
  * Парк Закревського Періоду - Система бронювання
- * v2.9 - Нові фічі та виправлення
+ * v3.0 - Великий реліз
  */
 
 // ==========================================
@@ -511,6 +511,14 @@ function initializeEventListeners() {
     });
 
     document.getElementById('logoutBtn').addEventListener('click', logout);
+
+    // Changelog кнопка
+    const changelogBtn = document.getElementById('changelogBtn');
+    if (changelogBtn) {
+        changelogBtn.addEventListener('click', () => {
+            document.getElementById('changelogModal').classList.remove('hidden');
+        });
+    }
 
     // Таймлайн
     document.getElementById('prevDay').addEventListener('click', () => changeDate(-1));

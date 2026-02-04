@@ -66,6 +66,10 @@ async function initDatabase() {
             )
         `);
 
+        // v3.2: Add new columns if they don't exist
+        await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'confirmed'`);
+        await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS kids_count INTEGER`);
+
         console.log('Database initialized');
     } catch (err) {
         console.error('Database init error:', err);
@@ -106,7 +110,9 @@ app.get('/api/bookings/:date', async (req, res) => {
             notes: row.notes,
             createdBy: row.created_by,
             createdAt: row.created_at,
-            linkedTo: row.linked_to
+            linkedTo: row.linked_to,
+            status: row.status || 'confirmed',
+            kidsCount: row.kids_count
         }));
         res.json(bookings);
     } catch (err) {
@@ -120,9 +126,9 @@ app.post('/api/bookings', async (req, res) => {
     try {
         const b = req.body;
         await pool.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, room, notes, created_by, linked_to)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.room, b.notes, b.createdBy, b.linkedTo]
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, room, notes, created_by, linked_to, status, kids_count)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null]
         );
         res.json({ success: true, id: b.id });
     } catch (err) {

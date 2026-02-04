@@ -15,9 +15,9 @@
             <div class="login-logo">
                 <img src="logo.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v3.1</p>
+                <p class="tagline">Система бронювання v3.2</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.1</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.2</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -78,6 +78,23 @@
                         <option value="7">7 днів</option>
                     </select>
                 </div>
+                <div class="v32-controls">
+                    <div class="zoom-controls">
+                        <button class="zoom-btn" data-zoom="15">15хв</button>
+                        <button class="zoom-btn" data-zoom="30">30хв</button>
+                        <button class="zoom-btn" data-zoom="60">60хв</button>
+                    </div>
+                    <button id="roomsViewBtn" class="btn-rooms" title="Вигляд по кімнатах">🏠</button>
+                    <label class="toggle-mini" title="Компактно">
+                        <input type="checkbox" id="compactModeToggle">
+                        <span>⊟</span>
+                    </label>
+                    <label class="toggle-mini" title="Dark mode">
+                        <input type="checkbox" id="darkModeToggle">
+                        <span>🌙</span>
+                    </label>
+                    <button id="undoBtn" class="btn-undo hidden" title="Скасувати">↩</button>
+                </div>
                 <div class="action-buttons">
                     <button id="historyBtn" class="btn-history hidden">📋 Історія</button>
                     <button id="exportTimelineBtn" class="btn-export">🖼️ Експорт PNG</button>
@@ -112,6 +129,12 @@
                 <span class="legend-item"><span class="dot masterclass"></span>МК</span>
                 <span class="legend-item"><span class="dot pinata"></span>Піньята</span>
                 <span class="legend-item"><span class="dot custom"></span>Інше</span>
+                <span class="legend-item"><span class="dot preliminary-dot"></span>Попереднє</span>
+            </div>
+
+            <!-- v3.2: Minimap -->
+            <div id="minimapContainer" class="minimap-container hidden">
+                <canvas></canvas>
             </div>
         </main>
 
@@ -298,6 +321,27 @@
                     </div>
                 </div>
 
+                <!-- v3.2: К-кість дітей (для МК) -->
+                <div id="kidsCountSection" class="form-section kids-count-section hidden">
+                    <label>Кількість дітей</label>
+                    <input type="number" id="kidsCountInput" min="1" max="50" placeholder="Введіть к-кість дітей">
+                </div>
+
+                <!-- v3.2: Статус бронювання -->
+                <div class="form-section status-section">
+                    <label>Статус</label>
+                    <div class="status-radio-group">
+                        <label class="status-radio">
+                            <input type="radio" name="bookingStatus" value="confirmed" checked>
+                            <span class="status-radio-label confirmed">✅ Підтверджене</span>
+                        </label>
+                        <label class="status-radio">
+                            <input type="radio" name="bookingStatus" value="preliminary">
+                            <span class="status-radio-label preliminary">⏳ Попереднє</span>
+                        </label>
+                    </div>
+                </div>
+
                 <button type="submit" class="btn-submit">Додати бронювання</button>
             </form>
         </aside>
@@ -381,8 +425,24 @@
     <div id="changelogModal" class="modal hidden">
         <div class="modal-content modal-changelog">
             <span class="modal-close">&times;</span>
-            <h3>Що нового у v3.1</h3>
+            <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v3.2 — UI покращення</h4>
+                    <ul>
+                        <li>Червона лінія "зараз" на таймлайні (оновлюється щохвилини)</li>
+                        <li>Статуси бронювань: Попереднє / Підтверджене</li>
+                        <li>Кількість дітей для МК з авторозрахунком ціни</li>
+                        <li>Tooltip при наведенні на блок бронювання</li>
+                        <li>Dark mode (зберігається)</li>
+                        <li>Компактний режим</li>
+                        <li>Zoom таймлайну: 15/30/60 хвилин</li>
+                        <li>Вигляд по кімнатах</li>
+                        <li>Minimap навігація</li>
+                        <li>Undo (скасувати останню дію)</li>
+                        <li>Свайп між днями на мобільному</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v3.1 — Розважальні програми</h4>
                     <ul>

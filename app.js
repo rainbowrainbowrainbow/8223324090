@@ -1,6 +1,6 @@
 /**
  * Парк Закревського Періоду - Система бронювання
- * v3.1 - Розважальні програми + viewer role
+ * v3.2 - UI improvements, statuses, dark mode, zoom, minimap
  */
 
 // ==========================================
@@ -114,6 +114,12 @@ let cachedBookings = {}; // Кеш бронювань по датах
 let cachedLines = {}; // Кеш ліній по датах
 let multiDayMode = false; // Режим декількох днів
 let daysToShow = 3; // Кількість днів для показу
+let zoomLevel = 15; // 15, 30, 60 хв
+let compactMode = false;
+let darkMode = false;
+let undoStack = [];
+let roomsViewMode = false;
+let nowLineInterval = null;
 
 // ==========================================
 // API ФУНКЦІЇ (PostgreSQL)
@@ -244,8 +250,23 @@ document.addEventListener('DOMContentLoaded', initializeApp);
 function initializeApp() {
     initializeDefaultData();
     initializeCostumes();
+    loadPreferences();
     checkSession();
     initializeEventListeners();
+    // Оновлювати now-лінію кожну хвилину
+    nowLineInterval = setInterval(renderNowLine, 60000);
+}
+
+function loadPreferences() {
+    darkMode = localStorage.getItem('pzp_dark_mode') === 'true';
+    compactMode = localStorage.getItem('pzp_compact_mode') === 'true';
+    zoomLevel = parseInt(localStorage.getItem('pzp_zoom_level')) || 15;
+    if (darkMode) document.body.classList.add('dark-mode');
+    if (compactMode) {
+        CONFIG.TIMELINE.CELL_WIDTH = 35;
+        document.querySelector('.timeline-container')?.classList.add('compact');
+    }
+    CONFIG.TIMELINE.CELL_MINUTES = zoomLevel;
 }
 
 function initializeCostumes() {
@@ -515,9 +536,24 @@ function showMainApp() {
         if (exportBtn) exportBtn.style.display = 'none';
     }
 
+    // Dark mode toggle
+    const darkToggle = document.getElementById('darkModeToggle');
+    if (darkToggle) darkToggle.checked = darkMode;
+
+    // Compact mode toggle
+    const compactToggle = document.getElementById('compactModeToggle');
+    if (compactToggle) compactToggle.checked = compactMode;
+
+    // Zoom buttons
+    updateZoomButtons();
+
+    // Undo button
+    updateUndoButton();
+
     initializeTimeline();
     renderProgramIcons();
-    fetchAnimatorsFromSheet(); // Завантажити аніматорів з Google Sheets
+    fetchAnimatorsFromSheet();
+    setupSwipe();
 }
 
 // ==========================================
@@ -608,6 +644,27 @@ function initializeEventListeners() {
     if (programsTabBtn) {
         programsTabBtn.addEventListener('click', showProgramsCatalog);
     }
+
+    // v3.2: Zoom
+    document.querySelectorAll('.zoom-btn').forEach(btn => {
+        btn.addEventListener('click', () => changeZoom(parseInt(btn.dataset.zoom)));
+    });
+
+    // v3.2: Dark mode
+    const darkToggle = document.getElementById('darkModeToggle');
+    if (darkToggle) darkToggle.addEventListener('change', toggleDarkMode);
+
+    // v3.2: Compact mode
+    const compactToggle = document.getElementById('compactModeToggle');
+    if (compactToggle) compactToggle.addEventListener('change', toggleCompactMode);
+
+    // v3.2: Undo
+    const undoBtn = document.getElementById('undoBtn');
+    if (undoBtn) undoBtn.addEventListener('click', handleUndo);
+
+    // v3.2: Rooms view
+    const roomsBtn = document.getElementById('roomsViewBtn');
+    if (roomsBtn) roomsBtn.addEventListener('click', toggleRoomsView);
 
     // Збереження списку аніматорів
     const saveAnimatorsBtn = document.getElementById('saveAnimatorsBtn');
@@ -702,6 +759,12 @@ async function renderTimeline() {
         return;
     }
 
+    // v3.2: Rooms view
+    if (roomsViewMode) {
+        await renderRoomsView();
+        return;
+    }
+
     renderTimeScale();
 
     const container = document.getElementById('timelineLines');
@@ -757,6 +820,10 @@ async function renderTimeline() {
             }
         });
     });
+
+    // v3.2: Now line + minimap
+    renderNowLine();
+    renderMinimap();
 }
 
 function renderGridCells(lineId) {
@@ -787,23 +854,28 @@ function createBookingBlock(booking, startHour) {
     const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
     const width = (booking.duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
 
-    block.className = `booking-block ${booking.category}`;
+    const isPreliminary = booking.status === 'preliminary';
+    block.className = `booking-block ${booking.category}${isPreliminary ? ' preliminary' : ''}`;
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 
-    // Перша літера логіну користувача
     const userLetter = booking.createdBy ? booking.createdBy.charAt(0).toUpperCase() : '';
-    // Примітка якщо є
     const noteText = booking.notes ? `<div class="note-text">${booking.notes}</div>` : '';
+    const statusIcon = isPreliminary ? '<span class="status-icon">?</span>' : '';
 
     block.innerHTML = `
         <div class="user-letter">${userLetter}</div>
+        ${statusIcon}
         <div class="title">${booking.label || booking.programCode}: ${booking.room}</div>
-        <div class="subtitle">${booking.time}</div>
+        <div class="subtitle">${booking.time}${booking.kidsCount ? ' (' + booking.kidsCount + ' діт)' : ''}</div>
         ${noteText}
     `;
 
     block.addEventListener('click', () => showBookingDetails(booking.id));
+    // Tooltip
+    block.addEventListener('mouseenter', (e) => showTooltip(e, booking));
+    block.addEventListener('mousemove', (e) => moveTooltip(e));
+    block.addEventListener('mouseleave', hideTooltip);
     return block;
 }
 
@@ -985,6 +1057,14 @@ async function openBookingPanel(time, lineId) {
     const costumeSelect = document.getElementById('costumeSelect');
     if (costumeSelect) costumeSelect.value = '';
 
+    // v3.2: Скинути статус та к-кість дітей
+    const statusRadio = document.querySelector('input[name="bookingStatus"][value="confirmed"]');
+    if (statusRadio) statusRadio.checked = true;
+    const kidsCountSection = document.getElementById('kidsCountSection');
+    if (kidsCountSection) kidsCountSection.classList.add('hidden');
+    const kidsCountInput = document.getElementById('kidsCountInput');
+    if (kidsCountInput) kidsCountInput.value = '';
+
     document.getElementById('bookingPanel').classList.remove('hidden');
     document.querySelector('.main-content').classList.add('panel-open');
 }
@@ -1083,6 +1163,27 @@ function selectProgram(programId) {
     } else {
         document.getElementById('hostsWarning').classList.add('hidden');
         document.getElementById('secondAnimatorSection').classList.add('hidden');
+    }
+
+    // v3.2: К-кість дітей для МК (perChild)
+    const kidsCountSection = document.getElementById('kidsCountSection');
+    if (kidsCountSection) {
+        if (program.perChild) {
+            kidsCountSection.classList.remove('hidden');
+            const kidsInput = document.getElementById('kidsCountInput');
+            if (kidsInput) {
+                kidsInput.value = '';
+                kidsInput.oninput = () => {
+                    const count = parseInt(kidsInput.value) || 0;
+                    const total = count * program.price;
+                    document.getElementById('detailPrice').textContent = count > 0
+                        ? `${program.price} x ${count} = ${total} грн`
+                        : `${program.price} грн/дит`;
+                };
+            }
+        } else {
+            kidsCountSection.classList.add('hidden');
+        }
     }
 }
 
@@ -1218,8 +1319,16 @@ async function handleBookingSubmit(e) {
     }
 
     // Створити бронювання
-    // Костюм (опційно)
     const costume = document.getElementById('costumeSelect').value;
+
+    // v3.2: Статус
+    const statusEl = document.querySelector('input[name="bookingStatus"]:checked');
+    const status = statusEl ? statusEl.value : 'confirmed';
+
+    // v3.2: К-кість дітей (для МК)
+    const kidsCountInput = document.getElementById('kidsCountInput');
+    const kidsCount = (program.perChild && kidsCountInput) ? (parseInt(kidsCountInput.value) || 0) : 0;
+    const finalPrice = program.perChild && kidsCount > 0 ? program.price * kidsCount : program.price;
 
     const booking = {
         id: 'BK' + Date.now().toString(36).toUpperCase(),
@@ -1232,7 +1341,7 @@ async function handleBookingSubmit(e) {
         programName: program.isCustom ? (document.getElementById('customName').value || 'Інше') : program.name,
         category: program.category,
         duration: duration,
-        price: program.price,
+        price: finalPrice,
         hosts: program.hosts,
         secondAnimator: secondAnimator,
         pinataFiller: pinataFiller,
@@ -1240,7 +1349,9 @@ async function handleBookingSubmit(e) {
         room: room,
         notes: document.getElementById('bookingNotes').value,
         createdBy: currentUser ? currentUser.username : '',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        status: status,
+        kidsCount: kidsCount || null
     };
 
     await apiCreateBooking(booking);
@@ -1298,6 +1409,10 @@ async function handleBookingSubmit(e) {
             }
         }
     }
+
+    // v3.2: Undo - зберегти створені бронювання
+    const createdIds = [booking];
+    pushUndo('create', createdIds);
 
     // Очистити кеш і перемалювати
     delete cachedBookings[formatDate(selectedDate)];
@@ -1409,8 +1524,18 @@ async function showBookingDetails(bookingId) {
             <span class="label">Ціна:</span>
             <span class="value">${booking.price} грн</span>
         </div>
+        ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">Дітей:</span><span class="value">${booking.kidsCount}</span></div>` : ''}
+        <div class="booking-detail-row">
+            <span class="label">Статус:</span>
+            <span class="value status-value ${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
+        </div>
         ${booking.notes ? `<div class="booking-detail-row"><span class="label">Примітки:</span><span class="value">${booking.notes}</span></div>` : ''}
         ${descriptionHtml}
+        ${!isViewer() ? `<div class="status-toggle-section">
+            <button class="btn-status-toggle" onclick="changeBookingStatus('${booking.id}', '${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}')">
+                ${booking.status === 'preliminary' ? '✅ Підтвердити' : '⏳ Зробити попереднім'}
+            </button>
+        </div>` : ''}
         ${editControls}
     `;
 
@@ -1454,6 +1579,9 @@ async function deleteBooking(bookingId) {
 
     const confirmed = await customConfirm(confirmMsg, 'Видалення бронювання');
     if (!confirmed) return;
+
+    // v3.2: Undo - зберегти перед видаленням
+    pushUndo('delete', [...allToDelete]);
 
     // Видалити всі пов'язані бронювання
     for (const b of allToDelete) {
@@ -1891,6 +2019,314 @@ async function exportTimelineImage() {
     link.click();
 
     showNotification('Таймлайн експортовано як картинку!', 'success');
+}
+
+// ==========================================
+// v3.2: ЧЕРВОНА ЛІНІЯ "ЗАРАЗ"
+// ==========================================
+
+function renderNowLine() {
+    document.querySelectorAll('.now-line, .now-line-top').forEach(el => el.remove());
+    const now = new Date();
+    if (formatDate(selectedDate) !== formatDate(now)) return;
+    if (multiDayMode) return;
+
+    const { start, end } = getTimeRange();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const startMin = start * 60;
+    if (nowMin < startMin || nowMin > end * 60) return;
+
+    const left = ((nowMin - startMin) / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
+
+    document.querySelectorAll('.line-grid').forEach(grid => {
+        const line = document.createElement('div');
+        line.className = 'now-line';
+        line.style.left = `${left}px`;
+        grid.appendChild(line);
+    });
+
+    const timeScale = document.getElementById('timeScale');
+    if (timeScale) {
+        const marker = document.createElement('div');
+        marker.className = 'now-line-top';
+        marker.style.left = `${left}px`;
+        timeScale.appendChild(marker);
+    }
+}
+
+// ==========================================
+// v3.2: TOOLTIP
+// ==========================================
+
+function showTooltip(e, booking) {
+    let tooltip = document.getElementById('bookingTooltip');
+    if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.id = 'bookingTooltip';
+        tooltip.className = 'booking-tooltip hidden';
+        document.body.appendChild(tooltip);
+    }
+    const endTime = addMinutesToTime(booking.time, booking.duration);
+    const statusText = booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене';
+    tooltip.innerHTML = `
+        <strong>${booking.label}: ${booking.programName}</strong><br>
+        🕐 ${booking.time} - ${endTime}<br>
+        🏠 ${booking.room} · ${statusText}
+        ${booking.kidsCount ? '<br>👶 ' + booking.kidsCount + ' дітей' : ''}
+        ${booking.notes ? '<br>📝 ' + booking.notes : ''}
+    `;
+    tooltip.style.left = `${e.pageX + 12}px`;
+    tooltip.style.top = `${e.pageY - 10}px`;
+    tooltip.classList.remove('hidden');
+}
+
+function moveTooltip(e) {
+    const tooltip = document.getElementById('bookingTooltip');
+    if (tooltip) {
+        tooltip.style.left = `${e.pageX + 12}px`;
+        tooltip.style.top = `${e.pageY - 10}px`;
+    }
+}
+
+function hideTooltip() {
+    const tooltip = document.getElementById('bookingTooltip');
+    if (tooltip) tooltip.classList.add('hidden');
+}
+
+// ==========================================
+// v3.2: DARK MODE
+// ==========================================
+
+function toggleDarkMode() {
+    darkMode = !darkMode;
+    document.body.classList.toggle('dark-mode', darkMode);
+    localStorage.setItem('pzp_dark_mode', darkMode);
+    const toggle = document.getElementById('darkModeToggle');
+    if (toggle) toggle.checked = darkMode;
+}
+
+// ==========================================
+// v3.2: COMPACT MODE
+// ==========================================
+
+function toggleCompactMode() {
+    compactMode = !compactMode;
+    CONFIG.TIMELINE.CELL_WIDTH = compactMode ? 35 : 50;
+    localStorage.setItem('pzp_compact_mode', compactMode);
+    const container = document.querySelector('.timeline-container');
+    if (container) container.classList.toggle('compact', compactMode);
+    const toggle = document.getElementById('compactModeToggle');
+    if (toggle) toggle.checked = compactMode;
+    renderTimeline();
+}
+
+// ==========================================
+// v3.2: ZOOM (15/30/60 хв)
+// ==========================================
+
+function changeZoom(level) {
+    zoomLevel = level;
+    CONFIG.TIMELINE.CELL_MINUTES = level;
+    localStorage.setItem('pzp_zoom_level', level);
+    updateZoomButtons();
+    renderTimeline();
+}
+
+function updateZoomButtons() {
+    document.querySelectorAll('.zoom-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.zoom) === zoomLevel);
+    });
+}
+
+// ==========================================
+// v3.2: UNDO
+// ==========================================
+
+function pushUndo(action, data) {
+    undoStack.push({ action, data, timestamp: Date.now() });
+    if (undoStack.length > 10) undoStack.shift();
+    updateUndoButton();
+}
+
+function updateUndoButton() {
+    const btn = document.getElementById('undoBtn');
+    if (btn) btn.classList.toggle('hidden', undoStack.length === 0);
+}
+
+async function handleUndo() {
+    if (undoStack.length === 0) return;
+    const item = undoStack.pop();
+
+    if (item.action === 'create') {
+        for (const b of item.data) {
+            await apiDeleteBooking(b.id);
+        }
+        showNotification('Створення скасовано', 'warning');
+    } else if (item.action === 'delete') {
+        for (const b of item.data) {
+            await apiCreateBooking(b);
+        }
+        showNotification('Видалення скасовано', 'warning');
+    }
+
+    cachedBookings = {};
+    await renderTimeline();
+    updateUndoButton();
+}
+
+// ==========================================
+// v3.2: SWIPE (mobile)
+// ==========================================
+
+function setupSwipe() {
+    const container = document.getElementById('timelineScroll');
+    if (!container) return;
+    let startX = 0, startY = 0;
+
+    container.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+    }, { passive: true });
+
+    container.addEventListener('touchend', (e) => {
+        const dx = e.changedTouches[0].clientX - startX;
+        const dy = e.changedTouches[0].clientY - startY;
+        if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) {
+            changeDate(dx > 0 ? -1 : 1);
+        }
+    }, { passive: true });
+}
+
+// ==========================================
+// v3.2: ROOMS VIEW
+// ==========================================
+
+function toggleRoomsView() {
+    roomsViewMode = !roomsViewMode;
+    const btn = document.getElementById('roomsViewBtn');
+    if (btn) btn.classList.toggle('active', roomsViewMode);
+    renderTimeline();
+}
+
+async function renderRoomsView() {
+    renderTimeScale();
+    const container = document.getElementById('timelineLines');
+    const bookings = await getBookingsForDate(selectedDate);
+    const { start } = getTimeRange();
+
+    const rooms = [...new Set(bookings.map(b => b.room))].filter(Boolean).sort();
+    if (rooms.length === 0) {
+        container.innerHTML = '<div class="no-bookings">Немає бронювань на цей день</div>';
+        return;
+    }
+
+    const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4', '#795548', '#607D8B'];
+    container.innerHTML = '';
+
+    rooms.forEach((room, idx) => {
+        const lineEl = document.createElement('div');
+        lineEl.className = 'timeline-line';
+        lineEl.innerHTML = `
+            <div class="line-header" style="border-left-color: ${colors[idx % colors.length]}">
+                <span class="line-name">${room}</span>
+                <span class="line-sub">кімната</span>
+            </div>
+            <div class="line-grid">${renderGridCells('room_' + room)}</div>
+        `;
+        const lineGrid = lineEl.querySelector('.line-grid');
+        bookings.filter(b => b.room === room).forEach(b => lineGrid.appendChild(createBookingBlock(b, start)));
+        container.appendChild(lineEl);
+    });
+
+    renderNowLine();
+    renderMinimap();
+}
+
+// ==========================================
+// v3.2: MINIMAP
+// ==========================================
+
+function renderMinimap() {
+    const minimap = document.getElementById('minimapContainer');
+    if (!minimap || multiDayMode) {
+        if (minimap) minimap.classList.add('hidden');
+        return;
+    }
+    minimap.classList.remove('hidden');
+    renderMinimapAsync(minimap);
+}
+
+async function renderMinimapAsync(container) {
+    const canvas = container.querySelector('canvas');
+    if (!canvas) return;
+    canvas.width = container.clientWidth || 300;
+    canvas.height = 50;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = darkMode ? '#2a2a3e' : '#f0f0f0';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const bookings = await getBookingsForDate(selectedDate);
+    const lines = await getLinesForDate(selectedDate);
+    const { start, end } = getTimeRange();
+    const totalMin = (end - start) * 60;
+    const lh = Math.max(6, (canvas.height - 4) / Math.max(lines.length, 1));
+
+    const catColors = { quest: '#9C27B0', animation: '#039BE5', show: '#F4511E', photo: '#00ACC1', masterclass: '#7CB342', pinata: '#EC407A', custom: '#546E7A' };
+
+    lines.forEach((line, i) => {
+        const y = 2 + i * lh;
+        bookings.filter(b => b.lineId === line.id).forEach(b => {
+            const bStart = timeToMinutes(b.time) - start * 60;
+            const x = (bStart / totalMin) * canvas.width;
+            const w = Math.max((b.duration / totalMin) * canvas.width, 2);
+            ctx.fillStyle = catColors[b.category] || '#607D8B';
+            if (b.status === 'preliminary') ctx.globalAlpha = 0.5;
+            ctx.fillRect(x, y, w, lh - 1);
+            ctx.globalAlpha = 1;
+        });
+    });
+
+    // Now line
+    const now = new Date();
+    if (formatDate(selectedDate) === formatDate(now)) {
+        const nowMin = now.getHours() * 60 + now.getMinutes() - start * 60;
+        if (nowMin >= 0 && nowMin <= totalMin) {
+            const x = (nowMin / totalMin) * canvas.width;
+            ctx.strokeStyle = '#FF0000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+    }
+}
+
+// ==========================================
+// v3.2: CHANGE BOOKING STATUS
+// ==========================================
+
+async function changeBookingStatus(bookingId, newStatus) {
+    const bookings = await getBookingsForDate(selectedDate);
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+
+    const updated = { ...booking, status: newStatus };
+    await apiDeleteBooking(bookingId);
+    await apiCreateBooking(updated);
+
+    // Оновити linked
+    const linked = bookings.filter(b => b.linkedTo === bookingId);
+    for (const lb of linked) {
+        await apiDeleteBooking(lb.id);
+        await apiCreateBooking({ ...lb, status: newStatus });
+    }
+
+    delete cachedBookings[formatDate(selectedDate)];
+    closeAllModals();
+    await renderTimeline();
+    showNotification(`Статус: ${newStatus === 'preliminary' ? 'Попереднє' : 'Підтверджене'}`, 'success');
 }
 
 // ==========================================

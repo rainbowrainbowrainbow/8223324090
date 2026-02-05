@@ -614,17 +614,15 @@ async function shiftBookingTime(bookingId, minutes) {
             }
         }
 
-        // Оновити основне бронювання
+        // v3.9: Use PUT for atomic update instead of DELETE+CREATE
         const newBooking = { ...booking, time: newTime };
-        await apiDeleteBooking(bookingId);
-        await apiCreateBooking(newBooking);
+        await apiUpdateBooking(bookingId, newBooking);
 
         // Оновити пов'язані
         for (const linked of linkedBookings) {
             const linkedNewTime = addMinutesToTime(linked.time, minutes);
             const updatedLinked = { ...linked, time: linkedNewTime, linkedTo: newBooking.id };
-            await apiDeleteBooking(linked.id);
-            await apiCreateBooking(updatedLinked);
+            await apiUpdateBooking(linked.id, updatedLinked);
         }
 
         await apiAddHistory('shift', AppState.currentUser?.username, { ...newBooking, shiftMinutes: minutes });

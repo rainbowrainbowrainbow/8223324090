@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v3.8</p>
+                <p class="tagline">Система бронювання v3.9</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.8</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.9</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -471,6 +471,21 @@
         </div>
     </div>
 
+    <!-- v3.9: Модальне вікно примітки (замість prompt) -->
+    <div id="noteModal" class="modal hidden">
+        <div class="modal-content modal-confirm">
+            <h3>Додати аніматора</h3>
+            <p>Примітка (опціонально):</p>
+            <div class="form-group">
+                <input type="text" id="noteModalInput" placeholder='наприклад: "потрібен на 14:00-17:00"'>
+            </div>
+            <div class="confirm-buttons">
+                <button type="button" id="noteModalCancel" class="btn-cancel">Скасувати</button>
+                <button type="button" id="noteModalOk" class="btn-submit">Надіслати</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Модальне вікно Дашборд -->
     <div id="dashboardModal" class="modal hidden">
         <div class="modal-content modal-wide">
@@ -506,6 +521,23 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v3.9 — Стабільність та безпека</h4>
+                    <ul>
+                        <li>Транзакції для збереження ліній (захист від втрати даних)</li>
+                        <li>Захист Telegram webhook секретним токеном</li>
+                        <li>Захист від подвійного натискання кнопок в Telegram</li>
+                        <li>Auth middleware для Telegram endpoints</li>
+                        <li>CORS обмеження на домен</li>
+                        <li>Default лінії зберігаються в БД (виправлено зникнення)</li>
+                        <li>Кеш з TTL 60 сек (автооновлення даних)</li>
+                        <li>Modal замість prompt() (працює на iOS)</li>
+                        <li>PUT endpoint для переносу часу (атомарний)</li>
+                        <li>Touch events для tooltip на мобільних</li>
+                        <li>Webhook встановлюється автоматично при старті</li>
+                        <li>Валідація даних на сервері</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v3.8 — Telegram підтвердження</h4>
                     <ul>

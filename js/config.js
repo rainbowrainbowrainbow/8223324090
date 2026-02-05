@@ -120,6 +120,9 @@ const CATEGORY_NAMES = {
 // ГЛОБАЛЬНИЙ СТАН ДОДАТКУ
 // ==========================================
 
+// v3.9: Cache TTL (60 seconds)
+const CACHE_TTL = 60000;
+
 const AppState = {
     currentUser: null,
     selectedDate: new Date(),
@@ -134,5 +137,6 @@ const AppState = {
     compactMode: false,
     darkMode: false,
     undoStack: [],
-    nowLineInterval: null
+    nowLineInterval: null,
+    pendingPollInterval: null  // v3.9: track polling for cleanup
 };

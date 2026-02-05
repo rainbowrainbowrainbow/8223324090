@@ -6,19 +6,21 @@
 // ЛІНІЇ ПО ДАТАХ (кеш)
 // ==========================================
 
+// v3.9: Cache with TTL
 async function getLinesForDate(date) {
     const dateStr = formatDate(date);
-    if (AppState.cachedLines[dateStr]) {
-        return AppState.cachedLines[dateStr];
+    const cached = AppState.cachedLines[dateStr];
+    if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
+        return cached.data;
     }
     const lines = await apiGetLines(dateStr);
-    AppState.cachedLines[dateStr] = lines;
+    AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
     return lines;
 }
 
 async function saveLinesForDate(date, lines) {
     const dateStr = formatDate(date);
-    AppState.cachedLines[dateStr] = lines;
+    AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
     await apiSaveLines(dateStr, lines);
 }
 
@@ -182,6 +184,9 @@ function createBookingBlock(booking, startHour) {
     block.addEventListener('mouseenter', (e) => showTooltip(e, booking));
     block.addEventListener('mousemove', (e) => moveTooltip(e));
     block.addEventListener('mouseleave', hideTooltip);
+    // v3.9: Touch events for mobile tooltip
+    block.addEventListener('touchstart', (e) => showTooltip(e.touches[0], booking), { passive: true });
+    block.addEventListener('touchend', hideTooltip, { passive: true });
     return block;
 }
 
@@ -361,18 +366,26 @@ function removePendingLine() {
 // ==========================================
 
 function changeDate(days) {
+    // v3.9: Cleanup pending poll on date change
+    if (AppState.pendingPollInterval) {
+        clearInterval(AppState.pendingPollInterval);
+        AppState.pendingPollInterval = null;
+        removePendingLine();
+    }
     AppState.selectedDate.setDate(AppState.selectedDate.getDate() + days);
     document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
     renderTimeline();
     fetchAnimatorsFromSheet();
 }
 
+// v3.9: Cache with TTL
 async function getBookingsForDate(date) {
     const dateStr = formatDate(date);
-    if (AppState.cachedBookings[dateStr]) {
-        return AppState.cachedBookings[dateStr];
+    const cached = AppState.cachedBookings[dateStr];
+    if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
+        return cached.data;
     }
     const bookings = await apiGetBookings(dateStr);
-    AppState.cachedBookings[dateStr] = bookings;
+    AppState.cachedBookings[dateStr] = { data: bookings, ts: Date.now() };
     return bookings;
 }

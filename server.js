@@ -3,12 +3,16 @@ const path = require('path');
 const { Pool } = require('pg');
 const cors = require('cors');
 const https = require('https');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// v3.9: Webhook secret для верифікації Telegram запитів
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || crypto.randomBytes(32).toString('hex');
+
 // Middleware
-app.use(cors());
+app.use(cors({ origin: (origin, cb) => cb(null, !origin || origin.includes(process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost')) }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
@@ -94,7 +98,7 @@ async function ensureWebhook(appUrl) {
     if (webhookSet) return;
     try {
         const webhookUrl = `${appUrl}/api/telegram/webhook`;
-        const result = await telegramRequest('setWebhook', { url: webhookUrl });
+        const result = await telegramRequest('setWebhook', { url: webhookUrl, secret_token: WEBHOOK_SECRET });
         if (result && result.ok) {
             webhookSet = true;
             console.log('Telegram webhook set:', webhookUrl);
@@ -124,6 +128,17 @@ async function getTelegramChatId() {
         console.error('Telegram getUpdates error:', err);
         return [];
     }
+}
+
+// v3.9: Input validation helpers
+function validateDate(str) {
+    return typeof str === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(str);
+}
+function validateTime(str) {
+    return typeof str === 'string' && /^\d{2}:\d{2}$/.test(str);
+}
+function validateId(str) {
+    return typeof str === 'string' && str.length > 0 && str.length <= 100;
 }
 
 // Initialize database tables
@@ -210,10 +225,11 @@ async function initDatabase() {
 
 // --- BOOKINGS ---
 
-// Get bookings for a date
+// Get bookings for a date (v3.9: validation)
 app.get('/api/bookings/:date', async (req, res) => {
     try {
         const { date } = req.params;
+        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
         const result = await pool.query(
             'SELECT * FROM bookings WHERE date = $1 ORDER BY time',
             [date]
@@ -249,10 +265,15 @@ app.get('/api/bookings/:date', async (req, res) => {
     }
 });
 
-// Create booking
+// Create booking (v3.9: validation)
 app.post('/api/bookings', async (req, res) => {
     try {
         const b = req.body;
+        if (!b.id || !b.date || !b.time || !b.lineId) {
+            return res.status(400).json({ error: 'Missing required fields: id, date, time, lineId' });
+        }
+        if (!validateDate(b.date)) return res.status(400).json({ error: 'Invalid date format' });
+        if (!validateTime(b.time)) return res.status(400).json({ error: 'Invalid time format' });
         await pool.query(
             `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, room, notes, created_by, linked_to, status, kids_count)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
@@ -278,6 +299,33 @@ app.delete('/api/bookings/:id', async (req, res) => {
     }
 });
 
+// Update booking (v3.9: PUT instead of DELETE+CREATE)
+app.put('/api/bookings/:id', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { id } = req.params;
+        const b = req.body;
+        if (!validateDate(b.date)) return res.status(400).json({ error: 'Invalid date format' });
+        if (!validateTime(b.time)) return res.status(400).json({ error: 'Invalid time format' });
+
+        await client.query('BEGIN');
+        await client.query('DELETE FROM bookings WHERE id = $1', [id]);
+        await client.query(
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, room, notes, created_by, linked_to, status, kids_count)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+            [b.id || id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null]
+        );
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error updating booking:', err);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
 // --- LINES ---
 
 // Get lines for a date
@@ -290,11 +338,18 @@ app.get('/api/lines/:date', async (req, res) => {
         );
 
         if (result.rows.length === 0) {
-            // Return default lines
-            res.json([
-                { id: 'line1_' + date, name: 'Аніматор 1', color: '#4CAF50' },
-                { id: 'line2_' + date, name: 'Аніматор 2', color: '#2196F3' }
-            ]);
+            // v3.9: Materialize defaults in DB so webhook/other operations always find them
+            await ensureDefaultLines(date);
+            const defaults = await pool.query(
+                'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]
+            );
+            const lines = defaults.rows.map(row => ({
+                id: row.line_id,
+                name: row.name,
+                color: row.color,
+                fromSheet: row.from_sheet
+            }));
+            return res.json(lines);
         } else {
             const lines = result.rows.map(row => ({
                 id: row.line_id,
@@ -310,27 +365,34 @@ app.get('/api/lines/:date', async (req, res) => {
     }
 });
 
-// Save lines for a date
+// Save lines for a date (v3.9: transaction)
 app.post('/api/lines/:date', async (req, res) => {
+    const client = await pool.connect();
     try {
         const { date } = req.params;
         const lines = req.body;
 
-        // Delete existing lines for this date
-        await pool.query('DELETE FROM lines_by_date WHERE date = $1', [date]);
+        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
+        if (!Array.isArray(lines)) return res.status(400).json({ error: 'Lines must be an array' });
 
-        // Insert new lines
+        await client.query('BEGIN');
+        await client.query('DELETE FROM lines_by_date WHERE date = $1', [date]);
+
         for (const line of lines) {
-            await pool.query(
+            await client.query(
                 'INSERT INTO lines_by_date (date, line_id, name, color, from_sheet) VALUES ($1, $2, $3, $4, $5)',
                 [date, line.id, line.name, line.color, line.fromSheet || false]
             );
         }
 
+        await client.query('COMMIT');
         res.json({ success: true });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error('Error saving lines:', err);
         res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -431,8 +493,18 @@ app.post('/api/settings', async (req, res) => {
 
 // --- TELEGRAM ---
 
+// v3.9: Simple auth middleware for admin endpoints
+function requireOrigin(req, res, next) {
+    const origin = req.get('origin') || req.get('referer') || '';
+    const domain = process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost';
+    if (!origin || origin.includes(domain)) {
+        return next();
+    }
+    return res.status(403).json({ error: 'Forbidden' });
+}
+
 // Get chat ID from bot updates (admin helper)
-app.get('/api/telegram/chats', async (req, res) => {
+app.get('/api/telegram/chats', requireOrigin, async (req, res) => {
     try {
         const chats = await getTelegramChatId();
         res.json({ chats });
@@ -442,7 +514,7 @@ app.get('/api/telegram/chats', async (req, res) => {
 });
 
 // Send notification to Telegram
-app.post('/api/telegram/notify', async (req, res) => {
+app.post('/api/telegram/notify', requireOrigin, async (req, res) => {
     try {
         const { text } = req.body;
         const chatId = await getConfiguredChatId();
@@ -502,7 +574,7 @@ app.get('/api/telegram/digest/:date', async (req, res) => {
 });
 
 // Ask animator (inline keyboard) — v3.8
-app.post('/api/telegram/ask-animator', async (req, res) => {
+app.post('/api/telegram/ask-animator', requireOrigin, async (req, res) => {
     try {
         const { date, note } = req.body;
         const chatId = await getConfiguredChatId();
@@ -577,8 +649,14 @@ app.get('/api/telegram/animator-status/:id', async (req, res) => {
     }
 });
 
-// Telegram webhook handler (callback queries) — v3.8
+// Telegram webhook handler (callback queries) — v3.8 (v3.9: secret verification)
 app.post('/api/telegram/webhook', async (req, res) => {
+    // v3.9: Verify Telegram secret token
+    const secretHeader = req.headers['x-telegram-bot-api-secret-token'];
+    if (secretHeader !== WEBHOOK_SECRET) {
+        return res.sendStatus(403);
+    }
+
     try {
         const update = req.body;
 
@@ -589,9 +667,12 @@ app.post('/api/telegram/webhook', async (req, res) => {
             if (data.startsWith('add_anim:')) {
                 const requestId = parseInt(data.split(':')[1]);
 
-                // Get pending request
-                const pending = await pool.query('SELECT * FROM pending_animators WHERE id = $1', [requestId]);
-                if (pending.rows.length === 0 || pending.rows[0].status !== 'pending') {
+                // v3.9: Atomic UPDATE — prevents double-click race condition
+                const pending = await pool.query(
+                    'UPDATE pending_animators SET status = $1 WHERE id = $2 AND status = $3 RETURNING *',
+                    ['approved', requestId, 'pending']
+                );
+                if (pending.rows.length === 0) {
                     await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Запит вже оброблено' });
                     return res.sendStatus(200);
                 }
@@ -616,9 +697,6 @@ app.post('/api/telegram/webhook', async (req, res) => {
                     [date, newLineId, newName, colors[count % colors.length]]
                 );
 
-                // Update pending status
-                await pool.query('UPDATE pending_animators SET status = $1 WHERE id = $2', ['approved', requestId]);
-
                 // Answer callback
                 await telegramRequest('answerCallbackQuery', {
                     callback_query_id: id,
@@ -636,8 +714,15 @@ app.post('/api/telegram/webhook', async (req, res) => {
             } else if (data.startsWith('no_anim:')) {
                 const requestId = parseInt(data.split(':')[1]);
 
-                // Update pending status
-                await pool.query('UPDATE pending_animators SET status = $1 WHERE id = $2', ['rejected', requestId]);
+                // v3.9: Atomic UPDATE — prevents double-click
+                const rejected = await pool.query(
+                    'UPDATE pending_animators SET status = $1 WHERE id = $2 AND status = $3 RETURNING *',
+                    ['rejected', requestId, 'pending']
+                );
+                if (rejected.rows.length === 0) {
+                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Запит вже оброблено' });
+                    return res.sendStatus(200);
+                }
 
                 await telegramRequest('answerCallbackQuery', {
                     callback_query_id: id,
@@ -684,5 +769,13 @@ app.get('*', (req, res) => {
 initDatabase().then(() => {
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
+
+        // v3.9: Setup Telegram webhook on start
+        const appUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+            ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+            : null;
+        if (appUrl) {
+            ensureWebhook(appUrl).catch(err => console.error('Webhook auto-setup error:', err));
+        }
     });
 });

@@ -27,10 +27,8 @@ async function apiCreateBooking(booking) {
         return await response.json();
     } catch (err) {
         console.error('API createBooking error:', err);
-        const bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
-        bookings.push(booking);
-        localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify(bookings));
-        return { success: true, id: booking.id };
+        // v3.9: Return error instead of fake success
+        return { success: false, error: err.message, offline: true };
     }
 }
 
@@ -43,10 +41,24 @@ async function apiDeleteBooking(id) {
         return await response.json();
     } catch (err) {
         console.error('API deleteBooking error:', err);
-        let bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
-        bookings = bookings.filter(b => b.id !== id && b.linkedTo !== id);
-        localStorage.setItem(CONFIG.STORAGE.BOOKINGS, JSON.stringify(bookings));
-        return { success: true };
+        // v3.9: Return error instead of fake success
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+// v3.9: PUT endpoint for atomic booking update
+async function apiUpdateBooking(id, booking) {
+    try {
+        const response = await fetch(`${API_BASE}/bookings/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(booking)
+        });
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API updateBooking error:', err);
+        return { success: false, error: err.message, offline: true };
     }
 }
 
@@ -77,10 +89,8 @@ async function apiSaveLines(date, lines) {
         return await response.json();
     } catch (err) {
         console.error('API saveLines error:', err);
-        const linesByDate = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES_BY_DATE) || '{}');
-        linesByDate[date] = lines;
-        localStorage.setItem(CONFIG.STORAGE.LINES_BY_DATE, JSON.stringify(linesByDate));
-        return { success: true };
+        // v3.9: Return error instead of fake success
+        return { success: false, error: err.message, offline: true };
     }
 }
 

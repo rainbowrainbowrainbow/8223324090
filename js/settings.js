@@ -207,11 +207,50 @@ function showProgramsCatalog() {
 // ЛІНІЇ (АНІМАТОРИ)
 // ==========================================
 
+// v3.9: Modal instead of prompt() for note input
+function showNoteModal() {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('noteModal');
+        const input = document.getElementById('noteModalInput');
+        if (!modal || !input) {
+            resolve(prompt('Примітка (опціонально):') || '');
+            return;
+        }
+        input.value = '';
+        modal.classList.remove('hidden');
+
+        function cleanup() {
+            modal.classList.add('hidden');
+            document.getElementById('noteModalOk').removeEventListener('click', onOk);
+            document.getElementById('noteModalCancel').removeEventListener('click', onCancel);
+        }
+        function onOk() { cleanup(); resolve(input.value || ''); }
+        function onCancel() { cleanup(); resolve(null); }
+
+        document.getElementById('noteModalOk').addEventListener('click', onOk);
+        document.getElementById('noteModalCancel').addEventListener('click', onCancel);
+        input.focus();
+    });
+}
+
+// v3.9: Clean up previous poll before starting new one
+function cleanupPendingPoll() {
+    if (AppState.pendingPollInterval) {
+        clearInterval(AppState.pendingPollInterval);
+        AppState.pendingPollInterval = null;
+        removePendingLine();
+    }
+}
+
 async function addNewLine() {
     const dateStr = formatDate(AppState.selectedDate);
 
-    // Опціональна примітка
-    const note = prompt('Примітка (опціонально, наприклад: "потрібен на 14:00-17:00"):') || '';
+    // v3.9: Modal instead of prompt()
+    const note = await showNoteModal();
+    if (note === null) return; // Скасовано
+
+    // v3.9: Cleanup any existing poll
+    cleanupPendingPoll();
 
     // Показати заглушку "Очікування..."
     renderPendingLine();
@@ -230,7 +269,8 @@ async function addNewLine() {
     let attempts = 0;
     const maxAttempts = 100; // 100 * 3 сек = 5 хв
 
-    const pollInterval = setInterval(async () => {
+    // v3.9: Store interval in AppState for cleanup
+    AppState.pendingPollInterval = setInterval(async () => {
         attempts++;
         const statusResult = await apiCheckAnimatorStatus(requestId);
 
@@ -238,18 +278,21 @@ async function addNewLine() {
         updatePendingLineTimer(attempts * 3);
 
         if (statusResult.status === 'approved') {
-            clearInterval(pollInterval);
+            clearInterval(AppState.pendingPollInterval);
+            AppState.pendingPollInterval = null;
             removePendingLine();
             // Очистити кеш та перерендерити
             delete AppState.cachedLines[dateStr];
             await renderTimeline();
             showNotification('Аніматора додано!', 'success');
         } else if (statusResult.status === 'rejected') {
-            clearInterval(pollInterval);
+            clearInterval(AppState.pendingPollInterval);
+            AppState.pendingPollInterval = null;
             removePendingLine();
             showNotification('На жаль, не вдалося додати аніматора', 'error');
         } else if (attempts >= maxAttempts) {
-            clearInterval(pollInterval);
+            clearInterval(AppState.pendingPollInterval);
+            AppState.pendingPollInterval = null;
             removePendingLine();
             showNotification('Час очікування вичерпано', 'error');
         }

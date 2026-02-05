@@ -109,11 +109,34 @@ const CATEGORY_COLORS = {
 // Кольори для ліній аніматорів
 const LINE_COLORS = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
 
-// Порядок і назви категорій
+// Порядок і назви категорій (єдине джерело правди)
 const CATEGORY_ORDER = ['quest', 'animation', 'show', 'photo', 'masterclass', 'pinata', 'custom'];
 const CATEGORY_NAMES = {
     quest: 'Квести', animation: 'Анімація', show: 'Шоу',
     photo: 'Фото', masterclass: 'Майстер-класи', pinata: 'Піньяти', custom: 'Інше'
+};
+
+// Панель бронювання: інший порядок, деякі розширені назви
+const CATEGORY_ORDER_BOOKING = ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata', 'custom'];
+const CATEGORY_NAMES_BOOKING = {
+    animation: 'Анімація', show: 'Wow-Шоу', quest: 'Квести',
+    photo: 'Фото послуги', masterclass: 'Майстер-класи', pinata: 'Піньяти', custom: 'Інше'
+};
+
+// Каталог програм: повні назви, без 'custom'
+const CATEGORY_ORDER_CATALOG = ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata'];
+const CATEGORY_NAMES_CATALOG = {
+    animation: 'Анімаційні розважальні програми', show: 'Wow-Шоу', quest: 'Квести',
+    photo: 'Фото послуги', masterclass: 'Майстер-класи', pinata: 'Піньяти'
+};
+const CATEGORY_ICONS_CATALOG = {
+    animation: '🎪', show: '✨', quest: '🗝️', photo: '📸', masterclass: '🎨', pinata: '🎊'
+};
+
+// Дашборд: скорочені назви
+const CATEGORY_NAMES_SHORT = {
+    quest: 'Квести', animation: 'Анімація', show: 'Шоу',
+    photo: 'Фото', masterclass: 'МК', pinata: 'Піньяти', custom: 'Інше'
 };
 
 // ==========================================

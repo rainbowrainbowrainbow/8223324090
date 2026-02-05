@@ -59,24 +59,13 @@ function renderProgramIcons() {
     const container = document.getElementById('programsIcons');
     container.innerHTML = '';
 
-    const categoryOrder = ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata', 'custom'];
-    const categoryNames = {
-        animation: 'Анімація',
-        show: 'Wow-Шоу',
-        quest: 'Квести',
-        photo: 'Фото послуги',
-        masterclass: 'Майстер-класи',
-        pinata: 'Піньяти',
-        custom: 'Інше'
-    };
-
-    categoryOrder.forEach(cat => {
+    CATEGORY_ORDER_BOOKING.forEach(cat => {
         const programs = PROGRAMS.filter(p => p.category === cat);
         if (programs.length === 0) return;
 
         const header = document.createElement('div');
         header.className = 'category-header';
-        header.textContent = categoryNames[cat] || cat;
+        header.textContent = CATEGORY_NAMES_BOOKING[cat] || cat;
         container.appendChild(header);
 
         const grid = document.createElement('div');
@@ -160,12 +149,13 @@ function selectProgram(programId) {
     }
 }
 
-async function populateSecondAnimatorSelect() {
-    const select = document.getElementById('secondAnimatorSelect');
+async function populateAnimatorSelectById(selectId, placeholder) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
     const lines = await getLinesForDate(AppState.selectedDate);
     const currentLineId = document.getElementById('bookingLine').value;
 
-    select.innerHTML = '<option value="">Оберіть другого аніматора</option>';
+    select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
 
     lines.forEach(line => {
         if (line.id !== currentLineId) {
@@ -175,28 +165,19 @@ async function populateSecondAnimatorSelect() {
             select.appendChild(option);
         }
     });
+}
+
+async function populateSecondAnimatorSelect() {
+    await populateAnimatorSelectById('secondAnimatorSelect', 'Оберіть другого аніматора');
+}
+
+async function populateExtraHostAnimatorSelect() {
+    await populateAnimatorSelectById('extraHostAnimatorSelect', 'Оберіть аніматора');
 }
 
 function updateCustomDuration() {
     const duration = parseInt(document.getElementById('customDuration').value) || 30;
     document.getElementById('detailDuration').textContent = `${duration} хв`;
-}
-
-async function populateExtraHostAnimatorSelect() {
-    const select = document.getElementById('extraHostAnimatorSelect');
-    const lines = await getLinesForDate(AppState.selectedDate);
-    const currentLineId = document.getElementById('bookingLine').value;
-
-    select.innerHTML = '<option value="">Оберіть аніматора</option>';
-
-    lines.forEach(line => {
-        if (line.id !== currentLineId) {
-            const option = document.createElement('option');
-            option.value = line.name;
-            option.textContent = line.name;
-            select.appendChild(option);
-        }
-    });
 }
 
 // ==========================================

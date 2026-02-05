@@ -134,6 +134,41 @@ async function getTelegramChatId() {
     }
 }
 
+// ==========================================
+// RATE LIMITING (in-memory)
+// ==========================================
+
+const rateLimitMap = new Map();
+function rateLimit(windowMs, maxRequests) {
+    // Clean up old entries every 5 minutes
+    setInterval(() => {
+        const now = Date.now();
+        for (const [key, entry] of rateLimitMap) {
+            if (now - entry.start > windowMs * 2) rateLimitMap.delete(key);
+        }
+    }, 300000);
+
+    return (req, res, next) => {
+        const key = req.ip;
+        const now = Date.now();
+        let entry = rateLimitMap.get(key);
+        if (!entry || now - entry.start > windowMs) {
+            entry = { count: 1, start: now };
+        } else {
+            entry.count++;
+        }
+        rateLimitMap.set(key, entry);
+        if (entry.count > maxRequests) {
+            return res.status(429).json({ error: 'Too many requests, please try again later' });
+        }
+        next();
+    };
+}
+
+// Apply rate limits
+app.use('/api/auth/login', rateLimit(60000, 10));    // 10 login attempts per minute
+app.use('/api', rateLimit(60000, 200));               // 200 API calls per minute
+
 // v3.9: Input validation helpers
 function validateDate(str) {
     return typeof str === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(str);
@@ -143,6 +178,36 @@ function validateTime(str) {
 }
 function validateId(str) {
     return typeof str === 'string' && str.length > 0 && str.length <= 100;
+}
+function validateSettingKey(str) {
+    return typeof str === 'string' && /^[a-z_]{1,100}$/.test(str);
+}
+
+// Shared booking row mapper (snake_case → camelCase)
+function mapBookingRow(row) {
+    return {
+        id: row.id,
+        date: row.date,
+        time: row.time,
+        lineId: row.line_id,
+        programId: row.program_id,
+        programCode: row.program_code,
+        label: row.label,
+        programName: row.program_name,
+        category: row.category,
+        duration: row.duration,
+        price: row.price,
+        hosts: row.hosts,
+        secondAnimator: row.second_animator,
+        pinataFiller: row.pinata_filler,
+        room: row.room,
+        notes: row.notes,
+        createdBy: row.created_by,
+        createdAt: row.created_at,
+        linkedTo: row.linked_to,
+        status: row.status || 'confirmed',
+        kidsCount: row.kids_count
+    };
 }
 
 // Initialize database tables
@@ -339,31 +404,7 @@ app.get('/api/bookings/:date', async (req, res) => {
             'SELECT * FROM bookings WHERE date = $1 ORDER BY time',
             [date]
         );
-        // Convert snake_case to camelCase
-        const bookings = result.rows.map(row => ({
-            id: row.id,
-            date: row.date,
-            time: row.time,
-            lineId: row.line_id,
-            programId: row.program_id,
-            programCode: row.program_code,
-            label: row.label,
-            programName: row.program_name,
-            category: row.category,
-            duration: row.duration,
-            price: row.price,
-            hosts: row.hosts,
-            secondAnimator: row.second_animator,
-            pinataFiller: row.pinata_filler,
-            room: row.room,
-            notes: row.notes,
-            createdBy: row.created_by,
-            createdAt: row.created_at,
-            linkedTo: row.linked_to,
-            status: row.status || 'confirmed',
-            kidsCount: row.kids_count
-        }));
-        res.json(bookings);
+        res.json(result.rows.map(mapBookingRow));
     } catch (err) {
         console.error('Error fetching bookings:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -395,6 +436,7 @@ app.post('/api/bookings', async (req, res) => {
 app.delete('/api/bookings/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        if (!validateId(id)) return res.status(400).json({ error: 'Invalid booking ID' });
         // Delete linked bookings too
         await pool.query('DELETE FROM bookings WHERE id = $1 OR linked_to = $1', [id]);
         res.json({ success: true });
@@ -545,27 +587,14 @@ app.post('/api/history', async (req, res) => {
 app.get('/api/stats/:dateFrom/:dateTo', async (req, res) => {
     try {
         const { dateFrom, dateTo } = req.params;
+        if (!validateDate(dateFrom) || !validateDate(dateTo)) {
+            return res.status(400).json({ error: 'Invalid date format' });
+        }
         const result = await pool.query(
             'SELECT * FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL ORDER BY date, time',
             [dateFrom, dateTo]
         );
-        const bookings = result.rows.map(row => ({
-            id: row.id,
-            date: row.date,
-            time: row.time,
-            lineId: row.line_id,
-            programId: row.program_id,
-            programCode: row.program_code,
-            label: row.label,
-            programName: row.program_name,
-            category: row.category,
-            duration: row.duration,
-            price: row.price,
-            room: row.room,
-            status: row.status || 'confirmed',
-            kidsCount: row.kids_count
-        }));
-        res.json(bookings);
+        res.json(result.rows.map(mapBookingRow));
     } catch (err) {
         console.error('Stats error:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -586,6 +615,12 @@ app.get('/api/settings/:key', async (req, res) => {
 app.post('/api/settings', async (req, res) => {
     try {
         const { key, value } = req.body;
+        if (!key || !validateSettingKey(key)) {
+            return res.status(400).json({ error: 'Invalid setting key' });
+        }
+        if (typeof value !== 'string' || value.length > 1000) {
+            return res.status(400).json({ error: 'Invalid setting value' });
+        }
         await pool.query(
             `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
             [key, value]

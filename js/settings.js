@@ -154,27 +154,14 @@ function showProgramsCatalog() {
     const modal = document.getElementById('programsCatalogModal');
     const container = document.getElementById('programsCatalogList');
 
-    const categoryOrder = ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata'];
-    const categoryNames = {
-        animation: 'Анімаційні розважальні програми',
-        show: 'Wow-Шоу',
-        quest: 'Квести',
-        photo: 'Фото послуги',
-        masterclass: 'Майстер-класи',
-        pinata: 'Піньяти'
-    };
-    const categoryIcons = {
-        animation: '🎪', show: '✨', quest: '🗝️', photo: '📸', masterclass: '🎨', pinata: '🎊'
-    };
-
     let html = '';
 
-    categoryOrder.forEach(cat => {
+    CATEGORY_ORDER_CATALOG.forEach(cat => {
         const programs = PROGRAMS.filter(p => p.category === cat);
         if (programs.length === 0) return;
 
         html += `<div class="catalog-category">
-            <h4 class="catalog-category-title ${cat}">${categoryIcons[cat] || ''} ${categoryNames[cat]}</h4>
+            <h4 class="catalog-category-title ${cat}">${CATEGORY_ICONS_CATALOG[cat] || ''} ${CATEGORY_NAMES_CATALOG[cat] || cat}</h4>
             <div class="catalog-programs">`;
 
         programs.forEach(p => {
@@ -453,31 +440,34 @@ async function sendDailyDigest() {
     }
 }
 
-async function showTelegramSetup() {
-    const chatId = await apiGetSetting('telegram_chat_id');
-    let chatsHtml = '<p>Завантаження...</p>';
-
-    const modal = document.getElementById('telegramModal');
-    document.getElementById('telegramChatId').value = chatId || '';
-    document.getElementById('telegramChats').innerHTML = chatsHtml;
-    modal.classList.remove('hidden');
+async function fetchAndRenderTelegramChats(chatIdInputId, chatsContainerId) {
+    const container = document.getElementById(chatsContainerId);
+    if (!container) return;
+    container.innerHTML = '<p>Завантаження...</p>';
 
     try {
-        const response = await fetch(`${API_BASE}/telegram/chats`);
+        const response = await fetch(`${API_BASE}/telegram/chats`, { headers: getAuthHeadersGet() });
         const data = await response.json();
         if (data.chats && data.chats.length > 0) {
-            chatsHtml = data.chats.map(c =>
-                `<div class="telegram-chat-item" onclick="document.getElementById('telegramChatId').value='${c.id}'">
-                    <strong>${c.title || 'Чат'}</strong> <span class="chat-id">${c.id}</span> <span class="chat-type">${c.type}</span>
+            container.innerHTML = data.chats.map(c =>
+                `<div class="telegram-chat-item" onclick="document.getElementById('${escapeHtml(chatIdInputId)}').value='${escapeHtml(String(c.id))}'">
+                    <strong>${escapeHtml(c.title || 'Чат')}</strong> <span class="chat-id">${escapeHtml(String(c.id))}</span> <span class="chat-type">${escapeHtml(c.type)}</span>
                 </div>`
             ).join('');
         } else {
-            chatsHtml = '<p class="no-chats">Бот ще не доданий до жодної групи або немає повідомлень. Додайте бота @MySuperReport_bot до групи і напишіть повідомлення.</p>';
+            container.innerHTML = '<p class="no-chats">Бот ще не доданий до жодної групи або немає повідомлень. Додайте бота @MySuperReport_bot до групи і напишіть повідомлення.</p>';
         }
     } catch (err) {
-        chatsHtml = '<p>Помилка завантаження</p>';
+        container.innerHTML = '<p>Помилка завантаження</p>';
     }
-    document.getElementById('telegramChats').innerHTML = chatsHtml;
+}
+
+async function showTelegramSetup() {
+    const chatId = await apiGetSetting('telegram_chat_id');
+    const modal = document.getElementById('telegramModal');
+    document.getElementById('telegramChatId').value = chatId || '';
+    modal.classList.remove('hidden');
+    await fetchAndRenderTelegramChats('telegramChatId', 'telegramChats');
 }
 
 async function saveTelegramChatId() {
@@ -504,34 +494,15 @@ async function showSettings() {
 
     const tgSection = document.getElementById('settingsTelegramSection');
     if (tgSection) {
-        tgSection.style.display = AppState.currentUser.username === 'Sergey' ? 'block' : 'none';
+        tgSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
     }
 
     const chatId = await apiGetSetting('telegram_chat_id');
     const chatIdInput = document.getElementById('settingsTelegramChatId');
     if (chatIdInput) chatIdInput.value = chatId || '';
 
-    const chatsContainer = document.getElementById('settingsTelegramChats');
-    if (chatsContainer) {
-        chatsContainer.innerHTML = '<p>Завантаження...</p>';
-        try {
-            const response = await fetch(`${API_BASE}/telegram/chats`);
-            const data = await response.json();
-            if (data.chats && data.chats.length > 0) {
-                chatsContainer.innerHTML = data.chats.map(c =>
-                    `<div class="telegram-chat-item" onclick="document.getElementById('settingsTelegramChatId').value='${c.id}'">
-                        <strong>${c.title || 'Чат'}</strong> <span class="chat-id">${c.id}</span> <span class="chat-type">${c.type}</span>
-                    </div>`
-                ).join('');
-            } else {
-                chatsContainer.innerHTML = '<p class="no-chats">Бот ще не доданий до жодної групи.</p>';
-            }
-        } catch (err) {
-            chatsContainer.innerHTML = '<p>Помилка завантаження</p>';
-        }
-    }
-
     document.getElementById('settingsModal').classList.remove('hidden');
+    fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
 }
 
 function saveAnimatorsListFromSettings() {
@@ -622,9 +593,8 @@ function renderTopProgramsSection(monthBookings) {
 
 function renderCategoryBarsSection(monthBookings) {
     const catCounts = {};
-    const catNames = { quest: 'Квести', animation: 'Анімація', show: 'Шоу', photo: 'Фото', masterclass: 'МК', pinata: 'Піньяти', custom: 'Інше' };
     monthBookings.forEach(b => {
-        const cat = catNames[b.category] || b.category;
+        const cat = CATEGORY_NAMES_SHORT[b.category] || b.category;
         if (!catCounts[cat]) catCounts[cat] = 0;
         catCounts[cat]++;
     });

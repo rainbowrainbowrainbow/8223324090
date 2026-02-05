@@ -73,6 +73,23 @@ async function getConfiguredChatId() {
 
 let webhookSet = false;
 
+// Ensure default lines exist in DB (fix: defaults were only in API response, not in DB)
+async function ensureDefaultLines(date) {
+    const existing = await pool.query('SELECT COUNT(*) FROM lines_by_date WHERE date = $1', [date]);
+    if (parseInt(existing.rows[0].count) === 0) {
+        const defaults = [
+            { id: 'line1_' + date, name: 'Аніматор 1', color: '#4CAF50' },
+            { id: 'line2_' + date, name: 'Аніматор 2', color: '#2196F3' }
+        ];
+        for (const line of defaults) {
+            await pool.query(
+                'INSERT INTO lines_by_date (date, line_id, name, color) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+                [date, line.id, line.name, line.color]
+            );
+        }
+    }
+}
+
 async function ensureWebhook(appUrl) {
     if (webhookSet) return;
     try {
@@ -494,6 +511,9 @@ app.post('/api/telegram/ask-animator', async (req, res) => {
         const appUrl = `${req.protocol === 'http' && req.get('x-forwarded-proto') === 'https' ? 'https' : req.protocol}://${req.get('host')}`;
         await ensureWebhook(appUrl);
 
+        // Ensure default lines are in DB
+        await ensureDefaultLines(date);
+
         // Create pending record
         const pendingResult = await pool.query(
             'INSERT INTO pending_animators (date, note) VALUES ($1, $2) RETURNING id',
@@ -501,7 +521,7 @@ app.post('/api/telegram/ask-animator', async (req, res) => {
         );
         const requestId = pendingResult.rows[0].id;
 
-        // Get current animators on shift
+        // Get current animators on shift (now always from DB)
         const linesResult = await pool.query(
             'SELECT name FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]
         );
@@ -577,6 +597,9 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 }
 
                 const date = pending.rows[0].date;
+
+                // Ensure default lines exist in DB
+                await ensureDefaultLines(date);
 
                 // Get current lines for this date
                 const linesResult = await pool.query(

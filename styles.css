@@ -1494,6 +1494,12 @@ input[type="date"] {
 
 .action-create .history-action { color: var(--success); }
 .action-delete .history-action { color: var(--danger); }
+.action-undo .history-action { color: var(--warning); }
+
+.history-item.action-undo {
+    border-left-color: var(--warning);
+    background: #FFF8E1;
+}
 
 .history-user {
     font-weight: 700;
@@ -2090,7 +2096,7 @@ input[type="date"] {
 .toggle-mini input { display: none; }
 .toggle-mini:hover { background: #E9ECEF; }
 
-.btn-rooms, .btn-undo {
+.btn-undo {
     padding: 6px 10px;
     border: 1px solid #E9ECEF;
     background: var(--light);
@@ -2100,13 +2106,7 @@ input[type="date"] {
     transition: all 0.2s;
 }
 
-.btn-rooms.active {
-    background: var(--primary);
-    color: var(--white);
-    border-color: var(--primary);
-}
-
-.btn-rooms:hover:not(.active), .btn-undo:hover {
+.btn-undo:hover {
     background: #E9ECEF;
 }
 
@@ -2197,7 +2197,6 @@ body.dark-mode .time-scale {
 
 body.dark-mode .control-panel .zoom-controls,
 body.dark-mode .toggle-mini,
-body.dark-mode .btn-rooms,
 body.dark-mode .btn-undo {
     background: #2a2a3e;
     border-color: #444;

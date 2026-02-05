@@ -539,6 +539,8 @@ function showMainApp() {
     // Dark mode toggle
     const darkToggle = document.getElementById('darkModeToggle');
     if (darkToggle) darkToggle.checked = darkMode;
+    const darkIcon = document.getElementById('darkModeIcon');
+    if (darkIcon) darkIcon.textContent = darkMode ? '☀️' : '🌙';
 
     // Compact mode toggle
     const compactToggle = document.getElementById('compactModeToggle');
@@ -662,10 +664,6 @@ function initializeEventListeners() {
     const undoBtn = document.getElementById('undoBtn');
     if (undoBtn) undoBtn.addEventListener('click', handleUndo);
 
-    // v3.2: Rooms view
-    const roomsBtn = document.getElementById('roomsViewBtn');
-    if (roomsBtn) roomsBtn.addEventListener('click', toggleRoomsView);
-
     // Збереження списку аніматорів
     const saveAnimatorsBtn = document.getElementById('saveAnimatorsBtn');
     if (saveAnimatorsBtn) {
@@ -756,12 +754,6 @@ async function renderTimeline() {
     // Режим декількох днів
     if (multiDayMode) {
         await renderMultiDayTimeline();
-        return;
-    }
-
-    // v3.2: Rooms view
-    if (roomsViewMode) {
-        await renderRoomsView();
         return;
     }
 
@@ -861,11 +853,9 @@ function createBookingBlock(booking, startHour) {
 
     const userLetter = booking.createdBy ? booking.createdBy.charAt(0).toUpperCase() : '';
     const noteText = booking.notes ? `<div class="note-text">${booking.notes}</div>` : '';
-    const statusIcon = isPreliminary ? '<span class="status-icon">?</span>' : '';
 
     block.innerHTML = `
         <div class="user-letter">${userLetter}</div>
-        ${statusIcon}
         <div class="title">${booking.label || booking.programCode}: ${booking.room}</div>
         <div class="subtitle">${booking.time}${booking.kidsCount ? ' (' + booking.kidsCount + ' діт)' : ''}</div>
         ${noteText}
@@ -1690,8 +1680,9 @@ async function showHistory() {
     } else {
         history.slice(0, 100).forEach(item => {
             const date = new Date(item.timestamp).toLocaleString('uk-UA');
-            const actionText = item.action === 'create' ? 'Створено' : 'Видалено';
-            const actionClass = item.action === 'create' ? 'action-create' : 'action-delete';
+            const actionMap = { create: 'Створено', delete: 'Видалено', shift: 'Перенесено', undo_create: '↩ Скасовано створення', undo_delete: '↩ Скасовано видалення' };
+            const actionText = actionMap[item.action] || item.action;
+            const actionClass = item.action.includes('undo') ? 'action-undo' : (item.action === 'create' ? 'action-create' : 'action-delete');
 
             html += `
                 <div class="history-item ${actionClass}">
@@ -2103,6 +2094,8 @@ function toggleDarkMode() {
     localStorage.setItem('pzp_dark_mode', darkMode);
     const toggle = document.getElementById('darkModeToggle');
     if (toggle) toggle.checked = darkMode;
+    const icon = document.getElementById('darkModeIcon');
+    if (icon) icon.textContent = darkMode ? '☀️' : '🌙';
 }
 
 // ==========================================
@@ -2161,11 +2154,13 @@ async function handleUndo() {
         for (const b of item.data) {
             await apiDeleteBooking(b.id);
         }
+        await apiAddHistory('undo_create', currentUser?.username, item.data[0]);
         showNotification('Створення скасовано', 'warning');
     } else if (item.action === 'delete') {
         for (const b of item.data) {
             await apiCreateBooking(b);
         }
+        await apiAddHistory('undo_delete', currentUser?.username, item.data[0]);
         showNotification('Видалення скасовано', 'warning');
     }
 

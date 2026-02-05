@@ -15,9 +15,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v3.5</p>
+                <p class="tagline">Система бронювання v3.6</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.5</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.6</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -46,9 +46,8 @@
                 </div>
                 <nav class="header-nav">
                     <button id="programsTabBtn" class="btn-header-nav hidden">Програми</button>
-                    <button id="animatorsTabBtn" class="btn-header-nav hidden">Аніматори</button>
-                    <button id="telegramSetupBtn" class="btn-header-nav hidden">Telegram</button>
-                    <button id="dashboardBtn" class="btn-header-nav hidden">Дашборд</button>
+                    <button id="dashboardBtn" class="btn-header-icon hidden" title="Статистика">📊</button>
+                    <button id="settingsBtn" class="btn-header-icon hidden" title="Налаштування">⚙️</button>
                 </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
@@ -403,6 +402,42 @@
         </div>
     </div>
 
+    <!-- v3.6: Модальне вікно Налаштування -->
+    <div id="settingsModal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <span class="modal-close">&times;</span>
+            <h3>⚙️ Налаштування</h3>
+            <div class="settings-sections">
+                <!-- Аніматори -->
+                <div class="settings-section">
+                    <h4>👥 Аніматори</h4>
+                    <div class="animators-management">
+                        <div class="form-group">
+                            <label>Список аніматорів (по одному на рядок)</label>
+                            <textarea id="settingsAnimatorsList" rows="8" placeholder="Женя&#10;Анлі&#10;Маша&#10;..."></textarea>
+                        </div>
+                        <button type="button" id="settingsSaveAnimatorsBtn" class="btn-submit">Зберегти список</button>
+                    </div>
+                </div>
+                <!-- Telegram -->
+                <div class="settings-section" id="settingsTelegramSection">
+                    <h4>🤖 Telegram</h4>
+                    <div class="telegram-setup">
+                        <div class="form-group">
+                            <label>Chat ID групи</label>
+                            <input type="text" id="settingsTelegramChatId" placeholder="-100xxxxxxxxxx">
+                        </div>
+                        <div class="form-group">
+                            <label>Знайдені чати:</label>
+                            <div id="settingsTelegramChats" class="telegram-chats"></div>
+                        </div>
+                        <button type="button" id="settingsSaveTelegramBtn" class="btn-submit">Зберегти та протестувати</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Модальне вікно історії -->
     <div id="historyModal" class="modal hidden">
         <div class="modal-content modal-large">
@@ -459,6 +494,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v3.6 — Налаштування та покращення</h4>
+                    <ul>
+                        <li>Сторінка налаштувань (⚙️) — Telegram + Аніматори в одному місці</li>
+                        <li>Дашборд тепер за іконкою 📊 замість текстової кнопки</li>
+                        <li>Сповіщення в UI при успішній відправці в Telegram</li>
+                        <li>Попередні бронювання більше не надсилають сповіщення в Telegram</li>
+                        <li>Виправлено обрізання тексту приміток на блоках бронювань</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v3.5 — UI Редизайн</h4>
                     <ul>

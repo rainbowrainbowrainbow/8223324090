@@ -1,6 +1,6 @@
 /**
  * Парк Закревського Періоду - Система бронювання
- * v3.5 - UI redesign, generated images, new palette
+ * v3.6 - Settings page, TG notification improvements, notes fix
  */
 
 // ==========================================
@@ -516,17 +516,13 @@ function showMainApp() {
     document.getElementById('mainApp').classList.remove('hidden');
     document.getElementById('currentUser').textContent = currentUser.name;
 
-    // Показати кнопку "Аніматори" та "Telegram" тільки для Сергія
-    const animatorsBtn = document.getElementById('animatorsTabBtn');
-    if (animatorsBtn) {
-        animatorsBtn.classList.toggle('hidden', currentUser.username !== 'Sergey');
-    }
-    const telegramSetupBtn = document.getElementById('telegramSetupBtn');
-    if (telegramSetupBtn) {
-        telegramSetupBtn.classList.toggle('hidden', currentUser.username !== 'Sergey');
+    // v3.6: Settings (gear) — тільки для Сергія
+    const settingsBtn = document.getElementById('settingsBtn');
+    if (settingsBtn) {
+        settingsBtn.classList.toggle('hidden', currentUser.username !== 'Sergey');
     }
 
-    // v3.4: Дашборд — не для Animator
+    // v3.6: Дашборд (icon) — не для Animator
     const dashboardBtn = document.getElementById('dashboardBtn');
     if (dashboardBtn) {
         dashboardBtn.classList.toggle('hidden', isViewer());
@@ -645,11 +641,15 @@ function initializeEventListeners() {
         });
     }
 
-    // Кнопка управління аніматорами (тільки для Сергія)
+    // Кнопка управління аніматорами (тільки для Сергія) — legacy
     const animatorsTabBtn = document.getElementById('animatorsTabBtn');
     if (animatorsTabBtn) {
         animatorsTabBtn.addEventListener('click', showAnimatorsModal);
     }
+
+    // v3.6: Settings button
+    const settingsBtn = document.getElementById('settingsBtn');
+    if (settingsBtn) settingsBtn.addEventListener('click', showSettings);
 
     // Кнопка "Розважальні програми"
     const programsTabBtn = document.getElementById('programsTabBtn');
@@ -674,7 +674,7 @@ function initializeEventListeners() {
     const undoBtn = document.getElementById('undoBtn');
     if (undoBtn) undoBtn.addEventListener('click', handleUndo);
 
-    // v3.3: Telegram setup
+    // v3.3: Telegram setup (legacy modal)
     const telegramSetupBtn = document.getElementById('telegramSetupBtn');
     if (telegramSetupBtn) telegramSetupBtn.addEventListener('click', showTelegramSetup);
 
@@ -684,6 +684,12 @@ function initializeEventListeners() {
 
     const saveTelegramBtn = document.getElementById('saveTelegramBtn');
     if (saveTelegramBtn) saveTelegramBtn.addEventListener('click', saveTelegramChatId);
+
+    // v3.6: Settings modal buttons
+    const settingsSaveAnimatorsBtn = document.getElementById('settingsSaveAnimatorsBtn');
+    if (settingsSaveAnimatorsBtn) settingsSaveAnimatorsBtn.addEventListener('click', saveAnimatorsListFromSettings);
+    const settingsSaveTelegramBtn = document.getElementById('settingsSaveTelegramBtn');
+    if (settingsSaveTelegramBtn) settingsSaveTelegramBtn.addEventListener('click', saveTelegramChatIdFromSettings);
 
     // v3.3: Digest button
     const digestBtn = document.getElementById('digestBtn');
@@ -2230,18 +2236,19 @@ async function apiSaveSetting(key, value) {
 }
 
 function notifyBookingCreated(booking) {
+    // v3.6: Не відправляти сповіщення для попередніх бронювань
+    if (booking.status === 'preliminary') return;
+
     const endTime = addMinutesToTime(booking.time, booking.duration);
-    const statusIcon = booking.status === 'preliminary' ? '⏳' : '✅';
-    const statusText = booking.status === 'preliminary' ? 'Попереднє' : 'Підтверджене';
     let text = `📌 <b>Нове бронювання</b>\n\n`;
-    text += `${statusIcon} ${statusText}\n`;
+    text += `✅ Підтверджене\n`;
     text += `🎭 ${booking.label}: ${booking.programName}\n`;
     text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
     text += `🏠 ${booking.room}\n`;
     if (booking.kidsCount) text += `👶 ${booking.kidsCount} дітей\n`;
     if (booking.notes) text += `📝 ${booking.notes}\n`;
     text += `\n👤 Створив: ${booking.createdBy}`;
-    apiTelegramNotify(text);
+    apiTelegramNotify(text).then(r => { if (r && r.success) showNotification('Сповіщення надіслано в Telegram', 'success'); });
 }
 
 function notifyBookingDeleted(booking) {
@@ -2250,7 +2257,7 @@ function notifyBookingDeleted(booking) {
         `🕐 ${booking.date} | ${booking.time}\n` +
         `🏠 ${booking.room}\n` +
         `\n👤 Видалив: ${currentUser?.username || '?'}`;
-    apiTelegramNotify(text);
+    apiTelegramNotify(text).then(r => { if (r && r.success) showNotification('Сповіщення надіслано в Telegram', 'success'); });
 }
 
 function notifyStatusChanged(booking, newStatus) {
@@ -2261,7 +2268,7 @@ function notifyStatusChanged(booking, newStatus) {
         `🕐 ${booking.date} | ${booking.time}\n` +
         `🏠 ${booking.room}\n` +
         `\n👤 Змінив: ${currentUser?.username || '?'}`;
-    apiTelegramNotify(text);
+    apiTelegramNotify(text).then(r => { if (r && r.success) showNotification('Сповіщення надіслано в Telegram', 'success'); });
 }
 
 async function sendDailyDigest() {
@@ -2318,6 +2325,71 @@ async function saveTelegramChatId() {
     // Test message
     const result = await apiTelegramNotify('🤖 Telegram підключено до системи бронювання Парку Закревського Періоду!');
     closeAllModals();
+    showNotification('Telegram налаштовано!', 'success');
+}
+
+// ==========================================
+// v3.6: НАЛАШТУВАННЯ (Settings)
+// ==========================================
+
+async function showSettings() {
+    // Заповнити аніматорів
+    const animators = getSavedAnimators();
+    const animatorsTextarea = document.getElementById('settingsAnimatorsList');
+    if (animatorsTextarea) animatorsTextarea.value = animators.join('\n');
+
+    // Telegram — тільки для Сергія
+    const tgSection = document.getElementById('settingsTelegramSection');
+    if (tgSection) {
+        tgSection.style.display = currentUser.username === 'Sergey' ? 'block' : 'none';
+    }
+
+    // Завантажити Chat ID
+    const chatId = await apiGetSetting('telegram_chat_id');
+    const chatIdInput = document.getElementById('settingsTelegramChatId');
+    if (chatIdInput) chatIdInput.value = chatId || '';
+
+    // Завантажити чати
+    const chatsContainer = document.getElementById('settingsTelegramChats');
+    if (chatsContainer) {
+        chatsContainer.innerHTML = '<p>Завантаження...</p>';
+        try {
+            const response = await fetch(`${API_BASE}/telegram/chats`);
+            const data = await response.json();
+            if (data.chats && data.chats.length > 0) {
+                chatsContainer.innerHTML = data.chats.map(c =>
+                    `<div class="telegram-chat-item" onclick="document.getElementById('settingsTelegramChatId').value='${c.id}'">
+                        <strong>${c.title || 'Чат'}</strong> <span class="chat-id">${c.id}</span> <span class="chat-type">${c.type}</span>
+                    </div>`
+                ).join('');
+            } else {
+                chatsContainer.innerHTML = '<p class="no-chats">Бот ще не доданий до жодної групи.</p>';
+            }
+        } catch (err) {
+            chatsContainer.innerHTML = '<p>Помилка завантаження</p>';
+        }
+    }
+
+    document.getElementById('settingsModal').classList.remove('hidden');
+}
+
+function saveAnimatorsListFromSettings() {
+    const textarea = document.getElementById('settingsAnimatorsList');
+    if (!textarea) return;
+    const names = textarea.value.split('\n').map(n => n.trim()).filter(n => n);
+    localStorage.setItem('pzp_animators', JSON.stringify(names));
+    populateAnimatorsSelect();
+    showNotification('Список аніматорів збережено!', 'success');
+}
+
+async function saveTelegramChatIdFromSettings() {
+    const chatId = document.getElementById('settingsTelegramChatId').value.trim();
+    if (!chatId) {
+        showNotification('Введіть Chat ID', 'error');
+        return;
+    }
+    await apiSaveSetting('telegram_chat_id', chatId);
+    const result = await apiTelegramNotify('🤖 Telegram підключено до системи бронювання Парку Закревського Періоду!');
     showNotification('Telegram налаштовано!', 'success');
 }
 

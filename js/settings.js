@@ -428,14 +428,18 @@ function notifyStatusChanged(booking, newStatus) {
 async function sendDailyDigest() {
     const dateStr = formatDate(AppState.selectedDate);
     try {
-        const response = await fetch(`${API_BASE}/telegram/digest/${dateStr}`);
+        const response = await fetch(`${API_BASE}/telegram/digest/${dateStr}`, {
+            headers: getAuthHeadersGet()
+        });
+        if (handleAuthError(response)) return;
         const result = await response.json();
         if (result.success) {
             showNotification('Дайджест відправлено в Telegram!', 'success');
         } else {
-            showNotification('Telegram не налаштовано', 'error');
+            showNotification(result.reason === 'no_chat_id' ? 'Telegram Chat ID не налаштовано' : 'Помилка відправки дайджесту', 'error');
         }
     } catch (err) {
+        console.error('Digest send error:', err);
         showNotification('Помилка відправки дайджесту', 'error');
     }
 }
@@ -497,12 +501,49 @@ async function showSettings() {
         tgSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
     }
 
+    // E1: Load chat ID into hidden input (for save function)
     const chatId = await apiGetSetting('telegram_chat_id');
     const chatIdInput = document.getElementById('settingsTelegramChatId');
     if (chatIdInput) chatIdInput.value = chatId || '';
 
+    // A4: Load digest time setting
+    const digestTime = await apiGetSetting('digest_time');
+    const digestTimeInput = document.getElementById('settingsDigestTime');
+    if (digestTimeInput) digestTimeInput.value = digestTime || '';
+
     document.getElementById('settingsModal').classList.remove('hidden');
     fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
+}
+
+async function saveDigestTime() {
+    const input = document.getElementById('settingsDigestTime');
+    if (!input) return;
+    const val = input.value.trim();
+    if (val && !/^\d{2}:\d{2}$/.test(val)) {
+        showNotification('Введіть час у форматі ГГ:ХХ', 'error');
+        return;
+    }
+    await apiSaveSetting('digest_time', val);
+    showNotification(val ? `Автодайджест встановлено на ${val} (Київ)` : 'Автодайджест вимкнено', 'success');
+}
+
+async function sendTestDigest() {
+    const dateStr = formatDate(AppState.selectedDate);
+    showNotification('Надсилаю тестовий дайджест...', 'success');
+    try {
+        const response = await fetch(`${API_BASE}/telegram/digest/${dateStr}`, {
+            headers: getAuthHeadersGet()
+        });
+        if (handleAuthError(response)) return;
+        const result = await response.json();
+        if (result.success) {
+            showNotification('Тестовий дайджест надіслано!', 'success');
+        } else {
+            showNotification('Помилка: ' + (result.reason || 'невідома'), 'error');
+        }
+    } catch (err) {
+        showNotification('Помилка надсилання', 'error');
+    }
 }
 
 function saveAnimatorsListFromSettings() {
@@ -634,4 +675,144 @@ async function showDashboard() {
         renderRevenueCards(todayBookings, weekBookings, monthBookings) +
         renderTopProgramsSection(monthBookings) +
         renderCategoryBarsSection(monthBookings);
+}
+
+// ==========================================
+// АФІША (F1-F5: MVP poster/events)
+// ==========================================
+
+async function apiGetAfisha() {
+    try {
+        const response = await fetch(`${API_BASE}/afisha`, { headers: getAuthHeadersGet() });
+        if (handleAuthError(response)) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('Afisha fetch error:', err);
+        return [];
+    }
+}
+
+async function apiGetAfishaByDate(date) {
+    try {
+        const response = await fetch(`${API_BASE}/afisha/${date}`, { headers: getAuthHeadersGet() });
+        if (handleAuthError(response)) return [];
+        return await response.json();
+    } catch (err) {
+        return [];
+    }
+}
+
+async function apiCreateAfisha(data) {
+    try {
+        const response = await fetch(`${API_BASE}/afisha`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Afisha create error:', err);
+        return null;
+    }
+}
+
+async function apiDeleteAfisha(id) {
+    try {
+        const response = await fetch(`${API_BASE}/afisha/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Afisha delete error:', err);
+        return null;
+    }
+}
+
+async function showAfishaModal() {
+    const modal = document.getElementById('afishaModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    await renderAfishaList();
+}
+
+async function renderAfishaList() {
+    const container = document.getElementById('afishaList');
+    if (!container) return;
+    container.innerHTML = '<p>Завантаження...</p>';
+    const items = await apiGetAfisha();
+    if (items.length === 0) {
+        container.innerHTML = '<p class="no-data">Немає подій. Додайте першу!</p>';
+        return;
+    }
+    container.innerHTML = items.map(item => `
+        <div class="afisha-item" data-id="${item.id}">
+            <div class="afisha-item-info">
+                <strong>${escapeHtml(item.title)}</strong>
+                <span class="afisha-date">${escapeHtml(item.date)} ${escapeHtml(item.time)} (${item.duration} хв)</span>
+            </div>
+            <button class="btn-danger btn-sm" onclick="deleteAfishaItem(${item.id})">✕</button>
+        </div>
+    `).join('');
+}
+
+async function addAfishaItem() {
+    const dateInput = document.getElementById('afishaDate');
+    const timeInput = document.getElementById('afishaTime');
+    const titleInput = document.getElementById('afishaTitle');
+    const durationInput = document.getElementById('afishaDuration');
+    if (!dateInput || !timeInput || !titleInput) return;
+
+    const date = dateInput.value;
+    const time = timeInput.value;
+    const title = titleInput.value.trim();
+    const duration = parseInt(durationInput?.value) || 60;
+
+    if (!date || !time || !title) {
+        showNotification('Заповніть дату, час та назву', 'error');
+        return;
+    }
+
+    // F4: Basic time conflict check
+    const existingBookings = await getBookingsForDate(new Date(date));
+    const newStart = timeToMinutes(time);
+    const newEnd = newStart + duration;
+    const conflict = existingBookings.find(b => {
+        const bStart = timeToMinutes(b.time);
+        const bEnd = bStart + b.duration;
+        return (newStart < bEnd && newEnd > bStart);
+    });
+    if (conflict) {
+        const proceed = await customConfirm(
+            `Конфлікт з "${conflict.label || conflict.programCode}" о ${conflict.time}. Додати все одно?`,
+            'Конфлікт часу'
+        );
+        if (!proceed) return;
+    }
+
+    const result = await apiCreateAfisha({ date, time, title, duration });
+    if (result && result.success) {
+        titleInput.value = '';
+        showNotification('Подію додано до афіші!', 'success');
+        await renderAfishaList();
+        // Refresh timeline if viewing same date
+        if (formatDate(AppState.selectedDate) === date) {
+            delete AppState.cachedBookings[date];
+            await renderTimeline();
+        }
+    } else {
+        showNotification('Помилка додавання', 'error');
+    }
+}
+
+async function deleteAfishaItem(id) {
+    const confirmed = await customConfirm('Видалити цю подію з афіші?', 'Видалення');
+    if (!confirmed) return;
+    const result = await apiDeleteAfisha(id);
+    if (result && result.success) {
+        showNotification('Подію видалено', 'success');
+        await renderAfishaList();
+    }
 }

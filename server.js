@@ -66,17 +66,29 @@ function telegramRequest(method, body) {
     });
 }
 
-async function sendTelegramMessage(chatId, text) {
-    try {
-        return await telegramRequest('sendMessage', {
-            chat_id: chatId,
-            text: text,
-            parse_mode: 'HTML'
-        });
-    } catch (err) {
-        console.error('Telegram send error:', err);
-        return null;
+async function sendTelegramMessage(chatId, text, retries = 3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const result = await telegramRequest('sendMessage', {
+                chat_id: chatId,
+                text: text,
+                parse_mode: 'HTML'
+            });
+            if (result && result.ok) {
+                console.log(`[Telegram] Message sent to ${chatId} (attempt ${attempt})`);
+            } else {
+                console.warn(`[Telegram] API returned error on attempt ${attempt}:`, JSON.stringify(result));
+            }
+            return result;
+        } catch (err) {
+            console.error(`[Telegram] Send error (attempt ${attempt}/${retries}):`, err.message);
+            if (attempt < retries) {
+                await new Promise(r => setTimeout(r, 1000 * attempt));
+            }
+        }
     }
+    console.error(`[Telegram] All ${retries} attempts failed for chat ${chatId}`);
+    return null;
 }
 
 async function getConfiguredChatId() {
@@ -91,10 +103,11 @@ async function getConfiguredChatId() {
 
 let webhookSet = false;
 
-// Ensure default lines exist in DB (fix: defaults were only in API response, not in DB)
+// Ensure at least 2 default lines exist in DB for any date (B1: hard rule — every normal day has >= 2 lines)
 async function ensureDefaultLines(date) {
     const existing = await pool.query('SELECT COUNT(*) FROM lines_by_date WHERE date = $1', [date]);
-    if (parseInt(existing.rows[0].count) === 0) {
+    const count = parseInt(existing.rows[0].count);
+    if (count < 2) {
         const defaults = [
             { id: 'line1_' + date, name: 'Аніматор 1', color: '#4CAF50' },
             { id: 'line2_' + date, name: 'Аніматор 2', color: '#2196F3' }
@@ -256,6 +269,19 @@ async function initDatabase() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
+
+        // v5.3: Afisha / Events table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS afisha (
+                id SERIAL PRIMARY KEY,
+                date VARCHAR(20) NOT NULL,
+                time VARCHAR(10) NOT NULL,
+                title VARCHAR(200) NOT NULL,
+                duration INTEGER DEFAULT 60,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_afisha_date ON afisha(date)');
 
         // v5.0: Users table for server-side authentication
         await pool.query(`
@@ -450,37 +476,23 @@ app.put('/api/bookings/:id', async (req, res) => {
 
 // --- LINES ---
 
-// Get lines for a date
+// Get lines for a date (B1: always ensure >= 2 lines for normal days)
 app.get('/api/lines/:date', async (req, res) => {
     try {
         const { date } = req.params;
+        // Always ensure at least 2 lines exist
+        await ensureDefaultLines(date);
         const result = await pool.query(
             'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id',
             [date]
         );
-
-        if (result.rows.length === 0) {
-            // v3.9: Materialize defaults in DB so webhook/other operations always find them
-            await ensureDefaultLines(date);
-            const defaults = await pool.query(
-                'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]
-            );
-            const lines = defaults.rows.map(row => ({
-                id: row.line_id,
-                name: row.name,
-                color: row.color,
-                fromSheet: row.from_sheet
-            }));
-            return res.json(lines);
-        } else {
-            const lines = result.rows.map(row => ({
-                id: row.line_id,
-                name: row.name,
-                color: row.color,
-                fromSheet: row.from_sheet
-            }));
-            res.json(lines);
-        }
+        const lines = result.rows.map(row => ({
+            id: row.line_id,
+            name: row.name,
+            color: row.color,
+            fromSheet: row.from_sheet
+        }));
+        res.json(lines);
     } catch (err) {
         console.error('Error fetching lines:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -631,47 +643,58 @@ app.post('/api/telegram/notify', async (req, res) => {
     }
 });
 
-// Daily digest endpoint
+// Daily digest — shared logic (used by API and auto-scheduler)
+async function buildAndSendDigest(date) {
+    const chatId = await getConfiguredChatId();
+    if (!chatId) {
+        console.warn('[Digest] No chat ID configured');
+        return { success: false, reason: 'no_chat_id' };
+    }
+
+    const bookingsResult = await pool.query('SELECT * FROM bookings WHERE date = $1 ORDER BY time', [date]);
+    const bookings = bookingsResult.rows;
+
+    if (bookings.length === 0) {
+        const text = `📅 <b>${date}</b>\n\nНемає бронювань на цей день.`;
+        const result = await sendTelegramMessage(chatId, text);
+        return { success: result?.ok || false, count: 0 };
+    }
+
+    await ensureDefaultLines(date);
+    const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]);
+    const lines = linesResult.rows;
+
+    let text = `📅 <b>Розклад на ${date}</b>\n`;
+    text += `Всього бронювань: ${bookings.filter(b => !b.linked_to).length}\n\n`;
+
+    for (const line of lines) {
+        const lineBookings = bookings.filter(b => b.line_id === line.line_id && !b.linked_to);
+        if (lineBookings.length === 0) continue;
+
+        text += `👤 <b>${line.name}</b>\n`;
+        for (const b of lineBookings) {
+            const endMin = parseInt(b.time.split(':')[0]) * 60 + parseInt(b.time.split(':')[1]) + (b.duration || 0);
+            const endH = String(Math.floor(endMin / 60)).padStart(2, '0');
+            const endM = String(endMin % 60).padStart(2, '0');
+            const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
+            text += `  ${statusIcon} ${b.time}-${endH}:${endM} ${b.label || b.program_code} (${b.room})`;
+            if (b.kids_count) text += ` [${b.kids_count} діт]`;
+            text += '\n';
+        }
+        text += '\n';
+    }
+
+    const result = await sendTelegramMessage(chatId, text);
+    console.log(`[Digest] Sent for ${date}: ${result?.ok ? 'OK' : 'FAIL'}`);
+    return { success: result?.ok || false, count: bookings.length };
+}
+
+// Daily digest endpoint (protected by auth middleware)
 app.get('/api/telegram/digest/:date', async (req, res) => {
     try {
         const { date } = req.params;
-        const chatId = await getConfiguredChatId();
-
-        const bookingsResult = await pool.query('SELECT * FROM bookings WHERE date = $1 ORDER BY time', [date]);
-        const bookings = bookingsResult.rows;
-
-        if (bookings.length === 0) {
-            const text = `📅 <b>${date}</b>\n\nНемає бронювань на цей день.`;
-            await sendTelegramMessage(chatId, text);
-            return res.json({ success: true, count: 0 });
-        }
-
-        // Group by line
-        const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]);
-        const lines = linesResult.rows;
-
-        let text = `📅 <b>Розклад на ${date}</b>\n`;
-        text += `Всього бронювань: ${bookings.filter(b => !b.linked_to).length}\n\n`;
-
-        for (const line of lines) {
-            const lineBookings = bookings.filter(b => b.line_id === line.line_id && !b.linked_to);
-            if (lineBookings.length === 0) continue;
-
-            text += `👤 <b>${line.name}</b>\n`;
-            for (const b of lineBookings) {
-                const endMin = parseInt(b.time.split(':')[0]) * 60 + parseInt(b.time.split(':')[1]) + b.duration;
-                const endH = String(Math.floor(endMin / 60)).padStart(2, '0');
-                const endM = String(endMin % 60).padStart(2, '0');
-                const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
-                text += `  ${statusIcon} ${b.time}-${endH}:${endM} ${b.label || b.program_code} (${b.room})`;
-                if (b.kids_count) text += ` [${b.kids_count} діт]`;
-                text += '\n';
-            }
-            text += '\n';
-        }
-
-        await sendTelegramMessage(chatId, text);
-        res.json({ success: true, count: bookings.length });
+        const result = await buildAndSendDigest(date);
+        res.json(result);
     } catch (err) {
         console.error('Digest error:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -850,6 +873,74 @@ app.post('/api/telegram/webhook', async (req, res) => {
     }
 });
 
+// --- AFISHA (Events) ---
+
+app.get('/api/afisha', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM afisha ORDER BY date, time');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Afisha get error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.get('/api/afisha/:date', async (req, res) => {
+    try {
+        const { date } = req.params;
+        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
+        const result = await pool.query('SELECT * FROM afisha WHERE date = $1 ORDER BY time', [date]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Afisha get by date error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/afisha', async (req, res) => {
+    try {
+        const { date, time, title, duration } = req.body;
+        if (!date || !time || !title) return res.status(400).json({ error: 'date, time, title required' });
+        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
+        if (!validateTime(time)) return res.status(400).json({ error: 'Invalid time' });
+        const result = await pool.query(
+            'INSERT INTO afisha (date, time, title, duration) VALUES ($1, $2, $3, $4) RETURNING *',
+            [date, time, title, duration || 60]
+        );
+        res.json({ success: true, item: result.rows[0] });
+    } catch (err) {
+        console.error('Afisha create error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.put('/api/afisha/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { date, time, title, duration } = req.body;
+        if (!date || !time || !title) return res.status(400).json({ error: 'date, time, title required' });
+        await pool.query(
+            'UPDATE afisha SET date=$1, time=$2, title=$3, duration=$4 WHERE id=$5',
+            [date, time, title, duration || 60, id]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Afisha update error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.delete('/api/afisha/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM afisha WHERE id = $1', [id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Afisha delete error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // --- HEALTH CHECK ---
 app.get('/api/health', async (req, res) => {
     try {
@@ -870,6 +961,46 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// ==========================================
+// AUTO-DIGEST SCHEDULER (A4: daily digest at configured time, Kyiv TZ)
+// ==========================================
+
+let digestSentToday = null; // tracks which date we've already sent for
+
+function getKyivDate() {
+    const now = new Date();
+    const kyiv = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+    return kyiv;
+}
+
+function getKyivDateStr() {
+    const k = getKyivDate();
+    return `${k.getFullYear()}-${String(k.getMonth() + 1).padStart(2, '0')}-${String(k.getDate()).padStart(2, '0')}`;
+}
+
+async function checkAutoDigest() {
+    try {
+        const result = await pool.query("SELECT value FROM settings WHERE key = 'digest_time'");
+        if (result.rows.length === 0 || !result.rows[0].value) return;
+        const digestTime = result.rows[0].value; // "HH:MM"
+        if (!/^\d{2}:\d{2}$/.test(digestTime)) return;
+
+        const kyiv = getKyivDate();
+        const nowHH = String(kyiv.getHours()).padStart(2, '0');
+        const nowMM = String(kyiv.getMinutes()).padStart(2, '0');
+        const nowTime = `${nowHH}:${nowMM}`;
+        const todayStr = getKyivDateStr();
+
+        if (nowTime === digestTime && digestSentToday !== todayStr) {
+            digestSentToday = todayStr;
+            console.log(`[AutoDigest] Sending daily digest for ${todayStr} at ${digestTime} Kyiv time`);
+            await buildAndSendDigest(todayStr);
+        }
+    } catch (err) {
+        console.error('[AutoDigest] Error:', err);
+    }
+}
+
 // Start server
 initDatabase().then(() => {
     app.listen(PORT, () => {
@@ -882,5 +1013,9 @@ initDatabase().then(() => {
         if (appUrl) {
             ensureWebhook(appUrl).catch(err => console.error('Webhook auto-setup error:', err));
         }
+
+        // A4: Check auto-digest every minute
+        setInterval(checkAutoDigest, 60000);
+        console.log('[AutoDigest] Scheduler started (checks every 60s)');
     });
 });

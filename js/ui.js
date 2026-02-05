@@ -180,7 +180,13 @@ function toggleDarkMode() {
 
 function toggleCompactMode() {
     AppState.compactMode = !AppState.compactMode;
-    CONFIG.TIMELINE.CELL_WIDTH = AppState.compactMode ? 35 : 50;
+    // D4: Adjust cell width for current zoom level
+    const level = AppState.zoomLevel || 15;
+    if (AppState.compactMode) {
+        CONFIG.TIMELINE.CELL_WIDTH = level === 15 ? 35 : level === 30 ? 56 : 84;
+    } else {
+        CONFIG.TIMELINE.CELL_WIDTH = level === 15 ? 50 : level === 30 ? 80 : 120;
+    }
     localStorage.setItem('pzp_compact_mode', AppState.compactMode);
     const container = document.querySelector('.timeline-container');
     if (container) container.classList.toggle('compact', AppState.compactMode);
@@ -196,7 +202,16 @@ function toggleCompactMode() {
 function changeZoom(level) {
     AppState.zoomLevel = level;
     CONFIG.TIMELINE.CELL_MINUTES = level;
+    // D2/D3: Scale cell width for larger zoom levels
+    if (AppState.compactMode) {
+        CONFIG.TIMELINE.CELL_WIDTH = level === 15 ? 35 : level === 30 ? 56 : 84;
+    } else {
+        CONFIG.TIMELINE.CELL_WIDTH = level === 15 ? 50 : level === 30 ? 80 : 120;
+    }
     localStorage.setItem('pzp_zoom_level', level);
+    // D2/D3: Set data-zoom attribute for CSS targeting
+    const container = document.querySelector('.timeline-container');
+    if (container) container.dataset.zoom = level;
     updateZoomButtons();
     renderTimeline();
 }

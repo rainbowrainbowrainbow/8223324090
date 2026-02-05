@@ -10,6 +10,12 @@ async function openBookingPanel(time, lineId) {
     const lines = await getLinesForDate(AppState.selectedDate);
     const line = lines.find(l => l.id === lineId);
 
+    // C1: Show date in panel
+    const dateDisplay = document.getElementById('selectedDateDisplay');
+    if (dateDisplay) {
+        const d = AppState.selectedDate;
+        dateDisplay.textContent = `${formatDate(d)} (${DAYS[d.getDay()]})`;
+    }
     document.getElementById('selectedTimeDisplay').textContent = time;
     document.getElementById('selectedLineDisplay').textContent = line ? line.name : '-';
     document.getElementById('bookingTime').value = time;
@@ -431,6 +437,15 @@ async function showBookingDetails(bookingId) {
         ? `<div class="booking-detail-description"><span class="label">Опис:</span><p>${program.description}</p></div>`
         : '';
 
+    // B2: Per-event invite URL with booking details
+    const inviteParams = new URLSearchParams({
+        date: booking.date,
+        time: booking.time,
+        program: booking.programName || booking.label,
+        room: booking.room
+    });
+    const inviteUrl = `/invite?${inviteParams.toString()}`;
+
     const editControls = isViewer() ? '' : `
         <div class="booking-time-shift">
             <span class="label">Перенести час:</span>
@@ -444,6 +459,7 @@ async function showBookingDetails(bookingId) {
             </div>
         </div>
         <div class="booking-actions">
+            <a href="${inviteUrl}" target="_blank" class="btn-invite-event">🎉 Запрошення</a>
             <button onclick="deleteBooking('${booking.id}')">Видалити бронювання</button>
         </div>
     `;

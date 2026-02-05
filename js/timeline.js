@@ -140,6 +140,29 @@ async function renderTimeline() {
         });
     });
 
+    // F3: Render afisha events as overlay markers on timeline
+    try {
+        const afishaEvents = await apiGetAfishaByDate(formatDate(AppState.selectedDate));
+        if (afishaEvents && afishaEvents.length > 0) {
+            const firstGrid = container.querySelector('.line-grid');
+            if (firstGrid) {
+                afishaEvents.forEach(ev => {
+                    const startMin = timeToMinutes(ev.time) - start * 60;
+                    if (startMin < 0) return;
+                    const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
+                    const width = ((ev.duration || 60) / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+                    const marker = document.createElement('div');
+                    marker.className = 'afisha-marker';
+                    marker.style.left = `${left}px`;
+                    marker.style.width = `${Math.max(width, 30)}px`;
+                    marker.title = `${ev.title} (${ev.time}, ${ev.duration} хв)`;
+                    marker.innerHTML = `<span class="afisha-marker-text">🎭 ${escapeHtml(ev.title)}</span>`;
+                    firstGrid.appendChild(marker);
+                });
+            }
+        }
+    } catch (e) { /* afisha optional */ }
+
     renderNowLine();
     renderMinimap();
 }
@@ -373,6 +396,8 @@ function removePendingLine() {
 // ==========================================
 
 function changeDate(days) {
+    // C2: Auto-close booking panel on date change
+    closeBookingPanel();
     // v3.9: Cleanup pending poll on date change
     if (AppState.pendingPollInterval) {
         clearInterval(AppState.pendingPollInterval);

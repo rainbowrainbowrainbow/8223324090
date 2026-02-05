@@ -109,6 +109,7 @@ function initTimelineListeners() {
     document.getElementById('prevDay').addEventListener('click', () => changeDate(-1));
     document.getElementById('nextDay').addEventListener('click', () => changeDate(1));
     document.getElementById('timelineDate').addEventListener('change', (e) => {
+        closeBookingPanel(); // C2: auto-close on date change
         AppState.selectedDate = new Date(e.target.value);
         renderTimeline();
         fetchAnimatorsFromSheet();
@@ -204,6 +205,20 @@ function initSettingsListeners() {
 
     const saveAnimatorsBtn = document.getElementById('saveAnimatorsBtn');
     if (saveAnimatorsBtn) saveAnimatorsBtn.addEventListener('click', saveAnimatorsList);
+
+    // A4: Digest time settings
+    const saveDigestTimeBtn = document.getElementById('saveDigestTimeBtn');
+    if (saveDigestTimeBtn) saveDigestTimeBtn.addEventListener('click', saveDigestTime);
+
+    const sendTestDigestBtn = document.getElementById('sendTestDigestBtn');
+    if (sendTestDigestBtn) sendTestDigestBtn.addEventListener('click', sendTestDigest);
+
+    // F: Afisha button
+    const afishaBtn = document.getElementById('afishaBtn');
+    if (afishaBtn) afishaBtn.addEventListener('click', showAfishaModal);
+
+    const addAfishaBtn = document.getElementById('addAfishaBtn');
+    if (addAfishaBtn) addAfishaBtn.addEventListener('click', addAfishaItem);
 }
 
 function initUIControlListeners() {

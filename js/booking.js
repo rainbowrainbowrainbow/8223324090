@@ -541,6 +541,7 @@ async function showBookingDetails(bookingId) {
             <span class="value status-value ${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
         </div>
         ${booking.notes ? `<div class="booking-detail-row"><span class="label">Примітки:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
+        ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">Оновлено:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
         ${descriptionHtml}
         ${!isViewer() ? `<div class="status-toggle-section">
             <button class="btn-status-toggle" onclick="changeBookingStatus('${escapeHtml(booking.id)}', '${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}')">

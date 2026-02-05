@@ -72,7 +72,8 @@ async function sendTelegramMessage(chatId, text, retries = 3) {
             const result = await telegramRequest('sendMessage', {
                 chat_id: chatId,
                 text: text,
-                parse_mode: 'HTML'
+                parse_mode: 'HTML',
+                disable_notification: true
             });
             if (result && result.ok) {
                 console.log(`[Telegram] Message sent to ${chatId} (attempt ${attempt})`);
@@ -221,7 +222,8 @@ function mapBookingRow(row) {
         createdAt: row.created_at,
         linkedTo: row.linked_to,
         status: row.status || 'confirmed',
-        kidsCount: row.kids_count
+        kidsCount: row.kids_count,
+        updatedAt: row.updated_at
     };
 }
 
@@ -278,6 +280,7 @@ async function initDatabase() {
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'confirmed'`);
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS kids_count INTEGER`);
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS costume VARCHAR(100)`);
+        await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`);
 
         // v3.3: Settings table for Telegram etc
         await pool.query(`
@@ -528,7 +531,7 @@ app.put('/api/bookings/:id', async (req, res) => {
             `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
              label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
              second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-             linked_to=$18, status=$19, kids_count=$20
+             linked_to=$18, status=$19, kids_count=$20, updated_at=NOW()
              WHERE id=$21`,
             [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
              b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
@@ -833,6 +836,7 @@ app.post('/api/telegram/ask-animator', async (req, res) => {
             chat_id: chatId,
             text: text,
             parse_mode: 'HTML',
+            disable_notification: true,
             reply_markup: {
                 inline_keyboard: [[
                     { text: '✅ Так', callback_data: `add_anim:${requestId}` },

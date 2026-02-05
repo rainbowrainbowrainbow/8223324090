@@ -1,6 +1,6 @@
 /**
  * Парк Закревського Періоду - Система бронювання
- * v3.2 - UI improvements, statuses, dark mode, zoom, minimap
+ * v3.3 - Telegram notifications, invite page, daily digest
  */
 
 // ==========================================
@@ -516,10 +516,14 @@ function showMainApp() {
     document.getElementById('mainApp').classList.remove('hidden');
     document.getElementById('currentUser').textContent = currentUser.name;
 
-    // Показати кнопку "Аніматори" тільки для Сергія
+    // Показати кнопку "Аніматори" та "Telegram" тільки для Сергія
     const animatorsBtn = document.getElementById('animatorsTabBtn');
     if (animatorsBtn) {
         animatorsBtn.classList.toggle('hidden', currentUser.username !== 'Sergey');
+    }
+    const telegramSetupBtn = document.getElementById('telegramSetupBtn');
+    if (telegramSetupBtn) {
+        telegramSetupBtn.classList.toggle('hidden', currentUser.username !== 'Sergey');
     }
 
     // Показати/сховати кнопку "Розважальні програми"
@@ -664,6 +668,17 @@ function initializeEventListeners() {
     const undoBtn = document.getElementById('undoBtn');
     if (undoBtn) undoBtn.addEventListener('click', handleUndo);
 
+    // v3.3: Telegram setup
+    const telegramSetupBtn = document.getElementById('telegramSetupBtn');
+    if (telegramSetupBtn) telegramSetupBtn.addEventListener('click', showTelegramSetup);
+
+    const saveTelegramBtn = document.getElementById('saveTelegramBtn');
+    if (saveTelegramBtn) saveTelegramBtn.addEventListener('click', saveTelegramChatId);
+
+    // v3.3: Digest button
+    const digestBtn = document.getElementById('digestBtn');
+    if (digestBtn) digestBtn.addEventListener('click', sendDailyDigest);
+
     // Збереження списку аніматорів
     const saveAnimatorsBtn = document.getElementById('saveAnimatorsBtn');
     if (saveAnimatorsBtn) {
@@ -764,10 +779,14 @@ async function renderTimeline() {
     const bookings = await getBookingsForDate(selectedDate);
     const { start } = getTimeRange();
 
-    // Показати/сховати кнопку історії
+    // Показати/сховати кнопку історії та дайджесту
     const historyBtn = document.getElementById('historyBtn');
     if (historyBtn) {
         historyBtn.classList.toggle('hidden', !canViewHistory());
+    }
+    const digestBtn = document.getElementById('digestBtn');
+    if (digestBtn) {
+        digestBtn.classList.toggle('hidden', isViewer());
     }
 
     document.getElementById('dayOfWeekLabel').textContent = DAYS[selectedDate.getDay()];
@@ -1404,6 +1423,9 @@ async function handleBookingSubmit(e) {
     const createdIds = [booking];
     pushUndo('create', createdIds);
 
+    // v3.3: Telegram сповіщення
+    notifyBookingCreated(booking);
+
     // Очистити кеш і перемалювати
     delete cachedBookings[formatDate(selectedDate)];
     closeBookingPanel();
@@ -1572,6 +1594,9 @@ async function deleteBooking(bookingId) {
 
     // v3.2: Undo - зберегти перед видаленням
     pushUndo('delete', [...allToDelete]);
+
+    // v3.3: Telegram сповіщення
+    notifyBookingDeleted(booking);
 
     // Видалити всі пов'язані бронювання
     for (const b of allToDelete) {
@@ -2013,6 +2038,138 @@ async function exportTimelineImage() {
 }
 
 // ==========================================
+// v3.3: TELEGRAM СПОВІЩЕННЯ
+// ==========================================
+
+async function apiTelegramNotify(text) {
+    try {
+        const response = await fetch(`${API_BASE}/telegram/notify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('Telegram notify error:', err);
+    }
+}
+
+async function apiGetSetting(key) {
+    try {
+        const response = await fetch(`${API_BASE}/settings/${key}`);
+        const data = await response.json();
+        return data.value;
+    } catch (err) {
+        console.error('getSetting error:', err);
+        return null;
+    }
+}
+
+async function apiSaveSetting(key, value) {
+    try {
+        await fetch(`${API_BASE}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key, value })
+        });
+    } catch (err) {
+        console.error('saveSetting error:', err);
+    }
+}
+
+function notifyBookingCreated(booking) {
+    const endTime = addMinutesToTime(booking.time, booking.duration);
+    const statusIcon = booking.status === 'preliminary' ? '⏳' : '✅';
+    const statusText = booking.status === 'preliminary' ? 'Попереднє' : 'Підтверджене';
+    let text = `📌 <b>Нове бронювання</b>\n\n`;
+    text += `${statusIcon} ${statusText}\n`;
+    text += `🎭 ${booking.label}: ${booking.programName}\n`;
+    text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+    text += `🏠 ${booking.room}\n`;
+    if (booking.kidsCount) text += `👶 ${booking.kidsCount} дітей\n`;
+    if (booking.notes) text += `📝 ${booking.notes}\n`;
+    text += `\n👤 Створив: ${booking.createdBy}`;
+    apiTelegramNotify(text);
+}
+
+function notifyBookingDeleted(booking) {
+    const text = `🗑 <b>Видалено бронювання</b>\n\n` +
+        `🎭 ${booking.label}: ${booking.programName}\n` +
+        `🕐 ${booking.date} | ${booking.time}\n` +
+        `🏠 ${booking.room}\n` +
+        `\n👤 Видалив: ${currentUser?.username || '?'}`;
+    apiTelegramNotify(text);
+}
+
+function notifyStatusChanged(booking, newStatus) {
+    const icon = newStatus === 'confirmed' ? '✅' : '⏳';
+    const statusText = newStatus === 'confirmed' ? 'ПІДТВЕРДЖЕНО' : 'Попереднє';
+    const text = `${icon} <b>Статус змінено: ${statusText}</b>\n\n` +
+        `🎭 ${booking.label}: ${booking.programName}\n` +
+        `🕐 ${booking.date} | ${booking.time}\n` +
+        `🏠 ${booking.room}\n` +
+        `\n👤 Змінив: ${currentUser?.username || '?'}`;
+    apiTelegramNotify(text);
+}
+
+async function sendDailyDigest() {
+    const dateStr = formatDate(selectedDate);
+    try {
+        const response = await fetch(`${API_BASE}/telegram/digest/${dateStr}`);
+        const result = await response.json();
+        if (result.success) {
+            showNotification('Дайджест відправлено в Telegram!', 'success');
+        } else {
+            showNotification('Telegram не налаштовано', 'error');
+        }
+    } catch (err) {
+        showNotification('Помилка відправки дайджесту', 'error');
+    }
+}
+
+async function showTelegramSetup() {
+    const chatId = await apiGetSetting('telegram_chat_id');
+    let chatsHtml = '<p>Завантаження...</p>';
+
+    const modal = document.getElementById('telegramModal');
+    document.getElementById('telegramChatId').value = chatId || '';
+    document.getElementById('telegramChats').innerHTML = chatsHtml;
+    modal.classList.remove('hidden');
+
+    // Load available chats
+    try {
+        const response = await fetch(`${API_BASE}/telegram/chats`);
+        const data = await response.json();
+        if (data.chats && data.chats.length > 0) {
+            chatsHtml = data.chats.map(c =>
+                `<div class="telegram-chat-item" onclick="document.getElementById('telegramChatId').value='${c.id}'">
+                    <strong>${c.title || 'Чат'}</strong> <span class="chat-id">${c.id}</span> <span class="chat-type">${c.type}</span>
+                </div>`
+            ).join('');
+        } else {
+            chatsHtml = '<p class="no-chats">Бот ще не доданий до жодної групи або немає повідомлень. Додайте бота @MySuperReport_bot до групи і напишіть повідомлення.</p>';
+        }
+    } catch (err) {
+        chatsHtml = '<p>Помилка завантаження</p>';
+    }
+    document.getElementById('telegramChats').innerHTML = chatsHtml;
+}
+
+async function saveTelegramChatId() {
+    const chatId = document.getElementById('telegramChatId').value.trim();
+    if (!chatId) {
+        showNotification('Введіть Chat ID', 'error');
+        return;
+    }
+    await apiSaveSetting('telegram_chat_id', chatId);
+
+    // Test message
+    const result = await apiTelegramNotify('🤖 Telegram підключено до системи бронювання Парку Закревського Періоду!');
+    closeAllModals();
+    showNotification('Telegram налаштовано!', 'success');
+}
+
+// ==========================================
 // v3.2: ЧЕРВОНА ЛІНІЯ "ЗАРАЗ"
 // ==========================================
 
@@ -2317,6 +2474,9 @@ async function changeBookingStatus(bookingId, newStatus) {
         await apiDeleteBooking(lb.id);
         await apiCreateBooking({ ...lb, status: newStatus });
     }
+
+    // v3.3: Telegram сповіщення
+    notifyStatusChanged(booking, newStatus);
 
     delete cachedBookings[formatDate(selectedDate)];
     closeAllModals();

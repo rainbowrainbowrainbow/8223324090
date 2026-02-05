@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const { Pool } = require('pg');
 const cors = require('cors');
+const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,6 +17,71 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
+
+// ==========================================
+// TELEGRAM BOT
+// ==========================================
+
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8068946683:AAGdGn4cwNyRotIY1zzkuad0rHfB-ud-2Fg';
+const TELEGRAM_DEFAULT_CHAT_ID = '-1001805304620'; // Аніматорська група
+
+function telegramRequest(method, body) {
+    return new Promise((resolve, reject) => {
+        const data = body ? JSON.stringify(body) : '';
+        const options = {
+            hostname: 'api.telegram.org',
+            path: `/bot${TELEGRAM_BOT_TOKEN}/${method}`,
+            method: body ? 'POST' : 'GET',
+            headers: body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}
+        };
+        const req = https.request(options, (res) => {
+            let result = '';
+            res.on('data', (chunk) => result += chunk);
+            res.on('end', () => {
+                try { resolve(JSON.parse(result)); }
+                catch (e) { reject(e); }
+            });
+        });
+        req.on('error', reject);
+        if (body) req.write(data);
+        req.end();
+    });
+}
+
+async function sendTelegramMessage(chatId, text) {
+    try {
+        return await telegramRequest('sendMessage', {
+            chat_id: chatId,
+            text: text,
+            parse_mode: 'HTML'
+        });
+    } catch (err) {
+        console.error('Telegram send error:', err);
+        return null;
+    }
+}
+
+async function getTelegramChatId() {
+    try {
+        const result = await telegramRequest('getUpdates');
+        if (result.ok && result.result.length > 0) {
+            const chats = new Set();
+            const chatList = [];
+            for (const update of result.result) {
+                const chat = update.message?.chat || update.my_chat_member?.chat;
+                if (chat && !chats.has(chat.id)) {
+                    chats.add(chat.id);
+                    chatList.push({ id: chat.id, title: chat.title || chat.first_name, type: chat.type });
+                }
+            }
+            return chatList;
+        }
+        return [];
+    } catch (err) {
+        console.error('Telegram getUpdates error:', err);
+        return [];
+    }
+}
 
 // Initialize database tables
 async function initDatabase() {
@@ -69,6 +135,14 @@ async function initDatabase() {
         // v3.2: Add new columns if they don't exist
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'confirmed'`);
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS kids_count INTEGER`);
+
+        // v3.3: Settings table for Telegram etc
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS settings (
+                key VARCHAR(100) PRIMARY KEY,
+                value TEXT
+            )
+        `);
 
         console.log('Database initialized');
     } catch (err) {
@@ -243,6 +317,114 @@ app.post('/api/history', async (req, res) => {
     }
 });
 
+// --- SETTINGS ---
+
+app.get('/api/settings/:key', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT value FROM settings WHERE key = $1', [req.params.key]);
+        res.json({ value: result.rows.length > 0 ? result.rows[0].value : null });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/settings', async (req, res) => {
+    try {
+        const { key, value } = req.body;
+        await pool.query(
+            `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
+            [key, value]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- TELEGRAM ---
+
+// Get chat ID from bot updates (admin helper)
+app.get('/api/telegram/chats', async (req, res) => {
+    try {
+        const chats = await getTelegramChatId();
+        res.json({ chats });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Send notification to Telegram
+app.post('/api/telegram/notify', async (req, res) => {
+    try {
+        const { text } = req.body;
+        let chatId = TELEGRAM_DEFAULT_CHAT_ID;
+        try {
+            const chatIdResult = await pool.query("SELECT value FROM settings WHERE key = 'telegram_chat_id'");
+            if (chatIdResult.rows.length > 0 && chatIdResult.rows[0].value) {
+                chatId = chatIdResult.rows[0].value;
+            }
+        } catch (e) { /* use default */ }
+        const result = await sendTelegramMessage(chatId, text);
+        res.json({ success: result?.ok || false });
+    } catch (err) {
+        console.error('Telegram notify error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Daily digest endpoint
+app.get('/api/telegram/digest/:date', async (req, res) => {
+    try {
+        const { date } = req.params;
+        let chatId = TELEGRAM_DEFAULT_CHAT_ID;
+        try {
+            const chatIdResult = await pool.query("SELECT value FROM settings WHERE key = 'telegram_chat_id'");
+            if (chatIdResult.rows.length > 0 && chatIdResult.rows[0].value) {
+                chatId = chatIdResult.rows[0].value;
+            }
+        } catch (e) { /* use default */ }
+
+        const bookingsResult = await pool.query('SELECT * FROM bookings WHERE date = $1 ORDER BY time', [date]);
+        const bookings = bookingsResult.rows;
+
+        if (bookings.length === 0) {
+            const text = `📅 <b>${date}</b>\n\nНемає бронювань на цей день.`;
+            await sendTelegramMessage(chatId, text);
+            return res.json({ success: true, count: 0 });
+        }
+
+        // Group by line
+        const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]);
+        const lines = linesResult.rows;
+
+        let text = `📅 <b>Розклад на ${date}</b>\n`;
+        text += `Всього бронювань: ${bookings.filter(b => !b.linked_to).length}\n\n`;
+
+        for (const line of lines) {
+            const lineBookings = bookings.filter(b => b.line_id === line.line_id && !b.linked_to);
+            if (lineBookings.length === 0) continue;
+
+            text += `👤 <b>${line.name}</b>\n`;
+            for (const b of lineBookings) {
+                const endMin = parseInt(b.time.split(':')[0]) * 60 + parseInt(b.time.split(':')[1]) + b.duration;
+                const endH = String(Math.floor(endMin / 60)).padStart(2, '0');
+                const endM = String(endMin % 60).padStart(2, '0');
+                const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
+                text += `  ${statusIcon} ${b.time}-${endH}:${endM} ${b.label || b.program_code} (${b.room})`;
+                if (b.kids_count) text += ` [${b.kids_count} діт]`;
+                text += '\n';
+            }
+            text += '\n';
+        }
+
+        await sendTelegramMessage(chatId, text);
+        res.json({ success: true, count: bookings.length });
+    } catch (err) {
+        console.error('Digest error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // --- HEALTH CHECK ---
 app.get('/api/health', async (req, res) => {
     try {
@@ -251,6 +433,11 @@ app.get('/api/health', async (req, res) => {
     } catch (err) {
         res.json({ status: 'ok', database: 'not connected' });
     }
+});
+
+// Invite page
+app.get('/invite', (req, res) => {
+    res.sendFile(path.join(__dirname, 'invite.html'));
 });
 
 // SPA fallback (must be last)

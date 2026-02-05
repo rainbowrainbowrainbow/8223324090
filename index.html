@@ -15,9 +15,9 @@
             <div class="login-logo">
                 <img src="logo.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v3.2</p>
+                <p class="tagline">Система бронювання v3.3</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.2</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.3</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -47,6 +47,7 @@
                 <div class="user-panel">
                     <button id="programsTabBtn" class="btn-programs hidden">🎭 Програми</button>
                     <button id="animatorsTabBtn" class="btn-animators hidden">👥 Аніматори</button>
+                    <button id="telegramSetupBtn" class="btn-telegram hidden">🤖 Telegram</button>
                     <span id="currentUser" class="user-name"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
@@ -96,6 +97,7 @@
                 </div>
                 <div class="action-buttons">
                     <button id="historyBtn" class="btn-history hidden">📋 Історія</button>
+                    <button id="digestBtn" class="btn-digest hidden" title="Надіслати розклад в Telegram">📲 Дайджест</button>
                     <button id="exportTimelineBtn" class="btn-export">🖼️ Експорт PNG</button>
                 </div>
             </div>
@@ -419,6 +421,25 @@
         </div>
     </div>
 
+    <!-- Модальне вікно Telegram -->
+    <div id="telegramModal" class="modal hidden">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3>🤖 Telegram налаштування</h3>
+            <div class="telegram-setup">
+                <div class="form-group">
+                    <label>Chat ID групи</label>
+                    <input type="text" id="telegramChatId" placeholder="-100xxxxxxxxxx">
+                </div>
+                <div class="form-group">
+                    <label>Знайдені чати:</label>
+                    <div id="telegramChats" class="telegram-chats"></div>
+                </div>
+                <button type="button" id="saveTelegramBtn" class="btn-submit">Зберегти та протестувати</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Сповіщення -->
     <!-- Модальне вікно Changelog -->
     <div id="changelogModal" class="modal hidden">
@@ -426,6 +447,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v3.3 — Telegram + Запрошення</h4>
+                    <ul>
+                        <li>Telegram сповіщення при створенні/видаленні бронювання</li>
+                        <li>Telegram сповіщення при зміні статусу</li>
+                        <li>Кнопка "Дайджест" — надіслати розклад дня в Telegram</li>
+                        <li>Налаштування Telegram для адміна (Сергій)</li>
+                        <li>Сторінка E-запрошення (/invite) з адресою та картою</li>
+                        <li>Шеринг запрошення (Web Share API)</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v3.2 — UI покращення</h4>
                     <ul>

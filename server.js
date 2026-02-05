@@ -61,6 +61,32 @@ async function sendTelegramMessage(chatId, text) {
     }
 }
 
+async function getConfiguredChatId() {
+    try {
+        const result = await pool.query("SELECT value FROM settings WHERE key = 'telegram_chat_id'");
+        if (result.rows.length > 0 && result.rows[0].value) {
+            return result.rows[0].value;
+        }
+    } catch (e) { /* use default */ }
+    return TELEGRAM_DEFAULT_CHAT_ID;
+}
+
+let webhookSet = false;
+
+async function ensureWebhook(appUrl) {
+    if (webhookSet) return;
+    try {
+        const webhookUrl = `${appUrl}/api/telegram/webhook`;
+        const result = await telegramRequest('setWebhook', { url: webhookUrl });
+        if (result && result.ok) {
+            webhookSet = true;
+            console.log('Telegram webhook set:', webhookUrl);
+        }
+    } catch (err) {
+        console.error('Webhook setup error:', err);
+    }
+}
+
 async function getTelegramChatId() {
     try {
         const result = await telegramRequest('getUpdates');
@@ -391,13 +417,7 @@ app.get('/api/telegram/chats', async (req, res) => {
 app.post('/api/telegram/notify', async (req, res) => {
     try {
         const { text } = req.body;
-        let chatId = TELEGRAM_DEFAULT_CHAT_ID;
-        try {
-            const chatIdResult = await pool.query("SELECT value FROM settings WHERE key = 'telegram_chat_id'");
-            if (chatIdResult.rows.length > 0 && chatIdResult.rows[0].value) {
-                chatId = chatIdResult.rows[0].value;
-            }
-        } catch (e) { /* use default */ }
+        const chatId = await getConfiguredChatId();
         const result = await sendTelegramMessage(chatId, text);
         res.json({ success: result?.ok || false });
     } catch (err) {
@@ -410,13 +430,7 @@ app.post('/api/telegram/notify', async (req, res) => {
 app.get('/api/telegram/digest/:date', async (req, res) => {
     try {
         const { date } = req.params;
-        let chatId = TELEGRAM_DEFAULT_CHAT_ID;
-        try {
-            const chatIdResult = await pool.query("SELECT value FROM settings WHERE key = 'telegram_chat_id'");
-            if (chatIdResult.rows.length > 0 && chatIdResult.rows[0].value) {
-                chatId = chatIdResult.rows[0].value;
-            }
-        } catch (e) { /* use default */ }
+        const chatId = await getConfiguredChatId();
 
         const bookingsResult = await pool.query('SELECT * FROM bookings WHERE date = $1 ORDER BY time', [date]);
         const bookings = bookingsResult.rows;
@@ -456,6 +470,103 @@ app.get('/api/telegram/digest/:date', async (req, res) => {
     } catch (err) {
         console.error('Digest error:', err);
         res.status(500).json({ error: err.message });
+    }
+});
+
+// Ask animator (inline keyboard)
+app.post('/api/telegram/ask-animator', async (req, res) => {
+    try {
+        const { date, animatorName, currentCount } = req.body;
+        const chatId = await getConfiguredChatId();
+
+        // Setup webhook if not done
+        const appUrl = `${req.protocol === 'http' && req.get('x-forwarded-proto') === 'https' ? 'https' : req.protocol}://${req.get('host')}`;
+        await ensureWebhook(appUrl);
+
+        const text = `👤 <b>Додано аніматора</b>\n\n` +
+            `📅 Дата: <b>${date}</b>\n` +
+            `🎭 ${animatorName}\n` +
+            `👥 Зараз аніматорів: ${currentCount}\n\n` +
+            `Додати ще одного аніматора?`;
+
+        const result = await telegramRequest('sendMessage', {
+            chat_id: chatId,
+            text: text,
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: '✅ Так', callback_data: `add_anim:${date}` },
+                    { text: '❌ Ні', callback_data: `no_anim:${date}` }
+                ]]
+            }
+        });
+
+        res.json({ success: result?.ok || false });
+    } catch (err) {
+        console.error('Ask animator error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Telegram webhook handler (callback queries)
+app.post('/api/telegram/webhook', async (req, res) => {
+    try {
+        const update = req.body;
+
+        if (update.callback_query) {
+            const { id, data, message } = update.callback_query;
+            const chatId = message.chat.id;
+
+            if (data.startsWith('add_anim:')) {
+                const date = data.split(':')[1];
+
+                // Get current lines for this date
+                const linesResult = await pool.query(
+                    'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]
+                );
+                const count = linesResult.rows.length;
+                const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
+                const newLineId = `line${Date.now()}_${date}`;
+                const newName = `Аніматор ${count + 1}`;
+
+                await pool.query(
+                    'INSERT INTO lines_by_date (date, line_id, name, color) VALUES ($1, $2, $3, $4)',
+                    [date, newLineId, newName, colors[count % colors.length]]
+                );
+
+                // Answer callback
+                await telegramRequest('answerCallbackQuery', {
+                    callback_query_id: id,
+                    text: 'Аніматора додано!'
+                });
+
+                // Edit original message
+                await telegramRequest('editMessageText', {
+                    chat_id: chatId,
+                    message_id: message.message_id,
+                    text: message.text + `\n\n✅ <b>Додано: ${newName}</b>`,
+                    parse_mode: 'HTML'
+                });
+
+            } else if (data.startsWith('no_anim:')) {
+                await telegramRequest('answerCallbackQuery', {
+                    callback_query_id: id,
+                    text: 'Ок, не додаємо'
+                });
+
+                await telegramRequest('editMessageText', {
+                    chat_id: chatId,
+                    message_id: message.message_id,
+                    text: message.text + '\n\n❌ <b>Відхилено</b>',
+                    parse_mode: 'HTML'
+                });
+            }
+        }
+
+        res.sendStatus(200);
+    } catch (err) {
+        console.error('Webhook error:', err);
+        res.sendStatus(200); // Always respond 200 to Telegram
     }
 });
 

@@ -210,16 +210,22 @@ function showProgramsCatalog() {
 async function addNewLine() {
     const lines = await getLinesForDate(AppState.selectedDate);
     const dateStr = formatDate(AppState.selectedDate);
+    const newName = `Аніматор ${lines.length + 1}`;
 
     lines.push({
         id: 'line' + Date.now() + '_' + dateStr,
-        name: `Аніматор ${lines.length + 1}`,
+        name: newName,
         color: LINE_COLORS[lines.length % LINE_COLORS.length]
     });
 
     await saveLinesForDate(AppState.selectedDate, lines);
     await renderTimeline();
     showNotification('Аніматора додано', 'success');
+
+    // Надіслати в Telegram з кнопками Так/Ні для додавання ще одного
+    apiTelegramAskAnimator(dateStr, newName, lines.length).then(r => {
+        if (r && r.success) showNotification('Запит надіслано в Telegram', 'success');
+    });
 }
 
 async function editLineModal(lineId) {

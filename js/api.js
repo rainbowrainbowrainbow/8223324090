@@ -136,6 +136,19 @@ async function apiTelegramNotify(text) {
     }
 }
 
+async function apiTelegramAskAnimator(date, animatorName, currentCount) {
+    try {
+        const response = await fetch(`${API_BASE}/telegram/ask-animator`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date, animatorName, currentCount })
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('Telegram ask-animator error:', err);
+    }
+}
+
 async function apiGetSetting(key) {
     try {
         const response = await fetch(`${API_BASE}/settings/${key}`);

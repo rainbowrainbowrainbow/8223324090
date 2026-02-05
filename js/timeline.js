@@ -314,6 +314,49 @@ async function renderMultiDayTimeline() {
 }
 
 // ==========================================
+// PENDING LINE (очікування Telegram)
+// ==========================================
+
+function renderPendingLine() {
+    const container = document.getElementById('timelineLines');
+    if (!container) return;
+
+    const pendingEl = document.createElement('div');
+    pendingEl.className = 'timeline-line pending-line';
+    pendingEl.id = 'pendingAnimatorLine';
+
+    pendingEl.innerHTML = `
+        <div class="line-header pending-header">
+            <span class="line-name">⏳ Очікування...</span>
+            <span class="line-sub pending-timer">0 сек</span>
+        </div>
+        <div class="line-grid pending-grid">
+            <div class="pending-overlay">
+                <div class="pending-pulse"></div>
+                <span class="pending-text">Очікування підтвердження в Telegram...</span>
+            </div>
+        </div>
+    `;
+
+    container.appendChild(pendingEl);
+    pendingEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function updatePendingLineTimer(seconds) {
+    const timer = document.querySelector('#pendingAnimatorLine .pending-timer');
+    if (timer) {
+        const min = Math.floor(seconds / 60);
+        const sec = seconds % 60;
+        timer.textContent = min > 0 ? `${min}:${String(sec).padStart(2, '0')}` : `${sec} сек`;
+    }
+}
+
+function removePendingLine() {
+    const el = document.getElementById('pendingAnimatorLine');
+    if (el) el.remove();
+}
+
+// ==========================================
 // НАВІГАЦІЯ ПО ДАТАХ
 // ==========================================
 

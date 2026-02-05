@@ -208,24 +208,52 @@ function showProgramsCatalog() {
 // ==========================================
 
 async function addNewLine() {
-    const lines = await getLinesForDate(AppState.selectedDate);
     const dateStr = formatDate(AppState.selectedDate);
-    const newName = `Аніматор ${lines.length + 1}`;
 
-    lines.push({
-        id: 'line' + Date.now() + '_' + dateStr,
-        name: newName,
-        color: LINE_COLORS[lines.length % LINE_COLORS.length]
-    });
+    // Опціональна примітка
+    const note = prompt('Примітка (опціонально, наприклад: "потрібен на 14:00-17:00"):') || '';
 
-    await saveLinesForDate(AppState.selectedDate, lines);
-    await renderTimeline();
-    showNotification('Аніматора додано', 'success');
+    // Показати заглушку "Очікування..."
+    renderPendingLine();
+    showNotification('Запит надіслано в Telegram...', 'success');
 
-    // Надіслати в Telegram з кнопками Так/Ні для додавання ще одного
-    apiTelegramAskAnimator(dateStr, newName, lines.length).then(r => {
-        if (r && r.success) showNotification('Запит надіслано в Telegram', 'success');
-    });
+    // Надіслати запит в Telegram
+    const result = await apiTelegramAskAnimator(dateStr, note.trim());
+    if (!result || !result.success || !result.requestId) {
+        removePendingLine();
+        showNotification('Помилка надсилання в Telegram', 'error');
+        return;
+    }
+
+    // Поллінг статусу кожні 3 секунди (макс 5 хвилин)
+    const requestId = result.requestId;
+    let attempts = 0;
+    const maxAttempts = 100; // 100 * 3 сек = 5 хв
+
+    const pollInterval = setInterval(async () => {
+        attempts++;
+        const statusResult = await apiCheckAnimatorStatus(requestId);
+
+        // Оновити таймер на заглушці
+        updatePendingLineTimer(attempts * 3);
+
+        if (statusResult.status === 'approved') {
+            clearInterval(pollInterval);
+            removePendingLine();
+            // Очистити кеш та перерендерити
+            delete AppState.cachedLines[dateStr];
+            await renderTimeline();
+            showNotification('Аніматора додано!', 'success');
+        } else if (statusResult.status === 'rejected') {
+            clearInterval(pollInterval);
+            removePendingLine();
+            showNotification('На жаль, не вдалося додати аніматора', 'error');
+        } else if (attempts >= maxAttempts) {
+            clearInterval(pollInterval);
+            removePendingLine();
+            showNotification('Час очікування вичерпано', 'error');
+        }
+    }, 3000);
 }
 
 async function editLineModal(lineId) {

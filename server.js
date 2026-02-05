@@ -170,6 +170,17 @@ async function initDatabase() {
             )
         `);
 
+        // v3.8: Pending animator requests
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS pending_animators (
+                id SERIAL PRIMARY KEY,
+                date VARCHAR(20) NOT NULL,
+                note TEXT,
+                status VARCHAR(20) DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
         console.log('Database initialized');
     } catch (err) {
         console.error('Database init error:', err);
@@ -473,21 +484,45 @@ app.get('/api/telegram/digest/:date', async (req, res) => {
     }
 });
 
-// Ask animator (inline keyboard)
+// Ask animator (inline keyboard) — v3.8
 app.post('/api/telegram/ask-animator', async (req, res) => {
     try {
-        const { date, animatorName, currentCount } = req.body;
+        const { date, note } = req.body;
         const chatId = await getConfiguredChatId();
 
         // Setup webhook if not done
         const appUrl = `${req.protocol === 'http' && req.get('x-forwarded-proto') === 'https' ? 'https' : req.protocol}://${req.get('host')}`;
         await ensureWebhook(appUrl);
 
-        const text = `👤 <b>Додано аніматора</b>\n\n` +
-            `📅 Дата: <b>${date}</b>\n` +
-            `🎭 ${animatorName}\n` +
-            `👥 Зараз аніматорів: ${currentCount}\n\n` +
-            `Додати ще одного аніматора?`;
+        // Create pending record
+        const pendingResult = await pool.query(
+            'INSERT INTO pending_animators (date, note) VALUES ($1, $2) RETURNING id',
+            [date, note || null]
+        );
+        const requestId = pendingResult.rows[0].id;
+
+        // Get current animators on shift
+        const linesResult = await pool.query(
+            'SELECT name FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]
+        );
+        const animatorNames = linesResult.rows.map(r => r.name);
+
+        // Format date DD.MM.YYYY
+        const parts = date.split('-');
+        const dateFormatted = `${parts[2]}.${parts[1]}.${parts[0]}`;
+
+        let text = `🎭 <b>Запит на додавання аніматора</b>\n\n`;
+        text += `📅 Дата: <b>${dateFormatted}</b>\n`;
+        text += `👥 Зараз на зміні:\n`;
+        if (animatorNames.length > 0) {
+            animatorNames.forEach(name => { text += `  • ${name}\n`; });
+        } else {
+            text += `  — нікого\n`;
+        }
+        if (note) {
+            text += `\n📝 Примітка: ${note}\n`;
+        }
+        text += `\nДодати ще одного аніматора?`;
 
         const result = await telegramRequest('sendMessage', {
             chat_id: chatId,
@@ -495,20 +530,34 @@ app.post('/api/telegram/ask-animator', async (req, res) => {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [[
-                    { text: '✅ Так', callback_data: `add_anim:${date}` },
-                    { text: '❌ Ні', callback_data: `no_anim:${date}` }
+                    { text: '✅ Так', callback_data: `add_anim:${requestId}` },
+                    { text: '❌ Ні', callback_data: `no_anim:${requestId}` }
                 ]]
             }
         });
 
-        res.json({ success: result?.ok || false });
+        res.json({ success: result?.ok || false, requestId });
     } catch (err) {
         console.error('Ask animator error:', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Telegram webhook handler (callback queries)
+// Check pending animator status (polling)
+app.get('/api/telegram/animator-status/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query('SELECT status FROM pending_animators WHERE id = $1', [id]);
+        if (result.rows.length === 0) {
+            return res.json({ status: 'not_found' });
+        }
+        res.json({ status: result.rows[0].status });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Telegram webhook handler (callback queries) — v3.8
 app.post('/api/telegram/webhook', async (req, res) => {
     try {
         const update = req.body;
@@ -518,7 +567,16 @@ app.post('/api/telegram/webhook', async (req, res) => {
             const chatId = message.chat.id;
 
             if (data.startsWith('add_anim:')) {
-                const date = data.split(':')[1];
+                const requestId = parseInt(data.split(':')[1]);
+
+                // Get pending request
+                const pending = await pool.query('SELECT * FROM pending_animators WHERE id = $1', [requestId]);
+                if (pending.rows.length === 0 || pending.rows[0].status !== 'pending') {
+                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Запит вже оброблено' });
+                    return res.sendStatus(200);
+                }
+
+                const date = pending.rows[0].date;
 
                 // Get current lines for this date
                 const linesResult = await pool.query(
@@ -529,10 +587,14 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const newLineId = `line${Date.now()}_${date}`;
                 const newName = `Аніматор ${count + 1}`;
 
+                // Add line to DB
                 await pool.query(
                     'INSERT INTO lines_by_date (date, line_id, name, color) VALUES ($1, $2, $3, $4)',
                     [date, newLineId, newName, colors[count % colors.length]]
                 );
+
+                // Update pending status
+                await pool.query('UPDATE pending_animators SET status = $1 WHERE id = $2', ['approved', requestId]);
 
                 // Answer callback
                 await telegramRequest('answerCallbackQuery', {
@@ -549,9 +611,14 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 });
 
             } else if (data.startsWith('no_anim:')) {
+                const requestId = parseInt(data.split(':')[1]);
+
+                // Update pending status
+                await pool.query('UPDATE pending_animators SET status = $1 WHERE id = $2', ['rejected', requestId]);
+
                 await telegramRequest('answerCallbackQuery', {
                     callback_query_id: id,
-                    text: 'Ок, не додаємо'
+                    text: 'Відхилено'
                 });
 
                 await telegramRequest('editMessageText', {

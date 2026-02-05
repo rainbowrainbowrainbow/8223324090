@@ -425,6 +425,79 @@
 .dot.photo { background: linear-gradient(135deg, #00ACC1 0%, #00838F 100%); }
 .dot.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
 /* ==========================================
+   v3.8: PENDING LINE (очікування Telegram)
+   ========================================== */
+
+.pending-line {
+    opacity: 0.85;
+    animation: pendingPulse 2s ease-in-out infinite;
+}
+
+.pending-header {
+    border-left-color: #FF9800 !important;
+    background: rgba(255, 152, 0, 0.08);
+}
+
+.pending-header .line-name {
+    color: #E65100;
+    font-size: 13px;
+}
+
+.pending-header .pending-timer {
+    color: #FF9800;
+    font-weight: 800;
+    font-size: 12px;
+}
+
+.pending-grid {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: repeating-linear-gradient(
+        -45deg,
+        rgba(255, 152, 0, 0.04),
+        rgba(255, 152, 0, 0.04) 10px,
+        rgba(255, 152, 0, 0.08) 10px,
+        rgba(255, 152, 0, 0.08) 20px
+    ) !important;
+    border: 2px dashed #FF9800 !important;
+    border-left: none !important;
+    border-radius: 0 8px 8px 0 !important;
+    min-height: 64px;
+}
+
+.pending-overlay {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+}
+
+.pending-pulse {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #FF9800;
+    animation: pendingDot 1.5s ease-in-out infinite;
+}
+
+.pending-text {
+    font-size: 13px;
+    font-weight: 700;
+    color: #E65100;
+}
+
+@keyframes pendingPulse {
+    0%, 100% { opacity: 0.75; }
+    50% { opacity: 1; }
+}
+
+@keyframes pendingDot {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.4); opacity: 1; }
+}
+
+/* ==========================================
    v3.2: ЧЕРВОНА ЛІНІЯ "ЗАРАЗ"
    ========================================== */
 

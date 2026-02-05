@@ -1,0 +1,423 @@
+/**
+ * timeline.js - Таймлайн, рендеринг ліній, мульти-день, кеш
+ */
+
+// ==========================================
+// ЛІНІЇ ПО ДАТАХ (кеш)
+// ==========================================
+
+// v3.9: Cache with TTL
+async function getLinesForDate(date) {
+    const dateStr = formatDate(date);
+    const cached = AppState.cachedLines[dateStr];
+    if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
+        return cached.data;
+    }
+    const lines = await apiGetLines(dateStr);
+    AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
+    return lines;
+}
+
+async function saveLinesForDate(date, lines) {
+    const dateStr = formatDate(date);
+    // v5.2: Оновлювати кеш ТІЛЬКИ після успішного збереження на сервер
+    const result = await apiSaveLines(dateStr, lines);
+    if (result && result.success === false) {
+        console.error('[saveLinesForDate] API save failed, NOT updating cache');
+        showNotification('Помилка збереження ліній. Спробуйте ще раз.', 'error');
+        return false;
+    }
+    AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
+    return true;
+}
+
+function canViewHistory() {
+    return AppState.currentUser !== null;
+}
+
+// ==========================================
+// ТАЙМЛАЙН
+// ==========================================
+
+function getTimeRange() {
+    const dayOfWeek = AppState.selectedDate.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+    return {
+        start: isWeekend ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START,
+        end: isWeekend ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END
+    };
+}
+
+function initializeTimeline() {
+    AppState.selectedDate = new Date();
+    document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
+    renderTimeline();
+}
+
+function renderTimeScale() {
+    const container = document.getElementById('timeScale');
+    container.innerHTML = '';
+
+    const { start, end } = getTimeRange();
+
+    for (let h = start; h < end; h++) {
+        for (let m = 0; m < 60; m += CONFIG.TIMELINE.CELL_MINUTES) {
+            const mark = document.createElement('div');
+            mark.className = 'time-mark' + (m === 0 ? ' hour' : ' half');
+            mark.textContent = `${h}:${String(m).padStart(2, '0')}`;
+            container.appendChild(mark);
+        }
+    }
+    const endMark = document.createElement('div');
+    endMark.className = 'time-mark hour end-mark';
+    endMark.textContent = `${end}:00`;
+    container.appendChild(endMark);
+}
+
+async function renderTimeline() {
+    const addLineBtn = document.getElementById('addLineBtn');
+    if (addLineBtn) addLineBtn.style.display = isViewer() ? 'none' : '';
+
+    // Режим декількох днів
+    if (AppState.multiDayMode) {
+        await renderMultiDayTimeline();
+        return;
+    }
+
+    renderTimeScale();
+
+    const container = document.getElementById('timelineLines');
+    const lines = await getLinesForDate(AppState.selectedDate);
+    const bookings = await getBookingsForDate(AppState.selectedDate);
+    const { start } = getTimeRange();
+
+    const historyBtn = document.getElementById('historyBtn');
+    if (historyBtn) {
+        historyBtn.classList.toggle('hidden', !canViewHistory());
+    }
+    const digestBtn = document.getElementById('digestBtn');
+    if (digestBtn) {
+        digestBtn.classList.toggle('hidden', isViewer());
+    }
+
+    document.getElementById('dayOfWeekLabel').textContent = DAYS[AppState.selectedDate.getDay()];
+
+    const dayOfWeek = AppState.selectedDate.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    document.getElementById('workingHours').textContent = isWeekend ? '10:00-20:00' : '12:00-20:00';
+
+    container.innerHTML = '';
+
+    lines.forEach(line => {
+        const lineEl = document.createElement('div');
+        lineEl.className = 'timeline-line';
+
+        lineEl.innerHTML = `
+            <div class="line-header" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}">
+                <span class="line-name">${escapeHtml(line.name)}</span>
+                <span class="line-sub">редагувати</span>
+            </div>
+            <div class="line-grid" data-line-id="${escapeHtml(line.id)}">
+                ${renderGridCells(line.id)}
+            </div>
+        `;
+
+        const lineGrid = lineEl.querySelector('.line-grid');
+        const lineBookings = bookings.filter(b => b.lineId === line.id);
+        lineBookings.forEach(b => lineGrid.appendChild(createBookingBlock(b, start)));
+
+        container.appendChild(lineEl);
+
+        lineEl.querySelector('.line-header').addEventListener('click', () => editLineModal(line.id));
+    });
+
+    document.querySelectorAll('.grid-cell').forEach(cell => {
+        cell.addEventListener('click', (e) => {
+            if (e.target === cell) {
+                selectCell(cell);
+            }
+        });
+    });
+
+    // F3: Render afisha events as overlay markers on timeline
+    try {
+        const afishaEvents = await apiGetAfishaByDate(formatDate(AppState.selectedDate));
+        if (afishaEvents && afishaEvents.length > 0) {
+            const firstGrid = container.querySelector('.line-grid');
+            if (firstGrid) {
+                afishaEvents.forEach(ev => {
+                    const startMin = timeToMinutes(ev.time) - start * 60;
+                    if (startMin < 0) return;
+                    const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
+                    const width = ((ev.duration || 60) / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+                    const marker = document.createElement('div');
+                    marker.className = 'afisha-marker';
+                    marker.style.left = `${left}px`;
+                    marker.style.width = `${Math.max(width, 30)}px`;
+                    marker.title = `${ev.title} (${ev.time}, ${ev.duration} хв)`;
+                    marker.innerHTML = `<span class="afisha-marker-text">🎭 ${escapeHtml(ev.title)}</span>`;
+                    firstGrid.appendChild(marker);
+                });
+            }
+        }
+    } catch (e) { /* afisha optional */ }
+
+    renderNowLine();
+    renderMinimap();
+}
+
+function renderGridCells(lineId) {
+    let html = '';
+    const { start, end } = getTimeRange();
+
+    for (let h = start; h < end; h++) {
+        for (let m = 0; m < 60; m += CONFIG.TIMELINE.CELL_MINUTES) {
+            const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            html += `<div class="grid-cell${m === 0 ? ' hour' : m === 30 ? ' half' : ''}" data-time="${time}" data-line="${lineId}"></div>`;
+        }
+    }
+    return html;
+}
+
+function selectCell(cell) {
+    if (isViewer()) return;
+    document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
+    cell.classList.add('selected');
+    AppState.selectedCell = cell;
+    AppState.selectedLineId = cell.dataset.line;
+    openBookingPanel(cell.dataset.time, cell.dataset.line);
+}
+
+function createBookingBlock(booking, startHour) {
+    const block = document.createElement('div');
+    const startMin = timeToMinutes(booking.time) - timeToMinutes(`${startHour}:00`);
+    const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
+    const width = (booking.duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+
+    const isPreliminary = booking.status === 'preliminary';
+    block.className = `booking-block ${booking.category}${isPreliminary ? ' preliminary' : ''}`;
+    block.style.left = `${left}px`;
+    block.style.width = `${width}px`;
+
+    const userLetter = booking.createdBy ? booking.createdBy.charAt(0).toUpperCase() : '';
+    const noteText = booking.notes ? `<div class="note-text">${escapeHtml(booking.notes)}</div>` : '';
+
+    block.innerHTML = `
+        <div class="user-letter">${escapeHtml(userLetter)}</div>
+        <div class="title">${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.room)}</div>
+        <div class="subtitle">${escapeHtml(booking.time)}${booking.kidsCount ? ' (' + escapeHtml(String(booking.kidsCount)) + ' діт)' : ''}</div>
+        ${noteText}
+    `;
+
+    block.addEventListener('click', () => showBookingDetails(booking.id));
+    block.addEventListener('mouseenter', (e) => showTooltip(e, booking));
+    block.addEventListener('mousemove', (e) => moveTooltip(e));
+    block.addEventListener('mouseleave', hideTooltip);
+    // v3.9: Touch events for mobile tooltip
+    block.addEventListener('touchstart', (e) => showTooltip(e.touches[0], booking), { passive: true });
+    block.addEventListener('touchend', hideTooltip, { passive: true });
+    return block;
+}
+
+// ==========================================
+// РЕЖИМ ДЕКІЛЬКОХ ДНІВ
+// ==========================================
+
+function buildMultiDayDates() {
+    const dates = [];
+    const startDate = new Date(AppState.selectedDate);
+    for (let i = 0; i < AppState.daysToShow; i++) {
+        const d = new Date(startDate);
+        d.setDate(startDate.getDate() + i);
+        dates.push(d);
+    }
+    return dates;
+}
+
+async function renderDaySectionHtml(date) {
+    const dayOfWeek = date.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const start = isWeekend ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START;
+    const end = isWeekend ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END;
+    const cellWidth = 30;
+
+    const lines = await getLinesForDate(date);
+    const bookings = await getBookingsForDate(date);
+
+    let timeScaleHtml = '<div class="mini-time-scale">';
+    for (let h = start; h <= end; h++) {
+        timeScaleHtml += `<div class="mini-time-mark${h === end ? ' end' : ''}">${h}:00</div>`;
+    }
+    timeScaleHtml += '</div>';
+
+    let html = `
+        <div class="day-section" data-date="${formatDate(date)}">
+            <div class="day-section-header">
+                <span>${DAYS[dayOfWeek]}</span>
+                <span class="date-label">${formatDate(date)} (${isWeekend ? '10:00-20:00' : '12:00-20:00'})</span>
+            </div>
+            <div class="day-section-content">
+                ${timeScaleHtml}
+                <div class="mini-timeline-lines">
+    `;
+
+    for (const line of lines) {
+        const lineBookings = bookings.filter(b => b.lineId === line.id);
+        html += renderMiniLineHtml(line, lineBookings, start, cellWidth);
+    }
+
+    if (lines.length === 0) {
+        html += '<div class="no-bookings">Немає аніматорів</div>';
+    }
+
+    html += '</div></div></div>';
+    return html;
+}
+
+function renderMiniLineHtml(line, lineBookings, start, cellWidth) {
+    let html = `
+        <div class="mini-timeline-line">
+            <div class="mini-line-header" style="border-left-color: ${line.color}">
+                ${line.name}
+            </div>
+            <div class="mini-line-grid" data-start="${start}">
+    `;
+
+    for (const b of lineBookings) {
+        const startMin = timeToMinutes(b.time) - timeToMinutes(`${start}:00`);
+        const left = (startMin / 60) * (cellWidth * 4);
+        const width = (b.duration / 60) * (cellWidth * 4) - 2;
+
+        html += `
+            <div class="mini-booking-block ${b.category}"
+                 style="left: ${left}px; width: ${width}px;"
+                 data-booking-id="${b.id}"
+                 title="${b.label || b.programCode}: ${b.room} (${b.time})">
+                <span class="mini-booking-text">${b.label || b.programCode}</span>
+            </div>
+        `;
+    }
+
+    html += '</div></div>';
+    return html;
+}
+
+function attachMultiDayListeners() {
+    document.querySelectorAll('.mini-booking-block').forEach(item => {
+        item.addEventListener('click', () => {
+            const bookingId = item.dataset.bookingId;
+            const daySection = item.closest('.day-section');
+            if (daySection) {
+                const dateStr = daySection.dataset.date;
+                const originalDate = new Date(AppState.selectedDate);
+                AppState.selectedDate = new Date(dateStr);
+                showBookingDetails(bookingId);
+                AppState.selectedDate = originalDate;
+            }
+        });
+    });
+}
+
+async function renderMultiDayTimeline() {
+    const timeScaleEl = document.getElementById('timeScale');
+    const linesContainer = document.getElementById('timelineLines');
+    const addLineBtn = document.getElementById('addLineBtn');
+
+    if (timeScaleEl) timeScaleEl.innerHTML = '';
+    if (linesContainer) linesContainer.innerHTML = '';
+    if (addLineBtn) addLineBtn.style.display = 'none';
+
+    const historyBtn = document.getElementById('historyBtn');
+    if (historyBtn) {
+        historyBtn.classList.toggle('hidden', !canViewHistory());
+    }
+
+    const dates = buildMultiDayDates();
+
+    document.getElementById('dayOfWeekLabel').textContent = `${AppState.daysToShow} днів`;
+    document.getElementById('workingHours').textContent = `${formatDate(dates[0])} - ${formatDate(dates[dates.length - 1])}`;
+
+    let multiDayHtml = '<div class="multi-day-container">';
+    for (const date of dates) {
+        multiDayHtml += await renderDaySectionHtml(date);
+    }
+    multiDayHtml += '</div>';
+
+    linesContainer.innerHTML = multiDayHtml;
+    attachMultiDayListeners();
+}
+
+// ==========================================
+// PENDING LINE (очікування Telegram)
+// ==========================================
+
+function renderPendingLine() {
+    const container = document.getElementById('timelineLines');
+    if (!container) return;
+
+    const pendingEl = document.createElement('div');
+    pendingEl.className = 'timeline-line pending-line';
+    pendingEl.id = 'pendingAnimatorLine';
+
+    pendingEl.innerHTML = `
+        <div class="line-header pending-header">
+            <span class="line-name">⏳ Очікування...</span>
+            <span class="line-sub pending-timer">0 сек</span>
+        </div>
+        <div class="line-grid pending-grid">
+            <div class="pending-overlay">
+                <div class="pending-pulse"></div>
+                <span class="pending-text">Очікування підтвердження в Telegram...</span>
+            </div>
+        </div>
+    `;
+
+    container.appendChild(pendingEl);
+    pendingEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function updatePendingLineTimer(seconds) {
+    const timer = document.querySelector('#pendingAnimatorLine .pending-timer');
+    if (timer) {
+        const min = Math.floor(seconds / 60);
+        const sec = seconds % 60;
+        timer.textContent = min > 0 ? `${min}:${String(sec).padStart(2, '0')}` : `${sec} сек`;
+    }
+}
+
+function removePendingLine() {
+    const el = document.getElementById('pendingAnimatorLine');
+    if (el) el.remove();
+}
+
+// ==========================================
+// НАВІГАЦІЯ ПО ДАТАХ
+// ==========================================
+
+function changeDate(days) {
+    // C2: Auto-close booking panel on date change
+    closeBookingPanel();
+    // v3.9: Cleanup pending poll on date change
+    if (AppState.pendingPollInterval) {
+        clearInterval(AppState.pendingPollInterval);
+        AppState.pendingPollInterval = null;
+        removePendingLine();
+    }
+    AppState.selectedDate.setDate(AppState.selectedDate.getDate() + days);
+    document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
+    renderTimeline();
+    fetchAnimatorsFromSheet();
+}
+
+// v3.9: Cache with TTL
+async function getBookingsForDate(date) {
+    const dateStr = formatDate(date);
+    const cached = AppState.cachedBookings[dateStr];
+    if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
+        return cached.data;
+    }
+    const bookings = await apiGetBookings(dateStr);
+    AppState.cachedBookings[dateStr] = { data: bookings, ts: Date.now() };
+    return bookings;
+}

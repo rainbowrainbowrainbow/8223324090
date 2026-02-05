@@ -1,0 +1,376 @@
+/**
+ * features.css - Telegram, settings, dashboard — v4.0 redesign
+ */
+
+/* ==========================================
+   TELEGRAM & DIGEST
+   ========================================== */
+
+.btn-telegram { display: none; }
+
+.btn-digest {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius-xs);
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    box-shadow: 0 2px 8px rgba(59,130,246,0.3);
+}
+
+.btn-digest:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59,130,246,0.4);
+}
+
+.telegram-setup { padding: 10px 0; }
+
+.telegram-chats {
+    margin-top: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.telegram-chat-item {
+    padding: 10px 14px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.telegram-chat-item:hover {
+    background: var(--primary-50);
+    border-color: var(--primary);
+}
+
+.telegram-chat-item .chat-id {
+    color: var(--gray-400);
+    font-size: var(--font-xs);
+    margin-left: 8px;
+}
+
+.telegram-chat-item .chat-type {
+    font-size: 10px;
+    background: #EFF6FF;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 4px;
+    color: var(--info);
+    font-weight: 600;
+}
+
+.no-chats {
+    color: var(--gray-400);
+    font-size: var(--font-sm);
+    padding: 12px;
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+}
+
+/* ==========================================
+   SETTINGS PAGE
+   ========================================== */
+
+.btn-action {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius-xs);
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 2px 8px rgba(16,185,129,0.3);
+}
+
+.btn-action:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16,185,129,0.4);
+}
+
+.settings-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow-y: auto;
+    max-height: calc(80vh - 100px);
+    padding-right: 4px;
+}
+
+.settings-section {
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.settings-section:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.settings-section h4 {
+    font-size: var(--font-md);
+    font-weight: 800;
+    color: var(--gray-800);
+    margin-bottom: 12px;
+}
+
+/* ==========================================
+   DASHBOARD
+   ========================================== */
+
+.btn-dashboard { display: none; }
+
+.modal-wide {
+    max-width: 700px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-wide #dashboardContent {
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 4px;
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.dash-card {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    border-radius: 12px;
+    padding: 16px;
+    color: white;
+    text-align: center;
+    box-shadow: var(--shadow-primary);
+}
+
+.dash-card-title { font-size: 12px; opacity: 0.9; font-weight: 700; }
+.dash-card-value { font-size: 22px; font-weight: 900; margin: 4px 0; }
+.dash-card-sub { font-size: var(--font-xs); opacity: 0.8; }
+
+.dashboard-section { margin-bottom: 20px; }
+
+.dashboard-section h4 {
+    font-size: var(--font-base);
+    font-weight: 800;
+    margin-bottom: 10px;
+    color: var(--gray-800);
+}
+
+.dash-list-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--gray-50);
+    border-radius: 8px;
+    margin-bottom: 4px;
+    font-size: var(--font-sm);
+}
+
+.dash-rank {
+    width: 24px;
+    height: 24px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: var(--font-xs);
+    flex-shrink: 0;
+}
+
+.dash-name { flex: 1; font-weight: 600; }
+.dash-count { color: var(--gray-400); font-size: 12px; }
+.dash-revenue { font-weight: 800; color: var(--primary); white-space: nowrap; }
+
+.dash-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+    font-size: var(--font-sm);
+}
+
+.dash-bar-label { width: 80px; font-weight: 600; flex-shrink: 0; color: var(--gray-700); }
+
+.dash-bar-track {
+    flex: 1;
+    height: 20px;
+    background: var(--gray-100);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.dash-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), #34D399);
+    border-radius: var(--radius-full);
+    transition: width 0.5s ease;
+}
+
+.dash-bar-value { width: 70px; text-align: right; color: var(--gray-400); font-size: 12px; flex-shrink: 0; }
+
+.no-data { color: var(--gray-400); font-size: var(--font-sm); padding: 12px; }
+
+/* ==========================================
+   AFISHA (F: Events/Poster)
+   ========================================== */
+
+.btn-afisha {
+    background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%) !important;
+    box-shadow: 0 2px 8px rgba(139,92,246,0.3) !important;
+}
+
+.btn-afisha:hover {
+    box-shadow: 0 4px 12px rgba(139,92,246,0.4) !important;
+}
+
+.afisha-form {
+    margin-bottom: 16px;
+}
+
+.afisha-form-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.afisha-input {
+    padding: 10px 12px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+    font-family: inherit;
+    transition: border-color var(--speed-fast);
+}
+
+.afisha-input:focus {
+    outline: none;
+    border-color: #8B5CF6;
+    box-shadow: 0 0 0 4px rgba(139,92,246,0.1);
+}
+
+.afisha-input[type="text"] { flex: 2; min-width: 120px; }
+.afisha-input[type="date"] { flex: 1; min-width: 130px; }
+.afisha-input[type="time"] { width: 100px; }
+.afisha-input[type="number"] { width: 80px; }
+
+.afisha-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.afisha-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    border-left: 4px solid #8B5CF6;
+}
+
+.afisha-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.afisha-item-info strong { color: var(--gray-800); font-size: var(--font-base); }
+.afisha-date { color: var(--gray-400); font-size: var(--font-xs); }
+
+.btn-sm {
+    padding: 4px 10px !important;
+    font-size: 12px !important;
+    width: auto !important;
+}
+
+/* Afisha timeline markers */
+.afisha-marker {
+    position: absolute;
+    top: -2px;
+    height: 4px;
+    background: linear-gradient(90deg, #8B5CF6, #6D28D9);
+    border-radius: 2px;
+    z-index: 25;
+    overflow: visible;
+    cursor: default;
+}
+
+.afisha-marker-text {
+    position: absolute;
+    top: -18px;
+    left: 0;
+    font-size: 9px;
+    font-weight: 700;
+    color: #6D28D9;
+    white-space: nowrap;
+    background: rgba(245,243,255,0.9);
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+/* ==========================================
+   PER-EVENT INVITE BUTTON (B2)
+   ========================================== */
+
+.btn-invite-event {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 18px;
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: var(--font-sm);
+    cursor: pointer;
+    text-decoration: none;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    box-shadow: 0 2px 8px rgba(245,158,11,0.3);
+}
+
+.btn-invite-event:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(245,158,11,0.4);
+    color: #FFFFFF;
+}
+
+/* ==========================================
+   D4: COMPACT TOGGLE ACTIVE STATE
+   ========================================== */
+
+.toggle-mini:has(input:checked) {
+    background: var(--primary);
+    border-color: var(--primary-dark);
+    color: var(--white);
+}
+
+.toggle-mini:has(input:checked) .toggle-mini-label {
+    color: var(--white);
+}

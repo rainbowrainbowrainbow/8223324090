@@ -1,0 +1,265 @@
+/**
+ * controls.css - Zoom, dark/compact toggle, undo — v4.0 redesign
+ */
+
+/* ==========================================
+   ZOOM CONTROLS
+   ========================================== */
+
+.v32-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.zoom-controls {
+    display: flex;
+    background: var(--white);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+    box-shadow: var(--shadow-sm);
+}
+
+.zoom-btn {
+    padding: 6px 12px;
+    border: none;
+    background: transparent;
+    font-size: var(--font-xs);
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--gray-500);
+    transition: all var(--speed-fast) var(--ease-smooth);
+    border-right: 1px solid var(--gray-200);
+}
+
+.zoom-btn:last-child { border-right: none; }
+
+.zoom-btn.active {
+    background: var(--primary);
+    color: var(--white);
+}
+
+.zoom-btn:hover:not(.active) {
+    background: var(--primary-50);
+    color: var(--primary-dark);
+}
+
+/* ==========================================
+   DARK MODE TOGGLE
+   ========================================== */
+
+.toggle-mini {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 8px;
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--gray-200);
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.toggle-mini input { display: none; }
+
+.toggle-mini:hover {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+.toggle-mini-label {
+    font-size: var(--font-xs);
+    font-weight: 700;
+    color: var(--gray-500);
+}
+
+/* ==========================================
+   UNDO BUTTON
+   ========================================== */
+
+.btn-undo {
+    padding: 6px 10px;
+    border: 1px solid var(--gray-200);
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    font-family: inherit;
+}
+
+.btn-undo:hover {
+    background: #FFF7ED;
+    border-color: var(--warning);
+    color: #92400E;
+}
+
+/* ==========================================
+   COMPACT MODE
+   ========================================== */
+
+.timeline-container.compact .grid-cell,
+.timeline-container.compact .time-mark {
+    width: 35px;
+    min-width: 35px;
+}
+
+.timeline-container.compact .line-header {
+    width: 80px;
+    min-width: 80px;
+}
+
+.timeline-container.compact .time-scale {
+    margin-left: 80px;
+}
+
+.timeline-container.compact .timeline-line {
+    min-height: 48px;
+}
+
+.timeline-container.compact .booking-block .title {
+    font-size: 10px;
+}
+
+.timeline-container.compact .booking-block .subtitle {
+    font-size: 8px;
+}
+
+/* ==========================================
+   D2/D3: 30-MIN AND 60-MIN ZOOM READABILITY
+   ========================================== */
+
+/* When CELL_MINUTES = 30, cell width is 50px for 30 min — enforce minimum row height */
+.timeline-container[data-zoom="30"] .grid-cell,
+.timeline-container[data-zoom="30"] .time-mark {
+    width: 80px;
+    min-width: 80px;
+}
+
+.timeline-container[data-zoom="30"] .timeline-line {
+    min-height: 72px;
+}
+
+.timeline-container[data-zoom="30"] .booking-block .title {
+    font-size: 13px;
+}
+
+.timeline-container[data-zoom="30"] .booking-block .subtitle {
+    font-size: 11px;
+}
+
+/* 60-min zoom */
+.timeline-container[data-zoom="60"] .grid-cell,
+.timeline-container[data-zoom="60"] .time-mark {
+    width: 120px;
+    min-width: 120px;
+}
+
+.timeline-container[data-zoom="60"] .timeline-line {
+    min-height: 80px;
+}
+
+.timeline-container[data-zoom="60"] .booking-block .title {
+    font-size: 14px;
+}
+
+.timeline-container[data-zoom="60"] .booking-block .subtitle {
+    font-size: 12px;
+}
+
+/* ==========================================
+   C3: MODERN PROGRAM ICON BACKGROUNDS
+   ========================================== */
+
+.program-icon {
+    background: transparent !important;
+    border: 2px solid var(--gray-100) !important;
+}
+
+.program-icon .icon {
+    background: none;
+    filter: none;
+}
+
+.program-icon.quest { border-color: rgba(139,92,246,0.3) !important; }
+.program-icon.animation { border-color: rgba(59,130,246,0.3) !important; }
+.program-icon.show { border-color: rgba(249,115,22,0.3) !important; }
+.program-icon.masterclass { border-color: rgba(132,204,22,0.3) !important; }
+.program-icon.pinata { border-color: rgba(236,72,153,0.3) !important; }
+.program-icon.photo { border-color: rgba(6,182,212,0.3) !important; }
+.program-icon.custom { border-color: rgba(100,116,139,0.3) !important; }
+
+.program-icon.selected {
+    background: var(--primary-50) !important;
+    border-color: var(--primary) !important;
+}
+
+/* ==========================================
+   C4: NORMALIZE STATUS AND TIME-SHIFT BUTTONS
+   ========================================== */
+
+.booking-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.booking-actions button,
+.booking-actions a {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: var(--font-sm);
+    cursor: pointer;
+    font-family: inherit;
+    text-align: center;
+    text-decoration: none;
+    border: none;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.booking-actions button {
+    background: var(--danger);
+    color: var(--white);
+}
+
+.booking-actions button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(239,68,68,0.3);
+}
+
+.time-shift-buttons {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.time-shift-buttons button {
+    padding: 8px 12px;
+    min-width: 44px;
+    border: 1px solid var(--gray-200);
+    background: var(--gray-50);
+    border-radius: var(--radius-xs);
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast);
+}
+
+.time-shift-buttons button:hover {
+    background: var(--primary-50);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+}
+
+.btn-status-toggle {
+    padding: 10px 16px !important;
+    font-size: var(--font-sm) !important;
+}

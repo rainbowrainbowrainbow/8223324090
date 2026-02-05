@@ -351,6 +351,14 @@ async function initDatabase() {
             console.log('Default users seeded');
         }
 
+        // v5.4: Booking number counter (atomic, per-year)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS booking_counter (
+                year INTEGER PRIMARY KEY,
+                counter INTEGER NOT NULL DEFAULT 0
+            )
+        `);
+
         // v5.0: Add indexes for performance
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_lines_by_date_date ON lines_by_date(date)');
@@ -360,6 +368,22 @@ async function initDatabase() {
     } catch (err) {
         console.error('Database init error:', err);
     }
+}
+
+// ==========================================
+// BOOKING NUMBER GENERATOR (v5.4: BK-YYYY-NNNN)
+// ==========================================
+
+async function generateBookingNumber() {
+    const year = new Date().getFullYear();
+    const result = await pool.query(
+        `INSERT INTO booking_counter (year, counter) VALUES ($1, 1)
+         ON CONFLICT (year) DO UPDATE SET counter = booking_counter.counter + 1
+         RETURNING counter`,
+        [year]
+    );
+    const num = result.rows[0].counter;
+    return `BK-${year}-${String(num).padStart(4, '0')}`;
 }
 
 // ==========================================
@@ -448,15 +472,21 @@ app.get('/api/bookings/:date', async (req, res) => {
     }
 });
 
-// Create booking (v3.9: validation)
+// Create booking (v5.4: server-generated BK-YYYY-NNNN)
 app.post('/api/bookings', async (req, res) => {
     try {
         const b = req.body;
-        if (!b.id || !b.date || !b.time || !b.lineId) {
-            return res.status(400).json({ error: 'Missing required fields: id, date, time, lineId' });
+        if (!b.date || !b.time || !b.lineId) {
+            return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
         }
         if (!validateDate(b.date)) return res.status(400).json({ error: 'Invalid date format' });
         if (!validateTime(b.time)) return res.status(400).json({ error: 'Invalid time format' });
+
+        // v5.4: Generate booking number server-side if not in BK-YYYY-NNNN format
+        if (!b.id || !/^BK-\d{4}-\d{4,}$/.test(b.id)) {
+            b.id = await generateBookingNumber();
+        }
+
         await pool.query(
             `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, room, notes, created_by, linked_to, status, kids_count)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,

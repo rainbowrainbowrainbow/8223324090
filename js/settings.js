@@ -75,7 +75,7 @@ function showProgramsCatalog() {
             <div class="catalog-programs">`;
 
         programs.forEach(p => {
-            const priceText = p.perChild ? `${p.price} грн/дит` : `${p.price} грн`;
+            const priceText = p.perChild ? `${formatPrice(p.price)}/дит` : formatPrice(p.price);
             const durationText = p.duration > 0 ? `${p.duration} хв` : '';
             const hostsText = p.hosts > 0 ? `${p.hosts} вед.` : '';
             const infoItems = [durationText, hostsText].filter(Boolean).join(', ');
@@ -520,17 +520,17 @@ function renderRevenueCards(todayBookings, weekBookings, monthBookings) {
     return `<div class="dashboard-grid">
         <div class="dash-card revenue">
             <div class="dash-card-title">Сьогодні</div>
-            <div class="dash-card-value">${calcRevenue(todayBookings).toLocaleString()} грн</div>
+            <div class="dash-card-value">${formatPrice(calcRevenue(todayBookings))}</div>
             <div class="dash-card-sub">${todayBookings.length} бронювань</div>
         </div>
         <div class="dash-card revenue">
             <div class="dash-card-title">Тиждень</div>
-            <div class="dash-card-value">${calcRevenue(weekBookings).toLocaleString()} грн</div>
+            <div class="dash-card-value">${formatPrice(calcRevenue(weekBookings))}</div>
             <div class="dash-card-sub">${weekBookings.length} бронювань</div>
         </div>
         <div class="dash-card revenue">
             <div class="dash-card-title">Місяць</div>
-            <div class="dash-card-value">${calcRevenue(monthBookings).toLocaleString()} грн</div>
+            <div class="dash-card-value">${formatPrice(calcRevenue(monthBookings))}</div>
             <div class="dash-card-sub">${monthBookings.length} бронювань</div>
         </div>
     </div>`;
@@ -554,7 +554,7 @@ function renderTopProgramsSection(monthBookings) {
                     <span class="dash-rank">${i + 1}</span>
                     <span class="dash-name">${name}</span>
                     <span class="dash-count">${data.count}x</span>
-                    <span class="dash-revenue">${data.revenue.toLocaleString()} грн</span>
+                    <span class="dash-revenue">${formatPrice(data.revenue)}</span>
                 </div>`
             ).join('') || '<p class="no-data">Немає даних</p>'}
         </div>

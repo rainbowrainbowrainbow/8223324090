@@ -99,7 +99,7 @@ function selectProgram(programId) {
     document.querySelector(`[data-program-id="${programId}"]`).classList.add('selected');
     document.getElementById('selectedProgram').value = programId;
 
-    const priceText = program.perChild ? `${program.price} грн/дит` : `${program.price} грн`;
+    const priceText = program.perChild ? `${formatPrice(program.price)}/дит` : formatPrice(program.price);
     document.getElementById('detailDuration').textContent = program.duration > 0 ? `${program.duration} хв` : '—';
     document.getElementById('detailHosts').textContent = program.hosts;
     document.getElementById('detailPrice').textContent = priceText;
@@ -145,8 +145,8 @@ function selectProgram(programId) {
                     const count = parseInt(kidsInput.value) || 0;
                     const total = count * program.price;
                     document.getElementById('detailPrice').textContent = count > 0
-                        ? `${program.price} x ${count} = ${total} грн`
-                        : `${program.price} грн/дит`;
+                        ? `${formatPrice(program.price)} x ${count} = ${formatPrice(total)}`
+                        : `${formatPrice(program.price)}/дит`;
                 };
             }
         } else {
@@ -276,7 +276,6 @@ function buildBookingObject(formData, program) {
     const finalPrice = program.perChild && kidsCount > 0 ? program.price * kidsCount : program.price;
 
     return {
-        id: 'BK' + Date.now().toString(36).toUpperCase(),
         date: formatDate(AppState.selectedDate),
         time: formData.time,
         lineId: formData.lineId,
@@ -301,21 +300,21 @@ function buildBookingObject(formData, program) {
 }
 
 async function createLinkedBookings(booking, program) {
-    // Другий ведучий
+    // Другий ведучий (v5.4: server generates ID)
     if (program.hosts > 1 && booking.secondAnimator) {
         const lines = await getLinesForDate(AppState.selectedDate);
         const secondLine = lines.find(l => l.name === booking.secondAnimator);
         if (secondLine) {
             await apiCreateBooking({
                 ...booking,
-                id: 'BK' + (Date.now() + 1).toString(36).toUpperCase(),
+                id: undefined,
                 lineId: secondLine.id,
                 linkedTo: booking.id
             });
         }
     }
 
-    // Додатковий ведучий (700 грн/год)
+    // Додатковий ведучий (700 ₴/год, v5.4: server generates ID)
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle && extraHostToggle.checked) {
         const extraHostAnimator = document.getElementById('extraHostAnimatorSelect').value;
@@ -325,7 +324,6 @@ async function createLinkedBookings(booking, program) {
             if (extraLine) {
                 const extraPrice = Math.round(700 * (booking.duration / 60));
                 await apiCreateBooking({
-                    id: 'BK' + (Date.now() + 2).toString(36).toUpperCase(),
                     date: booking.date, time: booking.time, lineId: extraLine.id,
                     programId: 'anim_extra', programCode: '+Вед',
                     label: `+Вед(${booking.duration})`, programName: 'Додатковий ведучий',
@@ -370,6 +368,10 @@ async function handleBookingSubmit(e) {
         if (createResult && createResult.success === false) {
             showNotification('Помилка: не вдалося зберегти бронювання на сервер', 'error');
             return;
+        }
+        // v5.4: Use server-generated BK-YYYY-NNNN ID
+        if (createResult && createResult.id) {
+            booking.id = createResult.id;
         }
         await apiAddHistory('create', AppState.currentUser?.username, booking);
         await createLinkedBookings(booking, formData.program);
@@ -489,7 +491,7 @@ async function showBookingDetails(bookingId) {
         ${booking.pinataFiller ? `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">${escapeHtml(booking.pinataFiller)}</span></div>` : ''}
         <div class="booking-detail-row">
             <span class="label">Ціна:</span>
-            <span class="value">${escapeHtml(String(booking.price))} грн</span>
+            <span class="value">${escapeHtml(formatPrice(booking.price))}</span>
         </div>
         ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">Дітей:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
         <div class="booking-detail-row">

@@ -136,25 +136,51 @@ async function ensureWebhook(appUrl) {
 }
 
 async function getTelegramChatId() {
+    const chatMap = new Map();
+
+    // 1. Check DB for previously known chats (from webhook)
     try {
+        const dbResult = await pool.query('SELECT chat_id, title, type FROM telegram_known_chats ORDER BY updated_at DESC');
+        for (const row of dbResult.rows) {
+            chatMap.set(String(row.chat_id), { id: row.chat_id, title: row.title, type: row.type });
+        }
+    } catch (e) {
+        console.error('[Telegram] DB known chats error:', e.message);
+    }
+
+    // 2. Try getUpdates (temporarily remove webhook if needed)
+    try {
+        if (webhookSet) {
+            await telegramRequest('deleteWebhook');
+            console.log('[Telegram] Webhook temporarily removed for getUpdates');
+        }
+
         const result = await telegramRequest('getUpdates');
+
+        // Re-set webhook immediately
+        const appUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+            ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+            : null;
+        if (appUrl) {
+            const webhookUrl = `${appUrl}/api/telegram/webhook`;
+            await telegramRequest('setWebhook', { url: webhookUrl, secret_token: WEBHOOK_SECRET });
+            webhookSet = true;
+            console.log('[Telegram] Webhook restored after getUpdates');
+        }
+
         if (result.ok && result.result.length > 0) {
-            const chats = new Set();
-            const chatList = [];
             for (const update of result.result) {
                 const chat = update.message?.chat || update.my_chat_member?.chat;
-                if (chat && !chats.has(chat.id)) {
-                    chats.add(chat.id);
-                    chatList.push({ id: chat.id, title: chat.title || chat.first_name, type: chat.type });
+                if (chat && !chatMap.has(String(chat.id))) {
+                    chatMap.set(String(chat.id), { id: chat.id, title: chat.title || chat.first_name, type: chat.type });
                 }
             }
-            return chatList;
         }
-        return [];
     } catch (err) {
-        console.error('Telegram getUpdates error:', err);
-        return [];
+        console.error('[Telegram] getUpdates error:', err.message);
     }
+
+    return Array.from(chatMap.values());
 }
 
 // v3.9: Input validation helpers
@@ -282,6 +308,16 @@ async function initDatabase() {
             )
         `);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_afisha_date ON afisha(date)');
+
+        // v5.3: Known Telegram chats (populated from webhook)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS telegram_known_chats (
+                chat_id BIGINT PRIMARY KEY,
+                title VARCHAR(200),
+                type VARCHAR(50),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
 
         // v5.0: Users table for server-side authentication
         await pool.query(`
@@ -804,6 +840,16 @@ app.post('/api/telegram/webhook', async (req, res) => {
 
     try {
         const update = req.body;
+
+        // Save chat info from any incoming update for chat discovery
+        const incomingChat = update.message?.chat || update.callback_query?.message?.chat || update.my_chat_member?.chat;
+        if (incomingChat && incomingChat.id) {
+            pool.query(
+                `INSERT INTO telegram_known_chats (chat_id, title, type, updated_at) VALUES ($1, $2, $3, NOW())
+                 ON CONFLICT (chat_id) DO UPDATE SET title = $2, type = $3, updated_at = NOW()`,
+                [incomingChat.id, incomingChat.title || incomingChat.first_name || 'Chat', incomingChat.type || 'unknown']
+            ).catch(e => console.error('[Telegram] Failed to save chat info:', e.message));
+        }
 
         if (update.callback_query) {
             const { id, data, message } = update.callback_query;

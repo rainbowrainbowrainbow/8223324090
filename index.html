@@ -440,7 +440,10 @@
                 <div class="settings-section" id="settingsTelegramSection">
                     <h4>🤖 Telegram</h4>
                     <div class="telegram-setup">
-                        <input type="hidden" id="settingsTelegramChatId">
+                        <div class="form-group">
+                            <label>Chat ID групи:</label>
+                            <input type="text" id="settingsTelegramChatId" placeholder="-100xxxxxxxxxx" style="width:100%; padding:10px; border:1px solid var(--gray-300); border-radius:8px; font-size:14px;">
+                        </div>
                         <div class="form-group">
                             <label>Знайдені чати (натисніть щоб обрати):</label>
                             <div id="settingsTelegramChats" class="telegram-chats"></div>

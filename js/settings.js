@@ -426,7 +426,7 @@ async function showSettings() {
         tgSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
     }
 
-    // E1: Load chat ID into hidden input (for save function)
+    // Load chat ID into input (user can also type it manually)
     const chatId = await apiGetSetting('telegram_chat_id');
     const chatIdInput = document.getElementById('settingsTelegramChatId');
     if (chatIdInput) chatIdInput.value = chatId || '';
@@ -489,7 +489,11 @@ async function saveTelegramChatIdFromSettings() {
     }
     await apiSaveSetting('telegram_chat_id', chatId);
     const result = await apiTelegramNotify('🤖 Telegram підключено до системи бронювання Парку Закревського Періоду!');
-    showNotification('Telegram налаштовано!', 'success');
+    if (result && result.success) {
+        showNotification('Telegram налаштовано та протестовано!', 'success');
+    } else {
+        showNotification('Chat ID збережено, але тестове повідомлення не надіслалось: ' + (result?.reason || 'невідома помилка'), 'error');
+    }
 }
 
 // ==========================================

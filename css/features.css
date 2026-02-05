@@ -77,24 +77,32 @@
    v3.6: SETTINGS PAGE & HEADER ICONS
    ========================================== */
 
-.btn-header-icon {
-    padding: 6px 10px;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-sm);
-    font-size: 18px;
+.btn-action {
+    padding: 8px 16px;
+    background: var(--white);
+    color: var(--dark);
+    border: 1px solid #E2E8F0;
+    border-radius: var(--radius-xs);
+    font-weight: 700;
+    font-size: 12px;
     cursor: pointer;
+    font-family: inherit;
     transition: all 0.15s;
-    line-height: 1;
 }
-.btn-header-icon:hover {
+
+.btn-action:hover {
     background: var(--primary-light);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 .settings-sections {
     display: flex;
     flex-direction: column;
     gap: 24px;
+    overflow-y: auto;
+    max-height: calc(80vh - 100px);
+    padding-right: 4px;
 }
 
 .settings-section {
@@ -120,7 +128,18 @@
 
 .btn-dashboard { display: none; }
 
-.modal-wide { max-width: 700px; }
+.modal-wide {
+    max-width: 700px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-wide #dashboardContent {
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 4px;
+}
 
 .dashboard-grid {
     display: grid;

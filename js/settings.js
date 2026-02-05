@@ -562,31 +562,6 @@ function renderCategoryBarsSection(monthBookings) {
     </div>`;
 }
 
-function renderAnimatorLoadSection(weekBookings, animatorNames) {
-    const hours = {};
-    weekBookings.forEach(b => {
-        const key = b.lineId;
-        if (!hours[key]) hours[key] = { minutes: 0, count: 0 };
-        hours[key].minutes += b.duration || 0;
-        hours[key].count++;
-    });
-
-    return `<div class="dashboard-section">
-        <h4>👤 Навантаження аніматорів (тиждень)</h4>
-        <div class="dash-list">
-            ${Object.entries(hours).map(([lineId, data]) => {
-                const name = animatorNames[lineId] || lineId.split('_')[0];
-                const h = (data.minutes / 60).toFixed(1);
-                return `<div class="dash-list-item">
-                    <span class="dash-name">${name}</span>
-                    <span class="dash-count">${data.count} програм</span>
-                    <span class="dash-revenue">${h} год</span>
-                </div>`;
-            }).join('') || '<p class="no-data">Немає даних</p>'}
-        </div>
-    </div>`;
-}
-
 async function showDashboard() {
     if (isViewer()) return;
 
@@ -602,13 +577,8 @@ async function showDashboard() {
         apiGetStats(formatDate(ranges.monthStart), formatDate(ranges.monthEnd))
     ]);
 
-    const lines = await getLinesForDate(AppState.selectedDate);
-    const animatorNames = {};
-    lines.forEach(l => { animatorNames[l.id] = l.name; });
-
     container.innerHTML =
         renderRevenueCards(todayBookings, weekBookings, monthBookings) +
         renderTopProgramsSection(monthBookings) +
-        renderCategoryBarsSection(monthBookings) +
-        renderAnimatorLoadSection(weekBookings, animatorNames);
+        renderCategoryBarsSection(monthBookings);
 }

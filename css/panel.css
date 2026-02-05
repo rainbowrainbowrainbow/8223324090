@@ -117,7 +117,7 @@
 .programs-icons {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    gap: 10px;
 }
 
 .program-icon {
@@ -125,48 +125,87 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 10px 4px;
-    background: var(--light);
-    border: 2px solid transparent;
-    border-radius: var(--radius-sm);
+    padding: 12px 6px;
+    background: var(--white);
+    border: 2px solid #E9ECEF;
+    border-radius: 12px;
     cursor: pointer;
-    transition: all 0.2s;
-    min-height: 72px;
+    transition: all 0.25s ease;
+    min-height: 80px;
+    position: relative;
+    overflow: hidden;
+}
+
+.program-icon::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 12px 12px 0 0;
+    transition: height 0.2s;
 }
 
 .program-icon:hover {
-    border-color: var(--primary);
+    border-color: transparent;
     transform: translateY(-3px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+}
+
+.program-icon:hover::before {
+    height: 4px;
 }
 
 .program-icon.selected {
     border-color: var(--primary);
     background: var(--primary-light);
-    box-shadow: 0 4px 12px rgba(0, 166, 81, 0.2);
+    box-shadow: 0 4px 16px rgba(0, 166, 81, 0.25);
 }
 
 .program-icon .icon {
-    font-size: 24px;
-    margin-bottom: 4px;
+    font-size: 26px;
+    margin-bottom: 6px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
 }
 
 .program-icon .name {
-    font-size: 9px;
-    font-weight: 700;
+    font-size: 10px;
+    font-weight: 800;
     text-align: center;
     line-height: 1.2;
     color: var(--dark);
+    letter-spacing: -0.2px;
 }
 
-/* Кольори іконок програм - яскраві та контрастні */
-.program-icon.quest { border-left: 4px solid #9C27B0; background: #F3E5F5; }
-.program-icon.animation { border-left: 4px solid #039BE5; background: #E1F5FE; }
-.program-icon.show { border-left: 4px solid #F4511E; background: #FBE9E7; }
-.program-icon.masterclass { border-left: 4px solid #7CB342; background: #F1F8E9; }
-.program-icon.pinata { border-left: 4px solid #EC407A; background: #FCE4EC; }
-.program-icon.photo { border-left: 4px solid #00ACC1; background: #E0F7FA; }
-.program-icon.custom { border-left: 4px solid #546E7A; background: #ECEFF1; }
+/* Кольори категорій програм */
+.program-icon.quest { border-color: rgba(156,39,176,0.2); background: #FAFAFE; }
+.program-icon.quest::before { background: #9C27B0; }
+.program-icon.quest:hover { border-color: #9C27B0; background: #F3E5F5; }
+
+.program-icon.animation { border-color: rgba(3,155,229,0.2); background: #FAFEFF; }
+.program-icon.animation::before { background: #039BE5; }
+.program-icon.animation:hover { border-color: #039BE5; background: #E1F5FE; }
+
+.program-icon.show { border-color: rgba(244,81,30,0.2); background: #FFFAFA; }
+.program-icon.show::before { background: #F4511E; }
+.program-icon.show:hover { border-color: #F4511E; background: #FBE9E7; }
+
+.program-icon.masterclass { border-color: rgba(124,179,66,0.2); background: #FAFFFA; }
+.program-icon.masterclass::before { background: #7CB342; }
+.program-icon.masterclass:hover { border-color: #7CB342; background: #F1F8E9; }
+
+.program-icon.pinata { border-color: rgba(236,64,122,0.2); background: #FFFAFC; }
+.program-icon.pinata::before { background: #EC407A; }
+.program-icon.pinata:hover { border-color: #EC407A; background: #FCE4EC; }
+
+.program-icon.photo { border-color: rgba(0,172,193,0.2); background: #FAFFFE; }
+.program-icon.photo::before { background: #00ACC1; }
+.program-icon.photo:hover { border-color: #00ACC1; background: #E0F7FA; }
+
+.program-icon.custom { border-color: rgba(84,110,122,0.2); background: #FAFBFC; }
+.program-icon.custom::before { background: #546E7A; }
+.program-icon.custom:hover { border-color: #546E7A; background: #ECEFF1; }
 
 /* Деталі програми */
 .program-details {

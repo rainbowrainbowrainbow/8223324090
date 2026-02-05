@@ -251,6 +251,13 @@ input[type="date"] {
     cursor: pointer;
 }
 
+.action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
 .btn-export {
     padding: 8px 16px;
     background: var(--white);

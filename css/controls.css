@@ -66,18 +66,28 @@
 .toggle-mini input { display: none; }
 .toggle-mini:hover { background: #E9ECEF; }
 
+.toggle-mini-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--gray);
+}
+
 .btn-undo {
     padding: 6px 10px;
     border: 1px solid #E9ECEF;
     background: var(--light);
     border-radius: var(--radius-sm);
-    font-size: 14px;
+    font-size: 12px;
+    font-weight: 700;
     cursor: pointer;
     transition: all 0.2s;
+    font-family: inherit;
 }
 
 .btn-undo:hover {
-    background: #E9ECEF;
+    background: #FFF3E0;
+    border-color: #FFB74D;
+    color: #E65100;
 }
 
 /* ==========================================

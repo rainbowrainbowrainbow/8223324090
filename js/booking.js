@@ -359,7 +359,12 @@ async function handleBookingSubmit(e) {
     // Створити та зберегти
     try {
         const booking = buildBookingObject(formData, formData.program);
-        await apiCreateBooking(booking);
+        const createResult = await apiCreateBooking(booking);
+        // v5.2: Перевіряти результат API перед очищенням кешу
+        if (createResult && createResult.success === false) {
+            showNotification('Помилка: не вдалося зберегти бронювання на сервер', 'error');
+            return;
+        }
         await apiAddHistory('create', AppState.currentUser?.username, booking);
         await createLinkedBookings(booking, formData.program);
 
@@ -529,7 +534,12 @@ async function deleteBooking(bookingId) {
 
         for (const b of allToDelete) {
             await apiAddHistory('delete', AppState.currentUser?.username, b);
-            await apiDeleteBooking(b.id);
+            const delResult = await apiDeleteBooking(b.id);
+            // v5.2: Перевіряти результат видалення
+            if (delResult && delResult.success === false) {
+                showNotification('Помилка: не вдалося видалити бронювання з серверу', 'error');
+                return;
+            }
         }
 
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
@@ -597,13 +607,21 @@ async function shiftBookingTime(bookingId, minutes) {
 
         // v3.9: Use PUT for atomic update instead of DELETE+CREATE
         const newBooking = { ...booking, time: newTime };
-        await apiUpdateBooking(bookingId, newBooking);
+        const shiftResult = await apiUpdateBooking(bookingId, newBooking);
+        // v5.2: Перевіряти результат оновлення
+        if (shiftResult && shiftResult.success === false) {
+            showNotification('Помилка: не вдалося перенести бронювання на сервері', 'error');
+            return;
+        }
 
         // Оновити пов'язані
         for (const linked of linkedBookings) {
             const linkedNewTime = addMinutesToTime(linked.time, minutes);
             const updatedLinked = { ...linked, time: linkedNewTime, linkedTo: newBooking.id };
-            await apiUpdateBooking(linked.id, updatedLinked);
+            const linkedResult = await apiUpdateBooking(linked.id, updatedLinked);
+            if (linkedResult && linkedResult.success === false) {
+                console.warn(`Failed to shift linked booking ${linked.id}`);
+            }
         }
 
         await apiAddHistory('shift', AppState.currentUser?.username, { ...newBooking, shiftMinutes: minutes });

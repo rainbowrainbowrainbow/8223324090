@@ -143,8 +143,8 @@ const CATEGORY_NAMES_SHORT = {
 // ГЛОБАЛЬНИЙ СТАН ДОДАТКУ
 // ==========================================
 
-// v3.9: Cache TTL (60 seconds)
-const CACHE_TTL = 60000;
+// v5.2: Cache TTL зменшено з 60s до 10s щоб уникнути stale data
+const CACHE_TTL = 10000;
 
 const AppState = {
     currentUser: null,

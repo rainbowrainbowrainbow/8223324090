@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.1</p>
+                <p class="tagline">Система бронювання v5.2</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.1</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.2</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -522,6 +522,15 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v5.2 — Виправлення зникнення даних</h4>
+                    <ul>
+                        <li>Кеш ліній оновлюється ТІЛЬКИ після успішного збереження на сервер</li>
+                        <li>Всі операції перевіряють результат API перед очищенням кешу</li>
+                        <li>Помилки збереження/видалення/оновлення показуються користувачу</li>
+                        <li>Cache TTL зменшено з 60с до 10с для актуальності даних</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v5.1 — Рефакторинг та захист</h4>
                     <ul>

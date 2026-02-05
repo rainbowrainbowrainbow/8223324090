@@ -20,8 +20,15 @@ async function getLinesForDate(date) {
 
 async function saveLinesForDate(date, lines) {
     const dateStr = formatDate(date);
+    // v5.2: Оновлювати кеш ТІЛЬКИ після успішного збереження на сервер
+    const result = await apiSaveLines(dateStr, lines);
+    if (result && result.success === false) {
+        console.error('[saveLinesForDate] API save failed, NOT updating cache');
+        showNotification('Помилка збереження ліній. Спробуйте ще раз.', 'error');
+        return false;
+    }
     AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
-    await apiSaveLines(dateStr, lines);
+    return true;
 }
 
 function canViewHistory() {

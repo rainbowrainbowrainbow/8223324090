@@ -339,12 +339,20 @@ async function changeBookingStatus(bookingId, newStatus) {
         if (!booking) return;
 
         const updated = { ...booking, status: newStatus };
-        await apiUpdateBooking(bookingId, updated);
+        const statusResult = await apiUpdateBooking(bookingId, updated);
+        // v5.2: Перевіряти результат зміни статусу
+        if (statusResult && statusResult.success === false) {
+            showNotification('Помилка: не вдалося змінити статус на сервері', 'error');
+            return;
+        }
 
         // Оновити linked
         const linked = bookings.filter(b => b.linkedTo === bookingId);
         for (const lb of linked) {
-            await apiUpdateBooking(lb.id, { ...lb, status: newStatus });
+            const lbResult = await apiUpdateBooking(lb.id, { ...lb, status: newStatus });
+            if (lbResult && lbResult.success === false) {
+                console.warn(`Failed to update linked booking ${lb.id} status`);
+            }
         }
 
         // Telegram сповіщення

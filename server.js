@@ -634,12 +634,29 @@ app.get('/api/telegram/chats', async (req, res) => {
 app.post('/api/telegram/notify', async (req, res) => {
     try {
         const { text } = req.body;
+        if (!text) {
+            console.warn('[Telegram Notify] Empty text received');
+            return res.json({ success: false, reason: 'no_text' });
+        }
         const chatId = await getConfiguredChatId();
+        if (!chatId) {
+            console.warn('[Telegram Notify] No chat ID configured — cannot send');
+            return res.json({ success: false, reason: 'no_chat_id' });
+        }
+        if (!TELEGRAM_BOT_TOKEN) {
+            console.warn('[Telegram Notify] No bot token configured');
+            return res.json({ success: false, reason: 'no_bot_token' });
+        }
+        console.log(`[Telegram Notify] Sending to chat ${chatId}, text length=${text.length}`);
         const result = await sendTelegramMessage(chatId, text);
-        res.json({ success: result?.ok || false });
+        const ok = result?.ok || false;
+        if (!ok) {
+            console.warn('[Telegram Notify] Send failed:', JSON.stringify(result));
+        }
+        res.json({ success: ok, reason: ok ? undefined : 'send_failed', details: ok ? undefined : result });
     } catch (err) {
-        console.error('Telegram notify error:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('[Telegram Notify] Error:', err);
+        res.status(500).json({ success: false, reason: 'server_error', error: err.message });
     }
 });
 
@@ -1003,8 +1020,14 @@ async function checkAutoDigest() {
 
 // Start server
 initDatabase().then(() => {
-    app.listen(PORT, () => {
+    app.listen(PORT, async () => {
         console.log(`Server running on port ${PORT}`);
+        console.log(`[Telegram Config] Bot token: ${TELEGRAM_BOT_TOKEN ? 'SET (' + TELEGRAM_BOT_TOKEN.slice(0,8) + '...)' : 'NOT SET'}`);
+        console.log(`[Telegram Config] Default chat ID: ${TELEGRAM_DEFAULT_CHAT_ID || 'NOT SET'}`);
+        try {
+            const dbChatId = await getConfiguredChatId();
+            console.log(`[Telegram Config] Effective chat ID: ${dbChatId || 'NONE'}`);
+        } catch (e) { /* ignore */ }
 
         // v3.9: Setup Telegram webhook on start
         const appUrl = process.env.RAILWAY_PUBLIC_DOMAIN

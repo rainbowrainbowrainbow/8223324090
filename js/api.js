@@ -175,6 +175,7 @@ async function apiTelegramNotify(text) {
         return await response.json();
     } catch (err) {
         console.error('Telegram notify error:', err);
+        return { success: false, reason: 'network_error' };
     }
 }
 

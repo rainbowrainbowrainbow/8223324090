@@ -300,6 +300,21 @@ async function deleteLine() {
 // TELEGRAM СПОВІЩЕННЯ
 // ==========================================
 
+function handleTelegramResult(r) {
+    if (r && r.success) {
+        showNotification('Сповіщення надіслано в Telegram', 'success');
+    } else if (r && r.reason === 'no_chat_id') {
+        console.warn('[Telegram] Не налаштовано Chat ID');
+        showNotification('Telegram: не налаштовано Chat ID. Перейдіть в Налаштування.', 'error');
+    } else if (r && r.reason === 'no_bot_token') {
+        console.warn('[Telegram] Бот токен не налаштовано');
+        showNotification('Telegram: бот-токен не налаштовано на сервері', 'error');
+    } else {
+        console.warn('[Telegram] Не вдалося надіслати:', r);
+        showNotification('Telegram: не вдалося надіслати сповіщення', 'error');
+    }
+}
+
 function notifyBookingCreated(booking) {
     if (booking.status === 'preliminary') return;
 
@@ -312,7 +327,7 @@ function notifyBookingCreated(booking) {
     if (booking.kidsCount) text += `👶 ${booking.kidsCount} дітей\n`;
     if (booking.notes) text += `📝 ${booking.notes}\n`;
     text += `\n👤 Створив: ${booking.createdBy}`;
-    apiTelegramNotify(text).then(r => { if (r && r.success) showNotification('Сповіщення надіслано в Telegram', 'success'); });
+    apiTelegramNotify(text).then(handleTelegramResult);
 }
 
 function notifyBookingDeleted(booking) {
@@ -321,7 +336,7 @@ function notifyBookingDeleted(booking) {
         `🕐 ${booking.date} | ${booking.time}\n` +
         `🏠 ${booking.room}\n` +
         `\n👤 Видалив: ${AppState.currentUser?.username || '?'}`;
-    apiTelegramNotify(text).then(r => { if (r && r.success) showNotification('Сповіщення надіслано в Telegram', 'success'); });
+    apiTelegramNotify(text).then(handleTelegramResult);
 }
 
 function notifyStatusChanged(booking, newStatus) {
@@ -332,7 +347,7 @@ function notifyStatusChanged(booking, newStatus) {
         `🕐 ${booking.date} | ${booking.time}\n` +
         `🏠 ${booking.room}\n` +
         `\n👤 Змінив: ${AppState.currentUser?.username || '?'}`;
-    apiTelegramNotify(text).then(r => { if (r && r.success) showNotification('Сповіщення надіслано в Telegram', 'success'); });
+    apiTelegramNotify(text).then(handleTelegramResult);
 }
 
 async function sendDailyDigest() {

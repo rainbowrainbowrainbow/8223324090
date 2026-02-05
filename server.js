@@ -319,6 +319,40 @@ app.post('/api/history', async (req, res) => {
 
 // --- SETTINGS ---
 
+// --- STATS (v3.4) ---
+
+app.get('/api/stats/:dateFrom/:dateTo', async (req, res) => {
+    try {
+        const { dateFrom, dateTo } = req.params;
+        const result = await pool.query(
+            'SELECT * FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL ORDER BY date, time',
+            [dateFrom, dateTo]
+        );
+        const bookings = result.rows.map(row => ({
+            id: row.booking_id,
+            date: row.date,
+            time: row.time,
+            lineId: row.line_id,
+            programId: row.program_id,
+            programCode: row.program_code,
+            label: row.label,
+            programName: row.program_name,
+            category: row.category,
+            duration: row.duration,
+            price: row.price,
+            room: row.room,
+            status: row.status || 'confirmed',
+            kidsCount: row.kids_count
+        }));
+        res.json(bookings);
+    } catch (err) {
+        console.error('Stats error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- SETTINGS ---
+
 app.get('/api/settings/:key', async (req, res) => {
     try {
         const result = await pool.query('SELECT value FROM settings WHERE key = $1', [req.params.key]);

@@ -1,6 +1,6 @@
 /**
  * Парк Закревського Періоду - Система бронювання
- * v3.3 - Telegram notifications, invite page, daily digest
+ * v3.4 - Dashboard, stats, animator workload
  */
 
 // ==========================================
@@ -526,6 +526,12 @@ function showMainApp() {
         telegramSetupBtn.classList.toggle('hidden', currentUser.username !== 'Sergey');
     }
 
+    // v3.4: Дашборд — не для Animator
+    const dashboardBtn = document.getElementById('dashboardBtn');
+    if (dashboardBtn) {
+        dashboardBtn.classList.toggle('hidden', isViewer());
+    }
+
     // Показати/сховати кнопку "Розважальні програми"
     const programsTabBtn = document.getElementById('programsTabBtn');
     if (programsTabBtn) {
@@ -671,6 +677,10 @@ function initializeEventListeners() {
     // v3.3: Telegram setup
     const telegramSetupBtn = document.getElementById('telegramSetupBtn');
     if (telegramSetupBtn) telegramSetupBtn.addEventListener('click', showTelegramSetup);
+
+    // v3.4: Dashboard
+    const dashboardBtn = document.getElementById('dashboardBtn');
+    if (dashboardBtn) dashboardBtn.addEventListener('click', showDashboard);
 
     const saveTelegramBtn = document.getElementById('saveTelegramBtn');
     if (saveTelegramBtn) saveTelegramBtn.addEventListener('click', saveTelegramChatId);
@@ -2035,6 +2045,148 @@ async function exportTimelineImage() {
     link.click();
 
     showNotification('Таймлайн експортовано як картинку!', 'success');
+}
+
+// ==========================================
+// v3.4: ДАШБОРД (Фінанси + Статистика + Навантаження)
+// ==========================================
+
+async function apiGetStats(dateFrom, dateTo) {
+    try {
+        const response = await fetch(`${API_BASE}/stats/${dateFrom}/${dateTo}`);
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStats error:', err);
+        return [];
+    }
+}
+
+async function showDashboard() {
+    if (isViewer()) return;
+
+    const modal = document.getElementById('dashboardModal');
+    const container = document.getElementById('dashboardContent');
+    container.innerHTML = '<p>Завантаження...</p>';
+    modal.classList.remove('hidden');
+
+    const today = new Date();
+    const dayOfWeek = today.getDay() || 7;
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - dayOfWeek + 1);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    const [todayBookings, weekBookings, monthBookings] = await Promise.all([
+        apiGetStats(formatDate(today), formatDate(today)),
+        apiGetStats(formatDate(weekStart), formatDate(weekEnd)),
+        apiGetStats(formatDate(monthStart), formatDate(monthEnd))
+    ]);
+
+    const todayRevenue = todayBookings.filter(b => b.status === 'confirmed').reduce((s, b) => s + (b.price || 0), 0);
+    const weekRevenue = weekBookings.filter(b => b.status === 'confirmed').reduce((s, b) => s + (b.price || 0), 0);
+    const monthRevenue = monthBookings.filter(b => b.status === 'confirmed').reduce((s, b) => s + (b.price || 0), 0);
+
+    const todayCount = todayBookings.length;
+    const weekCount = weekBookings.length;
+    const monthCount = monthBookings.length;
+
+    // Топ програм
+    const programCounts = {};
+    monthBookings.forEach(b => {
+        const key = b.programName || b.label;
+        if (!programCounts[key]) programCounts[key] = { count: 0, revenue: 0 };
+        programCounts[key].count++;
+        programCounts[key].revenue += b.price || 0;
+    });
+    const topPrograms = Object.entries(programCounts).sort((a, b) => b[1].count - a[1].count).slice(0, 8);
+
+    // Категорії
+    const catCounts = {};
+    const catNames = { quest: 'Квести', animation: 'Анімація', show: 'Шоу', photo: 'Фото', masterclass: 'МК', pinata: 'Піньяти', custom: 'Інше' };
+    monthBookings.forEach(b => {
+        const cat = catNames[b.category] || b.category;
+        if (!catCounts[cat]) catCounts[cat] = 0;
+        catCounts[cat]++;
+    });
+
+    // Навантаження аніматорів
+    const animatorHours = {};
+    weekBookings.forEach(b => {
+        const key = b.lineId;
+        if (!animatorHours[key]) animatorHours[key] = { minutes: 0, count: 0 };
+        animatorHours[key].minutes += b.duration || 0;
+        animatorHours[key].count++;
+    });
+
+    const lines = await getLinesForDate(selectedDate);
+    const animatorNames = {};
+    lines.forEach(l => { animatorNames[l.id] = l.name; });
+
+    let html = `
+        <div class="dashboard-grid">
+            <div class="dash-card revenue">
+                <div class="dash-card-title">Сьогодні</div>
+                <div class="dash-card-value">${todayRevenue.toLocaleString()} грн</div>
+                <div class="dash-card-sub">${todayCount} бронювань</div>
+            </div>
+            <div class="dash-card revenue">
+                <div class="dash-card-title">Тиждень</div>
+                <div class="dash-card-value">${weekRevenue.toLocaleString()} грн</div>
+                <div class="dash-card-sub">${weekCount} бронювань</div>
+            </div>
+            <div class="dash-card revenue">
+                <div class="dash-card-title">Місяць</div>
+                <div class="dash-card-value">${monthRevenue.toLocaleString()} грн</div>
+                <div class="dash-card-sub">${monthCount} бронювань</div>
+            </div>
+        </div>
+        <div class="dashboard-section">
+            <h4>🏆 Топ програм (місяць)</h4>
+            <div class="dash-list">
+                ${topPrograms.map(([name, data], i) =>
+                    `<div class="dash-list-item">
+                        <span class="dash-rank">${i + 1}</span>
+                        <span class="dash-name">${name}</span>
+                        <span class="dash-count">${data.count}x</span>
+                        <span class="dash-revenue">${data.revenue.toLocaleString()} грн</span>
+                    </div>`
+                ).join('') || '<p class="no-data">Немає даних</p>'}
+            </div>
+        </div>
+        <div class="dashboard-section">
+            <h4>📊 Категорії (місяць)</h4>
+            <div class="dash-bars">
+                ${Object.entries(catCounts).sort((a, b) => b[1] - a[1]).map(([cat, count]) => {
+                    const pct = monthCount > 0 ? Math.round((count / monthCount) * 100) : 0;
+                    return `<div class="dash-bar-row">
+                        <span class="dash-bar-label">${cat}</span>
+                        <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%"></div></div>
+                        <span class="dash-bar-value">${count} (${pct}%)</span>
+                    </div>`;
+                }).join('') || '<p class="no-data">Немає даних</p>'}
+            </div>
+        </div>
+        <div class="dashboard-section">
+            <h4>👤 Навантаження аніматорів (тиждень)</h4>
+            <div class="dash-list">
+                ${Object.entries(animatorHours).map(([lineId, data]) => {
+                    const name = animatorNames[lineId] || lineId.split('_')[0];
+                    const hours = (data.minutes / 60).toFixed(1);
+                    return `<div class="dash-list-item">
+                        <span class="dash-name">${name}</span>
+                        <span class="dash-count">${data.count} програм</span>
+                        <span class="dash-revenue">${hours} год</span>
+                    </div>`;
+                }).join('') || '<p class="no-data">Немає даних</p>'}
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
 }
 
 // ==========================================

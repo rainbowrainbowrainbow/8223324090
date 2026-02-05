@@ -15,9 +15,9 @@
             <div class="login-logo">
                 <img src="logo.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v3.3</p>
+                <p class="tagline">Система бронювання v3.4</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.3</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.4</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -48,6 +48,7 @@
                     <button id="programsTabBtn" class="btn-programs hidden">🎭 Програми</button>
                     <button id="animatorsTabBtn" class="btn-animators hidden">👥 Аніматори</button>
                     <button id="telegramSetupBtn" class="btn-telegram hidden">🤖 Telegram</button>
+                    <button id="dashboardBtn" class="btn-dashboard hidden">📊 Дашборд</button>
                     <span id="currentUser" class="user-name"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
@@ -421,6 +422,15 @@
         </div>
     </div>
 
+    <!-- Модальне вікно Дашборд -->
+    <div id="dashboardModal" class="modal hidden">
+        <div class="modal-content modal-wide">
+            <span class="modal-close">&times;</span>
+            <h3>📊 Дашборд</h3>
+            <div id="dashboardContent"></div>
+        </div>
+    </div>
+
     <!-- Модальне вікно Telegram -->
     <div id="telegramModal" class="modal hidden">
         <div class="modal-content">
@@ -447,6 +457,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v3.4 — Дашборд</h4>
+                    <ul>
+                        <li>Фінансовий дашборд: виручка за день/тиждень/місяць</li>
+                        <li>Топ програм за місяць з кількістю та виручкою</li>
+                        <li>Статистика по категоріях з візуальними барами</li>
+                        <li>Навантаження аніматорів (програми та години за тиждень)</li>
+                        <li>API endpoint /api/stats для агрегованих даних</li>
+                        <li>Кнопка "Дашборд" прихована від ролі Аніматор</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v3.3 — Telegram + Запрошення</h4>
                     <ul>

@@ -1,9 +1,9 @@
 /**
- * controls.css - Zoom, dark/compact toggle, undo кнопка
+ * controls.css - Zoom, dark/compact toggle, undo — v4.0 redesign
  */
 
 /* ==========================================
-   v3.2: ZOOM CONTROLS
+   ZOOM CONTROLS
    ========================================== */
 
 .v32-controls {
@@ -18,20 +18,21 @@
     background: var(--white);
     border-radius: 8px;
     overflow: hidden;
-    border: 1px solid #E2E8F0;
+    border: 1px solid var(--gray-200);
+    box-shadow: var(--shadow-xs);
 }
 
 .zoom-btn {
     padding: 6px 12px;
     border: none;
     background: transparent;
-    font-size: 11px;
+    font-size: var(--font-xs);
     font-weight: 700;
     cursor: pointer;
     font-family: inherit;
-    color: var(--gray);
-    transition: all 0.15s;
-    border-right: 1px solid #E2E8F0;
+    color: var(--gray-500);
+    transition: all var(--speed-fast) var(--ease-smooth);
+    border-right: 1px solid var(--gray-200);
 }
 
 .zoom-btn:last-child { border-right: none; }
@@ -42,12 +43,12 @@
 }
 
 .zoom-btn:hover:not(.active) {
-    background: var(--primary-light);
-    color: var(--primary);
+    background: var(--primary-50);
+    color: var(--primary-dark);
 }
 
 /* ==========================================
-   v3.2: DARK MODE
+   DARK MODE TOGGLE
    ========================================== */
 
 .toggle-mini {
@@ -57,41 +58,49 @@
     cursor: pointer;
     font-size: 16px;
     padding: 4px 8px;
-    background: var(--light);
+    background: var(--gray-50);
     border-radius: var(--radius-sm);
-    border: 1px solid #E9ECEF;
-    transition: all 0.2s;
+    border: 1px solid var(--gray-200);
+    transition: all var(--speed-fast) var(--ease-smooth);
 }
 
 .toggle-mini input { display: none; }
-.toggle-mini:hover { background: #E9ECEF; }
+
+.toggle-mini:hover {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
 
 .toggle-mini-label {
-    font-size: 11px;
+    font-size: var(--font-xs);
     font-weight: 700;
-    color: var(--gray);
+    color: var(--gray-500);
 }
+
+/* ==========================================
+   UNDO BUTTON
+   ========================================== */
 
 .btn-undo {
     padding: 6px 10px;
-    border: 1px solid #E9ECEF;
-    background: var(--light);
+    border: 1px solid var(--gray-200);
+    background: var(--gray-50);
     border-radius: var(--radius-sm);
     font-size: 12px;
     font-weight: 700;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all var(--speed-fast) var(--ease-smooth);
     font-family: inherit;
 }
 
 .btn-undo:hover {
-    background: #FFF3E0;
-    border-color: #FFB74D;
-    color: #E65100;
+    background: #FFF7ED;
+    border-color: var(--warning);
+    color: #92400E;
 }
 
 /* ==========================================
-   v3.2: COMPACT MODE
+   COMPACT MODE
    ========================================== */
 
 .timeline-container.compact .grid-cell,

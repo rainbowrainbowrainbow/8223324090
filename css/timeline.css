@@ -1,12 +1,15 @@
 /**
- * timeline.css - Таймлайн, шкала часу, лінії, бронювання, мульти-день, мінімапа
+ * timeline.css - Timeline grid, bookings, multi-day, minimap — v4.0 redesign
  */
 
-/* Мультиденний таймлайн */
+/* ==========================================
+   MULTI-DAY TIMELINE
+   ========================================== */
+
 .multi-day-container {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 20px;
 }
 
 .day-section {
@@ -14,6 +17,7 @@
     border-radius: var(--radius);
     box-shadow: var(--shadow);
     overflow: hidden;
+    border: 1px solid var(--gray-100);
 }
 
 .day-section-header {
@@ -21,14 +25,14 @@
     color: var(--white);
     padding: 12px 20px;
     font-weight: 800;
-    font-size: 15px;
+    font-size: var(--font-md);
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
 .day-section-header .date-label {
-    font-size: 13px;
+    font-size: var(--font-sm);
     opacity: 0.9;
 }
 
@@ -38,14 +42,14 @@
 }
 
 .no-bookings {
-    color: var(--gray);
-    font-size: 13px;
+    color: var(--gray-400);
+    font-size: var(--font-sm);
     text-align: center;
     padding: 16px;
     font-style: italic;
 }
 
-/* Міні-таймлайн для мультиденного режиму */
+/* Mini timeline (multi-day mode) */
 .mini-time-scale {
     display: flex;
     margin-left: 80px;
@@ -53,11 +57,11 @@
 }
 
 .mini-time-mark {
-    width: 120px; /* 4 клітинки по 30px */
+    width: 120px;
     min-width: 120px;
     font-size: 10px;
     font-weight: 700;
-    color: var(--gray);
+    color: var(--gray-400);
     text-align: left;
 }
 
@@ -82,11 +86,11 @@
     width: 80px;
     min-width: 80px;
     padding: 6px 8px;
-    background: var(--light);
+    background: var(--gray-50);
     border-radius: var(--radius-xs) 0 0 var(--radius-xs);
-    font-size: 11px;
+    font-size: var(--font-xs);
     font-weight: 700;
-    color: var(--dark);
+    color: var(--gray-700);
     display: flex;
     align-items: center;
     border-left: 4px solid var(--primary);
@@ -98,16 +102,15 @@
 .mini-line-grid {
     flex: 1;
     position: relative;
-    background: #FAFBFC;
-    border: 1px solid #E9ECEF;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
     border-left: none;
     border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
     min-height: 36px;
-    /* Сітка годин */
     background-image: repeating-linear-gradient(
         to right,
-        #E9ECEF 0px,
-        #E9ECEF 1px,
+        var(--gray-200) 0px,
+        var(--gray-200) 1px,
         transparent 1px,
         transparent 120px
     );
@@ -117,7 +120,7 @@
     position: absolute;
     top: 4px;
     bottom: 4px;
-    border-radius: 4px;
+    border-radius: 5px;
     padding: 2px 6px;
     color: var(--white);
     font-size: 10px;
@@ -127,31 +130,32 @@
     z-index: 10;
     display: flex;
     align-items: center;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    transition: all 0.15s;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--speed-fast) var(--ease-smooth);
 }
 
 .mini-booking-block:hover {
     transform: scale(1.05);
     z-index: 20;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    box-shadow: var(--shadow-md);
 }
 
-.mini-booking-block.quest { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); }
-.mini-booking-block.animation { background: linear-gradient(135deg, #039BE5 0%, #0277BD 100%); }
-.mini-booking-block.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
-.mini-booking-block.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
-.mini-booking-block.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
-.mini-booking-block.photo { background: linear-gradient(135deg, #00ACC1 0%, #00838F 100%); }
-.mini-booking-block.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
+.mini-booking-block.quest { background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%); }
+.mini-booking-block.animation { background: linear-gradient(135deg, var(--animation) 0%, #2563EB 100%); }
+.mini-booking-block.show { background: linear-gradient(135deg, var(--show) 0%, #EA580C 100%); }
+.mini-booking-block.masterclass { background: linear-gradient(135deg, var(--masterclass) 0%, #65A30D 100%); }
+.mini-booking-block.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #DB2777 100%); }
+.mini-booking-block.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }
+.mini-booking-block.custom { background: linear-gradient(135deg, var(--custom) 0%, #475569 100%); }
 
 .mini-booking-text {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
 /* ==========================================
-   ТАЙМЛАЙН
+   TIMELINE CONTAINER
    ========================================== */
 
 .timeline-container {
@@ -159,19 +163,27 @@
     border-radius: var(--radius);
     box-shadow: var(--shadow);
     overflow: hidden;
+    border: 1px solid var(--gray-100);
 }
 
 .timeline-scroll {
     overflow-x: auto;
     padding: 20px;
     -webkit-overflow-scrolling: touch;
+    position: relative;
 }
 
-/* Шкала часу */
+/* Time scale */
 .time-scale {
     display: flex;
     margin-bottom: 12px;
     margin-left: 110px;
+    position: sticky;
+    top: 0;
+    background: var(--white);
+    z-index: 5;
+    padding-top: 4px;
+    padding-bottom: 4px;
 }
 
 .time-mark {
@@ -180,35 +192,40 @@
     text-align: center;
     font-size: 10px;
     font-weight: 600;
-    color: var(--gray-light);
+    color: var(--gray-400);
 }
 
 .time-mark.hour {
-    color: var(--dark);
+    color: var(--gray-700);
     font-size: 12px;
     font-weight: 800;
 }
 
 .time-mark.half {
-    color: var(--gray);
+    color: var(--gray-400);
     font-size: 10px;
 }
 
-/* Лінії */
+/* ==========================================
+   TIMELINE LINES
+   ========================================== */
+
 .timeline-lines {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .timeline-line {
     display: flex;
     align-items: stretch;
     min-height: 64px;
+    border-radius: var(--radius-xs);
+    transition: background var(--speed-fast);
 }
 
 .timeline-line:nth-child(even) {
-    background: #F8FAFC;
+    background: var(--gray-50);
 }
 
 .line-header {
@@ -221,7 +238,8 @@
     justify-content: center;
     cursor: pointer;
     border-left: 3px solid var(--primary);
-    transition: all 0.15s;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    border-radius: var(--radius-xs) 0 0 var(--radius-xs);
 }
 
 .timeline-line:nth-child(even) .line-header {
@@ -229,28 +247,28 @@
 }
 
 .line-header:hover {
-    background: var(--primary-light);
+    background: var(--primary-50);
 }
 
 .line-name {
     font-weight: 800;
-    font-size: 14px;
-    color: var(--dark);
+    font-size: var(--font-base);
+    color: var(--gray-800);
 }
 
 .line-sub {
     font-size: 10px;
-    color: var(--gray);
+    color: var(--gray-400);
     margin-top: 2px;
 }
 
-/* Сітка */
+/* Grid */
 .line-grid {
     flex: 1;
     display: flex;
     position: relative;
-    background: #FAFBFC;
-    border: 1px solid #E9ECEF;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
     border-left: none;
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
@@ -258,28 +276,31 @@
 .grid-cell {
     width: 50px;
     min-width: 50px;
-    border-right: 1px solid #F1F3F4;
+    border-right: 1px solid var(--gray-100);
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background var(--speed-fast);
 }
 
 .grid-cell:hover {
-    background: rgba(0, 166, 81, 0.12);
+    background: rgba(16,185,129,0.1);
 }
 
 .grid-cell.selected {
-    background: rgba(0, 166, 81, 0.25);
+    background: rgba(16,185,129,0.2);
 }
 
 .grid-cell.hour {
-    border-right: 2px solid #DEE2E6;
+    border-right: 2px solid var(--gray-200);
 }
 
 .grid-cell.half {
-    border-right: 1px dashed #E9ECEF;
+    border-right: 1px dashed var(--gray-200);
 }
 
-/* Бронювання блоки */
+/* ==========================================
+   BOOKING BLOCKS
+   ========================================== */
+
 .booking-block {
     position: absolute;
     top: 4px;
@@ -287,7 +308,7 @@
     border-radius: 8px;
     padding: 4px 10px;
     color: var(--white);
-    font-size: 11px;
+    font-size: var(--font-xs);
     font-weight: 700;
     overflow: hidden;
     cursor: pointer;
@@ -295,24 +316,24 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-    transition: all 0.15s;
-    border-left: 3px solid rgba(0,0,0,0.15);
+    box-shadow: var(--shadow-sm);
+    transition: all var(--speed-fast) var(--ease-smooth);
+    border-left: 3px solid rgba(0,0,0,0.12);
 }
 
 .booking-block:hover {
-    transform: translateY(-1px);
+    transform: translateY(-2px);
     z-index: 20;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    box-shadow: var(--shadow-md);
 }
 
-.booking-block.quest { background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%); }
-.booking-block.animation { background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%); }
-.booking-block.show { background: linear-gradient(135deg, #F97316 0%, #EA580C 100%); }
-.booking-block.masterclass { background: linear-gradient(135deg, #84CC16 0%, #65A30D 100%); }
-.booking-block.pinata { background: linear-gradient(135deg, #EC4899 0%, #DB2777 100%); }
-.booking-block.photo { background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%); }
-.booking-block.custom { background: linear-gradient(135deg, #64748B 0%, #475569 100%); }
+.booking-block.quest { background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%); }
+.booking-block.animation { background: linear-gradient(135deg, var(--animation) 0%, #2563EB 100%); }
+.booking-block.show { background: linear-gradient(135deg, var(--show) 0%, #EA580C 100%); }
+.booking-block.masterclass { background: linear-gradient(135deg, var(--masterclass) 0%, #65A30D 100%); }
+.booking-block.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #DB2777 100%); }
+.booking-block.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }
+.booking-block.custom { background: linear-gradient(135deg, var(--custom) 0%, #475569 100%); }
 
 .booking-block .title {
     white-space: nowrap;
@@ -327,14 +348,14 @@
     margin-top: 2px;
 }
 
-/* Літера користувача */
+/* User letter badge */
 .booking-block .user-letter {
     position: absolute;
     top: 3px;
     right: 5px;
     font-size: 9px;
     font-weight: 800;
-    opacity: 0.7;
+    opacity: 0.8;
     background: rgba(255,255,255,0.25);
     width: 16px;
     height: 16px;
@@ -344,7 +365,7 @@
     justify-content: center;
 }
 
-/* Примітки на блоці */
+/* Notes on block */
 .booking-block .note-text {
     font-size: 9px;
     font-weight: 600;
@@ -358,7 +379,10 @@
     flex-shrink: 0;
 }
 
-/* Кнопка додати лінію */
+/* ==========================================
+   ADD LINE BUTTON
+   ========================================== */
+
 .btn-add-line-big {
     display: flex;
     align-items: center;
@@ -368,20 +392,20 @@
     padding: 14px;
     margin-top: 8px;
     background: transparent;
-    border: 2px dashed #E2E8F0;
-    border-radius: 8px;
-    font-size: 13px;
+    border: 2px dashed var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
     font-weight: 700;
-    color: var(--gray-light);
+    color: var(--gray-400);
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.15s;
+    transition: all var(--speed-fast) var(--ease-smooth);
 }
 
 .btn-add-line-big:hover {
     border-color: var(--primary);
     color: var(--primary);
-    background: var(--primary-light);
+    background: var(--primary-50);
 }
 
 .btn-add-line-big span:first-child {
@@ -389,7 +413,10 @@
     font-weight: 900;
 }
 
-/* Легенда */
+/* ==========================================
+   LEGEND
+   ========================================== */
+
 .legend {
     display: flex;
     flex-wrap: wrap;
@@ -398,7 +425,8 @@
     padding: 16px 20px;
     background: var(--white);
     border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-xs);
+    border: 1px solid var(--gray-100);
 }
 
 .legend-item {
@@ -407,25 +435,26 @@
     gap: 8px;
     font-size: 12px;
     font-weight: 600;
-    color: var(--dark);
+    color: var(--gray-700);
 }
 
 .legend .dot {
     width: 16px;
     height: 16px;
     border-radius: var(--radius-xs);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-xs);
 }
 
-.dot.quest { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); }
-.dot.animation { background: linear-gradient(135deg, #039BE5 0%, #0277BD 100%); }
-.dot.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
-.dot.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
-.dot.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
-.dot.photo { background: linear-gradient(135deg, #00ACC1 0%, #00838F 100%); }
-.dot.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
+.dot.quest { background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%); }
+.dot.animation { background: linear-gradient(135deg, var(--animation) 0%, #2563EB 100%); }
+.dot.show { background: linear-gradient(135deg, var(--show) 0%, #EA580C 100%); }
+.dot.masterclass { background: linear-gradient(135deg, var(--masterclass) 0%, #65A30D 100%); }
+.dot.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #DB2777 100%); }
+.dot.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }
+.dot.custom { background: linear-gradient(135deg, var(--custom) 0%, #475569 100%); }
+
 /* ==========================================
-   v3.8: PENDING LINE (очікування Telegram)
+   PENDING LINE (Telegram waiting)
    ========================================== */
 
 .pending-line {
@@ -434,17 +463,17 @@
 }
 
 .pending-header {
-    border-left-color: #FF9800 !important;
-    background: rgba(255, 152, 0, 0.08);
+    border-left-color: var(--warning) !important;
+    background: rgba(245,158,11,0.06);
 }
 
 .pending-header .line-name {
-    color: #E65100;
-    font-size: 13px;
+    color: #92400E;
+    font-size: var(--font-sm);
 }
 
 .pending-header .pending-timer {
-    color: #FF9800;
+    color: var(--warning);
     font-weight: 800;
     font-size: 12px;
 }
@@ -455,12 +484,12 @@
     justify-content: center;
     background: repeating-linear-gradient(
         -45deg,
-        rgba(255, 152, 0, 0.04),
-        rgba(255, 152, 0, 0.04) 10px,
-        rgba(255, 152, 0, 0.08) 10px,
-        rgba(255, 152, 0, 0.08) 20px
+        rgba(245,158,11,0.04),
+        rgba(245,158,11,0.04) 10px,
+        rgba(245,158,11,0.08) 10px,
+        rgba(245,158,11,0.08) 20px
     ) !important;
-    border: 2px dashed #FF9800 !important;
+    border: 2px dashed var(--warning) !important;
     border-left: none !important;
     border-radius: 0 8px 8px 0 !important;
     min-height: 64px;
@@ -477,14 +506,14 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #FF9800;
+    background: var(--warning);
     animation: pendingDot 1.5s ease-in-out infinite;
 }
 
 .pending-text {
-    font-size: 13px;
+    font-size: var(--font-sm);
     font-weight: 700;
-    color: #E65100;
+    color: #92400E;
 }
 
 @keyframes pendingPulse {
@@ -498,7 +527,7 @@
 }
 
 /* ==========================================
-   v3.2: ЧЕРВОНА ЛІНІЯ "ЗАРАЗ"
+   NOW LINE (red current-time marker)
    ========================================== */
 
 .now-line {
@@ -506,7 +535,7 @@
     top: 0;
     bottom: 0;
     width: 2px;
-    background: #FF0000;
+    background: var(--danger);
     z-index: 15;
     pointer-events: none;
 }
@@ -518,8 +547,9 @@
     left: -4px;
     width: 10px;
     height: 10px;
-    background: #FF0000;
+    background: var(--danger);
     border-radius: 50%;
+    box-shadow: 0 0 6px rgba(239,68,68,0.4);
 }
 
 .now-line-top {
@@ -527,61 +557,43 @@
     bottom: -6px;
     width: 2px;
     height: 20px;
-    background: #FF0000;
+    background: var(--danger);
     z-index: 15;
     pointer-events: none;
 }
 
-.time-scale {
-    position: relative;
-}
-
 /* ==========================================
-   v3.2: STICKY TIME SCALE
-   ========================================== */
-
-.timeline-scroll {
-    position: relative;
-}
-
-.time-scale {
-    position: sticky;
-    top: 0;
-    background: var(--white);
-    z-index: 5;
-    padding-top: 4px;
-    padding-bottom: 4px;
-}
-
-/* ==========================================
-   v3.2: TOOLTIP
+   TOOLTIP
    ========================================== */
 
 .booking-tooltip {
     position: absolute;
-    z-index: 2000;
-    background: var(--dark);
+    z-index: var(--z-tooltip);
+    background: var(--gray-800);
     color: var(--white);
     padding: 10px 14px;
     border-radius: var(--radius-xs);
     font-size: 12px;
     line-height: 1.6;
     max-width: 280px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    box-shadow: var(--shadow-lg);
     pointer-events: none;
     white-space: normal;
+    border: 1px solid var(--gray-700);
 }
+
 /* ==========================================
-   v3.2: MINIMAP
+   MINIMAP
    ========================================== */
 
 .minimap-container {
     margin-top: 12px;
     background: var(--white);
     border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-xs);
     padding: 8px 12px;
     overflow: hidden;
+    border: 1px solid var(--gray-100);
 }
 
 .minimap-container canvas {
@@ -589,8 +601,4 @@
     height: 50px;
     border-radius: 4px;
     cursor: pointer;
-}
-
-body.dark-mode .minimap-container {
-    background: #1e1e32;
 }

@@ -1,9 +1,9 @@
 /**
- * layout.css - Шапка, навігація, основний контент, контролі дат
+ * layout.css - Header, nav, content, date controls, warnings — v4.0 redesign
  */
 
 /* ==========================================
-   ГОЛОВНИЙ ЗАСТОСУНОК
+   MAIN APP SHELL
    ========================================== */
 
 .main-app {
@@ -12,13 +12,16 @@
     flex-direction: column;
 }
 
-/* Шапка */
+/* Header — glass effect */
 .header {
-    background: var(--white);
-    box-shadow: 0 1px 0 #E2E8F0;
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-bottom: 1px solid var(--gray-200);
     position: sticky;
     top: 0;
-    z-index: 100;
+    z-index: var(--z-sticky);
+    transition: box-shadow var(--speed-normal);
 }
 
 .header-content {
@@ -32,74 +35,92 @@
 }
 
 .logo { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.logo-img-small { width: 36px; height: 36px; object-fit: contain; border-radius: 50%; }
+
+.logo-img-small {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    border-radius: 10px;
+    box-shadow: var(--shadow-sm);
+}
+
 .logo-text h1 {
     font-size: 16px;
     font-weight: 900;
-    color: var(--primary);
+    color: var(--primary-dark);
     letter-spacing: -0.3px;
 }
 
+/* Header nav */
 .header-nav { display: flex; align-items: center; gap: 4px; }
+
 .btn-header-nav {
     padding: 8px 16px;
     background: transparent;
-    color: var(--gray);
+    color: var(--gray-500);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     font-weight: 700;
-    font-size: 13px;
+    font-size: var(--font-sm);
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.15s;
-}
-.btn-header-nav:hover {
-    background: var(--primary-light);
-    color: var(--primary);
+    transition: all var(--speed-fast) var(--ease-smooth);
 }
 
+.btn-header-nav:hover {
+    background: var(--primary-50);
+    color: var(--primary-dark);
+}
+
+/* User panel */
 .user-panel { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.user-name { font-weight: 700; font-size: 13px; color: var(--dark); }
+.user-name { font-weight: 700; font-size: var(--font-sm); color: var(--gray-700); }
 
 .btn-logout {
     padding: 8px 14px;
-    background: var(--light);
-    color: var(--gray);
-    border: 1px solid #E2E8F0;
+    background: var(--gray-50);
+    color: var(--gray-500);
+    border: 1px solid var(--gray-200);
     border-radius: var(--radius-xs);
     font-weight: 700;
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.15s;
+    transition: all var(--speed-fast) var(--ease-smooth);
 }
-.btn-logout:hover { background: #FEF2F2; color: var(--danger); border-color: #FECACA; }
 
-/* Legacy btn-animators (kept for JS compatibility) */
+.btn-logout:hover {
+    background: #FEF2F2;
+    color: var(--danger);
+    border-color: #FECACA;
+}
+
+/* Legacy — kept for JS */
 .btn-animators, .btn-programs { display: none; }
 
-/* Управління аніматорами */
+/* Animators management */
 .animators-management textarea {
     width: 100%;
     padding: 14px;
-    border: 2px solid #E9ECEF;
+    border: 2px solid var(--gray-200);
     border-radius: var(--radius-sm);
-    font-size: 14px;
+    font-size: var(--font-base);
     font-family: inherit;
     resize: vertical;
     min-height: 200px;
+    transition: border-color var(--speed-fast);
 }
+
 .animators-management textarea:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 4px rgba(0, 166, 81, 0.1);
-}
-.animators-management .btn-submit {
-    margin-top: 16px;
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.1);
 }
 
+.animators-management .btn-submit { margin-top: 16px; }
+
 /* ==========================================
-   ОСНОВНИЙ КОНТЕНТ
+   MAIN CONTENT
    ========================================== */
 
 .main-content {
@@ -108,14 +129,17 @@
     max-width: 1800px;
     margin: 0 auto;
     width: 100%;
-    transition: padding-right 0.3s;
+    transition: padding-right var(--speed-slow) var(--ease-smooth);
 }
 
 .main-content.panel-open {
     padding-right: 360px;
 }
 
-/* Панель керування */
+/* ==========================================
+   CONTROL PANEL
+   ========================================== */
+
 .control-panel {
     display: flex;
     justify-content: space-between;
@@ -135,31 +159,34 @@
     width: 44px;
     height: 44px;
     background: var(--white);
-    border: 2px solid #E9ECEF;
+    border: 2px solid var(--gray-200);
     border-radius: var(--radius-sm);
     font-size: 16px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
-    color: var(--dark);
+    transition: all var(--speed-fast) var(--ease-smooth);
+    color: var(--gray-700);
 }
+
 .btn-nav:hover {
     border-color: var(--primary);
     color: var(--primary);
-    background: var(--primary-light);
+    background: var(--primary-50);
+    box-shadow: var(--shadow-sm);
 }
 
 input[type="date"] {
     padding: 12px 16px;
     border: 2px solid var(--primary);
     border-radius: var(--radius-sm);
-    font-size: 15px;
+    font-size: var(--font-md);
     font-weight: 700;
     font-family: inherit;
     background: var(--white);
-    color: var(--dark);
+    color: var(--gray-800);
+    box-shadow: var(--shadow-sm);
 }
 
 .day-info {
@@ -170,22 +197,25 @@ input[type="date"] {
 
 .day-label {
     padding: 6px 16px;
-    background: var(--primary-light);
-    color: var(--primary);
-    border-radius: 20px;
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary-50) 100%);
+    color: var(--primary-dark);
+    border-radius: var(--radius-full);
     font-weight: 800;
-    font-size: 13px;
+    font-size: var(--font-sm);
     text-align: center;
 }
 
 .working-hours {
-    font-size: 11px;
-    color: var(--gray);
+    font-size: var(--font-xs);
+    color: var(--gray-400);
     text-align: center;
     font-weight: 600;
 }
 
-/* Перемикач режимів перегляду */
+/* ==========================================
+   VIEW MODE CONTROLS
+   ========================================== */
+
 .view-mode-controls {
     display: flex;
     align-items: center;
@@ -200,17 +230,15 @@ input[type="date"] {
     user-select: none;
 }
 
-.view-mode-toggle input {
-    display: none;
-}
+.view-mode-toggle input { display: none; }
 
 .toggle-slider {
     width: 44px;
     height: 24px;
-    background: #CED4DA;
+    background: var(--gray-300);
     border-radius: 12px;
     position: relative;
-    transition: all 0.3s;
+    transition: all var(--speed-normal) var(--ease-smooth);
 }
 
 .toggle-slider::before {
@@ -222,12 +250,13 @@ input[type="date"] {
     border-radius: 50%;
     top: 2px;
     left: 2px;
-    transition: all 0.3s;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    transition: all var(--speed-normal) var(--ease-bounce);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
 }
 
 .view-mode-toggle input:checked + .toggle-slider {
     background: var(--primary);
+    box-shadow: 0 0 8px rgba(16,185,129,0.3);
 }
 
 .view-mode-toggle input:checked + .toggle-slider::before {
@@ -235,21 +264,26 @@ input[type="date"] {
 }
 
 .toggle-label {
-    font-size: 13px;
+    font-size: var(--font-sm);
     font-weight: 600;
-    color: var(--dark);
+    color: var(--gray-700);
 }
 
 .days-select {
     padding: 8px 12px;
     border: 2px solid var(--primary);
     border-radius: var(--radius-sm);
-    font-size: 13px;
+    font-size: var(--font-sm);
     font-weight: 600;
     font-family: inherit;
     background: var(--white);
     cursor: pointer;
+    box-shadow: var(--shadow-xs);
 }
+
+/* ==========================================
+   ACTION BUTTONS
+   ========================================== */
 
 .action-buttons {
     display: flex;
@@ -261,43 +295,50 @@ input[type="date"] {
 .btn-export {
     padding: 8px 16px;
     background: var(--white);
-    color: var(--dark);
-    border: 1px solid #E2E8F0;
+    color: var(--gray-700);
+    border: 1px solid var(--gray-200);
     border-radius: var(--radius-xs);
     font-weight: 700;
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.15s;
+    transition: all var(--speed-fast) var(--ease-smooth);
 }
+
 .btn-export:hover {
     background: #EFF6FF;
-    border-color: #3B82F6;
-    color: #3B82F6;
+    border-color: var(--info);
+    color: var(--info);
+    box-shadow: var(--shadow-xs);
 }
-/* Кнопка історії */
+
 .btn-history {
     padding: 8px 16px;
     background: var(--white);
-    color: var(--dark);
-    border: 1px solid #E2E8F0;
+    color: var(--gray-700);
+    border: 1px solid var(--gray-200);
     border-radius: var(--radius-xs);
     font-weight: 700;
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.15s;
-}
-.btn-history:hover {
-    background: var(--primary-light);
-    border-color: var(--primary);
-    color: var(--primary);
+    transition: all var(--speed-fast) var(--ease-smooth);
 }
 
-/* Попередження */
+.btn-history:hover {
+    background: var(--primary-50);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+    box-shadow: var(--shadow-xs);
+}
+
+/* ==========================================
+   WARNING BANNERS
+   ========================================== */
+
 .warning-banner {
-    background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%);
-    border: 2px solid var(--warning);
+    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+    border: 1px solid #FCD34D;
     border-radius: var(--radius-sm);
     padding: 14px 20px;
     margin-bottom: 20px;
@@ -305,12 +346,14 @@ input[type="date"] {
     align-items: center;
     justify-content: space-between;
     font-weight: 700;
-    color: #E65100;
+    font-size: var(--font-sm);
+    color: #92400E;
+    box-shadow: var(--shadow-xs);
 }
 
 .warning-banner.danger {
-    background: linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%);
-    border-color: var(--danger);
+    background: linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%);
+    border-color: #FCA5A5;
     color: var(--danger);
 }
 
@@ -320,6 +363,8 @@ input[type="date"] {
     font-size: 20px;
     cursor: pointer;
     color: inherit;
-    opacity: 0.7;
+    opacity: 0.6;
+    transition: opacity var(--speed-fast);
 }
+
 .btn-close-warning:hover { opacity: 1; }

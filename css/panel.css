@@ -1,25 +1,26 @@
 /**
- * panel.css - Бокова панель бронювання, форма, програми, статус
+ * panel.css - Booking sidebar panel, form, programs, status — v4.0 redesign
  */
 
 /* ==========================================
-   БОКОВА ПАНЕЛЬ
+   SIDEBAR PANEL
    ========================================== */
 
 .booking-panel {
     position: fixed;
-    top: 68px;
+    top: 56px;
     right: 0;
     width: 340px;
-    height: calc(100vh - 68px);
+    height: calc(100vh - 56px);
     background: var(--white);
-    box-shadow: -8px 0 30px rgba(0,0,0,0.1);
-    z-index: 90;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.08);
+    z-index: var(--z-panel);
     overflow-y: auto;
-    animation: slideIn 0.3s ease;
+    animation: panelSlideIn var(--speed-normal) var(--ease-smooth);
+    border-left: 1px solid var(--gray-100);
 }
 
-@keyframes slideIn {
+@keyframes panelSlideIn {
     from { transform: translateX(100%); }
     to { transform: translateX(0); }
 }
@@ -29,7 +30,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 18px 20px;
-    border-bottom: 1px solid #E9ECEF;
+    border-bottom: 1px solid var(--gray-200);
     position: sticky;
     top: 0;
     background: var(--white);
@@ -37,15 +38,15 @@
 }
 
 .panel-header h3 {
-    font-size: 17px;
+    font-size: var(--font-lg);
     font-weight: 800;
-    color: var(--dark);
+    color: var(--gray-800);
 }
 
 .btn-close {
     width: 36px;
     height: 36px;
-    background: var(--light);
+    background: var(--gray-50);
     border: none;
     border-radius: 50%;
     font-size: 18px;
@@ -53,20 +54,20 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    color: var(--gray-500);
 }
+
 .btn-close:hover { background: var(--danger); color: var(--white); }
 
-.booking-form {
-    padding: 20px;
-}
+.booking-form { padding: 20px; }
 
 .selected-info {
-    background: linear-gradient(135deg, var(--primary-light) 0%, #C8E6C9 100%);
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary-50) 100%);
     border-radius: var(--radius-sm);
     padding: 14px;
     margin-bottom: 20px;
-    border: 1px solid rgba(0, 166, 81, 0.2);
+    border: 1px solid rgba(16,185,129,0.15);
 }
 
 .info-item {
@@ -77,19 +78,17 @@
 
 .info-item:last-child { margin-bottom: 0; }
 
-.info-label { color: var(--gray); font-size: 13px; }
-.info-value { font-weight: 800; font-size: 14px; color: var(--dark); }
+.info-label { color: var(--gray-500); font-size: var(--font-sm); }
+.info-value { font-weight: 800; font-size: var(--font-base); color: var(--gray-800); }
 
-.form-section {
-    margin-bottom: 18px;
-}
+.form-section { margin-bottom: 18px; }
 
 .form-section label {
     display: block;
     margin-bottom: 8px;
     font-weight: 700;
     font-size: 12px;
-    color: var(--gray);
+    color: var(--gray-500);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -98,11 +97,11 @@
 .form-section input {
     width: 100%;
     padding: 12px 14px;
-    border: 2px solid #E9ECEF;
+    border: 2px solid var(--gray-200);
     border-radius: var(--radius-sm);
-    font-size: 14px;
+    font-size: var(--font-base);
     font-family: inherit;
-    transition: all 0.2s;
+    transition: all var(--speed-fast) var(--ease-smooth);
     background: var(--white);
 }
 
@@ -110,14 +109,36 @@
 .form-section input:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 4px rgba(0, 166, 81, 0.1);
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.1);
 }
 
-/* Програми іконками */
+/* ==========================================
+   PROGRAM ICONS
+   ========================================== */
+
 .programs-icons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.category-header {
+    font-size: var(--font-xs);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--gray-400);
+    padding: 8px 0 4px;
+    border-bottom: 1px solid var(--gray-200);
+    margin-top: 4px;
+}
+
+.category-header:first-child { margin-top: 0; }
+
+.category-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
+    gap: 8px;
 }
 
 .program-icon {
@@ -127,10 +148,10 @@
     justify-content: center;
     padding: 12px 6px;
     background: var(--white);
-    border: 2px solid #E9ECEF;
+    border: 2px solid var(--gray-200);
     border-radius: 12px;
     cursor: pointer;
-    transition: all 0.25s ease;
+    transition: all var(--speed-normal) var(--ease-smooth);
     min-height: 80px;
     position: relative;
     overflow: hidden;
@@ -144,23 +165,21 @@
     right: 0;
     height: 3px;
     border-radius: 12px 12px 0 0;
-    transition: height 0.2s;
+    transition: height var(--speed-fast);
 }
 
 .program-icon:hover {
     border-color: transparent;
     transform: translateY(-3px);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+    box-shadow: var(--shadow-md);
 }
 
-.program-icon:hover::before {
-    height: 4px;
-}
+.program-icon:hover::before { height: 4px; }
 
 .program-icon.selected {
     border-color: var(--primary);
-    background: var(--primary-light);
-    box-shadow: 0 4px 16px rgba(0, 166, 81, 0.25);
+    background: var(--primary-50);
+    box-shadow: 0 4px 16px rgba(16,185,129,0.2);
 }
 
 .program-icon .icon {
@@ -174,135 +193,129 @@
     font-weight: 800;
     text-align: center;
     line-height: 1.2;
-    color: var(--dark);
+    color: var(--gray-700);
     letter-spacing: -0.2px;
 }
 
-/* Кольори категорій програм */
-.program-icon.quest { border-color: rgba(156,39,176,0.2); background: #FAFAFE; }
-.program-icon.quest::before { background: #9C27B0; }
-.program-icon.quest:hover { border-color: #9C27B0; background: #F3E5F5; }
+/* Category color variants */
+.program-icon.quest { border-color: rgba(139,92,246,0.15); background: #FAFAFF; }
+.program-icon.quest::before { background: var(--quest); }
+.program-icon.quest:hover { border-color: var(--quest); background: #F5F3FF; }
 
-.program-icon.animation { border-color: rgba(3,155,229,0.2); background: #FAFEFF; }
-.program-icon.animation::before { background: #039BE5; }
-.program-icon.animation:hover { border-color: #039BE5; background: #E1F5FE; }
+.program-icon.animation { border-color: rgba(59,130,246,0.15); background: #FAFBFF; }
+.program-icon.animation::before { background: var(--animation); }
+.program-icon.animation:hover { border-color: var(--animation); background: #EFF6FF; }
 
-.program-icon.show { border-color: rgba(244,81,30,0.2); background: #FFFAFA; }
-.program-icon.show::before { background: #F4511E; }
-.program-icon.show:hover { border-color: #F4511E; background: #FBE9E7; }
+.program-icon.show { border-color: rgba(249,115,22,0.15); background: #FFFAF8; }
+.program-icon.show::before { background: var(--show); }
+.program-icon.show:hover { border-color: var(--show); background: #FFF7ED; }
 
-.program-icon.masterclass { border-color: rgba(124,179,66,0.2); background: #FAFFFA; }
-.program-icon.masterclass::before { background: #7CB342; }
-.program-icon.masterclass:hover { border-color: #7CB342; background: #F1F8E9; }
+.program-icon.masterclass { border-color: rgba(132,204,22,0.15); background: #FAFFF8; }
+.program-icon.masterclass::before { background: var(--masterclass); }
+.program-icon.masterclass:hover { border-color: var(--masterclass); background: #F7FEE7; }
 
-.program-icon.pinata { border-color: rgba(236,64,122,0.2); background: #FFFAFC; }
-.program-icon.pinata::before { background: #EC407A; }
-.program-icon.pinata:hover { border-color: #EC407A; background: #FCE4EC; }
+.program-icon.pinata { border-color: rgba(236,72,153,0.15); background: #FFFAFC; }
+.program-icon.pinata::before { background: var(--pinata); }
+.program-icon.pinata:hover { border-color: var(--pinata); background: #FDF2F8; }
 
-.program-icon.photo { border-color: rgba(0,172,193,0.2); background: #FAFFFE; }
-.program-icon.photo::before { background: #00ACC1; }
-.program-icon.photo:hover { border-color: #00ACC1; background: #E0F7FA; }
+.program-icon.photo { border-color: rgba(6,182,212,0.15); background: #FAFFFF; }
+.program-icon.photo::before { background: var(--photo); }
+.program-icon.photo:hover { border-color: var(--photo); background: #ECFEFF; }
 
-.program-icon.custom { border-color: rgba(84,110,122,0.2); background: #FAFBFC; }
-.program-icon.custom::before { background: #546E7A; }
-.program-icon.custom:hover { border-color: #546E7A; background: #ECEFF1; }
+.program-icon.custom { border-color: rgba(100,116,139,0.15); background: var(--gray-50); }
+.program-icon.custom::before { background: var(--custom); }
+.program-icon.custom:hover { border-color: var(--custom); background: var(--gray-100); }
 
-/* Деталі програми */
+/* Program details */
 .program-details {
-    background: var(--light);
+    background: var(--gray-50);
     border-radius: var(--radius-sm);
     padding: 14px;
     margin-bottom: 18px;
+    border: 1px solid var(--gray-100);
 }
 
 .detail-row {
     display: flex;
     justify-content: space-between;
-    font-size: 13px;
+    font-size: var(--font-sm);
     margin-bottom: 6px;
-    color: var(--gray);
+    color: var(--gray-500);
 }
 
 .detail-row:last-child { margin-bottom: 0; }
-.detail-row span:last-child { font-weight: 800; color: var(--dark); }
+.detail-row span:last-child { font-weight: 800; color: var(--gray-800); }
 
-/* Кастомна програма */
+/* Custom program section */
 .custom-program-section {
-    background: #FFF8E1;
-    border: 1px solid #FFE082;
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
     border-radius: var(--radius-sm);
     padding: 14px;
     margin-bottom: 18px;
 }
 
-.custom-program-section .form-section {
-    margin-bottom: 12px;
-}
+.custom-program-section .form-section { margin-bottom: 12px; }
+.custom-program-section .form-section:last-child { margin-bottom: 0; }
 
-.custom-program-section .form-section:last-child {
-    margin-bottom: 0;
-}
-
-/* Другий аніматор */
+/* Second animator */
 .second-animator-section {
-    background: #E3F2FD;
-    border: 1px solid #90CAF9;
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
     border-radius: var(--radius-sm);
     padding: 14px;
     margin-bottom: 18px;
 }
 
-.second-animator-section .form-section {
-    margin-bottom: 0;
-}
+.second-animator-section .form-section { margin-bottom: 0; }
 
-/* Попередження про ведучих */
+/* Hosts warning */
 .hosts-warning {
-    background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%);
-    border: 2px solid var(--warning);
+    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+    border: 1px solid #FCD34D;
     border-radius: var(--radius-sm);
     padding: 14px;
     margin-bottom: 18px;
     font-size: 12px;
     font-weight: 700;
-    color: #E65100;
+    color: #92400E;
 }
 
-/* Toggle другий ведучий */
+/* Extra host toggle */
 .extra-host-section {
-    background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
-    border: 1px solid #81C784;
+    background: linear-gradient(135deg, var(--primary-50) 0%, var(--primary-light) 100%);
+    border: 1px solid rgba(16,185,129,0.2);
     border-radius: var(--radius-sm);
     padding: 14px;
     margin-bottom: 18px;
 }
 
-.toggle-label {
+.extra-host-section .toggle-label {
     display: flex;
     align-items: center;
     gap: 10px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: var(--font-sm);
     font-weight: 600;
-    color: #2E7D32;
+    color: var(--primary-dark);
 }
 
-.toggle-label input[type="checkbox"] {
+.extra-host-section .toggle-label input[type="checkbox"] {
     width: 18px;
     height: 18px;
-    accent-color: #4CAF50;
+    accent-color: var(--primary);
 }
 
 .extra-host-section select {
     margin-top: 12px;
     width: 100%;
     padding: 10px;
-    border: 1px solid #A5D6A7;
+    border: 1px solid rgba(16,185,129,0.3);
     border-radius: var(--radius-sm);
-    font-size: 13px;
+    font-size: var(--font-sm);
 }
 
-/* Кнопка сабміт */
+/* Submit button */
 .btn-submit {
     width: 100%;
     padding: 16px;
@@ -310,92 +323,66 @@
     color: var(--white);
     border: none;
     border-radius: var(--radius-sm);
-    font-size: 15px;
+    font-size: var(--font-md);
     font-weight: 800;
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.2s;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    box-shadow: var(--shadow-primary);
 }
+
 .btn-submit:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 166, 81, 0.3);
+    box-shadow: 0 12px 28px rgba(16,185,129,0.3);
 }
+
 /* ==========================================
-   КНОПКА РОЗВАЖАЛЬНІ ПРОГРАМИ
+   PROGRAMS BUTTON
    ========================================== */
 
 .btn-programs {
     padding: 10px 18px;
-    background: linear-gradient(135deg, #7B1FA2 0%, #6A1B9A 100%);
+    background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%);
     color: var(--white);
     border: none;
     border-radius: var(--radius-sm);
     font-weight: 700;
-    font-size: 13px;
+    font-size: var(--font-sm);
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.2s;
+    transition: all var(--speed-fast) var(--ease-smooth);
 }
+
 .btn-programs:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(123, 31, 162, 0.3);
+    box-shadow: 0 8px 24px rgba(139,92,246,0.3);
 }
 
 /* ==========================================
-   КАТЕГОРІЇ В ФОРМІ БРОНЮВАННЯ
-   ========================================== */
-
-.programs-icons {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.category-header {
-    font-size: 11px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--gray);
-    padding: 8px 0 4px;
-    border-bottom: 1px solid #E9ECEF;
-    margin-top: 4px;
-}
-
-.category-header:first-child {
-    margin-top: 0;
-}
-
-.category-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-}
-/* ==========================================
-   ОПИС В ДЕТАЛЯХ БРОНЮВАННЯ
+   BOOKING DESCRIPTION
    ========================================== */
 
 .booking-detail-description {
     margin-top: 16px;
     padding-top: 12px;
-    border-top: 1px solid #E0E0E0;
+    border-top: 1px solid var(--gray-200);
 }
 
 .booking-detail-description .label {
     display: block;
     font-size: 12px;
-    color: var(--gray);
+    color: var(--gray-500);
     margin-bottom: 6px;
 }
 
 .booking-detail-description p {
-    font-size: 13px;
+    font-size: var(--font-sm);
     line-height: 1.6;
-    color: var(--dark);
+    color: var(--gray-800);
 }
 
 /* ==========================================
-   v3.2: СТАТУС (Попереднє/Підтверджене)
+   STATUS (Preliminary/Confirmed)
    ========================================== */
 
 .booking-block.preliminary {
@@ -418,9 +405,7 @@
     justify-content: center;
 }
 
-.status-section {
-    margin-bottom: 18px;
-}
+.status-section { margin-bottom: 18px; }
 
 .status-radio-group {
     display: flex;
@@ -438,23 +423,23 @@
     display: block;
     padding: 10px;
     text-align: center;
-    border: 2px solid #E9ECEF;
+    border: 2px solid var(--gray-200);
     border-radius: var(--radius-sm);
-    font-size: 13px;
+    font-size: var(--font-sm);
     font-weight: 700;
-    transition: all 0.2s;
+    transition: all var(--speed-fast) var(--ease-smooth);
 }
 
 .status-radio input:checked + .status-radio-label.confirmed {
     border-color: var(--success);
-    background: #E8F5E9;
-    color: var(--success);
+    background: var(--primary-50);
+    color: var(--primary-dark);
 }
 
 .status-radio input:checked + .status-radio-label.preliminary {
     border-color: var(--warning);
-    background: #FFF8E1;
-    color: #E65100;
+    background: #FFFBEB;
+    color: #92400E;
 }
 
 .status-value.preliminary { color: var(--warning); }
@@ -464,42 +449,42 @@
     width: 100%;
     padding: 10px;
     margin-top: 12px;
-    background: var(--light);
-    border: 2px solid #E9ECEF;
+    background: var(--gray-50);
+    border: 2px solid var(--gray-200);
     border-radius: var(--radius-sm);
     font-weight: 700;
-    font-size: 13px;
+    font-size: var(--font-sm);
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.2s;
+    transition: all var(--speed-fast) var(--ease-smooth);
 }
 
 .btn-status-toggle:hover {
     border-color: var(--primary);
-    background: var(--primary-light);
+    background: var(--primary-50);
 }
 
 .status-toggle-section {
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px solid #E0E0E0;
+    border-top: 1px solid var(--gray-200);
 }
 
 .preliminary-dot {
     width: 16px;
     height: 16px;
     border-radius: var(--radius-xs);
-    border: 2px dashed var(--gray);
-    background: #E0E0E0;
+    border: 2px dashed var(--gray-400);
+    background: var(--gray-200);
 }
 
 /* ==========================================
-   v3.2: KIDS COUNT
+   KIDS COUNT
    ========================================== */
 
 .kids-count-section {
-    background: #E8F5E9;
-    border: 1px solid #A5D6A7;
+    background: var(--primary-50);
+    border: 1px solid rgba(16,185,129,0.2);
     border-radius: var(--radius-sm);
     padding: 14px;
 }
@@ -507,9 +492,9 @@
 .kids-count-section input {
     width: 100%;
     padding: 10px;
-    border: 2px solid #A5D6A7;
+    border: 2px solid rgba(16,185,129,0.3);
     border-radius: var(--radius-sm);
-    font-size: 14px;
+    font-size: var(--font-base);
     font-family: inherit;
     text-align: center;
     font-weight: 700;

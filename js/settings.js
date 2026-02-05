@@ -3,107 +3,17 @@
  */
 
 // ==========================================
-// GOOGLE SHEETS ІНТЕГРАЦІЯ (через CSV)
+// GOOGLE SHEETS ІНТЕГРАЦІЯ — ВИМКНЕНО
+// Синхронізація перезаписувала лінії і видаляла існуючих аніматорів.
+// Залишено як заглушку щоб не ламати виклики.
 // ==========================================
 
 async function fetchAnimatorsFromSheet() {
-    try {
-        const response = await fetch(CONFIG.GOOGLE_SHEETS_CSV);
-        if (!response.ok) {
-            throw new Error('Помилка завантаження CSV');
-        }
-
-        const csvText = await response.text();
-        parseAnimatorsCSV(csvText);
-
-    } catch (error) {
-        console.error('Помилка завантаження графіку:', error);
-    }
-}
-
-function parseAnimatorsCSV(csvText) {
-    const rows = csvText.split('\n').map(row => {
-        const cells = [];
-        let cell = '';
-        let inQuotes = false;
-        for (const char of row) {
-            if (char === '"') inQuotes = !inQuotes;
-            else if (char === ',' && !inQuotes) { cells.push(cell.trim()); cell = ''; }
-            else cell += char;
-        }
-        cells.push(cell.trim());
-        return cells;
-    });
-
-    const day = String(AppState.selectedDate.getDate()).padStart(2, '0');
-    const month = String(AppState.selectedDate.getMonth() + 1).padStart(2, '0');
-    const year = AppState.selectedDate.getFullYear();
-    const todayStr = `${day}.${month}.${year}`;
-
-    console.log('Шукаю дату:', todayStr);
-
-    // v5.0: Find header row dynamically — look for a row containing 'День' column
-    const savedAnimators = getSavedAnimators();
-    let headerRow = null;
-    let headerIdx = -1;
-    for (let i = 0; i < rows.length; i++) {
-        // Header row is the one that contains 'День' and at least one known animator name
-        const hasDay = rows[i].some(c => c && c.includes('День'));
-        const hasAnimator = savedAnimators.some(name => rows[i].includes(name));
-        if (hasDay || hasAnimator) {
-            headerRow = rows[i];
-            headerIdx = i;
-            break;
-        }
-    }
-
-    if (!headerRow) {
-        console.log('Заголовок не знайдено');
-        return;
-    }
-
-    const animators = [];
-    let startCol = headerRow.indexOf('День') + 1;
-    if (startCol === 0) startCol = 5;
-
-    for (let j = startCol; j < headerRow.length; j++) {
-        const name = headerRow[j];
-        if (name && name !== '' && !name.includes('Нікого')) {
-            animators.push({ name, col: j });
-        }
-    }
-
-    console.log('Аніматори:', animators.map(a => a.name));
-
-    AppState.animatorsFromSheet = [];
-    for (let i = headerIdx + 1; i < rows.length; i++) {
-        if (rows[i].some(c => c && c.includes(todayStr))) {
-            console.log('Дата знайдена, рядок:', rows[i]);
-            for (const a of animators) {
-                if (rows[i][a.col] === '1') {
-                    AppState.animatorsFromSheet.push(a.name);
-                }
-            }
-            break;
-        }
-    }
-
-    console.log('На зміні:', AppState.animatorsFromSheet);
-    if (AppState.animatorsFromSheet.length > 0) updateLinesFromSheet();
+    // Disabled: sheet sync overwrites lines and removes existing animators
 }
 
 async function updateLinesFromSheet() {
-    if (AppState.animatorsFromSheet.length === 0) return;
-
-    const updatedLines = AppState.animatorsFromSheet.map((name, index) => ({
-        id: 'line' + Date.now() + index + '_' + formatDate(AppState.selectedDate),
-        name: name,
-        color: LINE_COLORS[index % LINE_COLORS.length],
-        fromSheet: true
-    }));
-
-    await saveLinesForDate(AppState.selectedDate, updatedLines);
-    await renderTimeline();
+    // Disabled
 }
 
 // ==========================================

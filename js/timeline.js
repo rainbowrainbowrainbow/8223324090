@@ -116,7 +116,7 @@ async function renderTimeline() {
         lineEl.innerHTML = `
             <div class="line-header" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}">
                 <span class="line-name">${escapeHtml(line.name)}</span>
-                <span class="line-sub">${line.fromSheet ? '📅 на зміні' : 'редагувати'}</span>
+                <span class="line-sub">редагувати</span>
             </div>
             <div class="line-grid" data-line-id="${escapeHtml(line.id)}">
                 ${renderGridCells(line.id)}

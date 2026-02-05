@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v4.0</p>
+                <p class="tagline">Система бронювання v5.1</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v4.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.1</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -522,6 +522,27 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v5.1 — Рефакторинг та захист</h4>
+                    <ul>
+                        <li>Rate limiting — захист від зловживання API</li>
+                        <li>Покращена валідація всіх endpoint-ів</li>
+                        <li>Дедуплікація коду (категорії, аніматори, Telegram)</li>
+                        <li>Єдине джерело правди для назв категорій</li>
+                        <li>XSS захист у Telegram-чатах</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v5.0 — Безпека та автентифікація</h4>
+                    <ul>
+                        <li>Серверна JWT автентифікація (замість локального зберігання паролів)</li>
+                        <li>Хешування паролів bcrypt</li>
+                        <li>XSS захист на всіх сторінках</li>
+                        <li>Безпечне оновлення статусу бронювання (PUT замість DELETE+CREATE)</li>
+                        <li>Індекси бази даних для швидкодії</li>
+                        <li>Динамічний парсер CSV-графіку аніматорів</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v4.0 — Новий дизайн</h4>
                     <ul>

@@ -16,10 +16,10 @@
 .zoom-controls {
     display: flex;
     background: var(--white);
-    border-radius: 8px;
+    border-radius: 10px;
     overflow: hidden;
     border: 1px solid var(--gray-200);
-    box-shadow: var(--shadow-xs);
+    box-shadow: var(--shadow-sm);
 }
 
 .zoom-btn {

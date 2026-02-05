@@ -35,15 +35,16 @@ body.dark-mode {
 
     background: #0f0f1a;
     background-image:
-        radial-gradient(ellipse at 20% 50%, rgba(16,185,129,0.06) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 20%, rgba(59,130,246,0.04) 0%, transparent 50%);
+        radial-gradient(ellipse at 20% 50%, rgba(16,185,129,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(59,130,246,0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 100%, rgba(139,92,246,0.04) 0%, transparent 50%);
     color: #E2E8F0;
 }
 
 /* Header */
 body.dark-mode .header {
-    background: var(--glass-bg);
-    border-bottom-color: var(--gray-200);
+    background: linear-gradient(135deg, #0a1628 0%, #0f1f3a 40%, #0a2540 100%);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
 }
 
 /* Timeline */
@@ -53,11 +54,15 @@ body.dark-mode .timeline-container {
 }
 
 body.dark-mode .line-header {
-    background: transparent;
+    background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, transparent 100%);
+}
+
+body.dark-mode .timeline-line:nth-child(even) .line-header {
+    background: linear-gradient(135deg, rgba(16,185,129,0.04) 0%, transparent 100%);
 }
 
 body.dark-mode .line-header:hover {
-    background: rgba(16,185,129,0.1);
+    background: linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.05) 100%);
 }
 
 body.dark-mode .line-grid {
@@ -95,6 +100,15 @@ body.dark-mode .legend {
     background: var(--white);
     border-color: var(--gray-200);
 }
+
+body.dark-mode .legend-item:has(.dot.quest) { background: rgba(139,92,246,0.15); color: #C4B5FD; }
+body.dark-mode .legend-item:has(.dot.animation) { background: rgba(59,130,246,0.15); color: #93C5FD; }
+body.dark-mode .legend-item:has(.dot.show) { background: rgba(249,115,22,0.15); color: #FDBA74; }
+body.dark-mode .legend-item:has(.dot.masterclass) { background: rgba(132,204,22,0.15); color: #BEF264; }
+body.dark-mode .legend-item:has(.dot.pinata) { background: rgba(236,72,153,0.15); color: #F9A8D4; }
+body.dark-mode .legend-item:has(.dot.photo) { background: rgba(6,182,212,0.15); color: #67E8F9; }
+body.dark-mode .legend-item:has(.dot.custom) { background: rgba(100,116,139,0.15); color: #CBD5E1; }
+body.dark-mode .legend-item:has(.preliminary-dot) { background: rgba(245,158,11,0.15); color: #FCD34D; }
 
 /* Modals */
 body.dark-mode .modal {
@@ -343,18 +357,29 @@ body.dark-mode .btn-nav {
     border-color: var(--gray-300);
 }
 
+/* Colored buttons keep their gradients in dark mode — just adjust opacity */
 body.dark-mode .btn-export,
 body.dark-mode .btn-history,
 body.dark-mode .btn-digest,
-body.dark-mode .btn-action {
-    background: var(--gray-100);
-    border-color: var(--gray-300);
-    color: #D1D5DB;
+body.dark-mode .btn-invite {
+    opacity: 0.9;
+}
+
+body.dark-mode #dashboardBtn,
+body.dark-mode #settingsBtn {
+    opacity: 0.9;
 }
 
 body.dark-mode .btn-logout {
-    background: var(--gray-100);
-    border-color: var(--gray-300);
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.7);
+}
+
+/* Control panel card in dark */
+body.dark-mode .control-panel {
+    background: var(--white);
+    border-color: var(--gray-200);
 }
 
 body.dark-mode .btn-close {
@@ -373,7 +398,8 @@ body.dark-mode .btn-status-toggle {
 
 /* Day info */
 body.dark-mode .day-label {
-    background: rgba(16,185,129,0.15);
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: #FFFFFF;
 }
 
 /* Toggle slider */

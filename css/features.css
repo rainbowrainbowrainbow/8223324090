@@ -10,21 +10,21 @@
 
 .btn-digest {
     padding: 8px 16px;
-    background: var(--white);
-    color: var(--gray-700);
-    border: 1px solid var(--gray-200);
+    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+    color: #FFFFFF;
+    border: none;
     border-radius: var(--radius-xs);
     font-weight: 700;
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
+    box-shadow: 0 2px 8px rgba(59,130,246,0.3);
 }
 
 .btn-digest:hover {
-    background: #EFF6FF;
-    border-color: var(--info);
-    color: var(--info);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59,130,246,0.4);
 }
 
 .telegram-setup { padding: 10px 0; }
@@ -79,9 +79,9 @@
 
 .btn-action {
     padding: 8px 16px;
-    background: var(--white);
-    color: var(--gray-700);
-    border: 1px solid var(--gray-200);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #FFFFFF;
+    border: none;
     border-radius: var(--radius-xs);
     font-weight: 700;
     font-size: 12px;
@@ -92,12 +92,12 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    box-shadow: 0 2px 8px rgba(16,185,129,0.3);
 }
 
 .btn-action:hover {
-    background: var(--primary-50);
-    border-color: var(--primary);
-    color: var(--primary-dark);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16,185,129,0.4);
 }
 
 .settings-sections {

@@ -161,9 +161,9 @@
 .timeline-container {
     background: var(--white);
     border-radius: var(--radius);
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow-md);
     overflow: hidden;
-    border: 1px solid var(--gray-100);
+    border: 1px solid var(--gray-200);
 }
 
 .timeline-scroll {
@@ -232,22 +232,23 @@
     width: 130px;
     min-width: 130px;
     padding: 10px 12px;
-    background: transparent;
+    background: linear-gradient(135deg, var(--primary-50) 0%, transparent 100%);
     display: flex;
     flex-direction: column;
     justify-content: center;
     cursor: pointer;
-    border-left: 3px solid var(--primary);
+    border-left: 4px solid var(--primary);
     transition: all var(--speed-fast) var(--ease-smooth);
     border-radius: var(--radius-xs) 0 0 var(--radius-xs);
 }
 
 .timeline-line:nth-child(even) .line-header {
-    background: transparent;
+    background: linear-gradient(135deg, rgba(16,185,129,0.04) 0%, transparent 100%);
 }
 
 .line-header:hover {
-    background: var(--primary-50);
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary-50) 100%);
+    border-left-color: var(--primary-dark);
 }
 
 .line-name {
@@ -389,23 +390,25 @@
     justify-content: center;
     gap: 10px;
     width: 100%;
-    padding: 14px;
-    margin-top: 8px;
-    background: transparent;
-    border: 2px dashed var(--gray-200);
+    padding: 16px;
+    margin-top: 12px;
+    background: linear-gradient(135deg, var(--primary-50) 0%, var(--primary-light) 100%);
+    border: 2px dashed var(--primary);
     border-radius: var(--radius-sm);
     font-size: var(--font-sm);
     font-weight: 700;
-    color: var(--gray-400);
+    color: var(--primary-dark);
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
 }
 
 .btn-add-line-big:hover {
-    border-color: var(--primary);
-    color: var(--primary);
-    background: var(--primary-50);
+    border-style: solid;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #FFFFFF;
+    box-shadow: var(--shadow-primary);
+    transform: translateY(-1px);
 }
 
 .btn-add-line-big span:first-child {
@@ -420,30 +423,48 @@
 .legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 20px;
+    gap: 8px;
     margin-top: 20px;
-    padding: 16px 20px;
+    padding: 14px 18px;
     background: var(--white);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-xs);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
     border: 1px solid var(--gray-100);
 }
 
 .legend-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--gray-700);
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 12px 5px 8px;
+    border-radius: var(--radius-full);
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.legend-item:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
 }
 
 .legend .dot {
-    width: 16px;
-    height: 16px;
-    border-radius: var(--radius-xs);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
     box-shadow: var(--shadow-xs);
+    flex-shrink: 0;
 }
+
+/* Legend pill backgrounds */
+.legend-item:has(.dot.quest) { background: #F5F3FF; color: #6D28D9; }
+.legend-item:has(.dot.animation) { background: #EFF6FF; color: #1D4ED8; }
+.legend-item:has(.dot.show) { background: #FFF7ED; color: #C2410C; }
+.legend-item:has(.dot.masterclass) { background: #F7FEE7; color: #4D7C0F; }
+.legend-item:has(.dot.pinata) { background: #FDF2F8; color: #BE185D; }
+.legend-item:has(.dot.photo) { background: #ECFEFF; color: #0E7490; }
+.legend-item:has(.dot.custom) { background: var(--gray-100); color: var(--gray-600); }
+.legend-item:has(.preliminary-dot) { background: #FFFBEB; color: #92400E; }
 
 .dot.quest { background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%); }
 .dot.animation { background: linear-gradient(135deg, var(--animation) 0%, #2563EB 100%); }

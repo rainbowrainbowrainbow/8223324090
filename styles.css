@@ -4,27 +4,27 @@
    ========================================== */
 
 :root {
-    --primary: #00A651;
-    --primary-dark: #008C45;
-    --primary-light: #E8F5E9;
-    /* Більш контрастні кольори категорій */
-    --quest: #7B1FA2;       /* Темніший фіолетовий */
-    --animation: #0288D1;    /* Більш насичений синій */
-    --show: #D84315;         /* Темніший помаранчевий */
-    --masterclass: #558B2F;  /* Темніший зелений */
-    --pinata: #AD1457;       /* Темніший рожевий */
-    --photo: #00838F;        /* Темний бірюзовий */
-    --custom: #37474F;       /* Темніший сірий */
-    --success: #2E7D32;
-    --warning: #EF6C00;
-    --danger: #C62828;
-    --light: #F8F9FA;
-    --dark: #1A1A2E;
-    --gray: #5A6268;
-    --gray-light: #868E96;
+    --primary: #16A34A;
+    --primary-dark: #15803D;
+    --primary-light: #DCFCE7;
+    /* v3.5: Оновлена палітра категорій */
+    --quest: #8B5CF6;       /* violet-500 */
+    --animation: #3B82F6;    /* blue-500 */
+    --show: #F97316;         /* orange-500 */
+    --masterclass: #84CC16;  /* lime-500 */
+    --pinata: #EC4899;       /* pink-500 */
+    --photo: #06B6D4;        /* cyan-500 */
+    --custom: #64748B;       /* slate-500 */
+    --success: #16A34A;
+    --warning: #F59E0B;
+    --danger: #DC2626;
+    --light: #F8FAFC;
+    --dark: #1E293B;
+    --gray: #64748B;
+    --gray-light: #94A3B8;
     --white: #FFFFFF;
-    --shadow: 0 4px 20px rgba(0,0,0,0.08);
-    --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
+    --shadow: 0 4px 20px rgba(0,0,0,0.06);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
     --radius: 16px;
     --radius-sm: 10px;
     --radius-xs: 6px;
@@ -34,7 +34,7 @@
 
 body {
     font-family: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: linear-gradient(135deg, #F5F7FA 0%, #E4E8EB 100%);
+    background: #F8FAFC;
     color: var(--dark);
     min-height: 100vh;
     font-size: 14px;
@@ -192,65 +192,68 @@ body {
 /* Шапка */
 .header {
     background: var(--white);
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 1px 0 #E2E8F0;
     position: sticky;
     top: 0;
     z-index: 100;
-    border-bottom: 1px solid rgba(0,0,0,0.05);
 }
 
 .header-content {
-    padding: 14px 24px;
+    padding: 10px 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     max-width: 1800px;
     margin: 0 auto;
+    gap: 16px;
 }
 
-.logo { display: flex; align-items: center; gap: 12px; }
-.logo-img-small { width: 40px; height: 40px; object-fit: contain; }
+.logo { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.logo-img-small { width: 36px; height: 36px; object-fit: contain; border-radius: 50%; }
 .logo-text h1 {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 900;
     color: var(--primary);
     letter-spacing: -0.3px;
 }
 
-.user-panel { display: flex; align-items: center; gap: 12px; }
+.header-nav { display: flex; align-items: center; gap: 4px; }
+.btn-header-nav {
+    padding: 8px 16px;
+    background: transparent;
+    color: var(--gray);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+}
+.btn-header-nav:hover {
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.user-panel { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .user-name { font-weight: 700; font-size: 13px; color: var(--dark); }
 
 .btn-logout {
-    padding: 10px 18px;
+    padding: 8px 14px;
     background: var(--light);
-    color: var(--dark);
-    border: none;
-    border-radius: var(--radius-sm);
+    color: var(--gray);
+    border: 1px solid #E2E8F0;
+    border-radius: var(--radius-xs);
     font-weight: 700;
-    font-size: 13px;
+    font-size: 12px;
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.2s;
+    transition: all 0.15s;
 }
-.btn-logout:hover { background: var(--danger); color: var(--white); }
+.btn-logout:hover { background: #FEF2F2; color: var(--danger); border-color: #FECACA; }
 
-/* Кнопка аніматорів (тільки для Сергія) */
-.btn-animators {
-    padding: 10px 18px;
-    background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
-    color: var(--white);
-    border: none;
-    border-radius: var(--radius-sm);
-    font-weight: 700;
-    font-size: 13px;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.2s;
-}
-.btn-animators:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(255, 152, 0, 0.3);
-}
+/* Legacy btn-animators (kept for JS compatibility) */
+.btn-animators, .btn-programs { display: none; }
 
 /* Управління аніматорами */
 .animators-management textarea {
@@ -343,12 +346,12 @@ input[type="date"] {
 }
 
 .day-label {
-    padding: 8px 20px;
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-    color: var(--white);
-    border-radius: var(--radius-sm);
+    padding: 6px 16px;
+    background: var(--primary-light);
+    color: var(--primary);
+    border-radius: 20px;
     font-weight: 800;
-    font-size: 14px;
+    font-size: 13px;
     text-align: center;
 }
 
@@ -426,20 +429,21 @@ input[type="date"] {
 }
 
 .btn-export {
-    padding: 12px 24px;
-    background: linear-gradient(135deg, #2196F3 0%, #1565C0 100%);
-    color: var(--white);
-    border: none;
-    border-radius: var(--radius-sm);
+    padding: 8px 16px;
+    background: var(--white);
+    color: var(--dark);
+    border: 1px solid #E2E8F0;
+    border-radius: var(--radius-xs);
     font-weight: 700;
-    font-size: 14px;
+    font-size: 12px;
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.2s;
+    transition: all 0.15s;
 }
 .btn-export:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(33, 150, 243, 0.3);
+    background: #EFF6FF;
+    border-color: #3B82F6;
+    color: #3B82F6;
 }
 
 /* Мультиденний таймлайн */
@@ -593,20 +597,21 @@ input[type="date"] {
 
 /* Кнопка історії */
 .btn-history {
-    padding: 12px 24px;
-    background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
-    color: var(--white);
-    border: none;
-    border-radius: var(--radius-sm);
+    padding: 8px 16px;
+    background: var(--white);
+    color: var(--dark);
+    border: 1px solid #E2E8F0;
+    border-radius: var(--radius-xs);
     font-weight: 700;
-    font-size: 14px;
+    font-size: 12px;
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.2s;
+    transition: all 0.15s;
 }
 .btn-history:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(156, 39, 176, 0.3);
+    background: var(--primary-light);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 /* Попередження */
@@ -696,22 +701,29 @@ input[type="date"] {
     min-height: 64px;
 }
 
+.timeline-line:nth-child(even) {
+    background: #F8FAFC;
+}
+
 .line-header {
-    width: 110px;
-    min-width: 110px;
+    width: 130px;
+    min-width: 130px;
     padding: 10px 12px;
-    background: linear-gradient(135deg, #F8F9FA 0%, #E9ECEF 100%);
-    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    background: transparent;
     display: flex;
     flex-direction: column;
     justify-content: center;
     cursor: pointer;
-    border-left: 5px solid var(--primary);
-    transition: all 0.2s;
+    border-left: 3px solid var(--primary);
+    transition: all 0.15s;
+}
+
+.timeline-line:nth-child(even) .line-header {
+    background: transparent;
 }
 
 .line-header:hover {
-    background: linear-gradient(135deg, #E9ECEF 0%, #DEE2E6 100%);
+    background: var(--primary-light);
 }
 
 .line-name {
@@ -764,9 +776,9 @@ input[type="date"] {
 /* Бронювання блоки */
 .booking-block {
     position: absolute;
-    top: 6px;
-    bottom: 6px;
-    border-radius: var(--radius-xs);
+    top: 5px;
+    bottom: 5px;
+    border-radius: 8px;
     padding: 6px 10px;
     color: var(--white);
     font-size: 11px;
@@ -777,23 +789,24 @@ input[type="date"] {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
     transition: all 0.15s;
+    border-left: 3px solid rgba(0,0,0,0.15);
 }
 
 .booking-block:hover {
-    transform: scale(1.03) translateY(-1px);
+    transform: translateY(-1px);
     z-index: 20;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 
-.booking-block.quest { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); }
-.booking-block.animation { background: linear-gradient(135deg, #039BE5 0%, #0277BD 100%); }
-.booking-block.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
-.booking-block.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
-.booking-block.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
-.booking-block.photo { background: linear-gradient(135deg, #00ACC1 0%, #00838F 100%); }
-.booking-block.custom { background: linear-gradient(135deg, #546E7A 0%, #37474F 100%); }
+.booking-block.quest { background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%); }
+.booking-block.animation { background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%); }
+.booking-block.show { background: linear-gradient(135deg, #F97316 0%, #EA580C 100%); }
+.booking-block.masterclass { background: linear-gradient(135deg, #84CC16 0%, #65A30D 100%); }
+.booking-block.pinata { background: linear-gradient(135deg, #EC4899 0%, #DB2777 100%); }
+.booking-block.photo { background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%); }
+.booking-block.custom { background: linear-gradient(135deg, #64748B 0%, #475569 100%); }
 
 .booking-block .title {
     white-space: nowrap;
@@ -844,17 +857,17 @@ input[type="date"] {
     justify-content: center;
     gap: 10px;
     width: 100%;
-    padding: 18px;
-    margin-top: 16px;
-    background: var(--light);
-    border: 3px dashed #CED4DA;
-    border-radius: var(--radius-sm);
-    font-size: 14px;
+    padding: 14px;
+    margin-top: 8px;
+    background: transparent;
+    border: 2px dashed #E2E8F0;
+    border-radius: 8px;
+    font-size: 13px;
     font-weight: 700;
-    color: var(--gray);
+    color: var(--gray-light);
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.2s;
+    transition: all 0.15s;
 }
 
 .btn-add-line-big:hover {
@@ -2049,14 +2062,14 @@ input[type="date"] {
 
 .zoom-controls {
     display: flex;
-    background: var(--light);
-    border-radius: var(--radius-sm);
+    background: var(--white);
+    border-radius: 8px;
     overflow: hidden;
-    border: 1px solid #E9ECEF;
+    border: 1px solid #E2E8F0;
 }
 
 .zoom-btn {
-    padding: 6px 10px;
+    padding: 6px 12px;
     border: none;
     background: transparent;
     font-size: 11px;
@@ -2064,8 +2077,11 @@ input[type="date"] {
     cursor: pointer;
     font-family: inherit;
     color: var(--gray);
-    transition: all 0.2s;
+    transition: all 0.15s;
+    border-right: 1px solid #E2E8F0;
 }
+
+.zoom-btn:last-child { border-right: none; }
 
 .zoom-btn.active {
     background: var(--primary);
@@ -2073,7 +2089,8 @@ input[type="date"] {
 }
 
 .zoom-btn:hover:not(.active) {
-    background: #E9ECEF;
+    background: var(--primary-light);
+    color: var(--primary);
 }
 
 /* ==========================================
@@ -2326,38 +2343,25 @@ body.dark-mode .minimap-container {
    v3.3: TELEGRAM & DIGEST
    ========================================== */
 
-.btn-telegram {
-    padding: 8px 14px;
-    background: #0088cc;
-    color: var(--white);
-    border: none;
-    border-radius: var(--radius-sm);
-    font-weight: 700;
-    font-size: 12px;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.2s;
-}
-
-.btn-telegram:hover {
-    background: #006699;
-}
+.btn-telegram { display: none; }
 
 .btn-digest {
-    padding: 8px 14px;
-    background: #0088cc;
-    color: white;
-    border: none;
-    border-radius: var(--radius-sm);
+    padding: 8px 16px;
+    background: var(--white);
+    color: var(--dark);
+    border: 1px solid #E2E8F0;
+    border-radius: var(--radius-xs);
     font-weight: 700;
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.2s;
+    transition: all 0.15s;
 }
 
 .btn-digest:hover {
-    background: #006699;
+    background: #E0F2FE;
+    border-color: #0EA5E9;
+    color: #0EA5E9;
 }
 
 .telegram-setup {
@@ -2422,20 +2426,7 @@ body.dark-mode .no-chats {
    v3.4: DASHBOARD
    ========================================== */
 
-.btn-dashboard {
-    padding: 8px 14px;
-    background: #FF9800;
-    color: white;
-    border: none;
-    border-radius: var(--radius-sm);
-    font-weight: 700;
-    font-size: 12px;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.2s;
-}
-
-.btn-dashboard:hover { background: #F57C00; }
+.btn-dashboard { display: none; }
 
 .modal-wide { max-width: 700px; }
 

@@ -30,17 +30,33 @@
 
         .invite-header {
             background: linear-gradient(135deg, #00A651, #00C853);
-            padding: 40px 30px;
+            padding: 0;
             text-align: center;
             color: white;
+            position: relative;
+        }
+
+        .invite-hero {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .invite-header-content {
+            padding: 20px 30px 30px;
+            background: linear-gradient(135deg, #00A651, #00C853);
         }
 
         .invite-header .logo-img {
-            width: 100px;
-            height: 100px;
-            border-radius: 20px;
-            margin-bottom: 16px;
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            margin-top: -45px;
+            border: 4px solid white;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            position: relative;
+            z-index: 1;
         }
 
         .invite-header h1 {
@@ -163,6 +179,12 @@
             font-size: 18px;
         }
 
+        .feature-item .icon-img {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+        }
+
         .invite-footer {
             text-align: center;
             padding: 20px 30px;
@@ -213,9 +235,12 @@
 <body>
     <div class="invite-card">
         <div class="invite-header">
-            <img src="logo.png" alt="Логотип" class="logo-img">
-            <h1>Парк Закревського Періоду</h1>
-            <p class="subtitle">Запрошуємо на свято!</p>
+            <img src="images/hero.png" alt="Парк" class="invite-hero">
+            <div class="invite-header-content">
+                <img src="images/logo-new.png" alt="Логотип" class="logo-img">
+                <h1>Парк Закревського Періоду</h1>
+                <p class="subtitle">Запрошуємо на свято!</p>
+            </div>
         </div>
 
         <div class="invite-body">
@@ -252,12 +277,12 @@
             <div class="invite-section">
                 <h2>🎉 Що вас чекає</h2>
                 <div class="features-list">
-                    <div class="feature-item"><span class="icon">🎭</span> Квести</div>
-                    <div class="feature-item"><span class="icon">🎪</span> Анімація</div>
-                    <div class="feature-item"><span class="icon">✨</span> Wow-Шоу</div>
-                    <div class="feature-item"><span class="icon">🎨</span> Майстер-класи</div>
-                    <div class="feature-item"><span class="icon">📸</span> Фотосесії</div>
-                    <div class="feature-item"><span class="icon">🎊</span> Піньяти</div>
+                    <div class="feature-item"><img src="images/icon-quest.png" class="icon-img" alt=""> Квести</div>
+                    <div class="feature-item"><img src="images/icon-animation.png" class="icon-img" alt=""> Анімація</div>
+                    <div class="feature-item"><img src="images/icon-show.png" class="icon-img" alt=""> Wow-Шоу</div>
+                    <div class="feature-item"><img src="images/icon-masterclass.png" class="icon-img" alt=""> Майстер-класи</div>
+                    <div class="feature-item"><img src="images/icon-photo.png" class="icon-img" alt=""> Фотосесії</div>
+                    <div class="feature-item"><img src="images/icon-pinata.png" class="icon-img" alt=""> Піньяти</div>
                 </div>
             </div>
 

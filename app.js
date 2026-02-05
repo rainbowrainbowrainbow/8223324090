@@ -1,6 +1,6 @@
 /**
  * Парк Закревського Періоду - Система бронювання
- * v3.4 - Dashboard, stats, animator workload
+ * v3.5 - UI redesign, generated images, new palette
  */
 
 // ==========================================

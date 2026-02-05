@@ -13,11 +13,11 @@
     <div id="loginScreen" class="login-screen">
         <div class="login-container">
             <div class="login-logo">
-                <img src="logo.png" alt="Логотип" class="logo-img">
+                <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v3.4</p>
+                <p class="tagline">Система бронювання v3.5</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.4</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v3.5</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -39,16 +39,18 @@
         <header class="header">
             <div class="header-content">
                 <div class="logo">
-                    <img src="logo.png" alt="Логотип" class="logo-img-small">
+                    <img src="images/logo-new.png" alt="Логотип" class="logo-img-small">
                     <div class="logo-text">
                         <h1>Парк Закревського Періоду</h1>
                     </div>
                 </div>
+                <nav class="header-nav">
+                    <button id="programsTabBtn" class="btn-header-nav hidden">Програми</button>
+                    <button id="animatorsTabBtn" class="btn-header-nav hidden">Аніматори</button>
+                    <button id="telegramSetupBtn" class="btn-header-nav hidden">Telegram</button>
+                    <button id="dashboardBtn" class="btn-header-nav hidden">Дашборд</button>
+                </nav>
                 <div class="user-panel">
-                    <button id="programsTabBtn" class="btn-programs hidden">🎭 Програми</button>
-                    <button id="animatorsTabBtn" class="btn-animators hidden">👥 Аніматори</button>
-                    <button id="telegramSetupBtn" class="btn-telegram hidden">🤖 Telegram</button>
-                    <button id="dashboardBtn" class="btn-dashboard hidden">📊 Дашборд</button>
                     <span id="currentUser" class="user-name"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
@@ -457,6 +459,19 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v3.5 — UI Редизайн</h4>
+                    <ul>
+                        <li>Новий логотип (динозаврик-маскот)</li>
+                        <li>Оновлена кольорова палітра категорій</li>
+                        <li>Уніфікований хедер з ghost-кнопками</li>
+                        <li>Покращені блоки бронювань (тіні, градієнти, border-left)</li>
+                        <li>Зебра-стрипи на рядках аніматорів</li>
+                        <li>Segmented zoom control</li>
+                        <li>Сторінка /invite з hero-зображенням та іконками послуг</li>
+                        <li>AI-згенеровані зображення (Flux 2 Turbo)</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v3.4 — Дашборд</h4>
                     <ul>

@@ -48,8 +48,24 @@ async function main() {
   app.setErrorHandler(errorHandler);
 
   // ── Health Check ────────────────────────────────────────────────
+  let dbConnected = false;
+
   app.get('/health', async () => {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+    return {
+      status: dbConnected ? 'ok' : 'degraded',
+      db: dbConnected ? 'connected' : 'disconnected',
+      timestamp: new Date().toISOString(),
+    };
+  });
+
+  // Root route — basic API info
+  app.get('/', async () => {
+    return {
+      name: 'Park Booking System API',
+      version: '0.1.0',
+      health: '/health',
+      api: '/api/v1',
+    };
   });
 
   // ── API Routes ──────────────────────────────────────────────────
@@ -69,21 +85,27 @@ async function main() {
   await app.register(adminDashboardRoutes, { prefix: '/api/v1/admin/dashboard' });
 
   // ── Telegram Bot ────────────────────────────────────────────────
-  const bot = createBot();
+  let bot: ReturnType<typeof createBot> | null = null;
+  try {
+    bot = createBot();
 
-  // Webhook endpoint
-  app.post('/api/telegram/webhook', async (request, reply) => {
-    const secret = request.headers['x-telegram-bot-api-secret-token'] as string;
-    if (env.TELEGRAM_WEBHOOK_SECRET && secret !== env.TELEGRAM_WEBHOOK_SECRET) {
-      return reply.code(401).send({ error: 'Unauthorized' });
-    }
-    await bot.handleUpdate(request.body as any);
-    return reply.send({ ok: true });
-  });
+    // Webhook endpoint
+    app.post('/api/telegram/webhook', async (request, reply) => {
+      const secret = request.headers['x-telegram-bot-api-secret-token'] as string;
+      if (env.TELEGRAM_WEBHOOK_SECRET && secret !== env.TELEGRAM_WEBHOOK_SECRET) {
+        return reply.code(401).send({ error: 'Unauthorized' });
+      }
+      await bot!.handleUpdate(request.body as any);
+      return reply.send({ ok: true });
+    });
+  } catch (err) {
+    app.log.warn(err, 'Telegram bot initialization failed');
+  }
 
   // ── Cron Jobs ───────────────────────────────────────────────────
   // Hold expiry check — every 1 minute
   const holdExpiryInterval = setInterval(async () => {
+    if (!dbConnected) return;
     try {
       await expireHoldBookings();
     } catch (err) {
@@ -93,6 +115,7 @@ async function main() {
 
   // Event completion — every 30 minutes
   const completionInterval = setInterval(async () => {
+    if (!dbConnected) return;
     try {
       await completeFinishedEvents();
     } catch (err) {
@@ -102,6 +125,7 @@ async function main() {
 
   // Notification processing — every 30 seconds
   const notificationInterval = setInterval(async () => {
+    if (!dbConnected) return;
     try {
       await processScheduledNotifications();
     } catch (err) {
@@ -124,24 +148,30 @@ async function main() {
   process.on('SIGINT', shutdown);
 
   // ── Start Server ────────────────────────────────────────────────
+  // Connect to DB (non-fatal if fails)
   try {
     await db.$connect();
+    dbConnected = true;
     app.log.info('Database connected');
+  } catch (err) {
+    app.log.warn(err, 'Database connection failed — server will start without DB');
+  }
 
-    // Set webhook if URL configured
-    if (env.TELEGRAM_WEBHOOK_URL) {
+  // Set Telegram webhook if configured
+  try {
+    if (bot && env.TELEGRAM_WEBHOOK_URL) {
       await bot.api.setWebhook(env.TELEGRAM_WEBHOOK_URL, {
         secret_token: env.TELEGRAM_WEBHOOK_SECRET,
         allowed_updates: ['message', 'callback_query', 'my_chat_member'],
       });
       app.log.info(`Telegram webhook set: ${env.TELEGRAM_WEBHOOK_URL}`);
-    } else {
-      // Long polling for development
-      bot.start({
-        onStart: () => app.log.info('Telegram bot started (polling)'),
-      });
     }
+  } catch (err) {
+    app.log.warn(err, 'Telegram webhook setup failed');
+  }
 
+  // Start HTTP server (must succeed)
+  try {
     await app.listen({ port: env.PORT, host: env.HOST });
     app.log.info(`Server listening on ${env.HOST}:${env.PORT}`);
   } catch (err) {

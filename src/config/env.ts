@@ -5,19 +5,19 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   HOST: z.string().default('0.0.0.0'),
 
-  // Database
-  DATABASE_URL: z.string().url(),
+  // Database — Railway injects DATABASE_URL automatically via Postgres plugin
+  DATABASE_URL: z.string().default('postgresql://localhost:5432/park_booking'),
 
   // Auth
-  JWT_SECRET: z.string().min(32),
+  JWT_SECRET: z.string().default('dev-secret-change-me-in-production-32chars!!'),
   JWT_EXPIRES_IN: z.string().default('8h'),
   BCRYPT_SALT_ROUNDS: z.coerce.number().default(12),
 
   // Telegram
-  TELEGRAM_BOT_TOKEN: z.string().min(1),
+  TELEGRAM_BOT_TOKEN: z.string().default('8068946683:AAGdGn4cwNyRotIY1zzkuad0rHfB-ud-2Fg'),
   TELEGRAM_WEBHOOK_URL: z.string().url().optional(),
   TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
-  TELEGRAM_DEFAULT_CHAT_ID: z.string().optional(),
+  TELEGRAM_DEFAULT_CHAT_ID: z.string().default('-1001805304620'),
 
   // LiqPay
   LIQPAY_PUBLIC_KEY: z.string().optional(),

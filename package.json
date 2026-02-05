@@ -5,8 +5,9 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/index.js",
+    "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ --ext .ts",
     "lint:fix": "eslint src/ --ext .ts --fix",
@@ -33,6 +34,9 @@
     "grammy": "^1.31.2",
     "fastify": "^5.2.1",
     "jsonwebtoken": "^9.0.2",
+    "prisma": "^6.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -43,9 +47,6 @@
     "@typescript-eslint/parser": "^8.21.0",
     "eslint": "^9.18.0",
     "prettier": "^3.4.2",
-    "prisma": "^6.3.1",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3",
     "vitest": "^3.0.4",
     "@playwright/test": "^1.50.0"
   },

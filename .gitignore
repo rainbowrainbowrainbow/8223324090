@@ -1,1 +1,43 @@
+# Dependencies
 node_modules/
+
+# Build output
+dist/
+
+# Secrets
+.env
+.env.local
+.env.production
+*.pem
+*.key
+
+# Credentials
+credentials.json
+service-account.json
+firebase-adminsdk*.json
+
+# Database
+*.sqlite
+*.db
+prisma/dev.db
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+playwright-report/
+test-results/
+e2e-results.json
+coverage/
+
+# Generated
+prisma/generated/

@@ -18,6 +18,16 @@ const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || crypto.randomBytes(32).toSt
 // Middleware
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || origin.includes(process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost')) }));
 app.use(express.json());
+
+// Cache control: prevent browser from caching HTML/JS/CSS
+app.use((req, res, next) => {
+    if (req.path.endsWith('.html') || req.path.endsWith('.js') || req.path.endsWith('.css') || req.path === '/') {
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+    }
+    next();
+});
 app.use(express.static(path.join(__dirname)));
 
 // PostgreSQL connection
@@ -133,41 +143,6 @@ async function getTelegramChatId() {
         return [];
     }
 }
-
-// ==========================================
-// RATE LIMITING (in-memory)
-// ==========================================
-
-const rateLimitMap = new Map();
-function rateLimit(windowMs, maxRequests) {
-    // Clean up old entries every 5 minutes
-    setInterval(() => {
-        const now = Date.now();
-        for (const [key, entry] of rateLimitMap) {
-            if (now - entry.start > windowMs * 2) rateLimitMap.delete(key);
-        }
-    }, 300000);
-
-    return (req, res, next) => {
-        const key = req.ip;
-        const now = Date.now();
-        let entry = rateLimitMap.get(key);
-        if (!entry || now - entry.start > windowMs) {
-            entry = { count: 1, start: now };
-        } else {
-            entry.count++;
-        }
-        rateLimitMap.set(key, entry);
-        if (entry.count > maxRequests) {
-            return res.status(429).json({ error: 'Too many requests, please try again later' });
-        }
-        next();
-    };
-}
-
-// Apply rate limits
-app.use('/api/auth/login', rateLimit(60000, 10));    // 10 login attempts per minute
-app.use('/api', rateLimit(60000, 200));               // 200 API calls per minute
 
 // v3.9: Input validation helpers
 function validateDate(str) {

@@ -33,9 +33,9 @@ async function showHistory() {
     } else {
         history.slice(0, 100).forEach(item => {
             const date = new Date(item.timestamp).toLocaleString('uk-UA');
-            const actionMap = { create: 'Створено', delete: 'Видалено', shift: 'Перенесено', undo_create: '↩ Скасовано створення', undo_delete: '↩ Скасовано видалення' };
+            const actionMap = { create: 'Створено', delete: 'Видалено', shift: 'Перенесено', edit: 'Змінено', undo_create: '↩ Скасовано створення', undo_delete: '↩ Скасовано видалення' };
             const actionText = actionMap[item.action] || item.action;
-            const actionClass = item.action.includes('undo') ? 'action-undo' : (item.action === 'create' ? 'action-create' : 'action-delete');
+            const actionClass = item.action.includes('undo') ? 'action-undo' : (item.action === 'edit' ? 'action-edit' : (item.action === 'create' ? 'action-create' : 'action-delete'));
 
             html += `
                 <div class="history-item ${actionClass}">
@@ -336,6 +336,19 @@ function notifyBookingDeleted(booking) {
         `🕐 ${booking.date} | ${booking.time}\n` +
         `🏠 ${booking.room}\n` +
         `\n👤 Видалив: ${AppState.currentUser?.username || '?'}`;
+    apiTelegramNotify(text).then(handleTelegramResult);
+}
+
+function notifyBookingEdited(booking) {
+    const endTime = addMinutesToTime(booking.time, booking.duration);
+    let text = `✏️ <b>Бронювання змінено</b>\n\n`;
+    text += `🔖 ${booking.id}\n`;
+    text += `🎭 ${booking.label}: ${booking.programName}\n`;
+    text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+    text += `🏠 ${booking.room}\n`;
+    if (booking.kidsCount) text += `👶 ${booking.kidsCount} дітей\n`;
+    if (booking.notes) text += `📝 ${booking.notes}\n`;
+    text += `\n👤 Змінив: ${AppState.currentUser?.username || '?'}`;
     apiTelegramNotify(text).then(handleTelegramResult);
 }
 

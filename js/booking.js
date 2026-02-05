@@ -59,6 +59,13 @@ function closeBookingPanel() {
     document.getElementById('bookingPanel').classList.add('hidden');
     document.querySelector('.main-content').classList.remove('panel-open');
     document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
+
+    // v5.5: Скинути режим редагування
+    if (AppState.editingBookingId) {
+        AppState.editingBookingId = null;
+        document.querySelector('#bookingPanel .panel-header h3').textContent = 'Нове бронювання';
+        document.querySelector('#bookingForm .btn-submit').textContent = 'Додати бронювання';
+    }
 }
 
 function renderProgramIcons() {
@@ -218,9 +225,9 @@ function getBookingFormData() {
     return { programId, room, program, time, lineId, duration, label, pinataFiller, secondAnimator };
 }
 
-async function validateBookingConflicts(lineId, time, duration, program, secondAnimator) {
+async function validateBookingConflicts(lineId, time, duration, program, secondAnimator, excludeId = null) {
     delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
-    const conflict = await checkConflicts(lineId, time, duration);
+    const conflict = await checkConflicts(lineId, time, duration, excludeId);
 
     if (conflict.overlap) {
         showNotification('❌ ПОМИЛКА: Цей час вже зайнятий!', 'error');
@@ -231,7 +238,10 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
         const lines = await getLinesForDate(AppState.selectedDate);
         const secondLine = lines.find(l => l.name === secondAnimator);
         if (secondLine) {
-            const secondConflict = await checkConflicts(secondLine.id, time, duration);
+            // v5.5: При редагуванні виключити linked бронювання цього ж запису
+            const allBookings = excludeId ? await getBookingsForDate(AppState.selectedDate) : [];
+            const linkedId = allBookings.find(b => b.linkedTo === excludeId && b.lineId === secondLine.id)?.id || null;
+            const secondConflict = await checkConflicts(secondLine.id, time, duration, linkedId);
             if (secondConflict.overlap) {
                 showNotification(`❌ ПОМИЛКА: Час зайнятий у ${secondAnimator}!`, 'error');
                 return false;
@@ -246,7 +256,7 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
     return true;
 }
 
-async function checkDuplicateProgram(programId, program, time, duration) {
+async function checkDuplicateProgram(programId, program, time, duration, excludeId = null) {
     if (program.category === 'animation' || programId === 'anim_extra') return true;
 
     const allBookings = await getBookingsForDate(AppState.selectedDate);
@@ -254,6 +264,7 @@ async function checkDuplicateProgram(programId, program, time, duration) {
     const newEnd = newStart + duration;
 
     const duplicate = allBookings.find(b => {
+        if (b.id === excludeId) return false;
         if (b.programId !== programId) return false;
         const start = timeToMinutes(b.time);
         const end = start + b.duration;
@@ -347,50 +358,80 @@ async function handleBookingSubmit(e) {
         showNotification('Оберіть наповнювач для піньяти', 'error'); return;
     }
 
+    // v5.5: excludeId для режиму редагування
+    const excludeId = AppState.editingBookingId || null;
+
     // Валідація конфліктів
     const valid = await validateBookingConflicts(
         formData.lineId, formData.time, formData.duration,
-        formData.program, formData.secondAnimator
+        formData.program, formData.secondAnimator, excludeId
     );
     if (!valid) return;
 
     // Перевірка дублікатів
     const noDuplicate = await checkDuplicateProgram(
-        formData.programId, formData.program, formData.time, formData.duration
+        formData.programId, formData.program, formData.time, formData.duration, excludeId
     );
     if (!noDuplicate) return;
 
-    // Створити та зберегти
     try {
         const booking = buildBookingObject(formData, formData.program);
-        const createResult = await apiCreateBooking(booking);
-        // v5.2: Перевіряти результат API перед очищенням кешу
-        if (createResult && createResult.success === false) {
-            showNotification('Помилка: не вдалося зберегти бронювання на сервер', 'error');
-            return;
-        }
-        // v5.4: Use server-generated BK-YYYY-NNNN ID
-        if (createResult && createResult.id) {
-            booking.id = createResult.id;
-        }
-        await apiAddHistory('create', AppState.currentUser?.username, booking);
-        await createLinkedBookings(booking, formData.program);
 
-        pushUndo('create', [booking]);
-        notifyBookingCreated(booking);
+        if (AppState.editingBookingId) {
+            // ===== РЕЖИМ РЕДАГУВАННЯ (v5.5) =====
+            booking.id = AppState.editingBookingId;
 
-        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
-        closeBookingPanel();
-        await renderTimeline();
-        showNotification('Бронювання створено!', 'success');
+            // Зберегти оригінального автора
+            const oldBookings = await getBookingsForDate(AppState.selectedDate);
+            const oldBooking = oldBookings.find(b => b.id === booking.id);
+            if (oldBooking) {
+                booking.createdBy = oldBooking.createdBy;
+                booking.createdAt = oldBooking.createdAt;
+            }
+
+            const updateResult = await apiUpdateBooking(booking.id, booking);
+            if (updateResult && updateResult.success === false) {
+                showNotification('Помилка: не вдалося оновити бронювання', 'error');
+                return;
+            }
+            await apiAddHistory('edit', AppState.currentUser?.username, booking);
+            notifyBookingEdited(booking);
+
+            AppState.editingBookingId = null;
+
+            delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+            closeBookingPanel();
+            await renderTimeline();
+            showNotification('Бронювання оновлено!', 'success');
+        } else {
+            // ===== РЕЖИМ СТВОРЕННЯ (без змін) =====
+            const createResult = await apiCreateBooking(booking);
+            if (createResult && createResult.success === false) {
+                showNotification('Помилка: не вдалося зберегти бронювання на сервер', 'error');
+                return;
+            }
+            if (createResult && createResult.id) {
+                booking.id = createResult.id;
+            }
+            await apiAddHistory('create', AppState.currentUser?.username, booking);
+            await createLinkedBookings(booking, formData.program);
+
+            pushUndo('create', [booking]);
+            notifyBookingCreated(booking);
+
+            delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+            closeBookingPanel();
+            await renderTimeline();
+            showNotification('Бронювання створено!', 'success');
+        }
     } catch (error) {
-        handleError('Створення бронювання', error);
+        handleError('Збереження бронювання', error);
     }
 }
 
-async function checkConflicts(lineId, time, duration) {
+async function checkConflicts(lineId, time, duration, excludeId = null) {
     const allBookings = await getBookingsForDate(AppState.selectedDate);
-    const bookings = allBookings.filter(b => b.lineId === lineId);
+    const bookings = allBookings.filter(b => b.lineId === lineId && b.id !== excludeId);
     const newStart = timeToMinutes(time);
     const newEnd = newStart + duration;
 
@@ -461,6 +502,7 @@ async function showBookingDetails(bookingId) {
             </div>
         </div>
         <div class="booking-actions">
+            <button onclick="editBooking('${booking.id}')" class="btn-edit-booking">✏️ Редагувати</button>
             <a href="${inviteUrl}" target="_blank" class="btn-invite-event">🎉 Запрошення</a>
             <button onclick="deleteBooking('${booking.id}')">Видалити бронювання</button>
         </div>
@@ -509,6 +551,71 @@ async function showBookingDetails(bookingId) {
     `;
 
     document.getElementById('bookingModal').classList.remove('hidden');
+}
+
+// ==========================================
+// РЕДАГУВАННЯ БРОНЮВАННЯ (v5.5)
+// ==========================================
+
+async function editBooking(bookingId) {
+    const bookings = await getBookingsForDate(AppState.selectedDate);
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+
+    closeAllModals();
+
+    // Встановити режим редагування
+    AppState.editingBookingId = bookingId;
+
+    // Відкрити панель з даними бронювання
+    await openBookingPanel(booking.time, booking.lineId);
+
+    // Змінити заголовок і кнопку
+    document.querySelector('#bookingPanel .panel-header h3').textContent = 'Редагувати бронювання';
+    document.querySelector('#bookingForm .btn-submit').textContent = 'Зберегти зміни';
+
+    // Заповнити форму
+    document.getElementById('roomSelect').value = booking.room || '';
+    document.getElementById('costumeSelect').value = booking.costume || '';
+    document.getElementById('bookingNotes').value = booking.notes || '';
+
+    // Вибрати програму
+    if (booking.programId) {
+        selectProgram(booking.programId);
+
+        // Кастомна програма
+        const program = PROGRAMS.find(p => p.id === booking.programId);
+        if (program && program.isCustom) {
+            const customName = document.getElementById('customName');
+            const customDuration = document.getElementById('customDuration');
+            if (customName) customName.value = booking.programName || '';
+            if (customDuration) customDuration.value = booking.duration || 30;
+        }
+
+        // Піньята наповнювач
+        if (program && program.hasFiller && booking.pinataFiller) {
+            document.getElementById('pinataFillerSelect').value = booking.pinataFiller;
+        }
+
+        // К-кість дітей (МК)
+        if (program && program.perChild && booking.kidsCount) {
+            const kidsInput = document.getElementById('kidsCountInput');
+            if (kidsInput) {
+                kidsInput.value = booking.kidsCount;
+                kidsInput.dispatchEvent(new Event('input'));
+            }
+        }
+    }
+
+    // Статус
+    const statusRadio = document.querySelector(`input[name="bookingStatus"][value="${booking.status || 'confirmed'}"]`);
+    if (statusRadio) statusRadio.checked = true;
+
+    // Другий аніматор
+    if (booking.secondAnimator) {
+        await populateSecondAnimatorSelect();
+        document.getElementById('secondAnimatorSelect').value = booking.secondAnimator;
+    }
 }
 
 // ==========================================

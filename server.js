@@ -214,6 +214,7 @@ function mapBookingRow(row) {
         hosts: row.hosts,
         secondAnimator: row.second_animator,
         pinataFiller: row.pinata_filler,
+        costume: row.costume,
         room: row.room,
         notes: row.notes,
         createdBy: row.created_by,
@@ -276,6 +277,7 @@ async function initDatabase() {
         // v3.2: Add new columns if they don't exist
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'confirmed'`);
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS kids_count INTEGER`);
+        await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS costume VARCHAR(100)`);
 
         // v3.3: Settings table for Telegram etc
         await pool.query(`
@@ -488,9 +490,9 @@ app.post('/api/bookings', async (req, res) => {
         }
 
         await pool.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, room, notes, created_by, linked_to, status, kids_count)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null]
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null]
         );
         res.json({ success: true, id: b.id });
     } catch (err) {
@@ -525,12 +527,12 @@ app.put('/api/bookings/:id', async (req, res) => {
         await pool.query(
             `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
              label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
-             second_animator=$12, pinata_filler=$13, room=$14, notes=$15, created_by=$16,
-             linked_to=$17, status=$18, kids_count=$19
-             WHERE id=$20`,
+             second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
+             linked_to=$18, status=$19, kids_count=$20
+             WHERE id=$21`,
             [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
              b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
-             b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed',
+             b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed',
              b.kidsCount || null, id]
         );
         res.json({ success: true });

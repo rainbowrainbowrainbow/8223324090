@@ -1,0 +1,477 @@
+/**
+ * panel.css - Бокова панель бронювання, форма, програми, статус
+ */
+
+/* ==========================================
+   БОКОВА ПАНЕЛЬ
+   ========================================== */
+
+.booking-panel {
+    position: fixed;
+    top: 68px;
+    right: 0;
+    width: 340px;
+    height: calc(100vh - 68px);
+    background: var(--white);
+    box-shadow: -8px 0 30px rgba(0,0,0,0.1);
+    z-index: 90;
+    overflow-y: auto;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 20px;
+    border-bottom: 1px solid #E9ECEF;
+    position: sticky;
+    top: 0;
+    background: var(--white);
+    z-index: 10;
+}
+
+.panel-header h3 {
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--dark);
+}
+
+.btn-close {
+    width: 36px;
+    height: 36px;
+    background: var(--light);
+    border: none;
+    border-radius: 50%;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+.btn-close:hover { background: var(--danger); color: var(--white); }
+
+.booking-form {
+    padding: 20px;
+}
+
+.selected-info {
+    background: linear-gradient(135deg, var(--primary-light) 0%, #C8E6C9 100%);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(0, 166, 81, 0.2);
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.info-item:last-child { margin-bottom: 0; }
+
+.info-label { color: var(--gray); font-size: 13px; }
+.info-value { font-weight: 800; font-size: 14px; color: var(--dark); }
+
+.form-section {
+    margin-bottom: 18px;
+}
+
+.form-section label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--gray);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-section select,
+.form-section input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 2px solid #E9ECEF;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-family: inherit;
+    transition: all 0.2s;
+    background: var(--white);
+}
+
+.form-section select:focus,
+.form-section input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0, 166, 81, 0.1);
+}
+
+/* Програми іконками */
+.programs-icons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+
+.program-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 4px;
+    background: var(--light);
+    border: 2px solid transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+    min-height: 72px;
+}
+
+.program-icon:hover {
+    border-color: var(--primary);
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.program-icon.selected {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    box-shadow: 0 4px 12px rgba(0, 166, 81, 0.2);
+}
+
+.program-icon .icon {
+    font-size: 24px;
+    margin-bottom: 4px;
+}
+
+.program-icon .name {
+    font-size: 9px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.2;
+    color: var(--dark);
+}
+
+/* Кольори іконок програм - яскраві та контрастні */
+.program-icon.quest { border-left: 4px solid #9C27B0; background: #F3E5F5; }
+.program-icon.animation { border-left: 4px solid #039BE5; background: #E1F5FE; }
+.program-icon.show { border-left: 4px solid #F4511E; background: #FBE9E7; }
+.program-icon.masterclass { border-left: 4px solid #7CB342; background: #F1F8E9; }
+.program-icon.pinata { border-left: 4px solid #EC407A; background: #FCE4EC; }
+.program-icon.photo { border-left: 4px solid #00ACC1; background: #E0F7FA; }
+.program-icon.custom { border-left: 4px solid #546E7A; background: #ECEFF1; }
+
+/* Деталі програми */
+.program-details {
+    background: var(--light);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    margin-bottom: 6px;
+    color: var(--gray);
+}
+
+.detail-row:last-child { margin-bottom: 0; }
+.detail-row span:last-child { font-weight: 800; color: var(--dark); }
+
+/* Кастомна програма */
+.custom-program-section {
+    background: #FFF8E1;
+    border: 1px solid #FFE082;
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+}
+
+.custom-program-section .form-section {
+    margin-bottom: 12px;
+}
+
+.custom-program-section .form-section:last-child {
+    margin-bottom: 0;
+}
+
+/* Другий аніматор */
+.second-animator-section {
+    background: #E3F2FD;
+    border: 1px solid #90CAF9;
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+}
+
+.second-animator-section .form-section {
+    margin-bottom: 0;
+}
+
+/* Попередження про ведучих */
+.hosts-warning {
+    background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%);
+    border: 2px solid var(--warning);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #E65100;
+}
+
+/* Toggle другий ведучий */
+.extra-host-section {
+    background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+    border: 1px solid #81C784;
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #2E7D32;
+}
+
+.toggle-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #4CAF50;
+}
+
+.extra-host-section select {
+    margin-top: 12px;
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #A5D6A7;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+}
+
+/* Кнопка сабміт */
+.btn-submit {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.btn-submit:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 166, 81, 0.3);
+}
+/* ==========================================
+   КНОПКА РОЗВАЖАЛЬНІ ПРОГРАМИ
+   ========================================== */
+
+.btn-programs {
+    padding: 10px 18px;
+    background: linear-gradient(135deg, #7B1FA2 0%, #6A1B9A 100%);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.btn-programs:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(123, 31, 162, 0.3);
+}
+
+/* ==========================================
+   КАТЕГОРІЇ В ФОРМІ БРОНЮВАННЯ
+   ========================================== */
+
+.programs-icons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.category-header {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--gray);
+    padding: 8px 0 4px;
+    border-bottom: 1px solid #E9ECEF;
+    margin-top: 4px;
+}
+
+.category-header:first-child {
+    margin-top: 0;
+}
+
+.category-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+/* ==========================================
+   ОПИС В ДЕТАЛЯХ БРОНЮВАННЯ
+   ========================================== */
+
+.booking-detail-description {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #E0E0E0;
+}
+
+.booking-detail-description .label {
+    display: block;
+    font-size: 12px;
+    color: var(--gray);
+    margin-bottom: 6px;
+}
+
+.booking-detail-description p {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--dark);
+}
+
+/* ==========================================
+   v3.2: СТАТУС (Попереднє/Підтверджене)
+   ========================================== */
+
+.booking-block.preliminary {
+    border: 2px dashed rgba(255,255,255,0.7);
+    opacity: 0.75;
+}
+
+.booking-block .status-icon {
+    position: absolute;
+    top: 3px;
+    left: 5px;
+    font-size: 9px;
+    font-weight: 800;
+    background: rgba(255,255,255,0.3);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.status-section {
+    margin-bottom: 18px;
+}
+
+.status-radio-group {
+    display: flex;
+    gap: 8px;
+}
+
+.status-radio {
+    flex: 1;
+    cursor: pointer;
+}
+
+.status-radio input { display: none; }
+
+.status-radio-label {
+    display: block;
+    padding: 10px;
+    text-align: center;
+    border: 2px solid #E9ECEF;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 700;
+    transition: all 0.2s;
+}
+
+.status-radio input:checked + .status-radio-label.confirmed {
+    border-color: var(--success);
+    background: #E8F5E9;
+    color: var(--success);
+}
+
+.status-radio input:checked + .status-radio-label.preliminary {
+    border-color: var(--warning);
+    background: #FFF8E1;
+    color: #E65100;
+}
+
+.status-value.preliminary { color: var(--warning); }
+.status-value.confirmed { color: var(--success); }
+
+.btn-status-toggle {
+    width: 100%;
+    padding: 10px;
+    margin-top: 12px;
+    background: var(--light);
+    border: 2px solid #E9ECEF;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.btn-status-toggle:hover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+}
+
+.status-toggle-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #E0E0E0;
+}
+
+.preliminary-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-xs);
+    border: 2px dashed var(--gray);
+    background: #E0E0E0;
+}
+
+/* ==========================================
+   v3.2: KIDS COUNT
+   ========================================== */
+
+.kids-count-section {
+    background: #E8F5E9;
+    border: 1px solid #A5D6A7;
+    border-radius: var(--radius-sm);
+    padding: 14px;
+}
+
+.kids-count-section input {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #A5D6A7;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-family: inherit;
+    text-align: center;
+    font-weight: 700;
+}

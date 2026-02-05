@@ -1,0 +1,112 @@
+/**
+ * controls.css - Zoom, dark/compact toggle, undo кнопка
+ */
+
+/* ==========================================
+   v3.2: ZOOM CONTROLS
+   ========================================== */
+
+.v32-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.zoom-controls {
+    display: flex;
+    background: var(--white);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #E2E8F0;
+}
+
+.zoom-btn {
+    padding: 6px 12px;
+    border: none;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--gray);
+    transition: all 0.15s;
+    border-right: 1px solid #E2E8F0;
+}
+
+.zoom-btn:last-child { border-right: none; }
+
+.zoom-btn.active {
+    background: var(--primary);
+    color: var(--white);
+}
+
+.zoom-btn:hover:not(.active) {
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+/* ==========================================
+   v3.2: DARK MODE
+   ========================================== */
+
+.toggle-mini {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 8px;
+    background: var(--light);
+    border-radius: var(--radius-sm);
+    border: 1px solid #E9ECEF;
+    transition: all 0.2s;
+}
+
+.toggle-mini input { display: none; }
+.toggle-mini:hover { background: #E9ECEF; }
+
+.btn-undo {
+    padding: 6px 10px;
+    border: 1px solid #E9ECEF;
+    background: var(--light);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-undo:hover {
+    background: #E9ECEF;
+}
+
+/* ==========================================
+   v3.2: COMPACT MODE
+   ========================================== */
+
+.timeline-container.compact .grid-cell,
+.timeline-container.compact .time-mark {
+    width: 35px;
+    min-width: 35px;
+}
+
+.timeline-container.compact .line-header {
+    width: 80px;
+    min-width: 80px;
+}
+
+.timeline-container.compact .time-scale {
+    margin-left: 80px;
+}
+
+.timeline-container.compact .timeline-line {
+    min-height: 48px;
+}
+
+.timeline-container.compact .booking-block .title {
+    font-size: 10px;
+}
+
+.timeline-container.compact .booking-block .subtitle {
+    font-size: 8px;
+}

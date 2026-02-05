@@ -1,0 +1,450 @@
+/**
+ * modals.css - Модальні вікна, підтвердження, історія, каталог
+ */
+
+/* ==========================================
+   МОДАЛЬНІ ВІКНА
+   ========================================== */
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-content {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 28px;
+    max-width: 440px;
+    width: 100%;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-close {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    font-size: 28px;
+    color: var(--gray-light);
+    cursor: pointer;
+    transition: color 0.2s;
+}
+.modal-close:hover { color: var(--danger); }
+
+.modal-content h3 {
+    margin-bottom: 24px;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--dark);
+}
+
+.form-group {
+    margin-bottom: 18px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--dark);
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 2px solid #E9ECEF;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0, 166, 81, 0.1);
+}
+
+.form-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.form-buttons button {
+    flex: 1;
+}
+
+.btn-danger {
+    padding: 14px;
+    background: linear-gradient(135deg, var(--danger) 0%, #C62828 100%);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.btn-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(244, 67, 54, 0.3);
+}
+
+/* Деталі бронювання */
+.booking-detail-header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    margin: -28px -28px 24px;
+    padding: 24px 28px;
+    border-radius: var(--radius) var(--radius) 0 0;
+    color: var(--white);
+}
+
+.booking-detail-header h3 {
+    color: var(--white);
+    margin-bottom: 6px;
+    font-size: 18px;
+}
+
+.booking-detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid #F1F3F4;
+    font-size: 13px;
+}
+
+.booking-detail-row:last-child { border-bottom: none; }
+.booking-detail-row .label { color: var(--gray); }
+.booking-detail-row .value { font-weight: 700; color: var(--dark); }
+
+.booking-actions {
+    margin-top: 24px;
+}
+
+.booking-actions button {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, var(--danger) 0%, #C62828 100%);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.booking-actions button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(244, 67, 54, 0.3);
+}
+
+/* Кнопки переносу часу */
+.booking-time-shift {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #E0E0E0;
+}
+
+.booking-time-shift .label {
+    display: block;
+    color: var(--gray);
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+.time-shift-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.time-shift-buttons button {
+    flex: 1;
+    min-width: 45px;
+    padding: 10px 8px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.time-shift-buttons button:nth-child(1),
+.time-shift-buttons button:nth-child(2) {
+    background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+    color: white;
+}
+
+.time-shift-buttons button:nth-child(n+3) {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: white;
+}
+
+.time-shift-buttons button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* Модальне вікно підтвердження (iOS compatible) */
+.modal-confirm {
+    max-width: 340px;
+    text-align: center;
+    padding: 24px;
+}
+
+.modal-confirm h3 {
+    margin-bottom: 12px;
+    font-size: 18px;
+}
+
+.modal-confirm p {
+    color: var(--gray);
+    margin-bottom: 24px;
+    font-size: 14px;
+}
+
+.confirm-buttons {
+    display: flex;
+    gap: 12px;
+}
+
+.confirm-buttons button {
+    flex: 1;
+    padding: 14px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.btn-cancel {
+    background: var(--light);
+    color: var(--dark);
+}
+
+.btn-cancel:hover, .btn-cancel:active {
+    background: #E0E0E0;
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, var(--danger) 0%, #C62828 100%);
+    color: white;
+}
+
+.btn-danger:hover, .btn-danger:active {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
+}
+
+/* Модальне вікно історії */
+.modal-large {
+    max-width: 600px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.history-list {
+    overflow-y: auto;
+    max-height: 500px;
+}
+
+.history-item {
+    padding: 14px;
+    margin-bottom: 10px;
+    border-radius: var(--radius-sm);
+    background: var(--light);
+    border-left: 4px solid var(--gray);
+}
+
+.history-item.action-create {
+    border-left-color: var(--success);
+    background: #E8F5E9;
+}
+
+.history-item.action-delete {
+    border-left-color: var(--danger);
+    background: #FFEBEE;
+}
+
+.history-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.history-action {
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.action-create .history-action { color: var(--success); }
+.action-delete .history-action { color: var(--danger); }
+.action-undo .history-action { color: var(--warning); }
+
+.history-item.action-undo {
+    border-left-color: var(--warning);
+    background: #FFF8E1;
+}
+
+.history-user {
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.history-date {
+    color: var(--gray);
+    margin-left: auto;
+}
+
+.history-details {
+    font-size: 13px;
+    color: var(--dark);
+    font-weight: 600;
+}
+
+.no-history {
+    text-align: center;
+    color: var(--gray);
+    padding: 40px;
+}
+/* ==========================================
+   КАТАЛОГ ПРОГРАМ (модальне вікно)
+   ========================================== */
+
+.modal-catalog {
+    max-width: 650px;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.catalog-list {
+    margin-top: 16px;
+}
+
+.catalog-category {
+    margin-bottom: 24px;
+}
+
+.catalog-category-title {
+    font-size: 15px;
+    font-weight: 800;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 12px;
+    color: var(--white);
+}
+
+.catalog-category-title.animation { background: linear-gradient(135deg, #039BE5 0%, #0277BD 100%); }
+.catalog-category-title.show { background: linear-gradient(135deg, #F4511E 0%, #BF360C 100%); }
+.catalog-category-title.quest { background: linear-gradient(135deg, #9C27B0 0%, #6A1B9A 100%); }
+.catalog-category-title.photo { background: linear-gradient(135deg, #00ACC1 0%, #00838F 100%); }
+.catalog-category-title.masterclass { background: linear-gradient(135deg, #7CB342 0%, #558B2F 100%); }
+.catalog-category-title.pinata { background: linear-gradient(135deg, #EC407A 0%, #AD1457 100%); }
+
+.catalog-programs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.catalog-program-card {
+    background: var(--light);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    border-left: 4px solid var(--gray);
+}
+
+.catalog-program-card.animation { border-left-color: #039BE5; }
+.catalog-program-card.show { border-left-color: #F4511E; }
+.catalog-program-card.quest { border-left-color: #9C27B0; }
+.catalog-program-card.photo { border-left-color: #00ACC1; }
+.catalog-program-card.masterclass { border-left-color: #7CB342; }
+.catalog-program-card.pinata { border-left-color: #EC407A; }
+
+.catalog-program-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.catalog-icon {
+    font-size: 24px;
+}
+
+.catalog-program-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.catalog-program-name {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--dark);
+}
+
+.catalog-program-meta {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.catalog-program-tags {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.catalog-tag {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: #E3F2FD;
+    color: #1565C0;
+}
+
+.catalog-tag.kids {
+    background: #F3E5F5;
+    color: #7B1FA2;
+}
+
+.catalog-program-desc {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--gray);
+    margin-top: 6px;
+}

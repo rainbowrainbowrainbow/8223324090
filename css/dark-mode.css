@@ -1,0 +1,154 @@
+/**
+ * dark-mode.css - Темна тема (всі body.dark-mode правила)
+ */
+
+body.dark-mode {
+    --white: #1a1a2e;
+    --dark: #e0e0e0;
+    --light: #2a2a3e;
+    --gray: #9e9e9e;
+    --gray-light: #757575;
+    background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%);
+    color: #e0e0e0;
+}
+
+body.dark-mode .header {
+    background: #1e1e32;
+    border-bottom-color: #333;
+}
+
+body.dark-mode .timeline-container {
+    background: #1e1e32;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+body.dark-mode .line-header {
+    background: linear-gradient(135deg, #2a2a3e 0%, #333350 100%);
+}
+
+body.dark-mode .line-grid {
+    background: #252540;
+    border-color: #333;
+}
+
+body.dark-mode .grid-cell {
+    border-right-color: #333;
+}
+
+body.dark-mode .grid-cell.hour {
+    border-right-color: #444;
+}
+
+body.dark-mode .grid-cell:hover {
+    background: rgba(0, 166, 81, 0.2);
+}
+
+body.dark-mode .legend {
+    background: #1e1e32;
+}
+
+body.dark-mode .modal-content {
+    background: #1e1e32;
+    color: #e0e0e0;
+}
+
+body.dark-mode .booking-panel {
+    background: #1e1e32;
+    box-shadow: -8px 0 30px rgba(0,0,0,0.4);
+}
+
+body.dark-mode .panel-header {
+    background: #1e1e32;
+    border-bottom-color: #333;
+}
+
+body.dark-mode .selected-info {
+    background: linear-gradient(135deg, #1a3d2a 0%, #2a4a3a 100%);
+    border-color: rgba(0,166,81,0.3);
+}
+
+body.dark-mode .form-section select,
+body.dark-mode .form-section input,
+body.dark-mode .form-group input {
+    background: #2a2a3e;
+    border-color: #444;
+    color: #e0e0e0;
+}
+
+body.dark-mode .program-icon {
+    background: #2a2a3e;
+}
+
+body.dark-mode .program-details {
+    background: #2a2a3e;
+}
+
+body.dark-mode .time-scale {
+    background: #1e1e32;
+}
+
+body.dark-mode .control-panel .zoom-controls,
+body.dark-mode .toggle-mini,
+body.dark-mode .btn-undo {
+    background: #2a2a3e;
+    border-color: #444;
+}
+
+body.dark-mode .booking-tooltip {
+    background: #333350;
+}
+
+body.dark-mode .booking-detail-row {
+    border-bottom-color: #333;
+}
+
+body.dark-mode .warning-banner {
+    background: linear-gradient(135deg, #3d3000 0%, #4d4000 100%);
+}
+
+body.dark-mode .custom-program-section {
+    background: #3d3000;
+    border-color: #665200;
+}
+
+body.dark-mode .second-animator-section {
+    background: #1a2d3d;
+    border-color: #2a4d6d;
+}
+
+body.dark-mode .extra-host-section {
+    background: #1a3d2a;
+    border-color: #2a5d3a;
+}
+
+body.dark-mode .kids-count-section {
+    background: #1a3d2a;
+    border-color: #2a5d3a;
+}
+
+body.dark-mode .status-radio-label {
+    border-color: #444;
+    color: #ccc;
+}
+
+body.dark-mode .minimap-container {
+    background: #1e1e32;
+}
+body.dark-mode .telegram-chat-item {
+    border-color: #444;
+}
+
+body.dark-mode .telegram-chat-item:hover {
+    background: #2a3d2a;
+}
+
+body.dark-mode .no-chats {
+    background: #2a2a3e;
+}
+body.dark-mode .settings-section {
+    border-bottom-color: #444;
+}
+body.dark-mode .dash-list-item { background: #2a2a3e; }
+body.dark-mode .dashboard-section h4 { color: #e0e0e0; }
+body.dark-mode .dash-bar-track { background: #3a3a4e; }
+body.dark-mode .dash-bar-label { color: #ccc; }

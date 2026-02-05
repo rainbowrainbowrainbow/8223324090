@@ -42,10 +42,15 @@ function parseAnimatorsCSV(csvText) {
 
     console.log('Шукаю дату:', todayStr);
 
+    // v5.0: Find header row dynamically — look for a row containing 'День' column
+    const savedAnimators = getSavedAnimators();
     let headerRow = null;
     let headerIdx = -1;
     for (let i = 0; i < rows.length; i++) {
-        if (rows[i].includes('Женя') || rows[i].includes('Анлі')) {
+        // Header row is the one that contains 'День' and at least one known animator name
+        const hasDay = rows[i].some(c => c && c.includes('День'));
+        const hasAnimator = savedAnimators.some(name => rows[i].includes(name));
+        if (hasDay || hasAnimator) {
             headerRow = rows[i];
             headerIdx = i;
             break;
@@ -383,7 +388,8 @@ async function deleteLine() {
         return;
     }
 
-    if (!confirm('Видалити цього аніматора?')) return;
+    const confirmed = await customConfirm('Видалити цього аніматора?', 'Видалення аніматора');
+    if (!confirmed) return;
 
     const newLines = lines.filter(l => l.id !== lineId);
     await saveLinesForDate(AppState.selectedDate, newLines);

@@ -1,42 +1,48 @@
 /**
  * auth.js - Авторизація та управління сесією
+ * v5.0: Server-side JWT authentication
  */
 
 // ==========================================
 // АВТОРИЗАЦІЯ
 // ==========================================
 
-function checkSession() {
-    const session = localStorage.getItem(CONFIG.STORAGE.SESSION);
+async function checkSession() {
+    const token = localStorage.getItem('pzp_token');
     const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
 
-    if (session && savedUser) {
-        const data = JSON.parse(session);
-        if (Date.now() - data.timestamp < 8 * 60 * 60 * 1000) {
-            AppState.currentUser = JSON.parse(savedUser);
+    if (token && savedUser) {
+        // Verify token with server
+        const user = await apiVerifyToken();
+        if (user) {
+            AppState.currentUser = user;
             showMainApp();
             return;
         }
+        // Token expired or invalid
+        localStorage.removeItem('pzp_token');
+        localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
     }
     showLoginScreen();
 }
 
-function login(username, password) {
-    const users = JSON.parse(localStorage.getItem(CONFIG.STORAGE.USERS) || '[]');
-    const user = users.find(u => u.username === username && u.password === password);
-
-    if (user) {
-        AppState.currentUser = user;
-        localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
-        localStorage.setItem(CONFIG.STORAGE.SESSION, JSON.stringify({ timestamp: Date.now() }));
+async function login(username, password) {
+    try {
+        const data = await apiLogin(username, password);
+        AppState.currentUser = data.user;
+        localStorage.setItem('pzp_token', data.token);
+        localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
         showMainApp();
         return true;
+    } catch (err) {
+        console.error('Login error:', err);
+        return false;
     }
-    return false;
 }
 
 function logout() {
     AppState.currentUser = null;
+    localStorage.removeItem('pzp_token');
     localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
     localStorage.removeItem(CONFIG.STORAGE.SESSION);
     showLoginScreen();
@@ -56,10 +62,10 @@ function showMainApp() {
     document.getElementById('mainApp').classList.remove('hidden');
     document.getElementById('currentUser').textContent = AppState.currentUser.name;
 
-    // Settings (gear) — тільки для Сергія
+    // Settings (gear) — тільки для адмінів
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) {
-        settingsBtn.classList.toggle('hidden', AppState.currentUser.username !== 'Sergey');
+        settingsBtn.classList.toggle('hidden', AppState.currentUser.role !== 'admin');
     }
 
     // Дашборд (icon) — не для Animator

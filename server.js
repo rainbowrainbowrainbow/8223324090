@@ -4,6 +4,10 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const https = require('https');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,8 +30,8 @@ const pool = new Pool({
 // TELEGRAM BOT
 // ==========================================
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8068946683:AAGdGn4cwNyRotIY1zzkuad0rHfB-ud-2Fg';
-const TELEGRAM_DEFAULT_CHAT_ID = '-1001805304620'; // Аніматорська група
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '';
 
 function telegramRequest(method, body) {
     return new Promise((resolve, reject) => {
@@ -213,6 +217,43 @@ async function initDatabase() {
             )
         `);
 
+        // v5.0: Users table for server-side authentication
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                role VARCHAR(20) NOT NULL DEFAULT 'user',
+                name VARCHAR(100) NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // Seed default users if table is empty
+        const userCount = await pool.query('SELECT COUNT(*) FROM users');
+        if (parseInt(userCount.rows[0].count) === 0) {
+            const defaultUsers = [
+                { username: 'Vitalina', password: 'Vitalina109', role: 'user', name: 'Віталіна' },
+                { username: 'Dasha', password: 'Dasha743', role: 'user', name: 'Даша' },
+                { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
+                { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
+                { username: 'Animator', password: 'Animator612', role: 'viewer', name: 'Аніматор' }
+            ];
+            for (const u of defaultUsers) {
+                const hash = await bcrypt.hash(u.password, 10);
+                await pool.query(
+                    'INSERT INTO users (username, password_hash, role, name) VALUES ($1, $2, $3, $4) ON CONFLICT (username) DO NOTHING',
+                    [u.username, hash, u.role, u.name]
+                );
+            }
+            console.log('Default users seeded');
+        }
+
+        // v5.0: Add indexes for performance
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_lines_by_date_date ON lines_by_date(date)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)');
+
         console.log('Database initialized');
     } catch (err) {
         console.error('Database init error:', err);
@@ -220,8 +261,72 @@ async function initDatabase() {
 }
 
 // ==========================================
-// API ENDPOINTS
+// AUTH MIDDLEWARE & ENDPOINTS (v5.0)
 // ==========================================
+
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Authentication required' });
+
+    try {
+        const user = jwt.verify(token, JWT_SECRET);
+        req.user = user;
+        next();
+    } catch (err) {
+        return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+}
+
+// Login endpoint
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password required' });
+        }
+
+        const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+        if (result.rows.length === 0) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const user = result.rows[0];
+        const validPassword = await bcrypt.compare(password, user.password_hash);
+        if (!validPassword) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const token = jwt.sign(
+            { id: user.id, username: user.username, role: user.role, name: user.name },
+            JWT_SECRET,
+            { expiresIn: '8h' }
+        );
+
+        res.json({ token, user: { username: user.username, role: user.role, name: user.name } });
+    } catch (err) {
+        console.error('Login error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Verify token endpoint
+app.get('/api/auth/verify', authenticateToken, (req, res) => {
+    res.json({ user: { username: req.user.username, role: req.user.role, name: req.user.name } });
+});
+
+// ==========================================
+// API ENDPOINTS (all protected by auth)
+// ==========================================
+
+// v5.0: Protect all API endpoints except auth and health
+app.use('/api', (req, res, next) => {
+    // Public endpoints that don't require auth
+    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path.startsWith('/telegram/webhook')) {
+        return next();
+    }
+    authenticateToken(req, res, next);
+});
 
 // --- BOOKINGS ---
 
@@ -261,7 +366,7 @@ app.get('/api/bookings/:date', async (req, res) => {
         res.json(bookings);
     } catch (err) {
         console.error('Error fetching bookings:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -282,7 +387,7 @@ app.post('/api/bookings', async (req, res) => {
         res.json({ success: true, id: b.id });
     } catch (err) {
         console.error('Error creating booking:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -295,34 +400,34 @@ app.delete('/api/bookings/:id', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('Error deleting booking:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// Update booking (v3.9: PUT instead of DELETE+CREATE)
+// Update booking (v5.0: proper SQL UPDATE)
 app.put('/api/bookings/:id', async (req, res) => {
-    const client = await pool.connect();
     try {
         const { id } = req.params;
         const b = req.body;
+        if (!validateId(id)) return res.status(400).json({ error: 'Invalid booking ID' });
         if (!validateDate(b.date)) return res.status(400).json({ error: 'Invalid date format' });
         if (!validateTime(b.time)) return res.status(400).json({ error: 'Invalid time format' });
 
-        await client.query('BEGIN');
-        await client.query('DELETE FROM bookings WHERE id = $1', [id]);
-        await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, room, notes, created_by, linked_to, status, kids_count)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
-            [b.id || id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null]
+        await pool.query(
+            `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
+             label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
+             second_animator=$12, pinata_filler=$13, room=$14, notes=$15, created_by=$16,
+             linked_to=$17, status=$18, kids_count=$19
+             WHERE id=$20`,
+            [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
+             b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
+             b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed',
+             b.kidsCount || null, id]
         );
-        await client.query('COMMIT');
         res.json({ success: true });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
         console.error('Error updating booking:', err);
-        res.status(500).json({ error: err.message });
-    } finally {
-        client.release();
+        res.status(500).json({ error: 'Failed to update booking' });
     }
 });
 
@@ -361,7 +466,7 @@ app.get('/api/lines/:date', async (req, res) => {
         }
     } catch (err) {
         console.error('Error fetching lines:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -390,7 +495,7 @@ app.post('/api/lines/:date', async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         console.error('Error saving lines:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     } finally {
         client.release();
     }
@@ -414,7 +519,7 @@ app.get('/api/history', async (req, res) => {
         res.json(history);
     } catch (err) {
         console.error('Error fetching history:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -429,7 +534,7 @@ app.post('/api/history', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('Error adding history:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -445,7 +550,7 @@ app.get('/api/stats/:dateFrom/:dateTo', async (req, res) => {
             [dateFrom, dateTo]
         );
         const bookings = result.rows.map(row => ({
-            id: row.booking_id,
+            id: row.id,
             date: row.date,
             time: row.time,
             lineId: row.line_id,
@@ -463,7 +568,7 @@ app.get('/api/stats/:dateFrom/:dateTo', async (req, res) => {
         res.json(bookings);
     } catch (err) {
         console.error('Stats error:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -474,7 +579,7 @@ app.get('/api/settings/:key', async (req, res) => {
         const result = await pool.query('SELECT value FROM settings WHERE key = $1', [req.params.key]);
         res.json({ value: result.rows.length > 0 ? result.rows[0].value : null });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -487,34 +592,24 @@ app.post('/api/settings', async (req, res) => {
         );
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
 // --- TELEGRAM ---
 
-// v3.9: Simple auth middleware for admin endpoints
-function requireOrigin(req, res, next) {
-    const origin = req.get('origin') || req.get('referer') || '';
-    const domain = process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost';
-    if (!origin || origin.includes(domain)) {
-        return next();
-    }
-    return res.status(403).json({ error: 'Forbidden' });
-}
-
 // Get chat ID from bot updates (admin helper)
-app.get('/api/telegram/chats', requireOrigin, async (req, res) => {
+app.get('/api/telegram/chats', async (req, res) => {
     try {
         const chats = await getTelegramChatId();
         res.json({ chats });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
 // Send notification to Telegram
-app.post('/api/telegram/notify', requireOrigin, async (req, res) => {
+app.post('/api/telegram/notify', async (req, res) => {
     try {
         const { text } = req.body;
         const chatId = await getConfiguredChatId();
@@ -522,7 +617,7 @@ app.post('/api/telegram/notify', requireOrigin, async (req, res) => {
         res.json({ success: result?.ok || false });
     } catch (err) {
         console.error('Telegram notify error:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -569,12 +664,12 @@ app.get('/api/telegram/digest/:date', async (req, res) => {
         res.json({ success: true, count: bookings.length });
     } catch (err) {
         console.error('Digest error:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
 // Ask animator (inline keyboard) — v3.8
-app.post('/api/telegram/ask-animator', requireOrigin, async (req, res) => {
+app.post('/api/telegram/ask-animator', async (req, res) => {
     try {
         const { date, note } = req.body;
         const chatId = await getConfiguredChatId();
@@ -631,7 +726,7 @@ app.post('/api/telegram/ask-animator', requireOrigin, async (req, res) => {
         res.json({ success: result?.ok || false, requestId });
     } catch (err) {
         console.error('Ask animator error:', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -645,7 +740,7 @@ app.get('/api/telegram/animator-status/:id', async (req, res) => {
         }
         res.json({ status: result.rows[0].status });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

@@ -464,40 +464,40 @@ async function showBookingDetails(bookingId) {
 
     document.getElementById('bookingDetails').innerHTML = `
         <div class="booking-detail-header">
-            <h3>${booking.label || booking.programCode}: ${booking.programName}</h3>
-            <p>${booking.room}</p>
+            <h3>${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.programName)}</h3>
+            <p>${escapeHtml(booking.room)}</p>
         </div>
         <div class="booking-detail-row">
             <span class="label">Дата:</span>
-            <span class="value">${booking.date}</span>
+            <span class="value">${escapeHtml(booking.date)}</span>
         </div>
         <div class="booking-detail-row">
             <span class="label">Час:</span>
-            <span class="value">${booking.time} - ${endTime}</span>
+            <span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span>
         </div>
         <div class="booking-detail-row">
             <span class="label">Аніматор:</span>
-            <span class="value">${line ? line.name : '-'}</span>
+            <span class="value">${escapeHtml(line ? line.name : '-')}</span>
         </div>
         <div class="booking-detail-row">
             <span class="label">Ведучих:</span>
-            <span class="value">${booking.hosts}${booking.secondAnimator ? ` (+ ${booking.secondAnimator})` : ''}</span>
+            <span class="value">${escapeHtml(String(booking.hosts))}${booking.secondAnimator ? ` (+ ${escapeHtml(booking.secondAnimator)})` : ''}</span>
         </div>
-        ${booking.costume ? `<div class="booking-detail-row"><span class="label">Костюм:</span><span class="value">${booking.costume}</span></div>` : ''}
-        ${booking.pinataFiller ? `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">${booking.pinataFiller}</span></div>` : ''}
+        ${booking.costume ? `<div class="booking-detail-row"><span class="label">Костюм:</span><span class="value">${escapeHtml(booking.costume)}</span></div>` : ''}
+        ${booking.pinataFiller ? `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">${escapeHtml(booking.pinataFiller)}</span></div>` : ''}
         <div class="booking-detail-row">
             <span class="label">Ціна:</span>
-            <span class="value">${booking.price} грн</span>
+            <span class="value">${escapeHtml(String(booking.price))} грн</span>
         </div>
-        ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">Дітей:</span><span class="value">${booking.kidsCount}</span></div>` : ''}
+        ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">Дітей:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
         <div class="booking-detail-row">
             <span class="label">Статус:</span>
             <span class="value status-value ${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
         </div>
-        ${booking.notes ? `<div class="booking-detail-row"><span class="label">Примітки:</span><span class="value">${booking.notes}</span></div>` : ''}
+        ${booking.notes ? `<div class="booking-detail-row"><span class="label">Примітки:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
         ${descriptionHtml}
         ${!isViewer() ? `<div class="status-toggle-section">
-            <button class="btn-status-toggle" onclick="changeBookingStatus('${booking.id}', '${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}')">
+            <button class="btn-status-toggle" onclick="changeBookingStatus('${escapeHtml(booking.id)}', '${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}')">
                 ${booking.status === 'preliminary' ? '✅ Підтвердити' : '⏳ Зробити попереднім'}
             </button>
         </div>` : ''}

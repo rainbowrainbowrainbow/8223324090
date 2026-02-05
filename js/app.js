@@ -1,6 +1,21 @@
 /**
  * app.js - Ініціалізація та обробники подій
+ * v5.0: Removed hardcoded credentials, server-side auth
  */
+
+// ==========================================
+// XSS PROTECTION
+// ==========================================
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
 // ==========================================
 // ІНІЦІАЛІЗАЦІЯ
@@ -9,7 +24,7 @@
 document.addEventListener('DOMContentLoaded', initializeApp);
 
 function initializeApp() {
-    initializeDefaultData();
+    initializeLocalData();
     initializeCostumes();
     loadPreferences();
     checkSession();
@@ -29,27 +44,8 @@ function loadPreferences() {
     CONFIG.TIMELINE.CELL_MINUTES = AppState.zoomLevel;
 }
 
-function initializeCostumes() {
-    const select = document.getElementById('costumeSelect');
-    if (!select) return;
-
-    COSTUMES.forEach(costume => {
-        const option = document.createElement('option');
-        option.value = costume;
-        option.textContent = costume;
-        select.appendChild(option);
-    });
-}
-
-function initializeDefaultData() {
-    localStorage.setItem(CONFIG.STORAGE.USERS, JSON.stringify([
-        { username: 'Vitalina', password: 'Vitalina109', role: 'user', name: 'Віталіна' },
-        { username: 'Dasha', password: 'Dasha743', role: 'user', name: 'Даша' },
-        { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
-        { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
-        { username: 'Animator', password: 'Animator612', role: 'viewer', name: 'Аніматор' }
-    ]));
-
+// v5.0: Only initialize local storage data that isn't user credentials
+function initializeLocalData() {
     if (!localStorage.getItem(CONFIG.STORAGE.HISTORY)) {
         localStorage.setItem(CONFIG.STORAGE.HISTORY, JSON.stringify([]));
     }
@@ -66,6 +62,18 @@ function initializeDefaultData() {
     }
 }
 
+function initializeCostumes() {
+    const select = document.getElementById('costumeSelect');
+    if (!select) return;
+
+    COSTUMES.forEach(costume => {
+        const option = document.createElement('option');
+        option.value = costume;
+        option.textContent = costume;
+        select.appendChild(option);
+    });
+}
+
 // ==========================================
 // ОБРОБНИКИ ПОДІЙ
 // ==========================================
@@ -80,9 +88,10 @@ function initializeEventListeners() {
 }
 
 function initAuthListeners() {
-    document.getElementById('loginForm').addEventListener('submit', (e) => {
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (!login(document.getElementById('username').value, document.getElementById('password').value)) {
+        const result = await login(document.getElementById('username').value, document.getElementById('password').value);
+        if (!result) {
             document.getElementById('loginError').textContent = 'Невірний логін або пароль';
         }
     });

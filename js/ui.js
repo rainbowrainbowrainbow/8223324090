@@ -136,11 +136,11 @@ function showTooltip(e, booking) {
     const endTime = addMinutesToTime(booking.time, booking.duration);
     const statusText = booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене';
     tooltip.innerHTML = `
-        <strong>${booking.label}: ${booking.programName}</strong><br>
-        🕐 ${booking.time} - ${endTime}<br>
-        🏠 ${booking.room} · ${statusText}
-        ${booking.kidsCount ? '<br>👶 ' + booking.kidsCount + ' дітей' : ''}
-        ${booking.notes ? '<br>📝 ' + booking.notes : ''}
+        <strong>${escapeHtml(booking.label)}: ${escapeHtml(booking.programName)}</strong><br>
+        🕐 ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}<br>
+        🏠 ${escapeHtml(booking.room)} · ${statusText}
+        ${booking.kidsCount ? '<br>👶 ' + escapeHtml(String(booking.kidsCount)) + ' дітей' : ''}
+        ${booking.notes ? '<br>📝 ' + escapeHtml(booking.notes) : ''}
     `;
     tooltip.style.left = `${e.pageX + 12}px`;
     tooltip.style.top = `${e.pageY - 10}px`;
@@ -331,6 +331,7 @@ async function renderMinimapAsync(container) {
 // ЗМІНА СТАТУСУ БРОНЮВАННЯ
 // ==========================================
 
+// v5.0: Use PUT for atomic status update instead of DELETE+CREATE
 async function changeBookingStatus(bookingId, newStatus) {
     try {
         const bookings = await getBookingsForDate(AppState.selectedDate);
@@ -338,14 +339,12 @@ async function changeBookingStatus(bookingId, newStatus) {
         if (!booking) return;
 
         const updated = { ...booking, status: newStatus };
-        await apiDeleteBooking(bookingId);
-        await apiCreateBooking(updated);
+        await apiUpdateBooking(bookingId, updated);
 
         // Оновити linked
         const linked = bookings.filter(b => b.linkedTo === bookingId);
         for (const lb of linked) {
-            await apiDeleteBooking(lb.id);
-            await apiCreateBooking({ ...lb, status: newStatus });
+            await apiUpdateBooking(lb.id, { ...lb, status: newStatus });
         }
 
         // Telegram сповіщення

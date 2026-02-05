@@ -107,11 +107,11 @@ async function renderTimeline() {
         lineEl.className = 'timeline-line';
 
         lineEl.innerHTML = `
-            <div class="line-header" style="border-left-color: ${line.color}" data-line-id="${line.id}">
-                <span class="line-name">${line.name}</span>
+            <div class="line-header" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}">
+                <span class="line-name">${escapeHtml(line.name)}</span>
                 <span class="line-sub">${line.fromSheet ? '📅 на зміні' : 'редагувати'}</span>
             </div>
-            <div class="line-grid" data-line-id="${line.id}">
+            <div class="line-grid" data-line-id="${escapeHtml(line.id)}">
                 ${renderGridCells(line.id)}
             </div>
         `;
@@ -171,12 +171,12 @@ function createBookingBlock(booking, startHour) {
     block.style.width = `${width}px`;
 
     const userLetter = booking.createdBy ? booking.createdBy.charAt(0).toUpperCase() : '';
-    const noteText = booking.notes ? `<div class="note-text">${booking.notes}</div>` : '';
+    const noteText = booking.notes ? `<div class="note-text">${escapeHtml(booking.notes)}</div>` : '';
 
     block.innerHTML = `
-        <div class="user-letter">${userLetter}</div>
-        <div class="title">${booking.label || booking.programCode}: ${booking.room}</div>
-        <div class="subtitle">${booking.time}${booking.kidsCount ? ' (' + booking.kidsCount + ' діт)' : ''}</div>
+        <div class="user-letter">${escapeHtml(userLetter)}</div>
+        <div class="title">${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.room)}</div>
+        <div class="subtitle">${escapeHtml(booking.time)}${booking.kidsCount ? ' (' + escapeHtml(String(booking.kidsCount)) + ' діт)' : ''}</div>
         ${noteText}
     `;
 

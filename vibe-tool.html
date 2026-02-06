@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vibe Coding Tool v4.1</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#242834;--border:#2e3345;
+  --text:#e4e6f0;--text2:#9298b0;--accent:#6c7cff;--accent2:#4e5bbd;
+  --green:#34d399;--orange:#fb923c;--red:#f87171;
+  --radius:10px;--shadow:0 4px 24px rgba(0,0,0,.4);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* HEADER */
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.header h1{font-size:20px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .ver{font-size:12px;color:var(--text2);margin-left:12px}
+
+/* SEARCH */
+.search-box{position:relative;width:320px}
+.search-box input{width:100%;padding:8px 12px 8px 36px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;outline:none}
+.search-box input:focus{border-color:var(--accent)}
+.search-box svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text2)}
+.search-results{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-top:4px;max-height:400px;overflow-y:auto;display:none;z-index:200}
+.search-results.active{display:block}
+.search-result-item{padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px}
+.search-result-item:hover{background:var(--surface2)}
+.search-result-item .sr-tab{font-size:11px;color:var(--accent);margin-bottom:2px}
+.search-result-item mark{background:var(--accent);color:#fff;border-radius:2px;padding:0 2px}
+
+/* TABS */
+.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab{padding:12px 20px;cursor:pointer;font-size:14px;font-weight:500;color:var(--text2);border-bottom:2px solid transparent;white-space:nowrap;transition:.2s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* CONTENT */
+.content{max-width:900px;margin:0 auto;padding:24px}
+.panel{display:none}
+.panel.active{display:block}
+
+/* CARDS */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px;box-shadow:var(--shadow)}
+.card h2{font-size:18px;margin-bottom:12px;color:var(--accent)}
+.card h3{font-size:15px;margin:16px 0 8px;color:var(--green)}
+.card p,.card li{font-size:14px;color:var(--text2);margin-bottom:6px}
+.card ul,.card ol{padding-left:20px}
+.card table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+.card th{text-align:left;padding:8px;background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.card td{padding:8px;border:1px solid var(--border);color:var(--text2)}
+
+/* CODE BLOCKS */
+.code-wrap{position:relative;margin:10px 0}
+.code-block{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;font-family:'Fira Code',monospace,monospace;font-size:13px;line-height:1.5;overflow-x:auto;white-space:pre-wrap;word-break:break-word;color:var(--text)}
+.copy-btn{position:absolute;top:8px;right:8px;background:var(--accent2);color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;opacity:.7;transition:.2s}
+.copy-btn:hover{opacity:1}
+.copy-btn.copied{background:var(--green)}
+
+/* GENERATOR FORM */
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text)}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;font-family:inherit}
+.form-group textarea{min-height:80px;resize:vertical}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--accent)}
+.form-group .hint{font-size:11px;color:var(--text2);margin-top:4px}
+.btn{display:inline-block;padding:10px 24px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s}
+.btn:hover{background:var(--accent2)}
+.btn-green{background:var(--green);color:#000}
+.btn-green:hover{background:#2ab383}
+.btn-row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+
+/* STEP NUMBERS */
+.step-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:var(--accent);color:#fff;border-radius:50%;font-size:13px;font-weight:700;margin-right:10px;flex-shrink:0}
+
+/* STEP ROW */
+.step-row{display:flex;align-items:flex-start;margin-bottom:14px}
+.step-text{flex:1}
+.step-text strong{color:var(--text)}
+
+/* CHEATSHEET BOX */
+.cheat-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:16px;margin:10px 0;font-size:13px}
+.cheat-box .cheat-title{font-weight:700;color:var(--orange);margin-bottom:8px;font-size:14px}
+.cheat-box .cheat-line{color:var(--text2);margin-bottom:4px;padding-left:8px}
+
+/* MOBILE */
+@media(max-width:640px){
+  .header{flex-direction:column;gap:10px;align-items:flex-start}
+  .search-box{width:100%}
+  .tab{padding:10px 14px;font-size:13px}
+  .content{padding:16px}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div style="display:flex;align-items:baseline">
+    <h1>Vibe Coding Tool</h1>
+    <span class="ver">v4.1 · Opus 4.6 · Offline</span>
+  </div>
+  <div class="search-box">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    <input type="text" id="searchInput" placeholder="Пошук по всьому..." autocomplete="off">
+    <div class="search-results" id="searchResults"></div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs" id="tabBar">
+  <div class="tab active" data-tab="quickstart">Quick Start</div>
+  <div class="tab" data-tab="prompt">Головний промт</div>
+  <div class="tab" data-tab="templates">Шаблони</div>
+  <div class="tab" data-tab="cheatsheet">Cheatsheet</div>
+  <div class="tab" data-tab="generator">CLAUDE.md Generator</div>
+  <div class="tab" data-tab="guide">Повний гайд</div>
+</div>
+
+<div class="content">
+
+<!-- ============ TAB 1: QUICK START ============ -->
+<div class="panel active" id="panel-quickstart">
+  <div class="card">
+    <h2>Швидкий старт за 5 кроків</h2>
+    <p style="margin-bottom:16px">Від нуля до працюючого проекту. Нічого зайвого.</p>
+
+    <div class="step-row"><span class="step-num">1</span><div class="step-text"><strong>Скопіюй промт</strong> — перейди у вкладку «Головний промт» і натисни Copy</div></div>
+    <div class="step-row"><span class="step-num">2</span><div class="step-text"><strong>Заповни 4 поля</strong> — заміни плейсхолдери <code>{{...}}</code> на свої дані:</div></div>
+
+    <div class="code-wrap"><div class="code-block">{{ідея_застосунку}}    → що будуємо (1-3 речення)
+{{тип_платформи}}     → web / telegram bot / chrome extension / api
+{{бажаний_результат}} → що маємо отримати на виході
+{{рівень_деталізації}} → brief / normal / maximum</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+
+    <div class="step-row"><span class="step-num">3</span><div class="step-text"><strong>Встав у Claude Code</strong> як перше повідомлення. Або збережи у <code>CLAUDE.md</code> (вкладка Generator).</div></div>
+    <div class="step-row"><span class="step-num">4</span><div class="step-text"><strong>Відповідай на питання AI</strong> коротко і конкретно. Не пиши есе — AI сам запитає деталі.</div></div>
+    <div class="step-row"><span class="step-num">5</span><div class="step-text"><strong>Рухайся ітераціями:</strong> один крок → тест → фікс → коміт → наступний крок. Ніколи не пропускай тест.</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Золоті правила</h2>
+    <ul>
+      <li><strong>Один крок — одна ціль.</strong> Не проси «зроби все». Проси «зроби форму».</li>
+      <li><strong>Тестуй після кожного кроку.</strong> Руками, не тільки словами AI.</li>
+      <li><strong>Commit перед ризиком.</strong> Git — твоя машина часу.</li>
+      <li><strong>3 спроби фіксу → стоп.</strong> <code>/clear</code> і новий підхід.</li>
+      <li><strong>Не розумієш — запитай.</strong> «Поясни простими словами з аналогією.»</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Фрази-щити (копіюй коли треба)</h2>
+    <div class="code-wrap"><div class="code-block">Поясни простими словами, без жаргону.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+    <div class="code-wrap"><div class="code-block">Що зміниться після цієї дії? Що може зламатися?</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+    <div class="code-wrap"><div class="code-block">Покажи мінімальний варіант, без зайвого.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+    <div class="code-wrap"><div class="code-block">Перед тим як щось змінювати — прочитай файл і покажи що планується.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+    <div class="code-wrap"><div class="code-block">Я не зрозумів. Дай аналогію з реального життя.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+    <div class="code-wrap"><div class="code-block">Стоп. Я просив тільки X. Поверни решту як було.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+    <div class="code-wrap"><div class="code-block">Ти вже 2 рази пробував це фіксити. Давай інший підхід.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Клавіші Claude Code</h2>
+    <table>
+      <tr><th>Клавіша</th><th>Що робить</th></tr>
+      <tr><td><code>Shift+Tab</code></td><td>Plan Mode (AI тільки читає, не змінює)</td></tr>
+      <tr><td><code>Esc</code></td><td>Зупинити AI</td></tr>
+      <tr><td><code>Esc+Esc</code></td><td>Зупинити + відмінити останню дію</td></tr>
+      <tr><td><code>/clear</code></td><td>Очистити контекст (свіжий старт)</td></tr>
+      <tr><td><code>/compact</code></td><td>Стиснути контекст (зберегти головне)</td></tr>
+      <tr><td><code>/init</code></td><td>Автоматично створити CLAUDE.md</td></tr>
+      <tr><td><code>claude --continue</code></td><td>Продовжити останню сесію</td></tr>
+      <tr><td><code>claude --resume</code></td><td>Вибрати сесію зі списку</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ============ TAB 2: MAIN PROMPT ============ -->
+<div class="panel" id="panel-prompt">
+  <div class="card">
+    <h2>Головний промт (копіюй в Claude Code або CLAUDE.md)</h2>
+    <p style="margin-bottom:12px">Натисни Copy → встав у Claude Code → заміни <code>{{...}}</code> на свої дані.</p>
+    <div class="code-wrap"><div class="code-block" id="mainPrompt">&lt;system&gt;
+You are **Vibe Coding Assistant** — a "product-to-implementation translator" for a
+non-programmer working in **Claude Code** with **Claude Opus 4.6**.
+
+Your job: help me **build or modify** software — apps, products, websites, Chrome
+extensions, automations, Telegram bots, CRM-integrated systems, APIs, internal tools.
+&lt;/system&gt;
+
+&lt;core-priorities&gt;
+P1. CONTROLLABILITY — every change must be explainable, testable, and reversible.
+P2. SMALL SAFE ITERATIONS — one goal per step. Never change more than needed.
+P3. EXPLORE → PLAN → IMPLEMENT → VERIFY — always in this order.
+P4. TEACHING MODE — while solving the task, teach me coding gradually (light, not overwhelming).
+P5. PRESERVE WORKING STATE — never break what already works. Commit before risky changes.
+&lt;/core-priorities&gt;
+
+&lt;language-policy&gt;
+• Working process (steps, tasks, technical explanations, file paths, commands): **English**
+• Reports (end-of-step summary, changelog, next actions): **Українська**
+• Code comments: **English**
+• Variable/function names: **English** (never transliteration)
+&lt;/language-policy&gt;
+
+&lt;my-input&gt;
+• Idea / task: **{{ідея_застосунку}}**
+• Platform type: **{{тип_платформи}}**
+• Desired outcome: **{{бажаний_результат}}**
+• Detail level: **{{рівень_деталізації}}**
+&lt;/my-input&gt;
+
+&lt;workflow-rules&gt;
+
+RULE 1 — CLARIFY FIRST
+  If information is missing, ask **up to 7 precise questions** before acting.
+  If you can proceed safely with assumptions — proceed but **label every assumption**
+  with [ASSUMPTION] tag so I can confirm or correct.
+  Alternative: use the Interview Pattern — ask me probing questions about edge cases,
+  tradeoffs, and hard parts I might not have considered.
+
+RULE 2 — CHANGE PLAN (before every edit)
+  Before editing anything, provide a Change Plan:
+  • What will change
+  • Where (files/modules)
+  • Why (motivation, not just description)
+  • What could break
+  • How to verify
+  • Estimated scope: small / medium / large
+
+RULE 3 — AFTER EVERY CHANGE
+  After each change, provide:
+  • Test checklist (what to click/enter/check, expected results)
+  • Rollback plan (exact steps or command to revert)
+  • Files changed (list with 1-line description per file)
+  • Git commit suggestion
+
+RULE 4 — MINIMAL DIFFS (anti-overengineering)
+  Because unexpected changes can break working features and confuse a non-programmer:
+  • Do NOT refactor unless it is necessary for the requested outcome.
+  • Do NOT add features I didn't ask for.
+  • Do NOT change code style, formatting, or naming in files you didn't need to touch.
+  • Do NOT add docstrings, comments, or type annotations to code you didn't change.
+  • Do NOT create helpers, utilities, or abstractions for one-time operations.
+  • Do NOT design for hypothetical future requirements.
+  • Prefer editing 3 lines over rewriting 30.
+  • If you create temporary files for testing, clean them up when done.
+
+RULE 5 — GIT DISCIPLINE
+  • Suggest `git commit` after every successful step.
+  • Commit message format: "type: short description" (feat/fix/refactor/docs/style)
+  • Never force-push without explicit permission.
+  • Before risky changes: commit current working state first.
+
+RULE 6 — WHEN STUCK (3-strike rule)
+  If a fix doesn't work after 3 attempts:
+  1. Stop and explain the root cause in plain language.
+  2. Propose a fundamentally different approach.
+  3. If that fails too — rollback to last working state and ask me how to proceed.
+
+RULE 7 — AUTONOMY TIERS
+  AUTO (no confirmation needed):
+    reading files, running tests, editing &lt; 20 lines, local reversible actions, git commits
+  CONFIRM FIRST:
+    deleting files, installing packages, changing config, edits &gt; 50 lines,
+    changes to multiple modules, anything affecting shared systems
+  ALWAYS ASK:
+    destructive operations (rm -rf, DROP TABLE, git reset --hard),
+    publishing/deploying, sending external messages, force-push
+
+RULE 8 — CONTEXT PERSISTENCE
+  Your context window will be automatically compacted as it approaches its limit.
+  This allows you to continue working indefinitely. Therefore:
+  • Do not stop tasks early due to token budget concerns.
+  • As you approach context limits, save progress to CONTEXT.md and commit.
+  • Be as persistent and autonomous as possible — complete tasks fully.
+  • After completing a group of tool calls, provide a quick summary of work done.
+
+RULE 9 — EFFICIENCY
+  When you need to read multiple files, run multiple searches, or execute independent
+  commands, do them in parallel rather than sequentially. This speeds up the workflow.
+  However, if actions depend on each other, run them sequentially.
+
+&lt;/workflow-rules&gt;
+
+&lt;investigate-before-answering&gt;
+Never speculate about code you have not opened. If I reference a specific file, you
+MUST read the file before answering. Investigate and read relevant files BEFORE answering
+questions about the codebase. Never guess about code structure or behavior.
+&lt;/investigate-before-answering&gt;
+
+&lt;special-focus&gt;
+When relevant, optimize for these common domains:
+• Web systems &amp; booking-style sites (forms, calendars, confirmation flows)
+• CRM interactions (sync, webhooks, data mapping, auth, rate limits)
+• Telegram bots (flows, commands, inline keyboards, notifications, state management)
+• Automations (scheduled jobs, triggers, integrations, error alerts)
+• Chrome extensions (manifest v3, content scripts, popup, storage)
+&lt;/special-focus&gt;
+
+&lt;guardrails&gt;
+NEVER-1: Delete or overwrite working code without explicit request and backup.
+NEVER-2: Store secrets (API keys, passwords, tokens) in code or public files.
+NEVER-3: Install packages/dependencies without listing them and getting approval.
+NEVER-4: Make "improvements" or "cleanups" I didn't ask for.
+NEVER-5: Skip error handling for user-facing features.
+NEVER-6: Give me a wall of code without explanation.
+NEVER-7: Use deprecated libraries or APIs without warning.
+NEVER-8: Assume I understand technical terms — always explain or offer to explain.
+NEVER-9: Speculate about code you have not read.
+NEVER-10: Remove or weaken existing tests.
+&lt;/guardrails&gt;
+
+&lt;teaching-mode&gt;
+At the end of each step, add a **Learning Nugget** block:
+
+  LEARNING NUGGET
+  • Concept: [1 concept explained in plain language, max 5 lines]
+  • Analogy: [real-life analogy to make it stick]
+  • Try it: [optional micro-exercise: "Try changing X to Y and see what happens"]
+  • Quick check: [1 yes/no question to confirm understanding]
+
+Difficulty progression:
+  Steps 1–3:  fundamentals (files, folders, what is HTML/CSS/JS, what is a server)
+  Steps 4–7:  intermediate (functions, data flow, APIs, databases)
+  Steps 8+:   practical (debugging, performance, deployment, security)
+&lt;/teaching-mode&gt;
+
+&lt;protocol&gt;
+
+STEP 1 — CLARIFY
+  Ask questions if needed (max 7) or use Interview Pattern for complex projects.
+  Confirm the "definition of done".
+  Output: numbered list of confirmed requirements + labeled assumptions.
+
+STEP 2 — PRODUCT SKELETON
+  Provide:
+  • Key features list (3–9 items, prioritized: must / should / nice-to-have)
+  • User flow (numbered steps from start to finish)
+  • Screens/modules map (what pages or components exist)
+  • Data model (entities -&gt; fields, shown as simple table)
+  • Integrations needed (external services, APIs)
+  • Tech stack recommendation with reasoning (why this and not that)
+
+STEP 3 — IMPLEMENTATION PLAN
+  Break into sprints/iterations. For each sprint:
+  • Scope (what gets built)
+  • Acceptance criteria (how to know it's done)
+  • Tests (what to check)
+  • Dependencies (what must be ready before this sprint)
+
+STEP 4 — IMPLEMENT ITERATIVELY
+  Implement **one unit at a time** (one screen, one feature, one integration).
+  For every unit always include:
+  • Files changed/created (list)
+  • What changed (plain language)
+  • How to test (step-by-step for non-programmer)
+  • Rollback (how to undo)
+  • Git commit suggestion
+
+STEP 5 — PATCH MODE (editing existing product)
+  When I request a change/fix:
+  1. Restate: current behavior vs desired behavior.
+  2. Root cause: what's causing the issue (plain language).
+  3. Two solutions: simple (quick fix) vs robust (proper fix) with tradeoffs.
+  4. Implement chosen option with minimal diff.
+  5. Tests + rollback.
+
+&lt;/protocol&gt;
+
+&lt;response-format&gt;
+For every response use this structure:
+
+1. **Step Goal** (EN) — what we're achieving right now
+2. **What We Do** (EN) — technical actions, file changes
+3. **Instructions For You** (EN) — what you need to do (click, test, approve)
+4. **Test Checklist** (EN) — numbered list of what to verify
+5. **Rollback** (EN) — how to undo if something breaks
+6. **Звіт українською** (UA) — що зроблено, що перевірити, що далі
+7. **Learning Nugget** (EN) — concept + analogy + exercise + question
+&lt;/response-format&gt;</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Модифікатори (додай в кінець промта)</h2>
+    <table>
+      <tr><th>Режим</th><th>Фраза</th><th>Коли</th></tr>
+      <tr><td>Швидкий прототип</td><td style="cursor:pointer" onclick="copyText(this.textContent)"><code>MODE: rapid prototype. Simplest working version, no polish. I need to see it work. Auto-approve small changes.</code></td><td>Побачити ідею за 10-30 хв</td></tr>
+      <tr><td>Стабільність</td><td style="cursor:pointer" onclick="copyText(this.textContent)"><code>MODE: stability. Priority: error handling, edge cases, test coverage. Use max effort for analysis.</code></td><td>Надійний продукт</td></tr>
+      <tr><td>UX/Дизайн</td><td style="cursor:pointer" onclick="copyText(this.textContent)"><code>MODE: ux-focus. Priority: simplicity, clarity, modern aesthetics. Give 3 UI alternatives for each screen.</code></td><td>Красивий інтерфейс</td></tr>
+      <tr><td>Інтеграції</td><td style="cursor:pointer" onclick="copyText(this.textContent)"><code>MODE: integration. Describe step-by-step: setup, keys, verification, common errors, rate limits.</code></td><td>Зовнішній сервіс</td></tr>
+      <tr><td>Навчання MAX</td><td style="cursor:pointer" onclick="copyText(this.textContent)"><code>MODE: learning-max. Explain every decision. Show alternatives. Quiz me after each step.</code></td><td>Вчитися по-максимуму</td></tr>
+      <tr><td>Авто-режим</td><td style="cursor:pointer" onclick="copyText(this.textContent)"><code>MODE: auto. Implement changes rather than only suggesting them. Auto-approve small changes. Only confirm on large/risky changes.</code></td><td>Довіряєш AI</td></tr>
+      <tr><td>Дослідження</td><td style="cursor:pointer" onclick="copyText(this.textContent)"><code>MODE: research. Search in structured way, develop competing hypotheses, track confidence levels, self-critique.</code></td><td>Дослідити перед кодом</td></tr>
+      <tr><td>Красивий UI</td><td style="cursor:pointer" onclick="copyText(this.textContent)"><code>MODE: beautiful-ui. Use modern design: clean typography, consistent spacing, subtle shadows, smooth animations, professional color palette.</code></td><td>Професійний вигляд</td></tr>
+    </table>
+    <p style="margin-top:8px;font-size:12px;color:var(--text2)">Клікни на фразу щоб скопіювати. Можна комбінувати: <code>MODE: rapid prototype + learning-max</code></p>
+  </div>
+</div>
+
+<!-- ============ TAB 3: TEMPLATES ============ -->
+<div class="panel" id="panel-templates">
+  <div class="card">
+    <h2>Міні-шаблони запитів</h2>
+    <p>Копіюй потрібний шаблон → встав у Claude Code → заміни [...] на своє.</p>
+  </div>
+
+  <div class="card">
+    <h3>Додати фічу</h3>
+    <div class="code-wrap"><div class="code-block">Додай фічу: [опис].
+Перед реалізацією:
+1. Уточни до 5 питань
+2. Покажи план змін
+3. Тільки після мого "ок" — реалізуй
+4. Після реалізації дай тест-чеклист</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Виправити баг</h3>
+    <div class="code-wrap"><div class="code-block">Є баг:
+• Що роблю: [кроки відтворення]
+• Очікую: [що мало статися]
+• Фактично: [що сталося замість]
+• Скріншот/помилка: [якщо є]
+
+Дай 2 варіанти фіксу (швидкий і правильний) з поясненням різниці.
+Address the root cause, don't suppress the error.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Поліпшити UI</h3>
+    <div class="code-wrap"><div class="code-block">Оціни поточний UI і дай 10 конкретних покращень.
+Для кожного:
+• Що змінити
+• Чому це краще (для користувача)
+• Як перевірити
+Сортуй від найважливішого до найменш важливого.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Оптимізувати швидкість</h3>
+    <div class="code-wrap"><div class="code-block">Проаналізуй продуктивність і дай топ-7 вузьких місць.
+Для кожного:
+• Де проблема
+• Чому це повільно (проста аналогія)
+• Як пофіксити
+• Як перевірити що стало швидше</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Пояснити код</h3>
+    <div class="code-wrap"><div class="code-block">Поясни цей файл/функцію простими словами:
+@[шлях до файлу]
+
+Формат відповіді:
+1. Що це робить (1 речення)
+2. Аналогія з реального життя
+3. Покрокове пояснення (як рецепт)
+4. Що станеться якщо це видалити</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Додати інтеграцію</h3>
+    <div class="code-wrap"><div class="code-block">Підключи [назва сервісу] до мого проекту.
+Покажи повний план:
+1. Що потрібно налаштувати (акаунти, ключі)
+2. Кроки підключення
+3. Як перевірити що працює
+4. Типові помилки і як їх вирішувати
+5. Безпека: де зберігати ключі</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Розпочати новий проект</h3>
+    <div class="code-wrap"><div class="code-block">Хочу створити: [опис].
+Платформа: [web/bot/extension/etc].
+
+Почни з STEP 1 (Clarify) згідно протоколу.
+Не пиши код поки не пройдемо кроки 1–3.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Аналіз UI по скріншоту</h3>
+    <div class="code-wrap"><div class="code-block">Ось скріншот мого поточного UI: [вставити зображення]
+
+1. Що працює добре з точки зору UX?
+2. Які 5 конкретних проблем бачиш?
+3. Для кожної проблеми: що змінити і чому
+4. Покажи план змін перед реалізацією
+5. Implement the design, then take a screenshot and compare</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Interview (для складних проектів)</h3>
+    <div class="code-wrap"><div class="code-block">I want to build [brief description]. Interview me in detail.
+Ask about:
+- Who are the users and what problem they face
+- Technical requirements and constraints
+- UI/UX preferences
+- Edge cases and error scenarios
+- Integrations needed
+- Budget and timeline
+
+Don't ask obvious questions — dig into the hard parts.
+Keep interviewing until we've covered everything.
+Then write a complete spec to SPEC.md.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Продовжити роботу (нова сесія)</h3>
+    <div class="code-wrap"><div class="code-block">Start of new session. Do the following:
+1. Read CONTEXT.md, CLAUDE.md, and tests.json if they exist
+2. Run git log --oneline -10 to see recent history
+3. Run any init.sh if it exists
+4. Check test status
+5. Report: what was done, what's next, any known issues
+Then continue with the next planned task.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Debugging</h3>
+    <div class="code-wrap"><div class="code-block">Ось помилка: [вставити повний текст помилки].
+Що я робив: [кроки].
+Що було до цього: [контекст].
+
+Поясни що сталось простими словами і дай фікс.
+Fix it and verify the build/tests succeed.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Deployment</h3>
+    <div class="code-wrap"><div class="code-block">Допоможи задеплоїти мій проект.
+Тип: [web app / bot / api / extension].
+Бюджет: [безкоштовно / до $X на місяць].
+Вимоги: [домен? SSL? кількість користувачів?].
+
+Дай покроковий план з описом кожного кроку.
+Що може піти не так і як це пофіксити.</div><button class="copy-btn" onclick="copyBlock(this)">Copy</button></div>
+  </div>
+</div>
+
+<!-- ============ TAB 4: CHEATSHEET ============ -->
+<div class="panel" id="panel-cheatsheet">
+  <div class="card">
+    <h2>Cheatsheet — все на одному екрані</h2>
+  </div>
+
+  <div class="card">
+    <div class="cheat-box">
+      <div class="cheat-title">ПОЧИНАЄШ ПРОЕКТ</div>
+      <div class="cheat-line">1. Заповни 4 плейсхолдери</div>
+      <div class="cheat-line">2. Встав промт в CLAUDE.md або як повідомлення</div>
+      <div class="cheat-line">3. Додай модифікатор якщо треба</div>
+      <div class="cheat-line">4. Відповідай на питання AI → один крок → тест</div>
+      <div class="cheat-line">або: <code>/init</code> для автоматичного старту</div>
+    </div>
+
+    <div class="cheat-box">
+      <div class="cheat-title">ЩОСЬ ЗЛАМАЛОСЬ</div>
+      <div class="cheat-line">1. Скопіюй помилку дослівно</div>
+      <div class="cheat-line">2. Використай шаблон Debugging</div>
+      <div class="cheat-line">3. Правило 3 спроб → <code>/clear</code> → новий підхід</div>
+    </div>
+
+    <div class="cheat-box">
+      <div class="cheat-title">НОВА СЕСІЯ</div>
+      <div class="cheat-line"><code>claude --continue</code> — продовжити останню</div>
+      <div class="cheat-line"><code>claude --resume</code> — вибрати з списку</div>
+      <div class="cheat-line">або: шаблон «Продовжити роботу»</div>
+    </div>
+
+    <div class="cheat-box">
+      <div class="cheat-title">AI ВІДМОВЛЯЄ</div>
+      <div class="cheat-line">Додай контекст. Поясни чому це легітимно.</div>
+      <div class="cheat-line">«I'm building [X] for my own [Y]. Show me [Z].»</div>
+    </div>
+
+    <div class="cheat-box">
+      <div class="cheat-title">AI РОБИТЬ ЗАЙВЕ</div>
+      <div class="cheat-line">«Стоп. Я просив тільки X. Поверни решту як було.»</div>
+    </div>
+
+    <div class="cheat-box">
+      <div class="cheat-title">НЕ РОЗУМІЮ</div>
+      <div class="cheat-line">«Поясни простими словами з аналогією»</div>
+    </div>
+
+    <div class="cheat-box">
+      <div class="cheat-title">ЗБЕРЕГТИ ПРОГРЕС</div>
+      <div class="cheat-line">«Зроби коміт з описом що ми зробили»</div>
+      <div class="cheat-line">В кінці сесії: «Update CONTEXT.md and commit»</div>
+    </div>
+
+    <div class="cheat-box">
+      <div class="cheat-title">КЛАВІШІ</div>
+      <div class="cheat-line"><code>Shift+Tab</code> → Plan Mode (безпечна розвідка)</div>
+      <div class="cheat-line"><code>Esc</code> → зупинити AI</div>
+      <div class="cheat-line"><code>Esc+Esc</code> → зупинити + відмінити</div>
+      <div class="cheat-line"><code>/clear</code> → очистити контекст</div>
+      <div class="cheat-line"><code>/compact</code> → стиснути контекст</div>
+    </div>
+
+    <div class="cheat-box">
+      <div class="cheat-title">QUALITY GATES (перед переходом далі)</div>
+      <div class="cheat-line">Після ідеї: хто, що, навіщо, обмеження?</div>
+      <div class="cheat-line">Після дизайну: User Flow, сценарії, дані?</div>
+      <div class="cheat-line">Після прототипу: можна пройти весь flow?</div>
+      <div class="cheat-line">Після спринту: нове працює, старе не зламалось?</div>
+      <div class="cheat-line">Перед запуском: тести, секрети, .gitignore?</div>
+    </div>
+
+    <div class="cheat-box">
+      <div class="cheat-title">АНТИ-ПАТЕРНИ (НЕ роби так)</div>
+      <div class="cheat-line">❌ Мішати задачі в одній сесії (→ <code>/clear</code>)</div>
+      <div class="cheat-line">❌ Фіксити баг 5+ разів (→ інший підхід)</div>
+      <div class="cheat-line">❌ CLAUDE.md на 2000 рядків (→ до ~500)</div>
+      <div class="cheat-line">❌ Довіряти AI без тестів (→ «Run tests»)</div>
+      <div class="cheat-line">❌ «Дослідити все» без мети (→ конкретна ціль)</div>
+    </div>
+
+    <div class="cheat-box">
+      <div class="cheat-title">ВАРТІСТЬ</div>
+      <div class="cheat-line">Pro підписка: $20/міс — найпростіше</div>
+      <div class="cheat-line">Haiku для простого: 80% дешевше</div>
+      <div class="cheat-line">CLAUDE.md кешування: -90% токенів</div>
+      <div class="cheat-line"><code>/clear</code> між задачами: менше контексту</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB 5: CLAUDE.md GENERATOR ============ -->
+<div class="panel" id="panel-generator">
+  <div class="card">
+    <h2>CLAUDE.md Generator</h2>
+    <p style="margin-bottom:16px">Заповни поля → натисни «Згенерувати» → скопіюй → збережи як <code>CLAUDE.md</code> в корені проекту.</p>
+
+    <div class="form-group">
+      <label>Назва проекту</label>
+      <input type="text" id="gen-name" placeholder="Напр: BookingBot">
+    </div>
+
+    <div class="form-group">
+      <label>Короткий опис (1-2 речення)</label>
+      <input type="text" id="gen-desc" placeholder="Напр: Telegram бот для запису на стрижку в барбершоп">
+    </div>
+
+    <div class="form-group">
+      <label>Тип платформи</label>
+      <select id="gen-platform">
+        <option value="web">Web app</option>
+        <option value="telegram bot">Telegram bot</option>
+        <option value="chrome extension">Chrome extension</option>
+        <option value="api">API / Backend</option>
+        <option value="automation">Automation</option>
+        <option value="mobile">Mobile app</option>
+        <option value="desktop">Desktop app</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Tech stack (якщо знаєш, інакше залиш пустим)</label>
+      <input type="text" id="gen-stack" placeholder="Напр: Node.js, Express, SQLite">
+      <div class="hint">Залиш пустим — AI запропонує стек сам</div>
+    </div>
+
+    <div class="form-group">
+      <label>Команди для запуску</label>
+      <textarea id="gen-commands" placeholder="npm install&#10;npm run dev&#10;npm test">npm install
+npm run dev
+npm test</textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Структура проекту (головні папки)</label>
+      <textarea id="gen-structure" placeholder="/src/pages/ — сторінки&#10;/src/components/ — компоненти&#10;/src/api/ — серверна логіка">/src/pages/     — сторінки/екрани
+/src/components/ — компоненти UI
+/src/api/       — серверна логіка
+/src/data/      — робота з даними</textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Додаткові правила (ваші особисті)</label>
+      <textarea id="gen-rules" placeholder="Напр: Використовуй українську для UI текстів&#10;Завжди пиши тести"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Бажаний результат</label>
+      <input type="text" id="gen-outcome" placeholder="Напр: Працюючий бот який пише заявки в Google Sheets">
+    </div>
+
+    <div class="form-group">
+      <label>Рівень деталізації</label>
+      <select id="gen-detail">
+        <option value="brief">Brief — мінімум пояснень</option>
+        <option value="normal" selected>Normal — стандарт</option>
+        <option value="maximum">Maximum — пояснюй все</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Модифікатор (опціонально)</label>
+      <select id="gen-mode">
+        <option value="">Без модифікатора</option>
+        <option value="rapid prototype">Швидкий прототип</option>
+        <option value="stability">Стабільність</option>
+        <option value="ux-focus">UX/Дизайн</option>
+        <option value="learning-max">Навчання MAX</option>
+        <option value="auto">Авто-режим</option>
+        <option value="beautiful-ui">Красивий UI</option>
+      </select>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" onclick="generateClaude()">Згенерувати CLAUDE.md</button>
+      <button class="btn btn-green" onclick="copyGenerated()" id="copyGenBtn" style="display:none">Скопіювати</button>
+    </div>
+
+    <div class="code-wrap" style="margin-top:16px;display:none" id="genResultWrap">
+      <div class="code-block" id="genResult"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB 6: FULL GUIDE ============ -->
+<div class="panel" id="panel-guide">
+  <div class="card">
+    <h2>Повний гайд</h2>
+    <p style="margin-bottom:16px">Весь документ VIBE-CODING-PROMPT v4.1 — пошук працює зверху.</p>
+
+    <h3>Що таке Vibe Coding</h3>
+    <p><strong>Vibe Coding</strong> — термін від Andrej Karpathy (2025). Спосіб створювати продукт, коли ти описуєш <strong>що має робити система</strong> людською мовою, а AI допомагає перетворити це на рішення.</p>
+    <ul>
+      <li>Ти мислиш <strong>не кодом</strong>, а <strong>поведінкою продукту</strong></li>
+      <li>Замість «як це написати?» питаєш «як це має працювати?»</li>
+      <li>Працюєш маленькими кроками: опис → генерація → перевірка → уточнення</li>
+      <li>Ти — <strong>делегатор</strong>, AI — <strong>виконавець</strong></li>
+    </ul>
+    <p><strong>Аналогія:</strong> Ти — архітектор, який малює план будинку. AI — бригада будівельників. Ти кажеш «тут двері, тут вікно». Бригада будує. Ти перевіряєш.</p>
+
+    <h3>Вайб-кодінг — це спектр</h3>
+    <table>
+      <tr><th>Рівень</th><th>Назва</th><th>Що робиш</th></tr>
+      <tr><td>1</td><td>Pure Vibe Coding</td><td>Описуєш → AI генерує → приймаєш не читаючи</td></tr>
+      <tr><td>2</td><td>Guided Vibe Coding</td><td>Описуєш → AI генерує → переглядаєш → тестуєш</td></tr>
+      <tr><td>3</td><td>Agentic Engineering</td><td>Делегуєш → AI виконує → ти рев'юїш і контролюєш</td></tr>
+    </table>
+
+    <h3>"Вайб-такса"</h3>
+    <p>Stack Overflow 2025: розробники з AI відчували себе на <strong>20% швидшими</strong>, але фактично витрачали <strong>на 19% більше часу</strong> на debugging. Тому цей документ наполягає на тестах і малих кроках.</p>
+
+    <h3>Покрокова система (від ідеї до продукту)</h3>
+    <p><strong>Етап A — Формулювання ідеї:</strong> Хто користувач? Яка проблема? Які 3-7 функцій? Обмеження?</p>
+    <p><strong>Етап B — Дизайн поведінки:</strong> User Flow + Сценарії + Структура даних</p>
+    <p><strong>Етап C — Прототип:</strong> Мінімально працюючий варіант</p>
+    <p><strong>Етап D — Реалізація фіч:</strong> Спринтами, один за одним</p>
+    <p><strong>Етап E — Якість:</strong> Тести, обробка помилок, безпека</p>
+    <p><strong>Етап F — Масштабування:</strong> Оптимізація, нові фічі, deployment</p>
+
+    <h3>Типи помилок</h3>
+    <table>
+      <tr><th>Тип</th><th>Що бачиш</th><th>Аналогія</th></tr>
+      <tr><td>Синтаксична</td><td>Червоний текст, SyntaxError</td><td>Граматична помилка</td></tr>
+      <tr><td>Логічна</td><td>Працює, але результат неправильний</td><td>Правильна адреса, не те місто</td></tr>
+      <tr><td>Runtime</td><td>Падає під час роботи</td><td>Машина глохне на перехресті</td></tr>
+    </table>
+
+    <h3>Guardrails (10 правил для AI)</h3>
+    <ol>
+      <li>Не видаляти робочий код без запиту і бекапу</li>
+      <li>Не зберігати секрети в коді</li>
+      <li>Не ставити пакети без дозволу</li>
+      <li>Не робити "покращення" без запиту</li>
+      <li>Не пропускати обробку помилок</li>
+      <li>Не давати стіну коду без пояснень</li>
+      <li>Не використовувати застарілі бібліотеки</li>
+      <li>Завжди пояснювати терміни</li>
+      <li>Не вгадувати код не читаючи</li>
+      <li>Не видаляти тести</li>
+    </ol>
+
+    <h3>Контекст-менеджмент</h3>
+    <table>
+      <tr><th>Файл</th><th>Для чого</th></tr>
+      <tr><td><code>CLAUDE.md</code></td><td>Правила проекту (авто-завантаження)</td></tr>
+      <tr><td><code>CLAUDE.local.md</code></td><td>Твої особисті правила</td></tr>
+      <tr><td><code>CONTEXT.md</code></td><td>Стан проекту між сесіями</td></tr>
+      <tr><td><code>tests.json</code></td><td>Трекінг тестів</td></tr>
+      <tr><td><code>.claude/rules/*.md</code></td><td>Модульні правила по темах</td></tr>
+    </table>
+
+    <h3>Deployment (платформи)</h3>
+    <table>
+      <tr><th>Тип</th><th>Платформа</th><th>Ціна</th></tr>
+      <tr><td>Статичний сайт</td><td>GitHub Pages, Netlify</td><td>Безкоштовно</td></tr>
+      <tr><td>Веб-додаток</td><td>Vercel, Railway, Render</td><td>Free/дешево</td></tr>
+      <tr><td>Telegram бот</td><td>Railway, Render, fly.io</td><td>Free/дешево</td></tr>
+      <tr><td>Chrome Extension</td><td>Chrome Web Store</td><td>$5 одноразово</td></tr>
+    </table>
+
+    <h3>Вартість моделей</h3>
+    <table>
+      <tr><th>Модель</th><th>Ціна (за 1M токенів)</th><th>Для чого</th></tr>
+      <tr><td>Opus 4.6</td><td>$5/$25</td><td>Складна архітектура, debugging</td></tr>
+      <tr><td>Sonnet 4.5</td><td>$3/$15</td><td>Щоденне кодування</td></tr>
+      <tr><td>Haiku 4.5</td><td>$1/$5</td><td>Прості задачі</td></tr>
+    </table>
+    <p>Pro підписка ($20/міс) — найпростіший варіант. Не треба рахувати токени.</p>
+
+    <h3>Характер Claude при кодуванні</h3>
+    <ul>
+      <li>Помічає додаткові баги — навіть якщо не просив</li>
+      <li>Не "форсить" проходження тестів — вирішує проблему</li>
+      <li>Поважає твій вибір технологій</li>
+      <li>Вчить за замовчуванням (хочеш код без пояснень — скажи)</li>
+      <li>Чесний — не каже "все добре" коли бачить проблему</li>
+    </ul>
+
+    <h3>Поради для соло-розробника</h3>
+    <ol>
+      <li><strong>Ти — і розробник, і QA, і менеджер.</strong> Quality Gates обов'язкові.</li>
+      <li><strong>Git — твій рятівний круг.</strong> Коміть часто.</li>
+      <li><strong>Не намагайся зрозуміти ВСЕ.</strong> Фокус на поведінці, не на коді.</li>
+      <li><strong>Веди CONTEXT.md як щоденник.</strong> Завтра забудеш що робив.</li>
+      <li><strong>Сесії по 1-2 години.</strong> Краще 3 короткі ніж одна на 6 годин.</li>
+      <li><strong>Writer/Reviewer Pattern:</strong> Зроби в одній сесії → review в новій.</li>
+    </ol>
+  </div>
+</div>
+
+</div><!-- /content -->
+
+<script>
+// TAB SWITCHING
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-'+tab.dataset.tab).classList.add('active');
+  });
+});
+
+// COPY CODE BLOCK
+function copyBlock(btn){
+  const code=btn.previousElementSibling.textContent;
+  navigator.clipboard.writeText(code).then(()=>{
+    btn.textContent='Copied!';btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},2000);
+  });
+}
+
+// COPY INLINE TEXT
+function copyText(text){
+  navigator.clipboard.writeText(text).then(()=>{
+    const n=document.createElement('div');
+    n.textContent='Copied!';
+    n.style.cssText='position:fixed;top:20px;right:20px;background:#34d399;color:#000;padding:8px 16px;border-radius:8px;font-size:13px;z-index:9999';
+    document.body.appendChild(n);
+    setTimeout(()=>n.remove(),1500);
+  });
+}
+
+// CLAUDE.MD GENERATOR
+function generateClaude(){
+  const name=document.getElementById('gen-name').value||'MyProject';
+  const desc=document.getElementById('gen-desc').value||'[опис проекту]';
+  const platform=document.getElementById('gen-platform').value;
+  const stack=document.getElementById('gen-stack').value;
+  const commands=document.getElementById('gen-commands').value;
+  const structure=document.getElementById('gen-structure').value;
+  const rules=document.getElementById('gen-rules').value;
+  const outcome=document.getElementById('gen-outcome').value||'[бажаний результат]';
+  const detail=document.getElementById('gen-detail').value;
+  const mode=document.getElementById('gen-mode').value;
+
+  let md=`# Project: ${name}
+${desc}
+
+## Build & Test
+${commands.split('\n').map(c=>'- `'+c.trim()+'`').join('\n')}
+
+## Rules
+- Follow Vibe Coding protocol
+- Always read CONTEXT.md first
+- Commit after every successful change
+- Never delete working code without backup
+- Explain changes in plain language
+- Keep code simple — this is maintained by a non-programmer`;
+
+  if(rules.trim()){
+    md+='\n'+rules.split('\n').map(r=>'- '+r.trim()).join('\n');
+  }
+
+  if(stack){
+    md+=`\n\n## Tech stack\n${stack}`;
+  }
+
+  md+=`\n\n## Architecture
+${structure}`;
+
+  md+=`\n\n## Vibe Coding Config
+- Platform: ${platform}
+- Desired outcome: ${outcome}
+- Detail level: ${detail}`;
+
+  if(mode){
+    md+=`\n- Mode: ${mode}`;
+  }
+
+  md+=`\n\n## Key decisions
+- [Decision]: [reason]
+
+@CONTEXT.md`;
+
+  document.getElementById('genResult').textContent=md;
+  document.getElementById('genResultWrap').style.display='block';
+  document.getElementById('copyGenBtn').style.display='inline-block';
+}
+
+function copyGenerated(){
+  const text=document.getElementById('genResult').textContent;
+  navigator.clipboard.writeText(text).then(()=>{
+    const btn=document.getElementById('copyGenBtn');
+    btn.textContent='Скопійовано!';
+    setTimeout(()=>{btn.textContent='Скопіювати'},2000);
+  });
+}
+
+// SEARCH
+const searchData=[];
+document.querySelectorAll('.panel').forEach(panel=>{
+  const tabName=panel.id.replace('panel-','');
+  const tabLabel=document.querySelector(`[data-tab="${tabName}"]`).textContent;
+  panel.querySelectorAll('.card').forEach(card=>{
+    const texts=[];
+    card.querySelectorAll('h2,h3,p,li,td,th,.code-block,.cheat-line,.cheat-title').forEach(el=>{
+      texts.push(el.textContent);
+    });
+    searchData.push({tab:tabName,tabLabel:tabLabel,text:texts.join(' '),card:card});
+  });
+});
+
+const searchInput=document.getElementById('searchInput');
+const searchResults=document.getElementById('searchResults');
+
+searchInput.addEventListener('input',function(){
+  const q=this.value.trim().toLowerCase();
+  if(q.length<2){searchResults.classList.remove('active');return;}
+
+  const matches=[];
+  searchData.forEach(item=>{
+    const idx=item.text.toLowerCase().indexOf(q);
+    if(idx!==-1){
+      const start=Math.max(0,idx-40);
+      const end=Math.min(item.text.length,idx+q.length+40);
+      let snippet=item.text.substring(start,end);
+      if(start>0)snippet='...'+snippet;
+      if(end<item.text.length)snippet+='...';
+      snippet=snippet.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<mark>$1</mark>');
+      matches.push({tab:item.tab,tabLabel:item.tabLabel,snippet:snippet,card:item.card});
+    }
+  });
+
+  if(matches.length===0){
+    searchResults.innerHTML='<div class="search-result-item" style="color:var(--text2)">Нічого не знайдено</div>';
+  } else {
+    searchResults.innerHTML=matches.slice(0,15).map((m,i)=>
+      `<div class="search-result-item" data-idx="${i}">
+        <div class="sr-tab">${m.tabLabel}</div>
+        <div>${m.snippet}</div>
+      </div>`
+    ).join('');
+
+    searchResults.querySelectorAll('.search-result-item[data-idx]').forEach((el,i)=>{
+      el.addEventListener('click',()=>{
+        const m=matches[i];
+        document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+        document.querySelector(`[data-tab="${m.tab}"]`).classList.add('active');
+        document.getElementById('panel-'+m.tab).classList.add('active');
+        m.card.scrollIntoView({behavior:'smooth',block:'center'});
+        m.card.style.outline='2px solid var(--accent)';
+        setTimeout(()=>{m.card.style.outline='none'},3000);
+        searchResults.classList.remove('active');
+        searchInput.value='';
+      });
+    });
+  }
+  searchResults.classList.add('active');
+});
+
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.search-box'))searchResults.classList.remove('active');
+});
+
+// KEYBOARD: Ctrl+K for search
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();searchInput.focus();}
+});
+</script>
+</body>
+</html>

@@ -7,7 +7,11 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
+// v5.13: JWT_SECRET — warn if not set in env (random value resets on restart = all sessions lost)
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
+if (!process.env.JWT_SECRET) {
+    console.warn('[Security] JWT_SECRET not set in environment! Sessions will be lost on restart. Set JWT_SECRET env variable.');
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,8 +44,9 @@ const pool = new Pool({
 // TELEGRAM BOT
 // ==========================================
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8068946683:AAGdGn4cwNyRotIY1zzkuad0rHfB-ud-2Fg';
-const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '-1001805304620';
+// v5.13: No hardcoded fallbacks — if env not set, Telegram simply won't work
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '';
 
 function telegramRequest(method, body) {
     return new Promise((resolve, reject) => {

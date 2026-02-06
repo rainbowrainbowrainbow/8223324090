@@ -51,10 +51,33 @@ async function apiCreateBooking(booking) {
             body: JSON.stringify(booking)
         });
         if (handleAuthError(response)) return { success: false };
-        if (!response.ok) throw new Error('API error');
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
         return await response.json();
     } catch (err) {
         console.error('API createBooking error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+// v5.7: Create booking with linked bookings in one transaction
+async function apiCreateBookingFull(main, linked) {
+    try {
+        const response = await fetch(`${API_BASE}/bookings/full`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ main, linked })
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API createBookingFull error:', err);
         return { success: false, error: err.message, offline: true };
     }
 }
@@ -66,7 +89,10 @@ async function apiDeleteBooking(id) {
             headers: getAuthHeadersGet()
         });
         if (handleAuthError(response)) return { success: false };
-        if (!response.ok) throw new Error('API error');
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
         return await response.json();
     } catch (err) {
         console.error('API deleteBooking error:', err);
@@ -82,7 +108,10 @@ async function apiUpdateBooking(id, booking) {
             body: JSON.stringify(booking)
         });
         if (handleAuthError(response)) return { success: false };
-        if (!response.ok) throw new Error('API error');
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
         return await response.json();
     } catch (err) {
         console.error('API updateBooking error:', err);

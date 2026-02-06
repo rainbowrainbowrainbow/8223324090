@@ -310,41 +310,51 @@ function buildBookingObject(formData, program) {
     };
 }
 
-async function createLinkedBookings(booking, program) {
-    // Другий ведучий (v5.4: server generates ID)
+// v5.7: Build linked bookings array (for transactional create)
+async function buildLinkedBookings(booking, program) {
+    const linked = [];
+    const lines = await getLinesForDate(AppState.selectedDate);
+
+    // Другий ведучий
     if (program.hosts > 1 && booking.secondAnimator) {
-        const lines = await getLinesForDate(AppState.selectedDate);
         const secondLine = lines.find(l => l.name === booking.secondAnimator);
         if (secondLine) {
-            await apiCreateBooking({
-                ...booking,
-                id: undefined,
-                lineId: secondLine.id,
-                linkedTo: booking.id
+            linked.push({
+                date: booking.date, time: booking.time, lineId: secondLine.id,
+                programId: booking.programId, programCode: booking.programCode,
+                label: booking.label, programName: booking.programName,
+                category: booking.category, duration: booking.duration,
+                price: booking.price, hosts: booking.hosts,
+                secondAnimator: booking.secondAnimator,
+                pinataFiller: booking.pinataFiller,
+                costume: booking.costume, room: booking.room,
+                notes: booking.notes, createdBy: booking.createdBy,
+                status: booking.status, kidsCount: booking.kidsCount
             });
         }
     }
 
-    // Додатковий ведучий (700 ₴/год, v5.4: server generates ID)
+    // Додатковий ведучий (700 ₴/год)
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle && extraHostToggle.checked) {
         const extraHostAnimator = document.getElementById('extraHostAnimatorSelect').value;
         if (extraHostAnimator) {
-            const lines = await getLinesForDate(AppState.selectedDate);
             const extraLine = lines.find(l => l.name === extraHostAnimator);
             if (extraLine) {
                 const extraPrice = Math.round(700 * (booking.duration / 60));
-                await apiCreateBooking({
+                linked.push({
                     date: booking.date, time: booking.time, lineId: extraLine.id,
                     programId: 'anim_extra', programCode: '+Вед',
                     label: `+Вед(${booking.duration})`, programName: 'Додатковий ведучий',
                     category: 'animation', duration: booking.duration, price: extraPrice,
-                    hosts: 1, room: booking.room, linkedTo: booking.id,
-                    createdBy: booking.createdBy, createdAt: booking.createdAt
+                    hosts: 1, room: booking.room, createdBy: booking.createdBy,
+                    status: booking.status
                 });
             }
         }
     }
+
+    return linked;
 }
 
 async function handleBookingSubmit(e) {
@@ -391,7 +401,7 @@ async function handleBookingSubmit(e) {
 
             const updateResult = await apiUpdateBooking(booking.id, booking);
             if (updateResult && updateResult.success === false) {
-                showNotification('Помилка: не вдалося оновити бронювання', 'error');
+                showNotification(updateResult.error || 'Помилка оновлення бронювання', 'error');
                 return;
             }
             await apiAddHistory('edit', AppState.currentUser?.username, booking);
@@ -404,20 +414,26 @@ async function handleBookingSubmit(e) {
             await renderTimeline();
             showNotification('Бронювання оновлено!', 'success');
         } else {
-            // ===== РЕЖИМ СТВОРЕННЯ (без змін) =====
-            const createResult = await apiCreateBooking(booking);
+            // ===== РЕЖИМ СТВОРЕННЯ (v5.7: transactional with linked) =====
+            const linked = await buildLinkedBookings(booking, formData.program);
+            let createResult;
+
+            if (linked.length > 0) {
+                createResult = await apiCreateBookingFull(booking, linked);
+            } else {
+                createResult = await apiCreateBooking(booking);
+            }
+
             if (createResult && createResult.success === false) {
-                showNotification('Помилка: не вдалося зберегти бронювання на сервер', 'error');
+                showNotification(createResult.error || 'Помилка створення бронювання', 'error');
                 return;
             }
             if (createResult && createResult.id) {
                 booking.id = createResult.id;
             }
-            await apiAddHistory('create', AppState.currentUser?.username, booking);
-            await createLinkedBookings(booking, formData.program);
+            // History + Telegram handled by server
 
             pushUndo('create', [booking]);
-            notifyBookingCreated(booking);
 
             delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
             closeBookingPanel();
@@ -656,16 +672,12 @@ async function deleteBooking(bookingId) {
         if (!confirmed) return;
 
         pushUndo('delete', [...allToDelete]);
-        notifyBookingDeleted(booking);
 
-        for (const b of allToDelete) {
-            await apiAddHistory('delete', AppState.currentUser?.username, b);
-            const delResult = await apiDeleteBooking(b.id);
-            // v5.2: Перевіряти результат видалення
-            if (delResult && delResult.success === false) {
-                showNotification('Помилка: не вдалося видалити бронювання з серверу', 'error');
-                return;
-            }
+        // v5.7: Single server call — server handles linked deletion, history, Telegram
+        const delResult = await apiDeleteBooking(mainBookingId);
+        if (delResult && delResult.success === false) {
+            showNotification(delResult.error || 'Помилка видалення бронювання', 'error');
+            return;
         }
 
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
@@ -734,9 +746,8 @@ async function shiftBookingTime(bookingId, minutes) {
         // v3.9: Use PUT for atomic update instead of DELETE+CREATE
         const newBooking = { ...booking, time: newTime };
         const shiftResult = await apiUpdateBooking(bookingId, newBooking);
-        // v5.2: Перевіряти результат оновлення
         if (shiftResult && shiftResult.success === false) {
-            showNotification('Помилка: не вдалося перенести бронювання на сервері', 'error');
+            showNotification(shiftResult.error || 'Помилка переносу бронювання', 'error');
             return;
         }
 

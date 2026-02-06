@@ -198,6 +198,146 @@ function validateSettingKey(str) {
     return typeof str === 'string' && /^[a-z_]{1,100}$/.test(str);
 }
 
+// ==========================================
+// v5.7: SERVER-SIDE HELPERS
+// ==========================================
+
+function timeToMinutes(timeStr) {
+    const [h, m] = timeStr.split(':').map(Number);
+    return h * 60 + m;
+}
+
+function minutesToTime(minutes) {
+    const h = String(Math.floor(minutes / 60)).padStart(2, '0');
+    const m = String(minutes % 60).padStart(2, '0');
+    return `${h}:${m}`;
+}
+
+const MIN_PAUSE = 15;
+
+async function checkServerConflicts(client, date, lineId, time, duration, excludeId = null) {
+    const params = excludeId ? [date, lineId, excludeId] : [date, lineId];
+    const result = await client.query(
+        'SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND line_id = $2' +
+        (excludeId ? ' AND id != $3' : ''),
+        params
+    );
+    const newStart = timeToMinutes(time);
+    const newEnd = newStart + duration;
+
+    for (const b of result.rows) {
+        const start = timeToMinutes(b.time);
+        const end = start + (b.duration || 0);
+        if (newStart < end && newEnd > start) {
+            return { overlap: true, noPause: false, conflictWith: b };
+        }
+    }
+
+    let noPause = false;
+    for (const b of result.rows) {
+        const start = timeToMinutes(b.time);
+        const end = start + (b.duration || 0);
+        if (newStart === end || newEnd === start) noPause = true;
+        if (newStart > end && newStart < end + MIN_PAUSE) noPause = true;
+        if (newEnd > start - MIN_PAUSE && newEnd <= start) noPause = true;
+    }
+
+    return { overlap: false, noPause, conflictWith: null };
+}
+
+async function checkServerDuplicate(client, date, programId, time, duration, excludeId = null) {
+    if (!programId) return null;
+    const params = excludeId ? [date, programId, excludeId] : [date, programId];
+    const result = await client.query(
+        'SELECT id, category FROM bookings WHERE date = $1 AND program_id = $2' +
+        (excludeId ? ' AND id != $3' : ''),
+        params
+    );
+    const newStart = timeToMinutes(time);
+    const newEnd = newStart + duration;
+
+    for (const b of result.rows) {
+        if (b.category === 'animation') continue;
+        const bResult = await client.query('SELECT time, duration FROM bookings WHERE id = $1', [b.id]);
+        if (bResult.rows.length === 0) continue;
+        const bStart = timeToMinutes(bResult.rows[0].time);
+        const bEnd = bStart + (bResult.rows[0].duration || 0);
+        if (newStart < bEnd && newEnd > bStart) {
+            return b;
+        }
+    }
+    return null;
+}
+
+// v5.7: Telegram notification templates
+function formatBookingNotification(type, booking, extra = {}) {
+    const endMin = timeToMinutes(booking.time) + (booking.duration || 0);
+    const endTime = minutesToTime(endMin);
+
+    if (type === 'create') {
+        let text = `📌 <b>Нове бронювання</b>\n\n`;
+        text += `✅ Підтверджене\n`;
+        text += `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n`;
+        text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+        text += `🏠 ${booking.room}\n`;
+        if (booking.kids_count) text += `👶 ${booking.kids_count} дітей\n`;
+        if (booking.notes) text += `📝 ${booking.notes}\n`;
+        text += `\n👤 Створив: ${extra.username || booking.created_by}`;
+        return text;
+    }
+
+    if (type === 'delete') {
+        return `🗑 <b>Видалено бронювання</b>\n\n` +
+            `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n` +
+            `🕐 ${booking.date} | ${booking.time}\n` +
+            `🏠 ${booking.room}\n` +
+            `\n👤 Видалив: ${extra.username || '?'}`;
+    }
+
+    return '';
+}
+
+async function notifyTelegram(type, booking, extra = {}) {
+    try {
+        if (type === 'create' && booking.status === 'preliminary') return;
+        const text = formatBookingNotification(type, booking, extra);
+        if (!text) return;
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+        await sendTelegramMessage(chatId, text);
+    } catch (err) {
+        console.error('[Telegram Notify] Error:', err.message);
+    }
+}
+
+// v5.7: Rate limiter (in-memory per IP)
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW = 60000;
+const RATE_LIMIT_MAX = 120;
+
+function rateLimiter(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    let entry = rateLimitMap.get(ip);
+    if (!entry || now - entry.start > RATE_LIMIT_WINDOW) {
+        entry = { start: now, count: 1 };
+        rateLimitMap.set(ip, entry);
+    } else {
+        entry.count++;
+    }
+    if (entry.count > RATE_LIMIT_MAX) {
+        return res.status(429).json({ error: 'Забагато запитів, спробуйте пізніше' });
+    }
+    next();
+}
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of rateLimitMap) {
+        if (now - entry.start > RATE_LIMIT_WINDOW * 2) rateLimitMap.delete(ip);
+    }
+}, 300000);
+
 // Shared booking row mapper (snake_case → camelCase)
 function mapBookingRow(row) {
     return {
@@ -379,9 +519,10 @@ async function initDatabase() {
 // BOOKING NUMBER GENERATOR (v5.4: BK-YYYY-NNNN)
 // ==========================================
 
-async function generateBookingNumber() {
+async function generateBookingNumber(client) {
+    const db = client || pool;
     const year = new Date().getFullYear();
-    const result = await pool.query(
+    const result = await db.query(
         `INSERT INTO booking_counter (year, counter) VALUES ($1, 1)
          ON CONFLICT (year) DO UPDATE SET counter = booking_counter.counter + 1
          RETURNING counter`,
@@ -450,6 +591,9 @@ app.get('/api/auth/verify', authenticateToken, (req, res) => {
 // API ENDPOINTS (all protected by auth)
 // ==========================================
 
+// v5.7: Rate limiter
+app.use('/api', rateLimiter);
+
 // v5.0: Protect all API endpoints except auth and health
 app.use('/api', (req, res, next) => {
     // Public endpoints that don't require auth
@@ -477,57 +621,238 @@ app.get('/api/bookings/:date', async (req, res) => {
     }
 });
 
-// Create booking (v5.4: server-generated BK-YYYY-NNNN)
+// Create booking (v5.7: transaction + conflict check + auto-history + auto-Telegram)
 app.post('/api/bookings', async (req, res) => {
+    const client = await pool.connect();
     try {
         const b = req.body;
         if (!b.date || !b.time || !b.lineId) {
+            client.release();
             return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
         }
-        if (!validateDate(b.date)) return res.status(400).json({ error: 'Invalid date format' });
-        if (!validateTime(b.time)) return res.status(400).json({ error: 'Invalid time format' });
+        if (!validateDate(b.date)) { client.release(); return res.status(400).json({ error: 'Invalid date format' }); }
+        if (!validateTime(b.time)) { client.release(); return res.status(400).json({ error: 'Invalid time format' }); }
 
-        // v5.4: Generate booking number server-side if not in BK-YYYY-NNNN format
-        if (!b.id || !/^BK-\d{4}-\d{4,}$/.test(b.id)) {
-            b.id = await generateBookingNumber();
+        await client.query('BEGIN');
+
+        // v5.7: Server-side conflict check (skip for linked bookings — checked in /bookings/full)
+        if (!b.linkedTo) {
+            const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0);
+            if (conflict.overlap) {
+                await client.query('ROLLBACK');
+                client.release();
+                return res.status(409).json({
+                    success: false,
+                    error: `Час зайнятий: ${conflict.conflictWith.label || conflict.conflictWith.program_code} о ${conflict.conflictWith.time}`
+                });
+            }
+
+            const duplicate = await checkServerDuplicate(client, b.date, b.programId, b.time, b.duration || 0);
+            if (duplicate) {
+                await client.query('ROLLBACK');
+                client.release();
+                return res.status(409).json({ success: false, error: 'Ця програма вже є в цей час' });
+            }
         }
 
-        await pool.query(
+        if (!b.id || !/^BK-\d{4}-\d{4,}$/.test(b.id)) {
+            b.id = await generateBookingNumber(client);
+        }
+
+        await client.query(
             `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
             [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null]
         );
+
+        // Auto-history in transaction
+        await client.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['create', b.createdBy || req.user?.username, JSON.stringify(b)]
+        );
+
+        await client.query('COMMIT');
+
+        // Auto Telegram notify (fire-and-forget, after commit)
+        if (!b.linkedTo) {
+            notifyTelegram('create', {
+                ...b, label: b.label, program_code: b.programCode,
+                program_name: b.programName, kids_count: b.kidsCount,
+                created_by: b.createdBy
+            }, { username: b.createdBy || req.user?.username });
+        }
+
         res.json({ success: true, id: b.id });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error('Error creating booking:', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 
-// Delete booking
+// v5.7: Create booking with linked bookings in one transaction
+app.post('/api/bookings/full', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { main, linked } = req.body;
+        if (!main || !main.date || !main.time || !main.lineId) {
+            client.release();
+            return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
+        }
+        if (!validateDate(main.date)) { client.release(); return res.status(400).json({ error: 'Invalid date format' }); }
+        if (!validateTime(main.time)) { client.release(); return res.status(400).json({ error: 'Invalid time format' }); }
+
+        await client.query('BEGIN');
+
+        // Conflict check for main booking
+        const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0);
+        if (conflict.overlap) {
+            await client.query('ROLLBACK');
+            client.release();
+            return res.status(409).json({
+                success: false,
+                error: `Час зайнятий: ${conflict.conflictWith.label || conflict.conflictWith.program_code} о ${conflict.conflictWith.time}`
+            });
+        }
+
+        const duplicate = await checkServerDuplicate(client, main.date, main.programId, main.time, main.duration || 0);
+        if (duplicate) {
+            await client.query('ROLLBACK');
+            client.release();
+            return res.status(409).json({ success: false, error: 'Ця програма вже є в цей час' });
+        }
+
+        // Generate main ID
+        if (!main.id || !/^BK-\d{4}-\d{4,}$/.test(main.id)) {
+            main.id = await generateBookingNumber(client);
+        }
+
+        // Insert main booking
+        await client.query(
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+            [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null]
+        );
+
+        // Insert linked bookings
+        const linkedIds = [];
+        if (Array.isArray(linked)) {
+            for (const lb of linked) {
+                // Conflict check for linked booking's line
+                const lConflict = await checkServerConflicts(client, lb.date, lb.lineId, lb.time, lb.duration || 0);
+                if (lConflict.overlap) {
+                    await client.query('ROLLBACK');
+                    client.release();
+                    return res.status(409).json({
+                        success: false,
+                        error: `Час зайнятий у пов'язаного аніматора: ${lConflict.conflictWith.label || lConflict.conflictWith.program_code}`
+                    });
+                }
+
+                const lbId = await generateBookingNumber(client);
+                await client.query(
+                    `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+                    [lbId, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.costume || null, lb.room, lb.notes, lb.createdBy, main.id, lb.status || main.status || 'confirmed', lb.kidsCount || null]
+                );
+                linkedIds.push(lbId);
+            }
+        }
+
+        // History in same transaction
+        await client.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['create', main.createdBy || req.user?.username, JSON.stringify(main)]
+        );
+
+        await client.query('COMMIT');
+
+        // Auto Telegram notify
+        notifyTelegram('create', {
+            ...main, program_code: main.programCode, program_name: main.programName,
+            kids_count: main.kidsCount, created_by: main.createdBy
+        }, { username: main.createdBy || req.user?.username });
+
+        res.json({ success: true, id: main.id, linkedIds });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error creating full booking:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// Delete booking (v5.7: transaction + auto-history + auto-Telegram)
 app.delete('/api/bookings/:id', async (req, res) => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
-        if (!validateId(id)) return res.status(400).json({ error: 'Invalid booking ID' });
+        if (!validateId(id)) { client.release(); return res.status(400).json({ error: 'Invalid booking ID' }); }
+
+        await client.query('BEGIN');
+
+        // Get booking before deleting (for notification + history)
+        const bookingResult = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
+        const booking = bookingResult.rows[0];
+        if (!booking) {
+            await client.query('ROLLBACK');
+            client.release();
+            return res.status(404).json({ success: false, error: 'Бронювання не знайдено' });
+        }
+
+        // Auto-history in transaction
+        await client.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['delete', req.user?.username, JSON.stringify(mapBookingRow(booking))]
+        );
+
         // Delete linked bookings too
-        await pool.query('DELETE FROM bookings WHERE id = $1 OR linked_to = $1', [id]);
+        await client.query('DELETE FROM bookings WHERE id = $1 OR linked_to = $1', [id]);
+
+        await client.query('COMMIT');
+
+        // Auto Telegram notify (fire-and-forget)
+        notifyTelegram('delete', booking, { username: req.user?.username });
+
         res.json({ success: true });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error('Error deleting booking:', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 
-// Update booking (v5.0: proper SQL UPDATE)
+// Update booking (v5.7: transaction + conflict check)
 app.put('/api/bookings/:id', async (req, res) => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
         const b = req.body;
-        if (!validateId(id)) return res.status(400).json({ error: 'Invalid booking ID' });
-        if (!validateDate(b.date)) return res.status(400).json({ error: 'Invalid date format' });
-        if (!validateTime(b.time)) return res.status(400).json({ error: 'Invalid time format' });
+        if (!validateId(id)) { client.release(); return res.status(400).json({ error: 'Invalid booking ID' }); }
+        if (!validateDate(b.date)) { client.release(); return res.status(400).json({ error: 'Invalid date format' }); }
+        if (!validateTime(b.time)) { client.release(); return res.status(400).json({ error: 'Invalid time format' }); }
 
-        await pool.query(
+        await client.query('BEGIN');
+
+        // v5.7: Server-side conflict check (exclude self, skip linked bookings)
+        if (!b.linkedTo) {
+            const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0, id);
+            if (conflict.overlap) {
+                await client.query('ROLLBACK');
+                client.release();
+                return res.status(409).json({
+                    success: false,
+                    error: `Час зайнятий: ${conflict.conflictWith.label || conflict.conflictWith.program_code} о ${conflict.conflictWith.time}`
+                });
+            }
+        }
+
+        await client.query(
             `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
              label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
              second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
@@ -538,10 +863,15 @@ app.put('/api/bookings/:id', async (req, res) => {
              b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed',
              b.kidsCount || null, id]
         );
+
+        await client.query('COMMIT');
         res.json({ success: true });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error('Error updating booking:', err);
         res.status(500).json({ error: 'Failed to update booking' });
+    } finally {
+        client.release();
     }
 });
 
@@ -1094,9 +1424,58 @@ async function checkAutoDigest() {
             digestSentToday = todayStr;
             console.log(`[AutoDigest] Sending daily digest for ${todayStr} at ${digestTime} Kyiv time`);
             await buildAndSendDigest(todayStr);
+
+            // v5.7: 24h reminder — send tomorrow's schedule
+            await sendTomorrowReminder(todayStr);
         }
     } catch (err) {
         console.error('[AutoDigest] Error:', err);
+    }
+}
+
+// v5.7: Tomorrow reminder
+async function sendTomorrowReminder(todayStr) {
+    try {
+        const [y, m, d] = todayStr.split('-').map(Number);
+        const tomorrow = new Date(y, m - 1, d + 1);
+        const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+
+        const bookingsResult = await pool.query(
+            'SELECT * FROM bookings WHERE date = $1 AND linked_to IS NULL ORDER BY time',
+            [tomorrowStr]
+        );
+        if (bookingsResult.rows.length === 0) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        await ensureDefaultLines(tomorrowStr);
+        const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [tomorrowStr]);
+
+        let text = `⏰ <b>Нагадування: завтра ${tomorrowStr}</b>\n`;
+        text += `📋 ${bookingsResult.rows.length} бронювань\n\n`;
+
+        for (const line of linesResult.rows) {
+            const lineBookings = bookingsResult.rows.filter(b => b.line_id === line.line_id);
+            if (lineBookings.length === 0) continue;
+
+            text += `👤 <b>${line.name}</b>\n`;
+            for (const b of lineBookings) {
+                const endMin = parseInt(b.time.split(':')[0]) * 60 + parseInt(b.time.split(':')[1]) + (b.duration || 0);
+                const endH = String(Math.floor(endMin / 60)).padStart(2, '0');
+                const endM = String(endMin % 60).padStart(2, '0');
+                const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
+                text += `  ${statusIcon} ${b.time}-${endH}:${endM} ${b.label || b.program_code} (${b.room})`;
+                if (b.kids_count) text += ` [${b.kids_count} діт]`;
+                text += '\n';
+            }
+            text += '\n';
+        }
+
+        await sendTelegramMessage(chatId, text);
+        console.log(`[Reminder] Tomorrow reminder sent for ${tomorrowStr}`);
+    } catch (err) {
+        console.error('[Reminder] Error:', err.message);
     }
 }
 

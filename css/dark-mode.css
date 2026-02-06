@@ -66,16 +66,16 @@ body.dark-mode .line-header:hover {
 }
 
 body.dark-mode .line-grid {
-    background: var(--gray-100);
-    border-color: var(--gray-200);
+    background: #222240;
+    border-color: #3a3a5c;
 }
 
 body.dark-mode .grid-cell {
-    border-right-color: var(--gray-200);
+    border-right-color: #333355;
 }
 
 body.dark-mode .grid-cell.hour {
-    border-right-color: var(--gray-300);
+    border-right-color: #444468;
 }
 
 body.dark-mode .grid-cell:hover {
@@ -297,23 +297,57 @@ body.dark-mode .dash-bar-label {
 
 /* Multi-day */
 body.dark-mode .day-section {
-    border-color: var(--gray-200);
+    border-color: var(--gray-300);
+    background: #1e1e35;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+
+body.dark-mode .day-section-header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #FFFFFF;
+}
+
+body.dark-mode .day-section-header .date-label {
+    color: rgba(255,255,255,0.85);
+}
+
+body.dark-mode .day-section-content {
+    background: #1e1e35;
+}
+
+body.dark-mode .mini-time-mark {
+    color: #9CA3AF;
+}
+
+body.dark-mode .mini-line-header {
+    background: #252548;
+    color: #D1D5DB;
+    border-left-color: var(--primary);
 }
 
 body.dark-mode .mini-line-grid {
-    background: var(--gray-100);
-    border-color: var(--gray-200);
+    background: #222240;
+    border-color: #3a3a5c;
     background-image: repeating-linear-gradient(
         to right,
-        var(--gray-200) 0px,
-        var(--gray-200) 1px,
+        #3a3a5c 0px,
+        #3a3a5c 1px,
         transparent 1px,
         transparent 120px
     );
 }
 
-body.dark-mode .mini-line-header {
-    background: var(--gray-100);
+body.dark-mode .mini-booking-block {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+body.dark-mode .mini-booking-block .mini-title {
+    color: #F3F4F6;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+
+body.dark-mode .no-bookings {
+    color: #6B7280;
 }
 
 /* Changelog */

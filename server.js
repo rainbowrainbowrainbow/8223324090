@@ -269,14 +269,13 @@ async function checkServerDuplicate(client, date, programId, time, duration, exc
     return null;
 }
 
-// v5.7: Telegram notification templates
-function formatBookingNotification(type, booking, extra = {}) {
-    const endMin = timeToMinutes(booking.time) + (booking.duration || 0);
-    const endTime = minutesToTime(endMin);
-
-    if (type === 'create') {
+// v5.12: Notification template system
+const notificationTemplates = {
+    create(booking, extra) {
+        const endTime = minutesToTime(timeToMinutes(booking.time) + (booking.duration || 0));
+        const statusIcon = booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене';
         let text = `📌 <b>Нове бронювання</b>\n\n`;
-        text += `✅ Підтверджене\n`;
+        text += `${statusIcon}\n`;
         text += `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n`;
         text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
         text += `🏠 ${booking.room}\n`;
@@ -284,22 +283,46 @@ function formatBookingNotification(type, booking, extra = {}) {
         if (booking.notes) text += `📝 ${booking.notes}\n`;
         text += `\n👤 Створив: ${extra.username || booking.created_by}`;
         return text;
-    }
+    },
 
-    if (type === 'delete') {
+    edit(booking, extra) {
+        const endTime = minutesToTime(timeToMinutes(booking.time) + (booking.duration || 0));
+        let text = `✏️ <b>Бронювання змінено</b>\n\n`;
+        text += `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n`;
+        text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+        text += `🏠 ${booking.room}\n`;
+        if (booking.kids_count) text += `👶 ${booking.kids_count} дітей\n`;
+        if (booking.notes) text += `📝 ${booking.notes}\n`;
+        text += `\n👤 Змінив: ${extra.username || '?'}`;
+        return text;
+    },
+
+    delete(booking, extra) {
         return `🗑 <b>Видалено бронювання</b>\n\n` +
             `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n` +
             `🕐 ${booking.date} | ${booking.time}\n` +
             `🏠 ${booking.room}\n` +
             `\n👤 Видалив: ${extra.username || '?'}`;
-    }
+    },
 
-    return '';
+    status_change(booking, extra) {
+        const statusText = booking.status === 'confirmed' ? '✅ Підтверджене' : '⏳ Попереднє';
+        return `⚡ <b>Статус змінено</b>\n\n` +
+            `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n` +
+            `🕐 ${booking.date} | ${booking.time}\n` +
+            `📊 ${statusText}\n` +
+            `\n👤 Змінив: ${extra.username || '?'}`;
+    }
+};
+
+function formatBookingNotification(type, booking, extra = {}) {
+    const template = notificationTemplates[type];
+    if (!template) return '';
+    return template(booking, extra);
 }
 
 async function notifyTelegram(type, booking, extra = {}) {
     try {
-        if (type === 'create' && booking.status === 'preliminary') return;
         const text = formatBookingNotification(type, booking, extra);
         if (!text) return;
         const chatId = await getConfiguredChatId();
@@ -830,7 +853,7 @@ app.delete('/api/bookings/:id', async (req, res) => {
     }
 });
 
-// Update booking (v5.7: transaction + conflict check)
+// Update booking (v5.12: transaction + conflict check + history + Telegram notify)
 app.put('/api/bookings/:id', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -841,6 +864,15 @@ app.put('/api/bookings/:id', async (req, res) => {
         if (!validateTime(b.time)) { client.release(); return res.status(400).json({ error: 'Invalid time format' }); }
 
         await client.query('BEGIN');
+
+        // Get old booking for comparison (status change detection)
+        const oldResult = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
+        if (oldResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            client.release();
+            return res.status(404).json({ error: 'Бронювання не знайдено' });
+        }
+        const oldBooking = oldResult.rows[0];
 
         // v5.7: Server-side conflict check (exclude self, skip linked bookings)
         if (!b.linkedTo) {
@@ -855,6 +887,8 @@ app.put('/api/bookings/:id', async (req, res) => {
             }
         }
 
+        const newStatus = b.status || 'confirmed';
+
         await client.query(
             `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
              label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
@@ -863,11 +897,33 @@ app.put('/api/bookings/:id', async (req, res) => {
              WHERE id=$22`,
             [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
              b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
-             b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed',
+             b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
              b.kidsCount || null, b.groupName || null, id]
         );
 
+        // v5.12: Auto-history in transaction
+        await client.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['edit', req.user?.username, JSON.stringify(b)]
+        );
+
         await client.query('COMMIT');
+
+        // v5.12: Telegram notifications (fire-and-forget, after commit)
+        const username = req.user?.username;
+        const bookingForNotify = {
+            ...b, label: b.label, program_code: b.programCode,
+            program_name: b.programName, kids_count: b.kidsCount,
+            status: newStatus
+        };
+
+        const statusChanged = oldBooking.status !== newStatus;
+        if (statusChanged) {
+            notifyTelegram('status_change', bookingForNotify, { username });
+        } else if (!b.linkedTo) {
+            notifyTelegram('edit', bookingForNotify, { username });
+        }
+
         res.json({ success: true });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});

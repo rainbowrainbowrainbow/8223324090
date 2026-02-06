@@ -272,6 +272,12 @@ async function handleEditLine(e) {
             showNotification('Введіть ім\'я аніматора', 'error');
             return;
         }
+        // v5.9.1: Check for duplicate names
+        const duplicate = lines.find((l, i) => i !== index && l.name === newName);
+        if (duplicate) {
+            showNotification(`Аніматор "${newName}" вже існує на цю дату`, 'error');
+            return;
+        }
         lines[index].name = newName;
         lines[index].color = document.getElementById('editLineColor').value;
         await saveLinesForDate(AppState.selectedDate, lines);

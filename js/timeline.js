@@ -36,17 +36,19 @@ function canViewHistory() {
 }
 
 // v5.8: Quick Stats Bar — show summary for selected date
+// v5.9.1: Exclude linked bookings (extra hosts) from count and revenue
 function updateQuickStats(bookings) {
     const bar = document.getElementById('quickStatsBar');
     if (!bar || isViewer()) return;
     const content = document.getElementById('quickStatsContent');
     if (!content) return;
 
-    const confirmed = bookings.filter(b => b.status !== 'preliminary');
-    const preliminary = bookings.filter(b => b.status === 'preliminary');
-    const total = bookings.reduce((sum, b) => sum + (b.price || 0), 0);
+    // Filter out linked bookings — they are extra hosts, not separate bookings
+    const mainBookings = bookings.filter(b => !b.linkedTo);
+    const preliminary = mainBookings.filter(b => b.status === 'preliminary');
+    const total = mainBookings.reduce((sum, b) => sum + (b.price || 0), 0);
 
-    content.textContent = `📊 ${bookings.length} бронювань • ${formatPrice(total)} • ⏳ ${preliminary.length} попередніх`;
+    content.textContent = `📊 ${mainBookings.length} бронювань • ${formatPrice(total)} • ⏳ ${preliminary.length} попередніх`;
     bar.classList.remove('hidden');
 }
 

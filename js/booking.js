@@ -140,6 +140,33 @@ function selectProgram(programId) {
         document.getElementById('secondAnimatorSection').classList.add('hidden');
     }
 
+    // v5.9: Focus mode — collapse unselected categories (Progressive Disclosure)
+    const allHeaders = document.querySelectorAll('#programsIcons .category-header');
+    const allGrids = document.querySelectorAll('#programsIcons .category-grid');
+    const selectedIcon = document.querySelector(`[data-program-id="${programId}"]`);
+    const selectedGrid = selectedIcon ? selectedIcon.closest('.category-grid') : null;
+
+    allHeaders.forEach(h => h.style.display = 'none');
+    allGrids.forEach(g => {
+        if (g !== selectedGrid) g.style.display = 'none';
+    });
+
+    let changeBtn = document.getElementById('changeProgramBtn');
+    if (!changeBtn) {
+        changeBtn = document.createElement('button');
+        changeBtn.type = 'button';
+        changeBtn.id = 'changeProgramBtn';
+        changeBtn.className = 'btn-change-program';
+        changeBtn.textContent = '🔄 Змінити програму';
+        changeBtn.addEventListener('click', () => {
+            allHeaders.forEach(h => h.style.display = '');
+            allGrids.forEach(g => g.style.display = '');
+            changeBtn.remove();
+        });
+        const iconsContainer = document.getElementById('programsIcons');
+        if (iconsContainer) iconsContainer.parentNode.insertBefore(changeBtn, iconsContainer);
+    }
+
     // К-кість дітей для МК (perChild)
     const kidsCountSection = document.getElementById('kidsCountSection');
     if (kidsCountSection) {

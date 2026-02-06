@@ -1243,10 +1243,16 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const linesResult = await pool.query(
                     'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]
                 );
-                const count = linesResult.rows.length;
+                // v5.9: Find next available number (handles gaps from deletions)
+                const existingNumbers = linesResult.rows
+                    .map(row => { const m = row.name.match(/^Аніматор (\d+)$/); return m ? parseInt(m[1]) : 0; })
+                    .filter(n => n > 0);
+                let nextNum = 1;
+                while (existingNumbers.includes(nextNum)) nextNum++;
+
                 const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
                 const newLineId = `line${Date.now()}_${date}`;
-                const newName = `Аніматор ${count + 1}`;
+                const newName = `Аніматор ${nextNum}`;
 
                 // Add line to DB
                 await pool.query(

@@ -266,7 +266,13 @@ async function handleEditLine(e) {
     const index = lines.findIndex(l => l.id === lineId);
 
     if (index !== -1) {
-        lines[index].name = document.getElementById('editLineName').value;
+        // v5.9: Validate empty name
+        const newName = document.getElementById('editLineName').value.trim();
+        if (!newName) {
+            showNotification('Введіть ім\'я аніматора', 'error');
+            return;
+        }
+        lines[index].name = newName;
         lines[index].color = document.getElementById('editLineColor').value;
         await saveLinesForDate(AppState.selectedDate, lines);
 

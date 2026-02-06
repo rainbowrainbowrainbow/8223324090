@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.8">
-    <link rel="stylesheet" href="css/auth.css?v=5.8">
-    <link rel="stylesheet" href="css/layout.css?v=5.8">
-    <link rel="stylesheet" href="css/timeline.css?v=5.8">
-    <link rel="stylesheet" href="css/panel.css?v=5.8">
-    <link rel="stylesheet" href="css/modals.css?v=5.8">
-    <link rel="stylesheet" href="css/controls.css?v=5.8">
-    <link rel="stylesheet" href="css/features.css?v=5.8">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.8">
-    <link rel="stylesheet" href="css/responsive.css?v=5.8">
+    <link rel="stylesheet" href="css/base.css?v=5.9">
+    <link rel="stylesheet" href="css/auth.css?v=5.9">
+    <link rel="stylesheet" href="css/layout.css?v=5.9">
+    <link rel="stylesheet" href="css/timeline.css?v=5.9">
+    <link rel="stylesheet" href="css/panel.css?v=5.9">
+    <link rel="stylesheet" href="css/modals.css?v=5.9">
+    <link rel="stylesheet" href="css/controls.css?v=5.9">
+    <link rel="stylesheet" href="css/features.css?v=5.9">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.9">
+    <link rel="stylesheet" href="css/responsive.css?v=5.9">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.8</p>
+                <p class="tagline">Система бронювання v5.9</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.8</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.9</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -55,7 +55,6 @@
                     </div>
                 </div>
                 <nav class="header-nav">
-                    <button id="programsTabBtn" class="btn-header-nav hidden">Програми</button>
                 </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
@@ -69,13 +68,13 @@
             <!-- Панель керування -->
             <div class="control-panel">
                 <div class="date-controls">
-                    <button id="prevDay" class="btn-nav">◀</button>
+                    <button id="prevDay" class="btn-nav" title="Попередній день">◀</button>
                     <input type="date" id="timelineDate">
                     <div class="day-info">
                         <span id="dayOfWeekLabel" class="day-label"></span>
                         <span id="workingHours" class="working-hours">12:00-20:00</span>
                     </div>
-                    <button id="nextDay" class="btn-nav">▶</button>
+                    <button id="nextDay" class="btn-nav" title="Наступний день">▶</button>
                 </div>
                 <div class="view-mode-controls">
                     <label class="view-mode-toggle">
@@ -91,9 +90,9 @@
                 </div>
                 <div class="v32-controls">
                     <div class="zoom-controls">
-                        <button class="zoom-btn" data-zoom="15">15хв</button>
-                        <button class="zoom-btn" data-zoom="30">30хв</button>
-                        <button class="zoom-btn" data-zoom="60">60хв</button>
+                        <button class="zoom-btn" data-zoom="15" title="Масштаб: 15 хвилин на клітинку">15хв</button>
+                        <button class="zoom-btn" data-zoom="30" title="Масштаб: 30 хвилин на клітинку">30хв</button>
+                        <button class="zoom-btn" data-zoom="60" title="Масштаб: 60 хвилин на клітинку">60хв</button>
                     </div>
                     <label class="toggle-mini" title="Компактний режим">
                         <input type="checkbox" id="compactModeToggle">
@@ -108,15 +107,16 @@
                     <button id="undoBtn" class="btn-undo hidden" title="Скасувати останню дію">↩ Скасувати</button>
                 </div>
                 <div class="action-buttons">
-                    <button id="exportTimelineBtn" class="btn-export">🖼️ Експорт</button>
+                    <button id="exportTimelineBtn" class="btn-export" title="Експортувати таймлайн як картинку">🖼️ Експорт</button>
                     <div class="admin-dropdown" id="adminDropdown">
-                        <button type="button" id="menuToggleBtn" class="btn-menu-toggle">☰ Меню</button>
+                        <button type="button" id="menuToggleBtn" class="btn-menu-toggle" title="Меню дій">☰ Меню</button>
                         <div class="dropdown-content hidden" id="dropdownContent">
-                            <button type="button" id="historyBtn" class="dropdown-item hidden">📋 Історія</button>
-                            <button type="button" id="digestBtn" class="dropdown-item hidden">📲 Дайджест</button>
-                            <button type="button" id="afishaBtn" class="dropdown-item">🎭 Афіша</button>
-                            <button type="button" id="dashboardBtn" class="dropdown-item hidden">📊 Статистика</button>
-                            <button type="button" id="settingsBtn" class="dropdown-item hidden">⚙️ Налаштування</button>
+                            <button type="button" id="historyBtn" class="dropdown-item hidden" title="Історія змін бронювань">📋 Історія</button>
+                            <button type="button" id="digestBtn" class="dropdown-item hidden" title="Надіслати дайджест в Telegram">📲 Дайджест</button>
+                            <button type="button" id="afishaBtn" class="dropdown-item" title="Управління подіями афіші">🎭 Афіша</button>
+                            <button type="button" id="programsTabBtn" class="dropdown-item" title="Каталог розважальних програм">📚 Програми</button>
+                            <button type="button" id="dashboardBtn" class="dropdown-item hidden" title="Фінансова статистика та аналітика">📊 Статистика</button>
+                            <button type="button" id="settingsBtn" class="dropdown-item hidden" title="Налаштування системи та Telegram">⚙️ Налаштування</button>
                         </div>
                     </div>
                 </div>
@@ -139,7 +139,7 @@
                     <div class="time-scale" id="timeScale"></div>
                     <div class="timeline-lines" id="timelineLines"></div>
                     <!-- Кнопка додати лінію -->
-                    <button id="addLineBtn" class="btn-add-line-big">
+                    <button id="addLineBtn" class="btn-add-line-big" title="Надіслати запит на додавання аніматора через Telegram">
                         <span>+</span>
                         <span>Додати аніматора</span>
                     </button>
@@ -548,6 +548,19 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v5.9 — Баг-фікси та UX</h4>
+                    <ul>
+                        <li>Модальне вікно деталей бронювання тепер прокручується (не ховає кнопки)</li>
+                        <li>Компактний режим більше не ламає анімацію очікування аніматора</li>
+                        <li>Нумерація аніматорів коректна після видалення (немає пропусків)</li>
+                        <li>Валідація порожнього імені при редагуванні аніматора</li>
+                        <li>Темна тема: виправлено кнопку «Додати аніматора», лейбли, zoom</li>
+                        <li>Вибір програми: фокус-режим (згортає інші категорії, кнопка «Змінити»)</li>
+                        <li>«Програми» перенесено в dropdown-меню</li>
+                        <li>Тултіпи для всіх кнопок керування</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v5.8 — Admin Panel та тести</h4>
                     <ul>
                         <li>Кнопки дій згруповано в dropdown-меню «☰ Меню»</li>
@@ -796,13 +809,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.8"></script>
-    <script src="js/api.js?v=5.8"></script>
-    <script src="js/ui.js?v=5.8"></script>
-    <script src="js/auth.js?v=5.8"></script>
-    <script src="js/timeline.js?v=5.8"></script>
-    <script src="js/booking.js?v=5.8"></script>
-    <script src="js/settings.js?v=5.8"></script>
-    <script src="js/app.js?v=5.8"></script>
+    <script src="js/config.js?v=5.9"></script>
+    <script src="js/api.js?v=5.9"></script>
+    <script src="js/ui.js?v=5.9"></script>
+    <script src="js/auth.js?v=5.9"></script>
+    <script src="js/timeline.js?v=5.9"></script>
+    <script src="js/booking.js?v=5.9"></script>
+    <script src="js/settings.js?v=5.9"></script>
+    <script src="js/app.js?v=5.9"></script>
 </body>
 </html>

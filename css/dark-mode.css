@@ -484,3 +484,38 @@ body.dark-mode .note-modal-box textarea {
     border-color: var(--gray-300);
     color: #E2E8F0;
 }
+
+/* v5.9: Add line button dark override */
+body.dark-mode .btn-add-line-big {
+    background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.15) 100%);
+    color: #6EE7B7;
+    border-color: rgba(16,185,129,0.4);
+}
+
+body.dark-mode .btn-add-line-big:hover {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #FFFFFF;
+}
+
+/* v5.9: Toggle labels brighter in dark */
+body.dark-mode .toggle-mini-label {
+    color: #D1D5DB;
+}
+
+/* v5.9: Zoom button active state in dark */
+body.dark-mode .zoom-btn.active {
+    background: var(--primary);
+    color: #FFFFFF;
+}
+
+body.dark-mode .zoom-btn:hover:not(.active) {
+    background: rgba(16,185,129,0.15);
+    color: #6EE7B7;
+}
+
+/* v5.9: Change program button in dark */
+body.dark-mode .btn-change-program {
+    background: rgba(16,185,129,0.1);
+    border-color: rgba(16,185,129,0.3);
+    color: #6EE7B7;
+}

@@ -182,6 +182,11 @@ async function renderTimeline() {
 
     renderNowLine();
     renderMinimap();
+
+    // v5.9: Re-render pending line if Telegram poll is active (Bug #3 fix)
+    if (AppState.pendingPollInterval) {
+        renderPendingLine();
+    }
 }
 
 function renderGridCells(lineId) {

@@ -376,6 +376,28 @@ body.dark-mode .btn-logout {
     color: rgba(255,255,255,0.7);
 }
 
+/* Admin dropdown in dark */
+body.dark-mode .dropdown-content {
+    background: #1e1e32;
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .dropdown-item {
+    color: #D1D5DB;
+    border-top-color: var(--gray-200);
+}
+
+body.dark-mode .dropdown-item:hover {
+    background: var(--gray-100);
+}
+
+/* Quick stats bar in dark */
+body.dark-mode .quick-stats-bar {
+    background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.05) 100%);
+    border-color: rgba(16,185,129,0.2);
+    color: #6EE7B7;
+}
+
 /* Control panel card in dark */
 body.dark-mode .control-panel {
     background: var(--white);

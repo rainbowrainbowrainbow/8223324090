@@ -35,6 +35,21 @@ function canViewHistory() {
     return AppState.currentUser !== null;
 }
 
+// v5.8: Quick Stats Bar — show summary for selected date
+function updateQuickStats(bookings) {
+    const bar = document.getElementById('quickStatsBar');
+    if (!bar || isViewer()) return;
+    const content = document.getElementById('quickStatsContent');
+    if (!content) return;
+
+    const confirmed = bookings.filter(b => b.status !== 'preliminary');
+    const preliminary = bookings.filter(b => b.status === 'preliminary');
+    const total = bookings.reduce((sum, b) => sum + (b.price || 0), 0);
+
+    content.textContent = `📊 ${bookings.length} бронювань • ${formatPrice(total)} • ⏳ ${preliminary.length} попередніх`;
+    bar.classList.remove('hidden');
+}
+
 // ==========================================
 // ТАЙМЛАЙН
 // ==========================================
@@ -91,6 +106,8 @@ async function renderTimeline() {
     const lines = await getLinesForDate(AppState.selectedDate);
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const { start } = getTimeRange();
+
+    updateQuickStats(bookings);
 
     const historyBtn = document.getElementById('historyBtn');
     if (historyBtn) {
@@ -327,6 +344,10 @@ async function renderMultiDayTimeline() {
     if (timeScaleEl) timeScaleEl.innerHTML = '';
     if (linesContainer) linesContainer.innerHTML = '';
     if (addLineBtn) addLineBtn.style.display = 'none';
+
+    // v5.8: Hide quick stats in multi-day mode
+    const statsBar = document.getElementById('quickStatsBar');
+    if (statsBar) statsBar.classList.add('hidden');
 
     const historyBtn = document.getElementById('historyBtn');
     if (historyBtn) {

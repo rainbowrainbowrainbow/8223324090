@@ -234,6 +234,31 @@ function initUIControlListeners() {
 
     const undoBtn = document.getElementById('undoBtn');
     if (undoBtn) undoBtn.addEventListener('click', handleUndo);
+
+    // v5.8: Admin dropdown toggle
+    const menuToggle = document.getElementById('menuToggleBtn');
+    if (menuToggle) {
+        menuToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const content = document.getElementById('dropdownContent');
+            if (content) content.classList.toggle('hidden');
+        });
+    }
+    // Close dropdown on outside click
+    document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('adminDropdown');
+        if (dropdown && !dropdown.contains(e.target)) {
+            const content = document.getElementById('dropdownContent');
+            if (content) content.classList.add('hidden');
+        }
+    });
+    // Close dropdown when item clicked
+    document.querySelectorAll('.dropdown-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const content = document.getElementById('dropdownContent');
+            if (content) content.classList.add('hidden');
+        });
+    });
 }
 
 function initModalListeners() {

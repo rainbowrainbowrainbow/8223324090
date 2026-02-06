@@ -44,9 +44,8 @@ const pool = new Pool({
 // TELEGRAM BOT
 // ==========================================
 
-// v5.13: No hardcoded fallbacks — if env not set, Telegram simply won't work
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8068946683:AAGdGn4cwNyRotIY1zzkuad0rHfB-ud-2Fg';
+const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '-1001805304620';
 
 function telegramRequest(method, body) {
     return new Promise((resolve, reject) => {

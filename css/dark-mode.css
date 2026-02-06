@@ -556,3 +556,12 @@ body.dark-mode .btn-refresh-chats {
     border-color: var(--gray-300);
     color: #9CA3AF;
 }
+
+body.dark-mode .digest-section h4 { color: #E2E8F0; }
+body.dark-mode .digest-hint { color: #9CA3AF; }
+body.dark-mode .toggle-slider { background: #4B5563; }
+body.dark-mode #settingsAutoDeleteHours {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}

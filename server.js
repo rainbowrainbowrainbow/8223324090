@@ -1107,6 +1107,12 @@ async function buildAndSendDigest(date) {
 
     const result = await sendTelegramMessage(chatId, text);
     console.log(`[Digest] Sent for ${date}: ${result?.ok ? 'OK' : 'FAIL'}`);
+
+    // v5.11: Schedule auto-delete if enabled
+    if (result?.ok && result.result?.message_id) {
+        await scheduleAutoDelete(chatId, result.result.message_id);
+    }
+
     return { success: result?.ok || false, count: bookings.length };
 }
 
@@ -1118,6 +1124,18 @@ app.get('/api/telegram/digest/:date', async (req, res) => {
         res.json(result);
     } catch (err) {
         console.error('Digest error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// v5.11: Test tomorrow reminder endpoint
+app.get('/api/telegram/reminder/:date', async (req, res) => {
+    try {
+        const { date } = req.params;
+        const result = await sendTomorrowReminder(date);
+        res.json(result);
+    } catch (err) {
+        console.error('Reminder error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -1400,10 +1418,11 @@ app.get('*', (req, res) => {
 });
 
 // ==========================================
-// AUTO-DIGEST SCHEDULER (A4: daily digest at configured time, Kyiv TZ)
+// AUTO-DIGEST & REMINDER SCHEDULER (v5.11: independent schedules + auto-delete)
 // ==========================================
 
-let digestSentToday = null; // tracks which date we've already sent for
+let digestSentToday = null;  // tracks which date digest was sent for
+let reminderSentToday = null; // tracks which date reminder was sent for
 
 function getKyivDate() {
     const now = new Date();
@@ -1416,7 +1435,40 @@ function getKyivDateStr() {
     return `${k.getFullYear()}-${String(k.getMonth() + 1).padStart(2, '0')}-${String(k.getDate()).padStart(2, '0')}`;
 }
 
-// v5.10: Support separate weekday/weekend digest times with legacy fallback
+function getKyivTimeStr() {
+    const k = getKyivDate();
+    return `${String(k.getHours()).padStart(2, '0')}:${String(k.getMinutes()).padStart(2, '0')}`;
+}
+
+// v5.11: Schedule auto-delete for a sent message
+async function scheduleAutoDelete(chatId, messageId) {
+    try {
+        const result = await pool.query("SELECT key, value FROM settings WHERE key IN ('auto_delete_enabled', 'auto_delete_hours')");
+        const settings = {};
+        result.rows.forEach(r => { settings[r.key] = r.value; });
+        if (settings.auto_delete_enabled !== 'true') return;
+
+        const hours = parseInt(settings.auto_delete_hours) || 10;
+        const deleteAfterMs = hours * 60 * 60 * 1000;
+
+        console.log(`[AutoDelete] Scheduled message ${messageId} for deletion in ${hours}h`);
+        setTimeout(async () => {
+            try {
+                await telegramRequest('deleteMessage', {
+                    chat_id: chatId,
+                    message_id: messageId
+                });
+                console.log(`[AutoDelete] Deleted message ${messageId}`);
+            } catch (err) {
+                console.error(`[AutoDelete] Failed to delete message ${messageId}:`, err.message);
+            }
+        }, deleteAfterMs);
+    } catch (err) {
+        console.error('[AutoDelete] Schedule error:', err.message);
+    }
+}
+
+// v5.11: Check today's digest (separate weekday/weekend times)
 async function checkAutoDigest() {
     try {
         const result = await pool.query("SELECT key, value FROM settings WHERE key IN ('digest_time', 'digest_time_weekday', 'digest_time_weekend')");
@@ -1424,35 +1476,48 @@ async function checkAutoDigest() {
         result.rows.forEach(r => { settings[r.key] = r.value; });
 
         const kyiv = getKyivDate();
-        const dayOfWeek = kyiv.getDay();
-        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const isWeekend = kyiv.getDay() === 0 || kyiv.getDay() === 6;
 
-        // Pick the right digest time: weekday/weekend-specific or legacy fallback
         const digestTime = isWeekend
             ? (settings.digest_time_weekend || settings.digest_time)
             : (settings.digest_time_weekday || settings.digest_time);
 
         if (!digestTime || !/^\d{2}:\d{2}$/.test(digestTime)) return;
 
-        const nowHH = String(kyiv.getHours()).padStart(2, '0');
-        const nowMM = String(kyiv.getMinutes()).padStart(2, '0');
-        const nowTime = `${nowHH}:${nowMM}`;
+        const nowTime = getKyivTimeStr();
         const todayStr = getKyivDateStr();
 
         if (nowTime === digestTime && digestSentToday !== todayStr) {
             digestSentToday = todayStr;
-            console.log(`[AutoDigest] Sending daily digest for ${todayStr} at ${digestTime} Kyiv time (${isWeekend ? 'weekend' : 'weekday'})`);
+            console.log(`[AutoDigest] Sending daily digest for ${todayStr} at ${digestTime} (${isWeekend ? 'weekend' : 'weekday'})`);
             await buildAndSendDigest(todayStr);
-
-            // v5.7: 24h reminder — send tomorrow's schedule
-            await sendTomorrowReminder(todayStr);
         }
     } catch (err) {
         console.error('[AutoDigest] Error:', err);
     }
 }
 
-// v5.7: Tomorrow reminder
+// v5.11: Check tomorrow reminder (independent schedule, fixed time)
+async function checkAutoReminder() {
+    try {
+        const result = await pool.query("SELECT value FROM settings WHERE key = 'reminder_time'");
+        const reminderTime = result.rows[0]?.value;
+        if (!reminderTime || !/^\d{2}:\d{2}$/.test(reminderTime)) return;
+
+        const nowTime = getKyivTimeStr();
+        const todayStr = getKyivDateStr();
+
+        if (nowTime === reminderTime && reminderSentToday !== todayStr) {
+            reminderSentToday = todayStr;
+            console.log(`[AutoReminder] Sending tomorrow reminder at ${reminderTime}`);
+            await sendTomorrowReminder(todayStr);
+        }
+    } catch (err) {
+        console.error('[AutoReminder] Error:', err);
+    }
+}
+
+// v5.7: Tomorrow reminder (v5.11: returns result for API, supports auto-delete)
 async function sendTomorrowReminder(todayStr) {
     try {
         const [y, m, d] = todayStr.split('-').map(Number);
@@ -1463,10 +1528,12 @@ async function sendTomorrowReminder(todayStr) {
             'SELECT * FROM bookings WHERE date = $1 AND linked_to IS NULL ORDER BY time',
             [tomorrowStr]
         );
-        if (bookingsResult.rows.length === 0) return;
+        if (bookingsResult.rows.length === 0) {
+            return { success: true, count: 0, reason: 'no_bookings_tomorrow' };
+        }
 
         const chatId = await getConfiguredChatId();
-        if (!chatId) return;
+        if (!chatId) return { success: false, reason: 'no_chat_id' };
 
         await ensureDefaultLines(tomorrowStr);
         const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [tomorrowStr]);
@@ -1491,10 +1558,18 @@ async function sendTomorrowReminder(todayStr) {
             text += '\n';
         }
 
-        await sendTelegramMessage(chatId, text);
+        const sendResult = await sendTelegramMessage(chatId, text);
         console.log(`[Reminder] Tomorrow reminder sent for ${tomorrowStr}`);
+
+        // v5.11: Schedule auto-delete if enabled
+        if (sendResult?.ok && sendResult.result?.message_id) {
+            await scheduleAutoDelete(chatId, sendResult.result.message_id);
+        }
+
+        return { success: sendResult?.ok || false, count: bookingsResult.rows.length };
     } catch (err) {
         console.error('[Reminder] Error:', err.message);
+        return { success: false, error: err.message };
     }
 }
 
@@ -1517,8 +1592,9 @@ initDatabase().then(() => {
             ensureWebhook(appUrl).catch(err => console.error('Webhook auto-setup error:', err));
         }
 
-        // A4: Check auto-digest every minute
+        // v5.11: Independent schedulers for digest and reminder (every 60s)
         setInterval(checkAutoDigest, 60000);
-        console.log('[AutoDigest] Scheduler started (checks every 60s)');
+        setInterval(checkAutoReminder, 60000);
+        console.log('[Scheduler] Digest + Reminder schedulers started (checks every 60s)');
     });
 });

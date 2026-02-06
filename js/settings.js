@@ -456,45 +456,68 @@ async function showSettings() {
     const chatIdInput = document.getElementById('settingsTelegramChatId');
     if (chatIdInput) chatIdInput.value = chatId || '';
 
-    // v5.10: Load separate weekday/weekend digest times
-    const [digestWeekday, digestWeekend, digestLegacy] = await Promise.all([
+    // v5.11: Load digest + reminder + auto-delete settings
+    const [digestWeekday, digestWeekend, digestLegacy, reminderTime, autoDeleteEnabled, autoDeleteHours] = await Promise.all([
         apiGetSetting('digest_time_weekday'),
         apiGetSetting('digest_time_weekend'),
-        apiGetSetting('digest_time')
+        apiGetSetting('digest_time'),
+        apiGetSetting('reminder_time'),
+        apiGetSetting('auto_delete_enabled'),
+        apiGetSetting('auto_delete_hours')
     ]);
     const weekdayInput = document.getElementById('settingsDigestTimeWeekday');
     const weekendInput = document.getElementById('settingsDigestTimeWeekend');
     if (weekdayInput) weekdayInput.value = digestWeekday || digestLegacy || '';
     if (weekendInput) weekendInput.value = digestWeekend || digestLegacy || '';
 
+    const reminderInput = document.getElementById('settingsReminderTime');
+    if (reminderInput) reminderInput.value = reminderTime || '20:00';
+
+    const autoDelToggle = document.getElementById('settingsAutoDeleteEnabled');
+    if (autoDelToggle) autoDelToggle.checked = autoDeleteEnabled === 'true';
+    const autoDelHours = document.getElementById('settingsAutoDeleteHours');
+    if (autoDelHours) autoDelHours.value = autoDeleteHours || '10';
+
     document.getElementById('settingsModal').classList.remove('hidden');
     fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
 }
 
-// v5.10: Save separate weekday/weekend digest times
+// v5.11: Save all notification settings (digest + reminder + auto-delete)
 async function saveDigestTime() {
     const weekdayVal = (document.getElementById('settingsDigestTimeWeekday')?.value || '').trim();
     const weekendVal = (document.getElementById('settingsDigestTimeWeekend')?.value || '').trim();
+    const reminderVal = (document.getElementById('settingsReminderTime')?.value || '').trim();
+    const autoDelEnabled = document.getElementById('settingsAutoDeleteEnabled')?.checked ? 'true' : 'false';
+    const autoDelHours = document.getElementById('settingsAutoDeleteHours')?.value || '10';
 
     const timeRegex = /^\d{2}:\d{2}$/;
     if (weekdayVal && !timeRegex.test(weekdayVal)) {
-        showNotification('Будні: введіть час у форматі ГГ:ХХ', 'error');
+        showNotification('Дайджест будні: введіть час у форматі ГГ:ХХ', 'error');
         return;
     }
     if (weekendVal && !timeRegex.test(weekendVal)) {
-        showNotification('Вихідні: введіть час у форматі ГГ:ХХ', 'error');
+        showNotification('Дайджест вихідні: введіть час у форматі ГГ:ХХ', 'error');
+        return;
+    }
+    if (reminderVal && !timeRegex.test(reminderVal)) {
+        showNotification('Нагадування: введіть час у форматі ГГ:ХХ', 'error');
         return;
     }
 
     await Promise.all([
         apiSaveSetting('digest_time_weekday', weekdayVal),
-        apiSaveSetting('digest_time_weekend', weekendVal)
+        apiSaveSetting('digest_time_weekend', weekendVal),
+        apiSaveSetting('reminder_time', reminderVal),
+        apiSaveSetting('auto_delete_enabled', autoDelEnabled),
+        apiSaveSetting('auto_delete_hours', autoDelHours)
     ]);
 
     const parts = [];
-    if (weekdayVal) parts.push(`будні ${weekdayVal}`);
-    if (weekendVal) parts.push(`вихідні ${weekendVal}`);
-    showNotification(parts.length > 0 ? `Автодайджест: ${parts.join(', ')} (Київ)` : 'Автодайджест вимкнено', 'success');
+    if (weekdayVal) parts.push(`дайджест будні ${weekdayVal}`);
+    if (weekendVal) parts.push(`дайджест вихідні ${weekendVal}`);
+    if (reminderVal) parts.push(`нагадування ${reminderVal}`);
+    if (autoDelEnabled === 'true') parts.push(`автовидалення ${autoDelHours}г`);
+    showNotification(parts.length > 0 ? `Збережено: ${parts.join(', ')}` : 'Сповіщення вимкнено', 'success');
 }
 
 async function sendTestDigest() {
@@ -510,6 +533,26 @@ async function sendTestDigest() {
             showNotification('Тестовий дайджест надіслано!', 'success');
         } else {
             showNotification('Помилка: ' + (result.reason || 'невідома'), 'error');
+        }
+    } catch (err) {
+        showNotification('Помилка надсилання', 'error');
+    }
+}
+
+// v5.11: Test tomorrow reminder
+async function sendTestReminder() {
+    const dateStr = formatDate(AppState.selectedDate);
+    showNotification('Надсилаю тестове нагадування...', 'success');
+    try {
+        const response = await fetch(`${API_BASE}/telegram/reminder/${dateStr}`, {
+            headers: getAuthHeadersGet()
+        });
+        if (handleAuthError(response)) return;
+        const result = await response.json();
+        if (result.success) {
+            showNotification('Тестове нагадування надіслано!', 'success');
+        } else {
+            showNotification('Помилка: ' + (result.reason || result.error || 'невідома'), 'error');
         }
     } catch (err) {
         showNotification('Помилка надсилання', 'error');

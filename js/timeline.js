@@ -36,15 +36,15 @@ function canViewHistory() {
 }
 
 // v5.8: Quick Stats Bar — show summary for selected date
-// v5.9.1: Exclude linked bookings (extra hosts) from count and revenue
-function updateQuickStats(bookings) {
+// v5.11: Filter by existing lines + exclude linked bookings
+function updateQuickStats(bookings, lineIds) {
     const bar = document.getElementById('quickStatsBar');
     if (!bar || isViewer()) return;
     const content = document.getElementById('quickStatsContent');
     if (!content) return;
 
-    // Filter out linked bookings — they are extra hosts, not separate bookings
-    const mainBookings = bookings.filter(b => !b.linkedTo);
+    // Filter: only bookings on existing lines, exclude linked (extra hosts)
+    const mainBookings = bookings.filter(b => !b.linkedTo && (!lineIds || lineIds.includes(b.lineId)));
     const preliminary = mainBookings.filter(b => b.status === 'preliminary');
     const total = mainBookings.reduce((sum, b) => sum + (b.price || 0), 0);
 
@@ -109,7 +109,9 @@ async function renderTimeline() {
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const { start } = getTimeRange();
 
-    updateQuickStats(bookings);
+    // v5.11: Pass line IDs so Quick Stats only counts bookings on existing lines
+    const lineIds = lines.map(l => l.id);
+    updateQuickStats(bookings, lineIds);
 
     const historyBtn = document.getElementById('historyBtn');
     if (historyBtn) {

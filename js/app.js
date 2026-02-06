@@ -213,6 +213,10 @@ function initSettingsListeners() {
     const sendTestDigestBtn = document.getElementById('sendTestDigestBtn');
     if (sendTestDigestBtn) sendTestDigestBtn.addEventListener('click', sendTestDigest);
 
+    // v5.11: Test reminder button
+    const sendTestReminderBtn = document.getElementById('sendTestReminderBtn');
+    if (sendTestReminderBtn) sendTestReminderBtn.addEventListener('click', sendTestReminder);
+
     // F: Afisha button
     const afishaBtn = document.getElementById('afishaBtn');
     if (afishaBtn) afishaBtn.addEventListener('click', showAfishaModal);

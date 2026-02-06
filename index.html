@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.10">
-    <link rel="stylesheet" href="css/auth.css?v=5.10">
-    <link rel="stylesheet" href="css/layout.css?v=5.10">
-    <link rel="stylesheet" href="css/timeline.css?v=5.10">
-    <link rel="stylesheet" href="css/panel.css?v=5.10">
-    <link rel="stylesheet" href="css/modals.css?v=5.10">
-    <link rel="stylesheet" href="css/controls.css?v=5.10">
-    <link rel="stylesheet" href="css/features.css?v=5.10">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.10">
-    <link rel="stylesheet" href="css/responsive.css?v=5.10">
+    <link rel="stylesheet" href="css/base.css?v=5.11">
+    <link rel="stylesheet" href="css/auth.css?v=5.11">
+    <link rel="stylesheet" href="css/layout.css?v=5.11">
+    <link rel="stylesheet" href="css/timeline.css?v=5.11">
+    <link rel="stylesheet" href="css/panel.css?v=5.11">
+    <link rel="stylesheet" href="css/modals.css?v=5.11">
+    <link rel="stylesheet" href="css/controls.css?v=5.11">
+    <link rel="stylesheet" href="css/features.css?v=5.11">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.11">
+    <link rel="stylesheet" href="css/responsive.css?v=5.11">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.10</p>
+                <p class="tagline">Система бронювання v5.11</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.10</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.11</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -467,24 +467,49 @@
                         </div>
                         <button type="button" id="settingsSaveTelegramBtn" class="btn-submit">Зберегти та протестувати</button>
                     </div>
-                    <!-- A4: Автодайджест -->
-                    <div class="telegram-setup" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
+                    <!-- A4: Дайджест на сьогодні -->
+                    <div class="telegram-setup digest-section" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
+                        <h4 style="margin: 0 0 8px;">📅 Дайджест «Розклад на сьогодні»</h4>
+                        <p class="digest-hint">Відправляє список бронювань на поточний день.</p>
                         <div class="form-group">
-                            <label>Автодайджест — будні (Пн-Пт), Київ:</label>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <input type="time" id="settingsDigestTimeWeekday" placeholder="08:00" style="flex:1;">
-                            </div>
+                            <label>Час відправки — будні (Пн-Пт):</label>
+                            <input type="time" id="settingsDigestTimeWeekday" style="width: 120px;">
                         </div>
                         <div class="form-group">
-                            <label>Автодайджест — вихідні (Сб-Нд), Київ:</label>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <input type="time" id="settingsDigestTimeWeekend" placeholder="09:00" style="flex:1;">
-                            </div>
+                            <label>Час відправки — вихідні (Сб-Нд):</label>
+                            <input type="time" id="settingsDigestTimeWeekend" style="width: 120px;">
                         </div>
                         <div style="display: flex; gap: 8px;">
-                            <button type="button" id="saveDigestTimeBtn" class="btn-submit" style="flex:1;">Зберегти час</button>
-                            <button type="button" id="sendTestDigestBtn" class="btn-submit" style="flex:1; background: linear-gradient(135deg, #3B82F6, #1D4ED8);">📲 Тест</button>
+                            <button type="button" id="sendTestDigestBtn" class="btn-submit" style="flex:1; background: linear-gradient(135deg, #3B82F6, #1D4ED8);">📲 Тест дайджест</button>
                         </div>
+                    </div>
+                    <!-- A4b: Нагадування на завтра -->
+                    <div class="telegram-setup digest-section" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray-200);">
+                        <h4 style="margin: 0 0 8px;">⏰ Нагадування «Що буде завтра»</h4>
+                        <p class="digest-hint">Відправляє список бронювань на наступний день. Завжди в один час.</p>
+                        <div class="form-group">
+                            <label>Час відправки (щодня):</label>
+                            <input type="time" id="settingsReminderTime" style="width: 120px;">
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" id="sendTestReminderBtn" class="btn-submit" style="flex:1; background: linear-gradient(135deg, #3B82F6, #1D4ED8);">📲 Тест нагадування</button>
+                        </div>
+                    </div>
+                    <!-- A4c: Автовидалення повідомлень -->
+                    <div class="telegram-setup digest-section" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray-200);">
+                        <h4 style="margin: 0 0 8px;">🗑 Автовидалення повідомлень</h4>
+                        <p class="digest-hint">Дайджести та нагадування видаляються автоматично через вказаний час.</p>
+                        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                            <label class="toggle-switch" style="margin: 0;">
+                                <input type="checkbox" id="settingsAutoDeleteEnabled">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span>Увімкнути автовидалення</span>
+                            <input type="number" id="settingsAutoDeleteHours" value="10" min="1" max="48" style="width: 60px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--gray-300);"> год
+                        </div>
+                    </div>
+                    <div style="margin-top: 12px;">
+                        <button type="button" id="saveDigestTimeBtn" class="btn-submit" style="width: 100%;">💾 Зберегти налаштування сповіщень</button>
                     </div>
                 </div>
             </div>
@@ -562,6 +587,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v5.11 — Сповіщення та Quick Stats</h4>
+                    <ul>
+                        <li>Quick Stats: виправлено підрахунок — «сиротські» бронювання видалених аніматорів більше не враховуються</li>
+                        <li>Дайджест «Розклад на сьогодні»: окремий час для будніх/вихідних</li>
+                        <li>Нагадування «Що буде завтра»: незалежний розклад, фіксований час щодня</li>
+                        <li>Автовидалення повідомлень: перемикач + налаштування кількості годин</li>
+                        <li>Кнопка «Тест нагадування» в налаштуваннях</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v5.10 — Аналітика, афіша та дайджест</h4>
                     <ul>
@@ -843,13 +878,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.10"></script>
-    <script src="js/api.js?v=5.10"></script>
-    <script src="js/ui.js?v=5.10"></script>
-    <script src="js/auth.js?v=5.10"></script>
-    <script src="js/timeline.js?v=5.10"></script>
-    <script src="js/booking.js?v=5.10"></script>
-    <script src="js/settings.js?v=5.10"></script>
-    <script src="js/app.js?v=5.10"></script>
+    <script src="js/config.js?v=5.11"></script>
+    <script src="js/api.js?v=5.11"></script>
+    <script src="js/ui.js?v=5.11"></script>
+    <script src="js/auth.js?v=5.11"></script>
+    <script src="js/timeline.js?v=5.11"></script>
+    <script src="js/booking.js?v=5.11"></script>
+    <script src="js/settings.js?v=5.11"></script>
+    <script src="js/app.js?v=5.11"></script>
 </body>
 </html>

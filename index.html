@@ -539,8 +539,11 @@
                         <option value="undo_delete">↩ Скас. видалення</option>
                     </select>
                     <input type="text" id="historyFilterUser" class="history-filter-input" placeholder="Користувач...">
-                    <input type="date" id="historyFilterFrom" class="history-filter-input">
-                    <input type="date" id="historyFilterTo" class="history-filter-input">
+                    <div class="history-date-range">
+                        <input type="date" id="historyFilterFrom" class="history-filter-input" title="Від">
+                        <span class="history-date-sep">—</span>
+                        <input type="date" id="historyFilterTo" class="history-filter-input" title="До">
+                    </div>
                     <button type="button" id="historyFilterApply" class="btn-history-filter">🔍</button>
                     <button type="button" id="historyFilterReset" class="btn-history-reset">✕</button>
                 </div>

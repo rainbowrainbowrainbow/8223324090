@@ -96,6 +96,25 @@
         text-align: center;
     }
 
+    /* v5.16: History filters mobile */
+    .history-filter-row {
+        gap: 6px;
+    }
+
+    .history-filter-select,
+    .history-filter-input[type="text"] {
+        width: 100%;
+    }
+
+    .history-date-range {
+        width: 100%;
+    }
+
+    .history-date-range .history-filter-input[type="date"] {
+        flex: 1;
+        width: auto;
+    }
+
     /* v32 controls */
     .v32-controls {
         order: 3;

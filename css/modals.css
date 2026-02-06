@@ -356,8 +356,8 @@
 .history-filter-row {
     display: flex;
     gap: 6px;
-    flex-wrap: wrap;
     align-items: center;
+    flex-wrap: wrap;
 }
 
 .history-filter-select,
@@ -372,9 +372,21 @@
     color: var(--gray-800);
 }
 
-.history-filter-select { min-width: 120px; }
-.history-filter-input[type="text"] { min-width: 100px; flex: 1; }
-.history-filter-input[type="date"] { min-width: 130px; }
+.history-filter-select { width: 130px; }
+.history-filter-input[type="text"] { width: 120px; }
+.history-filter-input[type="date"] { width: 130px; }
+
+.history-date-range {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.history-date-sep {
+    color: var(--gray-400);
+    font-weight: 600;
+    font-size: 14px;
+}
 
 .btn-history-filter,
 .btn-history-reset {

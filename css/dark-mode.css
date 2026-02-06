@@ -185,8 +185,17 @@ body.dark-mode .zoom-btn {
 }
 
 body.dark-mode .toggle-mini {
-    background: var(--gray-100);
-    border-color: var(--gray-300);
+    background: #252548;
+    border-color: #444468;
+}
+
+body.dark-mode .toggle-mini:hover {
+    background: #2d2d52;
+    border-color: #5a5a7c;
+}
+
+body.dark-mode .toggle-mini-label {
+    color: #D1D5DB;
 }
 
 body.dark-mode .btn-undo {
@@ -533,11 +542,6 @@ body.dark-mode .btn-add-line-big {
 body.dark-mode .btn-add-line-big:hover {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: #FFFFFF;
-}
-
-/* v5.9: Toggle labels brighter in dark */
-body.dark-mode .toggle-mini-label {
-    color: #D1D5DB;
 }
 
 /* v5.9: Zoom button active state in dark */

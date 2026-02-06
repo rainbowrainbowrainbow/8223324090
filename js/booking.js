@@ -68,9 +68,11 @@ async function openBookingPanel(time, lineId) {
 // v5.18: Show free rooms for selected time/duration
 async function showFreeRooms() {
     const date = formatDate(AppState.selectedDate);
-    const time = document.getElementById('bookingTime').value;
-    const programId = document.getElementById('selectedProgram').value;
-    const program = PROGRAMS.find(p => p.id === programId);
+    let time = document.getElementById('bookingTime')?.value;
+    // v5.19: fallback to selected cell time
+    if (!time && AppState.selectedCell) time = AppState.selectedCell.dataset.time;
+    const programId = document.getElementById('selectedProgram')?.value;
+    const program = programId ? PROGRAMS.find(p => p.id === programId) : null;
     const duration = program ? program.duration : 60;
 
     if (!time) {

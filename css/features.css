@@ -444,20 +444,63 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    padding: 10px 12px;
     background: var(--gray-50);
     border-radius: var(--radius-sm);
     border-left: 4px solid #8B5CF6;
+    gap: 8px;
 }
 
 .afisha-item-info {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    flex: 1;
+    min-width: 0;
 }
 
 .afisha-item-info strong { color: var(--gray-800); font-size: var(--font-base); }
 .afisha-date { color: var(--gray-400); font-size: var(--font-xs); }
+
+/* v5.19: Afisha item actions row */
+.afisha-item-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.btn-shift {
+    background: rgba(139,92,246,0.1);
+    color: #7C3AED;
+    border: 1px solid rgba(139,92,246,0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px !important;
+    padding: 3px 6px !important;
+    width: auto !important;
+    transition: all 0.15s;
+}
+
+.btn-shift:hover {
+    background: rgba(139,92,246,0.2);
+}
+
+.btn-edit {
+    background: rgba(59,130,246,0.1);
+    color: #2563EB;
+    border: 1px solid rgba(59,130,246,0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px !important;
+    padding: 3px 6px !important;
+    width: auto !important;
+    transition: all 0.15s;
+}
+
+.btn-edit:hover {
+    background: rgba(59,130,246,0.2);
+}
 
 .btn-sm {
     padding: 4px 10px !important;

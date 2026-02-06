@@ -250,7 +250,8 @@ function createBookingBlock(booking, startHour) {
     const width = (booking.duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
 
     const isPreliminary = booking.status === 'preliminary';
-    block.className = `booking-block ${booking.category}${isPreliminary ? ' preliminary' : ''}`;
+    const isLinked = !!booking.linkedTo;
+    block.className = `booking-block ${booking.category}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}`;
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 
@@ -261,14 +262,22 @@ function createBookingBlock(booking, startHour) {
     const durationClass = booking.duration > 60 ? 'long' : 'short';
     const durationBadge = booking.duration > 0 ? `<span class="duration-badge ${durationClass}">${booking.duration}хв</span>` : '';
 
+    // v5.19: Linked bookings show 🔗 badge instead of user letter
+    const badge = isLinked ? '🔗' : escapeHtml(userLetter);
+
     block.innerHTML = `
-        <div class="user-letter">${escapeHtml(userLetter)}</div>
+        <div class="user-letter">${badge}</div>
         <div class="title">${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.room)}${durationBadge}</div>
         <div class="subtitle">${escapeHtml(booking.time)}${booking.kidsCount ? ' (' + escapeHtml(String(booking.kidsCount)) + ' діт)' : ''}</div>
         ${noteText}
     `;
 
-    block.addEventListener('click', () => showBookingDetails(booking.id));
+    // v5.19: Linked bookings click → navigate to parent booking details
+    if (isLinked) {
+        block.addEventListener('click', () => showBookingDetails(booking.linkedTo));
+    } else {
+        block.addEventListener('click', () => showBookingDetails(booking.id));
+    }
     block.addEventListener('mouseenter', (e) => showTooltip(e, booking));
     block.addEventListener('mousemove', (e) => moveTooltip(e));
     block.addEventListener('mouseleave', hideTooltip);

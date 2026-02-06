@@ -349,6 +349,19 @@
     margin-top: 2px;
 }
 
+/* v5.19: Linked booking ghost/locked style */
+.booking-block.linked-ghost {
+    opacity: 0.55;
+    border-left: 3px dashed rgba(255,255,255,0.4);
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.booking-block.linked-ghost:hover {
+    opacity: 0.75;
+    transform: none;
+}
+
 /* User letter badge */
 .booking-block .user-letter {
     position: absolute;

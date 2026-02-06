@@ -1082,6 +1082,17 @@ app.put('/api/bookings/:id', async (req, res) => {
              b.kidsCount || null, b.groupName || null, id]
         );
 
+        // v5.19: Auto-sync linked bookings when main is edited (time, date, status, duration)
+        if (!b.linkedTo) {
+            const linkedResult = await client.query('SELECT id FROM bookings WHERE linked_to = $1', [id]);
+            for (const linked of linkedResult.rows) {
+                await client.query(
+                    `UPDATE bookings SET date=$1, time=$2, duration=$3, status=$4, updated_at=NOW() WHERE id=$5`,
+                    [b.date, b.time, b.duration, newStatus, linked.id]
+                );
+            }
+        }
+
         // v5.12: Auto-history in transaction
         await client.query(
             'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
@@ -1098,10 +1109,12 @@ app.put('/api/bookings/:id', async (req, res) => {
             status: newStatus
         };
 
-        // v5.18.1: Skip Telegram for preliminary->preliminary (no change) and prelim create
+        // v5.19: Smart Telegram notifications
         const statusChanged = oldBooking.status !== newStatus;
-        if (statusChanged) {
-            // Only notify on status change if new status is confirmed, or if going from confirmed to preliminary
+        if (statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
+            // prelim→confirmed: send as NEW booking (first time in Telegram)
+            notifyTelegram('create', bookingForNotify, { username, bookingId: id });
+        } else if (statusChanged) {
             notifyTelegram('status_change', bookingForNotify, { username, bookingId: id });
         } else if (!b.linkedTo && newStatus !== 'preliminary') {
             notifyTelegram('edit', bookingForNotify, { username, bookingId: id });

@@ -931,6 +931,72 @@ async function apiDeleteAfisha(id) {
     }
 }
 
+// v5.19: Update afisha item
+async function apiUpdateAfisha(id, data) {
+    try {
+        const response = await fetch(`${API_BASE}/afisha/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Afisha update error:', err);
+        return null;
+    }
+}
+
+// v5.19: Shift afisha item by ±N minutes
+async function shiftAfishaItem(id, deltaMinutes) {
+    const items = await apiGetAfisha();
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+
+    const currentMin = timeToMinutes(item.time);
+    const newMin = currentMin + deltaMinutes;
+    if (newMin < 0 || newMin > 23 * 60 + 45) return;
+    const newTime = minutesToTime(newMin);
+
+    const result = await apiUpdateAfisha(id, {
+        date: item.date, time: newTime, title: item.title, duration: item.duration
+    });
+    if (result && result.success) {
+        await renderAfishaList();
+        if (formatDate(AppState.selectedDate) === item.date) {
+            delete AppState.cachedBookings[item.date];
+            await renderTimeline();
+        }
+    }
+}
+
+// v5.19: Edit afisha item — fill the form with existing data for re-save
+async function editAfishaItem(id) {
+    const items = await apiGetAfisha();
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+
+    const newTitle = prompt('Назва події:', item.title);
+    if (newTitle === null) return;
+    const newTime = prompt('Час (HH:MM):', item.time);
+    if (newTime === null || !/^\d{2}:\d{2}$/.test(newTime)) return;
+    const newDuration = prompt('Тривалість (хв):', item.duration);
+    if (newDuration === null) return;
+
+    const result = await apiUpdateAfisha(id, {
+        date: item.date, time: newTime, title: newTitle.trim() || item.title,
+        duration: parseInt(newDuration) || item.duration
+    });
+    if (result && result.success) {
+        showNotification('Подію оновлено', 'success');
+        await renderAfishaList();
+        if (formatDate(AppState.selectedDate) === item.date) {
+            delete AppState.cachedBookings[item.date];
+            await renderTimeline();
+        }
+    }
+}
+
 async function showAfishaModal() {
     const modal = document.getElementById('afishaModal');
     if (!modal) return;
@@ -953,7 +1019,12 @@ async function renderAfishaList() {
                 <strong>${escapeHtml(item.title)}</strong>
                 <span class="afisha-date">${escapeHtml(item.date)} ${escapeHtml(item.time)} (${item.duration} хв)</span>
             </div>
-            <button class="btn-danger btn-sm" onclick="deleteAfishaItem(${item.id})">✕</button>
+            <div class="afisha-item-actions">
+                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, -15)" title="−15 хв">◀</button>
+                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, +15)" title="+15 хв">▶</button>
+                <button class="btn-edit btn-sm" onclick="editAfishaItem(${item.id})" title="Редагувати">✏️</button>
+                <button class="btn-danger btn-sm" onclick="deleteAfishaItem(${item.id})" title="Видалити">✕</button>
+            </div>
         </div>
     `).join('');
 }

@@ -139,21 +139,27 @@ function initTimelineListeners() {
         });
     });
 
-    const multiDayModeCheckbox = document.getElementById('multiDayMode');
-    const daysCountSelect = document.getElementById('daysCount');
-
-    if (multiDayModeCheckbox) {
-        multiDayModeCheckbox.addEventListener('change', (e) => {
-            AppState.multiDayMode = e.target.checked;
-            daysCountSelect.classList.toggle('hidden', !AppState.multiDayMode);
-            renderTimeline();
-        });
-    }
-
-    if (daysCountSelect) {
-        daysCountSelect.addEventListener('change', (e) => {
-            AppState.daysToShow = parseInt(e.target.value);
-            renderTimeline();
+    // v5.19: Period selector (segmented control)
+    const periodSelector = document.getElementById('periodSelector');
+    if (periodSelector) {
+        periodSelector.querySelectorAll('.period-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const period = parseInt(btn.dataset.period);
+                periodSelector.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                if (period === 1) {
+                    AppState.multiDayMode = false;
+                } else {
+                    AppState.multiDayMode = true;
+                    AppState.daysToShow = period;
+                }
+                // Sync hidden inputs for backward compat
+                const multiDayModeCheckbox = document.getElementById('multiDayMode');
+                const daysCountSelect = document.getElementById('daysCount');
+                if (multiDayModeCheckbox) multiDayModeCheckbox.checked = AppState.multiDayMode;
+                if (daysCountSelect) daysCountSelect.value = String(AppState.daysToShow);
+                renderTimeline();
+            });
         });
     }
 

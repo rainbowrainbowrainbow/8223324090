@@ -215,6 +215,12 @@ function initBookingFormListeners() {
             }
         });
     }
+
+    // v5.18: Free rooms button
+    const freeRoomsBtn = document.getElementById('freeRoomsBtn');
+    if (freeRoomsBtn) {
+        freeRoomsBtn.addEventListener('click', showFreeRooms);
+    }
 }
 
 function initSettingsListeners() {

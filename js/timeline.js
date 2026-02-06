@@ -162,25 +162,27 @@ async function renderTimeline() {
     });
 
     // F3: Render afisha events as overlay markers on timeline
+    // v5.18: Afisha as blocking layer — render on ALL lines, not just first
     try {
         const afishaEvents = await apiGetAfishaByDate(formatDate(AppState.selectedDate));
         if (afishaEvents && afishaEvents.length > 0) {
-            const firstGrid = container.querySelector('.line-grid');
-            if (firstGrid) {
+            const allGrids = container.querySelectorAll('.line-grid');
+            allGrids.forEach((grid, idx) => {
                 afishaEvents.forEach(ev => {
                     const startMin = timeToMinutes(ev.time) - start * 60;
                     if (startMin < 0) return;
                     const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
                     const width = ((ev.duration || 60) / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
                     const marker = document.createElement('div');
-                    marker.className = 'afisha-marker';
+                    marker.className = 'afisha-marker afisha-blocking';
                     marker.style.left = `${left}px`;
                     marker.style.width = `${Math.max(width, 30)}px`;
-                    marker.title = `${ev.title} (${ev.time}, ${ev.duration} хв)`;
-                    marker.innerHTML = `<span class="afisha-marker-text">🎭 ${escapeHtml(ev.title)}</span>`;
-                    firstGrid.appendChild(marker);
+                    marker.title = `🚫 Афіша: ${ev.title} (${ev.time}, ${ev.duration} хв)`;
+                    // Only show text on first line
+                    marker.innerHTML = idx === 0 ? `<span class="afisha-marker-text">🎭 ${escapeHtml(ev.title)}</span>` : '';
+                    grid.appendChild(marker);
                 });
-            }
+            });
         }
     } catch (e) { /* afisha optional */ }
 
@@ -255,9 +257,13 @@ function createBookingBlock(booking, startHour) {
     const userLetter = booking.createdBy ? booking.createdBy.charAt(0).toUpperCase() : '';
     const noteText = booking.notes ? `<div class="note-text">${escapeHtml(booking.notes)}</div>` : '';
 
+    // v5.18: Duration badge to distinguish 60/120 min
+    const durationClass = booking.duration > 60 ? 'long' : 'short';
+    const durationBadge = booking.duration > 0 ? `<span class="duration-badge ${durationClass}">${booking.duration}хв</span>` : '';
+
     block.innerHTML = `
         <div class="user-letter">${escapeHtml(userLetter)}</div>
-        <div class="title">${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.room)}</div>
+        <div class="title">${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.room)}${durationBadge}</div>
         <div class="subtitle">${escapeHtml(booking.time)}${booking.kidsCount ? ' (' + escapeHtml(String(booking.kidsCount)) + ' діт)' : ''}</div>
         ${noteText}
     `;

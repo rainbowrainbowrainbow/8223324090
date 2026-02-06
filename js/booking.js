@@ -53,8 +53,53 @@ async function openBookingPanel(time, lineId) {
     const kidsCountInput = document.getElementById('kidsCountInput');
     if (kidsCountInput) kidsCountInput.value = '';
 
+    // v5.18: Reset focus mode — show all categories when opening panel
+    const allHeaders = document.querySelectorAll('#programsIcons .category-header');
+    const allGrids = document.querySelectorAll('#programsIcons .category-grid');
+    allHeaders.forEach(h => h.style.display = '');
+    allGrids.forEach(g => g.style.display = '');
+    const changeBtn = document.getElementById('changeProgramBtn');
+    if (changeBtn) changeBtn.remove();
+
     document.getElementById('bookingPanel').classList.remove('hidden');
     document.querySelector('.main-content').classList.add('panel-open');
+}
+
+// v5.18: Show free rooms for selected time/duration
+async function showFreeRooms() {
+    const date = formatDate(AppState.selectedDate);
+    const time = document.getElementById('bookingTime').value;
+    const programId = document.getElementById('selectedProgram').value;
+    const program = PROGRAMS.find(p => p.id === programId);
+    const duration = program ? program.duration : 60;
+
+    if (!time) {
+        showNotification('Спочатку оберіть час', 'error');
+        return;
+    }
+
+    const panel = document.getElementById('freeRoomsPanel');
+    panel.classList.remove('hidden');
+    panel.innerHTML = '<span class="loading">Завантаження...</span>';
+
+    try {
+        const response = await fetch(`${API_BASE}/rooms/free/${date}/${time}/${duration}`, {
+            headers: getAuthHeadersGet()
+        });
+        if (handleAuthError(response)) return;
+        const data = await response.json();
+
+        if (data.free && data.free.length > 0) {
+            panel.innerHTML = data.free.map(room =>
+                `<span class="free-room-chip" onclick="document.getElementById('roomSelect').value='${room}';document.getElementById('freeRoomsPanel').classList.add('hidden')">${room}</span>`
+            ).join('') +
+            (data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті: ${data.occupied.join(', ')}</div>` : '');
+        } else {
+            panel.innerHTML = '<span class="no-free-rooms">Всі кімнати зайняті в цей час</span>';
+        }
+    } catch (err) {
+        panel.innerHTML = '<span class="no-free-rooms">Помилка завантаження</span>';
+    }
 }
 
 function closeBookingPanel() {

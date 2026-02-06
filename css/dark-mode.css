@@ -619,3 +619,120 @@ body.dark-mode .btn-today.is-today {
     background: var(--gray-300);
     color: var(--gray-500);
 }
+
+/* ==========================================
+   v5.18: DARK MODE OVERHAUL — ENHANCED CONTRAST & NEW ELEMENTS
+   ========================================== */
+
+/* Better booking block readability in dark */
+body.dark-mode .booking-block {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+body.dark-mode .booking-block .title {
+    color: #F3F4F6;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+body.dark-mode .booking-block .subtitle {
+    color: rgba(255,255,255,0.75);
+}
+
+body.dark-mode .booking-block .user-letter {
+    background: rgba(0,0,0,0.3);
+    color: rgba(255,255,255,0.8);
+}
+
+/* Duration badges in dark */
+body.dark-mode .duration-badge.short {
+    background: rgba(59,130,246,0.25);
+    color: #93C5FD;
+}
+
+body.dark-mode .duration-badge.long {
+    background: rgba(245,158,11,0.25);
+    color: #FCD34D;
+}
+
+/* Free rooms in dark */
+body.dark-mode .btn-free-rooms {
+    background: rgba(59,130,246,0.15);
+    border-color: rgba(59,130,246,0.3);
+    color: #93C5FD;
+}
+
+body.dark-mode .free-room-chip {
+    background: rgba(16,185,129,0.15);
+    border-color: rgba(16,185,129,0.3);
+    color: #6EE7B7;
+}
+
+body.dark-mode .free-room-chip:hover {
+    background: rgba(16,185,129,0.25);
+    border-color: var(--primary);
+}
+
+body.dark-mode .occupied-rooms {
+    color: #6B7280;
+}
+
+/* Afisha blocking layer in dark */
+body.dark-mode .afisha-marker.afisha-blocking {
+    background: repeating-linear-gradient(
+        -45deg,
+        rgba(139,92,246,0.08),
+        rgba(139,92,246,0.08) 4px,
+        rgba(139,92,246,0.16) 4px,
+        rgba(139,92,246,0.16) 8px
+    );
+    border-color: rgba(139,92,246,0.4);
+}
+
+body.dark-mode .afisha-blocking .afisha-marker-text {
+    background: rgba(30,30,50,0.95);
+    color: #C4B5FD;
+}
+
+/* Better input contrast in dark */
+body.dark-mode .form-section textarea {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+/* Improved header contrast */
+body.dark-mode .header .brand-row .version {
+    color: rgba(255,255,255,0.5);
+}
+
+/* Better modal headers */
+body.dark-mode .modal-content h3 {
+    color: #F3F4F6;
+}
+
+/* Improved notification toast in dark */
+body.dark-mode .notification.success {
+    background: linear-gradient(135deg, #065F46 0%, #047857 100%);
+    border-color: #10B981;
+}
+
+body.dark-mode .notification.error {
+    background: linear-gradient(135deg, #7F1D1D 0%, #991B1B 100%);
+    border-color: #EF4444;
+}
+
+/* Confirm modal in dark */
+body.dark-mode .confirm-modal-content {
+    background: #1e1e32;
+}
+
+/* Better separator lines */
+body.dark-mode hr,
+body.dark-mode .form-section {
+    border-color: var(--gray-200);
+}
+
+/* Scrollbar improvement */
+body.dark-mode ::-webkit-scrollbar-track {
+    background: #0f0f1a;
+}

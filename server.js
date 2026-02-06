@@ -70,7 +70,8 @@ function telegramRequest(method, body) {
     });
 }
 
-async function sendTelegramMessage(chatId, text, retries = 3) {
+async function sendTelegramMessage(chatId, text, options = {}) {
+    const retries = options.retries || 3;
     // v5.17: Auto-include thread ID for forum topics
     const threadId = await getConfiguredThreadId();
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -79,7 +80,7 @@ async function sendTelegramMessage(chatId, text, retries = 3) {
                 chat_id: chatId,
                 text: text,
                 parse_mode: 'HTML',
-                disable_notification: true
+                disable_notification: options.silent !== false // default silent, pass silent:false for sound
             };
             if (threadId) payload.message_thread_id = threadId;
             const result = await telegramRequest('sendMessage', payload);
@@ -234,6 +235,21 @@ function minutesToTime(minutes) {
 
 const MIN_PAUSE = 15;
 
+// v5.18: Check afisha blocking layer — blocks all lines for this time range
+async function checkAfishaConflicts(client, date, time, duration) {
+    const result = await client.query('SELECT * FROM afisha WHERE date = $1', [date]);
+    const newStart = timeToMinutes(time);
+    const newEnd = newStart + duration;
+    for (const ev of result.rows) {
+        const evStart = timeToMinutes(ev.time);
+        const evEnd = evStart + (ev.duration || 60);
+        if (newStart < evEnd && newEnd > evStart) {
+            return { blocked: true, event: ev };
+        }
+    }
+    return { blocked: false };
+}
+
 async function checkServerConflicts(client, date, lineId, time, duration, excludeId = null) {
     const params = excludeId ? [date, lineId, excludeId] : [date, lineId];
     const result = await client.query(
@@ -298,6 +314,8 @@ const notificationTemplates = {
         text += `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n`;
         text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
         text += `🏠 ${booking.room}\n`;
+        // v5.18: Include second animator (host2) in notification
+        if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${booking.second_animator || booking.secondAnimator}\n`;
         if (booking.kids_count) text += `👶 ${booking.kids_count} дітей\n`;
         if (booking.notes) text += `📝 ${booking.notes}\n`;
         text += `\n👤 Створив: ${extra.username || booking.created_by}`;
@@ -310,6 +328,8 @@ const notificationTemplates = {
         text += `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n`;
         text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
         text += `🏠 ${booking.room}\n`;
+        // v5.18: Include second animator (host2) in notification
+        if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${booking.second_animator || booking.secondAnimator}\n`;
         if (booking.kids_count) text += `👶 ${booking.kids_count} дітей\n`;
         if (booking.notes) text += `📝 ${booking.notes}\n`;
         text += `\n👤 Змінив: ${extra.username || '?'}`;
@@ -693,6 +713,17 @@ app.post('/api/bookings', async (req, res) => {
 
         // v5.7: Server-side conflict check (skip for linked bookings — checked in /bookings/full)
         if (!b.linkedTo) {
+            // v5.18: Afisha blocking layer check
+            const afishaBlock = await checkAfishaConflicts(client, b.date, b.time, b.duration || 0);
+            if (afishaBlock.blocked) {
+                await client.query('ROLLBACK');
+                client.release();
+                return res.status(409).json({
+                    success: false,
+                    error: `Час заблоковано афішею: "${afishaBlock.event.title}" о ${afishaBlock.event.time}`
+                });
+            }
+
             const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0);
             if (conflict.overlap) {
                 await client.query('ROLLBACK');
@@ -730,7 +761,8 @@ app.post('/api/bookings', async (req, res) => {
         await client.query('COMMIT');
 
         // Auto Telegram notify (fire-and-forget, after commit)
-        if (!b.linkedTo) {
+        // v5.18: Skip notification for preliminary bookings
+        if (!b.linkedTo && b.status !== 'preliminary') {
             notifyTelegram('create', {
                 ...b, label: b.label, program_code: b.programCode,
                 program_name: b.programName, kids_count: b.kidsCount,
@@ -761,6 +793,17 @@ app.post('/api/bookings/full', async (req, res) => {
         if (!validateTime(main.time)) { client.release(); return res.status(400).json({ error: 'Invalid time format' }); }
 
         await client.query('BEGIN');
+
+        // v5.18: Afisha blocking layer check
+        const afishaBlock = await checkAfishaConflicts(client, main.date, main.time, main.duration || 0);
+        if (afishaBlock.blocked) {
+            await client.query('ROLLBACK');
+            client.release();
+            return res.status(409).json({
+                success: false,
+                error: `Час заблоковано афішею: "${afishaBlock.event.title}" о ${afishaBlock.event.time}`
+            });
+        }
 
         // Conflict check for main booking
         const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0);
@@ -826,10 +869,13 @@ app.post('/api/bookings/full', async (req, res) => {
         await client.query('COMMIT');
 
         // Auto Telegram notify
-        notifyTelegram('create', {
-            ...main, program_code: main.programCode, program_name: main.programName,
-            kids_count: main.kidsCount, created_by: main.createdBy
-        }, { username: main.createdBy || req.user?.username });
+        // v5.18: Skip notification for preliminary bookings
+        if (main.status !== 'preliminary') {
+            notifyTelegram('create', {
+                ...main, program_code: main.programCode, program_name: main.programName,
+                kids_count: main.kidsCount, created_by: main.createdBy
+            }, { username: main.createdBy || req.user?.username });
+        }
 
         res.json({ success: true, id: main.id, linkedIds });
     } catch (err) {
@@ -1246,7 +1292,7 @@ async function buildAndSendDigest(date) {
         text += '\n';
     }
 
-    const result = await sendTelegramMessage(chatId, text);
+    const result = await sendTelegramMessage(chatId, text, { silent: false });
     console.log(`[Digest] Sent for ${date}: ${result?.ok ? 'OK' : 'FAIL'}`);
 
     // v5.11: Schedule auto-delete if enabled
@@ -1435,7 +1481,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 // Add line to DB
                 await pool.query(
                     'INSERT INTO lines_by_date (date, line_id, name, color) VALUES ($1, $2, $3, $4)',
-                    [date, newLineId, newName, colors[count % colors.length]]
+                    [date, newLineId, newName, colors[linesResult.rows.length % colors.length]]
                 );
 
                 // Answer callback
@@ -1750,6 +1796,46 @@ async function checkAutoBackup() {
     }
 }
 
+// v5.18: Free rooms API — returns rooms not occupied at given date+time+duration
+app.get('/api/rooms/free/:date/:time/:duration', async (req, res) => {
+    try {
+        const { date, time, duration } = req.params;
+        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
+        if (!validateTime(time)) return res.status(400).json({ error: 'Invalid time' });
+        const dur = parseInt(duration) || 60;
+
+        const ALL_ROOMS = [
+            'Marvel', 'Ninja', 'Minecraft', 'Monster High', 'Elsa',
+            'Растішка', 'Rock', 'Minion', 'Food Court', 'Жовтий стіл',
+            'Диван 1', 'Диван 2', 'Диван 3', 'Диван 4'
+        ];
+
+        const bookings = await pool.query(
+            "SELECT room, time, duration FROM bookings WHERE date = $1 AND status != 'cancelled'",
+            [date]
+        );
+
+        const reqStart = timeToMinutes(time);
+        const reqEnd = reqStart + dur;
+
+        const occupiedRooms = new Set();
+        for (const b of bookings.rows) {
+            if (!b.room) continue;
+            const bStart = timeToMinutes(b.time);
+            const bEnd = bStart + (b.duration || 0);
+            if (reqStart < bEnd && reqEnd > bStart) {
+                occupiedRooms.add(b.room);
+            }
+        }
+
+        const free = ALL_ROOMS.filter(r => !occupiedRooms.has(r));
+        res.json({ free, occupied: Array.from(occupiedRooms), total: ALL_ROOMS.length });
+    } catch (err) {
+        console.error('Free rooms error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // --- HEALTH CHECK ---
 app.get('/api/health', async (req, res) => {
     try {
@@ -1911,7 +1997,7 @@ async function sendTomorrowReminder(todayStr) {
             text += '\n';
         }
 
-        const sendResult = await sendTelegramMessage(chatId, text);
+        const sendResult = await sendTelegramMessage(chatId, text, { silent: false });
         console.log(`[Reminder] Tomorrow reminder sent for ${tomorrowStr}`);
 
         // v5.11: Schedule auto-delete if enabled

@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.17">
-    <link rel="stylesheet" href="css/auth.css?v=5.17">
-    <link rel="stylesheet" href="css/layout.css?v=5.17">
-    <link rel="stylesheet" href="css/timeline.css?v=5.17">
-    <link rel="stylesheet" href="css/panel.css?v=5.17">
-    <link rel="stylesheet" href="css/modals.css?v=5.17">
-    <link rel="stylesheet" href="css/controls.css?v=5.17">
-    <link rel="stylesheet" href="css/features.css?v=5.17">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.17">
-    <link rel="stylesheet" href="css/responsive.css?v=5.17">
+    <link rel="stylesheet" href="css/base.css?v=5.18">
+    <link rel="stylesheet" href="css/auth.css?v=5.18">
+    <link rel="stylesheet" href="css/layout.css?v=5.18">
+    <link rel="stylesheet" href="css/timeline.css?v=5.18">
+    <link rel="stylesheet" href="css/panel.css?v=5.18">
+    <link rel="stylesheet" href="css/modals.css?v=5.18">
+    <link rel="stylesheet" href="css/controls.css?v=5.18">
+    <link rel="stylesheet" href="css/features.css?v=5.18">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.18">
+    <link rel="stylesheet" href="css/responsive.css?v=5.18">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.17</p>
+                <p class="tagline">Система бронювання v5.18</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.17</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.18</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -75,12 +75,12 @@
                         <span id="workingHours" class="working-hours">12:00-20:00</span>
                     </div>
                     <button id="nextDay" class="btn-nav" title="Наступний день">▶</button>
-                    <button id="todayBtn" class="btn-today" title="Перейти на сьогодні">Сьогодні</button>
+                    <button id="todayBtn" class="btn-today" title="Перейти на сьогодні">📍 Зараз</button>
                 </div>
                 <div class="status-filter-controls">
                     <button class="status-filter-btn active" data-filter="all" title="Показати всі бронювання">Всі</button>
-                    <button class="status-filter-btn" data-filter="confirmed" title="Тільки підтверджені">✅ Підтв</button>
-                    <button class="status-filter-btn" data-filter="preliminary" title="Тільки попередні">⏳ Попер</button>
+                    <button class="status-filter-btn" data-filter="confirmed" title="Тільки підтверджені">✅ Підтверджені</button>
+                    <button class="status-filter-btn" data-filter="preliminary" title="Тільки попередні">⏳ Попередні</button>
                 </div>
                 <div class="view-mode-controls">
                     <label class="view-mode-toggle">
@@ -200,7 +200,8 @@
 
                 <!-- Кімната -->
                 <div class="form-section">
-                    <label>Кімната</label>
+                    <label>Кімната <button type="button" id="freeRoomsBtn" class="btn-free-rooms" title="Показати вільні кімнати">🏠 Вільні</button></label>
+                    <div id="freeRoomsPanel" class="free-rooms-panel hidden"></div>
                     <select id="roomSelect" required>
                         <option value="">Оберіть кімнату</option>
                         <optgroup label="Кімнати">
@@ -640,6 +641,24 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v5.18 — UI/UX + Афіша-блокер + Вільні кімнати</h4>
+                    <ul>
+                        <li>🏠 Кнопка «Вільні кімнати» — показує вільні кімнати на обраний час</li>
+                        <li>🎭 Афіша як блокуючий шар — блокує бронювання на весь таймлайн</li>
+                        <li>📍 Кнопка «Сьогодні» → «📍 Зараз»</li>
+                        <li>✅ Повні підписи фільтрів «Підтверджені / Попередні»</li>
+                        <li>⏱ Бейджі тривалості 60/120 хв — різні кольори</li>
+                        <li>🎪 Унікальні іконки програм (АН-120 → 🎠, ПінН → ⭐)</li>
+                        <li>🧲 Магніти — ціна за дитину (perChild)</li>
+                        <li>🎥 Відео — тип videoType: highlight</li>
+                        <li>👥 Другий аніматор в Telegram повідомленнях</li>
+                        <li>🔕 Preliminary бронювання не відправляються в Telegram</li>
+                        <li>🐛 Фікс: додавання аніматора через Telegram (count → rows.length)</li>
+                        <li>🐛 Фікс: reset focus mode при відкритті панелі</li>
+                        <li>🌙 Dark theme: покращений контраст, нові елементи</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v5.17 — Telegram: звук + гілки (Topics)</h4>
                     <ul>
                         <li>Запит на аніматора тепер зі звуком (не silent)</li>
@@ -986,13 +1005,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.17"></script>
-    <script src="js/api.js?v=5.17"></script>
-    <script src="js/ui.js?v=5.17"></script>
-    <script src="js/auth.js?v=5.17"></script>
-    <script src="js/timeline.js?v=5.17"></script>
-    <script src="js/booking.js?v=5.17"></script>
-    <script src="js/settings.js?v=5.17"></script>
-    <script src="js/app.js?v=5.17"></script>
+    <script src="js/config.js?v=5.18"></script>
+    <script src="js/api.js?v=5.18"></script>
+    <script src="js/ui.js?v=5.18"></script>
+    <script src="js/auth.js?v=5.18"></script>
+    <script src="js/timeline.js?v=5.18"></script>
+    <script src="js/booking.js?v=5.18"></script>
+    <script src="js/settings.js?v=5.18"></script>
+    <script src="js/app.js?v=5.18"></script>
 </body>
 </html>

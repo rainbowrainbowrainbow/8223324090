@@ -477,6 +477,23 @@
     cursor: default;
 }
 
+/* v5.18: Afisha as blocking layer — full height overlay */
+.afisha-marker.afisha-blocking {
+    top: 0;
+    height: 100%;
+    background: repeating-linear-gradient(
+        -45deg,
+        rgba(139,92,246,0.06),
+        rgba(139,92,246,0.06) 4px,
+        rgba(139,92,246,0.12) 4px,
+        rgba(139,92,246,0.12) 8px
+    );
+    border: 1px dashed rgba(139,92,246,0.3);
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 20;
+}
+
 .afisha-marker-text {
     position: absolute;
     top: -18px;
@@ -488,6 +505,18 @@
     background: rgba(245,243,255,0.9);
     padding: 1px 4px;
     border-radius: 3px;
+}
+
+/* v5.18: Afisha blocking text centered */
+.afisha-blocking .afisha-marker-text {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 11px;
+    background: rgba(245,243,255,0.95);
+    padding: 2px 8px;
+    border-radius: 4px;
+    pointer-events: auto;
 }
 
 /* ==========================================
@@ -529,4 +558,68 @@
 
 .toggle-mini:has(input:checked) .toggle-mini-label {
     color: var(--white);
+}
+
+/* ==========================================
+   v5.18: FREE ROOMS
+   ========================================== */
+
+.btn-free-rooms {
+    display: inline-block;
+    padding: 2px 8px;
+    margin-left: 6px;
+    background: #EFF6FF;
+    border: 1px solid #93C5FD;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #2563EB;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+}
+
+.btn-free-rooms:hover {
+    background: #DBEAFE;
+    border-color: #3B82F6;
+}
+
+.free-rooms-panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 0;
+    margin-bottom: 4px;
+}
+
+.free-room-chip {
+    display: inline-block;
+    padding: 4px 10px;
+    background: #ECFDF5;
+    border: 1px solid #6EE7B7;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #065F46;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.free-room-chip:hover {
+    background: #D1FAE5;
+    border-color: var(--primary);
+    transform: translateY(-1px);
+}
+
+.occupied-rooms {
+    width: 100%;
+    font-size: 11px;
+    color: var(--gray-400);
+    margin-top: 4px;
+}
+
+.no-free-rooms {
+    font-size: 12px;
+    color: var(--gray-400);
+    padding: 4px 0;
 }

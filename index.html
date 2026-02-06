@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.14">
-    <link rel="stylesheet" href="css/auth.css?v=5.14">
-    <link rel="stylesheet" href="css/layout.css?v=5.14">
-    <link rel="stylesheet" href="css/timeline.css?v=5.14">
-    <link rel="stylesheet" href="css/panel.css?v=5.14">
-    <link rel="stylesheet" href="css/modals.css?v=5.14">
-    <link rel="stylesheet" href="css/controls.css?v=5.14">
-    <link rel="stylesheet" href="css/features.css?v=5.14">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.14">
-    <link rel="stylesheet" href="css/responsive.css?v=5.14">
+    <link rel="stylesheet" href="css/base.css?v=5.15">
+    <link rel="stylesheet" href="css/auth.css?v=5.15">
+    <link rel="stylesheet" href="css/layout.css?v=5.15">
+    <link rel="stylesheet" href="css/timeline.css?v=5.15">
+    <link rel="stylesheet" href="css/panel.css?v=5.15">
+    <link rel="stylesheet" href="css/modals.css?v=5.15">
+    <link rel="stylesheet" href="css/controls.css?v=5.15">
+    <link rel="stylesheet" href="css/features.css?v=5.15">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.15">
+    <link rel="stylesheet" href="css/responsive.css?v=5.15">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.14</p>
+                <p class="tagline">Система бронювання v5.15</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.14</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.15</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -75,6 +75,12 @@
                         <span id="workingHours" class="working-hours">12:00-20:00</span>
                     </div>
                     <button id="nextDay" class="btn-nav" title="Наступний день">▶</button>
+                    <button id="todayBtn" class="btn-today" title="Перейти на сьогодні">Сьогодні</button>
+                </div>
+                <div class="status-filter-controls">
+                    <button class="status-filter-btn active" data-filter="all" title="Показати всі бронювання">Всі</button>
+                    <button class="status-filter-btn" data-filter="confirmed" title="Тільки підтверджені">✅ Підтв</button>
+                    <button class="status-filter-btn" data-filter="preliminary" title="Тільки попередні">⏳ Попер</button>
                 </div>
                 <div class="view-mode-controls">
                     <label class="view-mode-toggle">
@@ -588,6 +594,14 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v5.15 — Кнопка «Сьогодні» + Фільтр по статусу</h4>
+                    <ul>
+                        <li>Кнопка «Сьогодні» — швидкий перехід на поточний день</li>
+                        <li>Фільтр по статусу: Всі / Підтверджені / Попередні — фільтрація бронювань на таймлайні</li>
+                        <li>Кнопка «Сьогодні» автоматично неактивна коли вже на сьогоднішньому дні</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v5.14 — Soft Delete + Бекап БД</h4>
                     <ul>
                         <li>Soft delete: видалення бронювання тепер ставить статус «скасовано» замість повного видалення</li>
@@ -907,13 +921,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.14"></script>
-    <script src="js/api.js?v=5.14"></script>
-    <script src="js/ui.js?v=5.14"></script>
-    <script src="js/auth.js?v=5.14"></script>
-    <script src="js/timeline.js?v=5.14"></script>
-    <script src="js/booking.js?v=5.14"></script>
-    <script src="js/settings.js?v=5.14"></script>
-    <script src="js/app.js?v=5.14"></script>
+    <script src="js/config.js?v=5.15"></script>
+    <script src="js/api.js?v=5.15"></script>
+    <script src="js/ui.js?v=5.15"></script>
+    <script src="js/auth.js?v=5.15"></script>
+    <script src="js/timeline.js?v=5.15"></script>
+    <script src="js/booking.js?v=5.15"></script>
+    <script src="js/settings.js?v=5.15"></script>
+    <script src="js/app.js?v=5.15"></script>
 </body>
 </html>

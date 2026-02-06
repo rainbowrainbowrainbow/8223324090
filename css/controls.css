@@ -263,3 +263,77 @@
     padding: 10px 16px !important;
     font-size: var(--font-sm) !important;
 }
+
+/* ==========================================
+   v5.15: TODAY BUTTON
+   ========================================== */
+
+.btn-today {
+    padding: 6px 14px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius-xs);
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    box-shadow: 0 2px 8px rgba(16,185,129,0.3);
+}
+
+.btn-today:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16,185,129,0.4);
+}
+
+.btn-today.is-today {
+    background: var(--gray-200);
+    color: var(--gray-500);
+    box-shadow: none;
+    cursor: default;
+    transform: none;
+}
+
+/* ==========================================
+   v5.15: STATUS FILTER BUTTONS
+   ========================================== */
+
+.status-filter-controls {
+    display: flex;
+    background: var(--white);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+    box-shadow: var(--shadow-sm);
+}
+
+.status-filter-btn {
+    padding: 6px 12px;
+    border: none;
+    background: transparent;
+    font-size: var(--font-xs);
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--gray-500);
+    transition: all var(--speed-fast) var(--ease-smooth);
+    border-right: 1px solid var(--gray-200);
+}
+
+.status-filter-btn:last-child { border-right: none; }
+
+.status-filter-btn.active {
+    background: var(--primary);
+    color: var(--white);
+}
+
+.status-filter-btn:hover:not(.active) {
+    background: var(--primary-50);
+    color: var(--primary-dark);
+}
+
+/* Hide filtered-out booking blocks */
+.booking-block.status-hidden {
+    display: none !important;
+}

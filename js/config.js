@@ -171,5 +171,6 @@ const AppState = {
     undoStack: [],
     nowLineInterval: null,
     pendingPollInterval: null,  // v3.9: track polling for cleanup
-    editingBookingId: null      // v5.5: ID бронювання в режимі редагування
+    editingBookingId: null,     // v5.5: ID бронювання в режимі редагування
+    statusFilter: 'all'         // v5.15: 'all' | 'confirmed' | 'preliminary'
 };

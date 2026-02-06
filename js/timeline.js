@@ -187,10 +187,36 @@ async function renderTimeline() {
     renderNowLine();
     renderMinimap();
 
+    // v5.15: Apply status filter after render
+    applyStatusFilter();
+    updateTodayButton();
+
     // v5.9: Re-render pending line if Telegram poll is active (Bug #3 fix)
     if (AppState.pendingPollInterval) {
         renderPendingLine();
     }
+}
+
+// v5.15: Filter booking blocks by status (CSS-only, no re-render)
+function applyStatusFilter() {
+    const filter = AppState.statusFilter || 'all';
+    document.querySelectorAll('.booking-block').forEach(block => {
+        if (filter === 'all') {
+            block.classList.remove('status-hidden');
+        } else if (filter === 'confirmed') {
+            block.classList.toggle('status-hidden', block.classList.contains('preliminary'));
+        } else if (filter === 'preliminary') {
+            block.classList.toggle('status-hidden', !block.classList.contains('preliminary'));
+        }
+    });
+}
+
+// v5.15: Dim "Today" button when already on today
+function updateTodayButton() {
+    const btn = document.getElementById('todayBtn');
+    if (!btn) return;
+    const isToday = formatDate(AppState.selectedDate) === formatDate(new Date());
+    btn.classList.toggle('is-today', isToday);
 }
 
 function renderGridCells(lineId) {

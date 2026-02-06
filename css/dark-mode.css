@@ -565,3 +565,30 @@ body.dark-mode #settingsAutoDeleteHours {
     border-color: var(--gray-300);
     color: #E2E8F0;
 }
+
+/* v5.15: Status filter in dark */
+body.dark-mode .status-filter-controls {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .status-filter-btn {
+    color: #9CA3AF;
+    border-right-color: var(--gray-300);
+}
+
+body.dark-mode .status-filter-btn.active {
+    background: var(--primary);
+    color: #FFFFFF;
+}
+
+body.dark-mode .status-filter-btn:hover:not(.active) {
+    background: rgba(16,185,129,0.15);
+    color: #6EE7B7;
+}
+
+/* v5.15: Today button in dark */
+body.dark-mode .btn-today.is-today {
+    background: var(--gray-300);
+    color: var(--gray-500);
+}

@@ -118,6 +118,27 @@ function initTimelineListeners() {
     document.getElementById('addLineBtn').addEventListener('click', addNewLine);
     document.getElementById('exportTimelineBtn').addEventListener('click', exportTimelineImage);
 
+    // v5.15: Today button
+    const todayBtn = document.getElementById('todayBtn');
+    if (todayBtn) {
+        todayBtn.addEventListener('click', () => {
+            AppState.selectedDate = new Date();
+            document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
+            renderTimeline();
+            fetchAnimatorsFromSheet();
+        });
+    }
+
+    // v5.15: Status filter buttons
+    document.querySelectorAll('.status-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.status-filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            AppState.statusFilter = btn.dataset.filter;
+            applyStatusFilter();
+        });
+    });
+
     const multiDayModeCheckbox = document.getElementById('multiDayMode');
     const daysCountSelect = document.getElementById('daysCount');
 

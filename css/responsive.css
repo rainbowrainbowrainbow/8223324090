@@ -78,6 +78,24 @@
         font-size: 12px;
     }
 
+    /* v5.15: Today button mobile */
+    .btn-today {
+        padding: 4px 10px;
+        font-size: 11px;
+    }
+
+    /* v5.15: Status filter mobile */
+    .status-filter-controls {
+        order: 2;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .status-filter-btn {
+        flex: 1;
+        text-align: center;
+    }
+
     /* v32 controls */
     .v32-controls {
         order: 3;

@@ -223,7 +223,7 @@ const MIN_PAUSE = 15;
 async function checkServerConflicts(client, date, lineId, time, duration, excludeId = null) {
     const params = excludeId ? [date, lineId, excludeId] : [date, lineId];
     const result = await client.query(
-        'SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND line_id = $2' +
+        'SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND line_id = $2 AND status != \'cancelled\'' +
         (excludeId ? ' AND id != $3' : ''),
         params
     );
@@ -254,7 +254,7 @@ async function checkServerDuplicate(client, date, programId, time, duration, exc
     if (!programId) return null;
     const params = excludeId ? [date, programId, excludeId] : [date, programId];
     const result = await client.query(
-        'SELECT id, category FROM bookings WHERE date = $1 AND program_id = $2' +
+        'SELECT id, category FROM bookings WHERE date = $1 AND program_id = $2 AND status != \'cancelled\'' +
         (excludeId ? ' AND id != $3' : ''),
         params
     );
@@ -642,7 +642,7 @@ app.get('/api/bookings/:date', async (req, res) => {
         const { date } = req.params;
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
         const result = await pool.query(
-            'SELECT * FROM bookings WHERE date = $1 ORDER BY time',
+            'SELECT * FROM bookings WHERE date = $1 AND status != \'cancelled\' ORDER BY time',
             [date]
         );
         res.json(result.rows.map(mapBookingRow));
@@ -816,16 +816,16 @@ app.post('/api/bookings/full', async (req, res) => {
     }
 });
 
-// Delete booking (v5.7: transaction + auto-history + auto-Telegram)
+// v5.14: Soft delete (status=cancelled) or permanent delete (?permanent=true)
 app.delete('/api/bookings/:id', async (req, res) => {
     const client = await pool.connect();
     try {
         const { id } = req.params;
+        const permanent = req.query.permanent === 'true';
         if (!validateId(id)) { client.release(); return res.status(400).json({ error: 'Invalid booking ID' }); }
 
         await client.query('BEGIN');
 
-        // Get booking before deleting (for notification + history)
         const bookingResult = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
         const booking = bookingResult.rows[0];
         if (!booking) {
@@ -834,21 +834,28 @@ app.delete('/api/bookings/:id', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Бронювання не знайдено' });
         }
 
-        // Auto-history in transaction
+        const action = permanent ? 'permanent_delete' : 'delete';
         await client.query(
             'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
-            ['delete', req.user?.username, JSON.stringify(mapBookingRow(booking))]
+            [action, req.user?.username, JSON.stringify(mapBookingRow(booking))]
         );
 
-        // Delete linked bookings too
-        await client.query('DELETE FROM bookings WHERE id = $1 OR linked_to = $1', [id]);
+        if (permanent) {
+            // Hard delete — removes from DB completely
+            await client.query('DELETE FROM bookings WHERE id = $1 OR linked_to = $1', [id]);
+        } else {
+            // Soft delete — set status to cancelled
+            await client.query(
+                "UPDATE bookings SET status = 'cancelled', updated_at = NOW() WHERE id = $1 OR linked_to = $1",
+                [id]
+            );
+        }
 
         await client.query('COMMIT');
 
-        // Auto Telegram notify (fire-and-forget)
         notifyTelegram('delete', booking, { username: req.user?.username });
 
-        res.json({ success: true });
+        res.json({ success: true, permanent });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         console.error('Error deleting booking:', err);
@@ -1043,7 +1050,7 @@ app.get('/api/stats/:dateFrom/:dateTo', async (req, res) => {
             return res.status(400).json({ error: 'Invalid date format' });
         }
         const result = await pool.query(
-            'SELECT * FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL ORDER BY date, time',
+            'SELECT * FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != \'cancelled\' ORDER BY date, time',
             [dateFrom, dateTo]
         );
         res.json(result.rows.map(mapBookingRow));
@@ -1133,7 +1140,7 @@ async function buildAndSendDigest(date) {
         return { success: false, reason: 'no_chat_id' };
     }
 
-    const bookingsResult = await pool.query('SELECT * FROM bookings WHERE date = $1 ORDER BY time', [date]);
+    const bookingsResult = await pool.query('SELECT * FROM bookings WHERE date = $1 AND status != \'cancelled\' ORDER BY time', [date]);
     const bookings = bookingsResult.rows;
 
     if (bookings.length === 0) {
@@ -1458,6 +1465,196 @@ app.delete('/api/afisha/:id', async (req, res) => {
     }
 });
 
+// ==========================================
+// v5.14: DATABASE BACKUP (Telegram)
+// ==========================================
+
+const BACKUP_TABLES = ['bookings', 'lines_by_date', 'users', 'history', 'settings', 'afisha', 'pending_animators', 'telegram_known_chats', 'booking_counter'];
+
+async function generateBackupSQL() {
+    const lines = [];
+    lines.push(`-- Backup: Park Booking System`);
+    lines.push(`-- Date: ${new Date().toISOString()}`);
+    lines.push(`-- Tables: ${BACKUP_TABLES.join(', ')}\n`);
+
+    for (const table of BACKUP_TABLES) {
+        try {
+            const result = await pool.query(`SELECT * FROM ${table}`);
+            if (result.rows.length === 0) continue;
+
+            lines.push(`-- ${table}: ${result.rows.length} rows`);
+            lines.push(`DELETE FROM ${table};`);
+
+            const columns = Object.keys(result.rows[0]);
+            for (const row of result.rows) {
+                const values = columns.map(col => {
+                    const val = row[col];
+                    if (val === null || val === undefined) return 'NULL';
+                    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+                    if (val instanceof Date) return `'${val.toISOString()}'`;
+                    if (typeof val === 'object') return `'${JSON.stringify(val).replace(/'/g, "''")}'`;
+                    return `'${String(val).replace(/'/g, "''")}'`;
+                });
+                lines.push(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${values.join(', ')});`);
+            }
+            lines.push('');
+        } catch (err) {
+            lines.push(`-- ERROR backing up ${table}: ${err.message}\n`);
+        }
+    }
+
+    return lines.join('\n');
+}
+
+async function sendBackupToTelegram() {
+    try {
+        // Use backup-specific chat or fall back to configured chat
+        const backupChatResult = await pool.query("SELECT value FROM settings WHERE key = 'backup_chat_id'");
+        const chatId = backupChatResult.rows[0]?.value || await getConfiguredChatId();
+        if (!chatId || !TELEGRAM_BOT_TOKEN) {
+            console.warn('[Backup] No chat ID or bot token — skipping');
+            return { success: false, reason: 'no_config' };
+        }
+
+        const sql = await generateBackupSQL();
+        const dateStr = getKyivDateStr();
+        const fileName = `backup_${dateStr}.sql`;
+
+        // Telegram sendDocument via multipart/form-data
+        const boundary = '----BackupBoundary' + Date.now();
+        let body = '';
+        body += `--${boundary}\r\n`;
+        body += `Content-Disposition: form-data; name="chat_id"\r\n\r\n${chatId}\r\n`;
+        body += `--${boundary}\r\n`;
+        body += `Content-Disposition: form-data; name="caption"\r\n\r\n📦 Бекап БД — ${dateStr}\r\n`;
+        body += `--${boundary}\r\n`;
+        body += `Content-Disposition: form-data; name="disable_notification"\r\n\r\ntrue\r\n`;
+        body += `--${boundary}\r\n`;
+        body += `Content-Disposition: form-data; name="document"; filename="${fileName}"\r\n`;
+        body += `Content-Type: application/sql\r\n\r\n`;
+        body += sql;
+        body += `\r\n--${boundary}--\r\n`;
+
+        const bodyBuffer = Buffer.from(body, 'utf-8');
+
+        const result = await new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'api.telegram.org',
+                path: `/bot${TELEGRAM_BOT_TOKEN}/sendDocument`,
+                method: 'POST',
+                headers: {
+                    'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                    'Content-Length': bodyBuffer.length
+                }
+            };
+            const req = https.request(options, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    try { resolve(JSON.parse(data)); }
+                    catch (e) { reject(e); }
+                });
+            });
+            req.on('error', reject);
+            req.write(bodyBuffer);
+            req.end();
+        });
+
+        console.log(`[Backup] Sent to chat ${chatId}: ${result?.ok ? 'OK' : 'FAIL'}`);
+        return { success: result?.ok || false, size: sql.length };
+    } catch (err) {
+        console.error('[Backup] Error:', err.message);
+        return { success: false, error: err.message };
+    }
+}
+
+// Manual backup trigger (admin)
+app.post('/api/backup/create', async (req, res) => {
+    try {
+        const result = await sendBackupToTelegram();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Download backup as SQL (for manual restore)
+app.get('/api/backup/download', async (req, res) => {
+    try {
+        const sql = await generateBackupSQL();
+        const dateStr = getKyivDateStr();
+        res.setHeader('Content-Type', 'application/sql');
+        res.setHeader('Content-Disposition', `attachment; filename="backup_${dateStr}.sql"`);
+        res.send(sql);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Restore from SQL (admin) — executes SQL statements from uploaded text
+app.post('/api/backup/restore', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { sql } = req.body;
+        if (!sql || typeof sql !== 'string') {
+            client.release();
+            return res.status(400).json({ error: 'SQL body required' });
+        }
+
+        // Only allow INSERT and DELETE statements (safety)
+        const statements = sql.split(';')
+            .map(s => s.trim())
+            .filter(s => s.length > 0 && !s.startsWith('--'));
+
+        const forbidden = statements.find(s =>
+            !s.toUpperCase().startsWith('INSERT') &&
+            !s.toUpperCase().startsWith('DELETE')
+        );
+        if (forbidden) {
+            client.release();
+            return res.status(400).json({ error: 'Only INSERT and DELETE statements allowed', statement: forbidden.substring(0, 100) });
+        }
+
+        await client.query('BEGIN');
+        let executed = 0;
+        for (const stmt of statements) {
+            await client.query(stmt);
+            executed++;
+        }
+        await client.query('COMMIT');
+
+        console.log(`[Restore] Executed ${executed} statements by ${req.user?.username}`);
+        res.json({ success: true, executed });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('[Restore] Error:', err.message);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Auto-backup scheduler check (daily at configured time, default 03:00 Kyiv)
+let backupSentToday = null;
+async function checkAutoBackup() {
+    try {
+        const result = await pool.query("SELECT value FROM settings WHERE key = 'backup_time'");
+        const backupTime = result.rows[0]?.value || '03:00';
+        if (!/^\d{2}:\d{2}$/.test(backupTime)) return;
+
+        const nowTime = getKyivTimeStr();
+        const todayStr = getKyivDateStr();
+
+        if (nowTime === backupTime && backupSentToday !== todayStr) {
+            backupSentToday = todayStr;
+            console.log(`[AutoBackup] Running daily backup at ${backupTime}`);
+            await sendBackupToTelegram();
+        }
+    } catch (err) {
+        console.error('[AutoBackup] Error:', err);
+    }
+}
+
 // --- HEALTH CHECK ---
 app.get('/api/health', async (req, res) => {
     try {
@@ -1586,7 +1783,7 @@ async function sendTomorrowReminder(todayStr) {
         const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
 
         const bookingsResult = await pool.query(
-            'SELECT * FROM bookings WHERE date = $1 AND linked_to IS NULL ORDER BY time',
+            'SELECT * FROM bookings WHERE date = $1 AND linked_to IS NULL AND status != \'cancelled\' ORDER BY time',
             [tomorrowStr]
         );
         if (bookingsResult.rows.length === 0) {
@@ -1656,6 +1853,8 @@ initDatabase().then(() => {
         // v5.11: Independent schedulers for digest and reminder (every 60s)
         setInterval(checkAutoDigest, 60000);
         setInterval(checkAutoReminder, 60000);
-        console.log('[Scheduler] Digest + Reminder schedulers started (checks every 60s)');
+        // v5.14: Auto-backup scheduler
+        setInterval(checkAutoBackup, 60000);
+        console.log('[Scheduler] Digest + Reminder + Backup schedulers started (checks every 60s)');
     });
 });

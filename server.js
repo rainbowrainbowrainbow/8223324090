@@ -71,16 +71,20 @@ function telegramRequest(method, body) {
 }
 
 async function sendTelegramMessage(chatId, text, retries = 3) {
+    // v5.17: Auto-include thread ID for forum topics
+    const threadId = await getConfiguredThreadId();
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
-            const result = await telegramRequest('sendMessage', {
+            const payload = {
                 chat_id: chatId,
                 text: text,
                 parse_mode: 'HTML',
                 disable_notification: true
-            });
+            };
+            if (threadId) payload.message_thread_id = threadId;
+            const result = await telegramRequest('sendMessage', payload);
             if (result && result.ok) {
-                console.log(`[Telegram] Message sent to ${chatId} (attempt ${attempt})`);
+                console.log(`[Telegram] Message sent to ${chatId}${threadId ? ' thread=' + threadId : ''} (attempt ${attempt})`);
             } else {
                 console.warn(`[Telegram] API returned error on attempt ${attempt}:`, JSON.stringify(result));
             }
@@ -104,6 +108,17 @@ async function getConfiguredChatId() {
         }
     } catch (e) { /* use default */ }
     return TELEGRAM_DEFAULT_CHAT_ID;
+}
+
+// v5.17: Get configured thread/topic ID for forum groups
+async function getConfiguredThreadId() {
+    try {
+        const result = await pool.query("SELECT value FROM settings WHERE key = 'telegram_thread_id'");
+        if (result.rows.length > 0 && result.rows[0].value) {
+            return parseInt(result.rows[0].value) || null;
+        }
+    } catch (e) { /* no thread */ }
+    return null;
 }
 
 let webhookSet = false;
@@ -1284,18 +1299,21 @@ app.post('/api/telegram/ask-animator', async (req, res) => {
         }
         text += `\nДодати ще одного аніматора?`;
 
-        const result = await telegramRequest('sendMessage', {
+        // v5.17: Sound enabled (no disable_notification) + thread support
+        const threadId = await getConfiguredThreadId();
+        const askPayload = {
             chat_id: chatId,
             text: text,
             parse_mode: 'HTML',
-            disable_notification: true,
             reply_markup: {
                 inline_keyboard: [[
                     { text: '✅ Так', callback_data: `add_anim:${requestId}` },
                     { text: '❌ Ні', callback_data: `no_anim:${requestId}` }
                 ]]
             }
-        });
+        };
+        if (threadId) askPayload.message_thread_id = threadId;
+        const result = await telegramRequest('sendMessage', askPayload);
 
         res.json({ success: result?.ok || false, requestId });
     } catch (err) {
@@ -1552,6 +1570,8 @@ async function sendBackupToTelegram() {
         const sql = await generateBackupSQL();
         const dateStr = getKyivDateStr();
         const fileName = `backup_${dateStr}.sql`;
+        // v5.17: Thread support for backup messages
+        const threadId = await getConfiguredThreadId();
 
         // Telegram sendDocument via multipart/form-data
         const boundary = '----BackupBoundary' + Date.now();
@@ -1562,6 +1582,10 @@ async function sendBackupToTelegram() {
         body += `Content-Disposition: form-data; name="caption"\r\n\r\n📦 Бекап БД — ${dateStr}\r\n`;
         body += `--${boundary}\r\n`;
         body += `Content-Disposition: form-data; name="disable_notification"\r\n\r\ntrue\r\n`;
+        if (threadId) {
+            body += `--${boundary}\r\n`;
+            body += `Content-Disposition: form-data; name="message_thread_id"\r\n\r\n${threadId}\r\n`;
+        }
         body += `--${boundary}\r\n`;
         body += `Content-Disposition: form-data; name="document"; filename="${fileName}"\r\n`;
         body += `Content-Type: application/sql\r\n\r\n`;

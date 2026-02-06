@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.16">
-    <link rel="stylesheet" href="css/auth.css?v=5.16">
-    <link rel="stylesheet" href="css/layout.css?v=5.16">
-    <link rel="stylesheet" href="css/timeline.css?v=5.16">
-    <link rel="stylesheet" href="css/panel.css?v=5.16">
-    <link rel="stylesheet" href="css/modals.css?v=5.16">
-    <link rel="stylesheet" href="css/controls.css?v=5.16">
-    <link rel="stylesheet" href="css/features.css?v=5.16">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.16">
-    <link rel="stylesheet" href="css/responsive.css?v=5.16">
+    <link rel="stylesheet" href="css/base.css?v=5.17">
+    <link rel="stylesheet" href="css/auth.css?v=5.17">
+    <link rel="stylesheet" href="css/layout.css?v=5.17">
+    <link rel="stylesheet" href="css/timeline.css?v=5.17">
+    <link rel="stylesheet" href="css/panel.css?v=5.17">
+    <link rel="stylesheet" href="css/modals.css?v=5.17">
+    <link rel="stylesheet" href="css/controls.css?v=5.17">
+    <link rel="stylesheet" href="css/features.css?v=5.17">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.17">
+    <link rel="stylesheet" href="css/responsive.css?v=5.17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.16</p>
+                <p class="tagline">Система бронювання v5.17</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.16</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.17</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -473,6 +473,16 @@
                         </div>
                         <button type="button" id="settingsSaveTelegramBtn" class="btn-submit">Зберегти та протестувати</button>
                     </div>
+                    <!-- v5.17: Thread/Topic ID -->
+                    <div class="telegram-setup" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray-200);">
+                        <h4 style="margin: 0 0 8px;">💬 Гілка (Topic) для сповіщень</h4>
+                        <p class="digest-hint">Якщо група має теми (Topics/Forum), вкажіть ID гілки щоб повідомлення надходили в окрему тему замість General.</p>
+                        <div class="form-group">
+                            <label>Thread ID (Message Thread ID):</label>
+                            <input type="text" id="settingsTelegramThreadId" placeholder="Наприклад: 5" style="width:100%; padding:10px; border:1px solid var(--gray-300); border-radius:8px; font-size:14px;">
+                        </div>
+                        <button type="button" id="saveThreadIdBtn" class="btn-submit" style="background: linear-gradient(135deg, #8B5CF6, #6D28D9);">💾 Зберегти Thread ID</button>
+                    </div>
                     <!-- A4: Дайджест на сьогодні -->
                     <div class="telegram-setup digest-section" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
                         <h4 style="margin: 0 0 8px;">📅 Дайджест «Розклад на сьогодні»</h4>
@@ -608,6 +618,10 @@
                     <label>Знайдені чати:</label>
                     <div id="telegramChats" class="telegram-chats"></div>
                 </div>
+                <div class="form-group">
+                    <label>Thread ID гілки (необов'язково):</label>
+                    <input type="text" id="telegramThreadId" placeholder="ID теми/гілки для сповіщень">
+                </div>
                 <button type="button" id="saveTelegramBtn" class="btn-submit">Зберегти та протестувати</button>
             </div>
         </div>
@@ -620,6 +634,14 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v5.17 — Telegram: звук + гілки (Topics)</h4>
+                    <ul>
+                        <li>Запит на аніматора тепер зі звуком (не silent)</li>
+                        <li>Підтримка Telegram Topics: всі сповіщення в окрему гілку</li>
+                        <li>Налаштування Thread ID в Settings</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v5.16 — Історія з фільтрами + Розширені тести</h4>
                     <ul>
@@ -959,13 +981,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.16"></script>
-    <script src="js/api.js?v=5.16"></script>
-    <script src="js/ui.js?v=5.16"></script>
-    <script src="js/auth.js?v=5.16"></script>
-    <script src="js/timeline.js?v=5.16"></script>
-    <script src="js/booking.js?v=5.16"></script>
-    <script src="js/settings.js?v=5.16"></script>
-    <script src="js/app.js?v=5.16"></script>
+    <script src="js/config.js?v=5.17"></script>
+    <script src="js/api.js?v=5.17"></script>
+    <script src="js/ui.js?v=5.17"></script>
+    <script src="js/auth.js?v=5.17"></script>
+    <script src="js/timeline.js?v=5.17"></script>
+    <script src="js/booking.js?v=5.17"></script>
+    <script src="js/settings.js?v=5.17"></script>
+    <script src="js/app.js?v=5.17"></script>
 </body>
 </html>

@@ -462,6 +462,10 @@ async function showTelegramSetup() {
     const chatId = await apiGetSetting('telegram_chat_id');
     const modal = document.getElementById('telegramModal');
     document.getElementById('telegramChatId').value = chatId || '';
+    // v5.17: Load thread ID
+    const threadId = await apiGetSetting('telegram_thread_id');
+    const threadInput = document.getElementById('telegramThreadId');
+    if (threadInput) threadInput.value = threadId || '';
     modal.classList.remove('hidden');
     await fetchAndRenderTelegramChats('telegramChatId', 'telegramChats');
 }
@@ -473,6 +477,12 @@ async function saveTelegramChatId() {
         return;
     }
     await apiSaveSetting('telegram_chat_id', chatId);
+
+    // v5.17: Save thread ID if provided
+    const threadId = document.getElementById('telegramThreadId')?.value.trim();
+    if (threadId) {
+        await apiSaveSetting('telegram_thread_id', threadId);
+    }
 
     const result = await apiTelegramNotify('🤖 Telegram підключено до системи бронювання Парку Закревського Періоду!');
     closeAllModals();
@@ -497,6 +507,11 @@ async function showSettings() {
     const chatId = await apiGetSetting('telegram_chat_id');
     const chatIdInput = document.getElementById('settingsTelegramChatId');
     if (chatIdInput) chatIdInput.value = chatId || '';
+
+    // v5.17: Load thread ID
+    const threadId = await apiGetSetting('telegram_thread_id');
+    const threadIdInput = document.getElementById('settingsTelegramThreadId');
+    if (threadIdInput) threadIdInput.value = threadId || '';
 
     // v5.11: Load digest + reminder + auto-delete settings
     const [digestWeekday, digestWeekend, digestLegacy, reminderTime, autoDeleteEnabled, autoDeleteHours] = await Promise.all([
@@ -623,6 +638,21 @@ async function saveTelegramChatIdFromSettings() {
         showNotification('Telegram налаштовано та протестовано!', 'success');
     } else {
         showNotification('Chat ID збережено, але тестове повідомлення не надіслалось: ' + (result?.reason || 'невідома помилка'), 'error');
+    }
+}
+
+// v5.17: Save thread ID from settings modal
+async function saveThreadIdFromSettings() {
+    const threadId = document.getElementById('settingsTelegramThreadId')?.value.trim();
+    if (threadId && !/^\d+$/.test(threadId)) {
+        showNotification('Thread ID має бути числом', 'error');
+        return;
+    }
+    await apiSaveSetting('telegram_thread_id', threadId || '');
+    if (threadId) {
+        showNotification('Thread ID збережено! Сповіщення будуть у гілку #' + threadId, 'success');
+    } else {
+        showNotification('Thread ID очищено — сповіщення в General', 'success');
     }
 }
 

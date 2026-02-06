@@ -242,6 +242,10 @@ function initSettingsListeners() {
     const settingsSaveTelegramBtn = document.getElementById('settingsSaveTelegramBtn');
     if (settingsSaveTelegramBtn) settingsSaveTelegramBtn.addEventListener('click', saveTelegramChatIdFromSettings);
 
+    // v5.17: Thread ID save button
+    const saveThreadIdBtn = document.getElementById('saveThreadIdBtn');
+    if (saveThreadIdBtn) saveThreadIdBtn.addEventListener('click', saveThreadIdFromSettings);
+
     const digestBtn = document.getElementById('digestBtn');
     if (digestBtn) digestBtn.addEventListener('click', sendDailyDigest);
 

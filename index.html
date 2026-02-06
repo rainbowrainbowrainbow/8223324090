@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.9">
-    <link rel="stylesheet" href="css/auth.css?v=5.9">
-    <link rel="stylesheet" href="css/layout.css?v=5.9">
-    <link rel="stylesheet" href="css/timeline.css?v=5.9">
-    <link rel="stylesheet" href="css/panel.css?v=5.9">
-    <link rel="stylesheet" href="css/modals.css?v=5.9">
-    <link rel="stylesheet" href="css/controls.css?v=5.9">
-    <link rel="stylesheet" href="css/features.css?v=5.9">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.9">
-    <link rel="stylesheet" href="css/responsive.css?v=5.9">
+    <link rel="stylesheet" href="css/base.css?v=5.10">
+    <link rel="stylesheet" href="css/auth.css?v=5.10">
+    <link rel="stylesheet" href="css/layout.css?v=5.10">
+    <link rel="stylesheet" href="css/timeline.css?v=5.10">
+    <link rel="stylesheet" href="css/panel.css?v=5.10">
+    <link rel="stylesheet" href="css/modals.css?v=5.10">
+    <link rel="stylesheet" href="css/controls.css?v=5.10">
+    <link rel="stylesheet" href="css/features.css?v=5.10">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.10">
+    <link rel="stylesheet" href="css/responsive.css?v=5.10">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.9</p>
+                <p class="tagline">Система бронювання v5.10</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.9</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.10</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -263,6 +263,12 @@
                     <input type="text" id="bookingNotes" placeholder="Додаткова інформація...">
                 </div>
 
+                <!-- v5.10: Група/Банкет -->
+                <div class="form-section">
+                    <label>Група / Банкет (опційно)</label>
+                    <input type="text" id="bookingGroupName" placeholder="Напр: День народження Олі" title="Об'єднує бронювання в одну подію">
+                </div>
+
                 <!-- ===== БЛОК 2: Програма (нижче) ===== -->
 
                 <!-- Програми іконками -->
@@ -457,19 +463,28 @@
                         <div class="form-group">
                             <label>Знайдені чати (натисніть щоб обрати):</label>
                             <div id="settingsTelegramChats" class="telegram-chats"></div>
+                            <button type="button" class="btn-refresh-chats" onclick="fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats')" title="Оновити список чатів">🔄 Оновити список</button>
                         </div>
                         <button type="button" id="settingsSaveTelegramBtn" class="btn-submit">Зберегти та протестувати</button>
                     </div>
                     <!-- A4: Автодайджест -->
                     <div class="telegram-setup" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
                         <div class="form-group">
-                            <label>Автодайджест щодня о (Київ, ГГ:ХХ)</label>
+                            <label>Автодайджест — будні (Пн-Пт), Київ:</label>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <input type="time" id="settingsDigestTime" placeholder="08:00" style="flex:1;">
-                                <button type="button" id="saveDigestTimeBtn" class="btn-submit" style="width:auto; padding:10px 16px;">Зберегти</button>
+                                <input type="time" id="settingsDigestTimeWeekday" placeholder="08:00" style="flex:1;">
                             </div>
                         </div>
-                        <button type="button" id="sendTestDigestBtn" class="btn-submit" style="margin-top:8px; background: linear-gradient(135deg, #3B82F6, #1D4ED8);">📲 Надіслати тест</button>
+                        <div class="form-group">
+                            <label>Автодайджест — вихідні (Сб-Нд), Київ:</label>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <input type="time" id="settingsDigestTimeWeekend" placeholder="09:00" style="flex:1;">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" id="saveDigestTimeBtn" class="btn-submit" style="flex:1;">Зберегти час</button>
+                            <button type="button" id="sendTestDigestBtn" class="btn-submit" style="flex:1; background: linear-gradient(135deg, #3B82F6, #1D4ED8);">📲 Тест</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -547,6 +562,19 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v5.10 — Аналітика, афіша та дайджест</h4>
+                    <ul>
+                        <li>Дашборд: статистика за рік + кастомний діапазон дат + перемикання періодів</li>
+                        <li>Авто-дайджест: окремий час для будніх та вихідних</li>
+                        <li>Telegram: кнопка «Оновити список чатів»</li>
+                        <li>Афіша: авто-позиціонування (🎯) — знаходить вільний слот</li>
+                        <li>Афіша: імпорт з тексту/CSV (масове додавання подій)</li>
+                        <li>Групування банкетів: поле «Група» для об'єднання пов'язаних бронювань</li>
+                        <li>Quick Stats: пов'язані бронювання (+Вед) більше не рахуються окремо</li>
+                        <li>Валідація унікальності імен аніматорів</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v5.9 — Баг-фікси та UX</h4>
                     <ul>
@@ -795,12 +823,18 @@
                 <div class="afisha-form-row">
                     <input type="date" id="afishaDate" class="afisha-input">
                     <input type="time" id="afishaTime" class="afisha-input" value="12:00">
+                    <button type="button" id="afishaAutoTimeBtn" class="btn-auto-time" title="Знайти вільний слот">🎯</button>
                     <input type="text" id="afishaTitle" class="afisha-input" placeholder="Назва події">
                     <input type="number" id="afishaDuration" class="afisha-input" value="60" min="15" step="15" title="Тривалість (хв)">
                     <button type="button" id="addAfishaBtn" class="btn-submit" style="width:auto; padding:10px 20px;">Додати</button>
                 </div>
             </div>
             <div id="afishaList" class="afisha-list"></div>
+            <div class="afisha-import-section">
+                <label>Імпорт подій (формат: дата;час;хвилини;назва — по одній на рядок):</label>
+                <textarea id="afishaImportText" rows="3" placeholder="2026-03-01;12:00;60;Піратська вечірка&#10;2026-03-01;14:00;90;Шоу бульбашок"></textarea>
+                <button type="button" id="afishaImportBtn" class="btn-submit" style="margin-top:8px; background: linear-gradient(135deg, #8B5CF6, #6D28D9);">📥 Імпортувати</button>
+            </div>
         </div>
     </div>
 
@@ -809,13 +843,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.9"></script>
-    <script src="js/api.js?v=5.9"></script>
-    <script src="js/ui.js?v=5.9"></script>
-    <script src="js/auth.js?v=5.9"></script>
-    <script src="js/timeline.js?v=5.9"></script>
-    <script src="js/booking.js?v=5.9"></script>
-    <script src="js/settings.js?v=5.9"></script>
-    <script src="js/app.js?v=5.9"></script>
+    <script src="js/config.js?v=5.10"></script>
+    <script src="js/api.js?v=5.10"></script>
+    <script src="js/ui.js?v=5.10"></script>
+    <script src="js/auth.js?v=5.10"></script>
+    <script src="js/timeline.js?v=5.10"></script>
+    <script src="js/booking.js?v=5.10"></script>
+    <script src="js/settings.js?v=5.10"></script>
+    <script src="js/app.js?v=5.10"></script>
 </body>
 </html>

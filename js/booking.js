@@ -25,6 +25,8 @@ async function openBookingPanel(time, lineId) {
     document.getElementById('roomSelect').value = '';
     document.getElementById('selectedProgram').value = '';
     document.getElementById('bookingNotes').value = '';
+    const groupInput = document.getElementById('bookingGroupName');
+    if (groupInput) groupInput.value = '';
     document.querySelectorAll('.program-icon').forEach(i => i.classList.remove('selected'));
     document.getElementById('programDetails').classList.add('hidden');
     document.getElementById('hostsWarning').classList.add('hidden');
@@ -333,7 +335,8 @@ function buildBookingObject(formData, program) {
         createdBy: AppState.currentUser ? AppState.currentUser.username : '',
         createdAt: new Date().toISOString(),
         status: status,
-        kidsCount: kidsCount || null
+        kidsCount: kidsCount || null,
+        groupName: document.getElementById('bookingGroupName')?.value.trim() || null
     };
 }
 
@@ -584,6 +587,7 @@ async function showBookingDetails(bookingId) {
             <span class="value status-value ${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
         </div>
         ${booking.notes ? `<div class="booking-detail-row"><span class="label">Примітки:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
+        ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">🎪 ${escapeHtml(booking.groupName)}</span></div>` : ''}
         ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">Оновлено:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
         ${descriptionHtml}
         ${!isViewer() ? `<div class="status-toggle-section">
@@ -622,6 +626,8 @@ async function editBooking(bookingId) {
     document.getElementById('roomSelect').value = booking.room || '';
     document.getElementById('costumeSelect').value = booking.costume || '';
     document.getElementById('bookingNotes').value = booking.notes || '';
+    const groupEditInput = document.getElementById('bookingGroupName');
+    if (groupEditInput) groupEditInput.value = booking.groupName || '';
 
     // Вибрати програму
     if (booking.programId) {

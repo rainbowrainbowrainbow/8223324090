@@ -219,6 +219,14 @@ function initSettingsListeners() {
 
     const addAfishaBtn = document.getElementById('addAfishaBtn');
     if (addAfishaBtn) addAfishaBtn.addEventListener('click', addAfishaItem);
+
+    // v5.10: Afisha auto-position button
+    const afishaAutoTimeBtn = document.getElementById('afishaAutoTimeBtn');
+    if (afishaAutoTimeBtn) afishaAutoTimeBtn.addEventListener('click', autoPositionAfisha);
+
+    // v5.10: Afisha bulk import button
+    const afishaImportBtn = document.getElementById('afishaImportBtn');
+    if (afishaImportBtn) afishaImportBtn.addEventListener('click', importAfishaBulk);
 }
 
 function initUIControlListeners() {

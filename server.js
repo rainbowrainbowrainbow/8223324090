@@ -363,7 +363,8 @@ function mapBookingRow(row) {
         linkedTo: row.linked_to,
         status: row.status || 'confirmed',
         kidsCount: row.kids_count,
-        updatedAt: row.updated_at
+        updatedAt: row.updated_at,
+        groupName: row.group_name || null
     };
 }
 
@@ -421,6 +422,8 @@ async function initDatabase() {
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS kids_count INTEGER`);
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS costume VARCHAR(100)`);
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`);
+        // v5.10: Banquet grouping
+        await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS group_name VARCHAR(100)`);
 
         // v3.3: Settings table for Telegram etc
         await pool.query(`
@@ -660,9 +663,9 @@ app.post('/api/bookings', async (req, res) => {
         }
 
         await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null]
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null]
         );
 
         // Auto-history in transaction
@@ -856,12 +859,12 @@ app.put('/api/bookings/:id', async (req, res) => {
             `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
              label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
              second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-             linked_to=$18, status=$19, kids_count=$20, updated_at=NOW()
-             WHERE id=$21`,
+             linked_to=$18, status=$19, kids_count=$20, group_name=$21, updated_at=NOW()
+             WHERE id=$22`,
             [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
              b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
              b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed',
-             b.kidsCount || null, id]
+             b.kidsCount || null, b.groupName || null, id]
         );
 
         await client.query('COMMIT');
@@ -1413,14 +1416,24 @@ function getKyivDateStr() {
     return `${k.getFullYear()}-${String(k.getMonth() + 1).padStart(2, '0')}-${String(k.getDate()).padStart(2, '0')}`;
 }
 
+// v5.10: Support separate weekday/weekend digest times with legacy fallback
 async function checkAutoDigest() {
     try {
-        const result = await pool.query("SELECT value FROM settings WHERE key = 'digest_time'");
-        if (result.rows.length === 0 || !result.rows[0].value) return;
-        const digestTime = result.rows[0].value; // "HH:MM"
-        if (!/^\d{2}:\d{2}$/.test(digestTime)) return;
+        const result = await pool.query("SELECT key, value FROM settings WHERE key IN ('digest_time', 'digest_time_weekday', 'digest_time_weekend')");
+        const settings = {};
+        result.rows.forEach(r => { settings[r.key] = r.value; });
 
         const kyiv = getKyivDate();
+        const dayOfWeek = kyiv.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+        // Pick the right digest time: weekday/weekend-specific or legacy fallback
+        const digestTime = isWeekend
+            ? (settings.digest_time_weekend || settings.digest_time)
+            : (settings.digest_time_weekday || settings.digest_time);
+
+        if (!digestTime || !/^\d{2}:\d{2}$/.test(digestTime)) return;
+
         const nowHH = String(kyiv.getHours()).padStart(2, '0');
         const nowMM = String(kyiv.getMinutes()).padStart(2, '0');
         const nowTime = `${nowHH}:${nowMM}`;
@@ -1428,7 +1441,7 @@ async function checkAutoDigest() {
 
         if (nowTime === digestTime && digestSentToday !== todayStr) {
             digestSentToday = todayStr;
-            console.log(`[AutoDigest] Sending daily digest for ${todayStr} at ${digestTime} Kyiv time`);
+            console.log(`[AutoDigest] Sending daily digest for ${todayStr} at ${digestTime} Kyiv time (${isWeekend ? 'weekend' : 'weekday'})`);
             await buildAndSendDigest(todayStr);
 
             // v5.7: 24h reminder — send tomorrow's schedule

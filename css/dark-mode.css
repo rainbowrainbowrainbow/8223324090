@@ -519,3 +519,40 @@ body.dark-mode .btn-change-program {
     border-color: rgba(16,185,129,0.3);
     color: #6EE7B7;
 }
+
+/* v5.10: Dashboard tabs in dark */
+body.dark-mode .dash-tab {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #9CA3AF;
+}
+
+body.dark-mode .dash-tab.active {
+    background: var(--primary);
+    color: #FFFFFF;
+    border-color: var(--primary);
+}
+
+body.dark-mode .dash-custom-range input[type="date"] {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+/* v5.10: Afisha auto-time + import in dark */
+body.dark-mode .btn-auto-time {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .afisha-import-section textarea {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+body.dark-mode .btn-refresh-chats {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #9CA3AF;
+}

@@ -73,6 +73,27 @@
     border-radius: var(--radius-sm);
 }
 
+/* v5.10: Refresh chats button */
+.btn-refresh-chats {
+    margin-top: 8px;
+    padding: 6px 12px;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-xs);
+    font-weight: 700;
+    color: var(--gray-600);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast);
+}
+
+.btn-refresh-chats:hover {
+    background: var(--gray-100);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
 /* ==========================================
    SETTINGS PAGE
    ========================================== */
@@ -147,9 +168,60 @@
 
 .dashboard-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-bottom: 20px;
+}
+
+/* v5.10: Dashboard period tabs */
+.dash-period-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+.dash-tab {
+    padding: 6px 14px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-full);
+    background: var(--gray-50);
+    font-size: var(--font-sm);
+    font-weight: 700;
+    color: var(--gray-600);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast);
+}
+
+.dash-tab.active {
+    background: var(--primary);
+    color: var(--white);
+    border-color: var(--primary);
+}
+
+.dash-tab:hover:not(.active) {
+    background: var(--gray-100);
+}
+
+.dash-custom-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.dash-custom-range input[type="date"] {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+    font-family: inherit;
+}
+
+.dash-custom-range span {
+    color: var(--gray-400);
+    font-weight: 700;
 }
 
 .dash-card {
@@ -275,6 +347,47 @@
 .afisha-input[type="date"] { flex: 1; min-width: 130px; }
 .afisha-input[type="time"] { width: 100px; }
 .afisha-input[type="number"] { width: 80px; }
+
+/* v5.10: Auto-position button */
+.btn-auto-time {
+    padding: 8px 10px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    background: var(--gray-50);
+    cursor: pointer;
+    font-size: 16px;
+    transition: all var(--speed-fast);
+}
+
+.btn-auto-time:hover {
+    border-color: #8B5CF6;
+    background: #F5F3FF;
+}
+
+/* v5.10: Afisha import section */
+.afisha-import-section {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.afisha-import-section textarea {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-xs);
+    font-family: monospace;
+    resize: vertical;
+    min-height: 60px;
+}
+
+.afisha-import-section label {
+    font-size: var(--font-xs);
+    color: var(--gray-500);
+    margin-bottom: 6px;
+    display: block;
+}
 
 .afisha-list {
     display: flex;

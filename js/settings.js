@@ -456,25 +456,45 @@ async function showSettings() {
     const chatIdInput = document.getElementById('settingsTelegramChatId');
     if (chatIdInput) chatIdInput.value = chatId || '';
 
-    // A4: Load digest time setting
-    const digestTime = await apiGetSetting('digest_time');
-    const digestTimeInput = document.getElementById('settingsDigestTime');
-    if (digestTimeInput) digestTimeInput.value = digestTime || '';
+    // v5.10: Load separate weekday/weekend digest times
+    const [digestWeekday, digestWeekend, digestLegacy] = await Promise.all([
+        apiGetSetting('digest_time_weekday'),
+        apiGetSetting('digest_time_weekend'),
+        apiGetSetting('digest_time')
+    ]);
+    const weekdayInput = document.getElementById('settingsDigestTimeWeekday');
+    const weekendInput = document.getElementById('settingsDigestTimeWeekend');
+    if (weekdayInput) weekdayInput.value = digestWeekday || digestLegacy || '';
+    if (weekendInput) weekendInput.value = digestWeekend || digestLegacy || '';
 
     document.getElementById('settingsModal').classList.remove('hidden');
     fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
 }
 
+// v5.10: Save separate weekday/weekend digest times
 async function saveDigestTime() {
-    const input = document.getElementById('settingsDigestTime');
-    if (!input) return;
-    const val = input.value.trim();
-    if (val && !/^\d{2}:\d{2}$/.test(val)) {
-        showNotification('Введіть час у форматі ГГ:ХХ', 'error');
+    const weekdayVal = (document.getElementById('settingsDigestTimeWeekday')?.value || '').trim();
+    const weekendVal = (document.getElementById('settingsDigestTimeWeekend')?.value || '').trim();
+
+    const timeRegex = /^\d{2}:\d{2}$/;
+    if (weekdayVal && !timeRegex.test(weekdayVal)) {
+        showNotification('Будні: введіть час у форматі ГГ:ХХ', 'error');
         return;
     }
-    await apiSaveSetting('digest_time', val);
-    showNotification(val ? `Автодайджест встановлено на ${val} (Київ)` : 'Автодайджест вимкнено', 'success');
+    if (weekendVal && !timeRegex.test(weekendVal)) {
+        showNotification('Вихідні: введіть час у форматі ГГ:ХХ', 'error');
+        return;
+    }
+
+    await Promise.all([
+        apiSaveSetting('digest_time_weekday', weekdayVal),
+        apiSaveSetting('digest_time_weekend', weekendVal)
+    ]);
+
+    const parts = [];
+    if (weekdayVal) parts.push(`будні ${weekdayVal}`);
+    if (weekendVal) parts.push(`вихідні ${weekendVal}`);
+    showNotification(parts.length > 0 ? `Автодайджест: ${parts.join(', ')} (Київ)` : 'Автодайджест вимкнено', 'success');
 }
 
 async function sendTestDigest() {
@@ -534,14 +554,17 @@ function getDashboardDateRanges() {
     weekEnd.setDate(weekStart.getDate() + 6);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    return { today, weekStart, weekEnd, monthStart, monthEnd };
+    // v5.10: Year range
+    const yearStart = new Date(today.getFullYear(), 0, 1);
+    const yearEnd = new Date(today.getFullYear(), 11, 31);
+    return { today, weekStart, weekEnd, monthStart, monthEnd, yearStart, yearEnd };
 }
 
 function calcRevenue(bookings) {
     return bookings.filter(b => b.status === 'confirmed').reduce((s, b) => s + (b.price || 0), 0);
 }
 
-function renderRevenueCards(todayBookings, weekBookings, monthBookings) {
+function renderRevenueCards(todayBookings, weekBookings, monthBookings, yearBookings) {
     return `<div class="dashboard-grid">
         <div class="dash-card revenue">
             <div class="dash-card-title">Сьогодні</div>
@@ -558,12 +581,17 @@ function renderRevenueCards(todayBookings, weekBookings, monthBookings) {
             <div class="dash-card-value">${formatPrice(calcRevenue(monthBookings))}</div>
             <div class="dash-card-sub">${monthBookings.length} бронювань</div>
         </div>
+        <div class="dash-card revenue">
+            <div class="dash-card-title">Рік ${new Date().getFullYear()}</div>
+            <div class="dash-card-value">${formatPrice(calcRevenue(yearBookings))}</div>
+            <div class="dash-card-sub">${yearBookings.length} бронювань</div>
+        </div>
     </div>`;
 }
 
-function renderTopProgramsSection(monthBookings) {
+function renderTopProgramsSection(bookingsData, periodLabel) {
     const counts = {};
-    monthBookings.forEach(b => {
+    bookingsData.forEach(b => {
         const key = b.programName || b.label;
         if (!counts[key]) counts[key] = { count: 0, revenue: 0 };
         counts[key].count++;
@@ -572,7 +600,7 @@ function renderTopProgramsSection(monthBookings) {
     const top = Object.entries(counts).sort((a, b) => b[1].count - a[1].count).slice(0, 8);
 
     return `<div class="dashboard-section">
-        <h4>🏆 Топ програм (місяць)</h4>
+        <h4>🏆 Топ програм (${periodLabel || 'Місяць'})</h4>
         <div class="dash-list">
             ${top.map(([name, data], i) =>
                 `<div class="dash-list-item">
@@ -586,17 +614,17 @@ function renderTopProgramsSection(monthBookings) {
     </div>`;
 }
 
-function renderCategoryBarsSection(monthBookings) {
+function renderCategoryBarsSection(bookingsData, periodLabel) {
     const catCounts = {};
-    monthBookings.forEach(b => {
+    bookingsData.forEach(b => {
         const cat = CATEGORY_NAMES_SHORT[b.category] || b.category;
         if (!catCounts[cat]) catCounts[cat] = 0;
         catCounts[cat]++;
     });
-    const total = monthBookings.length;
+    const total = bookingsData.length;
 
     return `<div class="dashboard-section">
-        <h4>📊 Категорії (місяць)</h4>
+        <h4>📊 Категорії (${periodLabel || 'Місяць'})</h4>
         <div class="dash-bars">
             ${Object.entries(catCounts).sort((a, b) => b[1] - a[1]).map(([cat, count]) => {
                 const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -610,6 +638,10 @@ function renderCategoryBarsSection(monthBookings) {
     </div>`;
 }
 
+// v5.10: Dashboard state for period selection
+let dashboardPeriod = 'month';
+let dashboardAllData = {};
+
 async function showDashboard() {
     if (isViewer()) return;
 
@@ -619,16 +651,91 @@ async function showDashboard() {
     modal.classList.remove('hidden');
 
     const ranges = getDashboardDateRanges();
-    const [todayBookings, weekBookings, monthBookings] = await Promise.all([
+    const [todayBookings, weekBookings, monthBookings, yearBookings] = await Promise.all([
         apiGetStats(formatDate(ranges.today), formatDate(ranges.today)),
         apiGetStats(formatDate(ranges.weekStart), formatDate(ranges.weekEnd)),
-        apiGetStats(formatDate(ranges.monthStart), formatDate(ranges.monthEnd))
+        apiGetStats(formatDate(ranges.monthStart), formatDate(ranges.monthEnd)),
+        apiGetStats(formatDate(ranges.yearStart), formatDate(ranges.yearEnd))
     ]);
 
+    dashboardAllData = { todayBookings, weekBookings, monthBookings, yearBookings };
+    dashboardPeriod = 'month';
+
+    renderDashboardContent();
+}
+
+function renderDashboardContent() {
+    const container = document.getElementById('dashboardContent');
+    const { todayBookings, weekBookings, monthBookings, yearBookings } = dashboardAllData;
+
+    const periodNames = { today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік', custom: 'Довільний' };
+    const periodData = {
+        today: todayBookings,
+        week: weekBookings,
+        month: monthBookings,
+        year: yearBookings
+    };
+
+    // Period tabs for "Top programs" and "Categories" sections
+    const tabsHtml = `<div class="dash-period-tabs">
+        ${['month', 'year', 'custom'].map(p =>
+            `<button class="dash-tab ${dashboardPeriod === p ? 'active' : ''}" onclick="switchDashboardPeriod('${p}')">${periodNames[p]}</button>`
+        ).join('')}
+    </div>`;
+
+    const customRangeHtml = dashboardPeriod === 'custom' ? `<div class="dash-custom-range">
+        <input type="date" id="dashCustomFrom" value="">
+        <span>—</span>
+        <input type="date" id="dashCustomTo" value="">
+        <button class="dash-tab active" onclick="loadDashboardCustomRange()">Показати</button>
+    </div>` : '';
+
+    const dataForSections = periodData[dashboardPeriod] || monthBookings;
+    const periodLabel = periodNames[dashboardPeriod] || 'Місяць';
+
     container.innerHTML =
-        renderRevenueCards(todayBookings, weekBookings, monthBookings) +
-        renderTopProgramsSection(monthBookings) +
-        renderCategoryBarsSection(monthBookings);
+        renderRevenueCards(todayBookings, weekBookings, monthBookings, yearBookings) +
+        tabsHtml + customRangeHtml +
+        renderTopProgramsSection(dataForSections, periodLabel) +
+        renderCategoryBarsSection(dataForSections, periodLabel);
+}
+
+function switchDashboardPeriod(period) {
+    dashboardPeriod = period;
+    renderDashboardContent();
+}
+
+async function loadDashboardCustomRange() {
+    const from = document.getElementById('dashCustomFrom')?.value;
+    const to = document.getElementById('dashCustomTo')?.value;
+    if (!from || !to) {
+        showNotification('Оберіть обидві дати', 'error');
+        return;
+    }
+    const customBookings = await apiGetStats(from, to);
+    dashboardAllData.customBookings = customBookings;
+    const container = document.getElementById('dashboardContent');
+    // Re-render with custom data
+    const { todayBookings, weekBookings, monthBookings, yearBookings } = dashboardAllData;
+
+    const periodLabel = `${from} — ${to}`;
+    const tabsHtml = `<div class="dash-period-tabs">
+        ${['month', 'year', 'custom'].map(p =>
+            `<button class="dash-tab ${p === 'custom' ? 'active' : ''}" onclick="switchDashboardPeriod('${p}')">${p === 'custom' ? 'Довільний' : p === 'month' ? 'Місяць' : 'Рік'}</button>`
+        ).join('')}
+    </div>`;
+    const customRangeHtml = `<div class="dash-custom-range">
+        <input type="date" id="dashCustomFrom" value="${from}">
+        <span>—</span>
+        <input type="date" id="dashCustomTo" value="${to}">
+        <button class="dash-tab active" onclick="loadDashboardCustomRange()">Показати</button>
+    </div>`;
+
+    container.innerHTML =
+        renderRevenueCards(todayBookings, weekBookings, monthBookings, yearBookings) +
+        tabsHtml + customRangeHtml +
+        renderTopProgramsSection(customBookings, periodLabel) +
+        renderCategoryBarsSection(customBookings, periodLabel);
 }
 
 // ==========================================
@@ -769,4 +876,105 @@ async function deleteAfishaItem(id) {
         showNotification('Подію видалено', 'success');
         await renderAfishaList();
     }
+}
+
+// v5.10: Auto-positioning — find best free time slot for afisha event
+async function autoPositionAfisha() {
+    const dateInput = document.getElementById('afishaDate');
+    const durationInput = document.getElementById('afishaDuration');
+    if (!dateInput?.value) {
+        showNotification('Спочатку оберіть дату', 'error');
+        return;
+    }
+
+    const date = new Date(dateInput.value);
+    const duration = parseInt(durationInput?.value) || 60;
+    const dayOfWeek = date.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const startHour = isWeekend ? 10 : 12;
+    const endHour = 20;
+
+    // Get all bookings and afisha events for this date
+    const [bookings, afishaEvents] = await Promise.all([
+        getBookingsForDate(date),
+        apiGetAfishaByDate(dateInput.value)
+    ]);
+
+    // Build occupied intervals (in minutes from midnight)
+    const occupied = [];
+    bookings.forEach(b => {
+        const start = timeToMinutes(b.time);
+        occupied.push({ start, end: start + b.duration });
+    });
+    afishaEvents.forEach(ev => {
+        const start = timeToMinutes(ev.time);
+        occupied.push({ start, end: start + (ev.duration || 60) });
+    });
+
+    // Find first free slot of `duration` minutes
+    for (let min = startHour * 60; min + duration <= endHour * 60; min += 15) {
+        const slotEnd = min + duration;
+        const conflict = occupied.some(o => min < o.end && slotEnd > o.start);
+        if (!conflict) {
+            const h = Math.floor(min / 60);
+            const m = min % 60;
+            const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            document.getElementById('afishaTime').value = timeStr;
+            showNotification(`Вільний слот: ${timeStr}`, 'success');
+            return;
+        }
+    }
+
+    showNotification('Немає вільних слотів на цю дату', 'error');
+}
+
+// v5.10: Afisha bulk import from text
+async function importAfishaBulk() {
+    const textArea = document.getElementById('afishaImportText');
+    if (!textArea) return;
+
+    const text = textArea.value.trim();
+    if (!text) {
+        showNotification('Вставте дані для імпорту', 'error');
+        return;
+    }
+
+    const lines = text.split('\n').filter(l => l.trim());
+    let imported = 0;
+    let errors = 0;
+
+    for (const line of lines) {
+        // Support formats:
+        // 2026-02-14 12:00 60 Назва події
+        // 2026-02-14;12:00;60;Назва події
+        const parts = line.includes(';') ? line.split(';').map(s => s.trim()) : null;
+        let date, time, duration, title;
+
+        if (parts && parts.length >= 4) {
+            [date, time, duration, title] = parts;
+            duration = parseInt(duration) || 60;
+        } else {
+            // Space-separated: date time duration title...
+            const match = line.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(\d+)\s+(.+)$/);
+            if (!match) {
+                errors++;
+                continue;
+            }
+            [, date, time, duration, title] = match;
+            duration = parseInt(duration) || 60;
+        }
+
+        if (!date || !time || !title) { errors++; continue; }
+
+        const result = await apiCreateAfisha({ date, time, title, duration });
+        if (result && result.success) {
+            imported++;
+        } else {
+            errors++;
+        }
+    }
+
+    textArea.value = '';
+    showNotification(`Імпортовано: ${imported}, помилок: ${errors}`, imported > 0 ? 'success' : 'error');
+    await renderAfishaList();
 }

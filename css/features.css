@@ -507,16 +507,20 @@
     border-radius: 3px;
 }
 
-/* v5.18: Afisha blocking text centered */
+/* v5.18.1: Afisha blocking text — subtle bottom label */
 .afisha-blocking .afisha-marker-text {
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 11px;
-    background: rgba(245,243,255,0.95);
-    padding: 2px 8px;
-    border-radius: 4px;
-    pointer-events: auto;
+    top: auto;
+    bottom: 2px;
+    left: 4px;
+    transform: none;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    background: none;
+    color: rgba(109,40,217,0.5);
+    padding: 0;
+    pointer-events: none;
+    text-transform: uppercase;
 }
 
 /* ==========================================

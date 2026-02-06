@@ -732,6 +732,35 @@ body.dark-mode .form-section {
     border-color: var(--gray-200);
 }
 
+/* v5.18.1: Now-line global in dark */
+body.dark-mode .now-line-global {
+    background: rgba(239, 68, 68, 0.35);
+}
+
+/* v5.18.1: Tooltip contrast in dark */
+body.dark-mode .booking-tooltip {
+    background: #2d2d4e;
+    border-color: #444466;
+    color: #F3F4F6;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+
+/* v5.18.1: Afisha blocking text in dark */
+body.dark-mode .afisha-blocking .afisha-marker-text {
+    color: rgba(196,181,253,0.5);
+}
+
+/* v5.18.1: Fix white bottom bar in dark — ensure full background coverage */
+body.dark-mode,
+body.dark-mode html {
+    min-height: 100vh;
+}
+
+/* v5.18.1: Main content bottom padding to prevent white gap */
+body.dark-mode .main-content {
+    padding-bottom: 40px;
+}
+
 /* Scrollbar improvement */
 body.dark-mode ::-webkit-scrollbar-track {
     background: #0f0f1a;

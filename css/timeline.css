@@ -548,37 +548,37 @@
 }
 
 /* ==========================================
-   NOW LINE (red current-time marker)
+   NOW LINE (v5.18.1: single continuous semi-transparent line)
    ========================================== */
 
-.now-line {
+/* v5.18.1: Global now-line — one continuous semi-transparent line */
+.now-line-global {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 2px;
-    background: var(--danger);
+    width: 1.5px;
+    background: rgba(239, 68, 68, 0.45);
     z-index: 15;
     pointer-events: none;
 }
 
-.now-line::before {
-    content: '';
+/* Legacy per-grid now-line (kept for backward compat but no longer generated) */
+.now-line {
     position: absolute;
-    top: -4px;
-    left: -4px;
-    width: 10px;
-    height: 10px;
-    background: var(--danger);
-    border-radius: 50%;
-    box-shadow: 0 0 6px rgba(239,68,68,0.4);
+    top: 0;
+    bottom: 0;
+    width: 1.5px;
+    background: rgba(239, 68, 68, 0.45);
+    z-index: 15;
+    pointer-events: none;
 }
 
 .now-line-top {
     position: absolute;
     bottom: -6px;
-    width: 2px;
+    width: 1.5px;
     height: 20px;
-    background: var(--danger);
+    background: rgba(239, 68, 68, 0.45);
     z-index: 15;
     pointer-events: none;
 }

@@ -235,7 +235,28 @@ function minutesToTime(minutes) {
 
 const MIN_PAUSE = 15;
 
-// v5.18: Check afisha blocking layer — blocks all lines for this time range
+// v5.18.1: Check room conflicts — prevent same room at same time
+async function checkRoomConflict(client, date, room, time, duration, excludeId = null) {
+    if (!room || room === 'Інше') return null;
+    const params = excludeId ? [date, room, excludeId] : [date, room];
+    const result = await client.query(
+        "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND status != 'cancelled'" +
+        (excludeId ? ' AND id != $3' : ''),
+        params
+    );
+    const newStart = timeToMinutes(time);
+    const newEnd = newStart + duration;
+    for (const b of result.rows) {
+        const bStart = timeToMinutes(b.time);
+        const bEnd = bStart + (b.duration || 0);
+        if (newStart < bEnd && newEnd > bStart) {
+            return b;
+        }
+    }
+    return null;
+}
+
+// v5.18: Check afisha blocking layer — blocks all lines for this time range (visual only, not used for blocking)
 async function checkAfishaConflicts(client, date, time, duration) {
     const result = await client.query('SELECT * FROM afisha WHERE date = $1', [date]);
     const newStart = timeToMinutes(time);
@@ -360,13 +381,77 @@ function formatBookingNotification(type, booking, extra = {}) {
     return template(booking, extra);
 }
 
+async function editTelegramMessage(chatId, messageId, text) {
+    try {
+        const threadId = await getConfiguredThreadId();
+        const payload = { chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML' };
+        if (threadId) payload.message_thread_id = threadId;
+        const result = await telegramRequest('editMessageText', payload);
+        if (result && result.ok) {
+            console.log(`[Telegram] Message ${messageId} edited in ${chatId}`);
+            return result;
+        }
+        console.warn('[Telegram] Edit failed:', JSON.stringify(result));
+        return null;
+    } catch (err) {
+        console.error('[Telegram] Edit error:', err.message);
+        return null;
+    }
+}
+
+async function deleteTelegramMessage(chatId, messageId) {
+    try {
+        const result = await telegramRequest('deleteMessage', { chat_id: chatId, message_id: messageId });
+        if (result && result.ok) {
+            console.log(`[Telegram] Message ${messageId} deleted from ${chatId}`);
+        }
+        return result;
+    } catch (err) {
+        console.error('[Telegram] Delete error:', err.message);
+        return null;
+    }
+}
+
 async function notifyTelegram(type, booking, extra = {}) {
     try {
         const text = formatBookingNotification(type, booking, extra);
         if (!text) return;
         const chatId = await getConfiguredChatId();
         if (!chatId) return;
-        await sendTelegramMessage(chatId, text);
+        const bookingId = booking.id || extra.bookingId;
+
+        // v5.18.1: Edit existing message if possible, otherwise send new
+        if ((type === 'edit' || type === 'status_change') && bookingId) {
+            // Try to find existing telegram_message_id
+            const existing = await pool.query('SELECT telegram_message_id FROM bookings WHERE id = $1', [bookingId]);
+            const existingMsgId = existing.rows[0]?.telegram_message_id;
+
+            if (existingMsgId) {
+                // Try to edit
+                const edited = await editTelegramMessage(chatId, existingMsgId, text);
+                if (edited && edited.ok) return;
+                // Edit failed (e.g. message too old) — delete old and send new
+                await deleteTelegramMessage(chatId, existingMsgId);
+            }
+        }
+
+        if (type === 'delete' && bookingId) {
+            // Delete the old Telegram message instead of sending "deleted" notification
+            const existing = await pool.query('SELECT telegram_message_id FROM bookings WHERE id = $1', [bookingId]);
+            const existingMsgId = existing.rows[0]?.telegram_message_id;
+            if (existingMsgId) {
+                await deleteTelegramMessage(chatId, existingMsgId);
+            }
+            // Still send the deletion notification
+            await sendTelegramMessage(chatId, text);
+            return;
+        }
+
+        // Send new message and store ID
+        const result = await sendTelegramMessage(chatId, text);
+        if (result && result.ok && result.result && bookingId) {
+            await pool.query('UPDATE bookings SET telegram_message_id = $1 WHERE id = $2', [result.result.message_id, bookingId]);
+        }
     } catch (err) {
         console.error('[Telegram Notify] Error:', err.message);
     }
@@ -486,6 +571,8 @@ async function initDatabase() {
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`);
         // v5.10: Banquet grouping
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS group_name VARCHAR(100)`);
+        // v5.18.1: Store Telegram message ID for edit/delete capability
+        await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS telegram_message_id INTEGER`);
 
         // v3.3: Settings table for Telegram etc
         await pool.query(`
@@ -713,17 +800,6 @@ app.post('/api/bookings', async (req, res) => {
 
         // v5.7: Server-side conflict check (skip for linked bookings — checked in /bookings/full)
         if (!b.linkedTo) {
-            // v5.18: Afisha blocking layer check
-            const afishaBlock = await checkAfishaConflicts(client, b.date, b.time, b.duration || 0);
-            if (afishaBlock.blocked) {
-                await client.query('ROLLBACK');
-                client.release();
-                return res.status(409).json({
-                    success: false,
-                    error: `Час заблоковано афішею: "${afishaBlock.event.title}" о ${afishaBlock.event.time}`
-                });
-            }
-
             const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0);
             if (conflict.overlap) {
                 await client.query('ROLLBACK');
@@ -739,6 +815,17 @@ app.post('/api/bookings', async (req, res) => {
                 await client.query('ROLLBACK');
                 client.release();
                 return res.status(409).json({ success: false, error: 'Ця програма вже є в цей час' });
+            }
+
+            // v5.18.1: Room conflict check — prevent same room at same time
+            const roomConflict = await checkRoomConflict(client, b.date, b.room, b.time, b.duration || 0);
+            if (roomConflict) {
+                await client.query('ROLLBACK');
+                client.release();
+                return res.status(409).json({
+                    success: false,
+                    error: `Кімната "${b.room}" зайнята: ${roomConflict.label || roomConflict.program_code} о ${roomConflict.time}`
+                });
             }
         }
 
@@ -794,17 +881,6 @@ app.post('/api/bookings/full', async (req, res) => {
 
         await client.query('BEGIN');
 
-        // v5.18: Afisha blocking layer check
-        const afishaBlock = await checkAfishaConflicts(client, main.date, main.time, main.duration || 0);
-        if (afishaBlock.blocked) {
-            await client.query('ROLLBACK');
-            client.release();
-            return res.status(409).json({
-                success: false,
-                error: `Час заблоковано афішею: "${afishaBlock.event.title}" о ${afishaBlock.event.time}`
-            });
-        }
-
         // Conflict check for main booking
         const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0);
         if (conflict.overlap) {
@@ -821,6 +897,17 @@ app.post('/api/bookings/full', async (req, res) => {
             await client.query('ROLLBACK');
             client.release();
             return res.status(409).json({ success: false, error: 'Ця програма вже є в цей час' });
+        }
+
+        // v5.18.1: Room conflict check
+        const roomConflict = await checkRoomConflict(client, main.date, main.room, main.time, main.duration || 0);
+        if (roomConflict) {
+            await client.query('ROLLBACK');
+            client.release();
+            return res.status(409).json({
+                success: false,
+                error: `Кімната "${main.room}" зайнята: ${roomConflict.label || roomConflict.program_code} о ${roomConflict.time}`
+            });
         }
 
         // Generate main ID
@@ -968,6 +1055,17 @@ app.put('/api/bookings/:id', async (req, res) => {
                     error: `Час зайнятий: ${conflict.conflictWith.label || conflict.conflictWith.program_code} о ${conflict.conflictWith.time}`
                 });
             }
+
+            // v5.18.1: Room conflict check (exclude self)
+            const roomConflict = await checkRoomConflict(client, b.date, b.room, b.time, b.duration || 0, id);
+            if (roomConflict) {
+                await client.query('ROLLBACK');
+                client.release();
+                return res.status(409).json({
+                    success: false,
+                    error: `Кімната "${b.room}" зайнята: ${roomConflict.label || roomConflict.program_code} о ${roomConflict.time}`
+                });
+            }
         }
 
         const newStatus = b.status || 'confirmed';
@@ -995,16 +1093,18 @@ app.put('/api/bookings/:id', async (req, res) => {
         // v5.12: Telegram notifications (fire-and-forget, after commit)
         const username = req.user?.username;
         const bookingForNotify = {
-            ...b, label: b.label, program_code: b.programCode,
+            ...b, id, label: b.label, program_code: b.programCode,
             program_name: b.programName, kids_count: b.kidsCount,
             status: newStatus
         };
 
+        // v5.18.1: Skip Telegram for preliminary->preliminary (no change) and prelim create
         const statusChanged = oldBooking.status !== newStatus;
         if (statusChanged) {
-            notifyTelegram('status_change', bookingForNotify, { username });
-        } else if (!b.linkedTo) {
-            notifyTelegram('edit', bookingForNotify, { username });
+            // Only notify on status change if new status is confirmed, or if going from confirmed to preliminary
+            notifyTelegram('status_change', bookingForNotify, { username, bookingId: id });
+        } else if (!b.linkedTo && newStatus !== 'preliminary') {
+            notifyTelegram('edit', bookingForNotify, { username, bookingId: id });
         }
 
         res.json({ success: true });

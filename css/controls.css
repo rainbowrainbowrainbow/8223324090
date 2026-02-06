@@ -345,14 +345,24 @@
 .status-radio-group {
     display: flex;
     gap: 8px;
+    width: 100%;
+}
+
+.status-radio {
+    flex: 1;
+    display: flex;
+}
+
+.status-radio input[type="radio"] {
+    display: none;
 }
 
 .status-radio-label {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 140px;
-    padding: 8px 14px;
+    width: 100%;
+    padding: 10px 14px;
     border-radius: var(--radius-sm);
     font-weight: 700;
     font-size: var(--font-sm);

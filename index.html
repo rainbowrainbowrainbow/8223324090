@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.18">
-    <link rel="stylesheet" href="css/auth.css?v=5.18">
-    <link rel="stylesheet" href="css/layout.css?v=5.18">
-    <link rel="stylesheet" href="css/timeline.css?v=5.18">
-    <link rel="stylesheet" href="css/panel.css?v=5.18">
-    <link rel="stylesheet" href="css/modals.css?v=5.18">
-    <link rel="stylesheet" href="css/controls.css?v=5.18">
-    <link rel="stylesheet" href="css/features.css?v=5.18">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.18">
-    <link rel="stylesheet" href="css/responsive.css?v=5.18">
+    <link rel="stylesheet" href="css/base.css?v=5.18.1">
+    <link rel="stylesheet" href="css/auth.css?v=5.18.1">
+    <link rel="stylesheet" href="css/layout.css?v=5.18.1">
+    <link rel="stylesheet" href="css/timeline.css?v=5.18.1">
+    <link rel="stylesheet" href="css/panel.css?v=5.18.1">
+    <link rel="stylesheet" href="css/modals.css?v=5.18.1">
+    <link rel="stylesheet" href="css/controls.css?v=5.18.1">
+    <link rel="stylesheet" href="css/features.css?v=5.18.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.18.1">
+    <link rel="stylesheet" href="css/responsive.css?v=5.18.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.18</p>
+                <p class="tagline">Система бронювання v5.18.1</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.18</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.18.1</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -641,6 +641,23 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v5.18.1 — Фікси + Telegram edit + Кімнати</h4>
+                    <ul>
+                        <li>🏠 Валідація кімнат — заборона бронювання зайнятої кімнати</li>
+                        <li>📲 Telegram: редагування повідомлень замість дублів (edit/delete+send)</li>
+                        <li>📲 Telegram: видалено дублювання з фронтенду (single source)</li>
+                        <li>🎭 Афіша: прибрано серверне блокування (лише візуальний шар)</li>
+                        <li>🎭 Афіша: редизайн підпису (мінімалістичний, без білого блоку)</li>
+                        <li>⏰ Now-line: одна напівпрозора лінія через весь таймлайн</li>
+                        <li>🧲 Магніти: ціна 290 ₴/дитина (фікс)</li>
+                        <li>📸 Фото+: опис «магніти на 5 дітей»</li>
+                        <li>🪅 Піньяти: нові іконки, Піньята Party архівована</li>
+                        <li>➕ Прибрано «+Ведучий» з каталогу (є окремий toggle)</li>
+                        <li>✅ Статус-чіпи: однаковий розмір (flex: 1)</li>
+                        <li>🌙 Dark theme: фікс контрасту tooltip, прибрано білу смугу</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v5.18 — UI/UX + Афіша-блокер + Вільні кімнати</h4>
                     <ul>
                         <li>🏠 Кнопка «Вільні кімнати» — показує вільні кімнати на обраний час</li>
@@ -1005,13 +1022,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.18"></script>
-    <script src="js/api.js?v=5.18"></script>
-    <script src="js/ui.js?v=5.18"></script>
-    <script src="js/auth.js?v=5.18"></script>
-    <script src="js/timeline.js?v=5.18"></script>
-    <script src="js/booking.js?v=5.18"></script>
-    <script src="js/settings.js?v=5.18"></script>
-    <script src="js/app.js?v=5.18"></script>
+    <script src="js/config.js?v=5.18.1"></script>
+    <script src="js/api.js?v=5.18.1"></script>
+    <script src="js/ui.js?v=5.18.1"></script>
+    <script src="js/auth.js?v=5.18.1"></script>
+    <script src="js/timeline.js?v=5.18.1"></script>
+    <script src="js/booking.js?v=5.18.1"></script>
+    <script src="js/settings.js?v=5.18.1"></script>
+    <script src="js/app.js?v=5.18.1"></script>
 </body>
 </html>

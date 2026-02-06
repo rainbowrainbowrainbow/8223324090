@@ -480,7 +480,7 @@ async function handleBookingSubmit(e) {
                 return;
             }
             await apiAddHistory('edit', AppState.currentUser?.username, booking);
-            notifyBookingEdited(booking);
+            // v5.18.1: Telegram notification handled server-side in PUT handler (removed frontend duplicate)
 
             AppState.editingBookingId = null;
 

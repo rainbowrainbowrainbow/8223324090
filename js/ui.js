@@ -93,7 +93,7 @@ function showWarning(text) {
 // ==========================================
 
 function renderNowLine() {
-    document.querySelectorAll('.now-line, .now-line-top').forEach(el => el.remove());
+    document.querySelectorAll('.now-line, .now-line-top, .now-line-global').forEach(el => el.remove());
     const now = new Date();
     if (formatDate(AppState.selectedDate) !== formatDate(now)) return;
     if (AppState.multiDayMode) return;
@@ -105,19 +105,16 @@ function renderNowLine() {
 
     const left = ((nowMin - startMin) / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
 
-    document.querySelectorAll('.line-grid').forEach(grid => {
-        const line = document.createElement('div');
-        line.className = 'now-line';
-        line.style.left = `${left}px`;
-        grid.appendChild(line);
-    });
-
-    const timeScale = document.getElementById('timeScale');
-    if (timeScale) {
-        const marker = document.createElement('div');
-        marker.className = 'now-line-top';
-        marker.style.left = `${left}px`;
-        timeScale.appendChild(marker);
+    // v5.18.1: Single continuous semi-transparent line spanning entire timeline
+    const timelineScroll = document.getElementById('timelineScroll');
+    if (timelineScroll) {
+        const globalLine = document.createElement('div');
+        globalLine.className = 'now-line-global';
+        // Offset from left: 110px line-header margin + left within grid
+        const timeScale = document.getElementById('timeScale');
+        const marginLeft = timeScale ? parseInt(getComputedStyle(timeScale).marginLeft) || 110 : 110;
+        globalLine.style.left = `${marginLeft + left}px`;
+        timelineScroll.appendChild(globalLine);
     }
 }
 
@@ -370,8 +367,7 @@ async function changeBookingStatus(bookingId, newStatus) {
             }
         }
 
-        // Telegram сповіщення
-        notifyStatusChanged(booking, newStatus);
+        // v5.18.1: Telegram notification handled server-side in PUT handler (removed frontend duplicate)
 
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         closeAllModals();

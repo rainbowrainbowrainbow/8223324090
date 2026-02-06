@@ -152,15 +152,30 @@ async function apiSaveLines(date, lines) {
     }
 }
 
-async function apiGetHistory() {
+// v5.16: support filter params
+async function apiGetHistory(filters = {}) {
     try {
-        const response = await fetch(`${API_BASE}/history`, { headers: getAuthHeadersGet() });
-        if (handleAuthError(response)) return [];
+        const params = new URLSearchParams();
+        if (filters.action) params.set('action', filters.action);
+        if (filters.user) params.set('user', filters.user);
+        if (filters.from) params.set('from', filters.from);
+        if (filters.to) params.set('to', filters.to);
+        if (filters.search) params.set('search', filters.search);
+        if (filters.limit) params.set('limit', filters.limit);
+        if (filters.offset) params.set('offset', filters.offset);
+        const qs = params.toString();
+        const url = `${API_BASE}/history${qs ? '?' + qs : ''}`;
+        const response = await fetch(url, { headers: getAuthHeadersGet() });
+        if (handleAuthError(response)) return { items: [], total: 0 };
         if (!response.ok) throw new Error('API error');
-        return await response.json();
+        const data = await response.json();
+        // Backward compat: if server returns array (old format)
+        if (Array.isArray(data)) return { items: data, total: data.length };
+        return data;
     } catch (err) {
         console.error('API getHistory error:', err);
-        return JSON.parse(localStorage.getItem(CONFIG.STORAGE.HISTORY) || '[]');
+        const items = JSON.parse(localStorage.getItem(CONFIG.STORAGE.HISTORY) || '[]');
+        return { items, total: items.length };
     }
 }
 

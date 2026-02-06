@@ -20,40 +20,82 @@ async function updateLinesFromSheet() {
 // ПОКАЗ ІСТОРІЇ
 // ==========================================
 
+// v5.16: History with filters and pagination
+const HISTORY_PAGE_SIZE = 50;
+let historyCurrentOffset = 0;
+
 async function showHistory() {
     if (!canViewHistory()) return;
+    historyCurrentOffset = 0;
+    await loadHistoryPage();
+    document.getElementById('historyModal').classList.remove('hidden');
+}
 
-    const history = await apiGetHistory();
-    const modal = document.getElementById('historyModal');
+function getHistoryFilters() {
+    return {
+        action: document.getElementById('historyFilterAction')?.value || '',
+        user: document.getElementById('historyFilterUser')?.value.trim() || '',
+        from: document.getElementById('historyFilterFrom')?.value || '',
+        to: document.getElementById('historyFilterTo')?.value || ''
+    };
+}
+
+async function loadHistoryPage() {
+    const filters = getHistoryFilters();
+    const result = await apiGetHistory({
+        ...filters,
+        limit: HISTORY_PAGE_SIZE,
+        offset: historyCurrentOffset
+    });
+    const { items, total } = result;
+
+    // Stats
+    const statsEl = document.getElementById('historyStats');
+    if (statsEl) {
+        statsEl.textContent = `Знайдено: ${total} запис${total === 1 ? '' : total < 5 ? 'и' : 'ів'}`;
+    }
+
+    // Render items
     const container = document.getElementById('historyList');
-
-    let html = '';
-    if (history.length === 0) {
-        html = '<p class="no-history">Історія порожня</p>';
+    if (items.length === 0) {
+        container.innerHTML = '<p class="no-history">Історія порожня</p>';
     } else {
-        history.slice(0, 100).forEach(item => {
+        container.innerHTML = items.map(item => {
             const date = new Date(item.timestamp).toLocaleString('uk-UA');
             const actionMap = { create: 'Створено', delete: 'Видалено', shift: 'Перенесено', edit: 'Змінено', undo_create: '↩ Скасовано створення', undo_delete: '↩ Скасовано видалення' };
             const actionText = actionMap[item.action] || item.action;
             const actionClass = item.action.includes('undo') ? 'action-undo' : (item.action === 'edit' ? 'action-edit' : (item.action === 'create' ? 'action-create' : 'action-delete'));
-
-            html += `
+            return `
                 <div class="history-item ${actionClass}">
                     <div class="history-header">
-                        <span class="history-action">${actionText}</span>
-                        <span class="history-user">${item.user}</span>
-                        <span class="history-date">${date}</span>
+                        <span class="history-action">${escapeHtml(actionText)}</span>
+                        <span class="history-user">${escapeHtml(item.user || '')}</span>
+                        <span class="history-date">${escapeHtml(date)}</span>
                     </div>
                     <div class="history-details">
-                        ${item.data?.label || item.data?.programCode || ''}: ${item.data?.room || ''} (${item.data?.date || ''} ${item.data?.time || ''})
+                        ${escapeHtml(item.data?.label || item.data?.programCode || '')}: ${escapeHtml(item.data?.room || '')} (${escapeHtml(item.data?.date || '')} ${escapeHtml(item.data?.time || '')})
                     </div>
                 </div>
             `;
-        });
+        }).join('');
     }
+    container.scrollTop = 0;
 
-    container.innerHTML = html;
-    modal.classList.remove('hidden');
+    // Pagination
+    const pagEl = document.getElementById('historyPagination');
+    const prevBtn = document.getElementById('historyPrevPage');
+    const nextBtn = document.getElementById('historyNextPage');
+    const pageInfo = document.getElementById('historyPageInfo');
+    if (pagEl && total > HISTORY_PAGE_SIZE) {
+        pagEl.classList.remove('hidden');
+        const page = Math.floor(historyCurrentOffset / HISTORY_PAGE_SIZE) + 1;
+        const totalPages = Math.ceil(total / HISTORY_PAGE_SIZE);
+        pageInfo.textContent = `${page} / ${totalPages}`;
+        prevBtn.disabled = historyCurrentOffset === 0;
+        nextBtn.disabled = historyCurrentOffset + HISTORY_PAGE_SIZE >= total;
+    } else if (pagEl) {
+        pagEl.classList.add('hidden');
+    }
 }
 
 // ==========================================

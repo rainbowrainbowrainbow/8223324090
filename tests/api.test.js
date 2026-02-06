@@ -322,14 +322,149 @@ describe('Bookings Full endpoint', () => {
 });
 
 // ==========================================
-// HISTORY
+// SOFT DELETE (v5.14)
+// ==========================================
+
+describe('Soft Delete', () => {
+    const date = '2099-04-01';
+    let softDeletedId;
+
+    before(async () => {
+        await authRequest('POST', `/api/lines/${date}`, [
+            { id: 'soft_line', name: 'Soft Delete Test', color: '#FF00FF' }
+        ]);
+    });
+
+    it('DELETE /api/bookings/:id — soft delete (default)', async () => {
+        const create = await authRequest('POST', '/api/bookings', {
+            date, time: '14:00', lineId: 'soft_line', room: 'Marvel',
+            programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
+            category: 'quest', status: 'confirmed'
+        });
+        assert.equal(create.status, 200);
+        softDeletedId = create.data.booking.id;
+
+        const del = await authRequest('DELETE', `/api/bookings/${softDeletedId}`);
+        assert.equal(del.status, 200);
+        assert.ok(del.data.success);
+    });
+
+    it('GET /api/bookings/:date — soft deleted booking should not appear', async () => {
+        const res = await authRequest('GET', `/api/bookings/${date}`);
+        assert.equal(res.status, 200);
+        const found = res.data.find(b => b.id === softDeletedId);
+        assert.ok(!found, 'Soft-deleted booking should be hidden');
+    });
+
+    it('POST /api/bookings — can book same time slot after soft delete', async () => {
+        const res = await authRequest('POST', '/api/bookings', {
+            date, time: '14:00', lineId: 'soft_line', room: 'Ninja',
+            programCode: 'АН', label: 'АН(60)', duration: 60, price: 1500,
+            category: 'animation', status: 'confirmed'
+        });
+        assert.equal(res.status, 200, `Should succeed on cancelled slot: ${JSON.stringify(res.data)}`);
+        if (res.data.booking) await authRequest('DELETE', `/api/bookings/${res.data.booking.id}?permanent=true`);
+    });
+
+    it('DELETE /api/bookings/:id?permanent=true — hard delete', async () => {
+        const create = await authRequest('POST', '/api/bookings', {
+            date, time: '16:00', lineId: 'soft_line', room: 'Marvel',
+            programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
+            category: 'quest', status: 'confirmed'
+        });
+        assert.equal(create.status, 200);
+        const id = create.data.booking.id;
+
+        const del = await authRequest('DELETE', `/api/bookings/${id}?permanent=true`);
+        assert.equal(del.status, 200);
+        assert.ok(del.data.success);
+    });
+});
+
+// ==========================================
+// HISTORY (v5.16: with filters)
 // ==========================================
 
 describe('History', () => {
-    it('GET /api/history — should return array', async () => {
+    it('GET /api/history — should return object with items', async () => {
         const res = await authRequest('GET', '/api/history');
         assert.equal(res.status, 200);
-        assert.ok(Array.isArray(res.data));
+        assert.ok(res.data.items, 'Should have items property');
+        assert.ok(Array.isArray(res.data.items), 'items should be array');
+        assert.ok(typeof res.data.total === 'number', 'Should have total count');
+    });
+
+    it('GET /api/history?limit=5 — should respect limit', async () => {
+        const res = await authRequest('GET', '/api/history?limit=5');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.items.length <= 5, 'Should return at most 5 items');
+        assert.equal(res.data.limit, 5);
+    });
+
+    it('GET /api/history?action=create — should filter by action', async () => {
+        const res = await authRequest('GET', '/api/history?action=create');
+        assert.equal(res.status, 200);
+        for (const item of res.data.items) {
+            assert.equal(item.action, 'create', `All items should be "create", got "${item.action}"`);
+        }
+    });
+
+    it('GET /api/history?from=2099-01-01&to=2099-12-31 — date range', async () => {
+        const res = await authRequest('GET', '/api/history?from=2099-01-01&to=2099-12-31');
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.items));
+    });
+
+    it('POST /api/history — add entry then find by user', async () => {
+        const res = await authRequest('POST', '/api/history', {
+            action: 'create',
+            user: 'test_api_user',
+            data: { label: 'TEST', room: 'Marvel', date: '2099-01-01', time: '12:00' }
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+
+        const check = await authRequest('GET', '/api/history?user=test_api_user');
+        assert.ok(check.data.items.length > 0, 'Should find entry by user filter');
+    });
+});
+
+// ==========================================
+// STATUS CHANGE
+// ==========================================
+
+describe('Status Change', () => {
+    const date = '2099-05-01';
+    let bookingId;
+
+    before(async () => {
+        await authRequest('POST', `/api/lines/${date}`, [
+            { id: 'status_line', name: 'Status Test', color: '#00FFFF' }
+        ]);
+        const res = await authRequest('POST', '/api/bookings', {
+            date, time: '14:00', lineId: 'status_line', room: 'Marvel',
+            programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
+            category: 'quest', status: 'confirmed'
+        });
+        bookingId = res.data.booking.id;
+    });
+
+    it('PUT /api/bookings/:id — change status to preliminary', async () => {
+        const res = await authRequest('PUT', `/api/bookings/${bookingId}`, {
+            date, time: '14:00', lineId: 'status_line', room: 'Marvel',
+            programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
+            category: 'quest', status: 'preliminary'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+
+        const check = await authRequest('GET', `/api/bookings/${date}`);
+        const booking = check.data.find(b => b.id === bookingId);
+        assert.equal(booking.status, 'preliminary');
+    });
+
+    after(async () => {
+        if (bookingId) await authRequest('DELETE', `/api/bookings/${bookingId}?permanent=true`);
     });
 });
 
@@ -340,6 +475,11 @@ describe('History', () => {
 describe('Unauthenticated access', () => {
     it('GET /api/bookings/:date — without token returns 401', async () => {
         const res = await request('GET', '/api/bookings/2099-01-01');
+        assert.equal(res.status, 401);
+    });
+
+    it('GET /api/history — without token returns 401', async () => {
+        const res = await request('GET', '/api/history');
         assert.equal(res.status, 401);
     });
 });

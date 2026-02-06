@@ -159,6 +159,27 @@ function initTimelineListeners() {
 
     const historyBtnEl = document.getElementById('historyBtn');
     if (historyBtnEl) historyBtnEl.addEventListener('click', showHistory);
+
+    // v5.16: History filter buttons
+    const historyFilterApply = document.getElementById('historyFilterApply');
+    if (historyFilterApply) historyFilterApply.addEventListener('click', () => { historyCurrentOffset = 0; loadHistoryPage(); });
+    const historyFilterReset = document.getElementById('historyFilterReset');
+    if (historyFilterReset) historyFilterReset.addEventListener('click', () => {
+        document.getElementById('historyFilterAction').value = '';
+        document.getElementById('historyFilterUser').value = '';
+        document.getElementById('historyFilterFrom').value = '';
+        document.getElementById('historyFilterTo').value = '';
+        historyCurrentOffset = 0;
+        loadHistoryPage();
+    });
+    const historyPrevPage = document.getElementById('historyPrevPage');
+    if (historyPrevPage) historyPrevPage.addEventListener('click', () => { historyCurrentOffset = Math.max(0, historyCurrentOffset - HISTORY_PAGE_SIZE); loadHistoryPage(); });
+    const historyNextPage = document.getElementById('historyNextPage');
+    if (historyNextPage) historyNextPage.addEventListener('click', () => { historyCurrentOffset += HISTORY_PAGE_SIZE; loadHistoryPage(); });
+    // Enter key in filter inputs
+    document.querySelectorAll('.history-filter-input, .history-filter-select').forEach(el => {
+        el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { historyCurrentOffset = 0; loadHistoryPage(); } });
+    });
 }
 
 function initBookingFormListeners() {

@@ -330,6 +330,10 @@ body.dark-mode .history-item.action-create {
     background: rgba(16,185,129,0.1);
 }
 
+body.dark-mode .history-item.action-edit {
+    background: rgba(59,130,246,0.1);
+}
+
 body.dark-mode .history-item.action-delete {
     background: rgba(239,68,68,0.1);
 }
@@ -564,6 +568,29 @@ body.dark-mode #settingsAutoDeleteHours {
     background: var(--gray-100);
     border-color: var(--gray-300);
     color: #E2E8F0;
+}
+
+/* v5.16: History filters in dark */
+body.dark-mode .history-filter-select,
+body.dark-mode .history-filter-input {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+body.dark-mode .btn-history-reset {
+    background: var(--gray-200);
+    color: #9CA3AF;
+}
+
+body.dark-mode .btn-history-page {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #D1D5DB;
+}
+
+body.dark-mode .history-pagination {
+    border-top-color: var(--gray-200);
 }
 
 /* v5.15: Status filter in dark */

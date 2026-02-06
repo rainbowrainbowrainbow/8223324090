@@ -476,10 +476,15 @@
                     <!-- v5.17: Thread/Topic ID -->
                     <div class="telegram-setup" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray-200);">
                         <h4 style="margin: 0 0 8px;">💬 Гілка (Topic) для сповіщень</h4>
-                        <p class="digest-hint">Якщо група має теми (Topics/Forum), вкажіть ID гілки щоб повідомлення надходили в окрему тему замість General.</p>
+                        <p class="digest-hint">Оберіть гілку/тему групи, куди будуть надходити сповіщення. Якщо список порожній — напишіть щось у потрібну тему групи, щоб бот її побачив.</p>
                         <div class="form-group">
-                            <label>Thread ID (Message Thread ID):</label>
-                            <input type="text" id="settingsTelegramThreadId" placeholder="Наприклад: 5" style="width:100%; padding:10px; border:1px solid var(--gray-300); border-radius:8px; font-size:14px;">
+                            <label>Знайдені теми (натисніть щоб обрати):</label>
+                            <div id="settingsTelegramThreads" class="telegram-chats"></div>
+                            <button type="button" class="btn-refresh-chats" onclick="fetchAndRenderThreads()" title="Оновити список тем">🔄 Оновити теми</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Thread ID:</label>
+                            <input type="text" id="settingsTelegramThreadId" placeholder="Обрати зі списку або ввести вручну" style="width:100%; padding:10px; border:1px solid var(--gray-300); border-radius:8px; font-size:14px;">
                         </div>
                         <button type="button" id="saveThreadIdBtn" class="btn-submit" style="background: linear-gradient(135deg, #8B5CF6, #6D28D9);">💾 Зберегти Thread ID</button>
                     </div>

@@ -458,6 +458,29 @@ async function fetchAndRenderTelegramChats(chatIdInputId, chatsContainerId) {
     }
 }
 
+// v5.17: Fetch and render known threads/topics for thread picker
+async function fetchAndRenderThreads() {
+    const container = document.getElementById('settingsTelegramThreads');
+    if (!container) return;
+    container.innerHTML = '<p>Завантаження...</p>';
+
+    try {
+        const response = await fetch(`${API_BASE}/telegram/threads`, { headers: getAuthHeadersGet() });
+        const data = await response.json();
+        if (data.threads && data.threads.length > 0) {
+            container.innerHTML = data.threads.map(t =>
+                `<div class="telegram-chat-item" onclick="document.getElementById('settingsTelegramThreadId').value='${t.thread_id}'">
+                    <strong>${escapeHtml(t.title || 'Тема #' + t.thread_id)}</strong> <span class="chat-id">ID: ${t.thread_id}</span>
+                </div>`
+            ).join('');
+        } else {
+            container.innerHTML = '<p class="no-chats">Тем не знайдено. Напишіть повідомлення в потрібну тему групи, щоб бот її побачив.</p>';
+        }
+    } catch (err) {
+        container.innerHTML = '<p>Помилка завантаження</p>';
+    }
+}
+
 async function showTelegramSetup() {
     const chatId = await apiGetSetting('telegram_chat_id');
     const modal = document.getElementById('telegramModal');
@@ -537,6 +560,7 @@ async function showSettings() {
 
     document.getElementById('settingsModal').classList.remove('hidden');
     fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
+    fetchAndRenderThreads();
 }
 
 // v5.11: Save all notification settings (digest + reminder + auto-delete)

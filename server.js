@@ -509,6 +509,17 @@ async function initDatabase() {
             )
         `);
 
+        // v5.17: Known Telegram threads/topics (populated from webhook)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS telegram_known_threads (
+                thread_id INTEGER NOT NULL,
+                chat_id BIGINT NOT NULL,
+                title VARCHAR(200),
+                updated_at TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (chat_id, thread_id)
+            )
+        `);
+
         // v5.0: Users table for server-side authentication
         await pool.query(`
             CREATE TABLE IF NOT EXISTS users (
@@ -1150,6 +1161,20 @@ app.get('/api/telegram/chats', async (req, res) => {
     }
 });
 
+// v5.17: Get known threads/topics for a chat
+app.get('/api/telegram/threads', async (req, res) => {
+    try {
+        const chatId = req.query.chat_id || await getConfiguredChatId();
+        const result = await pool.query(
+            'SELECT thread_id, title FROM telegram_known_threads WHERE chat_id = $1 ORDER BY thread_id',
+            [chatId]
+        );
+        res.json({ threads: result.rows });
+    } catch (err) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Send notification to Telegram
 app.post('/api/telegram/notify', async (req, res) => {
     try {
@@ -1357,6 +1382,19 @@ app.post('/api/telegram/webhook', async (req, res) => {
             ).catch(e => console.error('[Telegram] Failed to save chat info:', e.message));
         }
 
+        // v5.17: Save thread/topic info from forum messages
+        const msg = update.message || update.callback_query?.message;
+        if (msg && msg.message_thread_id && msg.chat?.id) {
+            const threadTitle = msg.reply_to_message?.forum_topic_created?.name
+                || msg.forum_topic_created?.name
+                || null;
+            pool.query(
+                `INSERT INTO telegram_known_threads (thread_id, chat_id, title, updated_at) VALUES ($1, $2, $3, NOW())
+                 ON CONFLICT (chat_id, thread_id) DO UPDATE SET title = COALESCE(NULLIF($3, ''), telegram_known_threads.title), updated_at = NOW()`,
+                [msg.message_thread_id, msg.chat.id, threadTitle]
+            ).catch(e => console.error('[Telegram] Failed to save thread info:', e.message));
+        }
+
         if (update.callback_query) {
             const { id, data, message } = update.callback_query;
             const chatId = message.chat.id;
@@ -1520,7 +1558,7 @@ app.delete('/api/afisha/:id', async (req, res) => {
 // v5.14: DATABASE BACKUP (Telegram)
 // ==========================================
 
-const BACKUP_TABLES = ['bookings', 'lines_by_date', 'users', 'history', 'settings', 'afisha', 'pending_animators', 'telegram_known_chats', 'booking_counter'];
+const BACKUP_TABLES = ['bookings', 'lines_by_date', 'users', 'history', 'settings', 'afisha', 'pending_animators', 'telegram_known_chats', 'telegram_known_threads', 'booking_counter'];
 
 async function generateBackupSQL() {
     const lines = [];

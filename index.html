@@ -4,17 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Парк Закревського Періоду | Бронювання</title>
+    <meta name="description" content="Система бронювання для дитячого розважального Парку Закревського Періоду. Квести, анімації, шоу, майстер-класи.">
+    <meta name="theme-color" content="#10B981">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- Favicon -->
+    <link rel="icon" href="favicon.ico" sizes="32x32">
+    <link rel="icon" href="images/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+    <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.37">
-    <link rel="stylesheet" href="css/auth.css?v=5.37">
-    <link rel="stylesheet" href="css/layout.css?v=5.37">
-    <link rel="stylesheet" href="css/timeline.css?v=5.37">
-    <link rel="stylesheet" href="css/panel.css?v=5.37">
-    <link rel="stylesheet" href="css/modals.css?v=5.37">
-    <link rel="stylesheet" href="css/controls.css?v=5.37">
-    <link rel="stylesheet" href="css/features.css?v=5.37">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.37">
-    <link rel="stylesheet" href="css/responsive.css?v=5.37">
+    <link rel="stylesheet" href="css/base.css?v=5.38">
+    <link rel="stylesheet" href="css/auth.css?v=5.38">
+    <link rel="stylesheet" href="css/layout.css?v=5.38">
+    <link rel="stylesheet" href="css/timeline.css?v=5.38">
+    <link rel="stylesheet" href="css/panel.css?v=5.38">
+    <link rel="stylesheet" href="css/modals.css?v=5.38">
+    <link rel="stylesheet" href="css/controls.css?v=5.38">
+    <link rel="stylesheet" href="css/features.css?v=5.38">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.38">
+    <link rel="stylesheet" href="css/responsive.css?v=5.38">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -23,11 +32,11 @@
     <div id="loginScreen" class="login-screen">
         <div class="login-container">
             <div class="login-logo">
-                <img src="images/logo-new.png" alt="Логотип" class="logo-img">
+                <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.37</p>
+                <p class="tagline">Система бронювання v5.38</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.37</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.38</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -49,7 +58,7 @@
         <header class="header">
             <div class="header-content">
                 <div class="logo">
-                    <img src="images/logo-new.png" alt="Логотип" class="logo-img-small">
+                    <img src="images/favicon-512.png" alt="Логотип" class="logo-img-small">
                     <div class="logo-text">
                         <h1>Парк Закревського Періоду</h1>
                     </div>
@@ -646,6 +655,16 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v5.38 — Image Asset Pack</h4>
+                    <ul>
+                        <li>Нове лого: кролик з годинником на геометричному вітражному фоні</li>
+                        <li>Favicon: SVG + ICO + PNG (16, 32, 180, 192, 512px)</li>
+                        <li>PWA manifest: standalone app з іконками</li>
+                        <li>Meta tags: description, theme-color, apple-mobile-web-app</li>
+                        <li>Apple Touch Icon для iOS закладок</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v5.37 — Dark Mode & Typography Polish</h4>
                     <ul>
                         <li>Dark mode: кольорові іконки програм по категоріях (quest, animation, show...)</li>
@@ -1151,13 +1170,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.37"></script>
-    <script src="js/api.js?v=5.37"></script>
-    <script src="js/ui.js?v=5.37"></script>
-    <script src="js/auth.js?v=5.37"></script>
-    <script src="js/timeline.js?v=5.37"></script>
-    <script src="js/booking.js?v=5.37"></script>
-    <script src="js/settings.js?v=5.37"></script>
-    <script src="js/app.js?v=5.37"></script>
+    <script src="js/config.js?v=5.38"></script>
+    <script src="js/api.js?v=5.38"></script>
+    <script src="js/ui.js?v=5.38"></script>
+    <script src="js/auth.js?v=5.38"></script>
+    <script src="js/timeline.js?v=5.38"></script>
+    <script src="js/booking.js?v=5.38"></script>
+    <script src="js/settings.js?v=5.38"></script>
+    <script src="js/app.js?v=5.38"></script>
 </body>
 </html>

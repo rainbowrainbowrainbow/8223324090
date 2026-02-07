@@ -648,6 +648,18 @@ body.dark-mode .history-pagination {
     border-top-color: var(--gray-200);
 }
 
+/* v5.36: Afisha buttons in dark */
+body.dark-mode .btn-afisha-add,
+body.dark-mode .btn-afisha-import {
+    box-shadow: 0 2px 8px rgba(139,92,246,0.2);
+}
+
+body.dark-mode .afisha-import-section textarea {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
 /* v5.31: Status filter in dark (segmented) */
 body.dark-mode .status-filter-controls {
     background: var(--gray-100);

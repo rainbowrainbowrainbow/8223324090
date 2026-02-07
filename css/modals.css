@@ -346,10 +346,21 @@
     font-weight: 600;
 }
 
+/* v5.36: Empty state — styled consistently */
 .no-history {
     text-align: center;
     color: var(--gray-400);
-    padding: 40px;
+    padding: 48px 24px;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    line-height: 1.6;
+}
+
+.no-history::before {
+    content: '📋';
+    display: block;
+    font-size: 32px;
+    margin-bottom: 8px;
 }
 
 /* v5.16: History filters */

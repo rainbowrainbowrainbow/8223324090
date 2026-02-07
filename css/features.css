@@ -345,7 +345,22 @@
 
 .dash-bar-value { width: 70px; text-align: right; color: var(--gray-400); font-size: 12px; flex-shrink: 0; }
 
-.no-data { color: var(--gray-400); font-size: var(--font-sm); padding: 12px; }
+/* v5.36: Empty state — consistent styling */
+.no-data {
+    text-align: center;
+    color: var(--gray-400);
+    padding: 48px 24px;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    line-height: 1.6;
+}
+
+.no-data::before {
+    content: '🎭';
+    display: block;
+    font-size: 32px;
+    margin-bottom: 8px;
+}
 
 /* ==========================================
    AFISHA (F: Events/Poster)
@@ -412,6 +427,28 @@
     background: #F5F3FF;
 }
 
+/* v5.36: Afisha add button — replaces inline style */
+.btn-afisha-add {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 800;
+    font-size: 16px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    box-shadow: 0 2px 8px rgba(139,92,246,0.3);
+    white-space: nowrap;
+    min-height: 44px;
+}
+
+.btn-afisha-add:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139,92,246,0.4);
+}
+
 /* v5.10: Afisha import section */
 .afisha-import-section {
     margin-top: 16px;
@@ -428,6 +465,13 @@
     font-family: monospace;
     resize: vertical;
     min-height: 60px;
+    transition: border-color var(--speed-fast);
+}
+
+.afisha-import-section textarea:focus {
+    outline: none;
+    border-color: #8B5CF6;
+    box-shadow: 0 0 0 4px rgba(139,92,246,0.1);
 }
 
 .afisha-import-section label {
@@ -435,6 +479,28 @@
     color: var(--gray-500);
     margin-bottom: 6px;
     display: block;
+}
+
+/* v5.36: Afisha import button — replaces inline style */
+.btn-afisha-import {
+    margin-top: 8px;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: var(--font-sm);
+    font-family: inherit;
+    cursor: pointer;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    box-shadow: 0 2px 8px rgba(139,92,246,0.3);
+    min-height: 44px;
+}
+
+.btn-afisha-import:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139,92,246,0.4);
 }
 
 .afisha-list {
@@ -475,42 +541,45 @@
     flex-shrink: 0;
 }
 
-.btn-shift {
+/* v5.36: Action buttons — removed !important, use specificity */
+.afisha-item-actions .btn-shift {
     background: rgba(139,92,246,0.1);
     color: #7C3AED;
     border: 1px solid rgba(139,92,246,0.3);
     border-radius: 4px;
     cursor: pointer;
-    font-size: 11px !important;
-    padding: 3px 6px !important;
-    width: auto !important;
-    transition: all 0.15s;
+    font-size: 11px;
+    padding: 6px 10px;
+    min-height: 32px;
+    width: auto;
+    transition: all var(--speed-fast);
 }
 
-.btn-shift:hover {
+.afisha-item-actions .btn-shift:hover {
     background: rgba(139,92,246,0.2);
 }
 
-.btn-edit {
+.afisha-item-actions .btn-edit {
     background: rgba(59,130,246,0.1);
     color: #2563EB;
     border: 1px solid rgba(59,130,246,0.3);
     border-radius: 4px;
     cursor: pointer;
-    font-size: 12px !important;
-    padding: 3px 6px !important;
-    width: auto !important;
-    transition: all 0.15s;
+    font-size: 12px;
+    padding: 6px 10px;
+    min-height: 32px;
+    width: auto;
+    transition: all var(--speed-fast);
 }
 
-.btn-edit:hover {
+.afisha-item-actions .btn-edit:hover {
     background: rgba(59,130,246,0.2);
 }
 
-.btn-sm {
-    padding: 4px 10px !important;
-    font-size: 12px !important;
-    width: auto !important;
+.afisha-item-actions .btn-sm {
+    padding: 6px 10px;
+    font-size: 12px;
+    width: auto;
 }
 
 /* Afisha timeline markers */

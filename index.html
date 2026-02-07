@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.35">
-    <link rel="stylesheet" href="css/auth.css?v=5.35">
-    <link rel="stylesheet" href="css/layout.css?v=5.35">
-    <link rel="stylesheet" href="css/timeline.css?v=5.35">
-    <link rel="stylesheet" href="css/panel.css?v=5.35">
-    <link rel="stylesheet" href="css/modals.css?v=5.35">
-    <link rel="stylesheet" href="css/controls.css?v=5.35">
-    <link rel="stylesheet" href="css/features.css?v=5.35">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.35">
-    <link rel="stylesheet" href="css/responsive.css?v=5.35">
+    <link rel="stylesheet" href="css/base.css?v=5.36">
+    <link rel="stylesheet" href="css/auth.css?v=5.36">
+    <link rel="stylesheet" href="css/layout.css?v=5.36">
+    <link rel="stylesheet" href="css/timeline.css?v=5.36">
+    <link rel="stylesheet" href="css/panel.css?v=5.36">
+    <link rel="stylesheet" href="css/modals.css?v=5.36">
+    <link rel="stylesheet" href="css/controls.css?v=5.36">
+    <link rel="stylesheet" href="css/features.css?v=5.36">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.36">
+    <link rel="stylesheet" href="css/responsive.css?v=5.36">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.35</p>
+                <p class="tagline">Система бронювання v5.36</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.35</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.36</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -646,6 +646,17 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v5.36 — Афіша & Історія UI</h4>
+                    <ul>
+                        <li>Афіша: inline styles замінено на CSS класи (.btn-afisha-add, .btn-afisha-import)</li>
+                        <li>Афіша: форма стеком на мобільному, кнопки touch-friendly (44px)</li>
+                        <li>Афіша: дії по подіях адаптивні, !important прибрано</li>
+                        <li>Історія: фільтри вертикально на мобільному</li>
+                        <li>Empty states: стилізовані порожні стани з іконками</li>
+                        <li>Import textarea: focus стилі в design system</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v5.35 — Responsive Tablets + Desktop Toolbar</h4>
                     <ul>
                         <li>Desktop toolbar: CSS Grid два рядки (дата/фільтри + zoom/дії)</li>
@@ -1113,14 +1124,14 @@
                     <button type="button" id="afishaAutoTimeBtn" class="btn-auto-time" title="Знайти вільний слот">🎯</button>
                     <input type="text" id="afishaTitle" class="afisha-input" placeholder="Назва події">
                     <input type="number" id="afishaDuration" class="afisha-input" value="60" min="15" step="15" title="Тривалість (хв)">
-                    <button type="button" id="addAfishaBtn" class="btn-submit" style="width:auto; padding:10px 20px;">Додати</button>
+                    <button type="button" id="addAfishaBtn" class="btn-afisha-add">Додати</button>
                 </div>
             </div>
             <div id="afishaList" class="afisha-list"></div>
             <div class="afisha-import-section">
                 <label>Імпорт подій (формат: дата;час;хвилини;назва — по одній на рядок):</label>
                 <textarea id="afishaImportText" rows="3" placeholder="2026-03-01;12:00;60;Піратська вечірка&#10;2026-03-01;14:00;90;Шоу бульбашок"></textarea>
-                <button type="button" id="afishaImportBtn" class="btn-submit" style="margin-top:8px; background: linear-gradient(135deg, #8B5CF6, #6D28D9);">📥 Імпортувати</button>
+                <button type="button" id="afishaImportBtn" class="btn-afisha-import">📥 Імпортувати</button>
             </div>
         </div>
     </div>
@@ -1130,13 +1141,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.35"></script>
-    <script src="js/api.js?v=5.35"></script>
-    <script src="js/ui.js?v=5.35"></script>
-    <script src="js/auth.js?v=5.35"></script>
-    <script src="js/timeline.js?v=5.35"></script>
-    <script src="js/booking.js?v=5.35"></script>
-    <script src="js/settings.js?v=5.35"></script>
-    <script src="js/app.js?v=5.35"></script>
+    <script src="js/config.js?v=5.36"></script>
+    <script src="js/api.js?v=5.36"></script>
+    <script src="js/ui.js?v=5.36"></script>
+    <script src="js/auth.js?v=5.36"></script>
+    <script src="js/timeline.js?v=5.36"></script>
+    <script src="js/booking.js?v=5.36"></script>
+    <script src="js/settings.js?v=5.36"></script>
+    <script src="js/app.js?v=5.36"></script>
 </body>
 </html>

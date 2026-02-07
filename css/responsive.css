@@ -168,9 +168,46 @@
         padding: 8px 10px;
     }
 
-    /* v5.16: History filters mobile */
+    /* v5.36: Afisha form — stack on mobile */
+    .afisha-form-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .afisha-form-row .afisha-input {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .afisha-form-row .afisha-input[type="time"],
+    .afisha-form-row .afisha-input[type="number"] {
+        width: 100%;
+    }
+
+    /* Afisha: date + time + auto-time in one row */
+    .afisha-form-row .btn-auto-time {
+        min-height: 44px;
+    }
+
+    .btn-afisha-add {
+        width: 100%;
+    }
+
+    /* Afisha items: stack actions below */
+    .afisha-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .afisha-item-actions {
+        justify-content: flex-end;
+    }
+
+    /* v5.36: History filters — full stack on mobile */
     .history-filter-row {
-        gap: 6px;
+        flex-direction: column;
+        gap: 8px;
     }
 
     .history-filter-select,
@@ -185,6 +222,13 @@
     .history-date-range .history-filter-input[type="date"] {
         flex: 1;
         width: auto;
+    }
+
+    /* v5.36: History filter buttons — full width row */
+    .btn-history-filter,
+    .btn-history-reset {
+        flex: 1;
+        min-height: 44px;
     }
 
     /* v5.34: Row 3 — Zoom, toggles, action buttons */

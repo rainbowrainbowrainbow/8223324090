@@ -628,7 +628,7 @@ async function showBookingDetails(bookingId) {
                 <button onclick="shiftBookingTime('${booking.id}', 60)">+60</button>
             </div>
         </div>
-        <div class="booking-actions">
+        <div class="booking-actions modal-footer-sticky">
             <button onclick="editBooking('${booking.id}')" class="btn-edit-booking">✏️ Редагувати</button>
             <a href="${inviteUrl}" target="_blank" class="btn-invite-event">🎉 Запрошення</a>
             <button onclick="deleteBooking('${booking.id}')" class="btn-delete-booking">Видалити</button>
@@ -638,7 +638,7 @@ async function showBookingDetails(bookingId) {
     document.getElementById('bookingDetails').innerHTML = `
         <div class="booking-detail-header">
             <h3>${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.programName)}</h3>
-            <p>${escapeHtml(booking.room)}</p>
+            <p>${escapeHtml(booking.room)}${booking.category ? ' · <span class="category-chip category-chip--' + escapeHtml(booking.category) + '">' + escapeHtml(booking.category) + '</span>' : ''}</p>
         </div>
         <div class="booking-detail-row">
             <span class="label">Дата:</span>
@@ -665,7 +665,7 @@ async function showBookingDetails(bookingId) {
         ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">Дітей:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
         <div class="booking-detail-row">
             <span class="label">Статус:</span>
-            <span class="value status-value ${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
+            <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
         </div>
         ${booking.notes ? `<div class="booking-detail-row"><span class="label">Примітки:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
         ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">🎪 ${escapeHtml(booking.groupName)}</span></div>` : ''}

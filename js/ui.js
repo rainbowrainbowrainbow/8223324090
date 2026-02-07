@@ -137,11 +137,11 @@ function showTooltip(e, booking) {
         document.body.appendChild(tooltip);
     }
     const endTime = addMinutesToTime(booking.time, booking.duration);
-    const statusText = booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене';
+    const statusBadge = `<span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>`;
     tooltip.innerHTML = `
         <strong>${escapeHtml(booking.label)}: ${escapeHtml(booking.programName)}</strong><br>
         🕐 ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}<br>
-        🏠 ${escapeHtml(booking.room)} · ${statusText}
+        🏠 ${escapeHtml(booking.room)} · ${statusBadge}
         ${booking.kidsCount ? '<br>👶 ' + escapeHtml(String(booking.kidsCount)) + ' дітей' : ''}
         ${booking.notes ? '<br>📝 ' + escapeHtml(booking.notes) : ''}
     `;

@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-02-07 — v5.46 Wire Up Design System
+
+**Що вирішили:**
+- Підключити CSS компоненти з v5.42–v5.44 до реального UI (status badges, category chips, empty states, sticky footer)
+- 37+ класів були створені але не використані — тепер вони працюють
+
+**Що додали/поміняли:**
+- `js/booking.js` — showBookingDetails: `.status-badge--confirmed/preliminary` замість plain span
+- `js/booking.js` — showBookingDetails: `.category-chip--{category}` в header бронювання
+- `js/booking.js` — `.booking-actions` отримав `.modal-footer-sticky` (sticky кнопки при прокрутці)
+- `js/ui.js` — showTooltip: status badge замість текстового статусу
+- `js/settings.js` — loadHistory: `.empty-state` з іконкою та описом замість plain text
+- `js/settings.js` — fetchAndRenderTelegramChats: `.empty-state` для "Тем не знайдено"
+- Version bump 5.46.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v5.47 — Unified Buttons + Inline Style Cleanup
+
+---
+
 ## 2026-02-07 — v5.45 Invite Page Overhaul
 
 **Що вирішили:**

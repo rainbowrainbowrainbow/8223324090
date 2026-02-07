@@ -44,7 +44,7 @@ async function loadHistoryPage() {
     // Render items
     const container = document.getElementById('historyList');
     if (items.length === 0) {
-        container.innerHTML = '<p class="no-history">Історія порожня</p>';
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">Історія порожня</div><div class="empty-state-text">Тут з\'являться записи про створення, редагування та видалення бронювань</div></div>';
     } else {
         container.innerHTML = items.map(item => {
             const date = new Date(item.timestamp).toLocaleString('uk-UA');
@@ -460,7 +460,7 @@ async function fetchAndRenderThreads() {
                 </div>`
             ).join('');
         } else {
-            container.innerHTML = '<p class="no-chats">Тем не знайдено. Напишіть повідомлення в потрібну тему групи, щоб бот її побачив.</p>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">💬</div><div class="empty-state-title">Тем не знайдено</div><div class="empty-state-text">Напишіть повідомлення в потрібну тему групи, щоб бот її побачив</div></div>';
         }
     } catch (err) {
         container.innerHTML = '<p>Помилка завантаження</p>';

@@ -35,7 +35,6 @@ router.post('/restore', async (req, res) => {
     try {
         const { sql } = req.body;
         if (!sql || typeof sql !== 'string') {
-            client.release();
             return res.status(400).json({ error: 'SQL body required' });
         }
 
@@ -48,7 +47,6 @@ router.post('/restore', async (req, res) => {
             !s.toUpperCase().startsWith('DELETE')
         );
         if (forbidden) {
-            client.release();
             return res.status(400).json({ error: 'Only INSERT and DELETE statements allowed', statement: forbidden.substring(0, 100) });
         }
 

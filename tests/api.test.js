@@ -482,4 +482,297 @@ describe('Unauthenticated access', () => {
         const res = await request('GET', '/api/history');
         assert.equal(res.status, 401);
     });
+
+    it('POST /api/bookings — without token returns 401', async () => {
+        const res = await request('POST', '/api/bookings', { date: '2099-01-01' });
+        assert.equal(res.status, 401);
+    });
+
+    it('GET /api/afisha — without token returns 401', async () => {
+        const res = await request('GET', '/api/afisha');
+        assert.equal(res.status, 401);
+    });
+
+    it('GET /api/settings/digest_time — without token returns 401', async () => {
+        const res = await request('GET', '/api/settings/digest_time');
+        assert.equal(res.status, 401);
+    });
+});
+
+// ==========================================
+// AFISHA CRUD (v5.19)
+// ==========================================
+
+describe('Afisha CRUD', () => {
+    let createdAfishaId;
+
+    it('GET /api/afisha — should return array', async () => {
+        const res = await authRequest('GET', '/api/afisha');
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data), 'Should return an array');
+    });
+
+    it('POST /api/afisha — create event', async () => {
+        const res = await authRequest('POST', '/api/afisha', {
+            date: '2099-06-01',
+            time: '14:00',
+            title: 'Test Event Smoke',
+            duration: 90
+        });
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+        assert.ok(res.data.success, 'Should return success');
+        assert.ok(res.data.item, 'Should return created item');
+        assert.ok(res.data.item.id, 'Item should have an id');
+        assert.equal(res.data.item.title, 'Test Event Smoke');
+        assert.equal(res.data.item.duration, 90);
+        createdAfishaId = res.data.item.id;
+    });
+
+    it('GET /api/afisha/:date — should return events for date', async () => {
+        const res = await authRequest('GET', '/api/afisha/2099-06-01');
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data));
+        const found = res.data.find(e => e.id === createdAfishaId);
+        assert.ok(found, 'Created event should be in the list');
+        assert.equal(found.title, 'Test Event Smoke');
+    });
+
+    it('PUT /api/afisha/:id — update event', async () => {
+        assert.ok(createdAfishaId, 'Need afisha ID from create step');
+        const res = await authRequest('PUT', `/api/afisha/${createdAfishaId}`, {
+            date: '2099-06-01',
+            time: '15:00',
+            title: 'Updated Event Title',
+            duration: 120
+        });
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+        assert.ok(res.data.success);
+
+        // Verify update
+        const check = await authRequest('GET', '/api/afisha/2099-06-01');
+        const found = check.data.find(e => e.id === createdAfishaId);
+        assert.ok(found, 'Updated event should still exist');
+        assert.equal(found.title, 'Updated Event Title');
+        assert.equal(found.time, '15:00');
+    });
+
+    it('DELETE /api/afisha/:id — delete event', async () => {
+        assert.ok(createdAfishaId, 'Need afisha ID from create step');
+        const res = await authRequest('DELETE', `/api/afisha/${createdAfishaId}`);
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+        assert.ok(res.data.success);
+
+        // Verify deletion
+        const check = await authRequest('GET', '/api/afisha/2099-06-01');
+        const found = check.data.find(e => e.id === createdAfishaId);
+        assert.ok(!found, 'Deleted event should not appear');
+    });
+
+    it('POST /api/afisha — missing fields returns 400', async () => {
+        const res = await authRequest('POST', '/api/afisha', { date: '2099-06-01' });
+        assert.equal(res.status, 400);
+        assert.ok(res.data.error);
+    });
+
+    it('POST /api/afisha — invalid date returns 400', async () => {
+        const res = await authRequest('POST', '/api/afisha', {
+            date: 'not-a-date',
+            time: '14:00',
+            title: 'Bad Date Event'
+        });
+        assert.equal(res.status, 400);
+    });
+
+    it('POST /api/afisha — invalid time returns 400', async () => {
+        const res = await authRequest('POST', '/api/afisha', {
+            date: '2099-06-01',
+            time: 'bad-time',
+            title: 'Bad Time Event'
+        });
+        assert.equal(res.status, 400);
+    });
+});
+
+// ==========================================
+// SETTINGS
+// ==========================================
+
+describe('Settings', () => {
+    it('GET /api/settings/:key — should return value (or null)', async () => {
+        const res = await authRequest('GET', '/api/settings/digest_time');
+        assert.equal(res.status, 200);
+        assert.ok('value' in res.data, 'Should have value property');
+    });
+
+    it('POST /api/settings — save and retrieve', async () => {
+        const res = await authRequest('POST', '/api/settings', {
+            key: 'test_setting_key',
+            value: 'test_value_123'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+
+        // Verify saved
+        const check = await authRequest('GET', '/api/settings/test_setting_key');
+        assert.equal(check.status, 200);
+        assert.equal(check.data.value, 'test_value_123');
+    });
+
+    it('POST /api/settings — update existing key', async () => {
+        await authRequest('POST', '/api/settings', {
+            key: 'test_setting_key',
+            value: 'updated_value_456'
+        });
+        const check = await authRequest('GET', '/api/settings/test_setting_key');
+        assert.equal(check.data.value, 'updated_value_456');
+    });
+
+    it('POST /api/settings — invalid key returns 400', async () => {
+        const res = await authRequest('POST', '/api/settings', {
+            key: 'INVALID-KEY!!',
+            value: 'test'
+        });
+        assert.equal(res.status, 400);
+        assert.ok(res.data.error);
+    });
+
+    it('POST /api/settings — value too long returns 400', async () => {
+        const res = await authRequest('POST', '/api/settings', {
+            key: 'test_long',
+            value: 'x'.repeat(1001)
+        });
+        assert.equal(res.status, 400);
+    });
+
+    it('POST /api/settings — missing key returns 400', async () => {
+        const res = await authRequest('POST', '/api/settings', { value: 'test' });
+        assert.equal(res.status, 400);
+    });
+});
+
+// ==========================================
+// FREE ROOMS (v5.18)
+// ==========================================
+
+describe('Free Rooms', () => {
+    const date = '2099-07-01';
+
+    before(async () => {
+        // Create a line and a booking to occupy a room
+        await authRequest('POST', `/api/lines/${date}`, [
+            { id: 'rooms_line', name: 'Rooms Test', color: '#AABB00' }
+        ]);
+        await authRequest('POST', '/api/bookings', {
+            date, time: '14:00', lineId: 'rooms_line', room: 'Marvel',
+            programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
+            category: 'quest', status: 'confirmed'
+        });
+    });
+
+    it('GET /api/rooms/free/:date/:time/:duration — should return free and occupied', async () => {
+        const res = await authRequest('GET', `/api/rooms/free/${date}/14:00/60`);
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.free), 'Should have free array');
+        assert.ok(Array.isArray(res.data.occupied), 'Should have occupied array');
+        assert.ok(typeof res.data.total === 'number', 'Should have total count');
+        assert.ok(res.data.occupied.includes('Marvel'), 'Marvel should be occupied');
+        assert.ok(!res.data.free.includes('Marvel'), 'Marvel should not be in free list');
+    });
+
+    it('GET /api/rooms/free/:date/:time/:duration — non-overlapping time shows all free', async () => {
+        const res = await authRequest('GET', `/api/rooms/free/${date}/20:00/60`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.free.includes('Marvel'), 'Marvel should be free at 20:00');
+        assert.equal(res.data.occupied.length, 0, 'No rooms should be occupied at 20:00');
+    });
+
+    it('GET /api/rooms/free — invalid date returns 400', async () => {
+        const res = await authRequest('GET', '/api/rooms/free/bad-date/14:00/60');
+        assert.equal(res.status, 400);
+    });
+
+    it('GET /api/rooms/free — invalid time returns 400', async () => {
+        const res = await authRequest('GET', `/api/rooms/free/${date}/bad/60`);
+        assert.equal(res.status, 400);
+    });
+});
+
+// ==========================================
+// BOOKING RESPONSE CONTRACT (v5.27)
+// ==========================================
+
+describe('Booking Response Contract', () => {
+    const date = '2099-08-01';
+    let bookingId;
+
+    before(async () => {
+        await authRequest('POST', `/api/lines/${date}`, [
+            { id: 'contract_line', name: 'Contract Test', color: '#112233' }
+        ]);
+    });
+
+    it('POST /api/bookings — response should contain full booking object', async () => {
+        const res = await authRequest('POST', '/api/bookings', {
+            date, time: '14:00', lineId: 'contract_line', room: 'Ninja',
+            programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
+            category: 'quest', status: 'confirmed', notes: 'contract test'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+
+        const booking = res.data.booking;
+        assert.ok(booking, 'Response must include booking object');
+        assert.ok(booking.id, 'Booking must have id');
+        assert.equal(booking.date, date, 'Booking date must match');
+        assert.equal(booking.time, '14:00', 'Booking time must match');
+        assert.equal(booking.room, 'Ninja', 'Booking room must match');
+        assert.equal(booking.lineId, 'contract_line', 'Booking lineId must match');
+        assert.equal(booking.programCode, 'КВ1', 'Booking programCode must match');
+        assert.equal(booking.duration, 60, 'Booking duration must match');
+        assert.equal(booking.price, 2200, 'Booking price must match');
+        assert.equal(booking.category, 'quest', 'Booking category must match');
+        assert.equal(booking.status, 'confirmed', 'Booking status must match');
+
+        bookingId = booking.id;
+    });
+
+    it('POST /api/bookings/full — response should contain full mainBooking and linkedBookings', async () => {
+        await authRequest('POST', `/api/lines/${date}`, [
+            { id: 'contract_line', name: 'Contract Test', color: '#112233' },
+            { id: 'contract_line_2', name: 'Contract Test 2', color: '#445566' }
+        ]);
+        const res = await authRequest('POST', '/api/bookings/full', {
+            main: {
+                date, time: '16:00', lineId: 'contract_line', room: 'Marvel',
+                programCode: 'КВ4', label: 'КВ4(60)', duration: 60, price: 2800,
+                category: 'quest', status: 'confirmed'
+            },
+            linked: [{
+                date, time: '16:00', lineId: 'contract_line_2', room: 'Marvel',
+                programCode: 'КВ4', label: 'КВ4(60)', duration: 60, price: 0,
+                category: 'quest', status: 'confirmed'
+            }]
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+
+        const main = res.data.mainBooking;
+        assert.ok(main, 'Response must include mainBooking');
+        assert.ok(main.id, 'mainBooking must have id');
+        assert.equal(main.date, date);
+        assert.equal(main.room, 'Marvel');
+
+        const linked = res.data.linkedBookings;
+        assert.ok(Array.isArray(linked), 'linkedBookings must be array');
+        assert.equal(linked.length, 1, 'Should have 1 linked booking');
+        assert.ok(linked[0].id, 'Linked booking must have id');
+        assert.equal(linked[0].linkedTo, main.id, 'Linked booking must reference main');
+
+        // Cleanup
+        await authRequest('DELETE', `/api/bookings/${main.id}?permanent=true`);
+    });
+
+    after(async () => {
+        if (bookingId) await authRequest('DELETE', `/api/bookings/${bookingId}?permanent=true`);
+    });
 });

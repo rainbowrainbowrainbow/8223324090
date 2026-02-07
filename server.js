@@ -857,7 +857,11 @@ app.post('/api/bookings', async (req, res) => {
             }, { username: b.createdBy || req.user?.username });
         }
 
-        res.json({ success: true, id: b.id });
+        // v5.27: Return full booking object for API contract consistency
+        const createdRow = await client.query('SELECT * FROM bookings WHERE id = $1', [b.id]);
+        const booking = createdRow.rows[0] ? mapBookingRow(createdRow.rows[0]) : { id: b.id };
+
+        res.json({ success: true, booking });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         console.error('Error creating booking:', err);
@@ -964,7 +968,17 @@ app.post('/api/bookings/full', async (req, res) => {
             }, { username: main.createdBy || req.user?.username });
         }
 
-        res.json({ success: true, id: main.id, linkedIds });
+        // v5.27: Return full booking objects for API contract consistency
+        const mainRow = await client.query('SELECT * FROM bookings WHERE id = $1', [main.id]);
+        const mainBooking = mainRow.rows[0] ? mapBookingRow(mainRow.rows[0]) : { id: main.id };
+
+        const linkedBookings = [];
+        for (const lid of linkedIds) {
+            const lRow = await client.query('SELECT * FROM bookings WHERE id = $1', [lid]);
+            if (lRow.rows[0]) linkedBookings.push(mapBookingRow(lRow.rows[0]));
+        }
+
+        res.json({ success: true, mainBooking, linkedBookings });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         console.error('Error creating full booking:', err);

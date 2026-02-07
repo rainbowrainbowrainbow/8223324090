@@ -505,7 +505,10 @@ async function handleBookingSubmit(e) {
                 showNotification(createResult.error || 'Помилка створення бронювання', 'error');
                 return;
             }
-            if (createResult && createResult.id) {
+            // v5.27: API now returns { booking: { id, ... } }
+            if (createResult && createResult.booking) {
+                booking.id = createResult.booking.id;
+            } else if (createResult && createResult.id) {
                 booking.id = createResult.id;
             }
             // History + Telegram handled by server

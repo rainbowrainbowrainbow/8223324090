@@ -462,20 +462,53 @@ body.dark-mode .btn-logout {
     color: rgba(255,255,255,0.7);
 }
 
-/* Admin dropdown in dark */
+/* Admin dropdown in dark — deeper emerald */
 body.dark-mode .dropdown-content {
-    background: #1e1e32;
-    border-color: var(--gray-300);
+    background: linear-gradient(180deg, #021E15 0%, #053726 55%, #021E15 100%);
+    border-color: rgba(16,185,129,0.15);
+    box-shadow:
+        0 20px 50px rgba(0,0,0,0.5),
+        0 8px 20px rgba(0,0,0,0.3),
+        inset 0 1px 0 rgba(255,255,255,0.03);
 }
 
 body.dark-mode .dropdown-item {
-    color: #D1D5DB;
-    border-top-color: var(--gray-200);
+    color: rgba(255,255,255,0.8);
+    border-top-color: rgba(255,255,255,0.04);
 }
 
 body.dark-mode .dropdown-item:hover {
-    background: var(--gray-100);
+    background: rgba(16,185,129,0.12);
+    color: #FFFFFF;
 }
+
+/* Status badges in dark */
+body.dark-mode .status-badge--confirmed {
+    background: rgba(16,185,129,0.15);
+    color: #6EE7B7;
+    border-color: rgba(16,185,129,0.3);
+}
+
+body.dark-mode .status-badge--preliminary {
+    background: rgba(245,158,11,0.15);
+    color: #FCD34D;
+    border-color: rgba(245,158,11,0.3);
+}
+
+body.dark-mode .status-badge--cancelled {
+    background: rgba(239,68,68,0.15);
+    color: #FCA5A5;
+    border-color: rgba(239,68,68,0.3);
+}
+
+/* Category chips in dark */
+body.dark-mode .category-chip--quest { background: rgba(139,92,246,0.15); color: #C4B5FD; }
+body.dark-mode .category-chip--animation { background: rgba(59,130,246,0.15); color: #93C5FD; }
+body.dark-mode .category-chip--show { background: rgba(249,115,22,0.15); color: #FDBA74; }
+body.dark-mode .category-chip--masterclass { background: rgba(132,204,22,0.15); color: #BEF264; }
+body.dark-mode .category-chip--pinata { background: rgba(236,72,153,0.15); color: #F9A8D4; }
+body.dark-mode .category-chip--photo { background: rgba(6,182,212,0.15); color: #67E8F9; }
+body.dark-mode .category-chip--custom { background: rgba(100,116,139,0.15); color: #CBD5E1; }
 
 /* Quick stats bar in dark */
 body.dark-mode .quick-stats-bar {

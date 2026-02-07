@@ -366,52 +366,62 @@ input[type="date"] {
     position: relative;
 }
 
+/* Menu toggle button — emerald accent */
 .btn-menu-toggle {
     padding: 8px 16px;
-    background: linear-gradient(135deg, #374151 0%, #1F2937 100%);
+    background: linear-gradient(135deg, #064E3B 0%, #065F46 100%);
     color: #FFFFFF;
-    border: none;
+    border: 1px solid rgba(16,185,129,0.3);
     border-radius: var(--radius-xs);
     font-weight: 700;
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
-    box-shadow: 0 2px 8px rgba(55,65,81,0.3);
+    box-shadow: 0 2px 8px rgba(6,78,59,0.4);
 }
 
 .btn-menu-toggle:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(55,65,81,0.4);
+    background: linear-gradient(135deg, #065F46 0%, #047857 100%);
+    box-shadow: 0 4px 16px rgba(6,78,59,0.5);
+    border-color: rgba(16,185,129,0.5);
 }
 
+/* Dropdown — premium dark emerald */
 .dropdown-content {
     position: absolute;
     right: 0;
-    top: calc(100% + 4px);
-    background: var(--white);
-    border: 1px solid var(--gray-200);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-md);
-    min-width: 180px;
+    top: calc(100% + 6px);
+    background: linear-gradient(180deg, #063B2A 0%, #0B5A3E 55%, #063B2A 100%);
+    border: 1px solid rgba(16,185,129,0.2);
+    border-radius: var(--radius-card);
+    box-shadow:
+        0 20px 50px rgba(0,0,0,0.35),
+        0 8px 20px rgba(0,0,0,0.2),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+    min-width: 200px;
     z-index: 100;
     overflow: hidden;
+    padding: 6px 0;
 }
 
 .dropdown-item {
     display: block;
     width: 100%;
-    padding: 10px 16px;
+    padding: 11px 18px;
     background: none;
     border: none;
-    border-top: 1px solid var(--gray-100);
+    border-top: none;
     text-align: left;
     font-size: var(--font-sm);
-    font-weight: 600;
-    color: var(--gray-700);
+    font-weight: 700;
+    color: rgba(255,255,255,0.85);
     cursor: pointer;
     font-family: inherit;
-    transition: background var(--speed-fast);
+    transition: all var(--speed-fast) var(--ease-smooth);
+    position: relative;
+    letter-spacing: 0.01em;
 }
 
 .dropdown-item:first-child {
@@ -419,11 +429,22 @@ input[type="date"] {
 }
 
 .dropdown-item:hover {
-    background: var(--gray-50);
+    background: rgba(16,185,129,0.15);
+    color: #FFFFFF;
+    padding-left: 22px;
+}
+
+.dropdown-item:active {
+    background: rgba(16,185,129,0.25);
 }
 
 .dropdown-item.hidden {
     display: none;
+}
+
+/* Subtle separator between menu groups */
+.dropdown-item + .dropdown-item:not(.hidden) {
+    border-top: 1px solid rgba(255,255,255,0.06);
 }
 
 /* ==========================================

@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-02-07 — v5.42 Design Tokens + Premium Menu
+
+**Що вирішили:**
+- Розширити дизайн-систему: spacing scale, border tokens, card radius
+- Преміальне темне меню (Emerald Core gradient)
+- Уніфіковані CSS-класи для статусів і категорій
+
+**Що додали/поміняли:**
+- `css/base.css` — нові токени: `--space-*`, `--border-*`, `--radius-card`, `--status-*`, `--*-bg`
+- `css/base.css` — `.status-badge` (confirmed/preliminary/cancelled) + `.category-chip` (7 категорій)
+- `css/layout.css` — повний редизайн dropdown: темний градієнт, білий текст, hover-анімація
+- `css/dark-mode.css` — адаптація dropdown, status badges, category chips для темної теми
+- Version bump 5.42.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v5.43 — Modals & Buttons Polish
+
+---
+
 ## 2026-02-07 — v5.41 Performance & Cleanup
 
 **Що вирішили:**

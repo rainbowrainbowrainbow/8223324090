@@ -65,11 +65,45 @@
     --glass-border: rgba(255,255,255,0.3);
     --glass-blur: 12px;
 
+    /* Spacing scale */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-base: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* Borders */
+    --border-light: 1px solid rgba(0,0,0,0.08);
+    --border-dark: 1px solid rgba(255,255,255,0.08);
+
     /* Radii */
     --radius: 16px;
+    --radius-card: 12px;
     --radius-sm: 10px;
     --radius-xs: 6px;
     --radius-full: 9999px;
+
+    /* Status backgrounds */
+    --status-confirmed-bg: #ECFDF5;
+    --status-confirmed-color: #065F46;
+    --status-confirmed-border: #6EE7B7;
+    --status-preliminary-bg: #FFFBEB;
+    --status-preliminary-color: #92400E;
+    --status-preliminary-border: #FCD34D;
+    --status-cancelled-bg: #FEF2F2;
+    --status-cancelled-color: #991B1B;
+    --status-cancelled-border: #FCA5A5;
+
+    /* Category tint backgrounds (for chips/badges) */
+    --quest-bg: #F5F3FF;
+    --animation-bg: #EFF6FF;
+    --show-bg: #FFF7ED;
+    --masterclass-bg: #F7FEE7;
+    --pinata-bg: #FDF2F8;
+    --photo-bg: #ECFEFF;
+    --custom-bg: var(--gray-100);
 
     /* Transitions */
     --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
@@ -209,3 +243,61 @@ body {
     from { transform: translateY(16px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
 }
+
+/* ==========================================
+   STATUS BADGES
+   ========================================== */
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-xs);
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    border: 1px solid;
+    white-space: nowrap;
+}
+
+.status-badge--confirmed {
+    background: var(--status-confirmed-bg);
+    color: var(--status-confirmed-color);
+    border-color: var(--status-confirmed-border);
+}
+
+.status-badge--preliminary {
+    background: var(--status-preliminary-bg);
+    color: var(--status-preliminary-color);
+    border-color: var(--status-preliminary-border);
+}
+
+.status-badge--cancelled {
+    background: var(--status-cancelled-bg);
+    color: var(--status-cancelled-color);
+    border-color: var(--status-cancelled-border);
+}
+
+/* ==========================================
+   CATEGORY CHIPS
+   ========================================== */
+
+.category-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-xs);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.category-chip--quest { background: var(--quest-bg); color: #6D28D9; }
+.category-chip--animation { background: var(--animation-bg); color: #1D4ED8; }
+.category-chip--show { background: var(--show-bg); color: #C2410C; }
+.category-chip--masterclass { background: var(--masterclass-bg); color: #4D7C0F; }
+.category-chip--pinata { background: var(--pinata-bg); color: #BE185D; }
+.category-chip--photo { background: var(--photo-bg); color: #0E7490; }
+.category-chip--custom { background: var(--custom-bg); color: var(--gray-600); }

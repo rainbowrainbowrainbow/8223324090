@@ -4,6 +4,30 @@
 
 ---
 
+## 2026-02-07 — v5.43 Modals & Buttons Polish
+
+**Що вирішили:**
+- Sticky headers/footers в модалках
+- Єдина система кнопок з чіткою ієрархією
+- Компактніші картки історії
+- Нові CSS empty states
+
+**Що додали/поміняли:**
+- `css/modals.css` — sticky h3 + modal-close при прокрутці модалки
+- `css/modals.css` — `.btn-unified` базовий клас + `.btn-primary`/`.btn-secondary`/`.btn-danger-unified`/`.btn-accent`
+- `css/modals.css` — `.empty-state` + `.empty-state-icon` + `.empty-state-title`/`.empty-state-text`
+- `css/modals.css` — `.modal-footer-sticky` для прилипаючих кнопок внизу
+- `css/modals.css` — компактніші `.history-item` (менше padding, hover shadow)
+- `css/dark-mode.css` — адаптація sticky header/footer, buttons, empty states
+- Version bump 5.43.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v5.44 — Dashboard & Empty States
+
+---
+
 ## 2026-02-07 — v5.42 Design Tokens + Premium Menu
 
 **Що вирішили:**

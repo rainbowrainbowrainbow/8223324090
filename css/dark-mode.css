@@ -822,9 +822,38 @@ body.dark-mode .header .brand-row .version {
     color: rgba(255,255,255,0.5);
 }
 
-/* Better modal headers */
+/* Better modal headers — sticky header dark bg */
 body.dark-mode .modal-content h3 {
     color: #F3F4F6;
+    background: var(--white);
+    border-bottom-color: var(--gray-200);
+}
+
+/* Sticky footer in dark */
+body.dark-mode .modal-footer-sticky {
+    background: var(--white);
+    border-top-color: var(--gray-200);
+}
+
+/* Unified buttons in dark */
+body.dark-mode .btn-secondary {
+    background: var(--gray-200);
+    color: #E2E8F0;
+    border-color: var(--gray-300);
+}
+
+/* Empty state in dark */
+body.dark-mode .empty-state-icon {
+    background: linear-gradient(135deg, var(--gray-100) 0%, var(--gray-200) 100%);
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .empty-state-title {
+    color: #D1D5DB;
+}
+
+body.dark-mode .empty-state-text {
+    color: #9CA3AF;
 }
 
 /* Improved notification toast in dark */

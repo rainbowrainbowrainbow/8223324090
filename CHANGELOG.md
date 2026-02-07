@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-02-07 — v5.45 Invite Page Overhaul
+
+**Що вирішили:**
+- Повний редизайн invite.html під Emerald Design System v4.0
+- Категорійні кольори для feature-плиток
+- XSS захист через escapeHtml() для URL параметрів
+- Proper meta tags (description, theme-color, favicon)
+
+**Що додали/поміняли:**
+- `invite.html` — міграція кольорів з #00A651 на #10B981 emerald систему
+- `invite.html` — hero overlay gradient для кращого вигляду зображення
+- `invite.html` — header content з emerald gradient + декоративне коло
+- `invite.html` — категорійні кольори: quest (фіолет), animation (синій), show (помаранч), masterclass (зелений), photo (бірюза), pinata (рожевий)
+- `invite.html` — info row іконки з фоновими колами (#ECFDF5)
+- `invite.html` — share buttons з emerald hover, copy feedback "✅ Скопійовано!"
+- `invite.html` — escapeHtml() для XSS захисту URL params (date, time, program, room)
+- `invite.html` — responsive: менша висота hero на мобільних
+- Version bump 5.45.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- Design system v4.0 серія v5.42–v5.45 завершена!
+
+---
+
 ## 2026-02-07 — v5.44 Dashboard & Empty States
 
 **Що вирішили:**

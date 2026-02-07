@@ -278,6 +278,16 @@ function minutesToTime(minutes) {
 
 const MIN_PAUSE = 15;
 
+// v5.21: Shared time overlap helper — DRY principle (Don't Repeat Yourself)
+// Two time ranges overlap when: start1 < end2 AND end1 > start2
+function hasTimeOverlap(time1, duration1, time2, duration2) {
+    const s1 = timeToMinutes(time1);
+    const e1 = s1 + (duration1 || 0);
+    const s2 = timeToMinutes(time2);
+    const e2 = s2 + (duration2 || 0);
+    return s1 < e2 && e1 > s2;
+}
+
 // v5.18.1: Check room conflicts — prevent same room at same time
 async function checkRoomConflict(client, date, room, time, duration, excludeId = null) {
     if (!room || room === 'Інше') return null;
@@ -287,27 +297,17 @@ async function checkRoomConflict(client, date, room, time, duration, excludeId =
         (excludeId ? ' AND id != $3' : ''),
         params
     );
-    const newStart = timeToMinutes(time);
-    const newEnd = newStart + duration;
     for (const b of result.rows) {
-        const bStart = timeToMinutes(b.time);
-        const bEnd = bStart + (b.duration || 0);
-        if (newStart < bEnd && newEnd > bStart) {
-            return b;
-        }
+        if (hasTimeOverlap(time, duration, b.time, b.duration)) return b;
     }
     return null;
 }
 
-// v5.18: Check afisha blocking layer — blocks all lines for this time range (visual only, not used for blocking)
+// v5.18: Check afisha blocking layer — blocks all lines for this time range
 async function checkAfishaConflicts(client, date, time, duration) {
     const result = await client.query('SELECT * FROM afisha WHERE date = $1', [date]);
-    const newStart = timeToMinutes(time);
-    const newEnd = newStart + duration;
     for (const ev of result.rows) {
-        const evStart = timeToMinutes(ev.time);
-        const evEnd = evStart + (ev.duration || 60);
-        if (newStart < evEnd && newEnd > evStart) {
+        if (hasTimeOverlap(time, duration, ev.time, ev.duration || 60)) {
             return { blocked: true, event: ev };
         }
     }
@@ -321,13 +321,12 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
         (excludeId ? ' AND id != $3' : ''),
         params
     );
+
     const newStart = timeToMinutes(time);
     const newEnd = newStart + duration;
 
     for (const b of result.rows) {
-        const start = timeToMinutes(b.time);
-        const end = start + (b.duration || 0);
-        if (newStart < end && newEnd > start) {
+        if (hasTimeOverlap(time, duration, b.time, b.duration)) {
             return { overlap: true, noPause: false, conflictWith: b };
         }
     }
@@ -344,26 +343,18 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
     return { overlap: false, noPause, conflictWith: null };
 }
 
+// v5.21: Fixed N+1 query — fetch time+duration in one query instead of loop
 async function checkServerDuplicate(client, date, programId, time, duration, excludeId = null) {
     if (!programId) return null;
     const params = excludeId ? [date, programId, excludeId] : [date, programId];
     const result = await client.query(
-        'SELECT id, category FROM bookings WHERE date = $1 AND program_id = $2 AND status != \'cancelled\'' +
+        'SELECT id, category, time, duration FROM bookings WHERE date = $1 AND program_id = $2 AND status != \'cancelled\'' +
         (excludeId ? ' AND id != $3' : ''),
         params
     );
-    const newStart = timeToMinutes(time);
-    const newEnd = newStart + duration;
-
     for (const b of result.rows) {
         if (b.category === 'animation') continue;
-        const bResult = await client.query('SELECT time, duration FROM bookings WHERE id = $1', [b.id]);
-        if (bResult.rows.length === 0) continue;
-        const bStart = timeToMinutes(bResult.rows[0].time);
-        const bEnd = bStart + (bResult.rows[0].duration || 0);
-        if (newStart < bEnd && newEnd > bStart) {
-            return b;
-        }
+        if (hasTimeOverlap(time, duration, b.time, b.duration)) return b;
     }
     return null;
 }
@@ -754,6 +745,13 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_lines_by_date_date ON lines_by_date(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)');
+
+        // v5.21: Composite indexes — match actual query patterns (WHERE date=X AND field=Y)
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date_status ON bookings(date, status)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date_line_id ON bookings(date, line_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date_room ON bookings(date, room)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date_program_id ON bookings(date, program_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_history_action ON history(action)');
 
         console.log('Database initialized');
     } catch (err) {
@@ -1433,13 +1431,12 @@ app.get('/api/history', async (req, res) => {
         const lim = Math.min(parseInt(limit) || 200, 500);
         const off = parseInt(offset) || 0;
 
-        const countResult = await pool.query(`SELECT COUNT(*) FROM history ${where}`, params);
-        const total = parseInt(countResult.rows[0].count);
-
+        // v5.21: Single query with window function instead of separate COUNT + SELECT
         const result = await pool.query(
-            `SELECT * FROM history ${where} ORDER BY created_at DESC LIMIT ${lim} OFFSET ${off}`,
+            `SELECT *, COUNT(*) OVER() AS total_count FROM history ${where} ORDER BY created_at DESC LIMIT ${lim} OFFSET ${off}`,
             params
         );
+        const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
         const history = result.rows.map(row => ({
             id: row.id,
             action: row.action,

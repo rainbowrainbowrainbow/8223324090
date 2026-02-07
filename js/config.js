@@ -151,8 +151,9 @@ function formatPrice(amount) {
 // ГЛОБАЛЬНИЙ СТАН ДОДАТКУ
 // ==========================================
 
-// v5.2: Cache TTL зменшено з 60s до 10s щоб уникнути stale data
-const CACHE_TTL = 10000;
+// v5.21: Cache TTL повернуто до 60s — дані інвалідуються при create/edit/delete,
+// тому короткий TTL лише створює зайві запити до серверу
+const CACHE_TTL = 60000;
 
 const AppState = {
     currentUser: null,

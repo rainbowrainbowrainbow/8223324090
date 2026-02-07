@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-02-07 — v5.40 UX & Accessibility
+
+**Що вирішили:**
+- Покращити UX (захист від подвійного кліку, auto-close модалок, збереження фільтра)
+- Додати accessibility (ARIA roles, aria-label, alt тексти, семантичне меню)
+- Додати візуальний спінер завантаження
+
+**Що додали/поміняли:**
+- `js/booking.js` — `unlockSubmitBtn()`, блокування кнопки під час API виклику
+- `js/settings.js` — `closeAllModals()` після save (animators, telegram, digest)
+- `js/app.js` — statusFilter → localStorage, відновлення при loadPreferences
+- `js/auth.js` — відновлення активної кнопки фільтра при showMainApp
+- `css/base.css` — `.loading-spinner` з CSS анімацією (spin)
+- `js/booking.js`, `js/settings.js` — замінено текст "Завантаження..." на спінер
+- `index.html` — ARIA roles на 9 модалках, aria-label на nav кнопках, role=menu/menuitem
+- `invite.html` — описові alt тексти на 6 іконках програм
+- Version bump 5.40.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v5.41 — Performance & Cleanup
+
+---
+
 ## 2026-02-07 — v5.39 Bugfixes & Security Hardening
 
 **Що вирішили:**

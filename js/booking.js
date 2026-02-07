@@ -63,6 +63,8 @@ async function openBookingPanel(time, lineId) {
 
     document.getElementById('bookingPanel').classList.remove('hidden');
     document.querySelector('.main-content').classList.add('panel-open');
+    // v5.33: Lock body scroll on mobile when panel is open
+    document.body.classList.add('panel-open');
 }
 
 // v5.18: Show free rooms for selected time/duration
@@ -107,6 +109,8 @@ async function showFreeRooms() {
 function closeBookingPanel() {
     document.getElementById('bookingPanel').classList.add('hidden');
     document.querySelector('.main-content').classList.remove('panel-open');
+    // v5.33: Unlock body scroll
+    document.body.classList.remove('panel-open');
     document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
 
     // v5.5: Скинути режим редагування

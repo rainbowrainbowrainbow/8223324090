@@ -15,9 +15,11 @@
     background: var(--white);
     box-shadow: -4px 0 24px rgba(0,0,0,0.08);
     z-index: var(--z-panel);
-    overflow-y: auto;
+    overflow: hidden;
     animation: panelSlideIn var(--speed-normal) var(--ease-smooth);
     border-left: 1px solid var(--gray-100);
+    display: flex;
+    flex-direction: column;
 }
 
 @keyframes panelSlideIn {
@@ -31,10 +33,9 @@
     align-items: center;
     padding: 18px 20px;
     border-bottom: 1px solid var(--gray-200);
-    position: sticky;
-    top: 0;
     background: var(--white);
     z-index: 10;
+    flex-shrink: 0;
 }
 
 .panel-header h3 {
@@ -60,7 +61,12 @@
 
 .btn-close:hover { background: var(--danger); color: var(--white); }
 
-.booking-form { padding: 20px; }
+.booking-form {
+    padding: 20px;
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
 
 .selected-info {
     background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary-50) 100%);
@@ -382,6 +388,11 @@
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
     box-shadow: var(--shadow-primary);
+    /* v5.33: sticky bottom inside scrollable form */
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin-top: 8px;
 }
 
 .btn-submit:hover {

@@ -252,7 +252,7 @@ async function handleUndo() {
         showNotification('Видалення скасовано', 'warning');
     }
 
-    AppState.cachedBookings = {};
+    invalidateCache(AppState.selectedDate);
     await renderTimeline();
     updateUndoButton();
 }
@@ -369,7 +369,7 @@ async function changeBookingStatus(bookingId, newStatus) {
 
         // v5.18.1: Telegram notification handled server-side in PUT handler (removed frontend duplicate)
 
-        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        invalidateCache(AppState.selectedDate);
         closeAllModals();
         await renderTimeline();
         showNotification(`Статус: ${newStatus === 'preliminary' ? 'Попереднє' : 'Підтверджене'}`, 'success');

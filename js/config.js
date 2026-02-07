@@ -155,6 +155,13 @@ function formatPrice(amount) {
 // тому короткий TTL лише створює зайві запити до серверу
 const CACHE_TTL = 60000;
 
+// v5.22: Single Source of Truth for cache invalidation
+function invalidateCache(date) {
+    const key = typeof date === 'string' ? date : formatDate(date);
+    delete AppState.cachedBookings[key];
+    delete AppState.cachedLines[key];
+}
+
 const AppState = {
     currentUser: null,
     selectedDate: new Date(),

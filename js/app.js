@@ -227,6 +227,33 @@ function initBookingFormListeners() {
     if (freeRoomsBtn) {
         freeRoomsBtn.addEventListener('click', showFreeRooms);
     }
+
+    // v5.22: Event delegation for booking modal actions (replaces inline onclick)
+    const bookingModal = document.getElementById('bookingModal');
+    if (bookingModal) {
+        bookingModal.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            const bookingId = btn.dataset.bookingId;
+            if (action === 'shift') shiftBookingTime(bookingId, parseInt(btn.dataset.minutes));
+            else if (action === 'edit') editBooking(bookingId);
+            else if (action === 'delete') deleteBooking(bookingId);
+            else if (action === 'toggle-status') changeBookingStatus(bookingId, btn.dataset.newStatus);
+        });
+    }
+
+    // v5.22: Event delegation for free room chips
+    const freeRoomsPanel = document.getElementById('freeRoomsPanel');
+    if (freeRoomsPanel) {
+        freeRoomsPanel.addEventListener('click', (e) => {
+            const chip = e.target.closest('[data-action="select-room"]');
+            if (chip) {
+                document.getElementById('roomSelect').value = chip.dataset.room;
+                freeRoomsPanel.classList.add('hidden');
+            }
+        });
+    }
 }
 
 function initSettingsListeners() {

@@ -69,6 +69,28 @@ function getTimeRange() {
 function initializeTimeline() {
     AppState.selectedDate = new Date();
     document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
+
+    // v5.22: Event delegation — one listener instead of N per cell/header
+    // Handles: grid-cell clicks (open panel), line-header clicks (edit line)
+    const container = document.getElementById('timelineLines');
+    if (container && !container._delegated) {
+        container.addEventListener('click', (e) => {
+            // Line header click → edit line
+            const header = e.target.closest('.line-header[data-line-id]');
+            if (header) {
+                editLineModal(header.dataset.lineId);
+                return;
+            }
+            // Grid cell click → select cell (only if clicked directly on cell, not on booking)
+            const cell = e.target.closest('.grid-cell');
+            if (cell && e.target === cell) {
+                selectCell(cell);
+                return;
+            }
+        });
+        container._delegated = true;
+    }
+
     renderTimeline();
 }
 
@@ -102,9 +124,16 @@ async function renderTimeline() {
         return;
     }
 
+    // v5.22: Show loading state while fetching data
+    const container = document.getElementById('timelineLines');
+    const dateStr = formatDate(AppState.selectedDate);
+    const hasCachedData = AppState.cachedBookings[dateStr] && AppState.cachedLines[dateStr];
+    if (!hasCachedData && container) {
+        container.innerHTML = '<div class="timeline-loading">Завантаження...</div>';
+    }
+
     renderTimeScale();
 
-    const container = document.getElementById('timelineLines');
     const lines = await getLinesForDate(AppState.selectedDate);
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const { start } = getTimeRange();
@@ -149,16 +178,6 @@ async function renderTimeline() {
         lineBookings.forEach(b => lineGrid.appendChild(createBookingBlock(b, start)));
 
         container.appendChild(lineEl);
-
-        lineEl.querySelector('.line-header').addEventListener('click', () => editLineModal(line.id));
-    });
-
-    document.querySelectorAll('.grid-cell').forEach(cell => {
-        cell.addEventListener('click', (e) => {
-            if (e.target === cell) {
-                selectCell(cell);
-            }
-        });
     });
 
     // F3: Render afisha events as overlay markers on timeline

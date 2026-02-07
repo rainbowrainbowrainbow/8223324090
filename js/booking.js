@@ -92,8 +92,9 @@ async function showFreeRooms() {
         const data = await response.json();
 
         if (data.free && data.free.length > 0) {
+            // v5.22: data-room + delegation instead of inline onclick
             panel.innerHTML = data.free.map(room =>
-                `<span class="free-room-chip" onclick="document.getElementById('roomSelect').value='${room}';document.getElementById('freeRoomsPanel').classList.add('hidden')">${room}</span>`
+                `<span class="free-room-chip" data-action="select-room" data-room="${escapeHtml(room)}">${escapeHtml(room)}</span>`
             ).join('') +
             (data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті: ${data.occupied.join(', ')}</div>` : '');
         } else {
@@ -302,7 +303,7 @@ function getBookingFormData() {
 }
 
 async function validateBookingConflicts(lineId, time, duration, program, secondAnimator, excludeId = null) {
-    delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+    invalidateCache(AppState.selectedDate);
     const conflict = await checkConflicts(lineId, time, duration, excludeId);
 
     if (conflict.overlap) {
@@ -486,7 +487,7 @@ async function handleBookingSubmit(e) {
 
             AppState.editingBookingId = null;
 
-            delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+            invalidateCache(AppState.selectedDate);
             closeBookingPanel();
             await renderTimeline();
             showNotification('Бронювання оновлено!', 'success');
@@ -512,7 +513,7 @@ async function handleBookingSubmit(e) {
 
             pushUndo('create', [booking]);
 
-            delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+            invalidateCache(AppState.selectedDate);
             closeBookingPanel();
             await renderTimeline();
             showNotification('Бронювання створено!', 'success');
@@ -582,22 +583,23 @@ async function showBookingDetails(bookingId) {
     });
     const inviteUrl = `/invite?${inviteParams.toString()}`;
 
+    // v5.22: data-action + delegation instead of inline onclick
     const editControls = isViewer() ? '' : `
         <div class="booking-time-shift">
             <span class="label">Перенести час:</span>
             <div class="time-shift-buttons">
-                <button onclick="shiftBookingTime('${booking.id}', -30)">-30</button>
-                <button onclick="shiftBookingTime('${booking.id}', -15)">-15</button>
-                <button onclick="shiftBookingTime('${booking.id}', 15)">+15</button>
-                <button onclick="shiftBookingTime('${booking.id}', 30)">+30</button>
-                <button onclick="shiftBookingTime('${booking.id}', 45)">+45</button>
-                <button onclick="shiftBookingTime('${booking.id}', 60)">+60</button>
+                <button data-action="shift" data-booking-id="${escapeHtml(booking.id)}" data-minutes="-30">-30</button>
+                <button data-action="shift" data-booking-id="${escapeHtml(booking.id)}" data-minutes="-15">-15</button>
+                <button data-action="shift" data-booking-id="${escapeHtml(booking.id)}" data-minutes="15">+15</button>
+                <button data-action="shift" data-booking-id="${escapeHtml(booking.id)}" data-minutes="30">+30</button>
+                <button data-action="shift" data-booking-id="${escapeHtml(booking.id)}" data-minutes="45">+45</button>
+                <button data-action="shift" data-booking-id="${escapeHtml(booking.id)}" data-minutes="60">+60</button>
             </div>
         </div>
         <div class="booking-actions">
-            <button onclick="editBooking('${booking.id}')" class="btn-edit-booking">✏️ Редагувати</button>
+            <button data-action="edit" data-booking-id="${escapeHtml(booking.id)}" class="btn-edit-booking">✏️ Редагувати</button>
             <a href="${inviteUrl}" target="_blank" class="btn-invite-event">🎉 Запрошення</a>
-            <button onclick="deleteBooking('${booking.id}')">Видалити бронювання</button>
+            <button data-action="delete" data-booking-id="${escapeHtml(booking.id)}">Видалити бронювання</button>
         </div>
     `;
 
@@ -638,7 +640,7 @@ async function showBookingDetails(bookingId) {
         ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">Оновлено:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
         ${descriptionHtml}
         ${!isViewer() ? `<div class="status-toggle-section">
-            <button class="btn-status-toggle" onclick="changeBookingStatus('${escapeHtml(booking.id)}', '${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}')">
+            <button class="btn-status-toggle" data-action="toggle-status" data-booking-id="${escapeHtml(booking.id)}" data-new-status="${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}">
                 ${booking.status === 'preliminary' ? '✅ Підтвердити' : '⏳ Зробити попереднім'}
             </button>
         </div>` : ''}
@@ -760,7 +762,7 @@ async function deleteBooking(bookingId) {
             return;
         }
 
-        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        invalidateCache(AppState.selectedDate);
         closeAllModals();
         await renderTimeline();
         showNotification(othersCount > 0 ? `Видалено ${allToDelete.length} бронювань` : 'Бронювання видалено', 'success');
@@ -843,7 +845,7 @@ async function shiftBookingTime(bookingId, minutes) {
 
         await apiAddHistory('shift', AppState.currentUser?.username, { ...newBooking, shiftMinutes: minutes });
 
-        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        invalidateCache(AppState.selectedDate);
         closeAllModals();
         await renderTimeline();
         const linkedMsg = linkedBookings.length > 0 ? ` (+ ${linkedBookings.length} пов'язаних)` : '';

@@ -226,7 +226,7 @@ async function addNewLine() {
             AppState.pendingPollInterval = null;
             removePendingLine();
             // Очистити кеш та перерендерити
-            delete AppState.cachedLines[dateStr];
+            invalidateCache(dateStr);
             await renderTimeline();
             showNotification('Аніматора додано!', 'success');
         } else if (statusResult.status === 'rejected') {
@@ -1156,7 +1156,7 @@ async function shiftAfishaItem(id, deltaMinutes) {
     if (result && result.success) {
         await renderAfishaList();
         if (formatDate(AppState.selectedDate) === item.date) {
-            delete AppState.cachedBookings[item.date];
+            invalidateCache(item.date);
             await renderTimeline();
         }
     }
@@ -1183,7 +1183,7 @@ async function editAfishaItem(id) {
         showNotification('Подію оновлено', 'success');
         await renderAfishaList();
         if (formatDate(AppState.selectedDate) === item.date) {
-            delete AppState.cachedBookings[item.date];
+            invalidateCache(item.date);
             await renderTimeline();
         }
     }
@@ -1262,7 +1262,7 @@ async function addAfishaItem() {
         await renderAfishaList();
         // Refresh timeline if viewing same date
         if (formatDate(AppState.selectedDate) === date) {
-            delete AppState.cachedBookings[date];
+            invalidateCache(date);
             await renderTimeline();
         }
     } else {

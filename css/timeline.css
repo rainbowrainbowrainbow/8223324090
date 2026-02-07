@@ -636,3 +636,19 @@
     border-radius: 4px;
     cursor: pointer;
 }
+
+/* v5.22: Timeline loading state */
+.timeline-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--gray-400);
+    font-size: 14px;
+    animation: pulse-loading 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-loading {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+}

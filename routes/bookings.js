@@ -90,7 +90,8 @@ router.post('/', async (req, res) => {
                 ...b, label: b.label, program_code: b.programCode,
                 program_name: b.programName, kids_count: b.kidsCount,
                 created_by: b.createdBy
-            }, { username: b.createdBy || req.user?.username });
+            }, { username: b.createdBy || req.user?.username })
+                .catch(err => log.error(`Telegram notify failed (create): ${err.message}`));
         }
 
         const createdRow = await client.query('SELECT * FROM bookings WHERE id = $1', [b.id]);
@@ -191,7 +192,8 @@ router.post('/full', async (req, res) => {
             notifyTelegram('create', {
                 ...main, program_code: main.programCode, program_name: main.programName,
                 kids_count: main.kidsCount, created_by: main.createdBy
-            }, { username: main.createdBy || req.user?.username });
+            }, { username: main.createdBy || req.user?.username })
+                .catch(err => log.error(`Telegram notify failed (create/full): ${err.message}`));
         }
 
         const mainRow = await client.query('SELECT * FROM bookings WHERE id = $1', [main.id]);
@@ -248,7 +250,8 @@ router.delete('/:id', async (req, res) => {
 
         await client.query('COMMIT');
 
-        notifyTelegram('delete', booking, { username: req.user?.username });
+        notifyTelegram('delete', booking, { username: req.user?.username })
+            .catch(err => log.error(`Telegram notify failed (delete): ${err.message}`));
 
         res.json({ success: true, permanent });
     } catch (err) {
@@ -341,12 +344,13 @@ router.put('/:id', async (req, res) => {
         };
 
         const statusChanged = oldBooking.status !== newStatus;
+        const notifyCatch = err => log.error(`Telegram notify failed (update): ${err.message}`);
         if (statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
-            notifyTelegram('create', bookingForNotify, { username, bookingId: id });
+            notifyTelegram('create', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
         } else if (statusChanged) {
-            notifyTelegram('status_change', bookingForNotify, { username, bookingId: id });
+            notifyTelegram('status_change', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
         } else if (!b.linkedTo && newStatus !== 'preliminary') {
-            notifyTelegram('edit', bookingForNotify, { username, bookingId: id });
+            notifyTelegram('edit', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
         }
 
         res.json({ success: true });

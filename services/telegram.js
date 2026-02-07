@@ -44,7 +44,9 @@ async function getConfiguredChatId() {
         if (result.rows.length > 0 && result.rows[0].value) {
             return result.rows[0].value;
         }
-    } catch (e) { /* use default */ }
+    } catch (e) {
+        log.warn(`DB error getting telegram_chat_id: ${e.message}, using default`);
+    }
     return TELEGRAM_DEFAULT_CHAT_ID;
 }
 
@@ -54,7 +56,9 @@ async function getConfiguredThreadId() {
         if (result.rows.length > 0 && result.rows[0].value) {
             return parseInt(result.rows[0].value) || null;
         }
-    } catch (e) { /* no thread */ }
+    } catch (e) {
+        log.warn(`DB error getting telegram_thread_id: ${e.message}`);
+    }
     return null;
 }
 
@@ -122,9 +126,15 @@ async function deleteTelegramMessage(chatId, messageId) {
 async function notifyTelegram(type, booking, extra = {}) {
     try {
         const text = formatBookingNotification(type, booking, extra);
-        if (!text) return;
+        if (!text) {
+            log.warn(`Notification skipped: formatBookingNotification returned empty for type="${type}"`);
+            return;
+        }
         const chatId = await getConfiguredChatId();
-        if (!chatId) return;
+        if (!chatId) {
+            log.warn(`Notification skipped: no chat ID configured (type="${type}")`);
+            return;
+        }
         const bookingId = booking.id || extra.bookingId;
 
         if ((type === 'edit' || type === 'status_change') && bookingId) {

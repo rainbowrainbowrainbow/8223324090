@@ -6,61 +6,50 @@ const express = require('express');
 const { pool } = require('../db');
 const { validateDate, ensureDefaultLines, getKyivDateStr } = require('../services/booking');
 const telegram = require('../services/telegram');
+const { asyncHandler } = require('../middleware/errorHandler');
 
 const router = express.Router();
 
 // Get chats
-router.get('/chats', async (req, res) => {
-    try {
-        const chats = await telegram.getTelegramChatId();
-        res.json({ chats });
-    } catch (err) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+router.get('/chats', asyncHandler(async (req, res) => {
+    const chats = await telegram.getTelegramChatId();
+    res.json({ chats });
+}));
 
 // Get threads
-router.get('/threads', async (req, res) => {
-    try {
-        const chatId = req.query.chat_id || await telegram.getConfiguredChatId();
-        const result = await pool.query(
-            'SELECT thread_id, title FROM telegram_known_threads WHERE chat_id = $1 ORDER BY thread_id',
-            [chatId]
-        );
-        res.json({ threads: result.rows });
-    } catch (err) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+router.get('/threads', asyncHandler(async (req, res) => {
+    const chatId = req.query.chat_id || await telegram.getConfiguredChatId();
+    const result = await pool.query(
+        'SELECT thread_id, title FROM telegram_known_threads WHERE chat_id = $1 ORDER BY thread_id',
+        [chatId]
+    );
+    res.json({ threads: result.rows });
+}));
 
-// Send notification
-router.post('/notify', async (req, res) => {
-    try {
-        const { text } = req.body;
-        if (!text) {
-            console.warn('[Telegram Notify] Empty text received');
-            return res.json({ success: false, reason: 'no_text' });
-        }
-        const chatId = await telegram.getConfiguredChatId();
-        if (!chatId) {
-            console.warn('[Telegram Notify] No chat ID configured');
-            return res.json({ success: false, reason: 'no_chat_id' });
-        }
-        const botToken = await telegram.getActiveBotToken();
-        if (!botToken) {
-            console.warn('[Telegram Notify] No bot token configured');
-            return res.json({ success: false, reason: 'no_bot_token' });
-        }
-        console.log(`[Telegram Notify] Sending to chat ${chatId}, text length=${text.length}`);
-        const result = await telegram.sendTelegramMessage(chatId, text);
-        const ok = result?.ok || false;
-        if (!ok) console.warn('[Telegram Notify] Send failed:', JSON.stringify(result));
-        res.json({ success: ok, reason: ok ? undefined : 'send_failed', details: ok ? undefined : result });
-    } catch (err) {
-        console.error('[Telegram Notify] Error:', err);
-        res.status(500).json({ success: false, reason: 'server_error', error: err.message });
+// Send notification — uses soft failures (200 + success:false) since
+// Telegram delivery issues are not HTTP errors
+router.post('/notify', asyncHandler(async (req, res) => {
+    const { text } = req.body;
+    if (!text) {
+        console.warn('[Telegram Notify] Empty text received');
+        return res.json({ success: false, reason: 'no_text' });
     }
-});
+    const chatId = await telegram.getConfiguredChatId();
+    if (!chatId) {
+        console.warn('[Telegram Notify] No chat ID configured');
+        return res.json({ success: false, reason: 'no_chat_id' });
+    }
+    const botToken = await telegram.getActiveBotToken();
+    if (!botToken) {
+        console.warn('[Telegram Notify] No bot token configured');
+        return res.json({ success: false, reason: 'no_bot_token' });
+    }
+    console.log(`[Telegram Notify] Sending to chat ${chatId}, text length=${text.length}`);
+    const result = await telegram.sendTelegramMessage(chatId, text);
+    const ok = result?.ok || false;
+    if (!ok) console.warn('[Telegram Notify] Send failed:', JSON.stringify(result));
+    res.json({ success: ok, reason: ok ? undefined : 'send_failed', details: ok ? undefined : result });
+}));
 
 // Daily digest
 async function buildAndSendDigest(date) {
@@ -113,16 +102,11 @@ async function buildAndSendDigest(date) {
     return { success: result?.ok || false, count: bookings.length };
 }
 
-router.get('/digest/:date', async (req, res) => {
-    try {
-        const { date } = req.params;
-        const result = await buildAndSendDigest(date);
-        res.json(result);
-    } catch (err) {
-        console.error('Digest error:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+router.get('/digest/:date', asyncHandler(async (req, res) => {
+    const { date } = req.params;
+    const result = await buildAndSendDigest(date);
+    res.json(result);
+}));
 
 // Tomorrow reminder
 async function sendTomorrowReminder(todayStr) {
@@ -179,92 +163,78 @@ async function sendTomorrowReminder(todayStr) {
     }
 }
 
-router.get('/reminder/:date', async (req, res) => {
-    try {
-        const { date } = req.params;
-        const result = await sendTomorrowReminder(date);
-        res.json(result);
-    } catch (err) {
-        console.error('Reminder error:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+router.get('/reminder/:date', asyncHandler(async (req, res) => {
+    const { date } = req.params;
+    const result = await sendTomorrowReminder(date);
+    res.json(result);
+}));
 
 // Ask animator (inline keyboard)
-router.post('/ask-animator', async (req, res) => {
-    try {
-        const { date, note } = req.body;
-        const chatId = await telegram.getConfiguredChatId();
+router.post('/ask-animator', asyncHandler(async (req, res) => {
+    const { date, note } = req.body;
+    const chatId = await telegram.getConfiguredChatId();
 
-        const appUrl = `${req.protocol === 'http' && req.get('x-forwarded-proto') === 'https' ? 'https' : req.protocol}://${req.get('host')}`;
-        await telegram.ensureWebhook(appUrl);
+    const appUrl = `${req.protocol === 'http' && req.get('x-forwarded-proto') === 'https' ? 'https' : req.protocol}://${req.get('host')}`;
+    await telegram.ensureWebhook(appUrl);
 
-        await ensureDefaultLines(date);
+    await ensureDefaultLines(date);
 
-        const pendingResult = await pool.query(
-            'INSERT INTO pending_animators (date, note) VALUES ($1, $2) RETURNING id',
-            [date, note || null]
-        );
-        const requestId = pendingResult.rows[0].id;
+    const pendingResult = await pool.query(
+        'INSERT INTO pending_animators (date, note) VALUES ($1, $2) RETURNING id',
+        [date, note || null]
+    );
+    const requestId = pendingResult.rows[0].id;
 
-        const linesResult = await pool.query(
-            'SELECT name FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]
-        );
-        const animatorNames = linesResult.rows.map(r => r.name);
+    const linesResult = await pool.query(
+        'SELECT name FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]
+    );
+    const animatorNames = linesResult.rows.map(r => r.name);
 
-        const parts = date.split('-');
-        const dateFormatted = `${parts[2]}.${parts[1]}.${parts[0]}`;
+    const parts = date.split('-');
+    const dateFormatted = `${parts[2]}.${parts[1]}.${parts[0]}`;
 
-        let text = `🎭 <b>Запит на додавання аніматора</b>\n\n`;
-        text += `📅 Дата: <b>${dateFormatted}</b>\n`;
-        text += `👥 Зараз на зміні:\n`;
-        if (animatorNames.length > 0) {
-            animatorNames.forEach(name => { text += `  • ${name}\n`; });
-        } else {
-            text += `  — нікого\n`;
-        }
-        if (note) {
-            text += `\n📝 Примітка: ${note}\n`;
-        }
-        text += `\nДодати ще одного аніматора?`;
-
-        const threadId = await telegram.getConfiguredThreadId();
-        const askPayload = {
-            chat_id: chatId,
-            text: text,
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: [[
-                    { text: '✅ Так', callback_data: `add_anim:${requestId}` },
-                    { text: '❌ Ні', callback_data: `no_anim:${requestId}` }
-                ]]
-            }
-        };
-        if (threadId) askPayload.message_thread_id = threadId;
-        const result = await telegram.telegramRequest('sendMessage', askPayload);
-
-        res.json({ success: result?.ok || false, requestId });
-    } catch (err) {
-        console.error('Ask animator error:', err);
-        res.status(500).json({ error: 'Internal server error' });
+    let text = `🎭 <b>Запит на додавання аніматора</b>\n\n`;
+    text += `📅 Дата: <b>${dateFormatted}</b>\n`;
+    text += `👥 Зараз на зміні:\n`;
+    if (animatorNames.length > 0) {
+        animatorNames.forEach(name => { text += `  • ${name}\n`; });
+    } else {
+        text += `  — нікого\n`;
     }
-});
+    if (note) {
+        text += `\n📝 Примітка: ${note}\n`;
+    }
+    text += `\nДодати ще одного аніматора?`;
+
+    const threadId = await telegram.getConfiguredThreadId();
+    const askPayload = {
+        chat_id: chatId,
+        text: text,
+        parse_mode: 'HTML',
+        reply_markup: {
+            inline_keyboard: [[
+                { text: '✅ Так', callback_data: `add_anim:${requestId}` },
+                { text: '❌ Ні', callback_data: `no_anim:${requestId}` }
+            ]]
+        }
+    };
+    if (threadId) askPayload.message_thread_id = threadId;
+    const result = await telegram.telegramRequest('sendMessage', askPayload);
+
+    res.json({ success: result?.ok || false, requestId });
+}));
 
 // Animator status polling
-router.get('/animator-status/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const result = await pool.query('SELECT status FROM pending_animators WHERE id = $1', [id]);
-        if (result.rows.length === 0) {
-            return res.json({ status: 'not_found' });
-        }
-        res.json({ status: result.rows[0].status });
-    } catch (err) {
-        res.status(500).json({ error: 'Internal server error' });
+router.get('/animator-status/:id', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const result = await pool.query('SELECT status FROM pending_animators WHERE id = $1', [id]);
+    if (result.rows.length === 0) {
+        return res.json({ status: 'not_found' });
     }
-});
+    res.json({ status: result.rows[0].status });
+}));
 
-// Webhook handler
+// Webhook handler — ALWAYS returns 200 (Telegram requirement)
 router.post('/webhook', async (req, res) => {
     const secretHeader = req.headers['x-telegram-bot-api-secret-token'];
     if (secretHeader !== telegram.WEBHOOK_SECRET) {

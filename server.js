@@ -1,5 +1,5 @@
 /**
- * server.js — Entry point (v5.24: Modular backend)
+ * server.js — Entry point (v5.25: Error handling & validation)
  *
  * Thin orchestrator: imports modules, mounts routes, starts schedulers.
  * All business logic lives in services/, routes/, middleware/.
@@ -14,6 +14,7 @@ const { pool, initDatabase } = require('./db');
 const { authenticateToken } = require('./middleware/auth');
 const { rateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
+const { errorHandler } = require('./middleware/errorHandler');
 const { getKyivDateStr, getKyivTimeStr } = require('./services/booking');
 const telegram = require('./services/telegram');
 
@@ -69,6 +70,9 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/telegram', telegramRoutes);
 app.use('/api/afisha', afishaRoutes);
 app.use('/api/backup', backupRoutes);
+
+// --- Error Handler (must be AFTER all routes) ---
+app.use(errorHandler);
 
 // Invite page
 app.get('/invite', (req, res) => {

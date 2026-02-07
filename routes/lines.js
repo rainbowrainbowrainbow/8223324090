@@ -5,39 +5,36 @@
 const express = require('express');
 const { pool } = require('../db');
 const { validateDate, ensureDefaultLines } = require('../services/booking');
+const { asyncHandler } = require('../middleware/errorHandler');
+const { ValidationError } = require('../middleware/errors');
 
 const router = express.Router();
 
-router.get('/:date', async (req, res) => {
-    try {
-        const { date } = req.params;
-        await ensureDefaultLines(date);
-        const result = await pool.query(
-            'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id',
-            [date]
-        );
-        const lines = result.rows.map(row => ({
-            id: row.line_id,
-            name: row.name,
-            color: row.color,
-            fromSheet: row.from_sheet
-        }));
-        res.json(lines);
-    } catch (err) {
-        console.error('Error fetching lines:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+router.get('/:date', asyncHandler(async (req, res) => {
+    const { date } = req.params;
+    await ensureDefaultLines(date);
+    const result = await pool.query(
+        'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id',
+        [date]
+    );
+    const lines = result.rows.map(row => ({
+        id: row.line_id,
+        name: row.name,
+        color: row.color,
+        fromSheet: row.from_sheet
+    }));
+    res.json(lines);
+}));
 
-router.post('/:date', async (req, res) => {
+router.post('/:date', asyncHandler(async (req, res) => {
+    const { date } = req.params;
+    const lines = req.body;
+
+    if (!validateDate(date)) throw new ValidationError('Invalid date format');
+    if (!Array.isArray(lines)) throw new ValidationError('Lines must be an array');
+
     const client = await pool.connect();
     try {
-        const { date } = req.params;
-        const lines = req.body;
-
-        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
-        if (!Array.isArray(lines)) return res.status(400).json({ error: 'Lines must be an array' });
-
         await client.query('BEGIN');
         await client.query('DELETE FROM lines_by_date WHERE date = $1', [date]);
 
@@ -52,11 +49,10 @@ router.post('/:date', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error('Error saving lines:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        throw err;
     } finally {
         client.release();
     }
-});
+}));
 
 module.exports = router;

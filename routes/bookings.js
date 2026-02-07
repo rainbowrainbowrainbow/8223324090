@@ -1,5 +1,9 @@
 /**
  * routes/bookings.js — Booking CRUD endpoints
+ *
+ * v5.25: Uses asyncHandler + custom errors instead of manual try/catch.
+ * Validation runs BEFORE pool.connect() to avoid wasting DB connections.
+ * Transaction errors: catch → ROLLBACK → re-throw → errorHandler responds.
  */
 
 const express = require('express');
@@ -10,66 +14,70 @@ const {
     generateBookingNumber, mapBookingRow
 } = require('../services/booking');
 const { notifyTelegram } = require('../services/telegram');
+const { asyncHandler } = require('../middleware/errorHandler');
+const { ValidationError, NotFoundError, ConflictError } = require('../middleware/errors');
 
 const router = express.Router();
 
-// Get bookings for a date
-router.get('/:date', async (req, res) => {
-    try {
-        const { date } = req.params;
-        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
-        const result = await pool.query(
-            'SELECT * FROM bookings WHERE date = $1 AND status != \'cancelled\' ORDER BY time',
-            [date]
-        );
-        res.json(result.rows.map(mapBookingRow));
-    } catch (err) {
-        console.error('Error fetching bookings:', err);
-        res.status(500).json({ error: 'Internal server error' });
+// --- Helpers ---
+
+function validateBookingInput(b) {
+    if (!b.date || !b.time || !b.lineId) throw new ValidationError('Missing required fields: date, time, lineId');
+    if (!validateDate(b.date)) throw new ValidationError('Invalid date format');
+    if (!validateTime(b.time)) throw new ValidationError('Invalid time format');
+}
+
+function conflictMessage(conflict) {
+    return `Час зайнятий: ${conflict.label || conflict.program_code} о ${conflict.time}`;
+}
+
+function roomConflictMessage(room, conflict) {
+    return `Кімната "${room}" зайнята: ${conflict.label || conflict.program_code} о ${conflict.time}`;
+}
+
+async function checkAllConflicts(client, date, lineId, time, duration, room, excludeId) {
+    const conflict = await checkServerConflicts(client, date, lineId, time, duration, excludeId);
+    if (conflict.overlap) {
+        throw new ConflictError(conflictMessage(conflict.conflictWith));
     }
-});
+
+    if (!excludeId) {
+        const duplicate = await checkServerDuplicate(client, date, null, time, duration);
+        if (duplicate) {
+            throw new ConflictError('Ця програма вже є в цей час');
+        }
+    }
+
+    const roomConf = await checkRoomConflict(client, date, room, time, duration, excludeId);
+    if (roomConf) {
+        throw new ConflictError(roomConflictMessage(room, roomConf));
+    }
+}
+
+// --- Routes ---
+
+// Get bookings for a date
+router.get('/:date', asyncHandler(async (req, res) => {
+    const { date } = req.params;
+    if (!validateDate(date)) throw new ValidationError('Invalid date format');
+    const result = await pool.query(
+        'SELECT * FROM bookings WHERE date = $1 AND status != \'cancelled\' ORDER BY time',
+        [date]
+    );
+    res.json(result.rows.map(mapBookingRow));
+}));
 
 // Create booking
-router.post('/', async (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
+    const b = req.body;
+    validateBookingInput(b);
+
     const client = await pool.connect();
     try {
-        const b = req.body;
-        if (!b.date || !b.time || !b.lineId) {
-            client.release();
-            return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
-        }
-        if (!validateDate(b.date)) { client.release(); return res.status(400).json({ error: 'Invalid date format' }); }
-        if (!validateTime(b.time)) { client.release(); return res.status(400).json({ error: 'Invalid time format' }); }
-
         await client.query('BEGIN');
 
         if (!b.linkedTo) {
-            const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0);
-            if (conflict.overlap) {
-                await client.query('ROLLBACK');
-                client.release();
-                return res.status(409).json({
-                    success: false,
-                    error: `Час зайнятий: ${conflict.conflictWith.label || conflict.conflictWith.program_code} о ${conflict.conflictWith.time}`
-                });
-            }
-
-            const duplicate = await checkServerDuplicate(client, b.date, b.programId, b.time, b.duration || 0);
-            if (duplicate) {
-                await client.query('ROLLBACK');
-                client.release();
-                return res.status(409).json({ success: false, error: 'Ця програма вже є в цей час' });
-            }
-
-            const roomConflict = await checkRoomConflict(client, b.date, b.room, b.time, b.duration || 0);
-            if (roomConflict) {
-                await client.query('ROLLBACK');
-                client.release();
-                return res.status(409).json({
-                    success: false,
-                    error: `Кімната "${b.room}" зайнята: ${roomConflict.label || roomConflict.program_code} о ${roomConflict.time}`
-                });
-            }
+            await checkAllConflicts(client, b.date, b.lineId, b.time, b.duration || 0, b.room);
         }
 
         if (!b.id || !/^BK-\d{4}-\d{4,}$/.test(b.id)) {
@@ -100,53 +108,23 @@ router.post('/', async (req, res) => {
         res.json({ success: true, id: b.id });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error('Error creating booking:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        throw err;
     } finally {
         client.release();
     }
-});
+}));
 
 // Create booking with linked bookings
-router.post('/full', async (req, res) => {
+router.post('/full', asyncHandler(async (req, res) => {
+    const { main, linked } = req.body;
+    if (!main) throw new ValidationError('Missing main booking');
+    validateBookingInput(main);
+
     const client = await pool.connect();
     try {
-        const { main, linked } = req.body;
-        if (!main || !main.date || !main.time || !main.lineId) {
-            client.release();
-            return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
-        }
-        if (!validateDate(main.date)) { client.release(); return res.status(400).json({ error: 'Invalid date format' }); }
-        if (!validateTime(main.time)) { client.release(); return res.status(400).json({ error: 'Invalid time format' }); }
-
         await client.query('BEGIN');
 
-        const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0);
-        if (conflict.overlap) {
-            await client.query('ROLLBACK');
-            client.release();
-            return res.status(409).json({
-                success: false,
-                error: `Час зайнятий: ${conflict.conflictWith.label || conflict.conflictWith.program_code} о ${conflict.conflictWith.time}`
-            });
-        }
-
-        const duplicate = await checkServerDuplicate(client, main.date, main.programId, main.time, main.duration || 0);
-        if (duplicate) {
-            await client.query('ROLLBACK');
-            client.release();
-            return res.status(409).json({ success: false, error: 'Ця програма вже є в цей час' });
-        }
-
-        const roomConflict = await checkRoomConflict(client, main.date, main.room, main.time, main.duration || 0);
-        if (roomConflict) {
-            await client.query('ROLLBACK');
-            client.release();
-            return res.status(409).json({
-                success: false,
-                error: `Кімната "${main.room}" зайнята: ${roomConflict.label || roomConflict.program_code} о ${roomConflict.time}`
-            });
-        }
+        await checkAllConflicts(client, main.date, main.lineId, main.time, main.duration || 0, main.room);
 
         if (!main.id || !/^BK-\d{4}-\d{4,}$/.test(main.id)) {
             main.id = await generateBookingNumber(client);
@@ -163,12 +141,7 @@ router.post('/full', async (req, res) => {
             for (const lb of linked) {
                 const lConflict = await checkServerConflicts(client, lb.date, lb.lineId, lb.time, lb.duration || 0);
                 if (lConflict.overlap) {
-                    await client.query('ROLLBACK');
-                    client.release();
-                    return res.status(409).json({
-                        success: false,
-                        error: `Час зайнятий у пов'язаного аніматора: ${lConflict.conflictWith.label || lConflict.conflictWith.program_code}`
-                    });
+                    throw new ConflictError(`Час зайнятий у пов'язаного аніматора: ${lConflict.conflictWith.label || lConflict.conflictWith.program_code}`);
                 }
 
                 const lbId = await generateBookingNumber(client);
@@ -198,30 +171,25 @@ router.post('/full', async (req, res) => {
         res.json({ success: true, id: main.id, linkedIds });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error('Error creating full booking:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        throw err;
     } finally {
         client.release();
     }
-});
+}));
 
 // Delete booking (soft or permanent)
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const permanent = req.query.permanent === 'true';
+    if (!validateId(id)) throw new ValidationError('Invalid booking ID');
+
     const client = await pool.connect();
     try {
-        const { id } = req.params;
-        const permanent = req.query.permanent === 'true';
-        if (!validateId(id)) { client.release(); return res.status(400).json({ error: 'Invalid booking ID' }); }
-
         await client.query('BEGIN');
 
         const bookingResult = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
         const booking = bookingResult.rows[0];
-        if (!booking) {
-            await client.query('ROLLBACK');
-            client.release();
-            return res.status(404).json({ success: false, error: 'Бронювання не знайдено' });
-        }
+        if (!booking) throw new NotFoundError('Бронювання не знайдено');
 
         const action = permanent ? 'permanent_delete' : 'delete';
         await client.query(
@@ -243,52 +211,36 @@ router.delete('/:id', async (req, res) => {
         res.json({ success: true, permanent });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error('Error deleting booking:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        throw err;
     } finally {
         client.release();
     }
-});
+}));
 
 // Update booking
-router.put('/:id', async (req, res) => {
+router.put('/:id', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const b = req.body;
+    if (!validateId(id)) throw new ValidationError('Invalid booking ID');
+    validateBookingInput(b);
+
     const client = await pool.connect();
     try {
-        const { id } = req.params;
-        const b = req.body;
-        if (!validateId(id)) { client.release(); return res.status(400).json({ error: 'Invalid booking ID' }); }
-        if (!validateDate(b.date)) { client.release(); return res.status(400).json({ error: 'Invalid date format' }); }
-        if (!validateTime(b.time)) { client.release(); return res.status(400).json({ error: 'Invalid time format' }); }
-
         await client.query('BEGIN');
 
         const oldResult = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
-        if (oldResult.rows.length === 0) {
-            await client.query('ROLLBACK');
-            client.release();
-            return res.status(404).json({ error: 'Бронювання не знайдено' });
-        }
+        if (oldResult.rows.length === 0) throw new NotFoundError('Бронювання не знайдено');
         const oldBooking = oldResult.rows[0];
 
         if (!b.linkedTo) {
             const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0, id);
             if (conflict.overlap) {
-                await client.query('ROLLBACK');
-                client.release();
-                return res.status(409).json({
-                    success: false,
-                    error: `Час зайнятий: ${conflict.conflictWith.label || conflict.conflictWith.program_code} о ${conflict.conflictWith.time}`
-                });
+                throw new ConflictError(conflictMessage(conflict.conflictWith));
             }
 
-            const roomConflict = await checkRoomConflict(client, b.date, b.room, b.time, b.duration || 0, id);
-            if (roomConflict) {
-                await client.query('ROLLBACK');
-                client.release();
-                return res.status(409).json({
-                    success: false,
-                    error: `Кімната "${b.room}" зайнята: ${roomConflict.label || roomConflict.program_code} о ${roomConflict.time}`
-                });
+            const roomConf = await checkRoomConflict(client, b.date, b.room, b.time, b.duration || 0, id);
+            if (roomConf) {
+                throw new ConflictError(roomConflictMessage(b.room, roomConf));
             }
         }
 
@@ -343,11 +295,10 @@ router.put('/:id', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error('Error updating booking:', err);
-        res.status(500).json({ error: 'Failed to update booking' });
+        throw err;
     } finally {
         client.release();
     }
-});
+}));
 
 module.exports = router;

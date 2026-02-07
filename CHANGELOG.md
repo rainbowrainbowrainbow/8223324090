@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-02-07 — v5.37 Dark Mode & Typography Polish
+
+**Що вирішили:**
+- Повне покриття dark mode для всіх компонентів, які раніше не мали стилів
+- Cleanup дублікатів у dark-mode.css
+
+**Що додали/поміняли:**
+- `css/dark-mode.css` — category program icons (7 категорій: quest, animation, show, masterclass, pinata, photo, custom) з tinted backgrounds
+- `css/dark-mode.css` — повний login screen dark mode (gradient bg, dark container, inputs, labels, btn-changelog)
+- `css/dark-mode.css` — panel backdrop darker (rgba 0.6), afisha items, category headers
+- `css/dark-mode.css` — confirm modal buttons, empty states (.no-data, .no-history)
+- `css/dark-mode.css` — видалено дублікат `afisha-import-section textarea` (був з v5.10 і v5.36)
+- Version bump 5.37.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v5.38 — Image Asset Pack (favicon, PWA manifest)
+
+---
+
 ## 2026-02-07 — v5.36 Афіша & Історія UI
 
 **Що вирішили:**

@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.19">
-    <link rel="stylesheet" href="css/auth.css?v=5.19">
-    <link rel="stylesheet" href="css/layout.css?v=5.19">
-    <link rel="stylesheet" href="css/timeline.css?v=5.19">
-    <link rel="stylesheet" href="css/panel.css?v=5.19">
-    <link rel="stylesheet" href="css/modals.css?v=5.19">
-    <link rel="stylesheet" href="css/controls.css?v=5.19">
-    <link rel="stylesheet" href="css/features.css?v=5.19">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.19">
-    <link rel="stylesheet" href="css/responsive.css?v=5.19">
+    <link rel="stylesheet" href="css/base.css?v=5.20">
+    <link rel="stylesheet" href="css/auth.css?v=5.20">
+    <link rel="stylesheet" href="css/layout.css?v=5.20">
+    <link rel="stylesheet" href="css/timeline.css?v=5.20">
+    <link rel="stylesheet" href="css/panel.css?v=5.20">
+    <link rel="stylesheet" href="css/modals.css?v=5.20">
+    <link rel="stylesheet" href="css/controls.css?v=5.20">
+    <link rel="stylesheet" href="css/features.css?v=5.20">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.20">
+    <link rel="stylesheet" href="css/responsive.css?v=5.20">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.19</p>
+                <p class="tagline">Система бронювання v5.20</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.19</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.20</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -370,6 +370,7 @@
                 <div id="kidsCountSection" class="form-section kids-count-section hidden">
                     <label>Кількість дітей</label>
                     <input type="number" id="kidsCountInput" min="1" max="50" placeholder="Введіть к-кість дітей">
+                    <div id="kidsCountWarning" class="kids-count-warning hidden"></div>
                 </div>
 
                 <!-- v3.2: Статус бронювання -->
@@ -642,6 +643,18 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v5.20 — Drag-to-move/resize + Kids validation</h4>
+                    <ul>
+                        <li>🖱️ Drag-to-move: перетягнути бронювання на таймлайні для зміни часу</li>
+                        <li>↔️ Drag між лініями: переміщення бронювань між аніматорами</li>
+                        <li>📐 Drag-to-resize: тягнути правий край блоку для зміни тривалості</li>
+                        <li>⚠️ Валідація к-кості дітей: попередження якщо виходить за рамки програми</li>
+                        <li>🎨 Dark mode: стилі для drag/resize та попереджень</li>
+                        <li>⌨️ Escape для скасування перетягування</li>
+                        <li>🔗 Linked bookings: автоматичне переміщення/resize пов'язаних</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v5.19 — Афіша edit + Linked ghost + Period selector</h4>
                     <ul>
@@ -1036,13 +1049,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.19"></script>
-    <script src="js/api.js?v=5.19"></script>
-    <script src="js/ui.js?v=5.19"></script>
-    <script src="js/auth.js?v=5.19"></script>
-    <script src="js/timeline.js?v=5.19"></script>
-    <script src="js/booking.js?v=5.19"></script>
-    <script src="js/settings.js?v=5.19"></script>
-    <script src="js/app.js?v=5.19"></script>
+    <script src="js/config.js?v=5.20"></script>
+    <script src="js/api.js?v=5.20"></script>
+    <script src="js/ui.js?v=5.20"></script>
+    <script src="js/auth.js?v=5.20"></script>
+    <script src="js/timeline.js?v=5.20"></script>
+    <script src="js/booking.js?v=5.20"></script>
+    <script src="js/settings.js?v=5.20"></script>
+    <script src="js/app.js?v=5.20"></script>
 </body>
 </html>

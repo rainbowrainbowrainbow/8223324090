@@ -636,3 +636,88 @@
     border-radius: 4px;
     cursor: pointer;
 }
+
+/* ==========================================
+   DRAG-TO-MOVE & DRAG-TO-RESIZE (v5.20)
+   ========================================== */
+
+/* Resize handle on right edge of booking block */
+.booking-resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: col-resize;
+    border-radius: 0 8px 8px 0;
+    z-index: 11;
+    opacity: 0;
+    transition: opacity var(--speed-fast);
+}
+
+.booking-block:hover .booking-resize-handle {
+    opacity: 1;
+}
+
+.booking-resize-handle::after {
+    content: '';
+    position: absolute;
+    right: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 18px;
+    border-left: 1.5px solid rgba(255,255,255,0.5);
+    border-right: 1.5px solid rgba(255,255,255,0.5);
+    border-radius: 1px;
+}
+
+.booking-resize-handle:hover::after {
+    border-left-color: rgba(255,255,255,0.9);
+    border-right-color: rgba(255,255,255,0.9);
+}
+
+/* Dragging state */
+.booking-block.dragging {
+    opacity: 0.9;
+    z-index: 100 !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.15);
+    transform: scale(1.03);
+    transition: none !important;
+    cursor: grabbing;
+}
+
+/* Dim other blocks during drag */
+body.is-dragging .booking-block:not(.dragging) {
+    opacity: 0.45;
+    transition: opacity 0.15s;
+}
+
+/* Prevent grid cell clicks during drag */
+body.is-dragging .grid-cell {
+    pointer-events: none;
+}
+
+/* Target line highlight during drag */
+.line-grid.drag-target {
+    background: rgba(16,185,129,0.06) !important;
+    outline: 2px dashed var(--primary);
+    outline-offset: -2px;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* Cursor overrides during drag */
+body.is-dragging {
+    cursor: grabbing !important;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+body.is-dragging * {
+    cursor: grabbing !important;
+}
+
+/* Non-draggable blocks (linked ghosts) */
+.booking-block.linked-ghost .booking-resize-handle {
+    display: none;
+}

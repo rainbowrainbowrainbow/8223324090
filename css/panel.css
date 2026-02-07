@@ -521,3 +521,20 @@
     background: var(--primary-light);
     border-color: var(--primary);
 }
+
+/* v5.20: Kids count validation warning */
+.kids-count-warning {
+    margin-top: 6px;
+    padding: 6px 10px;
+    background: #FEF3C7;
+    border: 1px solid #F59E0B;
+    border-radius: var(--radius-xs);
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: #92400E;
+    line-height: 1.4;
+}
+
+.kids-count-warning.hidden {
+    display: none;
+}

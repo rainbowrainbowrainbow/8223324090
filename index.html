@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.23">
-    <link rel="stylesheet" href="css/auth.css?v=5.23">
-    <link rel="stylesheet" href="css/layout.css?v=5.23">
-    <link rel="stylesheet" href="css/timeline.css?v=5.23">
-    <link rel="stylesheet" href="css/panel.css?v=5.23">
-    <link rel="stylesheet" href="css/modals.css?v=5.23">
-    <link rel="stylesheet" href="css/controls.css?v=5.23">
-    <link rel="stylesheet" href="css/features.css?v=5.23">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.23">
-    <link rel="stylesheet" href="css/responsive.css?v=5.23">
+    <link rel="stylesheet" href="css/base.css?v=5.24">
+    <link rel="stylesheet" href="css/auth.css?v=5.24">
+    <link rel="stylesheet" href="css/layout.css?v=5.24">
+    <link rel="stylesheet" href="css/timeline.css?v=5.24">
+    <link rel="stylesheet" href="css/panel.css?v=5.24">
+    <link rel="stylesheet" href="css/modals.css?v=5.24">
+    <link rel="stylesheet" href="css/controls.css?v=5.24">
+    <link rel="stylesheet" href="css/features.css?v=5.24">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.24">
+    <link rel="stylesheet" href="css/responsive.css?v=5.24">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.23</p>
+                <p class="tagline">Система бронювання v5.24</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.23</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.24</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -698,6 +698,16 @@
             <h3 id="changelogModalTitle">Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v5.24 — Модульний бекенд</h4>
+                    <ul>
+                        <li>🏗️ SRP рефакторинг — server.js розбито на 16 модулів (2367 → 188 рядків)</li>
+                        <li>📂 db/ — підключення до БД та ініціалізація</li>
+                        <li>📂 middleware/ — auth, rate-limit, security headers</li>
+                        <li>📂 services/ — booking logic, Telegram, notification templates</li>
+                        <li>📂 routes/ — 9 окремих роутерів (auth, bookings, lines, history, settings, admin, telegram, afisha, backup)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v5.23 — Доступність (a11y + Mobile)</h4>
                     <ul>
                         <li>♿ Прибрано user-scalable=no — дозволений зум для людей з вадами зору</li>
@@ -1134,13 +1144,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.23"></script>
-    <script src="js/api.js?v=5.23"></script>
-    <script src="js/ui.js?v=5.23"></script>
-    <script src="js/auth.js?v=5.23"></script>
-    <script src="js/timeline.js?v=5.23"></script>
-    <script src="js/booking.js?v=5.23"></script>
-    <script src="js/settings.js?v=5.23"></script>
-    <script src="js/app.js?v=5.23"></script>
+    <script src="js/config.js?v=5.24"></script>
+    <script src="js/api.js?v=5.24"></script>
+    <script src="js/ui.js?v=5.24"></script>
+    <script src="js/auth.js?v=5.24"></script>
+    <script src="js/timeline.js?v=5.24"></script>
+    <script src="js/booking.js?v=5.24"></script>
+    <script src="js/settings.js?v=5.24"></script>
+    <script src="js/app.js?v=5.24"></script>
 </body>
 </html>

@@ -425,7 +425,7 @@ async function sendDailyDigest() {
 async function fetchAndRenderTelegramChats(chatIdInputId, chatsContainerId) {
     const container = document.getElementById(chatsContainerId);
     if (!container) return;
-    container.innerHTML = '<p>Завантаження...</p>';
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
 
     try {
         const response = await fetch(`${API_BASE}/telegram/chats`, { headers: getAuthHeadersGet() });
@@ -448,7 +448,7 @@ async function fetchAndRenderTelegramChats(chatIdInputId, chatsContainerId) {
 async function fetchAndRenderThreads() {
     const container = document.getElementById('settingsTelegramThreads');
     if (!container) return;
-    container.innerHTML = '<p>Завантаження...</p>';
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
 
     try {
         const response = await fetch(`${API_BASE}/telegram/threads`, { headers: getAuthHeadersGet() });
@@ -585,6 +585,7 @@ async function saveDigestTime() {
     if (reminderVal) parts.push(`нагадування ${reminderVal}`);
     if (autoDelEnabled === 'true') parts.push(`автовидалення ${autoDelHours}г`);
     showNotification(parts.length > 0 ? `Збережено: ${parts.join(', ')}` : 'Сповіщення вимкнено', 'success');
+    closeAllModals();
 }
 
 async function sendTestDigest() {
@@ -634,6 +635,7 @@ function saveAnimatorsListFromSettings() {
     localStorage.setItem('pzp_animators_list', JSON.stringify(names));
     populateAnimatorsSelect();
     showNotification('Список аніматорів збережено!', 'success');
+    closeAllModals();
 }
 
 async function saveTelegramChatIdFromSettings() {
@@ -646,6 +648,7 @@ async function saveTelegramChatIdFromSettings() {
     const result = await apiTelegramNotify('🤖 Telegram підключено до системи бронювання Парку Закревського Періоду!');
     if (result && result.success) {
         showNotification('Telegram налаштовано та протестовано!', 'success');
+        closeAllModals();
     } else {
         showNotification('Chat ID збережено, але тестове повідомлення не надіслалось: ' + (result?.reason || 'невідома помилка'), 'error');
     }
@@ -772,7 +775,7 @@ async function showDashboard() {
 
     const modal = document.getElementById('dashboardModal');
     const container = document.getElementById('dashboardContent');
-    container.innerHTML = '<p>Завантаження...</p>';
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
     modal.classList.remove('hidden');
 
     const ranges = getDashboardDateRanges();
@@ -993,7 +996,7 @@ async function showAfishaModal() {
 async function renderAfishaList() {
     const container = document.getElementById('afishaList');
     if (!container) return;
-    container.innerHTML = '<p>Завантаження...</p>';
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
     const items = await apiGetAfisha();
     if (items.length === 0) {
         container.innerHTML = '<p class="no-data">Немає подій. Додайте першу!</p>';

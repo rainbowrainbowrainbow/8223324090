@@ -86,7 +86,7 @@ async function showFreeRooms() {
 
     const panel = document.getElementById('freeRoomsPanel');
     panel.classList.remove('hidden');
-    panel.innerHTML = '<span class="loading">Завантаження...</span>';
+    panel.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
 
     try {
         const response = await fetch(`${API_BASE}/rooms/free/${date}/${time}/${duration}`, {
@@ -446,15 +446,31 @@ async function buildLinkedBookings(booking, program) {
     return linked;
 }
 
+function unlockSubmitBtn() {
+    const btn = document.getElementById('bookingSubmitBtn');
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.originalText || 'Додати бронювання';
+    }
+}
+
 async function handleBookingSubmit(e) {
     e.preventDefault();
 
+    const submitBtn = document.getElementById('bookingSubmitBtn');
+    if (submitBtn && submitBtn.disabled) return;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.dataset.originalText = submitBtn.textContent;
+        submitBtn.textContent = 'Збереження...';
+    }
+
     const formData = getBookingFormData();
 
-    if (!formData.programId) { showNotification('Оберіть програму', 'error'); return; }
-    if (!formData.room) { showNotification('Оберіть кімнату', 'error'); return; }
+    if (!formData.programId) { showNotification('Оберіть програму', 'error'); unlockSubmitBtn(); return; }
+    if (!formData.room) { showNotification('Оберіть кімнату', 'error'); unlockSubmitBtn(); return; }
     if (formData.program.hasFiller && !formData.pinataFiller) {
-        showNotification('Оберіть наповнювач для піньяти', 'error'); return;
+        showNotification('Оберіть наповнювач для піньяти', 'error'); unlockSubmitBtn(); return;
     }
 
     // v5.5: excludeId для режиму редагування
@@ -465,13 +481,13 @@ async function handleBookingSubmit(e) {
         formData.lineId, formData.time, formData.duration,
         formData.program, formData.secondAnimator, excludeId
     );
-    if (!valid) return;
+    if (!valid) { unlockSubmitBtn(); return; }
 
     // Перевірка дублікатів
     const noDuplicate = await checkDuplicateProgram(
         formData.programId, formData.program, formData.time, formData.duration, excludeId
     );
-    if (!noDuplicate) return;
+    if (!noDuplicate) { unlockSubmitBtn(); return; }
 
     try {
         const booking = buildBookingObject(formData, formData.program);
@@ -491,7 +507,7 @@ async function handleBookingSubmit(e) {
             const updateResult = await apiUpdateBooking(booking.id, booking);
             if (updateResult && updateResult.success === false) {
                 showNotification(updateResult.error || 'Помилка оновлення бронювання', 'error');
-                return;
+                unlockSubmitBtn(); return;
             }
             await apiAddHistory('edit', AppState.currentUser?.username, booking);
             // v5.18.1: Telegram notification handled server-side in PUT handler (removed frontend duplicate)
@@ -500,6 +516,7 @@ async function handleBookingSubmit(e) {
 
             delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
             closeBookingPanel();
+            unlockSubmitBtn();
             await renderTimeline();
             showNotification('Бронювання оновлено!', 'success');
         } else {
@@ -515,7 +532,7 @@ async function handleBookingSubmit(e) {
 
             if (createResult && createResult.success === false) {
                 showNotification(createResult.error || 'Помилка створення бронювання', 'error');
-                return;
+                unlockSubmitBtn(); return;
             }
             // v5.27: API now returns { booking: { id, ... } }
             if (createResult && createResult.booking) {
@@ -529,11 +546,13 @@ async function handleBookingSubmit(e) {
 
             delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
             closeBookingPanel();
+            unlockSubmitBtn();
             await renderTimeline();
             showNotification('Бронювання створено!', 'success');
         }
     } catch (error) {
         handleError('Збереження бронювання', error);
+        unlockSubmitBtn();
     }
 }
 

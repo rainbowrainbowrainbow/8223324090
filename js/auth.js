@@ -104,6 +104,13 @@ function showMainApp() {
     // Undo button
     updateUndoButton();
 
+    // Status filter restore
+    if (AppState.statusFilter && AppState.statusFilter !== 'all') {
+        document.querySelectorAll('.status-filter-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.filter === AppState.statusFilter);
+        });
+    }
+
     initializeTimeline();
     renderProgramIcons();
     setupSwipe();

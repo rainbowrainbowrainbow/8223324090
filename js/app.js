@@ -36,6 +36,7 @@ function loadPreferences() {
     AppState.darkMode = localStorage.getItem('pzp_dark_mode') === 'true';
     AppState.compactMode = localStorage.getItem('pzp_compact_mode') === 'true';
     AppState.zoomLevel = parseInt(localStorage.getItem('pzp_zoom_level')) || 15;
+    AppState.statusFilter = localStorage.getItem('pzp_status_filter') || 'all';
     if (AppState.darkMode) document.body.classList.add('dark-mode');
     if (AppState.compactMode) {
         CONFIG.TIMELINE.CELL_WIDTH = 35;
@@ -135,6 +136,7 @@ function initTimelineListeners() {
             document.querySelectorAll('.status-filter-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             AppState.statusFilter = btn.dataset.filter;
+            localStorage.setItem('pzp_status_filter', AppState.statusFilter);
             applyStatusFilter();
         });
     });

@@ -837,6 +837,54 @@ body.dark-mode .main-content {
     padding-bottom: 40px;
 }
 
+/* v5.20: Super-admin settings */
+body.dark-mode #superAdminSection {
+    border-top-color: #991B1B;
+}
+
+body.dark-mode #adminBotToken {
+    background: #1a1a2e;
+    border-color: #444468;
+    color: #D1D5DB;
+}
+
+body.dark-mode .admin-token-status {
+    background: #1a1a2e;
+    color: #D1D5DB;
+}
+
+body.dark-mode .admin-token-status code {
+    background: #252548;
+    color: #93C5FD;
+}
+
+body.dark-mode .admin-user-row {
+    background: #1a1a2e;
+}
+
+body.dark-mode .admin-user-login {
+    color: #9CA3AF;
+}
+
+body.dark-mode .role-admin { background: #1E3A5F; color: #93C5FD; }
+body.dark-mode .role-user { background: #064E3B; color: #6EE7B7; }
+body.dark-mode .role-viewer { background: #78350F; color: #FCD34D; }
+
+body.dark-mode .admin-superadmin-badge {
+    background: #7F1D1D;
+    color: #FCA5A5;
+}
+
+body.dark-mode .btn-admin-edit:hover { background: #252548; }
+body.dark-mode .btn-admin-delete:hover { background: #7F1D1D; }
+
+body.dark-mode .admin-user-form input,
+body.dark-mode .admin-user-form select {
+    background: #1a1a2e;
+    border-color: #444468;
+    color: #D1D5DB;
+}
+
 /* Scrollbar improvement */
 body.dark-mode ::-webkit-scrollbar-track {
     background: #0f0f1a;

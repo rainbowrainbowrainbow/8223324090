@@ -521,3 +521,146 @@
     background: var(--primary-light);
     border-color: var(--primary);
 }
+
+/* ==========================================
+   v5.20: SUPER-ADMIN SETTINGS
+   ========================================== */
+
+#superAdminSection {
+    border-top: 2px solid #EF4444;
+    margin-top: 16px;
+    padding-top: 16px;
+}
+
+#superAdminSection h4 {
+    color: #EF4444;
+}
+
+.admin-subsection h5 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: var(--gray-700);
+}
+
+#adminBotToken {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: monospace;
+}
+
+.admin-token-status {
+    padding: 8px 12px;
+    background: var(--gray-50);
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.admin-token-status code {
+    background: var(--gray-200);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.token-active {
+    color: #10B981;
+    font-weight: 700;
+}
+
+.token-missing {
+    color: #EF4444;
+    font-weight: 700;
+}
+
+.token-source {
+    color: var(--gray-500);
+    font-size: 12px;
+}
+
+.admin-user-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--gray-50);
+    border-radius: 8px;
+    margin-bottom: 6px;
+}
+
+.admin-user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.admin-user-login {
+    color: var(--gray-500);
+    font-size: 12px;
+}
+
+.admin-user-role {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.role-admin { background: #DBEAFE; color: #1D4ED8; }
+.role-user { background: #D1FAE5; color: #065F46; }
+.role-viewer { background: #FEF3C7; color: #92400E; }
+
+.admin-user-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.btn-admin-edit, .btn-admin-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.btn-admin-edit:hover { background: var(--gray-200); }
+.btn-admin-delete:hover { background: #FEE2E2; }
+
+.admin-superadmin-badge {
+    font-size: 11px;
+    color: #EF4444;
+    font-weight: 700;
+    text-transform: uppercase;
+    background: #FEE2E2;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.admin-user-form .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.admin-user-form input,
+.admin-user-form select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.admin-user-form select {
+    cursor: pointer;
+}

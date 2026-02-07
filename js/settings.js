@@ -571,6 +571,19 @@ async function showSettings() {
     if (btnRefreshThreads) {
         btnRefreshThreads.onclick = () => fetchAndRenderThreads();
     }
+
+    // v5.20: Super-admin section (Sergey only)
+    const superAdminSection = document.getElementById('superAdminSection');
+    if (superAdminSection) {
+        const isSergey = AppState.currentUser && AppState.currentUser.username === 'Sergey';
+        superAdminSection.style.display = isSergey ? 'block' : 'none';
+        if (isSergey) {
+            loadAdminTelegramToken();
+            loadAdminUsers();
+            document.getElementById('adminSaveBotTokenBtn').onclick = saveAdminBotToken;
+            document.getElementById('adminAddUserBtn').onclick = addAdminUser;
+        }
+    }
 }
 
 // v5.11: Save all notification settings (digest + reminder + auto-delete)
@@ -687,6 +700,175 @@ async function saveThreadIdFromSettings() {
         showNotification('Thread ID збережено! Сповіщення будуть у гілку #' + threadId, 'success');
     } else {
         showNotification('Thread ID очищено — сповіщення в General', 'success');
+    }
+}
+
+// ==========================================
+// v5.20: SUPER-ADMIN FUNCTIONS (Sergey only)
+// ==========================================
+
+async function loadAdminTelegramToken() {
+    const statusEl = document.getElementById('adminTokenStatus');
+    if (!statusEl) return;
+    try {
+        const response = await fetch(`${API_BASE}/admin/telegram-token`, { headers: getAuthHeadersGet() });
+        if (!response.ok) { statusEl.textContent = 'Помилка завантаження'; return; }
+        const data = await response.json();
+        if (data.hasToken) {
+            statusEl.innerHTML = `<span class="token-active">Активний</span> <code>${data.masked}</code> <span class="token-source">(${data.source === 'db' ? 'з налаштувань' : 'з env'})</span>`;
+        } else {
+            statusEl.innerHTML = '<span class="token-missing">Не налаштовано</span>';
+        }
+    } catch (err) {
+        statusEl.textContent = 'Помилка з\'єднання';
+    }
+}
+
+async function saveAdminBotToken() {
+    const tokenInput = document.getElementById('adminBotToken');
+    const token = tokenInput.value.trim();
+    if (!token) { showNotification('Введіть токен', 'error'); return; }
+    if (token.length < 10 || !token.includes(':')) {
+        showNotification('Невалідний формат токену (очікується 123456:ABC...)', 'error');
+        return;
+    }
+    try {
+        const response = await fetch(`${API_BASE}/admin/telegram-token`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ token })
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            showNotification(err.error || 'Помилка збереження', 'error');
+            return;
+        }
+        showNotification('Токен збережено! Перевірте Telegram.', 'success');
+        tokenInput.value = '';
+        loadAdminTelegramToken();
+    } catch (err) {
+        showNotification('Помилка з\'єднання', 'error');
+    }
+}
+
+async function loadAdminUsers() {
+    const listEl = document.getElementById('adminUsersList');
+    if (!listEl) return;
+    try {
+        const response = await fetch(`${API_BASE}/admin/users`, { headers: getAuthHeadersGet() });
+        if (!response.ok) { listEl.textContent = 'Помилка завантаження'; return; }
+        const users = await response.json();
+        if (!users.length) { listEl.innerHTML = '<p>Немає користувачів</p>'; return; }
+
+        const roleLabels = { admin: 'адмін', user: 'менеджер', viewer: 'перегляд' };
+        listEl.innerHTML = users.map(u => `
+            <div class="admin-user-row" data-id="${u.id}">
+                <div class="admin-user-info">
+                    <strong>${escapeHtml(u.name)}</strong>
+                    <span class="admin-user-login">@${escapeHtml(u.username)}</span>
+                    <span class="admin-user-role role-${u.role}">${roleLabels[u.role] || u.role}</span>
+                </div>
+                <div class="admin-user-actions">
+                    ${u.username !== 'Sergey' ? `
+                        <button class="btn-admin-edit" data-id="${u.id}" data-username="${escapeHtml(u.username)}" data-name="${escapeHtml(u.name)}" data-role="${u.role}" title="Редагувати">✏️</button>
+                        <button class="btn-admin-delete" data-id="${u.id}" data-name="${escapeHtml(u.name)}" title="Видалити">🗑</button>
+                    ` : '<span class="admin-superadmin-badge">суперадмін</span>'}
+                </div>
+            </div>
+        `).join('');
+
+        // Bind edit/delete buttons
+        listEl.querySelectorAll('.btn-admin-edit').forEach(btn => {
+            btn.addEventListener('click', () => editAdminUser(btn.dataset));
+        });
+        listEl.querySelectorAll('.btn-admin-delete').forEach(btn => {
+            btn.addEventListener('click', () => deleteAdminUser(btn.dataset.id, btn.dataset.name));
+        });
+    } catch (err) {
+        listEl.textContent = 'Помилка з\'єднання';
+    }
+}
+
+function editAdminUser(dataset) {
+    const { id, username, name, role } = dataset;
+    const newName = prompt('Ім\'я:', name);
+    if (newName === null) return;
+    const newUsername = prompt('Логін:', username);
+    if (newUsername === null) return;
+    const newRole = prompt('Роль (admin / user / viewer):', role);
+    if (newRole === null || !['admin', 'user', 'viewer'].includes(newRole)) {
+        showNotification('Невалідна роль. Використовуйте: admin, user, viewer', 'error');
+        return;
+    }
+    const newPassword = prompt('Новий пароль (залиште порожнім щоб не змінювати):', '');
+
+    fetch(`${API_BASE}/admin/users/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ username: newUsername, name: newName, role: newRole, password: newPassword || undefined })
+    }).then(async res => {
+        if (!res.ok) {
+            const err = await res.json();
+            showNotification(err.error || 'Помилка', 'error');
+            return;
+        }
+        showNotification(`${newName} оновлено`, 'success');
+        loadAdminUsers();
+    }).catch(() => showNotification('Помилка з\'єднання', 'error'));
+}
+
+async function deleteAdminUser(id, name) {
+    if (!confirm(`Видалити користувача "${name}"?`)) return;
+    try {
+        const response = await fetch(`${API_BASE}/admin/users/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeadersGet()
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            showNotification(err.error || 'Помилка', 'error');
+            return;
+        }
+        showNotification(`${name} видалено`, 'success');
+        loadAdminUsers();
+    } catch (err) {
+        showNotification('Помилка з\'єднання', 'error');
+    }
+}
+
+async function addAdminUser() {
+    const username = document.getElementById('adminNewUsername').value.trim();
+    const name = document.getElementById('adminNewName').value.trim();
+    const password = document.getElementById('adminNewPassword').value;
+    const role = document.getElementById('adminNewRole').value;
+
+    if (!username || !name || !password) {
+        showNotification('Заповніть всі поля', 'error');
+        return;
+    }
+    if (password.length < 4) {
+        showNotification('Пароль мінімум 4 символи', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/admin/users`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ username, name, password, role })
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            showNotification(err.error || 'Помилка', 'error');
+            return;
+        }
+        showNotification(`${name} додано`, 'success');
+        document.getElementById('adminNewUsername').value = '';
+        document.getElementById('adminNewName').value = '';
+        document.getElementById('adminNewPassword').value = '';
+        loadAdminUsers();
+    } catch (err) {
+        showNotification('Помилка з\'єднання', 'error');
     }
 }
 

@@ -536,6 +536,61 @@
                         <button type="button" id="saveDigestTimeBtn" class="btn-submit" style="width: 100%;">💾 Зберегти налаштування сповіщень</button>
                     </div>
                 </div>
+                <!-- v5.20: Super-admin section (Sergey only) -->
+                <div class="settings-section" id="superAdminSection" style="display:none;">
+                    <h4>🔐 Системні налаштування</h4>
+                    <p class="digest-hint">Тільки для суперадміна. Зміни впливають на всю систему.</p>
+
+                    <!-- Telegram Bot Token -->
+                    <div class="admin-subsection">
+                        <h5>🤖 Telegram Bot Token</h5>
+                        <div class="form-group">
+                            <label>Поточний токен:</label>
+                            <div id="adminTokenStatus" class="admin-token-status">Завантаження...</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Новий токен (від @BotFather):</label>
+                            <input type="password" id="adminBotToken" placeholder="1234567890:ABCDefGhIjKlMnOpQrStUvWxYz" autocomplete="off">
+                        </div>
+                        <button type="button" id="adminSaveBotTokenBtn" class="btn-submit">💾 Зберегти токен</button>
+                    </div>
+
+                    <!-- User Management -->
+                    <div class="admin-subsection" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
+                        <h5>👥 Управління користувачами</h5>
+                        <div id="adminUsersList" class="admin-users-list">Завантаження...</div>
+                        <div class="admin-add-user" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray-200);">
+                            <h5>➕ Додати користувача</h5>
+                            <div class="admin-user-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Логін:</label>
+                                        <input type="text" id="adminNewUsername" placeholder="Username">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Ім'я:</label>
+                                        <input type="text" id="adminNewName" placeholder="Ім'я">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Пароль:</label>
+                                        <input type="password" id="adminNewPassword" placeholder="Мін. 4 символи">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Роль:</label>
+                                        <select id="adminNewRole">
+                                            <option value="user">user (менеджер)</option>
+                                            <option value="admin">admin (адмін)</option>
+                                            <option value="viewer">viewer (перегляд)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <button type="button" id="adminAddUserBtn" class="btn-submit">➕ Додати</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

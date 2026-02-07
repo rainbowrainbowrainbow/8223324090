@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-02-07 — v5.39 Bugfixes & Security Hardening
+
+**Що вирішили:**
+- Пофіксити баги що знайшли при аналізі (minutesToTime, XSS, protocol detection)
+- Закрити базові дірки в безпеці (rate limit на логін, security headers, request size limit)
+- Почистити мертвий код (Google Sheets стаби)
+
+**Що додали/поміняли:**
+- `js/ui.js` — додано `minutesToTime()` (зворотна до timeToMinutes), фіксить краш при зсуві афіші
+- `routes/telegram.js` — виправлено `&&` → `||` у визначенні HTTPS протоколу для webhook
+- `middleware/rateLimit.js` — додано `loginRateLimiter` (5 спроб/хв, env `LOGIN_RATE_LIMIT_MAX`)
+- `middleware/security.js` — додано `securityHeaders` (X-Content-Type-Options, X-Frame-Options, HSTS, Referrer-Policy)
+- `server.js` — підключено securityHeaders, loginRateLimiter, `express.json({ limit: '1mb' })`
+- `js/booking.js` — escapeHtml на назвах кімнат у free rooms panel (XSS фікс)
+- `js/settings.js` — видалено порожні заглушки fetchAnimatorsFromSheet/updateLinesFromSheet
+- `js/auth.js` — прибрано виклик fetchAnimatorsFromSheet() з showMainApp
+- `routes/bookings.js` — rollback помилки тепер логуються замість мовчазного проковтування
+- `db/index.js` — додано `pool.on('error')` handler
+- Version bump 5.39.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v5.40 — UX & Accessibility
+
+---
+
 ## 2026-02-07 — v5.38 Image Asset Pack
 
 **Що вирішили:**

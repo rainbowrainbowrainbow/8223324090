@@ -3,26 +3,21 @@
 > Оновлюється кожні 10-15 повідомлень. Швидкий контекст для продовження роботи.
 
 ## Де ми
-Версія **v5.38.0**. UI/UX overhaul серія v5.30–v5.38 — **ЗАВЕРШЕНА!**
+Версія **v5.39.0**. Серія hardening v5.39–v5.42 — **В ПРОЦЕСІ**.
 
 ## Що готово
-- v5.30: Design System v4.0 (emerald, CSS tokens, 10-file architecture)
-- v5.31: Segmented controls (status filter, period selector)
-- v5.32: Program cards (code + duration badge, selected checkmark)
-- v5.33: Booking panel mobile (flex layout, scroll lock)
-- v5.34: Responsive phones (4 breakpoints: 768, 480, 390, landscape)
-- v5.35: Tablet overlay + Desktop Grid toolbar + backdrop + landscape
-- v5.36: Афіша & Історія UI (inline styles прибрано, responsive, empty states)
-- v5.37: Dark Mode & Typography Polish (login, categories, empty states, cleanup)
-- v5.38: Image Asset Pack (нове лого-кролик, favicon set, PWA manifest, meta tags)
+- v5.30–v5.38: UI/UX overhaul (design system, responsive, dark mode, PWA)
+- v5.39: Bugfixes & Security Hardening (minutesToTime, XSS fix, login rate limit, security headers, cleanup)
 
-## Що далі
-- Серія v5.30–v5.38 завершена. Планування наступного етапу.
+## Що далі (план)
+- v5.40 — UX & Accessibility (submit lock, auto-close modals, localStorage filter, spinner, ARIA)
+- v5.41 — Performance & Cleanup (DB indexes, RETURNING *, dead CSS, refactors)
+- v5.42 — Mini Features (undo для edit/shift/status, пошук у каталозі програм)
 
 ## Технічний стан
 - 157/157 тестів проходять
-- Branch: `claude/theme-park-booking-pZL5g`
+- Branch: `claude/review-project-docs-1y3qH`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
 
 ---
-*Оновлено: 2026-02-07, після v5.38*
+*Оновлено: 2026-02-07, після v5.39*

@@ -249,4 +249,4 @@ Marvel, Ninja, Minecraft, Monster High, Elsa, Растішка, Rock, Minion, Fo
 
 ---
 
-*Останнє оновлення: v5.38.0 (2026-02-07)*
+*Останнє оновлення: v5.39.0 (2026-02-07)*

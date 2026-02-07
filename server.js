@@ -32,6 +32,23 @@ app.use((req, res, next) => {
     }
     next();
 });
+
+// v5.20: Security headers (CSP, X-Content-Type, etc.)
+app.use((req, res, next) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('X-Frame-Options', 'DENY');
+    res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.set('Content-Security-Policy', [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+        "frame-ancestors 'none'"
+    ].join('; '));
+    next();
+});
 app.use(express.static(path.join(__dirname)));
 
 // PostgreSQL connection
@@ -44,8 +61,15 @@ const pool = new Pool({
 // TELEGRAM BOT
 // ==========================================
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8068946683:AAGdGn4cwNyRotIY1zzkuad0rHfB-ud-2Fg';
-const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '-1001805304620';
+// v5.20: Security — require env vars, no hardcoded fallbacks
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '';
+if (!TELEGRAM_BOT_TOKEN) {
+    console.warn('[Security] TELEGRAM_BOT_TOKEN not set! Telegram notifications will not work.');
+}
+if (!TELEGRAM_DEFAULT_CHAT_ID) {
+    console.warn('[Security] TELEGRAM_DEFAULT_CHAT_ID not set! Using DB-configured chat ID only.');
+}
 
 function telegramRequest(method, body) {
     return new Promise((resolve, reject) => {
@@ -478,10 +502,35 @@ function rateLimiter(req, res, next) {
     next();
 }
 
+// v5.20: Strict login rate limiter (5 attempts per 15 min per IP)
+const loginRateLimitMap = new Map();
+const LOGIN_RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
+const LOGIN_RATE_LIMIT_MAX = 5;
+
+function loginRateLimiter(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    let entry = loginRateLimitMap.get(ip);
+    if (!entry || now - entry.start > LOGIN_RATE_LIMIT_WINDOW) {
+        entry = { start: now, count: 1 };
+        loginRateLimitMap.set(ip, entry);
+    } else {
+        entry.count++;
+    }
+    if (entry.count > LOGIN_RATE_LIMIT_MAX) {
+        const remainingSec = Math.ceil((LOGIN_RATE_LIMIT_WINDOW - (now - entry.start)) / 1000);
+        return res.status(429).json({ error: `Забагато спроб входу. Спробуйте через ${Math.ceil(remainingSec / 60)} хв` });
+    }
+    next();
+}
+
 setInterval(() => {
     const now = Date.now();
     for (const [ip, entry] of rateLimitMap) {
         if (now - entry.start > RATE_LIMIT_WINDOW * 2) rateLimitMap.delete(ip);
+    }
+    for (const [ip, entry] of loginRateLimitMap) {
+        if (now - entry.start > LOGIN_RATE_LIMIT_WINDOW * 2) loginRateLimitMap.delete(ip);
     }
 }, 300000);
 
@@ -639,24 +688,32 @@ async function initDatabase() {
             )
         `);
 
-        // Seed default users if table is empty
+        // v5.20: Seed default users from SEED_USERS env var (JSON) or use safe defaults
+        // Format: SEED_USERS='[{"username":"Admin","password":"SecurePass123","role":"admin","name":"Адмін"}]'
         const userCount = await pool.query('SELECT COUNT(*) FROM users');
         if (parseInt(userCount.rows[0].count) === 0) {
-            const defaultUsers = [
-                { username: 'Vitalina', password: 'Vitalina109', role: 'user', name: 'Віталіна' },
-                { username: 'Dasha', password: 'Dasha743', role: 'user', name: 'Даша' },
-                { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
-                { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
-                { username: 'Animator', password: 'Animator612', role: 'viewer', name: 'Аніматор' }
-            ];
-            for (const u of defaultUsers) {
-                const hash = await bcrypt.hash(u.password, 10);
-                await pool.query(
-                    'INSERT INTO users (username, password_hash, role, name) VALUES ($1, $2, $3, $4) ON CONFLICT (username) DO NOTHING',
-                    [u.username, hash, u.role, u.name]
-                );
+            const seedUsersEnv = process.env.SEED_USERS;
+            if (seedUsersEnv) {
+                try {
+                    const defaultUsers = JSON.parse(seedUsersEnv);
+                    for (const u of defaultUsers) {
+                        if (!u.username || !u.password || !u.role || !u.name) {
+                            console.warn(`[Seed] Skipping invalid user entry: ${u.username || 'unnamed'}`);
+                            continue;
+                        }
+                        const hash = await bcrypt.hash(u.password, 10);
+                        await pool.query(
+                            'INSERT INTO users (username, password_hash, role, name) VALUES ($1, $2, $3, $4) ON CONFLICT (username) DO NOTHING',
+                            [u.username, hash, u.role, u.name]
+                        );
+                    }
+                    console.log('[Seed] Users seeded from SEED_USERS env');
+                } catch (parseErr) {
+                    console.error('[Seed] Failed to parse SEED_USERS env:', parseErr.message);
+                }
+            } else {
+                console.warn('[Seed] No users in DB and SEED_USERS env not set. Create users via API or set SEED_USERS env.');
             }
-            console.log('Default users seeded');
         }
 
         // v5.4: Booking number counter (atomic, per-year)
@@ -713,8 +770,8 @@ function authenticateToken(req, res, next) {
     }
 }
 
-// Login endpoint
-app.post('/api/auth/login', async (req, res) => {
+// Login endpoint (v5.20: strict rate limit)
+app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
     try {
         const { username, password } = req.body;
         if (!username || !password) {
@@ -2129,8 +2186,8 @@ async function sendTomorrowReminder(todayStr) {
 initDatabase().then(() => {
     app.listen(PORT, async () => {
         console.log(`Server running on port ${PORT}`);
-        console.log(`[Telegram Config] Bot token: ${TELEGRAM_BOT_TOKEN ? 'SET (' + TELEGRAM_BOT_TOKEN.slice(0,8) + '...)' : 'NOT SET'}`);
-        console.log(`[Telegram Config] Default chat ID: ${TELEGRAM_DEFAULT_CHAT_ID || 'NOT SET'}`);
+        console.log(`[Telegram Config] Bot token: ${TELEGRAM_BOT_TOKEN ? 'SET' : 'NOT SET'}`);
+        console.log(`[Telegram Config] Default chat ID: ${TELEGRAM_DEFAULT_CHAT_ID ? 'SET' : 'NOT SET'}`);
         try {
             const dbChatId = await getConfiguredChatId();
             console.log(`[Telegram Config] Effective chat ID: ${dbChatId || 'NONE'}`);

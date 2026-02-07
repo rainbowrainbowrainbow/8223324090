@@ -561,6 +561,16 @@ async function showSettings() {
     document.getElementById('settingsModal').classList.remove('hidden');
     fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
     fetchAndRenderThreads();
+
+    // v5.20: Bind refresh buttons (moved from inline onclick for CSP compliance)
+    const btnRefreshChats = document.getElementById('btnRefreshChats');
+    if (btnRefreshChats) {
+        btnRefreshChats.onclick = () => fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
+    }
+    const btnRefreshThreads = document.getElementById('btnRefreshThreads');
+    if (btnRefreshThreads) {
+        btnRefreshThreads.onclick = () => fetchAndRenderThreads();
+    }
 }
 
 // v5.11: Save all notification settings (digest + reminder + auto-delete)

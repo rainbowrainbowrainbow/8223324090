@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.19">
-    <link rel="stylesheet" href="css/auth.css?v=5.19">
-    <link rel="stylesheet" href="css/layout.css?v=5.19">
-    <link rel="stylesheet" href="css/timeline.css?v=5.19">
-    <link rel="stylesheet" href="css/panel.css?v=5.19">
-    <link rel="stylesheet" href="css/modals.css?v=5.19">
-    <link rel="stylesheet" href="css/controls.css?v=5.19">
-    <link rel="stylesheet" href="css/features.css?v=5.19">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.19">
-    <link rel="stylesheet" href="css/responsive.css?v=5.19">
+    <link rel="stylesheet" href="css/base.css?v=5.20">
+    <link rel="stylesheet" href="css/auth.css?v=5.20">
+    <link rel="stylesheet" href="css/layout.css?v=5.20">
+    <link rel="stylesheet" href="css/timeline.css?v=5.20">
+    <link rel="stylesheet" href="css/panel.css?v=5.20">
+    <link rel="stylesheet" href="css/modals.css?v=5.20">
+    <link rel="stylesheet" href="css/controls.css?v=5.20">
+    <link rel="stylesheet" href="css/features.css?v=5.20">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.20">
+    <link rel="stylesheet" href="css/responsive.css?v=5.20">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.19</p>
+                <p class="tagline">Система бронювання v5.20</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.19</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.20</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -472,7 +472,7 @@
                         <div class="form-group">
                             <label>Знайдені чати (натисніть щоб обрати):</label>
                             <div id="settingsTelegramChats" class="telegram-chats"></div>
-                            <button type="button" class="btn-refresh-chats" onclick="fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats')" title="Оновити список чатів">🔄 Оновити список</button>
+                            <button type="button" class="btn-refresh-chats" id="btnRefreshChats" title="Оновити список чатів">🔄 Оновити список</button>
                         </div>
                         <button type="button" id="settingsSaveTelegramBtn" class="btn-submit">Зберегти та протестувати</button>
                     </div>
@@ -483,7 +483,7 @@
                         <div class="form-group">
                             <label>Знайдені теми (натисніть щоб обрати):</label>
                             <div id="settingsTelegramThreads" class="telegram-chats"></div>
-                            <button type="button" class="btn-refresh-chats" onclick="fetchAndRenderThreads()" title="Оновити список тем">🔄 Оновити теми</button>
+                            <button type="button" class="btn-refresh-chats" id="btnRefreshThreads" title="Оновити список тем">🔄 Оновити теми</button>
                         </div>
                         <div class="form-group">
                             <label>Thread ID:</label>
@@ -642,6 +642,18 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v5.20 — Security Hardening</h4>
+                    <ul>
+                        <li>🔒 Прибрано хардкоджені секрети — Telegram токен, паролі, chat ID → змінні оточення</li>
+                        <li>🔒 Окремий rate limit для логіну: 5 спроб на 15 хвилин (захист від brute-force)</li>
+                        <li>🔒 CSP заголовок (Content-Security-Policy) — захист від XSS та ін'єкцій</li>
+                        <li>🔒 Security headers: X-Content-Type-Options, X-Frame-Options, Referrer-Policy</li>
+                        <li>🔒 Seed юзерів через SEED_USERS env замість хардкоду</li>
+                        <li>🔒 Логи більше не показують токени та chat ID</li>
+                        <li>📄 Додано .env.example з документацією змінних</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v5.19 — Афіша edit + Linked ghost + Period selector</h4>
                     <ul>
@@ -1036,13 +1048,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.19"></script>
-    <script src="js/api.js?v=5.19"></script>
-    <script src="js/ui.js?v=5.19"></script>
-    <script src="js/auth.js?v=5.19"></script>
-    <script src="js/timeline.js?v=5.19"></script>
-    <script src="js/booking.js?v=5.19"></script>
-    <script src="js/settings.js?v=5.19"></script>
-    <script src="js/app.js?v=5.19"></script>
+    <script src="js/config.js?v=5.20"></script>
+    <script src="js/api.js?v=5.20"></script>
+    <script src="js/ui.js?v=5.20"></script>
+    <script src="js/auth.js?v=5.20"></script>
+    <script src="js/timeline.js?v=5.20"></script>
+    <script src="js/booking.js?v=5.20"></script>
+    <script src="js/settings.js?v=5.20"></script>
+    <script src="js/app.js?v=5.20"></script>
 </body>
 </html>

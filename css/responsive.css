@@ -29,15 +29,17 @@
     .header-content { padding: 12px 16px; }
     .logo-text h1 { font-size: 14px; }
 
-    .main-content { padding: 16px; }
-    .control-panel { flex-direction: column; align-items: stretch; gap: 12px; }
+    .main-content { padding: 12px; }
+    .control-panel { flex-direction: column; align-items: stretch; gap: 8px; }
 
+    /* v5.34: Row 1 — Date navigation (full width, centered) */
     .date-controls {
         display: flex;
         justify-content: center;
         flex-wrap: nowrap;
         gap: 6px;
         width: 100%;
+        order: 1;
     }
 
     .date-controls .btn-nav {
@@ -90,16 +92,30 @@
         min-height: 44px;
     }
 
-    /* v5.15: Status filter mobile */
+    /* v5.34: Row 2 — Status filter + Period selector side by side */
     .status-filter-controls {
         order: 2;
-        width: 100%;
+        flex: 1;
+        min-width: 0;
         justify-content: center;
     }
 
     .status-filter-btn {
         flex: 1;
         text-align: center;
+        padding: 8px 6px;
+        font-size: 11px;
+    }
+
+    .view-mode-controls {
+        order: 2;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .period-btn {
+        font-size: 11px;
+        padding: 8px 10px;
     }
 
     /* v5.16: History filters mobile */
@@ -121,11 +137,15 @@
         width: auto;
     }
 
-    /* v32 controls */
+    /* v5.34: Row 3 — Zoom, toggles, action buttons */
     .v32-controls {
         order: 3;
         width: 100%;
         justify-content: center;
+    }
+
+    .action-buttons {
+        order: 3;
     }
 
     .zoom-controls .zoom-btn {
@@ -136,7 +156,12 @@
 
     .toggle-mini {
         font-size: 14px;
-        padding: 4px 6px;
+        padding: 6px 8px;
+    }
+
+    /* v5.34: Timeline scroll hint */
+    .timeline-scroll {
+        scroll-snap-type: x proximity;
     }
 
     /* Category grid */
@@ -150,6 +175,8 @@
    ========================================== */
 
 @media (max-width: 480px) {
+    .main-content { padding: 8px; }
+
     .category-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
     .program-icon { min-height: 68px; padding: 10px 4px; }
     .program-icon .icon { font-size: 22px; }
@@ -168,8 +195,81 @@
 
     .v32-controls { gap: 4px; }
 
+    /* v5.34: Full-screen modals on small screens */
+    .modal { padding: 0; }
+    .modal-content {
+        max-width: 100%;
+        max-height: 100vh;
+        border-radius: 0;
+        border: none;
+        animation: none;
+    }
+    .modal-large { max-width: 100%; }
+    .modal-catalog { max-width: 100%; max-height: 100vh; border-radius: 0; }
+
+    /* v5.34: Status filter stacks on very small screens */
+    .control-panel { gap: 6px; }
+    .status-filter-btn { font-size: 10px; padding: 8px 4px; min-width: 0; }
+    .period-btn { font-size: 10px; padding: 8px 6px; }
+
+    /* v5.34: Timeline compact */
+    .timeline-scroll { padding: 8px; }
+    .time-scale { margin-left: 70px; }
+    .line-header { width: 70px; min-width: 70px; }
+    .line-name { font-size: 11px; }
+
     /* Dashboard */
     .dashboard-grid { grid-template-columns: 1fr; }
     .dash-card-value { font-size: 18px; }
     .modal-wide { max-width: 100%; }
+}
+
+/* ==========================================
+   EXTRA SMALL (<=390px) — iPhone SE, Galaxy A03
+   ========================================== */
+
+@media (max-width: 390px) {
+    .main-content { padding: 6px; }
+
+    /* v5.34: Toolbar ultra-compact */
+    .date-controls { gap: 4px; }
+    .date-controls input[type="date"] {
+        min-width: 90px;
+        max-width: 110px;
+        padding: 8px 4px;
+        font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
+    }
+    .date-controls .btn-nav {
+        width: 40px;
+        height: 44px;
+        min-width: 40px;
+        padding: 0;
+        font-size: 14px;
+    }
+    .btn-today {
+        padding: 8px;
+        font-size: 11px;
+    }
+
+    /* Status filter: icon-only */
+    .status-filter-btn { font-size: 10px; padding: 8px 3px; }
+
+    /* Zoom: tighter */
+    .zoom-controls .zoom-btn {
+        padding: 6px 8px;
+        font-size: 10px;
+    }
+
+    /* Toggle labels hidden */
+    .toggle-mini-label { display: none; }
+    .toggle-mini { padding: 6px; }
+
+    /* Timeline: narrower headers */
+    .time-scale { margin-left: 60px; }
+    .line-header { width: 60px; min-width: 60px; }
+    .line-name { font-size: 10px; }
+
+    /* Action buttons: icon-only */
+    .btn-export { font-size: 11px; padding: 8px; }
+    .btn-menu-toggle { font-size: 11px; padding: 8px; }
 }

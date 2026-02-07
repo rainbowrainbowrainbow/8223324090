@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.20">
-    <link rel="stylesheet" href="css/auth.css?v=5.20">
-    <link rel="stylesheet" href="css/layout.css?v=5.20">
-    <link rel="stylesheet" href="css/timeline.css?v=5.20">
-    <link rel="stylesheet" href="css/panel.css?v=5.20">
-    <link rel="stylesheet" href="css/modals.css?v=5.20">
-    <link rel="stylesheet" href="css/controls.css?v=5.20">
-    <link rel="stylesheet" href="css/features.css?v=5.20">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.20">
-    <link rel="stylesheet" href="css/responsive.css?v=5.20">
+    <link rel="stylesheet" href="css/base.css?v=5.21">
+    <link rel="stylesheet" href="css/auth.css?v=5.21">
+    <link rel="stylesheet" href="css/layout.css?v=5.21">
+    <link rel="stylesheet" href="css/timeline.css?v=5.21">
+    <link rel="stylesheet" href="css/panel.css?v=5.21">
+    <link rel="stylesheet" href="css/modals.css?v=5.21">
+    <link rel="stylesheet" href="css/controls.css?v=5.21">
+    <link rel="stylesheet" href="css/features.css?v=5.21">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.21">
+    <link rel="stylesheet" href="css/responsive.css?v=5.21">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.20</p>
+                <p class="tagline">Система бронювання v5.21</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.20</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.21</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -698,6 +698,16 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v5.21 — Performance</h4>
+                    <ul>
+                        <li>⚡ Композитні індекси БД — швидші запити по даті+кімнаті, даті+лінії</li>
+                        <li>⚡ Виправлено N+1 запит в перевірці дублікатів (1 запит замість N+1)</li>
+                        <li>⚡ Оптимізовано пагінацію історії (window function замість 2 запитів)</li>
+                        <li>⚡ Кеш таймлайну 60 сек замість 10 — менше зайвих запитів</li>
+                        <li>🔧 DRY: спільна функція hasTimeOverlap() для перевірки конфліктів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v5.20 — Security Hardening</h4>
                     <ul>
                         <li>🔒 Прибрано хардкоджені секрети — Telegram токен, паролі, chat ID → змінні оточення</li>
@@ -1103,13 +1113,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.20"></script>
-    <script src="js/api.js?v=5.20"></script>
-    <script src="js/ui.js?v=5.20"></script>
-    <script src="js/auth.js?v=5.20"></script>
-    <script src="js/timeline.js?v=5.20"></script>
-    <script src="js/booking.js?v=5.20"></script>
-    <script src="js/settings.js?v=5.20"></script>
-    <script src="js/app.js?v=5.20"></script>
+    <script src="js/config.js?v=5.21"></script>
+    <script src="js/api.js?v=5.21"></script>
+    <script src="js/ui.js?v=5.21"></script>
+    <script src="js/auth.js?v=5.21"></script>
+    <script src="js/timeline.js?v=5.21"></script>
+    <script src="js/booking.js?v=5.21"></script>
+    <script src="js/settings.js?v=5.21"></script>
+    <script src="js/app.js?v=5.21"></script>
 </body>
 </html>

@@ -3,7 +3,7 @@
  */
 const rateLimitMap = new Map();
 const RATE_LIMIT_WINDOW = 60000;
-const RATE_LIMIT_MAX = 120;
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX) || 120;
 
 function rateLimiter(req, res, next) {
     const ip = req.ip || req.connection.remoteAddress;

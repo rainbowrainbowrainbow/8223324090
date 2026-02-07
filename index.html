@@ -14,16 +14,16 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.46">
-    <link rel="stylesheet" href="css/auth.css?v=5.46">
-    <link rel="stylesheet" href="css/layout.css?v=5.46">
-    <link rel="stylesheet" href="css/timeline.css?v=5.46">
-    <link rel="stylesheet" href="css/panel.css?v=5.46">
-    <link rel="stylesheet" href="css/modals.css?v=5.46">
-    <link rel="stylesheet" href="css/controls.css?v=5.46">
-    <link rel="stylesheet" href="css/features.css?v=5.46">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.46">
-    <link rel="stylesheet" href="css/responsive.css?v=5.46">
+    <link rel="stylesheet" href="css/base.css?v=5.47">
+    <link rel="stylesheet" href="css/auth.css?v=5.47">
+    <link rel="stylesheet" href="css/layout.css?v=5.47">
+    <link rel="stylesheet" href="css/timeline.css?v=5.47">
+    <link rel="stylesheet" href="css/panel.css?v=5.47">
+    <link rel="stylesheet" href="css/modals.css?v=5.47">
+    <link rel="stylesheet" href="css/controls.css?v=5.47">
+    <link rel="stylesheet" href="css/features.css?v=5.47">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.47">
+    <link rel="stylesheet" href="css/responsive.css?v=5.47">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -34,9 +34,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.46</p>
+                <p class="tagline">Система бронювання v5.47</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.46</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.47</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -479,7 +479,7 @@
                     <div class="telegram-setup">
                         <div class="form-group">
                             <label>Chat ID групи:</label>
-                            <input type="text" id="settingsTelegramChatId" placeholder="-100xxxxxxxxxx" style="width:100%; padding:10px; border:1px solid var(--gray-300); border-radius:8px; font-size:14px;">
+                            <input type="text" id="settingsTelegramChatId" placeholder="-100xxxxxxxxxx">
                         </div>
                         <div class="form-group">
                             <label>Знайдені чати (натисніть щоб обрати):</label>
@@ -489,8 +489,8 @@
                         <button type="button" id="settingsSaveTelegramBtn" class="btn-submit">Зберегти та протестувати</button>
                     </div>
                     <!-- v5.17: Thread/Topic ID -->
-                    <div class="telegram-setup" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray-200);">
-                        <h4 style="margin: 0 0 8px;">💬 Гілка (Topic) для сповіщень</h4>
+                    <div class="telegram-setup tg-subsection">
+                        <h4>💬 Гілка (Topic) для сповіщень</h4>
                         <p class="digest-hint">Оберіть гілку/тему групи, куди будуть надходити сповіщення. Якщо список порожній — напишіть щось у потрібну тему групи, щоб бот її побачив.</p>
                         <div class="form-group">
                             <label>Знайдені теми (натисніть щоб обрати):</label>
@@ -499,53 +499,53 @@
                         </div>
                         <div class="form-group">
                             <label>Thread ID:</label>
-                            <input type="text" id="settingsTelegramThreadId" placeholder="Обрати зі списку або ввести вручну" style="width:100%; padding:10px; border:1px solid var(--gray-300); border-radius:8px; font-size:14px;">
+                            <input type="text" id="settingsTelegramThreadId" placeholder="Обрати зі списку або ввести вручну">
                         </div>
-                        <button type="button" id="saveThreadIdBtn" class="btn-submit" style="background: linear-gradient(135deg, #8B5CF6, #6D28D9);">💾 Зберегти Thread ID</button>
+                        <button type="button" id="saveThreadIdBtn" class="btn-submit btn-purple">💾 Зберегти Thread ID</button>
                     </div>
                     <!-- A4: Дайджест на сьогодні -->
-                    <div class="telegram-setup digest-section" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray-200);">
-                        <h4 style="margin: 0 0 8px;">📅 Дайджест «Розклад на сьогодні»</h4>
+                    <div class="telegram-setup digest-section tg-subsection-lg">
+                        <h4>📅 Дайджест «Розклад на сьогодні»</h4>
                         <p class="digest-hint">Відправляє список бронювань на поточний день.</p>
                         <div class="form-group">
                             <label>Час відправки — будні (Пн-Пт):</label>
-                            <input type="time" id="settingsDigestTimeWeekday" style="width: 120px;">
+                            <input type="time" id="settingsDigestTimeWeekday" class="input-time">
                         </div>
                         <div class="form-group">
                             <label>Час відправки — вихідні (Сб-Нд):</label>
-                            <input type="time" id="settingsDigestTimeWeekend" style="width: 120px;">
+                            <input type="time" id="settingsDigestTimeWeekend" class="input-time">
                         </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button type="button" id="sendTestDigestBtn" class="btn-submit" style="flex:1; background: linear-gradient(135deg, #3B82F6, #1D4ED8);">📲 Тест дайджест</button>
+                        <div class="tg-btn-row">
+                            <button type="button" id="sendTestDigestBtn" class="btn-submit btn-blue btn-flex">📲 Тест дайджест</button>
                         </div>
                     </div>
                     <!-- A4b: Нагадування на завтра -->
-                    <div class="telegram-setup digest-section" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray-200);">
-                        <h4 style="margin: 0 0 8px;">⏰ Нагадування «Що буде завтра»</h4>
+                    <div class="telegram-setup digest-section tg-subsection">
+                        <h4>⏰ Нагадування «Що буде завтра»</h4>
                         <p class="digest-hint">Відправляє список бронювань на наступний день. Завжди в один час.</p>
                         <div class="form-group">
                             <label>Час відправки (щодня):</label>
-                            <input type="time" id="settingsReminderTime" style="width: 120px;">
+                            <input type="time" id="settingsReminderTime" class="input-time">
                         </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button type="button" id="sendTestReminderBtn" class="btn-submit" style="flex:1; background: linear-gradient(135deg, #3B82F6, #1D4ED8);">📲 Тест нагадування</button>
+                        <div class="tg-btn-row">
+                            <button type="button" id="sendTestReminderBtn" class="btn-submit btn-blue btn-flex">📲 Тест нагадування</button>
                         </div>
                     </div>
                     <!-- A4c: Автовидалення повідомлень -->
-                    <div class="telegram-setup digest-section" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray-200);">
-                        <h4 style="margin: 0 0 8px;">🗑 Автовидалення повідомлень</h4>
+                    <div class="telegram-setup digest-section tg-subsection">
+                        <h4>🗑 Автовидалення повідомлень</h4>
                         <p class="digest-hint">Дайджести та нагадування видаляються автоматично через вказаний час.</p>
-                        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                            <label class="toggle-switch" style="margin: 0;">
+                        <div class="form-group tg-inline-group">
+                            <label class="toggle-switch">
                                 <input type="checkbox" id="settingsAutoDeleteEnabled">
                                 <span class="toggle-slider"></span>
                             </label>
                             <span>Увімкнути автовидалення</span>
-                            <input type="number" id="settingsAutoDeleteHours" value="10" min="1" max="48" style="width: 60px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--gray-300);"> год
+                            <input type="number" id="settingsAutoDeleteHours" value="10" min="1" max="48" class="input-hours"> год
                         </div>
                     </div>
-                    <div style="margin-top: 12px;">
-                        <button type="button" id="saveDigestTimeBtn" class="btn-submit" style="width: 100%;">💾 Зберегти налаштування сповіщень</button>
+                    <div class="tg-footer">
+                        <button type="button" id="saveDigestTimeBtn" class="btn-submit btn-full">💾 Зберегти налаштування сповіщень</button>
                     </div>
                 </div>
             </div>
@@ -654,6 +654,14 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v5.47 — Inline Style Cleanup</h4>
+                    <ul>
+                        <li>Видалено всі 20 inline styles з Telegram налаштувань</li>
+                        <li>Нові CSS класи: btn-purple, btn-blue, tg-subsection, input-time</li>
+                        <li>Dark mode тепер працює для всіх кнопок Telegram</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v5.46 — Wire Up Design System</h4>
                     <ul>
@@ -1256,13 +1264,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.46"></script>
-    <script src="js/api.js?v=5.46"></script>
-    <script src="js/ui.js?v=5.46"></script>
-    <script src="js/auth.js?v=5.46"></script>
-    <script src="js/timeline.js?v=5.46"></script>
-    <script src="js/booking.js?v=5.46"></script>
-    <script src="js/settings.js?v=5.46"></script>
-    <script src="js/app.js?v=5.46"></script>
+    <script src="js/config.js?v=5.47"></script>
+    <script src="js/api.js?v=5.47"></script>
+    <script src="js/ui.js?v=5.47"></script>
+    <script src="js/auth.js?v=5.47"></script>
+    <script src="js/timeline.js?v=5.47"></script>
+    <script src="js/booking.js?v=5.47"></script>
+    <script src="js/settings.js?v=5.47"></script>
+    <script src="js/app.js?v=5.47"></script>
 </body>
 </html>

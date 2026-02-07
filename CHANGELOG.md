@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-02-07 — v5.47 Inline Style Cleanup
+
+**Що вирішили:**
+- Видалити всі 20 inline styles з Telegram налаштувань в index.html
+- Замінити на CSS класи для підтримки dark mode та maintainability
+- Додати кольорові модифікатори кнопок (purple/blue)
+
+**Що додали/поміняли:**
+- `css/features.css` — нові класи: `.tg-subsection`, `.tg-subsection-lg`, `.tg-btn-row`, `.tg-inline-group`, `.tg-footer`
+- `css/features.css` — кнопки: `.btn-submit.btn-purple`, `.btn-submit.btn-blue`, `.btn-submit.btn-flex`, `.btn-submit.btn-full`
+- `css/features.css` — інпути: `.input-time` (width:120px), `.input-hours` (compact number input)
+- `css/dark-mode.css` — адаптація `.tg-subsection` borders, `.btn-submit.btn-purple/blue` shadows, `.input-hours`
+- `index.html` — 20 inline `style=` замінено на CSS класи, 2 input overrides видалено (використовується `.form-group input`)
+- Version bump 5.47.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v5.48 — Invite Creation Flow Fix
+
+---
+
 ## 2026-02-07 — v5.46 Wire Up Design System
 
 **Що вирішили:**

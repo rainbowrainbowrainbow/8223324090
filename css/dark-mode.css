@@ -673,11 +673,21 @@ body.dark-mode .btn-refresh-chats {
 body.dark-mode .digest-section h4 { color: #E2E8F0; }
 body.dark-mode .digest-hint { color: #9CA3AF; }
 body.dark-mode .toggle-slider { background: #4B5563; }
-body.dark-mode #settingsAutoDeleteHours {
+body.dark-mode #settingsAutoDeleteHours,
+body.dark-mode .input-hours {
     background: var(--gray-100);
     border-color: var(--gray-300);
     color: #E2E8F0;
 }
+
+/* v5.47: Telegram settings subsection borders in dark */
+body.dark-mode .tg-subsection,
+body.dark-mode .tg-subsection-lg {
+    border-top-color: var(--gray-300);
+}
+
+body.dark-mode .btn-submit.btn-purple { box-shadow: 0 4px 14px rgba(139,92,246,0.15); }
+body.dark-mode .btn-submit.btn-blue { box-shadow: 0 4px 14px rgba(59,130,246,0.15); }
 
 /* v5.16: History filters in dark */
 body.dark-mode .history-filter-select,

@@ -103,6 +103,59 @@
     color: var(--gray-500);
     margin: 0 0 10px;
 }
+/* v5.47: Telegram settings layout classes (replace inline styles) */
+.tg-subsection {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.tg-subsection-lg {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.tg-subsection h4 { margin: 0 0 8px; }
+
+.tg-btn-row { display: flex; gap: 8px; }
+
+.tg-inline-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tg-inline-group .toggle-switch { margin: 0; }
+
+.tg-footer { margin-top: 12px; }
+
+/* Button color modifiers */
+.btn-submit.btn-purple {
+    background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);
+    box-shadow: 0 4px 14px rgba(139,92,246,0.25);
+}
+
+.btn-submit.btn-blue {
+    background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%);
+    box-shadow: 0 4px 14px rgba(59,130,246,0.25);
+}
+
+.btn-submit.btn-flex { flex: 1; }
+.btn-submit.btn-full { width: 100%; }
+
+/* Input size variants */
+.input-time { width: 120px; }
+
+.input-hours {
+    width: 60px;
+    padding: 4px 8px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--gray-300);
+    font-size: var(--font-sm);
+    font-family: inherit;
+}
+
 .toggle-switch {
     position: relative;
     display: inline-block;

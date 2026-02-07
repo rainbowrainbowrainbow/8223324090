@@ -230,23 +230,11 @@ function selectProgram(programId) {
                     document.getElementById('detailPrice').textContent = count > 0
                         ? `${formatPrice(program.price)} x ${count} = ${formatPrice(total)}`
                         : `${formatPrice(program.price)}/дит`;
-                    // v5.20: Validate against program kids limit
-                    validateKidsCount(count, program);
                 };
             }
         } else {
             kidsCountSection.classList.add('hidden');
         }
-        // v5.20: Clear warning when switching programs
-        const warning = document.getElementById('kidsCountWarning');
-        if (warning) warning.classList.add('hidden');
-    }
-
-    // v5.20: Also validate kids for non-perChild programs that have a kids field
-    if (program.kids && !program.perChild) {
-        const kidsRange = parseKidsRange(program.kids);
-        const kidsEl = document.getElementById('detailKids');
-        if (kidsEl) kidsEl.textContent = program.kids;
     }
 }
 
@@ -446,41 +434,6 @@ async function buildLinkedBookings(booking, program) {
     return linked;
 }
 
-// v5.20: Parse kids range from program definition (e.g. '5-25', 'до 15', '2-16')
-function parseKidsRange(kidsStr) {
-    if (!kidsStr) return { min: 0, max: Infinity };
-    const cleaned = kidsStr.replace(/р$/, '').trim();
-    const rangeMatch = cleaned.match(/(\d+)\s*-\s*(\d+)/);
-    if (rangeMatch) return { min: parseInt(rangeMatch[1]), max: parseInt(rangeMatch[2]) };
-    const maxMatch = cleaned.match(/до\s*(\d+)/i);
-    if (maxMatch) return { min: 0, max: parseInt(maxMatch[1]) };
-    return { min: 0, max: Infinity };
-}
-
-// v5.20: Validate kids count against program limits — show warning
-function validateKidsCount(count, program) {
-    const warning = document.getElementById('kidsCountWarning');
-    if (!warning) return true;
-
-    if (!count || count <= 0 || !program.kids) {
-        warning.classList.add('hidden');
-        return true;
-    }
-
-    const range = parseKidsRange(program.kids);
-    if (count < range.min) {
-        warning.textContent = `⚠️ Мінімум ${range.min} дітей для цієї програми (рекомендація: ${program.kids})`;
-        warning.classList.remove('hidden');
-        return false;
-    } else if (count > range.max) {
-        warning.textContent = `⚠️ Максимум ${range.max} дітей для цієї програми (рекомендація: ${program.kids})`;
-        warning.classList.remove('hidden');
-        return false;
-    }
-    warning.classList.add('hidden');
-    return true;
-}
-
 async function handleBookingSubmit(e) {
     e.preventDefault();
 
@@ -490,18 +443,6 @@ async function handleBookingSubmit(e) {
     if (!formData.room) { showNotification('Оберіть кімнату', 'error'); return; }
     if (formData.program.hasFiller && !formData.pinataFiller) {
         showNotification('Оберіть наповнювач для піньяти', 'error'); return;
-    }
-
-    // v5.20: Warn if kids count is out of program range (non-blocking)
-    if (formData.program.perChild) {
-        const kidsInput = document.getElementById('kidsCountInput');
-        const kidsCount = kidsInput ? parseInt(kidsInput.value) || 0 : 0;
-        if (kidsCount > 0 && formData.program.kids) {
-            const range = parseKidsRange(formData.program.kids);
-            if (kidsCount < range.min || kidsCount > range.max) {
-                showWarning(`⚠️ К-кість дітей (${kidsCount}) виходить за рекомендований діапазон: ${formData.program.kids}`);
-            }
-        }
     }
 
     // v5.5: excludeId для режиму редагування

@@ -108,5 +108,4 @@ function showMainApp() {
     renderProgramIcons();
     fetchAnimatorsFromSheet();
     setupSwipe();
-    initDragListeners(); // v5.20: Drag-to-move & resize
 }

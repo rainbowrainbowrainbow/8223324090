@@ -837,27 +837,6 @@ body.dark-mode .main-content {
     padding-bottom: 40px;
 }
 
-/* v5.20: Drag-to-move & resize — dark mode overrides */
-body.dark-mode .booking-block.dragging {
-    box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
-}
-
-body.dark-mode .line-grid.drag-target {
-    background: rgba(16,185,129,0.1) !important;
-    outline-color: #10B981;
-}
-
-body.dark-mode.is-dragging .booking-block:not(.dragging) {
-    opacity: 0.35;
-}
-
-/* v5.20: Kids count warning dark mode */
-body.dark-mode .kids-count-warning {
-    background: #422006;
-    border-color: #B45309;
-    color: #FDE68A;
-}
-
 /* Scrollbar improvement */
 body.dark-mode ::-webkit-scrollbar-track {
     background: #0f0f1a;

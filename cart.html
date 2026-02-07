@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🛒 Корзина — Купити все-все-все (преміум)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      padding: 16px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 8px;
+      font-size: 1.5rem;
+    }
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+    }
+    .summary-bar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: #1a1a2e;
+      color: #fff;
+      padding: 12px 16px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .summary-bar .count { opacity: 0.8; font-weight: 400; }
+    .category {
+      background: #fff;
+      border-radius: 12px;
+      margin-bottom: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .category-header {
+      padding: 12px 16px;
+      font-weight: 700;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+    }
+    .category-header .badge {
+      background: #e0e0e0;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+    .cat-protection .category-header { background: #e8f5e9; }
+    .cat-chemistry .category-header { background: #fff3e0; }
+    .cat-cleaning .category-header { background: #e3f2fd; }
+    .cat-safety .category-header { background: #fce4ec; }
+    .cat-prevention .category-header { background: #f3e5f5; }
+    .items { padding: 0; }
+    .item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-top: 1px solid #f0f0f0;
+      transition: background 0.15s;
+    }
+    .item:hover { background: #fafafa; }
+    .item.checked { opacity: 0.5; }
+    .item.checked .item-name { text-decoration: line-through; }
+    .item input[type="checkbox"] {
+      width: 22px;
+      height: 22px;
+      accent-color: #4caf50;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .item-info { flex: 1; min-width: 0; }
+    .item-name { font-weight: 500; font-size: 0.95rem; }
+    .item-detail { color: #888; font-size: 0.8rem; margin-top: 2px; }
+    .item-qty {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .item-qty button {
+      width: 28px;
+      height: 28px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .item-qty button:hover { background: #f0f0f0; }
+    .item-qty span {
+      min-width: 20px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 1px 6px;
+      border-radius: 4px;
+      margin-left: 6px;
+      font-weight: 600;
+      vertical-align: middle;
+    }
+    .tag-optional { background: #fff9c4; color: #f57f17; }
+    .tag-min { background: #e8f5e9; color: #2e7d32; }
+
+    .rules {
+      background: #fff3e0;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+    .rules h3 { margin-bottom: 8px; font-size: 1rem; }
+    .rules li { margin: 6px 0 6px 20px; font-size: 0.9rem; line-height: 1.4; }
+
+    .reset-btn {
+      display: block;
+      margin: 16px auto;
+      padding: 10px 24px;
+      background: #e53935;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .reset-btn:hover { background: #c62828; }
+  </style>
+</head>
+<body>
+  <h1>🛒 Купити все-все-все</h1>
+  <p class="subtitle">Преміум-список для боротьби з пліснявою</p>
+
+  <div class="summary-bar">
+    <span>Зібрано: <span id="checkedCount">0</span> / <span id="totalCount">0</span></span>
+    <span class="count" id="remainText">залишилось: 0</span>
+  </div>
+
+  <div id="cartContainer"></div>
+
+  <div class="rules">
+    <h3>&#9888;&#65039; 3 правила безпеки</h3>
+    <ol>
+      <li><strong>Кіт/люди</strong> — геть з ванни, двері закриті.</li>
+      <li><strong>Не змішувати</strong> засоби між собою (особливо хлор + кислоти/оцет).</li>
+      <li><strong>Після</strong> — змити і провітрити 30–60 хв.</li>
+    </ol>
+  </div>
+
+  <button class="reset-btn" onclick="resetCart()">Скинути все</button>
+
+<script>
+const CART_DATA = [
+  {
+    id: 'protection',
+    title: '1) Захист',
+    cssClass: 'cat-protection',
+    items: [
+      { id: 'resp', name: 'Респіратор FFP2/FFP3 з клапаном', detail: 'краще FFP3', qty: 2, min: true },
+      { id: 'goggles', name: 'Захисні окуляри закритого типу', detail: 'goggles, з вентиляцією', qty: 1, min: true },
+      { id: 'gloves', name: 'Нітрилові рукавички (товсті, хімстійкі)', detail: 'пачка M/L', qty: 1, min: true },
+      { id: 'suit', name: 'Одноразовий комбінезон/накидка або будівельний халат', detail: '', qty: 1, optional: true },
+    ]
+  },
+  {
+    id: 'chemistry',
+    title: '2) Хімія проти плісняви',
+    cssClass: 'cat-chemistry',
+    items: [
+      { id: 'hg', name: 'HG Mould Spray', detail: 'преміум-спрей, 1 флакон', qty: 1 },
+      { id: 'savo', name: 'Savo проти плісняви або Cillit Bang Black Mould Remover', detail: 'сильний "ударний", 1 флакон', qty: 1, min: true },
+    ]
+  },
+  {
+    id: 'cleaning',
+    title: '3) Механічна чистка',
+    cssClass: 'cat-cleaning',
+    items: [
+      { id: 'brush', name: 'Жорстка щітка для швів (маленька)', detail: '', qty: 1, min: true },
+      { id: 'melamine', name: 'Меламінові губки ("magic sponge")', detail: '1 пачка', qty: 1 },
+      { id: 'microfiber', name: 'Серветки мікрофібра', detail: '', qty: 3, min: true },
+      { id: 'paper', name: 'Паперові рушники', detail: '1 рулон', qty: 1, min: true },
+    ]
+  },
+  {
+    id: 'safety',
+    title: '4) Нейтралізація / змивання / контроль',
+    cssClass: 'cat-safety',
+    items: [
+      { id: 'saline', name: 'Фізрозчин 0,9%', detail: 'для промивання очей, якщо бризне', qty: 2 },
+      { id: 'spray_bottle', name: 'Пульверизатор-пляшка', detail: 'під чисту воду для змиву', qty: 1 },
+      { id: 'trash_bags', name: 'Пакети для сміття щільні', detail: '1 рулон', qty: 1 },
+    ]
+  },
+  {
+    id: 'prevention',
+    title: '5) Профілактика ("щоб не поверталось")',
+    cssClass: 'cat-prevention',
+    items: [
+      { id: 'anti_mould', name: 'Антигрибкова просочення/спрей для швів', detail: 'Savo/HG/інший "anti-mould protection"', qty: 1 },
+      { id: 'grout', name: 'Фуга/затирка з антигрибковими добавками + шпатель', detail: 'якщо шви старі й кришаться — за потреби', qty: 1, optional: true },
+    ]
+  }
+];
+
+const STORAGE_KEY = 'mould_cart_state';
+
+function loadState() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+  } catch { return {}; }
+}
+
+function saveState(state) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function render() {
+  const state = loadState();
+  const container = document.getElementById('cartContainer');
+  container.innerHTML = '';
+
+  let total = 0;
+  let checked = 0;
+
+  CART_DATA.forEach(cat => {
+    const section = document.createElement('div');
+    section.className = `category ${cat.cssClass}`;
+
+    const catChecked = cat.items.filter(i => state[i.id]?.checked).length;
+
+    section.innerHTML = `
+      <div class="category-header">
+        <span>${cat.title}</span>
+        <span class="badge">${catChecked}/${cat.items.length}</span>
+      </div>
+      <div class="items"></div>
+    `;
+
+    const itemsDiv = section.querySelector('.items');
+
+    cat.items.forEach(item => {
+      const s = state[item.id] || { checked: false, qty: item.qty };
+      total++;
+      if (s.checked) checked++;
+
+      const row = document.createElement('div');
+      row.className = `item${s.checked ? ' checked' : ''}`;
+
+      let tags = '';
+      if (item.optional) tags += '<span class="tag tag-optional">опційно</span>';
+      if (item.min) tags += '<span class="tag tag-min">мін.</span>';
+
+      row.innerHTML = `
+        <input type="checkbox" ${s.checked ? 'checked' : ''} data-id="${item.id}">
+        <div class="item-info">
+          <div class="item-name">${item.name}${tags}</div>
+          ${item.detail ? `<div class="item-detail">${item.detail}</div>` : ''}
+        </div>
+        <div class="item-qty">
+          <button data-id="${item.id}" data-action="minus">−</button>
+          <span>${s.qty}</span>
+          <button data-id="${item.id}" data-action="plus">+</button>
+        </div>
+      `;
+      itemsDiv.appendChild(row);
+    });
+
+    container.appendChild(section);
+  });
+
+  document.getElementById('checkedCount').textContent = checked;
+  document.getElementById('totalCount').textContent = total;
+  document.getElementById('remainText').textContent = `залишилось: ${total - checked}`;
+}
+
+document.addEventListener('click', e => {
+  const state = loadState();
+
+  if (e.target.type === 'checkbox') {
+    const id = e.target.dataset.id;
+    if (!state[id]) {
+      const item = CART_DATA.flatMap(c => c.items).find(i => i.id === id);
+      state[id] = { checked: false, qty: item.qty };
+    }
+    state[id].checked = e.target.checked;
+    saveState(state);
+    render();
+    return;
+  }
+
+  if (e.target.dataset.action) {
+    const id = e.target.dataset.id;
+    const item = CART_DATA.flatMap(c => c.items).find(i => i.id === id);
+    if (!state[id]) state[id] = { checked: false, qty: item.qty };
+
+    if (e.target.dataset.action === 'plus') {
+      state[id].qty++;
+    } else if (e.target.dataset.action === 'minus' && state[id].qty > 1) {
+      state[id].qty--;
+    }
+    saveState(state);
+    render();
+  }
+});
+
+function resetCart() {
+  if (confirm('Скинути всю корзину?')) {
+    localStorage.removeItem(STORAGE_KEY);
+    render();
+  }
+}
+
+render();
+</script>
+</body>
+</html>

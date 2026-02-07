@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-02-07 — v5.48 Invite Creation Flow
+
+**Що вирішили:**
+- Замінити просту посилку "Запрошення" на повноцінну секцію з preview та діями
+- Додати copy-to-clipboard та Web Share API
+- Покращити UX: користувач бачить що буде в запрошенні перед відправкою
+
+**Що додали/поміняли:**
+- `js/booking.js` — нова invite section з preview (date, time, program, room) + 3 кнопки
+- `js/booking.js` — `copyInviteLink()` з візуальним feedback "✅ Скопійовано!"
+- `js/booking.js` — `shareInviteLink()` через Web Share API (мобільні)
+- `css/features.css` — `.invite-section` з amber gradient background, `.invite-preview`, `.invite-actions`
+- `css/features.css` — `.btn-invite-open` (amber), `.btn-invite-copy` (neutral), `.btn-invite-share` (emerald)
+- `css/dark-mode.css` — dark mode для invite section з tinted backgrounds
+- Version bump 5.48.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- Design system integration серія v5.46–v5.48 завершена!
+
+---
+
 ## 2026-02-07 — v5.47 Inline Style Cleanup
 
 **Що вирішили:**

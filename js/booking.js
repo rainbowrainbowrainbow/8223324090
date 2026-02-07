@@ -616,6 +616,9 @@ async function showBookingDetails(bookingId) {
     });
     const inviteUrl = `/invite?${inviteParams.toString()}`;
 
+    const fullInviteUrl = `${window.location.origin}/invite?${inviteParams.toString()}`;
+    const inviteShareText = `Запрошуємо на ${escapeHtml(booking.programName || booking.label)} ${escapeHtml(booking.date)}! Парк Закревського Періоду — вул. Закревського 31/2, 3 поверх`;
+
     const editControls = isViewer() ? '' : `
         <div class="booking-time-shift">
             <span class="label">Перенести час:</span>
@@ -628,9 +631,22 @@ async function showBookingDetails(bookingId) {
                 <button onclick="shiftBookingTime('${booking.id}', 60)">+60</button>
             </div>
         </div>
+        <div class="invite-section">
+            <div class="invite-section-header">🎉 Запрошення для клієнта</div>
+            <div class="invite-preview">
+                <span>📅 ${escapeHtml(booking.date)}</span>
+                <span>🕐 ${escapeHtml(booking.time)}</span>
+                <span>🎪 ${escapeHtml(booking.programName || booking.label)}</span>
+                <span>🏠 ${escapeHtml(booking.room)}</span>
+            </div>
+            <div class="invite-actions">
+                <a href="${inviteUrl}" target="_blank" class="btn-invite-open">👁 Відкрити</a>
+                <button onclick="copyInviteLink('${escapeHtml(fullInviteUrl)}')" class="btn-invite-copy">📋 Копіювати</button>
+                ${navigator.share ? '<button onclick="shareInviteLink()" class="btn-invite-share">📤 Поділитися</button>' : ''}
+            </div>
+        </div>
         <div class="booking-actions modal-footer-sticky">
             <button onclick="editBooking('${booking.id}')" class="btn-edit-booking">✏️ Редагувати</button>
-            <a href="${inviteUrl}" target="_blank" class="btn-invite-event">🎉 Запрошення</a>
             <button onclick="deleteBooking('${booking.id}')" class="btn-delete-booking">Видалити</button>
         </div>
     `;
@@ -747,6 +763,35 @@ async function editBooking(bookingId) {
         await populateSecondAnimatorSelect();
         document.getElementById('secondAnimatorSelect').value = booking.secondAnimator;
     }
+}
+
+// ==========================================
+// INVITE HELPERS (v5.48)
+// ==========================================
+
+function copyInviteLink(url) {
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = event.target.closest('.btn-invite-copy');
+        if (btn) {
+            const original = btn.innerHTML;
+            btn.innerHTML = '✅ Скопійовано!';
+            setTimeout(() => { btn.innerHTML = original; }, 2000);
+        }
+    });
+}
+
+function shareInviteLink() {
+    const modal = document.getElementById('bookingDetails');
+    if (!modal) return;
+    const preview = modal.querySelector('.invite-preview');
+    const link = modal.querySelector('.btn-invite-open');
+    if (!link) return;
+    const url = link.href;
+    const spans = preview ? preview.querySelectorAll('span') : [];
+    const text = spans.length > 0
+        ? `Запрошуємо! ${Array.from(spans).map(s => s.textContent).join(' | ')} — Парк Закревського Періоду`
+        : 'Запрошуємо на свято! Парк Закревського Періоду';
+    navigator.share({ title: 'Парк Закревського Періоду', text, url }).catch(() => {});
 }
 
 // ==========================================

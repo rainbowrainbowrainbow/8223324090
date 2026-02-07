@@ -768,30 +768,90 @@
 }
 
 /* ==========================================
-   PER-EVENT INVITE BUTTON (B2)
+   PER-EVENT INVITE SECTION (v5.48)
    ========================================== */
 
-.btn-invite-event {
+.invite-section {
+    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+    border: 1px solid #FCD34D;
+    border-radius: var(--radius-card);
+    padding: 14px;
+    margin: 16px 0;
+}
+
+.invite-section-header {
+    font-size: var(--font-sm);
+    font-weight: 800;
+    color: #92400E;
+    margin-bottom: 10px;
+}
+
+.invite-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin-bottom: 12px;
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: #78350F;
+}
+
+.invite-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.invite-actions a,
+.invite-actions button {
+    flex: 1;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 4px;
-    padding: 10px 18px;
-    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
-    color: #FFFFFF;
+    padding: 10px 12px;
     border: none;
     border-radius: var(--radius-sm);
     font-weight: 700;
-    font-size: var(--font-sm);
+    font-size: var(--font-xs);
     cursor: pointer;
+    font-family: inherit;
     text-decoration: none;
     transition: all var(--speed-fast) var(--ease-smooth);
+    min-height: 40px;
+}
+
+.btn-invite-open {
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    color: #FFFFFF;
     box-shadow: 0 2px 8px rgba(245,158,11,0.3);
 }
 
-.btn-invite-event:hover {
+.btn-invite-open:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(245,158,11,0.4);
     color: #FFFFFF;
+}
+
+.btn-invite-copy {
+    background: var(--white);
+    color: var(--gray-700);
+    border: 1px solid var(--gray-200);
+}
+
+.btn-invite-copy:hover {
+    background: var(--gray-50);
+    border-color: var(--gray-300);
+}
+
+.btn-invite-share {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: #FFFFFF;
+    box-shadow: 0 2px 8px rgba(16,185,129,0.3);
+}
+
+.btn-invite-share:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16,185,129,0.4);
 }
 
 /* ==========================================

@@ -1041,6 +1041,21 @@ body.dark-mode .no-history {
     color: #6B7280;
 }
 
+/* v5.48: Invite section in dark */
+body.dark-mode .invite-section {
+    background: linear-gradient(135deg, rgba(245,158,11,0.1) 0%, rgba(217,119,6,0.08) 100%);
+    border-color: rgba(245,158,11,0.2);
+}
+
+body.dark-mode .invite-section-header { color: #FCD34D; }
+body.dark-mode .invite-preview { color: #FBBF24; }
+
+body.dark-mode .btn-invite-copy {
+    background: var(--gray-100);
+    color: #E2E8F0;
+    border-color: var(--gray-300);
+}
+
 /* Scrollbar improvement */
 body.dark-mode ::-webkit-scrollbar-track {
     background: #0f0f1a;

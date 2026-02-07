@@ -82,7 +82,7 @@
     padding: 12px 14px;
     border: 2px solid var(--gray-200);
     border-radius: var(--radius-sm);
-    font-size: var(--font-base);
+    font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
 }
@@ -91,6 +91,11 @@
     outline: none;
     border-color: var(--primary);
     box-shadow: 0 0 0 4px rgba(16,185,129,0.1);
+}
+
+.form-group input:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 .form-buttons {
@@ -365,7 +370,7 @@
     padding: 8px 10px;
     border: 1px solid var(--gray-200);
     border-radius: var(--radius-xs);
-    font-size: 12px;
+    font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
     font-family: inherit;
     font-weight: 600;
     background: var(--white);
@@ -390,11 +395,12 @@
 
 .btn-history-filter,
 .btn-history-reset {
-    padding: 8px 12px;
+    padding: 10px 14px;
+    min-height: 44px;
     border: none;
     border-radius: var(--radius-xs);
     font-weight: 700;
-    font-size: 12px;
+    font-size: 14px;
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast);
@@ -437,7 +443,8 @@
 }
 
 .btn-history-page {
-    padding: 6px 14px;
+    padding: 10px 14px;
+    min-height: 44px;
     border: 1px solid var(--gray-200);
     border-radius: var(--radius-xs);
     background: var(--white);

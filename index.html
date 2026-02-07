@@ -2,19 +2,19 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.29">
-    <link rel="stylesheet" href="css/auth.css?v=5.29">
-    <link rel="stylesheet" href="css/layout.css?v=5.29">
-    <link rel="stylesheet" href="css/timeline.css?v=5.29">
-    <link rel="stylesheet" href="css/panel.css?v=5.29">
-    <link rel="stylesheet" href="css/modals.css?v=5.29">
-    <link rel="stylesheet" href="css/controls.css?v=5.29">
-    <link rel="stylesheet" href="css/features.css?v=5.29">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.29">
-    <link rel="stylesheet" href="css/responsive.css?v=5.29">
+    <link rel="stylesheet" href="css/base.css?v=5.30">
+    <link rel="stylesheet" href="css/auth.css?v=5.30">
+    <link rel="stylesheet" href="css/layout.css?v=5.30">
+    <link rel="stylesheet" href="css/timeline.css?v=5.30">
+    <link rel="stylesheet" href="css/panel.css?v=5.30">
+    <link rel="stylesheet" href="css/modals.css?v=5.30">
+    <link rel="stylesheet" href="css/controls.css?v=5.30">
+    <link rel="stylesheet" href="css/features.css?v=5.30">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.30">
+    <link rel="stylesheet" href="css/responsive.css?v=5.30">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -25,9 +25,9 @@
             <div class="login-logo">
                 <img src="images/logo-new.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.29</p>
+                <p class="tagline">Система бронювання v5.30</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.29</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.30</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -643,6 +643,15 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v5.30 — A11y Foundation</h4>
+                    <ul>
+                        <li>Viewport: дозволено масштабування (прибрано user-scalable=no)</li>
+                        <li>Inputs: font-size ≥ 16px — iOS більше не зумить при фокусі</li>
+                        <li>Touch targets: всі кнопки ≥ 44px (zoom, фільтри, період, пагінація)</li>
+                        <li>Focus-visible: клавіатурна навігація працює на всіх полях вводу</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v5.29 — Structured Logging</h4>
                     <ul>
                         <li>utils/logger.js — єдиний логер з рівнями debug/info/warn/error</li>
@@ -1070,13 +1079,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.29"></script>
-    <script src="js/api.js?v=5.29"></script>
-    <script src="js/ui.js?v=5.29"></script>
-    <script src="js/auth.js?v=5.29"></script>
-    <script src="js/timeline.js?v=5.29"></script>
-    <script src="js/booking.js?v=5.29"></script>
-    <script src="js/settings.js?v=5.29"></script>
-    <script src="js/app.js?v=5.29"></script>
+    <script src="js/config.js?v=5.30"></script>
+    <script src="js/api.js?v=5.30"></script>
+    <script src="js/ui.js?v=5.30"></script>
+    <script src="js/auth.js?v=5.30"></script>
+    <script src="js/timeline.js?v=5.30"></script>
+    <script src="js/booking.js?v=5.30"></script>
+    <script src="js/settings.js?v=5.30"></script>
+    <script src="js/app.js?v=5.30"></script>
 </body>
 </html>

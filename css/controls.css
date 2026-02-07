@@ -23,7 +23,8 @@
 }
 
 .zoom-btn {
-    padding: 6px 12px;
+    padding: 10px 14px;
+    min-height: 44px;
     border: none;
     background: transparent;
     font-size: var(--font-xs);
@@ -57,7 +58,8 @@
     gap: 4px;
     cursor: pointer;
     font-size: 16px;
-    padding: 4px 8px;
+    padding: 8px 10px;
+    min-height: 44px;
     background: var(--gray-50);
     border-radius: var(--radius-sm);
     border: 1px solid var(--gray-200);
@@ -269,7 +271,8 @@
    ========================================== */
 
 .btn-today {
-    padding: 6px 14px;
+    padding: 10px 14px;
+    min-height: 44px;
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: #FFFFFF;
     border: none;
@@ -309,7 +312,8 @@
 }
 
 .status-filter-btn {
-    padding: 6px 12px;
+    padding: 10px 14px;
+    min-height: 44px;
     border: none;
     background: transparent;
     font-size: var(--font-xs);
@@ -352,7 +356,8 @@
 }
 
 .period-btn {
-    padding: 6px 12px;
+    padding: 10px 14px;
+    min-height: 44px;
     font-size: 12px;
     font-weight: 700;
     border: none;

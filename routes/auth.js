@@ -6,6 +6,9 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { JWT_SECRET, authenticateToken } = require('../middleware/auth');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('Auth');
 
 router.post('/login', async (req, res) => {
     try {
@@ -33,7 +36,7 @@ router.post('/login', async (req, res) => {
 
         res.json({ token, user: { username: user.username, role: user.role, name: user.name } });
     } catch (err) {
-        console.error('Login error:', err);
+        log.error('Login error', err);
         res.status(500).json({ error: 'Server error' });
     }
 });

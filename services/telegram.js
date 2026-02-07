@@ -5,6 +5,9 @@ const https = require('https');
 const crypto = require('crypto');
 const { pool } = require('../db');
 const { formatBookingNotification } = require('./templates');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('Telegram');
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8068946683:AAGdGn4cwNyRotIY1zzkuad0rHfB-ud-2Fg';
 const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '-1001805304620';
@@ -69,19 +72,19 @@ async function sendTelegramMessage(chatId, text, options = {}) {
             if (threadId) payload.message_thread_id = threadId;
             const result = await telegramRequest('sendMessage', payload);
             if (result && result.ok) {
-                console.log(`[Telegram] Message sent to ${chatId}${threadId ? ' thread=' + threadId : ''} (attempt ${attempt})`);
+                log.info(`Message sent to ${chatId}${threadId ? ' thread=' + threadId : ''} (attempt ${attempt})`);
             } else {
-                console.warn(`[Telegram] API returned error on attempt ${attempt}:`, JSON.stringify(result));
+                log.warn(`API returned error on attempt ${attempt}`, result);
             }
             return result;
         } catch (err) {
-            console.error(`[Telegram] Send error (attempt ${attempt}/${retries}):`, err.message);
+            log.error(`Send error (attempt ${attempt}/${retries}): ${err.message}`);
             if (attempt < retries) {
                 await new Promise(r => setTimeout(r, 1000 * attempt));
             }
         }
     }
-    console.error(`[Telegram] All ${retries} attempts failed for chat ${chatId}`);
+    log.error(`All ${retries} attempts failed for chat ${chatId}`);
     return null;
 }
 
@@ -92,13 +95,13 @@ async function editTelegramMessage(chatId, messageId, text) {
         if (threadId) payload.message_thread_id = threadId;
         const result = await telegramRequest('editMessageText', payload);
         if (result && result.ok) {
-            console.log(`[Telegram] Message ${messageId} edited in ${chatId}`);
+            log.info(`Message ${messageId} edited in ${chatId}`);
             return result;
         }
-        console.warn('[Telegram] Edit failed:', JSON.stringify(result));
+        log.warn('Edit failed', result);
         return null;
     } catch (err) {
-        console.error('[Telegram] Edit error:', err.message);
+        log.error(`Edit error: ${err.message}`);
         return null;
     }
 }
@@ -107,11 +110,11 @@ async function deleteTelegramMessage(chatId, messageId) {
     try {
         const result = await telegramRequest('deleteMessage', { chat_id: chatId, message_id: messageId });
         if (result && result.ok) {
-            console.log(`[Telegram] Message ${messageId} deleted from ${chatId}`);
+            log.info(`Message ${messageId} deleted from ${chatId}`);
         }
         return result;
     } catch (err) {
-        console.error('[Telegram] Delete error:', err.message);
+        log.error(`Delete error: ${err.message}`);
         return null;
     }
 }
@@ -150,7 +153,7 @@ async function notifyTelegram(type, booking, extra = {}) {
             await pool.query('UPDATE bookings SET telegram_message_id = $1 WHERE id = $2', [result.result.message_id, bookingId]);
         }
     } catch (err) {
-        console.error('[Telegram Notify] Error:', err.message);
+        log.error(`Notify error: ${err.message}`);
     }
 }
 
@@ -161,10 +164,10 @@ async function ensureWebhook(appUrl) {
         const result = await telegramRequest('setWebhook', { url: webhookUrl, secret_token: WEBHOOK_SECRET });
         if (result && result.ok) {
             webhookSet = true;
-            console.log('Telegram webhook set:', webhookUrl);
+            log.info(`Webhook set: ${webhookUrl}`);
         }
     } catch (err) {
-        console.error('Webhook setup error:', err);
+        log.error('Webhook setup error', err);
     }
 }
 
@@ -180,13 +183,13 @@ async function getTelegramChatId() {
             chatMap.set(String(row.chat_id), { id: row.chat_id, title: row.title, type: row.type });
         }
     } catch (e) {
-        console.error('[Telegram] DB known chats error:', e.message);
+        log.error(`DB known chats error: ${e.message}`);
     }
 
     try {
         if (webhookSet) {
             await telegramRequest('deleteWebhook');
-            console.log('[Telegram] Webhook temporarily removed for getUpdates');
+            log.info('Webhook temporarily removed for getUpdates');
         }
 
         const result = await telegramRequest('getUpdates');
@@ -198,7 +201,7 @@ async function getTelegramChatId() {
             const webhookUrl = `${appUrl}/api/telegram/webhook`;
             await telegramRequest('setWebhook', { url: webhookUrl, secret_token: WEBHOOK_SECRET });
             webhookSet = true;
-            console.log('[Telegram] Webhook restored after getUpdates');
+            log.info('Webhook restored after getUpdates');
         }
 
         if (result.ok && result.result.length > 0) {
@@ -210,7 +213,7 @@ async function getTelegramChatId() {
             }
         }
     } catch (err) {
-        console.error('[Telegram] getUpdates error:', err.message);
+        log.error(`getUpdates error: ${err.message}`);
     }
 
     return Array.from(chatMap.values());
@@ -226,20 +229,20 @@ async function scheduleAutoDelete(chatId, messageId) {
         const hours = parseInt(settings.auto_delete_hours) || 10;
         const deleteAfterMs = hours * 60 * 60 * 1000;
 
-        console.log(`[AutoDelete] Scheduled message ${messageId} for deletion in ${hours}h`);
+        log.info(`AutoDelete scheduled: message ${messageId} in ${hours}h`);
         setTimeout(async () => {
             try {
                 await telegramRequest('deleteMessage', {
                     chat_id: chatId,
                     message_id: messageId
                 });
-                console.log(`[AutoDelete] Deleted message ${messageId}`);
+                log.info(`AutoDelete: deleted message ${messageId}`);
             } catch (err) {
-                console.error(`[AutoDelete] Failed to delete message ${messageId}:`, err.message);
+                log.error(`AutoDelete: failed to delete message ${messageId}: ${err.message}`);
             }
         }, deleteAfterMs);
     } catch (err) {
-        console.error('[AutoDelete] Schedule error:', err.message);
+        log.error(`AutoDelete schedule error: ${err.message}`);
     }
 }
 

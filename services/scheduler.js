@@ -5,6 +5,9 @@ const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId, scheduleAutoDelete } = require('./telegram');
 const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr } = require('./booking');
 const { sendBackupToTelegram } = require('./backup');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('Scheduler');
 
 let digestSentToday = null;
 let reminderSentToday = null;
@@ -13,7 +16,7 @@ let backupSentToday = null;
 async function buildAndSendDigest(date) {
     const chatId = await getConfiguredChatId();
     if (!chatId) {
-        console.warn('[Digest] No chat ID configured');
+        log.warn('No chat ID configured for digest');
         return { success: false, reason: 'no_chat_id' };
     }
 
@@ -51,7 +54,7 @@ async function buildAndSendDigest(date) {
     }
 
     const result = await sendTelegramMessage(chatId, text, { silent: false });
-    console.log(`[Digest] Sent for ${date}: ${result?.ok ? 'OK' : 'FAIL'}`);
+    log.info(`Digest sent for ${date}: ${result?.ok ? 'OK' : 'FAIL'}`);
 
     if (result?.ok && result.result?.message_id) {
         await scheduleAutoDelete(chatId, result.result.message_id);
@@ -101,7 +104,7 @@ async function sendTomorrowReminder(todayStr) {
         }
 
         const sendResult = await sendTelegramMessage(chatId, text, { silent: false });
-        console.log(`[Reminder] Tomorrow reminder sent for ${tomorrowStr}`);
+        log.info(`Tomorrow reminder sent for ${tomorrowStr}`);
 
         if (sendResult?.ok && sendResult.result?.message_id) {
             await scheduleAutoDelete(chatId, sendResult.result.message_id);
@@ -109,7 +112,7 @@ async function sendTomorrowReminder(todayStr) {
 
         return { success: sendResult?.ok || false, count: bookingsResult.rows.length };
     } catch (err) {
-        console.error('[Reminder] Error:', err.message);
+        log.error(`Reminder error: ${err.message}`);
         return { success: false, error: err.message };
     }
 }
@@ -134,11 +137,11 @@ async function checkAutoDigest() {
 
         if (nowTime === digestTime && digestSentToday !== todayStr) {
             digestSentToday = todayStr;
-            console.log(`[AutoDigest] Sending daily digest for ${todayStr} at ${digestTime} (${isWeekend ? 'weekend' : 'weekday'})`);
+            log.info(`Sending daily digest for ${todayStr} at ${digestTime} (${isWeekend ? 'weekend' : 'weekday'})`);
             await buildAndSendDigest(todayStr);
         }
     } catch (err) {
-        console.error('[AutoDigest] Error:', err);
+        log.error('AutoDigest error', err);
     }
 }
 
@@ -153,11 +156,11 @@ async function checkAutoReminder() {
 
         if (nowTime === reminderTime && reminderSentToday !== todayStr) {
             reminderSentToday = todayStr;
-            console.log(`[AutoReminder] Sending tomorrow reminder at ${reminderTime}`);
+            log.info(`Sending tomorrow reminder at ${reminderTime}`);
             await sendTomorrowReminder(todayStr);
         }
     } catch (err) {
-        console.error('[AutoReminder] Error:', err);
+        log.error('AutoReminder error', err);
     }
 }
 
@@ -172,11 +175,11 @@ async function checkAutoBackup() {
 
         if (nowTime === backupTime && backupSentToday !== todayStr) {
             backupSentToday = todayStr;
-            console.log(`[AutoBackup] Running daily backup at ${backupTime}`);
+            log.info(`Running daily backup at ${backupTime}`);
             await sendBackupToTelegram();
         }
     } catch (err) {
-        console.error('[AutoBackup] Error:', err);
+        log.error('AutoBackup error', err);
     }
 }
 

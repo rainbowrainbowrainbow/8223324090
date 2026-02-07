@@ -3,10 +3,13 @@
  */
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('Auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 if (!process.env.JWT_SECRET) {
-    console.warn('[Security] JWT_SECRET not set in environment! Sessions will be lost on restart. Set JWT_SECRET env variable.');
+    log.warn('JWT_SECRET not set in environment! Sessions will be lost on restart. Set JWT_SECRET env variable.');
 }
 
 function authenticateToken(req, res, next) {

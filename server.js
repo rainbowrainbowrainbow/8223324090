@@ -1,5 +1,5 @@
 /**
- * server.js — Entry point (v5.28: modular architecture)
+ * server.js — Entry point (v5.29: structured logging)
  *
  * Slim entry point that wires together all modules.
  * Each module lives in its own file under db/, middleware/, services/, routes/.
@@ -13,8 +13,12 @@ const { pool, initDatabase } = require('./db');
 const { authenticateToken } = require('./middleware/auth');
 const { rateLimiter } = require('./middleware/rateLimit');
 const { cacheControl } = require('./middleware/security');
+const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID } = require('./services/telegram');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup } = require('./services/scheduler');
+const { createLogger } = require('./utils/logger');
+
+const log = createLogger('Server');
 
 // --- Express app setup ---
 const app = express();
@@ -23,6 +27,7 @@ const PORT = process.env.PORT || 3000;
 // Global middleware
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || origin.includes(process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost')) }));
 app.use(express.json());
+app.use(requestIdMiddleware);
 app.use(cacheControl);
 app.use(express.static(path.join(__dirname)));
 
@@ -63,12 +68,12 @@ app.get('*', (req, res) => {
 // --- Start server ---
 initDatabase().then(() => {
     app.listen(PORT, async () => {
-        console.log(`Server running on port ${PORT}`);
-        console.log(`[Telegram Config] Bot token: ${TELEGRAM_BOT_TOKEN ? 'SET (' + TELEGRAM_BOT_TOKEN.slice(0, 8) + '...)' : 'NOT SET'}`);
-        console.log(`[Telegram Config] Default chat ID: ${TELEGRAM_DEFAULT_CHAT_ID || 'NOT SET'}`);
+        log.info(`Server running on port ${PORT}`);
+        log.info(`Telegram bot token: ${TELEGRAM_BOT_TOKEN ? 'SET (' + TELEGRAM_BOT_TOKEN.slice(0, 8) + '...)' : 'NOT SET'}`);
+        log.info(`Telegram default chat ID: ${TELEGRAM_DEFAULT_CHAT_ID || 'NOT SET'}`);
         try {
             const dbChatId = await getConfiguredChatId();
-            console.log(`[Telegram Config] Effective chat ID: ${dbChatId || 'NONE'}`);
+            log.info(`Telegram effective chat ID: ${dbChatId || 'NONE'}`);
         } catch (e) { /* ignore */ }
 
         // Setup Telegram webhook on start
@@ -76,13 +81,13 @@ initDatabase().then(() => {
             ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
             : null;
         if (appUrl) {
-            ensureWebhook(appUrl).catch(err => console.error('Webhook auto-setup error:', err));
+            ensureWebhook(appUrl).catch(err => log.error('Webhook auto-setup error', err));
         }
 
         // Schedulers: digest + reminder + backup (check every 60s)
         setInterval(checkAutoDigest, 60000);
         setInterval(checkAutoReminder, 60000);
         setInterval(checkAutoBackup, 60000);
-        console.log('[Scheduler] Digest + Reminder + Backup schedulers started (checks every 60s)');
+        log.info('Schedulers started: digest + reminder + backup (every 60s)');
     });
 });

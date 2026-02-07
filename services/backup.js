@@ -5,6 +5,9 @@ const https = require('https');
 const { pool } = require('../db');
 const { TELEGRAM_BOT_TOKEN, getConfiguredChatId, getConfiguredThreadId } = require('./telegram');
 const { getKyivDateStr } = require('./booking');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('Backup');
 
 const BACKUP_TABLES = ['bookings', 'lines_by_date', 'users', 'history', 'settings', 'afisha', 'pending_animators', 'telegram_known_chats', 'telegram_known_threads', 'booking_counter'];
 
@@ -48,7 +51,7 @@ async function sendBackupToTelegram() {
         const backupChatResult = await pool.query("SELECT value FROM settings WHERE key = 'backup_chat_id'");
         const chatId = backupChatResult.rows[0]?.value || await getConfiguredChatId();
         if (!chatId || !TELEGRAM_BOT_TOKEN) {
-            console.warn('[Backup] No chat ID or bot token — skipping');
+            log.warn('No chat ID or bot token — skipping backup');
             return { success: false, reason: 'no_config' };
         }
 
@@ -100,10 +103,10 @@ async function sendBackupToTelegram() {
             req.end();
         });
 
-        console.log(`[Backup] Sent to chat ${chatId}: ${result?.ok ? 'OK' : 'FAIL'}`);
+        log.info(`Backup sent to chat ${chatId}: ${result?.ok ? 'OK' : 'FAIL'}`);
         return { success: result?.ok || false, size: sql.length };
     } catch (err) {
-        console.error('[Backup] Error:', err.message);
+        log.error(`Backup error: ${err.message}`);
         return { success: false, error: err.message };
     }
 }

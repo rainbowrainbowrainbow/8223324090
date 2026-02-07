@@ -4,6 +4,9 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { validateDate, ensureDefaultLines } = require('../services/booking');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('Lines');
 
 router.get('/:date', async (req, res) => {
     try {
@@ -21,7 +24,7 @@ router.get('/:date', async (req, res) => {
         }));
         res.json(lines);
     } catch (err) {
-        console.error('Error fetching lines:', err);
+        log.error('Error fetching lines', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -49,7 +52,7 @@ router.post('/:date', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error('Error saving lines:', err);
+        log.error('Error saving lines', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {
         client.release();

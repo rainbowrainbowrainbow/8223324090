@@ -3,6 +3,9 @@
  */
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('DB');
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -140,7 +143,7 @@ async function initDatabase() {
                     [u.username, hash, u.role, u.name]
                 );
             }
-            console.log('Default users seeded');
+            log.info('Default users seeded');
         }
 
         await pool.query(`
@@ -154,9 +157,9 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_lines_by_date_date ON lines_by_date(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)');
 
-        console.log('Database initialized');
+        log.info('Database initialized');
     } catch (err) {
-        console.error('Database init error:', err);
+        log.error('Database init error', err);
     }
 }
 

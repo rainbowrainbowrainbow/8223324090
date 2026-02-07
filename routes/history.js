@@ -3,6 +3,9 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('History');
 
 router.get('/', async (req, res) => {
     try {
@@ -52,7 +55,7 @@ router.get('/', async (req, res) => {
         }));
         res.json({ items: history, total, limit: lim, offset: off });
     } catch (err) {
-        console.error('Error fetching history:', err);
+        log.error('Error fetching history', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -66,7 +69,7 @@ router.post('/', async (req, res) => {
         );
         res.json({ success: true });
     } catch (err) {
-        console.error('Error adding history:', err);
+        log.error('Error adding history', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

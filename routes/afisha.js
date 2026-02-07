@@ -4,13 +4,16 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { validateDate, validateTime } = require('../services/booking');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('Afisha');
 
 router.get('/', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM afisha ORDER BY date, time');
         res.json(result.rows);
     } catch (err) {
-        console.error('Afisha get error:', err);
+        log.error('Get error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -22,7 +25,7 @@ router.get('/:date', async (req, res) => {
         const result = await pool.query('SELECT * FROM afisha WHERE date = $1 ORDER BY time', [date]);
         res.json(result.rows);
     } catch (err) {
-        console.error('Afisha get by date error:', err);
+        log.error('Get by date error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -39,7 +42,7 @@ router.post('/', async (req, res) => {
         );
         res.json({ success: true, item: result.rows[0] });
     } catch (err) {
-        console.error('Afisha create error:', err);
+        log.error('Create error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -55,7 +58,7 @@ router.put('/:id', async (req, res) => {
         );
         res.json({ success: true });
     } catch (err) {
-        console.error('Afisha update error:', err);
+        log.error('Update error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -66,7 +69,7 @@ router.delete('/:id', async (req, res) => {
         await pool.query('DELETE FROM afisha WHERE id = $1', [id]);
         res.json({ success: true });
     } catch (err) {
-        console.error('Afisha delete error:', err);
+        log.error('Delete error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

@@ -5,6 +5,9 @@ const router = require('express').Router();
 const { pool, generateBookingNumber } = require('../db');
 const { validateDate, validateTime, validateId, mapBookingRow, checkServerConflicts, checkServerDuplicate, checkRoomConflict } = require('../services/booking');
 const { notifyTelegram } = require('../services/telegram');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('Bookings');
 
 // Get bookings for a date
 router.get('/:date', async (req, res) => {
@@ -17,7 +20,7 @@ router.get('/:date', async (req, res) => {
         );
         res.json(result.rows.map(mapBookingRow));
     } catch (err) {
-        console.error('Error fetching bookings:', err);
+        log.error('Error fetching bookings', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -96,7 +99,7 @@ router.post('/', async (req, res) => {
         res.json({ success: true, booking });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error('Error creating booking:', err);
+        log.error('Error creating booking', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {
         client.release();
@@ -203,7 +206,7 @@ router.post('/full', async (req, res) => {
         res.json({ success: true, mainBooking, linkedBookings });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error('Error creating full booking:', err);
+        log.error('Error creating full booking', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {
         client.release();
@@ -250,7 +253,7 @@ router.delete('/:id', async (req, res) => {
         res.json({ success: true, permanent });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error('Error deleting booking:', err);
+        log.error('Error deleting booking', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {
         client.release();
@@ -349,7 +352,7 @@ router.put('/:id', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error('Error updating booking:', err);
+        log.error('Error updating booking', err);
         res.status(500).json({ error: 'Failed to update booking' });
     } finally {
         client.release();

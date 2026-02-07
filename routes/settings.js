@@ -4,6 +4,9 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { validateDate, validateTime, validateSettingKey, mapBookingRow, timeToMinutes, ALL_ROOMS } = require('../services/booking');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('Settings');
 
 // Stats
 router.get('/stats/:dateFrom/:dateTo', async (req, res) => {
@@ -18,7 +21,7 @@ router.get('/stats/:dateFrom/:dateTo', async (req, res) => {
         );
         res.json(result.rows.map(mapBookingRow));
     } catch (err) {
-        console.error('Stats error:', err);
+        log.error('Stats error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -81,7 +84,7 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         const free = ALL_ROOMS.filter(r => !occupiedRooms.has(r));
         res.json({ free, occupied: Array.from(occupiedRooms), total: ALL_ROOMS.length });
     } catch (err) {
-        console.error('Free rooms error:', err);
+        log.error('Free rooms error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

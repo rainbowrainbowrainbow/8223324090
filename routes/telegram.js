@@ -11,6 +11,9 @@ const {
 } = require('../services/telegram');
 const { ensureDefaultLines } = require('../services/booking');
 const { buildAndSendDigest, sendTomorrowReminder } = require('../services/scheduler');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('TelegramRoute');
 
 router.get('/chats', async (req, res) => {
     try {
@@ -38,27 +41,27 @@ router.post('/notify', async (req, res) => {
     try {
         const { text } = req.body;
         if (!text) {
-            console.warn('[Telegram Notify] Empty text received');
+            log.warn('Empty text received');
             return res.json({ success: false, reason: 'no_text' });
         }
         const chatId = await getConfiguredChatId();
         if (!chatId) {
-            console.warn('[Telegram Notify] No chat ID configured — cannot send');
+            log.warn('No chat ID configured — cannot send');
             return res.json({ success: false, reason: 'no_chat_id' });
         }
         if (!TELEGRAM_BOT_TOKEN) {
-            console.warn('[Telegram Notify] No bot token configured');
+            log.warn('No bot token configured');
             return res.json({ success: false, reason: 'no_bot_token' });
         }
-        console.log(`[Telegram Notify] Sending to chat ${chatId}, text length=${text.length}`);
+        log.info(`Sending to chat ${chatId}, text length=${text.length}`);
         const result = await sendTelegramMessage(chatId, text);
         const ok = result?.ok || false;
         if (!ok) {
-            console.warn('[Telegram Notify] Send failed:', JSON.stringify(result));
+            log.warn('Send failed', result);
         }
         res.json({ success: ok, reason: ok ? undefined : 'send_failed', details: ok ? undefined : result });
     } catch (err) {
-        console.error('[Telegram Notify] Error:', err);
+        log.error('Notify error', err);
         res.status(500).json({ success: false, reason: 'server_error', error: err.message });
     }
 });
@@ -69,7 +72,7 @@ router.get('/digest/:date', async (req, res) => {
         const result = await buildAndSendDigest(date);
         res.json(result);
     } catch (err) {
-        console.error('Digest error:', err);
+        log.error('Digest error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -80,7 +83,7 @@ router.get('/reminder/:date', async (req, res) => {
         const result = await sendTomorrowReminder(date);
         res.json(result);
     } catch (err) {
-        console.error('Reminder error:', err);
+        log.error('Reminder error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -139,7 +142,7 @@ router.post('/ask-animator', async (req, res) => {
 
         res.json({ success: result?.ok || false, requestId });
     } catch (err) {
-        console.error('Ask animator error:', err);
+        log.error('Ask animator error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -173,7 +176,7 @@ router.post('/webhook', async (req, res) => {
                 `INSERT INTO telegram_known_chats (chat_id, title, type, updated_at) VALUES ($1, $2, $3, NOW())
                  ON CONFLICT (chat_id) DO UPDATE SET title = $2, type = $3, updated_at = NOW()`,
                 [incomingChat.id, incomingChat.title || incomingChat.first_name || 'Chat', incomingChat.type || 'unknown']
-            ).catch(e => console.error('[Telegram] Failed to save chat info:', e.message));
+            ).catch(e => log.error(`Failed to save chat info: ${e.message}`));
         }
 
         const msg = update.message || update.callback_query?.message;
@@ -185,7 +188,7 @@ router.post('/webhook', async (req, res) => {
                 `INSERT INTO telegram_known_threads (thread_id, chat_id, title, updated_at) VALUES ($1, $2, $3, NOW())
                  ON CONFLICT (chat_id, thread_id) DO UPDATE SET title = COALESCE(NULLIF($3, ''), telegram_known_threads.title), updated_at = NOW()`,
                 [msg.message_thread_id, msg.chat.id, threadTitle]
-            ).catch(e => console.error('[Telegram] Failed to save thread info:', e.message));
+            ).catch(e => log.error(`Failed to save thread info: ${e.message}`));
         }
 
         if (update.callback_query) {
@@ -265,7 +268,7 @@ router.post('/webhook', async (req, res) => {
 
         res.sendStatus(200);
     } catch (err) {
-        console.error('Webhook error:', err);
+        log.error('Webhook error', err);
         res.sendStatus(200);
     }
 });

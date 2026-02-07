@@ -5,6 +5,9 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { generateBackupSQL, sendBackupToTelegram } = require('../services/backup');
 const { getKyivDateStr } = require('../services/booking');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('Backup');
 
 router.post('/create', async (req, res) => {
     try {
@@ -57,11 +60,11 @@ router.post('/restore', async (req, res) => {
         }
         await client.query('COMMIT');
 
-        console.log(`[Restore] Executed ${executed} statements by ${req.user?.username}`);
+        log.info(`Restore: executed ${executed} statements by ${req.user?.username}`);
         res.json({ success: true, executed });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error('[Restore] Error:', err.message);
+        log.error(`Restore error: ${err.message}`);
         res.status(500).json({ error: err.message });
     } finally {
         client.release();

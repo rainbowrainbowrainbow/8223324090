@@ -1,9 +1,9 @@
 /**
- * modals.css - Modal dialogs, confirmations, history, catalog — v4.0 redesign
+ * modals.css - Modal dialogs, confirmations, history, catalog — v5.0 unified redesign
  */
 
 /* ==========================================
-   MODALS
+   MODALS — unified base
    ========================================== */
 
 .modal {
@@ -31,15 +31,22 @@
 .modal-content {
     background: var(--white);
     border-radius: var(--radius);
-    padding: 28px;
+    padding: 0;
     max-width: 440px;
     width: 100%;
     position: relative;
     box-shadow: var(--shadow-xl);
     animation: modalSlideUp var(--speed-normal) var(--ease-bounce);
-    border: 1px solid var(--gray-100);
+    border: 1px solid rgba(0,0,0,0.08);
     max-height: calc(100vh - 40px);
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Compat: modals that still use direct padding */
+.modal-content:not(.modal-large):not(.modal-wide):not(.modal-catalog):not(.modal-confirm) {
+    padding: 28px;
 }
 
 @keyframes modalSlideUp {
@@ -47,6 +54,141 @@
     to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
+/* ==========================================
+   MODAL — Sticky Header
+   ========================================== */
+
+.modal-sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-md) var(--space-lg);
+    background: var(--white);
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    flex-shrink: 0;
+}
+
+.modal-sticky-header h3 {
+    margin: 0;
+    font-size: var(--font-heading-md);
+    font-weight: 800;
+    color: var(--gray-800);
+}
+
+.modal-sticky-header .modal-close {
+    position: static;
+    font-size: 24px;
+    color: var(--gray-400);
+    cursor: pointer;
+    transition: color var(--speed-fast);
+    background: none;
+    border: none;
+    padding: 4px;
+    line-height: 1;
+}
+
+.modal-sticky-header .modal-close:hover {
+    color: var(--danger);
+}
+
+/* ==========================================
+   MODAL — Sticky Footer
+   ========================================== */
+
+.modal-sticky-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-lg);
+    background: var(--white);
+    border-top: 1px solid rgba(0,0,0,0.06);
+    flex-shrink: 0;
+}
+
+/* ==========================================
+   MODAL — Scrollable Body
+   ========================================== */
+
+.modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-lg);
+    min-height: 0;
+}
+
+/* ==========================================
+   UNIFIED BUTTON SYSTEM (v5.0)
+   ========================================== */
+
+.btn-primary,
+.btn-secondary,
+.btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: var(--btn-height);
+    padding: 12px 20px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: var(--font-base);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.btn-primary {
+    background: var(--gradient-primary);
+    color: var(--white);
+    box-shadow: 0 4px 12px rgba(16,185,129,0.25);
+}
+
+.btn-primary:hover {
+    background: var(--gradient-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(16,185,129,0.35);
+}
+
+.btn-secondary {
+    background: var(--gray-100);
+    color: var(--gray-700);
+    border: 1px solid var(--gray-200);
+}
+
+.btn-secondary:hover {
+    background: var(--gray-200);
+}
+
+.btn-danger {
+    background: var(--gradient-danger);
+    color: var(--white);
+    box-shadow: 0 4px 12px rgba(239,68,68,0.25);
+}
+
+.btn-danger:hover {
+    background: var(--gradient-danger-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(239,68,68,0.35);
+}
+
+/* Small button variant */
+.btn-sm {
+    min-height: var(--btn-height-sm);
+    padding: 8px 14px;
+    font-size: var(--font-sm);
+}
+
+/* Legacy close button */
 .modal-close {
     position: absolute;
     top: 16px;
@@ -60,18 +202,18 @@
 .modal-close:hover { color: var(--danger); }
 
 .modal-content h3 {
-    margin-bottom: 24px;
-    font-size: var(--font-xl);
+    margin-bottom: var(--space-lg);
+    font-size: var(--font-heading-md);
     font-weight: 800;
     color: var(--gray-800);
 }
 
 /* Form inside modal */
-.form-group { margin-bottom: 18px; }
+.form-group { margin-bottom: var(--space-md); }
 
 .form-group label {
     display: block;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-xs);
     font-weight: 700;
     font-size: var(--font-sm);
     color: var(--gray-700);
@@ -100,37 +242,20 @@
 
 .form-buttons {
     display: flex;
-    gap: 12px;
-    margin-top: 24px;
+    gap: var(--space-sm);
+    margin-top: var(--space-lg);
 }
 
 .form-buttons button { flex: 1; }
-
-.btn-danger {
-    padding: 14px;
-    background: linear-gradient(135deg, var(--danger) 0%, #DC2626 100%);
-    color: var(--white);
-    border: none;
-    border-radius: var(--radius-sm);
-    font-weight: 700;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all var(--speed-fast) var(--ease-smooth);
-}
-
-.btn-danger:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(239,68,68,0.3);
-}
 
 /* ==========================================
    BOOKING DETAILS MODAL
    ========================================== */
 
 .booking-detail-header {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-    margin: -28px -28px 24px;
-    padding: 24px 28px;
+    background: var(--gradient-primary);
+    margin: -28px -28px var(--space-lg);
+    padding: var(--space-lg) 28px;
     border-radius: var(--radius) var(--radius) 0 0;
     color: var(--white);
 }
@@ -138,26 +263,31 @@
 .booking-detail-header h3 {
     color: var(--white);
     margin-bottom: 6px;
-    font-size: 18px;
+    font-size: var(--font-heading-md);
 }
 
 .booking-detail-row {
     display: flex;
     justify-content: space-between;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--gray-100);
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
     font-size: var(--font-sm);
 }
 
 .booking-detail-row:last-child { border-bottom: none; }
-.booking-detail-row .label { color: var(--gray-500); }
+.booking-detail-row .label { color: var(--gray-500); font-size: var(--font-caption); }
 .booking-detail-row .value { font-weight: 700; color: var(--gray-800); }
 
-.booking-actions { margin-top: 24px; }
+.booking-actions {
+    margin-top: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
 
 /* v5.31: Edit button — primary/emerald (non-destructive action) */
 .booking-actions .btn-edit-booking {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    background: var(--gradient-primary);
     color: var(--white);
 }
 
@@ -168,7 +298,7 @@
 
 /* v5.31: Delete button — danger/red (destructive action) */
 .booking-actions .btn-delete-booking {
-    background: linear-gradient(135deg, var(--danger) 0%, #DC2626 100%);
+    background: var(--gradient-danger);
     color: var(--white);
 }
 
@@ -179,16 +309,16 @@
 
 /* Time shift buttons */
 .booking-time-shift {
-    margin-top: 20px;
-    padding-top: 16px;
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
     border-top: 1px solid var(--gray-200);
 }
 
 .booking-time-shift .label {
     display: block;
     color: var(--gray-500);
-    font-size: 12px;
-    margin-bottom: 10px;
+    font-size: var(--font-caption);
+    margin-bottom: var(--space-xs);
 }
 
 .time-shift-buttons {
@@ -201,7 +331,7 @@
 .time-shift-buttons button {
     flex: 1;
     min-width: 45px;
-    min-height: 44px;
+    min-height: var(--btn-height);
     padding: 10px 8px;
     border: 1px solid var(--gray-200);
     border-radius: var(--radius-xs);
@@ -227,23 +357,23 @@
 .modal-confirm {
     max-width: 340px;
     text-align: center;
-    padding: 24px;
+    padding: var(--space-lg);
 }
 
 .modal-confirm h3 {
-    margin-bottom: 12px;
-    font-size: 18px;
+    margin-bottom: var(--space-sm);
+    font-size: var(--font-heading-md);
 }
 
 .modal-confirm p {
     color: var(--gray-500);
-    margin-bottom: 24px;
+    margin-bottom: var(--space-lg);
     font-size: var(--font-base);
 }
 
 .confirm-buttons {
     display: flex;
-    gap: 12px;
+    gap: var(--space-sm);
 }
 
 .confirm-buttons button {
@@ -257,6 +387,7 @@
     transition: all var(--speed-fast) var(--ease-smooth);
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    min-height: var(--btn-height);
 }
 
 .btn-cancel {
@@ -269,7 +400,7 @@
 }
 
 /* ==========================================
-   HISTORY MODAL
+   HISTORY MODAL (v5.0 — compact cards)
    ========================================== */
 
 .modal-large {
@@ -277,23 +408,30 @@
     max-height: 80vh;
     display: flex;
     flex-direction: column;
+    padding: 0;
+}
+
+.modal-large > h3,
+.modal-large > .modal-close {
+    /* Legacy support: hide these when sticky header is used */
 }
 
 .history-list {
     overflow-y: auto;
     max-height: 500px;
+    padding: 0 var(--space-lg) var(--space-lg);
 }
 
 .history-item {
-    padding: 14px;
-    margin-bottom: 10px;
-    border-radius: var(--radius-sm);
+    padding: 10px var(--space-sm);
+    margin-bottom: 6px;
+    border-radius: var(--radius-xs);
     background: var(--gray-50);
-    border-left: 4px solid var(--gray-400);
+    border-left: 3px solid var(--gray-400);
 }
 
 .history-item.action-create {
-    border-left-color: var(--success);
+    border-left-color: var(--status-confirmed);
     background: var(--primary-50);
 }
 
@@ -303,41 +441,45 @@
 }
 
 .history-item.action-edit {
-    border-left-color: #3B82F6;
+    border-left-color: var(--info);
     background: #EFF6FF;
 }
 
 .history-item.action-undo {
-    border-left-color: var(--warning);
+    border-left-color: var(--status-preliminary);
     background: #FFFBEB;
 }
 
 .history-header {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 6px;
-    font-size: 12px;
+    gap: var(--space-xs);
+    margin-bottom: 4px;
+    font-size: var(--font-xs);
 }
 
 .history-action {
     font-weight: 800;
     text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.5px;
 }
 
-.action-create .history-action { color: var(--success); }
-.action-edit .history-action { color: #3B82F6; }
+.action-create .history-action { color: var(--status-confirmed); }
+.action-edit .history-action { color: var(--info); }
 .action-delete .history-action { color: var(--danger); }
-.action-undo .history-action { color: var(--warning); }
+.action-undo .history-action { color: var(--status-preliminary); }
 
 .history-user {
     font-weight: 700;
     color: var(--primary);
+    font-size: var(--font-xs);
 }
 
 .history-date {
     color: var(--gray-400);
     margin-left: auto;
+    font-size: var(--font-xs);
 }
 
 .history-details {
@@ -350,7 +492,7 @@
 .no-history {
     text-align: center;
     color: var(--gray-400);
-    padding: 48px 24px;
+    padding: 48px var(--space-lg);
     font-size: var(--font-sm);
     font-weight: 600;
     line-height: 1.6;
@@ -360,12 +502,13 @@
     content: '📋';
     display: block;
     font-size: 32px;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-xs);
 }
 
 /* v5.16: History filters */
 .history-filters {
-    margin-bottom: 12px;
+    margin-bottom: var(--space-sm);
+    padding: 0 var(--space-lg);
 }
 
 .history-filter-row {
@@ -400,17 +543,17 @@
 .history-date-sep {
     color: var(--gray-400);
     font-weight: 600;
-    font-size: 14px;
+    font-size: var(--font-base);
 }
 
 .btn-history-filter,
 .btn-history-reset {
     padding: 10px 14px;
-    min-height: 44px;
+    min-height: var(--btn-height);
     border: none;
     border-radius: var(--radius-xs);
     font-weight: 700;
-    font-size: 14px;
+    font-size: var(--font-base);
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast);
@@ -435,31 +578,32 @@
 }
 
 .history-stats {
-    font-size: 12px;
+    font-size: var(--font-caption);
     color: var(--gray-400);
     font-weight: 600;
     margin-top: 6px;
 }
 
-/* v5.16: History pagination */
+/* v5.16: History pagination — sticky footer */
 .history-pagination {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    padding: 12px 0 0;
-    border-top: 1px solid var(--gray-100);
-    margin-top: 8px;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-lg);
+    border-top: 1px solid rgba(0,0,0,0.06);
+    background: var(--white);
+    flex-shrink: 0;
 }
 
 .btn-history-page {
     padding: 10px 14px;
-    min-height: 44px;
+    min-height: var(--btn-height);
     border: 1px solid var(--gray-200);
     border-radius: var(--radius-xs);
     background: var(--white);
     font-weight: 700;
-    font-size: 12px;
+    font-size: var(--font-caption);
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast);
@@ -477,7 +621,7 @@
 }
 
 .history-page-info {
-    font-size: 12px;
+    font-size: var(--font-caption);
     font-weight: 700;
     color: var(--gray-500);
 }
@@ -489,19 +633,26 @@
 .modal-catalog {
     max-width: 650px;
     max-height: 85vh;
-    overflow-y: auto;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
 }
 
-.catalog-list { margin-top: 16px; }
+.modal-catalog .modal-body {
+    overflow-y: auto;
+    flex: 1;
+}
 
-.catalog-category { margin-bottom: 24px; }
+.catalog-list { margin-top: var(--space-md); }
+
+.catalog-category { margin-bottom: var(--space-lg); }
 
 .catalog-category-title {
     font-size: var(--font-md);
     font-weight: 800;
     padding: 10px 14px;
     border-radius: var(--radius-sm);
-    margin-bottom: 12px;
+    margin-bottom: var(--space-sm);
     color: var(--white);
 }
 
@@ -515,14 +666,14 @@
 .catalog-programs {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-xs);
 }
 
 .catalog-program-card {
     background: var(--gray-50);
-    border-radius: var(--radius-sm);
-    padding: 14px;
-    border-left: 4px solid var(--gray-400);
+    border-radius: var(--radius-card);
+    padding: var(--space-sm) 14px;
+    border-left: 3px solid var(--gray-400);
     transition: box-shadow var(--speed-fast);
 }
 
@@ -541,10 +692,10 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
 }
 
-.catalog-icon { font-size: 24px; }
+.catalog-icon { font-size: 22px; }
 
 .catalog-program-info {
     display: flex;
@@ -558,7 +709,7 @@
 }
 
 .catalog-program-meta {
-    font-size: 12px;
+    font-size: var(--font-caption);
     font-weight: 600;
     color: var(--primary);
 }
@@ -566,7 +717,7 @@
 .catalog-program-tags {
     display: flex;
     gap: 6px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .catalog-tag {
@@ -584,8 +735,8 @@
 }
 
 .catalog-program-desc {
-    font-size: 12px;
+    font-size: var(--font-caption);
     line-height: 1.5;
     color: var(--gray-500);
-    margin-top: 6px;
+    margin-top: 4px;
 }

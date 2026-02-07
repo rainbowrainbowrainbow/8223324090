@@ -462,19 +462,22 @@ body.dark-mode .btn-logout {
     color: rgba(255,255,255,0.7);
 }
 
-/* Admin dropdown in dark */
+/* Admin dropdown in dark — premium dark gradient */
 body.dark-mode .dropdown-content {
-    background: #1e1e32;
-    border-color: var(--gray-300);
+    background-image:
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E"),
+        linear-gradient(180deg, #0B1220 0%, #111B2E 55%, #0B1220 100%);
+    border-color: rgba(16,185,129,0.1);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03) inset;
 }
 
 body.dark-mode .dropdown-item {
-    color: #D1D5DB;
-    border-top-color: var(--gray-200);
+    color: rgba(255,255,255,0.65);
 }
 
 body.dark-mode .dropdown-item:hover {
-    background: var(--gray-100);
+    background: rgba(16,185,129,0.1);
+    color: #6EE7B7;
 }
 
 /* Quick stats bar in dark */
@@ -969,4 +972,75 @@ body.dark-mode .no-history {
 /* Scrollbar improvement */
 body.dark-mode ::-webkit-scrollbar-track {
     background: #0f0f1a;
+}
+
+/* ==========================================
+   v5.39: NEW VISUAL DESIGN — DARK MODE ADDITIONS
+   ========================================== */
+
+/* Sticky modal header/footer in dark */
+body.dark-mode .modal-sticky-header {
+    background: #1e1e32;
+    border-bottom-color: rgba(255,255,255,0.06);
+}
+
+body.dark-mode .modal-sticky-header h3 {
+    color: #F3F4F6;
+}
+
+body.dark-mode .modal-sticky-footer {
+    background: #1e1e32;
+    border-top-color: rgba(255,255,255,0.06);
+}
+
+body.dark-mode .modal-body {
+    background: #1e1e32;
+}
+
+/* Unified button system in dark */
+body.dark-mode .btn-secondary {
+    background: var(--gray-200);
+    color: #D1D5DB;
+    border-color: var(--gray-300);
+}
+
+/* Dashboard sort toggle in dark */
+body.dark-mode .dash-sort-toggle {
+    background: var(--gray-200);
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .dash-sort-btn {
+    color: #9CA3AF;
+}
+
+body.dark-mode .dash-sort-btn.active {
+    background: var(--primary);
+    color: #FFFFFF;
+}
+
+/* Top program micro-bars in dark */
+body.dark-mode .dash-list-item::before {
+    background: linear-gradient(90deg, rgba(16,185,129,0.12), rgba(16,185,129,0.04));
+}
+
+/* Rank badges in dark */
+body.dark-mode .dash-rank.top-1 { background: #B45309; }
+body.dark-mode .dash-rank.top-2 { background: #6B7280; }
+body.dark-mode .dash-rank.top-3 { background: #92400E; }
+
+/* Modal border in dark */
+body.dark-mode .modal-content {
+    border-color: rgba(255,255,255,0.06);
+}
+
+/* History items padding in modal-large */
+body.dark-mode .history-list {
+    background: transparent;
+}
+
+/* History pagination in dark */
+body.dark-mode .history-pagination {
+    background: #1e1e32;
+    border-top-color: rgba(255,255,255,0.06);
 }

@@ -381,7 +381,7 @@ input[type="date"] {
 }
 
 /* ==========================================
-   ADMIN DROPDOWN MENU (v5.8)
+   ADMIN DROPDOWN MENU (v5.39 — premium redesign)
    ========================================== */
 
 .admin-dropdown {
@@ -410,30 +410,38 @@ input[type="date"] {
 .dropdown-content {
     position: absolute;
     right: 0;
-    top: calc(100% + 4px);
-    background: var(--white);
-    border: 1px solid var(--gray-200);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-md);
-    min-width: 180px;
+    top: calc(100% + 6px);
+    background: var(--gradient-menu);
+    border: 1px solid rgba(16,185,129,0.15);
+    border-radius: var(--radius-card);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.05) inset;
+    min-width: 200px;
     z-index: 100;
     overflow: hidden;
+    padding: 6px 0;
+    /* Subtle noise texture via SVG data URI */
+    background-image:
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E"),
+        var(--gradient-menu);
 }
 
 .dropdown-item {
-    display: block;
-    width: 100%;
-    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    width: calc(100% - 12px);
+    margin: 2px 6px;
+    padding: 10px 14px;
     background: none;
     border: none;
-    border-top: 1px solid var(--gray-100);
+    border-radius: var(--radius-xs);
     text-align: left;
     font-size: var(--font-sm);
     font-weight: 600;
-    color: var(--gray-700);
+    color: rgba(255,255,255,0.75);
     cursor: pointer;
     font-family: inherit;
-    transition: background var(--speed-fast);
+    transition: all var(--speed-fast) var(--ease-smooth);
+    letter-spacing: 0.01em;
 }
 
 .dropdown-item:first-child {
@@ -441,7 +449,15 @@ input[type="date"] {
 }
 
 .dropdown-item:hover {
-    background: var(--gray-50);
+    background: rgba(16,185,129,0.12);
+    color: #FFFFFF;
+}
+
+/* Active item highlight — subtle emerald glow */
+.dropdown-item.active {
+    background: linear-gradient(135deg, rgba(16,185,129,0.2) 0%, rgba(16,185,129,0.1) 100%);
+    color: #6EE7B7;
+    border: 1px solid rgba(16,185,129,0.2);
 }
 
 .dropdown-item.hidden {

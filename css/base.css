@@ -1,10 +1,10 @@
 /**
- * base.css - Design System v4.0 — Park Zakrevskogo Periodu
- * Modern color palette, shadows, typography, animations
+ * base.css - Design System v5.0 — Park Zakrevskogo Periodu
+ * Unified design tokens, shadows, typography, animations
  */
 
 /* ==========================================
-   DESIGN TOKENS
+   DESIGN TOKENS v5.0
    ========================================== */
 
 :root {
@@ -16,14 +16,19 @@
     --primary-600: #059669;
     --primary-700: #047857;
 
-    /* Category colors (Tailwind-inspired, vibrant) */
-    --quest: #8B5CF6;
-    --animation: #3B82F6;
-    --show: #F97316;
-    --masterclass: #84CC16;
-    --pinata: #EC4899;
-    --photo: #06B6D4;
-    --custom: #64748B;
+    /* Category colors — unified system */
+    --quest: #8B5CF6;          /* Purple */
+    --animation: #3B82F6;      /* Blue */
+    --show: #F97316;           /* Orange */
+    --masterclass: #84CC16;    /* Green */
+    --pinata: #EC4899;         /* Pink */
+    --photo: #06B6D4;          /* Cyan */
+    --custom: #64748B;         /* Slate */
+
+    /* Status colors — unified system */
+    --status-confirmed: #10B981;
+    --status-preliminary: #F59E0B;
+    --status-conflict: #EF4444;
 
     /* Semantic */
     --success: #10B981;
@@ -50,11 +55,15 @@
     --gray: var(--gray-500);
     --gray-light: var(--gray-400);
 
-    /* Shadows — layered depth */
+    /* Borders — unified */
+    --border-light: 1px solid rgba(0,0,0,0.08);
+    --border-dark: 1px solid rgba(255,255,255,0.08);
+
+    /* Shadows — unified depth scale */
     --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-sm: 0 6px 18px rgba(0,0,0,0.08);
     --shadow: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
-    --shadow-md: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
+    --shadow-md: 0 14px 40px rgba(0,0,0,0.12);
     --shadow-lg: 0 20px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.04);
     --shadow-xl: 0 25px 50px -12px rgba(0,0,0,0.15);
     --shadow-glow: 0 0 20px rgba(16,185,129,0.15);
@@ -65,11 +74,19 @@
     --glass-border: rgba(255,255,255,0.3);
     --glass-blur: 12px;
 
-    /* Radii */
+    /* Radii — unified: 12 cards, 16 modals, 999 chips */
     --radius: 16px;
+    --radius-card: 12px;
     --radius-sm: 10px;
     --radius-xs: 6px;
     --radius-full: 9999px;
+
+    /* Spacing scale — 8px grid */
+    --space-xs: 8px;
+    --space-sm: 12px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
 
     /* Transitions */
     --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
@@ -78,7 +95,7 @@
     --speed-normal: 250ms;
     --speed-slow: 350ms;
 
-    /* Typography */
+    /* Typography — unified scale */
     --font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-xs: 11px;
     --font-sm: 13px;
@@ -87,6 +104,14 @@
     --font-lg: 17px;
     --font-xl: 20px;
     --font-2xl: 24px;
+    --font-heading-lg: 22px;
+    --font-heading-md: 18px;
+    --font-heading-sm: 16px;
+    --font-caption: 12px;
+
+    /* Button heights — unified */
+    --btn-height: 44px;
+    --btn-height-sm: 36px;
 
     /* Z-index scale */
     --z-base: 1;
@@ -96,6 +121,17 @@
     --z-modal: 1000;
     --z-notification: 1100;
     --z-tooltip: 2000;
+
+    /* Gradient presets — buttons */
+    --gradient-primary: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    --gradient-primary-hover: linear-gradient(135deg, #059669 0%, #047857 100%);
+    --gradient-accent: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
+    --gradient-accent-hover: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+    --gradient-danger: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+    --gradient-danger-hover: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+
+    /* Menu gradient — Emerald Core */
+    --gradient-menu: linear-gradient(180deg, #063B2A 0%, #0B5A3E 55%, #063B2A 100%);
 }
 
 /* ==========================================

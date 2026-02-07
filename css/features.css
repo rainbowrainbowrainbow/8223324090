@@ -191,7 +191,7 @@
 }
 
 /* ==========================================
-   DASHBOARD
+   DASHBOARD (v5.0 — unified redesign)
    ========================================== */
 
 .btn-dashboard { display: none; }
@@ -201,22 +201,31 @@
     max-height: 85vh;
     display: flex;
     flex-direction: column;
+    padding: 0;
 }
 
 .modal-wide #dashboardContent {
     overflow-y: auto;
     flex: 1;
-    padding-right: 4px;
+    padding: 0 var(--space-lg) var(--space-lg);
 }
 
 .dashboard-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 20px;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
 }
 
-/* v5.10: Dashboard period tabs */
+/* v5.10: Dashboard period tabs + sort toggle */
+.dash-controls-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+
 .dash-period-tabs {
     display: flex;
     gap: 6px;
@@ -246,10 +255,39 @@
     background: var(--gray-100);
 }
 
+/* Sort toggle: Sum / Count */
+.dash-sort-toggle {
+    display: flex;
+    background: var(--gray-100);
+    border-radius: var(--radius-full);
+    padding: 2px;
+    margin-left: auto;
+    border: 1px solid var(--gray-200);
+}
+
+.dash-sort-btn {
+    padding: 4px 12px;
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    font-size: var(--font-xs);
+    font-weight: 700;
+    color: var(--gray-500);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast);
+}
+
+.dash-sort-btn.active {
+    background: var(--primary);
+    color: var(--white);
+    box-shadow: 0 2px 6px rgba(16,185,129,0.25);
+}
+
 .dash-custom-range {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-xs);
     margin-bottom: 14px;
 }
 
@@ -268,41 +306,66 @@
 }
 
 .dash-card {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-    border-radius: 12px;
-    padding: 16px;
+    background: var(--gradient-primary);
+    border-radius: var(--radius-card);
+    padding: var(--space-md);
     color: white;
     text-align: center;
     box-shadow: var(--shadow-primary);
 }
 
-.dash-card-title { font-size: 12px; opacity: 0.9; font-weight: 700; }
-.dash-card-value { font-size: 22px; font-weight: 900; margin: 4px 0; }
+.dash-card-title { font-size: var(--font-caption); opacity: 0.9; font-weight: 700; }
+.dash-card-value { font-size: var(--font-heading-lg); font-weight: 900; margin: 4px 0; }
 .dash-card-sub { font-size: var(--font-xs); opacity: 0.8; }
 
-.dashboard-section { margin-bottom: 20px; }
+.dashboard-section { margin-bottom: var(--space-lg); }
 
 .dashboard-section h4 {
     font-size: var(--font-base);
     font-weight: 800;
-    margin-bottom: 10px;
+    margin-bottom: var(--space-sm);
     color: var(--gray-800);
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
 }
 
+/* Top programs list item — with micro-bar */
 .dash-list-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm);
     background: var(--gray-50);
-    border-radius: 8px;
+    border-radius: var(--radius-xs);
     margin-bottom: 4px;
     font-size: var(--font-sm);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Micro-bar (progress strip) behind list item */
+.dash-list-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--micro-bar-width, 0%);
+    background: linear-gradient(90deg, rgba(16,185,129,0.08), rgba(16,185,129,0.03));
+    border-radius: var(--radius-xs);
+    transition: width 0.6s var(--ease-smooth);
+    z-index: 0;
+}
+
+.dash-list-item > * {
+    position: relative;
+    z-index: 1;
 }
 
 .dash-rank {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     background: var(--primary);
     color: white;
     border-radius: 50%;
@@ -310,23 +373,52 @@
     align-items: center;
     justify-content: center;
     font-weight: 800;
-    font-size: var(--font-xs);
+    font-size: 10px;
     flex-shrink: 0;
 }
 
-.dash-name { flex: 1; font-weight: 600; }
-.dash-count { color: var(--gray-400); font-size: 12px; }
-.dash-revenue { font-weight: 800; color: var(--primary); white-space: nowrap; }
+/* Top-3 rank highlight */
+.dash-rank.top-1 { background: #F59E0B; }
+.dash-rank.top-2 { background: var(--gray-400); }
+.dash-rank.top-3 { background: #CD7F32; }
+
+.dash-name {
+    flex: 1;
+    font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dash-count {
+    color: var(--gray-400);
+    font-size: var(--font-caption);
+    flex-shrink: 0;
+}
+
+.dash-revenue {
+    font-weight: 800;
+    color: var(--primary);
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: var(--font-sm);
+}
 
 .dash-bar-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-xs);
     margin-bottom: 6px;
     font-size: var(--font-sm);
 }
 
-.dash-bar-label { width: 80px; font-weight: 600; flex-shrink: 0; color: var(--gray-700); }
+.dash-bar-label {
+    width: 80px;
+    font-weight: 600;
+    flex-shrink: 0;
+    color: var(--gray-700);
+}
 
 .dash-bar-track {
     flex: 1;
@@ -343,13 +435,19 @@
     transition: width 0.5s ease;
 }
 
-.dash-bar-value { width: 70px; text-align: right; color: var(--gray-400); font-size: 12px; flex-shrink: 0; }
+.dash-bar-value {
+    width: 70px;
+    text-align: right;
+    color: var(--gray-400);
+    font-size: var(--font-caption);
+    flex-shrink: 0;
+}
 
 /* v5.36: Empty state — consistent styling */
 .no-data {
     text-align: center;
     color: var(--gray-400);
-    padding: 48px 24px;
+    padding: 48px var(--space-lg);
     font-size: var(--font-sm);
     font-weight: 600;
     line-height: 1.6;
@@ -359,7 +457,7 @@
     content: '🎭';
     display: block;
     font-size: 32px;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-xs);
 }
 
 /* ==========================================

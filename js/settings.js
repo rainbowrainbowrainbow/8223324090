@@ -728,6 +728,9 @@ function renderRevenueCards(todayBookings, weekBookings, monthBookings, yearBook
     </div>`;
 }
 
+// v5.39: Dashboard sort mode — 'revenue' or 'count'
+let dashboardSortMode = 'revenue';
+
 function renderTopProgramsSection(bookingsData, periodLabel) {
     const counts = {};
     bookingsData.forEach(b => {
@@ -736,21 +739,38 @@ function renderTopProgramsSection(bookingsData, periodLabel) {
         counts[key].count++;
         counts[key].revenue += b.price || 0;
     });
-    const top = Object.entries(counts).sort((a, b) => b[1].count - a[1].count).slice(0, 8);
+
+    // Sort by selected mode
+    const sortKey = dashboardSortMode === 'revenue' ? 'revenue' : 'count';
+    const top = Object.entries(counts).sort((a, b) => b[1][sortKey] - a[1][sortKey]).slice(0, 8);
+    const maxValue = top.length > 0 ? top[0][1][sortKey] : 1;
+
+    // Sort toggle
+    const sortToggleHtml = `<div class="dash-sort-toggle">
+        <button class="dash-sort-btn ${dashboardSortMode === 'revenue' ? 'active' : ''}" onclick="switchDashboardSort('revenue')">Сума</button>
+        <button class="dash-sort-btn ${dashboardSortMode === 'count' ? 'active' : ''}" onclick="switchDashboardSort('count')">К-сть</button>
+    </div>`;
 
     return `<div class="dashboard-section">
-        <h4>🏆 Топ програм (${periodLabel || 'Місяць'})</h4>
+        <h4>🏆 Топ програм (${periodLabel || 'Місяць'}) ${sortToggleHtml}</h4>
         <div class="dash-list">
-            ${top.map(([name, data], i) =>
-                `<div class="dash-list-item">
-                    <span class="dash-rank">${i + 1}</span>
+            ${top.map(([name, data], i) => {
+                const barWidth = maxValue > 0 ? Math.round((data[sortKey] / maxValue) * 100) : 0;
+                const rankClass = i < 3 ? ` top-${i + 1}` : '';
+                return `<div class="dash-list-item" style="--micro-bar-width: ${barWidth}%">
+                    <span class="dash-rank${rankClass}">${i + 1}</span>
                     <span class="dash-name">${name}</span>
                     <span class="dash-count">${data.count}x</span>
                     <span class="dash-revenue">${formatPrice(data.revenue)}</span>
-                </div>`
-            ).join('') || '<p class="no-data">Немає даних</p>'}
+                </div>`;
+            }).join('') || '<p class="no-data">Немає даних</p>'}
         </div>
     </div>`;
+}
+
+function switchDashboardSort(mode) {
+    dashboardSortMode = mode;
+    renderDashboardContent();
 }
 
 function renderCategoryBarsSection(bookingsData, periodLabel) {

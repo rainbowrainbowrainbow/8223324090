@@ -14,16 +14,16 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.38">
-    <link rel="stylesheet" href="css/auth.css?v=5.38">
-    <link rel="stylesheet" href="css/layout.css?v=5.38">
-    <link rel="stylesheet" href="css/timeline.css?v=5.38">
-    <link rel="stylesheet" href="css/panel.css?v=5.38">
-    <link rel="stylesheet" href="css/modals.css?v=5.38">
-    <link rel="stylesheet" href="css/controls.css?v=5.38">
-    <link rel="stylesheet" href="css/features.css?v=5.38">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.38">
-    <link rel="stylesheet" href="css/responsive.css?v=5.38">
+    <link rel="stylesheet" href="css/base.css?v=5.39">
+    <link rel="stylesheet" href="css/auth.css?v=5.39">
+    <link rel="stylesheet" href="css/layout.css?v=5.39">
+    <link rel="stylesheet" href="css/timeline.css?v=5.39">
+    <link rel="stylesheet" href="css/panel.css?v=5.39">
+    <link rel="stylesheet" href="css/modals.css?v=5.39">
+    <link rel="stylesheet" href="css/controls.css?v=5.39">
+    <link rel="stylesheet" href="css/features.css?v=5.39">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.39">
+    <link rel="stylesheet" href="css/responsive.css?v=5.39">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -34,9 +34,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.38</p>
+                <p class="tagline">Система бронювання v5.39</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.38</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.39</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -459,8 +459,10 @@
     <!-- v3.6: Модальне вікно Налаштування -->
     <div id="settingsModal" class="modal hidden">
         <div class="modal-content modal-large">
-            <span class="modal-close">&times;</span>
-            <h3>⚙️ Налаштування</h3>
+            <div class="modal-sticky-header">
+                <h3>Налаштування</h3>
+                <span class="modal-close">&times;</span>
+            </div>
             <div class="settings-sections">
                 <!-- Аніматори -->
                 <div class="settings-section">
@@ -555,8 +557,10 @@
     <!-- Модальне вікно історії (v5.16: з фільтрами) -->
     <div id="historyModal" class="modal hidden">
         <div class="modal-content modal-large">
-            <span class="modal-close">&times;</span>
-            <h3>📋 Історія змін</h3>
+            <div class="modal-sticky-header">
+                <h3>Історія змін</h3>
+                <span class="modal-close">&times;</span>
+            </div>
             <div class="history-filters">
                 <div class="history-filter-row">
                     <select id="historyFilterAction" class="history-filter-select">
@@ -618,8 +622,10 @@
     <!-- Модальне вікно Дашборд -->
     <div id="dashboardModal" class="modal hidden">
         <div class="modal-content modal-wide">
-            <span class="modal-close">&times;</span>
-            <h3>📊 Дашборд</h3>
+            <div class="modal-sticky-header">
+                <h3>Дашборд</h3>
+                <span class="modal-close">&times;</span>
+            </div>
             <div id="dashboardContent"></div>
         </div>
     </div>
@@ -655,7 +661,7 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v5.38 — Image Asset Pack</h4>
+                    <h4>v5.39 — Image Asset Pack</h4>
                     <ul>
                         <li>Нове лого: кролик з годинником на геометричному вітражному фоні</li>
                         <li>Favicon: SVG + ICO + PNG (16, 32, 180, 192, 512px)</li>
@@ -1135,17 +1141,23 @@
     <!-- Модальне вікно каталогу програм -->
     <div id="programsCatalogModal" class="modal hidden">
         <div class="modal-content modal-catalog">
-            <span class="modal-close">&times;</span>
-            <h3>🎭 Розважальні програми</h3>
-            <div id="programsCatalogList" class="catalog-list"></div>
+            <div class="modal-sticky-header">
+                <h3>Розважальні програми</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="programsCatalogList" class="catalog-list"></div>
+            </div>
         </div>
     </div>
 
     <!-- F: Модальне вікно Афіша -->
     <div id="afishaModal" class="modal hidden">
         <div class="modal-content modal-large">
-            <span class="modal-close">&times;</span>
-            <h3>🎭 Афіша / Події</h3>
+            <div class="modal-sticky-header">
+                <h3>Афіша / Події</h3>
+                <span class="modal-close">&times;</span>
+            </div>
             <div class="afisha-form">
                 <div class="afisha-form-row">
                     <input type="date" id="afishaDate" class="afisha-input">
@@ -1170,13 +1182,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.38"></script>
-    <script src="js/api.js?v=5.38"></script>
-    <script src="js/ui.js?v=5.38"></script>
-    <script src="js/auth.js?v=5.38"></script>
-    <script src="js/timeline.js?v=5.38"></script>
-    <script src="js/booking.js?v=5.38"></script>
-    <script src="js/settings.js?v=5.38"></script>
-    <script src="js/app.js?v=5.38"></script>
+    <script src="js/config.js?v=5.39"></script>
+    <script src="js/api.js?v=5.39"></script>
+    <script src="js/ui.js?v=5.39"></script>
+    <script src="js/auth.js?v=5.39"></script>
+    <script src="js/timeline.js?v=5.39"></script>
+    <script src="js/booking.js?v=5.39"></script>
+    <script src="js/settings.js?v=5.39"></script>
+    <script src="js/app.js?v=5.39"></script>
 </body>
 </html>

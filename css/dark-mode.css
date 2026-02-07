@@ -249,18 +249,24 @@ body.dark-mode .kids-count-section {
     border-color: rgba(16,185,129,0.15);
 }
 
-/* Status radio */
-body.dark-mode .status-radio-label {
+/* Status radio (v5.31 segmented control) */
+body.dark-mode .status-radio-group {
+    background: var(--gray-100);
     border-color: var(--gray-300);
+}
+
+body.dark-mode .status-radio-label {
     color: #9CA3AF;
 }
 
 body.dark-mode .status-radio input:checked + .status-radio-label.confirmed {
-    background: rgba(16,185,129,0.15);
+    background: var(--primary);
+    color: #FFFFFF;
 }
 
 body.dark-mode .status-radio input:checked + .status-radio-label.preliminary {
-    background: rgba(245,158,11,0.15);
+    background: var(--warning);
+    color: #FFFFFF;
 }
 
 /* Minimap */
@@ -631,7 +637,7 @@ body.dark-mode .history-pagination {
     border-top-color: var(--gray-200);
 }
 
-/* v5.15: Status filter in dark */
+/* v5.31: Status filter in dark (segmented) */
 body.dark-mode .status-filter-controls {
     background: var(--gray-100);
     border-color: var(--gray-300);
@@ -639,7 +645,6 @@ body.dark-mode .status-filter-controls {
 
 body.dark-mode .status-filter-btn {
     color: #9CA3AF;
-    border-right-color: var(--gray-300);
 }
 
 body.dark-mode .status-filter-btn.active {

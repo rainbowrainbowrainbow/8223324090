@@ -226,15 +226,7 @@
     transition: all var(--speed-fast) var(--ease-smooth);
 }
 
-.booking-actions button {
-    background: var(--danger);
-    color: var(--white);
-}
-
-.booking-actions button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(239,68,68,0.3);
-}
+/* Button colors defined per-class in modals.css (v5.31) */
 
 .time-shift-buttons {
     display: flex;
@@ -261,10 +253,7 @@
     color: var(--primary-dark);
 }
 
-.btn-status-toggle {
-    padding: 10px 16px !important;
-    font-size: var(--font-sm) !important;
-}
+/* btn-status-toggle styles in panel.css (v5.31) */
 
 /* ==========================================
    v5.15: TODAY BUTTON
@@ -304,17 +293,18 @@
 
 .status-filter-controls {
     display: flex;
-    background: var(--white);
-    border-radius: 10px;
-    overflow: hidden;
+    gap: 2px;
+    background: var(--gray-100);
+    border-radius: 8px;
+    padding: 2px;
     border: 1px solid var(--gray-200);
-    box-shadow: var(--shadow-sm);
 }
 
 .status-filter-btn {
     padding: 10px 14px;
     min-height: 44px;
     border: none;
+    border-radius: 6px;
     background: transparent;
     font-size: var(--font-xs);
     font-weight: 700;
@@ -322,19 +312,17 @@
     font-family: inherit;
     color: var(--gray-500);
     transition: all var(--speed-fast) var(--ease-smooth);
-    border-right: 1px solid var(--gray-200);
 }
-
-.status-filter-btn:last-child { border-right: none; }
 
 .status-filter-btn.active {
     background: var(--primary);
     color: var(--white);
+    box-shadow: 0 1px 3px rgba(16,185,129,0.3);
 }
 
 .status-filter-btn:hover:not(.active) {
-    background: var(--primary-50);
-    color: var(--primary-dark);
+    background: rgba(16,185,129,0.08);
+    color: var(--gray-700);
 }
 
 /* Hide filtered-out booking blocks */
@@ -382,13 +370,17 @@
 }
 
 /* ==========================================
-   v5.18: EQUALIZED STATUS CHIPS
+   v5.31: STATUS SEGMENTED CONTROL
    ========================================== */
 
 .status-radio-group {
     display: flex;
-    gap: 8px;
+    gap: 2px;
     width: 100%;
+    background: var(--gray-100);
+    border-radius: 8px;
+    padding: 2px;
+    border: 1px solid var(--gray-200);
 }
 
 .status-radio {
@@ -406,46 +398,43 @@
     justify-content: center;
     width: 100%;
     padding: 10px 14px;
-    border-radius: var(--radius-sm);
+    min-height: 44px;
+    border-radius: 6px;
     font-weight: 700;
     font-size: var(--font-sm);
     text-align: center;
-    border: 2px solid var(--gray-200);
+    border: none;
+    background: transparent;
+    color: var(--gray-500);
     transition: all var(--speed-fast) var(--ease-smooth);
     cursor: pointer;
 }
 
-.status-radio-label.confirmed {
-    border-color: rgba(16,185,129,0.3);
-    color: #065F46;
+.status-radio-label:hover {
     background: rgba(16,185,129,0.08);
+    color: var(--gray-700);
 }
 
+.status-radio-label.confirmed,
 .status-radio-label.preliminary {
-    border-color: rgba(245,158,11,0.3);
-    color: #92400E;
-    background: rgba(245,158,11,0.08);
+    /* Inactive: same neutral look for both */
 }
 
 .status-radio input:checked + .status-radio-label.confirmed {
-    background: rgba(16,185,129,0.2);
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(16,185,129,0.15);
+    background: var(--primary);
+    color: #FFFFFF;
+    box-shadow: 0 1px 3px rgba(16,185,129,0.3);
 }
 
 .status-radio input:checked + .status-radio-label.preliminary {
-    background: rgba(245,158,11,0.2);
-    border-color: #F59E0B;
-    box-shadow: 0 0 0 2px rgba(245,158,11,0.15);
+    background: var(--warning);
+    color: #FFFFFF;
+    box-shadow: 0 1px 3px rgba(245,158,11,0.3);
 }
 
-/* ==========================================
-   v5.18: STATUS FILTER LABELS — FULL TEXT
-   ========================================== */
-
+/* v5.18: STATUS FILTER LABELS — FULL TEXT */
 .status-filter-btn {
     min-width: 80px;
-    text-align: center;
 }
 
 /* ==========================================

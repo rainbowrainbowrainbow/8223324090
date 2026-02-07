@@ -155,20 +155,24 @@
 
 .booking-actions { margin-top: 24px; }
 
-.booking-actions button {
-    width: 100%;
-    padding: 14px;
-    background: linear-gradient(135deg, var(--danger) 0%, #DC2626 100%);
+/* v5.31: Edit button — primary/emerald (non-destructive action) */
+.booking-actions .btn-edit-booking {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: var(--white);
-    border: none;
-    border-radius: var(--radius-sm);
-    font-weight: 700;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all var(--speed-fast) var(--ease-smooth);
 }
 
-.booking-actions button:hover {
+.booking-actions .btn-edit-booking:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(16,185,129,0.3);
+}
+
+/* v5.31: Delete button — danger/red (destructive action) */
+.booking-actions .btn-delete-booking {
+    background: linear-gradient(135deg, var(--danger) 0%, #DC2626 100%);
+    color: var(--white);
+}
+
+.booking-actions .btn-delete-booking:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(239,68,68,0.3);
 }
@@ -193,32 +197,27 @@
     flex-wrap: wrap;
 }
 
+/* v5.31: Time shift — neutral outline (secondary actions) */
 .time-shift-buttons button {
     flex: 1;
     min-width: 45px;
+    min-height: 44px;
     padding: 10px 8px;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-xs);
+    background: var(--gray-50);
+    font-weight: 700;
     font-size: var(--font-sm);
+    color: var(--gray-600);
     cursor: pointer;
     transition: all var(--speed-fast) var(--ease-smooth);
 }
 
-.time-shift-buttons button:nth-child(1),
-.time-shift-buttons button:nth-child(2) {
-    background: linear-gradient(135deg, var(--warning) 0%, #D97706 100%);
-    color: white;
-}
-
-.time-shift-buttons button:nth-child(n+3) {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-    color: white;
-}
-
 .time-shift-buttons button:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    background: var(--primary-50);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+    transform: translateY(-1px);
 }
 
 /* ==========================================

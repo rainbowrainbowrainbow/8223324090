@@ -600,7 +600,7 @@ async function showBookingDetails(bookingId) {
         <div class="booking-actions">
             <button onclick="editBooking('${booking.id}')" class="btn-edit-booking">✏️ Редагувати</button>
             <a href="${inviteUrl}" target="_blank" class="btn-invite-event">🎉 Запрошення</a>
-            <button onclick="deleteBooking('${booking.id}')">Видалити бронювання</button>
+            <button onclick="deleteBooking('${booking.id}')" class="btn-delete-booking">Видалити</button>
         </div>
     `;
 

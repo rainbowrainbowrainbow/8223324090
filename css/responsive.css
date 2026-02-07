@@ -146,9 +146,10 @@
 
 @media (max-width: 480px) {
     .category-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
-    .program-icon { min-height: 64px; padding: 8px 2px; }
-    .program-icon .icon { font-size: 20px; }
-    .program-icon .name { font-size: 8px; }
+    .program-icon { min-height: 68px; padding: 10px 4px; }
+    .program-icon .icon { font-size: 22px; }
+    .program-icon .name { font-size: 9px; }
+    .program-duration { font-size: 8px; padding: 1px 4px; }
 
     .date-controls input[type="date"] {
         min-width: 100px;

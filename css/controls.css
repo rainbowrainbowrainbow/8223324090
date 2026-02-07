@@ -178,28 +178,7 @@
    C3: MODERN PROGRAM ICON BACKGROUNDS
    ========================================== */
 
-.program-icon {
-    background: transparent !important;
-    border: 2px solid var(--gray-100) !important;
-}
-
-.program-icon .icon {
-    background: none;
-    filter: none;
-}
-
-.program-icon.quest { border-color: rgba(139,92,246,0.3) !important; }
-.program-icon.animation { border-color: rgba(59,130,246,0.3) !important; }
-.program-icon.show { border-color: rgba(249,115,22,0.3) !important; }
-.program-icon.masterclass { border-color: rgba(132,204,22,0.3) !important; }
-.program-icon.pinata { border-color: rgba(236,72,153,0.3) !important; }
-.program-icon.photo { border-color: rgba(6,182,212,0.3) !important; }
-.program-icon.custom { border-color: rgba(100,116,139,0.3) !important; }
-
-.program-icon.selected {
-    background: var(--primary-50) !important;
-    border-color: var(--primary) !important;
-}
+/* Program icon overrides removed in v5.32 — styles consolidated in panel.css */
 
 /* ==========================================
    C4: NORMALIZE STATUS AND TIME-SHIFT BUTTONS

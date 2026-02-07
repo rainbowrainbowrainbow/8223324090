@@ -168,6 +168,17 @@ body.dark-mode .program-icon.selected {
     border-color: var(--primary);
 }
 
+/* v5.32: Duration badge dark mode */
+body.dark-mode .program-duration.short {
+    background: rgba(59,130,246,0.2);
+    color: #93C5FD;
+}
+
+body.dark-mode .program-duration.long {
+    background: rgba(245,158,11,0.2);
+    color: #FCD34D;
+}
+
 body.dark-mode .program-details {
     background: var(--gray-100);
     border-color: var(--gray-200);

@@ -154,7 +154,7 @@
     justify-content: center;
     padding: 12px 6px;
     background: var(--white);
-    border: 2px solid var(--gray-200);
+    border: 1px solid var(--gray-200);
     border-radius: 12px;
     cursor: pointer;
     transition: all var(--speed-normal) var(--ease-smooth);
@@ -185,7 +185,26 @@
 .program-icon.selected {
     border-color: var(--primary);
     background: var(--primary-50);
-    box-shadow: 0 4px 16px rgba(16,185,129,0.2);
+    box-shadow: 0 4px 16px rgba(16,185,129,0.25);
+    transform: scale(1.04);
+}
+
+.program-icon.selected::after {
+    content: '\2713';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 18px;
+    height: 18px;
+    background: var(--primary);
+    color: var(--white);
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
 }
 
 .program-icon .icon {
@@ -203,32 +222,60 @@
     letter-spacing: -0.2px;
 }
 
-/* Category color variants */
-.program-icon.quest { border-color: rgba(139,92,246,0.15); background: #FAFAFF; }
+/* v5.32: Duration badge — top-right corner of program card */
+.program-duration {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1.4;
+    z-index: 1;
+}
+
+.program-duration.short {
+    background: #DBEAFE;
+    color: #1E40AF;
+}
+
+.program-duration.long {
+    background: #FDE68A;
+    color: #92400E;
+}
+
+/* Hide duration badge when card is selected (checkmark replaces it) */
+.program-icon.selected .program-duration {
+    display: none;
+}
+
+/* Category color variants — subtle tint bg, 1px border */
+.program-icon.quest { border-color: rgba(139,92,246,0.2); background: #FAFAFF; }
 .program-icon.quest::before { background: var(--quest); }
 .program-icon.quest:hover { border-color: var(--quest); background: #F5F3FF; }
 
-.program-icon.animation { border-color: rgba(59,130,246,0.15); background: #FAFBFF; }
+.program-icon.animation { border-color: rgba(59,130,246,0.2); background: #FAFBFF; }
 .program-icon.animation::before { background: var(--animation); }
 .program-icon.animation:hover { border-color: var(--animation); background: #EFF6FF; }
 
-.program-icon.show { border-color: rgba(249,115,22,0.15); background: #FFFAF8; }
+.program-icon.show { border-color: rgba(249,115,22,0.2); background: #FFFAF8; }
 .program-icon.show::before { background: var(--show); }
 .program-icon.show:hover { border-color: var(--show); background: #FFF7ED; }
 
-.program-icon.masterclass { border-color: rgba(132,204,22,0.15); background: #FAFFF8; }
+.program-icon.masterclass { border-color: rgba(132,204,22,0.2); background: #FAFFF8; }
 .program-icon.masterclass::before { background: var(--masterclass); }
 .program-icon.masterclass:hover { border-color: var(--masterclass); background: #F7FEE7; }
 
-.program-icon.pinata { border-color: rgba(236,72,153,0.15); background: #FFFAFC; }
+.program-icon.pinata { border-color: rgba(236,72,153,0.2); background: #FFFAFC; }
 .program-icon.pinata::before { background: var(--pinata); }
 .program-icon.pinata:hover { border-color: var(--pinata); background: #FDF2F8; }
 
-.program-icon.photo { border-color: rgba(6,182,212,0.15); background: #FAFFFF; }
+.program-icon.photo { border-color: rgba(6,182,212,0.2); background: #FAFFFF; }
 .program-icon.photo::before { background: var(--photo); }
 .program-icon.photo:hover { border-color: var(--photo); background: #ECFEFF; }
 
-.program-icon.custom { border-color: rgba(100,116,139,0.15); background: var(--gray-50); }
+.program-icon.custom { border-color: rgba(100,116,139,0.2); background: var(--gray-50); }
 .program-icon.custom::before { background: var(--custom); }
 .program-icon.custom:hover { border-color: var(--custom); background: var(--gray-100); }
 

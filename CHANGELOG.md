@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-02-07 — v5.38 Image Asset Pack
+
+**Що вирішили:**
+- Нове лого (кролик з годинником на геометричному вітражі) замість діно
+- Повний favicon set + PWA manifest + meta tags
+
+**Що додали/поміняли:**
+- `images/favicon.svg` — SVG лого (кролик + годинник + stained-glass фон)
+- `images/favicon-*.png` — PNG 16, 32, 180 (apple-touch), 192, 512
+- `favicon.ico` — multi-size ICO в корені
+- `manifest.json` — PWA manifest (standalone, uk, theme emerald)
+- `index.html` — meta description, theme-color, apple-mobile-web-app, favicon links, manifest link
+- `index.html` — лого login screen + header → favicon-512.png
+- `index.html` — changelog entry v5.38
+- Version bump 5.38.0
+
+**Під питанням:** —
+
+**Наступний крок:**
+- UI/UX overhaul серія v5.30–v5.38 завершена!
+
+---
+
 ## 2026-02-07 — v5.37 Dark Mode & Typography Polish
 
 **Що вирішили:**

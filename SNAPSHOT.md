@@ -3,8 +3,7 @@
 > Оновлюється кожні 10-15 повідомлень. Швидкий контекст для продовження роботи.
 
 ## Де ми
-Версія **v5.37.0**. UI/UX overhaul серія v5.30–v5.38.
-Зроблено v5.30–v5.37, залишилось v5.38.
+Версія **v5.38.0**. UI/UX overhaul серія v5.30–v5.38 — **ЗАВЕРШЕНА!**
 
 ## Що готово
 - v5.30: Design System v4.0 (emerald, CSS tokens, 10-file architecture)
@@ -15,9 +14,10 @@
 - v5.35: Tablet overlay + Desktop Grid toolbar + backdrop + landscape
 - v5.36: Афіша & Історія UI (inline styles прибрано, responsive, empty states)
 - v5.37: Dark Mode & Typography Polish (login, categories, empty states, cleanup)
+- v5.38: Image Asset Pack (нове лого-кролик, favicon set, PWA manifest, meta tags)
 
 ## Що далі
-1. **v5.38** — Image Asset Pack (favicon, PWA manifest)
+- Серія v5.30–v5.38 завершена. Планування наступного етапу.
 
 ## Технічний стан
 - 157/157 тестів проходять
@@ -25,4 +25,4 @@
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
 
 ---
-*Оновлено: 2026-02-07, після v5.37*
+*Оновлено: 2026-02-07, після v5.38*

@@ -233,14 +233,20 @@ Marvel, Ninja, Minecraft, Monster High, Elsa, Растішка, Rock, Minion, Fo
 ### Костюми (27)
 Визначені в `js/config.js` — Супер Кіт, Леді Баг, Майнкрафт Кріпер, Ельза, Людина-павук, Венсдей, Барбі, Роблокс та інші
 
-## 9. Цілі на поточний етап (v5.36–v5.38)
+## 9. Завершені цілі (v5.30–v5.38 UI/UX Overhaul)
 
-1. **v5.36 — Афіша & Історія UI:** покращення модалок афіші та історії змін
-2. **v5.37 — Dark Mode & Typography Polish:** доведення dark mode, типографіка
-3. **v5.38 — Image Asset Pack:** оптимізація зображень, favicon, PWA manifest
-4. Виправлення CLAUDE.md (зараз описує НЕПРАВИЛЬНИЙ стек)
-5. Очистка `.claude/skills/` (шаблонні файли, не відповідають реальності)
+1. **v5.30** — A11y Foundation (touch targets, focus-visible, iOS zoom fix) ✅
+2. **v5.31** — Segmented controls (status filter, period selector) ✅
+3. **v5.32** — Program Cards & Category Grid ✅
+4. **v5.33** — Booking Panel Mobile (flex layout, scroll lock) ✅
+5. **v5.34** — Responsive Phones (4 breakpoints) ✅
+6. **v5.35** — Tablet overlay + Desktop Grid toolbar ✅
+7. **v5.36** — Афіша & Історія UI ✅
+8. **v5.37** — Dark Mode & Typography Polish ✅
+9. **v5.38** — Image Asset Pack (favicon, PWA manifest, нове лого) ✅
+10. Виправлення CLAUDE.md (реальний стек замість TypeScript/Prisma) ✅
+11. Очистка `.claude/skills/` (видалено 12 шаблонних файлів) ✅
 
 ---
 
-*Останнє оновлення: v5.35.0 (2026-02-07)*
+*Останнє оновлення: v5.38.0 (2026-02-07)*

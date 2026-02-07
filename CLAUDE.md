@@ -1,45 +1,66 @@
-# Booking System — Claude Code Project Context
+# Парк Закревського Періоду — Booking System
 
 ## Project Overview
-Holiday/event booking system with mini-CRM, Telegram bot integration, payment processing (LiqPay), and multi-channel notifications. Target market: Ukraine.
+Система бронювання для дитячого розважального парку з таймлайном аніматорів, Telegram сповіщеннями, каталогом програм і адмін-панеллю.
 
 ## Language
 - Code: English (variables, functions, comments)
 - UI/UX: Ukrainian (labels, messages, notifications)
-- Domain terms: see glossary in `01-product-context` skill
+- Communication: Ukrainian preferred
 
-## Skills Index
-All project skills are in `.claude/skills/`:
+## Source of Truth
+- **PROJECT_PASSPORT.md** — повний паспорт проекту (стек, API, env, design system, programs, rooms)
+- **CHANGELOG.md** — журнал змін по версіях
+- **SNAPSHOT.md** — поточний стан для швидкого продовження сесії
 
-| # | Skill | Purpose |
-|---|-------|---------|
-| 01 | Product Context & Domain Model | Core entities, relationships, business rules |
-| 02 | DB Schema & Migrations | PostgreSQL + Prisma schema, migration rules |
-| 03 | API Contract | REST API design, endpoints, error codes |
-| 04 | Booking Workflow | State machine, transitions, guards, effects |
-| 05 | Notification Orchestrator | Multi-channel notifications, templates, scheduling |
-| 06 | Telegram Integration | Bot commands, callbacks, webhooks |
-| 07 | Admin Panel CRUD | Dashboard, tables, forms, RBAC |
-| 08 | E2E Tests | Playwright test patterns, page objects |
-| 09 | Performance & SEO | Lighthouse, Core Web Vitals, structured data |
-| 10 | Release & Versioning | SemVer, changelog, CI/CD release flow |
-| 11 | Bug Triage | Bug reporting, prioritization, postmortems |
-| 12 | Security Guard | OWASP Top 10, auth, input validation, audit |
-
-## Tech Stack
-- **Runtime**: Node.js 20+ (TypeScript)
-- **Backend**: Fastify (or Express)
-- **Database**: PostgreSQL + Prisma ORM
-- **Bot**: grammY (Telegram Bot API)
-- **Payments**: LiqPay
-- **Frontend**: Next.js / Astro
-- **Testing**: Vitest (unit) + Playwright (E2E)
-- **CI/CD**: GitHub Actions
+## Tech Stack (ACTUAL)
+- **Runtime**: Node.js 18+ (vanilla JavaScript, NO TypeScript)
+- **Backend**: Express.js
+- **Database**: PostgreSQL 16 + raw `pg` pool (NO Prisma, NO ORM)
+- **Bot**: Custom Telegram Bot API calls (NO grammY)
+- **Frontend**: Vanilla HTML + CSS + JS SPA (NO React, NO Next.js, NO Astro)
+- **CSS**: 10-file modular architecture + Design System v4.0 (base, auth, layout, timeline, panel, modals, controls, features, dark-mode, responsive)
+- **Font**: Nunito (Google Fonts)
+- **Testing**: Node.js built-in test runner (`node --test`)
+- **CI/CD**: Manual deploy
 
 ## Key Conventions
 - All dates stored in UTC, displayed in Europe/Kyiv (UTC+2/+3)
 - Currency: UAH (₴), format: "1 000 ₴"
-- Phone: Ukrainian format +380XXXXXXXXX
 - Booking numbers: BK-YYYY-NNNN
-- Commit messages: Conventional Commits (feat/fix/chore/etc.)
-- Branch naming: feature/, fix/, hotfix/, chore/
+- DB: snake_case → API: camelCase via `mapBookingRow()`
+- Transaction pattern: `pool.connect()` → `BEGIN/COMMIT` → `catch/ROLLBACK` → `finally/release()`
+- Telegram: fire-and-forget AFTER commit
+- Commit messages: Conventional Commits (feat/fix/chore/docs)
+- Touch targets: min 44px (WCAG 2.1)
+- Font-size inputs: min 16px (iOS zoom prevention)
+
+## Running Tests
+```bash
+pg_ctlcluster 16 main start
+PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MAX=5000 node server.js &
+node --test tests/api.test.js
+```
+Test user: admin / admin123
+
+## File Structure
+```
+server.js          — Entry point (89 lines, mounts routes)
+db/                — Pool, initDatabase, generateBookingNumber
+routes/            — auth, bookings, lines, history, settings, afisha, telegram, backup
+services/          — booking, telegram, templates, scheduler, backup
+middleware/        — auth (JWT), rateLimit, security, requestId
+utils/             — logger
+index.html         — SPA (single file, all modals)
+css/               — 10 CSS modules
+js/                — 8 JS modules (config, api, ui, auth, timeline, booking, settings, app)
+images/            — Logo, program icons, favicon set
+tests/             — api.test.js (157 tests)
+```
+
+## Versioning Workflow (5 steps)
+1. `package.json` — version bump
+2. `index.html` — all `?v=X.XX` on CSS/JS tags
+3. `index.html` — tagline text
+4. `index.html` — changelog button text
+5. `index.html` — new changelog entry in modal

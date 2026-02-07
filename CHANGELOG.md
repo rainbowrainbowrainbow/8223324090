@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-02-07 — v5.44 Dashboard & Empty States
+
+**Що вирішили:**
+- Різнокольорові картки дашборду (зелений/синій/фіолет/помаранч)
+- Медалі для топ-3 (золото/срібло/бронза)
+- Покращені bar chart і empty states
+- Subtle dot pattern для темної теми
+
+**Що додали/поміняли:**
+- `css/features.css` — dash-card з hover, декоративним колом, різними кольорами для 4 карток
+- `css/features.css` — dash-list-item з hover border, dash-rank з gradient + special top-3 colors
+- `css/features.css` — dash-bar-fill з inner shadow, stronger value text
+- `css/features.css` — no-data з більшою іконкою + декоративна лінія
+- `css/dark-mode.css` — subtle dot pattern через radial-gradient (40px grid)
+- Version bump 5.44.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v5.45 — Invite Page Overhaul
+
+---
+
 ## 2026-02-07 — v5.43 Modals & Buttons Polish
 
 **Що вирішили:**

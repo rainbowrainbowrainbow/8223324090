@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-02-07 — v5.36 Афіша & Історія UI
+
+**Що вирішили:**
+- Другорядні екрани (Афіша, Історія) привести до design system v4.0
+- Прибрати inline styles і !important — все через CSS класи
+
+**Що додали/поміняли:**
+- `index.html` — inline `style=` замінено на `.btn-afisha-add`, `.btn-afisha-import`
+- `css/features.css` — нові класи кнопок, !important прибрано з .btn-shift/.btn-edit/.btn-sm
+- `css/responsive.css` — афіша форма стеком (≤768px), історія фільтри стеком, touch targets
+- `css/modals.css` — empty state `.no-history` з іконкою
+- `css/features.css` — empty state `.no-data` з іконкою
+- `css/dark-mode.css` — афіша кнопки та textarea в dark mode
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v5.37 — Dark Mode & Typography Polish
+
+---
+
 ## 2026-02-07 — v5.35 Responsive Tablets + Desktop Toolbar
 
 **Що вирішили:**

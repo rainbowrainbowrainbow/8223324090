@@ -153,7 +153,7 @@ body.dark-mode .form-group input:focus {
     box-shadow: 0 0 0 4px rgba(16,185,129,0.15);
 }
 
-/* Program icons */
+/* Program icons — base */
 body.dark-mode .program-icon {
     background: var(--gray-100);
     border-color: var(--gray-300);
@@ -167,6 +167,28 @@ body.dark-mode .program-icon.selected {
     background: rgba(16,185,129,0.15);
     border-color: var(--primary);
 }
+
+/* v5.37: Category program icons in dark — subtle tints */
+body.dark-mode .program-icon.quest { background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.25); }
+body.dark-mode .program-icon.quest:hover { background: rgba(139,92,246,0.2); border-color: rgba(139,92,246,0.4); }
+
+body.dark-mode .program-icon.animation { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.25); }
+body.dark-mode .program-icon.animation:hover { background: rgba(59,130,246,0.2); border-color: rgba(59,130,246,0.4); }
+
+body.dark-mode .program-icon.show { background: rgba(249,115,22,0.1); border-color: rgba(249,115,22,0.25); }
+body.dark-mode .program-icon.show:hover { background: rgba(249,115,22,0.2); border-color: rgba(249,115,22,0.4); }
+
+body.dark-mode .program-icon.masterclass { background: rgba(132,204,22,0.1); border-color: rgba(132,204,22,0.25); }
+body.dark-mode .program-icon.masterclass:hover { background: rgba(132,204,22,0.2); border-color: rgba(132,204,22,0.4); }
+
+body.dark-mode .program-icon.pinata { background: rgba(236,72,153,0.1); border-color: rgba(236,72,153,0.25); }
+body.dark-mode .program-icon.pinata:hover { background: rgba(236,72,153,0.2); border-color: rgba(236,72,153,0.4); }
+
+body.dark-mode .program-icon.photo { background: rgba(6,182,212,0.1); border-color: rgba(6,182,212,0.25); }
+body.dark-mode .program-icon.photo:hover { background: rgba(6,182,212,0.2); border-color: rgba(6,182,212,0.4); }
+
+body.dark-mode .program-icon.custom { background: rgba(100,116,139,0.15); border-color: rgba(100,116,139,0.3); }
+body.dark-mode .program-icon.custom:hover { background: rgba(100,116,139,0.25); border-color: rgba(100,116,139,0.4); }
 
 /* v5.32: Duration badge dark mode */
 body.dark-mode .program-duration.short {
@@ -598,17 +620,13 @@ body.dark-mode .dash-custom-range input[type="date"] {
     color: #E2E8F0;
 }
 
-/* v5.10: Afisha auto-time + import in dark */
+/* v5.10: Afisha auto-time in dark */
 body.dark-mode .btn-auto-time {
     background: var(--gray-100);
     border-color: var(--gray-300);
 }
 
-body.dark-mode .afisha-import-section textarea {
-    background: var(--gray-100);
-    border-color: var(--gray-300);
-    color: #E2E8F0;
-}
+/* Afisha textarea dark — consolidated in v5.36 block below */
 
 body.dark-mode .btn-refresh-chats {
     background: var(--gray-100);
@@ -863,6 +881,89 @@ body.dark-mode html {
 /* v5.18.1: Main content bottom padding to prevent white gap */
 body.dark-mode .main-content {
     padding-bottom: 40px;
+}
+
+/* v5.37: Login screen in dark */
+body.dark-mode .login-screen {
+    background: linear-gradient(160deg, #0a1628 0%, #0f1f3a 30%, #0a2540 60%, #112240 100%);
+}
+
+body.dark-mode .login-screen::before {
+    background: radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 70%);
+}
+
+body.dark-mode .login-screen::after {
+    background: radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%);
+}
+
+body.dark-mode .login-container {
+    background: #1e1e32;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+}
+
+body.dark-mode .login-logo h1 {
+    color: #6EE7B7;
+}
+
+body.dark-mode .btn-changelog {
+    background: rgba(16,185,129,0.1);
+    border-color: rgba(16,185,129,0.25);
+    color: #6EE7B7;
+}
+
+body.dark-mode .btn-changelog:hover {
+    background: rgba(16,185,129,0.2);
+    border-color: rgba(16,185,129,0.4);
+}
+
+body.dark-mode .login-form input {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+body.dark-mode .login-form input:focus {
+    background: var(--gray-100);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.15);
+}
+
+body.dark-mode .login-form label {
+    color: #D1D5DB;
+}
+
+/* v5.37: Panel backdrop darker in dark mode */
+body.dark-mode .panel-backdrop:not(.hidden) {
+    background: rgba(0,0,0,0.6);
+}
+
+/* v5.37: Afisha items in dark */
+body.dark-mode .afisha-item {
+    background: var(--gray-100);
+    border-left-color: #7C3AED;
+}
+
+/* v5.37: Category header in dark */
+body.dark-mode .category-header {
+    color: #9CA3AF;
+    border-bottom-color: var(--gray-300);
+}
+
+/* v5.37: Confirm modal buttons in dark */
+body.dark-mode .btn-cancel {
+    background: var(--gray-200);
+    color: #D1D5DB;
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .btn-danger {
+    opacity: 0.95;
+}
+
+/* v5.37: Empty states in dark */
+body.dark-mode .no-data,
+body.dark-mode .no-history {
+    color: #6B7280;
 }
 
 /* Scrollbar improvement */

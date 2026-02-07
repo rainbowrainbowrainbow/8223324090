@@ -40,7 +40,7 @@ app.use((req, res, next) => {
     res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.set('Content-Security-Policy', [
         "default-src 'self'",
-        "script-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data:",
@@ -1559,7 +1559,8 @@ app.post('/api/telegram/notify', async (req, res) => {
             console.warn('[Telegram Notify] No chat ID configured — cannot send');
             return res.json({ success: false, reason: 'no_chat_id' });
         }
-        if (!TELEGRAM_BOT_TOKEN) {
+        const botToken = await getActiveBotToken();
+        if (!botToken) {
             console.warn('[Telegram Notify] No bot token configured');
             return res.json({ success: false, reason: 'no_bot_token' });
         }
@@ -1971,7 +1972,8 @@ async function sendBackupToTelegram() {
         // Use backup-specific chat or fall back to configured chat
         const backupChatResult = await pool.query("SELECT value FROM settings WHERE key = 'backup_chat_id'");
         const chatId = backupChatResult.rows[0]?.value || await getConfiguredChatId();
-        if (!chatId || !TELEGRAM_BOT_TOKEN) {
+        const botToken = await getActiveBotToken();
+        if (!chatId || !botToken) {
             console.warn('[Backup] No chat ID or bot token — skipping');
             return { success: false, reason: 'no_config' };
         }
@@ -2006,7 +2008,7 @@ async function sendBackupToTelegram() {
         const result = await new Promise((resolve, reject) => {
             const options = {
                 hostname: 'api.telegram.org',
-                path: `/bot${TELEGRAM_BOT_TOKEN}/sendDocument`,
+                path: `/bot${botToken}/sendDocument`,
                 method: 'POST',
                 headers: {
                     'Content-Type': `multipart/form-data; boundary=${boundary}`,
@@ -2341,7 +2343,8 @@ async function sendTomorrowReminder(todayStr) {
 initDatabase().then(() => {
     app.listen(PORT, async () => {
         console.log(`Server running on port ${PORT}`);
-        console.log(`[Telegram Config] Bot token: ${TELEGRAM_BOT_TOKEN ? 'SET' : 'NOT SET'}`);
+        const activeToken = await getActiveBotToken();
+        console.log(`[Telegram Config] Bot token: ${activeToken ? 'SET' : 'NOT SET'}`);
         console.log(`[Telegram Config] Default chat ID: ${TELEGRAM_DEFAULT_CHAT_ID ? 'SET' : 'NOT SET'}`);
         try {
             const dbChatId = await getConfiguredChatId();

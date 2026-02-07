@@ -131,13 +131,13 @@ function showTooltip(e, booking) {
         document.body.appendChild(tooltip);
     }
     const endTime = addMinutesToTime(booking.time, booking.duration);
-    const statusText = booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене';
+    const statusText = booking.status === 'preliminary' ? getStatusSvg('preliminary') + ' Попереднє' : getStatusSvg('confirmed') + ' Підтверджене';
     tooltip.innerHTML = `
         <strong>${escapeHtml(booking.label)}: ${escapeHtml(booking.programName)}</strong><br>
-        🕐 ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}<br>
-        🏠 ${escapeHtml(booking.room)} · ${statusText}
-        ${booking.kidsCount ? '<br>👶 ' + escapeHtml(String(booking.kidsCount)) + ' дітей' : ''}
-        ${booking.notes ? '<br>📝 ' + escapeHtml(booking.notes) : ''}
+        ${SVG_ICONS.clock} ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}<br>
+        ${SVG_ICONS.house} ${escapeHtml(booking.room)} · ${statusText}
+        ${booking.kidsCount ? '<br>' + SVG_ICONS.child + ' ' + escapeHtml(String(booking.kidsCount)) + ' дітей' : ''}
+        ${booking.notes ? '<br>' + SVG_ICONS.note + ' ' + escapeHtml(booking.notes) : ''}
     `;
     tooltip.style.left = `${e.pageX + 12}px`;
     tooltip.style.top = `${e.pageY - 10}px`;

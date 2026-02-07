@@ -222,3 +222,88 @@ body {
     from { transform: translateY(16px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
 }
+
+/* ==========================================
+   SVG ICON SYSTEM (v5.39)
+   ========================================== */
+
+/* Base inline SVG icon */
+.svg-icon {
+    display: inline-block;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+
+/* Status icons — inline with text */
+.svg-status {
+    width: 18px;
+    height: 18px;
+    margin-right: 2px;
+    position: relative;
+    top: -1px;
+}
+
+.svg-status.confirmed {
+    color: var(--status-confirmed);
+}
+
+.svg-status.preliminary {
+    color: var(--status-preliminary);
+}
+
+/* Category icons for catalog */
+.svg-cat {
+    width: 20px;
+    height: 20px;
+    margin-right: 4px;
+    position: relative;
+    top: -1px;
+}
+
+.svg-cat.quest { color: #9C27B0; }
+.svg-cat.animation { color: #039BE5; }
+.svg-cat.show { color: #F4511E; }
+.svg-cat.photo { color: #00ACC1; }
+.svg-cat.masterclass { color: #7CB342; }
+.svg-cat.pinata { color: #EC407A; }
+.svg-cat.custom { color: #546E7A; }
+
+/* Small UI utility icons (tooltip, stats bar) */
+.svg-ui {
+    width: 14px;
+    height: 14px;
+    margin-right: 2px;
+    position: relative;
+    top: -1px;
+    opacity: 0.7;
+}
+
+/* Status toggle button icons */
+.btn-status-toggle .svg-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+}
+
+/* Quick stats bar icons */
+.quick-stats-bar .svg-icon {
+    width: 15px;
+    height: 15px;
+    position: relative;
+    top: -1px;
+}
+
+/* Tooltip icons */
+.booking-tooltip .svg-icon {
+    width: 13px;
+    height: 13px;
+}
+
+/* Catalog category title icons */
+.catalog-category-title .svg-icon {
+    width: 22px;
+    height: 22px;
+    margin-right: 6px;
+    position: relative;
+    top: -2px;
+}

@@ -113,7 +113,7 @@ function showProgramsCatalog() {
         if (programs.length === 0) return;
 
         html += `<div class="catalog-category">
-            <h4 class="catalog-category-title ${cat}">${CATEGORY_ICONS_CATALOG[cat] || ''} ${CATEGORY_NAMES_CATALOG[cat] || cat}</h4>
+            <h4 class="catalog-category-title ${cat}">${CATEGORY_ICONS_SVG[cat] || CATEGORY_ICONS_CATALOG[cat] || ''} ${CATEGORY_NAMES_CATALOG[cat] || cat}</h4>
             <div class="catalog-programs">`;
 
         programs.forEach(p => {

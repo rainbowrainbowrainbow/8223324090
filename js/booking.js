@@ -646,7 +646,7 @@ async function showBookingDetails(bookingId) {
         ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">Дітей:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
         <div class="booking-detail-row">
             <span class="label">Статус:</span>
-            <span class="value status-value ${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
+            <span class="value status-value ${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${getStatusSvg(booking.status)} ${booking.status === 'preliminary' ? 'Попереднє' : 'Підтверджене'}</span>
         </div>
         ${booking.notes ? `<div class="booking-detail-row"><span class="label">Примітки:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
         ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">🎪 ${escapeHtml(booking.groupName)}</span></div>` : ''}
@@ -654,7 +654,7 @@ async function showBookingDetails(bookingId) {
         ${descriptionHtml}
         ${!isViewer() ? `<div class="status-toggle-section">
             <button class="btn-status-toggle" onclick="changeBookingStatus('${escapeHtml(booking.id)}', '${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}')">
-                ${booking.status === 'preliminary' ? '✅ Підтвердити' : '⏳ Зробити попереднім'}
+                ${booking.status === 'preliminary' ? getStatusSvg('confirmed') + ' Підтвердити' : getStatusSvg('preliminary') + ' Зробити попереднім'}
             </button>
         </div>` : ''}
         ${editControls}

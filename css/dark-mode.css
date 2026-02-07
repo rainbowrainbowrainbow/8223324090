@@ -1044,3 +1044,21 @@ body.dark-mode .history-pagination {
     background: #1e1e32;
     border-top-color: rgba(255,255,255,0.06);
 }
+
+/* SVG icon system — dark mode adjustments */
+body.dark-mode .svg-status.confirmed { color: #34D399; }
+body.dark-mode .svg-status.preliminary { color: #FBBF24; }
+
+body.dark-mode .svg-cat.quest { color: #CE93D8; }
+body.dark-mode .svg-cat.animation { color: #4FC3F7; }
+body.dark-mode .svg-cat.show { color: #FF8A65; }
+body.dark-mode .svg-cat.photo { color: #4DD0E1; }
+body.dark-mode .svg-cat.masterclass { color: #AED581; }
+body.dark-mode .svg-cat.pinata { color: #F48FB1; }
+body.dark-mode .svg-cat.custom { color: #90A4AE; }
+
+body.dark-mode .svg-ui { opacity: 0.6; }
+
+body.dark-mode .quick-stats-bar .svg-icon {
+    color: #6EE7B7;
+}

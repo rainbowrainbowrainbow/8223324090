@@ -132,6 +132,49 @@ const CATEGORY_ICONS_CATALOG = {
     animation: '🎪', show: '✨', quest: '🗝️', photo: '📸', masterclass: '🎨', pinata: '🎊'
 };
 
+// ==========================================
+// SVG ICON SYSTEM (v5.39)
+// ==========================================
+
+// Inline SVG icons for status display
+const SVG_ICONS = {
+    // Status icons
+    confirmed: '<svg class="svg-icon svg-status confirmed" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M6 10.5l2.5 2.5 5.5-5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    preliminary: '<svg class="svg-icon svg-status preliminary" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M10 5.5v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
+    // Category icons for catalog
+    quest: '<svg class="svg-icon svg-cat quest" viewBox="0 0 20 20" fill="none"><path d="M11 2a5.5 5.5 0 0 0-4 9.3V14l3 2 3-2v-2.7A5.5 5.5 0 0 0 11 2z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="11" cy="7" r="1.2" fill="currentColor"/></svg>',
+    animation: '<svg class="svg-icon svg-cat animation" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 18c0-3 2.5-5.5 5.5-5.5s5.5 2.5 5.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M7 5l1.5 2M13 5l-1.5 2M10 3v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+    show: '<svg class="svg-icon svg-cat show" viewBox="0 0 20 20" fill="none"><path d="M3 10c0-3.9 3.1-7 7-7s7 3.1 7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M1 10h18M6 10v6.5M14 10v6.5M4 16.5h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="7" r="1" fill="currentColor"/></svg>',
+    photo: '<svg class="svg-icon svg-cat photo" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="16" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="11" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M7 5l1-2.5h4l1 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    masterclass: '<svg class="svg-icon svg-cat masterclass" viewBox="0 0 20 20" fill="none"><path d="M3 14l7-4 7 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 14v3l7 1.5 7-1.5v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 10V4M8 3h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+    pinata: '<svg class="svg-icon svg-cat pinata" viewBox="0 0 20 20" fill="none"><ellipse cx="10" cy="10" rx="5" ry="6" stroke="currentColor" stroke-width="1.5"/><path d="M10 4V1.5M8 6.5l-2-1M12 6.5l2-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M7 12h1M10 12h1M12.5 10h1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    custom: '<svg class="svg-icon svg-cat custom" viewBox="0 0 20 20" fill="none"><path d="M14.5 2.5l3 3-10 10H4.5v-3l10-10z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 5l3 3" stroke="currentColor" stroke-width="1.5"/></svg>',
+
+    // UI icons for quick stats / tooltips
+    clock: '<svg class="svg-icon svg-ui" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.5v4l2.5 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    house: '<svg class="svg-icon svg-ui" viewBox="0 0 16 16" fill="none"><path d="M2.5 7L8 2.5 13.5 7v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V7z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    child: '<svg class="svg-icon svg-ui" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+    note: '<svg class="svg-icon svg-ui" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="1.5" width="11" height="13" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 5h5M5.5 8h5M5.5 11h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+    chart: '<svg class="svg-icon svg-ui" viewBox="0 0 16 16" fill="none"><path d="M13 13V7M8 13V4M3 13v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+};
+
+// SVG category icons for catalog display (replaces emoji)
+const CATEGORY_ICONS_SVG = {
+    quest: SVG_ICONS.quest,
+    animation: SVG_ICONS.animation,
+    show: SVG_ICONS.show,
+    photo: SVG_ICONS.photo,
+    masterclass: SVG_ICONS.masterclass,
+    pinata: SVG_ICONS.pinata,
+    custom: SVG_ICONS.custom,
+};
+
+// Helper: get status SVG icon
+function getStatusSvg(status) {
+    return status === 'preliminary' ? SVG_ICONS.preliminary : SVG_ICONS.confirmed;
+}
+
 // Дашборд: скорочені назви
 const CATEGORY_NAMES_SHORT = {
     quest: 'Квести', animation: 'Анімація', show: 'Шоу',

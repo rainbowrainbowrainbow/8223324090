@@ -48,7 +48,7 @@ function updateQuickStats(bookings, lineIds) {
     const preliminary = mainBookings.filter(b => b.status === 'preliminary');
     const total = mainBookings.reduce((sum, b) => sum + (b.price || 0), 0);
 
-    content.textContent = `📊 ${mainBookings.length} бронювань • ${formatPrice(total)} • ⏳ ${preliminary.length} попередніх`;
+    content.innerHTML = `${SVG_ICONS.chart} ${mainBookings.length} бронювань &bull; ${formatPrice(total)} &bull; ${SVG_ICONS.preliminary} ${preliminary.length} попередніх`;
     bar.classList.remove('hidden');
 }
 

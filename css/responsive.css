@@ -136,6 +136,11 @@
     .category-grid { grid-template-columns: repeat(3, 1fr); }
     .btn-programs { padding: 8px 12px; font-size: 12px; }
     .modal-catalog { max-height: 90vh; }
+
+    /* v5.23: Модалки на мобільних — менше padding, більше простору */
+    .modal { padding: 12px; }
+    .modal-content { padding: 20px; max-height: calc(100vh - 24px); }
+    .modal-large { max-height: 90vh; }
 }
 
 /* ==========================================
@@ -164,4 +169,13 @@
     .dashboard-grid { grid-template-columns: 1fr; }
     .dash-card-value { font-size: 18px; }
     .modal-wide { max-width: 100%; }
+
+    /* v5.23: Touch-friendly form elements */
+    .form-section select,
+    .form-section input,
+    .form-group input,
+    .form-group select {
+        min-height: 44px;
+        font-size: 16px;
+    }
 }

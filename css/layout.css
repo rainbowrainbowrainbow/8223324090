@@ -217,7 +217,7 @@ input[type="date"] {
 
 .working-hours {
     font-size: var(--font-xs);
-    color: var(--gray-400);
+    color: var(--gray-500);
     text-align: center;
     font-weight: 600;
 }

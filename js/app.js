@@ -33,7 +33,13 @@ function initializeApp() {
 }
 
 function loadPreferences() {
-    AppState.darkMode = localStorage.getItem('pzp_dark_mode') === 'true';
+    // v5.23: prefers-color-scheme — автоматична темна тема якщо користувач не вибирав вручну
+    const savedDarkMode = localStorage.getItem('pzp_dark_mode');
+    if (savedDarkMode !== null) {
+        AppState.darkMode = savedDarkMode === 'true';
+    } else {
+        AppState.darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
     AppState.compactMode = localStorage.getItem('pzp_compact_mode') === 'true';
     AppState.zoomLevel = parseInt(localStorage.getItem('pzp_zoom_level')) || 15;
     if (AppState.darkMode) document.body.classList.add('dark-mode');
@@ -326,6 +332,18 @@ function initUIControlListeners() {
     const darkToggle = document.getElementById('darkModeToggle');
     if (darkToggle) darkToggle.addEventListener('change', toggleDarkMode);
 
+    // v5.23: Автоматично підхоплювати зміну системної теми
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+        if (localStorage.getItem('pzp_dark_mode') === null) {
+            AppState.darkMode = e.matches;
+            document.body.classList.toggle('dark-mode', e.matches);
+            const toggle = document.getElementById('darkModeToggle');
+            if (toggle) toggle.checked = e.matches;
+            const icon = document.getElementById('darkModeIcon');
+            if (icon) icon.textContent = e.matches ? '☀️' : '🌙';
+        }
+    });
+
     const compactToggle = document.getElementById('compactModeToggle');
     if (compactToggle) compactToggle.addEventListener('change', toggleCompactMode);
 
@@ -365,5 +383,13 @@ function initModalListeners() {
 
     window.addEventListener('click', (e) => {
         if (e.target.classList.contains('modal')) closeAllModals();
+    });
+
+    // v5.23: Escape закриває модалки (a11y — keyboard navigation)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const openModal = document.querySelector('.modal:not(.hidden)');
+            if (openModal) closeAllModals();
+        }
     });
 }

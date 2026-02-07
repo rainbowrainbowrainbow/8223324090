@@ -52,7 +52,7 @@
     top: 16px;
     right: 20px;
     font-size: 28px;
-    color: var(--gray-400);
+    color: var(--gray-500);
     cursor: pointer;
     transition: color var(--speed-fast);
 }
@@ -332,7 +332,7 @@
 }
 
 .history-date {
-    color: var(--gray-400);
+    color: var(--gray-500);
     margin-left: auto;
 }
 
@@ -344,7 +344,7 @@
 
 .no-history {
     text-align: center;
-    color: var(--gray-400);
+    color: var(--gray-500);
     padding: 40px;
 }
 
@@ -383,7 +383,7 @@
 }
 
 .history-date-sep {
-    color: var(--gray-400);
+    color: var(--gray-500);
     font-weight: 600;
     font-size: 14px;
 }
@@ -420,7 +420,7 @@
 
 .history-stats {
     font-size: 12px;
-    color: var(--gray-400);
+    color: var(--gray-500);
     font-weight: 600;
     margin-top: 6px;
 }

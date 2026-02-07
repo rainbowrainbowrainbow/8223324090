@@ -2,19 +2,19 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Парк Закревського Періоду | Бронювання</title>
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.22">
-    <link rel="stylesheet" href="css/auth.css?v=5.22">
-    <link rel="stylesheet" href="css/layout.css?v=5.22">
-    <link rel="stylesheet" href="css/timeline.css?v=5.22">
-    <link rel="stylesheet" href="css/panel.css?v=5.22">
-    <link rel="stylesheet" href="css/modals.css?v=5.22">
-    <link rel="stylesheet" href="css/controls.css?v=5.22">
-    <link rel="stylesheet" href="css/features.css?v=5.22">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.22">
-    <link rel="stylesheet" href="css/responsive.css?v=5.22">
+    <link rel="stylesheet" href="css/base.css?v=5.23">
+    <link rel="stylesheet" href="css/auth.css?v=5.23">
+    <link rel="stylesheet" href="css/layout.css?v=5.23">
+    <link rel="stylesheet" href="css/timeline.css?v=5.23">
+    <link rel="stylesheet" href="css/panel.css?v=5.23">
+    <link rel="stylesheet" href="css/modals.css?v=5.23">
+    <link rel="stylesheet" href="css/controls.css?v=5.23">
+    <link rel="stylesheet" href="css/features.css?v=5.23">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.23">
+    <link rel="stylesheet" href="css/responsive.css?v=5.23">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -393,18 +393,18 @@
     </div>
 
     <!-- Модальне вікно деталей бронювання -->
-    <div id="bookingModal" class="modal hidden">
+    <div id="bookingModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Деталі бронювання">
         <div class="modal-content">
-            <span class="modal-close">&times;</span>
+            <span class="modal-close" aria-label="Закрити">&times;</span>
             <div id="bookingDetails"></div>
         </div>
     </div>
 
     <!-- Модальне вікно редагування лінії -->
-    <div id="editLineModal" class="modal hidden">
+    <div id="editLineModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="editLineModalTitle">
         <div class="modal-content">
-            <span class="modal-close">&times;</span>
-            <h3>Редагувати аніматора</h3>
+            <span class="modal-close" aria-label="Закрити">&times;</span>
+            <h3 id="editLineModalTitle">Редагувати аніматора</h3>
             <form id="editLineForm">
                 <input type="hidden" id="editLineId">
                 <div class="form-group">
@@ -430,10 +430,10 @@
     </div>
 
     <!-- Модальне вікно управління аніматорами (тільки для Сергія) -->
-    <div id="animatorsModal" class="modal hidden">
+    <div id="animatorsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="animatorsModalTitle">
         <div class="modal-content modal-large">
-            <span class="modal-close">&times;</span>
-            <h3>👥 Управління аніматорами</h3>
+            <span class="modal-close" aria-label="Закрити">&times;</span>
+            <h3 id="animatorsModalTitle">👥 Управління аніматорами</h3>
             <div class="animators-management">
                 <div class="form-group">
                     <label>Список аніматорів (по одному на рядок)</label>
@@ -445,10 +445,10 @@
     </div>
 
     <!-- v3.6: Модальне вікно Налаштування -->
-    <div id="settingsModal" class="modal hidden">
+    <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
         <div class="modal-content modal-large">
-            <span class="modal-close">&times;</span>
-            <h3>⚙️ Налаштування</h3>
+            <span class="modal-close" aria-label="Закрити">&times;</span>
+            <h3 id="settingsModalTitle">⚙️ Налаштування</h3>
             <div class="settings-sections">
                 <!-- Аніматори -->
                 <div class="settings-section">
@@ -596,10 +596,10 @@
     </div>
 
     <!-- Модальне вікно історії (v5.16: з фільтрами) -->
-    <div id="historyModal" class="modal hidden">
+    <div id="historyModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
         <div class="modal-content modal-large">
-            <span class="modal-close">&times;</span>
-            <h3>📋 Історія змін</h3>
+            <span class="modal-close" aria-label="Закрити">&times;</span>
+            <h3 id="historyModalTitle">📋 Історія змін</h3>
             <div class="history-filters">
                 <div class="history-filter-row">
                     <select id="historyFilterAction" class="history-filter-select">
@@ -632,7 +632,7 @@
     </div>
 
     <!-- Модальне вікно підтвердження (для iOS) -->
-    <div id="confirmModal" class="modal hidden">
+    <div id="confirmModal" class="modal hidden" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
         <div class="modal-content modal-confirm">
             <h3 id="confirmTitle">Підтвердження</h3>
             <p id="confirmMessage">Ви впевнені?</p>
@@ -644,9 +644,9 @@
     </div>
 
     <!-- v3.9: Модальне вікно примітки (замість prompt) -->
-    <div id="noteModal" class="modal hidden">
+    <div id="noteModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="noteModalTitle">
         <div class="modal-content modal-confirm">
-            <h3>Додати аніматора</h3>
+            <h3 id="noteModalTitle">Додати аніматора</h3>
             <p>Примітка (опціонально):</p>
             <div class="form-group">
                 <input type="text" id="noteModalInput" placeholder='наприклад: "потрібен на 14:00-17:00"'>
@@ -659,19 +659,19 @@
     </div>
 
     <!-- Модальне вікно Дашборд -->
-    <div id="dashboardModal" class="modal hidden">
+    <div id="dashboardModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dashboardModalTitle">
         <div class="modal-content modal-wide">
-            <span class="modal-close">&times;</span>
-            <h3>📊 Дашборд</h3>
+            <span class="modal-close" aria-label="Закрити">&times;</span>
+            <h3 id="dashboardModalTitle">📊 Дашборд</h3>
             <div id="dashboardContent"></div>
         </div>
     </div>
 
     <!-- Модальне вікно Telegram -->
-    <div id="telegramModal" class="modal hidden">
+    <div id="telegramModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="telegramModalTitle">
         <div class="modal-content">
-            <span class="modal-close">&times;</span>
-            <h3>🤖 Telegram налаштування</h3>
+            <span class="modal-close" aria-label="Закрити">&times;</span>
+            <h3 id="telegramModalTitle">🤖 Telegram налаштування</h3>
             <div class="telegram-setup">
                 <div class="form-group">
                     <label>Chat ID групи</label>
@@ -692,11 +692,23 @@
 
     <!-- Сповіщення -->
     <!-- Модальне вікно Changelog -->
-    <div id="changelogModal" class="modal hidden">
+    <div id="changelogModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="changelogModalTitle">
         <div class="modal-content modal-changelog">
-            <span class="modal-close">&times;</span>
-            <h3>Що нового</h3>
+            <span class="modal-close" aria-label="Закрити">&times;</span>
+            <h3 id="changelogModalTitle">Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v5.23 — Доступність (a11y + Mobile)</h4>
+                    <ul>
+                        <li>♿ Прибрано user-scalable=no — дозволений зум для людей з вадами зору</li>
+                        <li>♿ ARIA атрибути для всіх 12 модалок — role="dialog", aria-labelledby, aria-modal</li>
+                        <li>♿ Контраст тексту виправлено до WCAG AA (мінімум 4.5:1)</li>
+                        <li>♿ Клавіша Escape закриває модалки (keyboard navigation)</li>
+                        <li>📱 Touch-friendly елементи форм — мінімум 44px, font-size 16px (без авто-зуму на iOS)</li>
+                        <li>📱 Модалки на мобільних — менше padding, більше корисного простору</li>
+                        <li>🌙 prefers-color-scheme — автоматична темна тема за системними налаштуваннями</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v5.22 — Чистий фронтенд</h4>
                     <ul>
@@ -1085,19 +1097,19 @@
     </div>
 
     <!-- Модальне вікно каталогу програм -->
-    <div id="programsCatalogModal" class="modal hidden">
+    <div id="programsCatalogModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="programsCatalogModalTitle">
         <div class="modal-content modal-catalog">
-            <span class="modal-close">&times;</span>
-            <h3>🎭 Розважальні програми</h3>
+            <span class="modal-close" aria-label="Закрити">&times;</span>
+            <h3 id="programsCatalogModalTitle">🎭 Розважальні програми</h3>
             <div id="programsCatalogList" class="catalog-list"></div>
         </div>
     </div>
 
     <!-- F: Модальне вікно Афіша -->
-    <div id="afishaModal" class="modal hidden">
+    <div id="afishaModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="afishaModalTitle">
         <div class="modal-content modal-large">
-            <span class="modal-close">&times;</span>
-            <h3>🎭 Афіша / Події</h3>
+            <span class="modal-close" aria-label="Закрити">&times;</span>
+            <h3 id="afishaModalTitle">🎭 Афіша / Події</h3>
             <div class="afisha-form">
                 <div class="afisha-form-row">
                     <input type="date" id="afishaDate" class="afisha-input">
@@ -1122,13 +1134,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.22"></script>
-    <script src="js/api.js?v=5.22"></script>
-    <script src="js/ui.js?v=5.22"></script>
-    <script src="js/auth.js?v=5.22"></script>
-    <script src="js/timeline.js?v=5.22"></script>
-    <script src="js/booking.js?v=5.22"></script>
-    <script src="js/settings.js?v=5.22"></script>
-    <script src="js/app.js?v=5.22"></script>
+    <script src="js/config.js?v=5.23"></script>
+    <script src="js/api.js?v=5.23"></script>
+    <script src="js/ui.js?v=5.23"></script>
+    <script src="js/auth.js?v=5.23"></script>
+    <script src="js/timeline.js?v=5.23"></script>
+    <script src="js/booking.js?v=5.23"></script>
+    <script src="js/settings.js?v=5.23"></script>
+    <script src="js/app.js?v=5.23"></script>
 </body>
 </html>

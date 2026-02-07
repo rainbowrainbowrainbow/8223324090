@@ -3,14 +3,53 @@
  */
 
 /* ==========================================
+   DESKTOP TOOLBAR (>=769px) — v5.35 two-row grid
+   ========================================== */
+
+@media (min-width: 769px) {
+    .control-panel {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 10px 16px;
+        align-items: center;
+    }
+    .date-controls { grid-column: 1; grid-row: 1; }
+    .status-filter-controls { grid-column: 2; grid-row: 1; justify-self: center; }
+    .view-mode-controls { grid-column: 3; grid-row: 1; }
+    .v32-controls { grid-column: 1 / span 2; grid-row: 2; }
+    .action-buttons { grid-column: 3; grid-row: 2; justify-self: end; }
+}
+
+/* v5.35: Backdrop fade-in animation */
+@keyframes backdropFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ==========================================
    TABLET (<=1024px)
    ========================================== */
 
 @media (max-width: 1024px) {
     .main-content.panel-open { padding-right: 24px; }
 
+    /* v5.35: Panel backdrop — semi-transparent overlay */
+    .panel-backdrop:not(.hidden) {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.4);
+        z-index: 89;
+        backdrop-filter: blur(2px);
+        animation: backdropFadeIn var(--speed-normal) var(--ease-smooth);
+    }
+
+    /* v5.35: Panel overlay (not full-width) */
     .booking-panel {
-        width: 100%;
+        width: 380px;
         top: 0;
         height: 100vh;
     }
@@ -19,6 +58,14 @@
     body.panel-open {
         overflow: hidden;
     }
+
+    /* v5.35: Tablet program grid — 5 columns */
+    .category-grid { grid-template-columns: repeat(5, 1fr); }
+
+    /* v5.35: Tablet modals — not full screen */
+    .modal-content { max-width: 90%; }
+    .modal-large { max-width: 90%; }
+    .modal-catalog { max-width: 90%; max-height: 90vh; }
 }
 
 /* ==========================================
@@ -30,7 +77,10 @@
     .logo-text h1 { font-size: 14px; }
 
     .main-content { padding: 12px; }
-    .control-panel { flex-direction: column; align-items: stretch; gap: 8px; }
+    .control-panel { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+
+    /* v5.35: Panel full-width on mobile */
+    .booking-panel { width: 100%; }
 
     /* v5.34: Row 1 — Date navigation (full width, centered) */
     .date-controls {
@@ -272,4 +322,16 @@
     /* Action buttons: icon-only */
     .btn-export { font-size: 11px; padding: 8px; }
     .btn-menu-toggle { font-size: 11px; padding: 8px; }
+}
+
+/* ==========================================
+   LANDSCAPE PHONES (short viewport) — v5.35
+   ========================================== */
+
+@media (max-height: 500px) and (orientation: landscape) {
+    .panel-header { padding: 10px 16px; }
+    .booking-form { padding: 12px 16px; }
+    .form-section { margin-bottom: 12px; }
+    .control-panel { padding: 8px 12px; gap: 8px; }
+    .modal-content { max-height: 90vh; }
 }

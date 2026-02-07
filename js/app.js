@@ -190,6 +190,8 @@ function initTimelineListeners() {
 
 function initBookingFormListeners() {
     document.getElementById('closePanel').addEventListener('click', closeBookingPanel);
+    // v5.35: Close panel when clicking the backdrop overlay
+    document.getElementById('panelBackdrop')?.addEventListener('click', closeBookingPanel);
     document.getElementById('bookingForm').addEventListener('submit', handleBookingSubmit);
 
     document.getElementById('editLineForm').addEventListener('submit', handleEditLine);

@@ -27,6 +27,11 @@
     to { transform: translateX(0); }
 }
 
+/* v5.35: Panel backdrop — hidden on desktop, visible on tablet/mobile via responsive.css */
+.panel-backdrop {
+    display: none;
+}
+
 .panel-header {
     display: flex;
     justify-content: space-between;

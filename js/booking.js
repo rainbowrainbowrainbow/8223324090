@@ -65,6 +65,8 @@ async function openBookingPanel(time, lineId) {
     document.querySelector('.main-content').classList.add('panel-open');
     // v5.33: Lock body scroll on mobile when panel is open
     document.body.classList.add('panel-open');
+    // v5.35: Show backdrop overlay on tablet/mobile
+    document.getElementById('panelBackdrop')?.classList.remove('hidden');
 }
 
 // v5.18: Show free rooms for selected time/duration
@@ -111,6 +113,8 @@ function closeBookingPanel() {
     document.querySelector('.main-content').classList.remove('panel-open');
     // v5.33: Unlock body scroll
     document.body.classList.remove('panel-open');
+    // v5.35: Hide backdrop overlay
+    document.getElementById('panelBackdrop')?.classList.add('hidden');
     document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
 
     // v5.5: Скинути режим редагування

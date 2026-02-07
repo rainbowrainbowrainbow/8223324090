@@ -90,7 +90,7 @@ async function showFreeRooms() {
 
     try {
         const response = await fetch(`${API_BASE}/rooms/free/${date}/${time}/${duration}`, {
-            headers: getAuthHeadersGet()
+            headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return;
         const data = await response.json();

@@ -158,6 +158,9 @@ async function initDatabase() {
         `);
 
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date_status ON bookings(date, status)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_line_date ON bookings(line_id, date)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_linked_to ON bookings(linked_to)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_lines_by_date_date ON lines_by_date(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)');
 

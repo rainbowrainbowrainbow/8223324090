@@ -68,9 +68,10 @@ router.post('/', async (req, res) => {
             b.id = await generateBookingNumber(client);
         }
 
-        await client.query(
+        const insertResult = await client.query(
             `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+             RETURNING *`,
             [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null]
         );
 
@@ -90,8 +91,7 @@ router.post('/', async (req, res) => {
                 .catch(err => log.error(`Telegram notify failed (create): ${err.message}`));
         }
 
-        const createdRow = await client.query('SELECT * FROM bookings WHERE id = $1', [b.id]);
-        const booking = createdRow.rows[0] ? mapBookingRow(createdRow.rows[0]) : { id: b.id };
+        const booking = insertResult.rows[0] ? mapBookingRow(insertResult.rows[0]) : { id: b.id };
 
         res.json({ success: true, booking });
     } catch (err) {
@@ -144,13 +144,14 @@ router.post('/full', async (req, res) => {
             main.id = await generateBookingNumber(client);
         }
 
-        await client.query(
+        const mainInsert = await client.query(
             `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+             RETURNING *`,
             [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null]
         );
 
-        const linkedIds = [];
+        const linkedRows = [];
         if (Array.isArray(linked)) {
             for (const lb of linked) {
                 const lConflict = await checkServerConflicts(client, lb.date, lb.lineId, lb.time, lb.duration || 0);
@@ -163,12 +164,13 @@ router.post('/full', async (req, res) => {
                 }
 
                 const lbId = await generateBookingNumber(client);
-                await client.query(
+                const lbInsert = await client.query(
                     `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                     RETURNING *`,
                     [lbId, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.costume || null, lb.room, lb.notes, lb.createdBy, main.id, lb.status || main.status || 'confirmed', lb.kidsCount || null]
                 );
-                linkedIds.push(lbId);
+                if (lbInsert.rows[0]) linkedRows.push(lbInsert.rows[0]);
             }
         }
 
@@ -187,14 +189,8 @@ router.post('/full', async (req, res) => {
                 .catch(err => log.error(`Telegram notify failed (create/full): ${err.message}`));
         }
 
-        const mainRow = await client.query('SELECT * FROM bookings WHERE id = $1', [main.id]);
-        const mainBooking = mainRow.rows[0] ? mapBookingRow(mainRow.rows[0]) : { id: main.id };
-
-        const linkedBookings = [];
-        for (const lid of linkedIds) {
-            const lRow = await client.query('SELECT * FROM bookings WHERE id = $1', [lid]);
-            if (lRow.rows[0]) linkedBookings.push(mapBookingRow(lRow.rows[0]));
-        }
+        const mainBooking = mainInsert.rows[0] ? mapBookingRow(mainInsert.rows[0]) : { id: main.id };
+        const linkedBookings = linkedRows.map(mapBookingRow);
 
         res.json({ success: true, mainBooking, linkedBookings });
     } catch (err) {

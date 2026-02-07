@@ -407,7 +407,7 @@ async function sendDailyDigest() {
     const dateStr = formatDate(AppState.selectedDate);
     try {
         const response = await fetch(`${API_BASE}/telegram/digest/${dateStr}`, {
-            headers: getAuthHeadersGet()
+            headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return;
         const result = await response.json();
@@ -428,7 +428,7 @@ async function fetchAndRenderTelegramChats(chatIdInputId, chatsContainerId) {
     container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
 
     try {
-        const response = await fetch(`${API_BASE}/telegram/chats`, { headers: getAuthHeadersGet() });
+        const response = await fetch(`${API_BASE}/telegram/chats`, { headers: getAuthHeaders(false) });
         const data = await response.json();
         if (data.chats && data.chats.length > 0) {
             container.innerHTML = data.chats.map(c =>
@@ -451,7 +451,7 @@ async function fetchAndRenderThreads() {
     container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
 
     try {
-        const response = await fetch(`${API_BASE}/telegram/threads`, { headers: getAuthHeadersGet() });
+        const response = await fetch(`${API_BASE}/telegram/threads`, { headers: getAuthHeaders(false) });
         const data = await response.json();
         if (data.threads && data.threads.length > 0) {
             container.innerHTML = data.threads.map(t =>
@@ -593,7 +593,7 @@ async function sendTestDigest() {
     showNotification('Надсилаю тестовий дайджест...', 'success');
     try {
         const response = await fetch(`${API_BASE}/telegram/digest/${dateStr}`, {
-            headers: getAuthHeadersGet()
+            headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return;
         const result = await response.json();
@@ -613,7 +613,7 @@ async function sendTestReminder() {
     showNotification('Надсилаю тестове нагадування...', 'success');
     try {
         const response = await fetch(`${API_BASE}/telegram/reminder/${dateStr}`, {
-            headers: getAuthHeadersGet()
+            headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return;
         const result = await response.json();
@@ -872,7 +872,7 @@ async function loadDashboardCustomRange() {
 
 async function apiGetAfisha() {
     try {
-        const response = await fetch(`${API_BASE}/afisha`, { headers: getAuthHeadersGet() });
+        const response = await fetch(`${API_BASE}/afisha`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         return await response.json();
     } catch (err) {
@@ -883,7 +883,7 @@ async function apiGetAfisha() {
 
 async function apiGetAfishaByDate(date) {
     try {
-        const response = await fetch(`${API_BASE}/afisha/${date}`, { headers: getAuthHeadersGet() });
+        const response = await fetch(`${API_BASE}/afisha/${date}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         return await response.json();
     } catch (err) {

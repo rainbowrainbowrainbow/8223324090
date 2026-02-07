@@ -3,7 +3,7 @@
  */
 const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId, scheduleAutoDelete } = require('./telegram');
-const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr } = require('./booking');
+const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr, timeToMinutes, minutesToTime } = require('./booking');
 const { sendBackupToTelegram } = require('./backup');
 const { createLogger } = require('../utils/logger');
 
@@ -42,11 +42,9 @@ async function buildAndSendDigest(date) {
 
         text += `👤 <b>${line.name}</b>\n`;
         for (const b of lineBookings) {
-            const endMin = parseInt(b.time.split(':')[0]) * 60 + parseInt(b.time.split(':')[1]) + (b.duration || 0);
-            const endH = String(Math.floor(endMin / 60)).padStart(2, '0');
-            const endM = String(endMin % 60).padStart(2, '0');
+            const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
             const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
-            text += `  ${statusIcon} ${b.time}-${endH}:${endM} ${b.label || b.program_code} (${b.room})`;
+            text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room})`;
             if (b.kids_count) text += ` [${b.kids_count} діт]`;
             text += '\n';
         }
@@ -92,11 +90,9 @@ async function sendTomorrowReminder(todayStr) {
 
             text += `👤 <b>${line.name}</b>\n`;
             for (const b of lineBookings) {
-                const endMin = parseInt(b.time.split(':')[0]) * 60 + parseInt(b.time.split(':')[1]) + (b.duration || 0);
-                const endH = String(Math.floor(endMin / 60)).padStart(2, '0');
-                const endM = String(endMin % 60).padStart(2, '0');
+                const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
                 const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
-                text += `  ${statusIcon} ${b.time}-${endH}:${endM} ${b.label || b.program_code} (${b.room})`;
+                text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room})`;
                 if (b.kids_count) text += ` [${b.kids_count} діт]`;
                 text += '\n';
             }

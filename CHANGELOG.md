@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-02-07 — v5.41 Performance & Cleanup
+
+**Що вирішили:**
+- Прискорити запити до БД через композитні індекси
+- Прибрати дублювання коду (auth headers, time parsing)
+- Оптимізувати INSERT запити (RETURNING * замість SELECT)
+- Видалити мертві CSS класи
+
+**Що додали/поміняли:**
+- `db/index.js` — 3 нові композитні індекси (date+status, line+date, linked_to)
+- `services/scheduler.js` — імпорт і використання `timeToMinutes`/`minutesToTime` з booking.js
+- `routes/bookings.js` — INSERT RETURNING * замість SELECT після вставки (POST / і POST /full)
+- `js/api.js` — `getAuthHeaders(withContentType)` замість двох окремих функцій
+- `js/settings.js`, `js/booking.js` — оновлені виклики на `getAuthHeaders(false)`
+- `css/layout.css` — видалено `.btn-header-nav`, `.btn-animators`, `.btn-programs`
+- `css/features.css` — видалено `.btn-telegram`, `.btn-dashboard`
+- Version bump 5.41.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v5.42 — Mini Features (undo, пошук програм)
+
+---
+
 ## 2026-02-07 — v5.40 UX & Accessibility
 
 **Що вирішили:**

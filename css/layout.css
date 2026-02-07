@@ -55,25 +55,6 @@
 /* Header nav */
 .header-nav { display: flex; align-items: center; gap: 4px; }
 
-.btn-header-nav {
-    padding: 8px 16px;
-    background: rgba(255,255,255,0.1);
-    color: rgba(255,255,255,0.85);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: var(--radius-xs);
-    font-weight: 700;
-    font-size: var(--font-sm);
-    cursor: pointer;
-    font-family: inherit;
-    transition: all var(--speed-fast) var(--ease-smooth);
-}
-
-.btn-header-nav:hover {
-    background: rgba(255,255,255,0.2);
-    color: #FFFFFF;
-    border-color: rgba(255,255,255,0.3);
-}
-
 /* User panel */
 .user-panel { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .user-name { font-weight: 700; font-size: var(--font-sm); color: rgba(255,255,255,0.9); }
@@ -96,9 +77,6 @@
     color: #FCA5A5;
     border-color: rgba(239,68,68,0.3);
 }
-
-/* Legacy — kept for JS */
-.btn-animators, .btn-programs { display: none; }
 
 /* Animators management */
 .animators-management textarea {

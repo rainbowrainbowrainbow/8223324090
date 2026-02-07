@@ -5,17 +5,12 @@
 
 const API_BASE = '/api';
 
-function getAuthHeaders() {
+function getAuthHeaders(withContentType = true) {
     const token = localStorage.getItem('pzp_token');
-    const headers = { 'Content-Type': 'application/json' };
+    const headers = {};
+    if (withContentType) headers['Content-Type'] = 'application/json';
     if (token) headers['Authorization'] = `Bearer ${token}`;
     return headers;
-}
-
-function getAuthHeadersGet() {
-    const token = localStorage.getItem('pzp_token');
-    if (token) return { 'Authorization': `Bearer ${token}` };
-    return {};
 }
 
 // v5.0: Handle 401/403 — redirect to login
@@ -32,7 +27,7 @@ function handleAuthError(response) {
 
 async function apiGetBookings(date) {
     try {
-        const response = await fetch(`${API_BASE}/bookings/${date}`, { headers: getAuthHeadersGet() });
+        const response = await fetch(`${API_BASE}/bookings/${date}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -86,7 +81,7 @@ async function apiDeleteBooking(id) {
     try {
         const response = await fetch(`${API_BASE}/bookings/${id}`, {
             method: 'DELETE',
-            headers: getAuthHeadersGet()
+            headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
@@ -121,7 +116,7 @@ async function apiUpdateBooking(id, booking) {
 
 async function apiGetLines(date) {
     try {
-        const response = await fetch(`${API_BASE}/lines/${date}`, { headers: getAuthHeadersGet() });
+        const response = await fetch(`${API_BASE}/lines/${date}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -165,7 +160,7 @@ async function apiGetHistory(filters = {}) {
         if (filters.offset) params.set('offset', filters.offset);
         const qs = params.toString();
         const url = `${API_BASE}/history${qs ? '?' + qs : ''}`;
-        const response = await fetch(url, { headers: getAuthHeadersGet() });
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { items: [], total: 0 };
         if (!response.ok) throw new Error('API error');
         const data = await response.json();
@@ -199,7 +194,7 @@ async function apiAddHistory(action, user, data) {
 
 async function apiGetStats(dateFrom, dateTo) {
     try {
-        const response = await fetch(`${API_BASE}/stats/${dateFrom}/${dateTo}`, { headers: getAuthHeadersGet() });
+        const response = await fetch(`${API_BASE}/stats/${dateFrom}/${dateTo}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -238,7 +233,7 @@ async function apiTelegramAskAnimator(date, note) {
 
 async function apiCheckAnimatorStatus(requestId) {
     try {
-        const response = await fetch(`${API_BASE}/telegram/animator-status/${requestId}`, { headers: getAuthHeadersGet() });
+        const response = await fetch(`${API_BASE}/telegram/animator-status/${requestId}`, { headers: getAuthHeaders(false) });
         return await response.json();
     } catch (err) {
         console.error('Check animator status error:', err);
@@ -248,7 +243,7 @@ async function apiCheckAnimatorStatus(requestId) {
 
 async function apiGetSetting(key) {
     try {
-        const response = await fetch(`${API_BASE}/settings/${key}`, { headers: getAuthHeadersGet() });
+        const response = await fetch(`${API_BASE}/settings/${key}`, { headers: getAuthHeaders(false) });
         const data = await response.json();
         return data.value;
     } catch (err) {

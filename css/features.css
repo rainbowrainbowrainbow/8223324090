@@ -6,8 +6,6 @@
    TELEGRAM & DIGEST
    ========================================== */
 
-.btn-telegram { display: none; }
-
 .btn-digest {
     padding: 8px 16px;
     background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
@@ -193,8 +191,6 @@
 /* ==========================================
    DASHBOARD
    ========================================== */
-
-.btn-dashboard { display: none; }
 
 .modal-wide {
     max-width: 700px;

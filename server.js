@@ -1,5 +1,5 @@
 /**
- * server.js — Entry point (v5.25: Error handling & validation)
+ * server.js — Entry point (v5.26: Production hardening)
  *
  * Thin orchestrator: imports modules, mounts routes, starts schedulers.
  * All business logic lives in services/, routes/, middleware/.
@@ -15,6 +15,8 @@ const { authenticateToken } = require('./middleware/auth');
 const { rateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { errorHandler } = require('./middleware/errorHandler');
+const requestLogger = require('./middleware/requestLogger');
+const { validateEnv } = require('./utils/env');
 const { getKyivDateStr, getKyivTimeStr } = require('./services/booking');
 const telegram = require('./services/telegram');
 
@@ -32,6 +34,9 @@ const backupRoutes = require('./routes/backup');
 const { buildAndSendDigest, sendTomorrowReminder } = require('./routes/telegram');
 const { sendBackupToTelegram } = require('./routes/backup');
 
+// --- ENV Validation (fail fast) ---
+validateEnv();
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -42,6 +47,7 @@ app.use(cors({
 app.use(express.json());
 app.use(cacheControl);
 app.use(securityHeaders);
+app.use(requestLogger);
 
 // Static files
 app.use(express.static(path.join(__dirname, '.'), {
@@ -91,6 +97,7 @@ app.get('*', (req, res) => {
 let digestSentToday = null;
 let reminderSentToday = null;
 let backupSentToday = null;
+const schedulerIntervals = [];
 
 async function checkAutoDigest() {
     try {
@@ -159,11 +166,63 @@ async function checkAutoBackup() {
 }
 
 // ==========================================
+// GRACEFUL SHUTDOWN
+// ==========================================
+
+let server;
+
+function gracefulShutdown(signal) {
+    console.log(`\n[Shutdown] ${signal} received — shutting down gracefully...`);
+
+    // 1. Stop accepting new connections
+    if (server) {
+        server.close(() => {
+            console.log('[Shutdown] HTTP server closed');
+        });
+    }
+
+    // 2. Stop schedulers
+    schedulerIntervals.forEach(id => clearInterval(id));
+    console.log('[Shutdown] Schedulers stopped');
+
+    // 3. Close DB pool (wait for active queries to finish)
+    pool.end()
+        .then(() => {
+            console.log('[Shutdown] Database pool closed');
+            process.exit(0);
+        })
+        .catch((err) => {
+            console.error('[Shutdown] Error closing DB pool:', err);
+            process.exit(1);
+        });
+
+    // 4. Force exit after 10s if graceful shutdown stalls
+    setTimeout(() => {
+        console.error('[Shutdown] Forced exit after 10s timeout');
+        process.exit(1);
+    }, 10000).unref();
+}
+
+// Catch unhandled errors — log them instead of silent crash
+process.on('unhandledRejection', (reason) => {
+    console.error('[FATAL] Unhandled Promise rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[FATAL] Uncaught exception:', err);
+    process.exit(1);
+});
+
+// Railway sends SIGTERM on deploy/restart
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// ==========================================
 // START
 // ==========================================
 
 initDatabase().then(() => {
-    app.listen(PORT, async () => {
+    server = app.listen(PORT, async () => {
         console.log(`Server running on port ${PORT}`);
 
         // Log Telegram config
@@ -183,9 +242,9 @@ initDatabase().then(() => {
         }
 
         // Start schedulers (every 60s)
-        setInterval(checkAutoDigest, 60000);
-        setInterval(checkAutoReminder, 60000);
-        setInterval(checkAutoBackup, 60000);
+        schedulerIntervals.push(setInterval(checkAutoDigest, 60000));
+        schedulerIntervals.push(setInterval(checkAutoReminder, 60000));
+        schedulerIntervals.push(setInterval(checkAutoBackup, 60000));
         console.log('[Scheduler] Digest + Reminder + Backup schedulers started (checks every 60s)');
     });
 });

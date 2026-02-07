@@ -95,7 +95,7 @@ router.post('/', async (req, res) => {
 
         res.json({ success: true, booking });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create)', rbErr));
         log.error('Error creating booking', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {
@@ -198,7 +198,7 @@ router.post('/full', async (req, res) => {
 
         res.json({ success: true, mainBooking, linkedBookings });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create/full)', rbErr));
         log.error('Error creating full booking', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {
@@ -245,7 +245,7 @@ router.delete('/:id', async (req, res) => {
 
         res.json({ success: true, permanent });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (delete)', rbErr));
         log.error('Error deleting booking', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {
@@ -342,7 +342,7 @@ router.put('/:id', async (req, res) => {
 
         res.json({ success: true });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (update)', rbErr));
         log.error('Error updating booking', err);
         res.status(500).json({ error: 'Failed to update booking' });
     } finally {

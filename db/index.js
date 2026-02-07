@@ -12,6 +12,10 @@ const pool = new Pool({
     ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
+pool.on('error', (err) => {
+    log.error('Unexpected database pool error', err);
+});
+
 async function initDatabase() {
     try {
         await pool.query(`

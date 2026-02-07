@@ -106,6 +106,5 @@ function showMainApp() {
 
     initializeTimeline();
     renderProgramIcons();
-    fetchAnimatorsFromSheet();
     setupSwipe();
 }

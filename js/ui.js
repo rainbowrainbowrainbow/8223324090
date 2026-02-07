@@ -18,6 +18,12 @@ function timeToMinutes(time) {
     return h * 60 + m;
 }
 
+function minutesToTime(totalMinutes) {
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 function addMinutesToTime(time, minutes) {
     const total = timeToMinutes(time) + minutes;
     const h = Math.floor(total / 60);

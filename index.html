@@ -14,16 +14,16 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.38">
-    <link rel="stylesheet" href="css/auth.css?v=5.38">
-    <link rel="stylesheet" href="css/layout.css?v=5.38">
-    <link rel="stylesheet" href="css/timeline.css?v=5.38">
-    <link rel="stylesheet" href="css/panel.css?v=5.38">
-    <link rel="stylesheet" href="css/modals.css?v=5.38">
-    <link rel="stylesheet" href="css/controls.css?v=5.38">
-    <link rel="stylesheet" href="css/features.css?v=5.38">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.38">
-    <link rel="stylesheet" href="css/responsive.css?v=5.38">
+    <link rel="stylesheet" href="css/base.css?v=5.39">
+    <link rel="stylesheet" href="css/auth.css?v=5.39">
+    <link rel="stylesheet" href="css/layout.css?v=5.39">
+    <link rel="stylesheet" href="css/timeline.css?v=5.39">
+    <link rel="stylesheet" href="css/panel.css?v=5.39">
+    <link rel="stylesheet" href="css/modals.css?v=5.39">
+    <link rel="stylesheet" href="css/controls.css?v=5.39">
+    <link rel="stylesheet" href="css/features.css?v=5.39">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.39">
+    <link rel="stylesheet" href="css/responsive.css?v=5.39">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -34,9 +34,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.38</p>
+                <p class="tagline">Система бронювання v5.39</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.38</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.39</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -655,6 +655,19 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v5.39 — Bugfixes & Security Hardening</h4>
+                    <ul>
+                        <li>Виправлено: зсув часу в афіші (відсутня функція minutesToTime)</li>
+                        <li>Безпека: захист від brute-force на логіні (5 спроб/хв)</li>
+                        <li>Безпека: додано security headers (X-Content-Type-Options, X-Frame-Options, HSTS)</li>
+                        <li>Безпека: ліміт розміру запитів (1 МБ)</li>
+                        <li>Виправлено: XSS вразливість у панелі вільних кімнат</li>
+                        <li>Виправлено: визначення HTTPS протоколу для Telegram webhook</li>
+                        <li>Прибрано: заглушки Google Sheets інтеграції</li>
+                        <li>Покращено: логування помилок бази даних</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v5.38 — Image Asset Pack</h4>
                     <ul>
                         <li>Нове лого: кролик з годинником на геометричному вітражному фоні</li>
@@ -1170,13 +1183,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.38"></script>
-    <script src="js/api.js?v=5.38"></script>
-    <script src="js/ui.js?v=5.38"></script>
-    <script src="js/auth.js?v=5.38"></script>
-    <script src="js/timeline.js?v=5.38"></script>
-    <script src="js/booking.js?v=5.38"></script>
-    <script src="js/settings.js?v=5.38"></script>
-    <script src="js/app.js?v=5.38"></script>
+    <script src="js/config.js?v=5.39"></script>
+    <script src="js/api.js?v=5.39"></script>
+    <script src="js/ui.js?v=5.39"></script>
+    <script src="js/auth.js?v=5.39"></script>
+    <script src="js/timeline.js?v=5.39"></script>
+    <script src="js/booking.js?v=5.39"></script>
+    <script src="js/settings.js?v=5.39"></script>
+    <script src="js/app.js?v=5.39"></script>
 </body>
 </html>

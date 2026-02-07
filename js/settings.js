@@ -1,20 +1,6 @@
 /**
- * settings.js - Google Sheets, історія, каталог програм, лінії/аніматори, Telegram, налаштування
+ * settings.js - Історія, каталог програм, лінії/аніматори, Telegram, налаштування
  */
-
-// ==========================================
-// GOOGLE SHEETS ІНТЕГРАЦІЯ — ВИМКНЕНО
-// Синхронізація перезаписувала лінії і видаляла існуючих аніматорів.
-// Залишено як заглушку щоб не ламати виклики.
-// ==========================================
-
-async function fetchAnimatorsFromSheet() {
-    // Disabled: sheet sync overwrites lines and removes existing animators
-}
-
-async function updateLinesFromSheet() {
-    // Disabled
-}
 
 // ==========================================
 // ПОКАЗ ІСТОРІЇ

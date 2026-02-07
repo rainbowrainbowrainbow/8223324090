@@ -97,7 +97,7 @@ async function showFreeRooms() {
 
         if (data.free && data.free.length > 0) {
             panel.innerHTML = data.free.map(room =>
-                `<span class="free-room-chip" onclick="document.getElementById('roomSelect').value='${room}';document.getElementById('freeRoomsPanel').classList.add('hidden')">${room}</span>`
+                `<span class="free-room-chip" onclick="document.getElementById('roomSelect').value='${escapeHtml(room)}';document.getElementById('freeRoomsPanel').classList.add('hidden')">${escapeHtml(room)}</span>`
             ).join('') +
             (data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті: ${data.occupied.join(', ')}</div>` : '');
         } else {

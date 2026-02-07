@@ -93,7 +93,8 @@ router.post('/ask-animator', async (req, res) => {
         const { date, note } = req.body;
         const chatId = await getConfiguredChatId();
 
-        const appUrl = `${req.protocol === 'http' && req.get('x-forwarded-proto') === 'https' ? 'https' : req.protocol}://${req.get('host')}`;
+        const isHttps = req.get('x-forwarded-proto') === 'https' || req.protocol === 'https';
+        const appUrl = `${isHttps ? 'https' : 'http'}://${req.get('host')}`;
         await ensureWebhook(appUrl);
 
         await ensureDefaultLines(date);

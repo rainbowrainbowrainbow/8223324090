@@ -11,8 +11,8 @@ const cors = require('cors');
 // --- Core modules ---
 const { pool, initDatabase } = require('./db');
 const { authenticateToken } = require('./middleware/auth');
-const { rateLimiter } = require('./middleware/rateLimit');
-const { cacheControl } = require('./middleware/security');
+const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
+const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID } = require('./services/telegram');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup } = require('./services/scheduler');
@@ -26,8 +26,9 @@ const PORT = process.env.PORT || 3000;
 
 // Global middleware
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || origin.includes(process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost')) }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(requestIdMiddleware);
+app.use(securityHeaders);
 app.use(cacheControl);
 app.use(express.static(path.join(__dirname)));
 
@@ -41,6 +42,9 @@ app.use('/api', (req, res, next) => {
     }
     authenticateToken(req, res, next);
 });
+
+// Login rate limiter (stricter: 5 attempts per minute)
+app.use('/api/auth/login', loginRateLimiter);
 
 // --- Mount route modules ---
 app.use('/api/auth', require('./routes/auth'));

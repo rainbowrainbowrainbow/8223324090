@@ -156,6 +156,15 @@ body.dark-mode .form-group input:focus {
     box-shadow: 0 0 0 4px rgba(16,185,129,0.15);
 }
 
+/* v5.49: Program search in dark */
+body.dark-mode .program-search-input {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+body.dark-mode .program-search-input::placeholder { color: #6B7280; }
+
 /* Program icons — base */
 body.dark-mode .program-icon {
     background: var(--gray-100);

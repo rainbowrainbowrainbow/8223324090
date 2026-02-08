@@ -14,16 +14,16 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=5.48">
-    <link rel="stylesheet" href="css/auth.css?v=5.48">
-    <link rel="stylesheet" href="css/layout.css?v=5.48">
-    <link rel="stylesheet" href="css/timeline.css?v=5.48">
-    <link rel="stylesheet" href="css/panel.css?v=5.48">
-    <link rel="stylesheet" href="css/modals.css?v=5.48">
-    <link rel="stylesheet" href="css/controls.css?v=5.48">
-    <link rel="stylesheet" href="css/features.css?v=5.48">
-    <link rel="stylesheet" href="css/dark-mode.css?v=5.48">
-    <link rel="stylesheet" href="css/responsive.css?v=5.48">
+    <link rel="stylesheet" href="css/base.css?v=5.49">
+    <link rel="stylesheet" href="css/auth.css?v=5.49">
+    <link rel="stylesheet" href="css/layout.css?v=5.49">
+    <link rel="stylesheet" href="css/timeline.css?v=5.49">
+    <link rel="stylesheet" href="css/panel.css?v=5.49">
+    <link rel="stylesheet" href="css/modals.css?v=5.49">
+    <link rel="stylesheet" href="css/controls.css?v=5.49">
+    <link rel="stylesheet" href="css/features.css?v=5.49">
+    <link rel="stylesheet" href="css/dark-mode.css?v=5.49">
+    <link rel="stylesheet" href="css/responsive.css?v=5.49">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -34,9 +34,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v5.48</p>
+                <p class="tagline">Система бронювання v5.49</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.48</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v5.49</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Логін</label>
@@ -295,6 +295,9 @@
                 <!-- Програми іконками -->
                 <div class="form-section">
                     <label>Програма</label>
+                    <div class="program-search-wrap">
+                        <input type="text" id="programSearch" class="program-search-input" placeholder="Пошук програми..." autocomplete="off">
+                    </div>
                     <div class="programs-icons" id="programsIcons">
                         <!-- Генерується через JS -->
                     </div>
@@ -654,6 +657,14 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v5.49 — Program Search</h4>
+                    <ul>
+                        <li>Пошук програм в каталозі при створенні бронювання</li>
+                        <li>Фільтрація за назвою, кодом або label</li>
+                        <li>Порожні категорії автоматично ховаються</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v5.48 — Invite Creation Flow</h4>
                     <ul>
@@ -1273,13 +1284,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=5.48"></script>
-    <script src="js/api.js?v=5.48"></script>
-    <script src="js/ui.js?v=5.48"></script>
-    <script src="js/auth.js?v=5.48"></script>
-    <script src="js/timeline.js?v=5.48"></script>
-    <script src="js/booking.js?v=5.48"></script>
-    <script src="js/settings.js?v=5.48"></script>
-    <script src="js/app.js?v=5.48"></script>
+    <script src="js/config.js?v=5.49"></script>
+    <script src="js/api.js?v=5.49"></script>
+    <script src="js/ui.js?v=5.49"></script>
+    <script src="js/auth.js?v=5.49"></script>
+    <script src="js/timeline.js?v=5.49"></script>
+    <script src="js/booking.js?v=5.49"></script>
+    <script src="js/settings.js?v=5.49"></script>
+    <script src="js/app.js?v=5.49"></script>
 </body>
 </html>

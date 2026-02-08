@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-02-08 — v5.49 Program Search
+
+**Що вирішили:**
+- Додати пошук програм у каталозі при створенні/редагуванні бронювання
+- Фільтрація по назві, коду або label в реальному часі
+
+**Що додали/поміняли:**
+- `index.html` — `#programSearch` input перед каталогом програм
+- `js/booking.js` — `filterPrograms()`: фільтрує іконки за data-search, ховає порожні категорії
+- `js/booking.js` — `renderProgramIcons()`: додає data-search та data-category атрибути, підключає input listener
+- `js/booking.js` — `openBookingPanel()`: скидає пошук при відкритті панелі
+- `css/panel.css` — `.program-search-input` з focus стилями
+- `css/dark-mode.css` — dark mode для пошуку
+- Version bump 5.49.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v5.50 — Duplicate Booking
+
+---
+
 ## 2026-02-07 — v5.48 Invite Creation Flow
 
 **Що вирішили:**

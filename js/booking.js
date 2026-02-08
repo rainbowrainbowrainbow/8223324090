@@ -28,6 +28,9 @@ async function openBookingPanel(time, lineId) {
     const groupInput = document.getElementById('bookingGroupName');
     if (groupInput) groupInput.value = '';
     document.querySelectorAll('.program-icon').forEach(i => i.classList.remove('selected'));
+    // v5.49: Reset program search
+    const programSearch = document.getElementById('programSearch');
+    if (programSearch) { programSearch.value = ''; filterPrograms(); }
     document.getElementById('programDetails').classList.add('hidden');
     document.getElementById('hostsWarning').classList.add('hidden');
     document.getElementById('customProgramSection').classList.add('hidden');
@@ -135,15 +138,18 @@ function renderProgramIcons() {
 
         const header = document.createElement('div');
         header.className = 'category-header';
+        header.dataset.category = cat;
         header.textContent = CATEGORY_NAMES_BOOKING[cat] || cat;
         container.appendChild(header);
 
         const grid = document.createElement('div');
         grid.className = 'category-grid';
+        grid.dataset.category = cat;
         programs.forEach(p => {
             const icon = document.createElement('div');
             icon.className = `program-icon ${p.category}`;
             icon.dataset.programId = p.id;
+            icon.dataset.search = `${p.code} ${p.name} ${p.label}`.toLowerCase();
             const durationBadge = p.duration > 0
                 ? `<span class="program-duration ${p.duration <= 60 ? 'short' : 'long'}">${p.duration}'</span>`
                 : '';
@@ -156,6 +162,34 @@ function renderProgramIcons() {
             grid.appendChild(icon);
         });
         container.appendChild(grid);
+    });
+
+    // v5.49: Bind search input
+    const searchInput = document.getElementById('programSearch');
+    if (searchInput) {
+        searchInput.addEventListener('input', filterPrograms);
+    }
+}
+
+function filterPrograms() {
+    const query = (document.getElementById('programSearch')?.value || '').toLowerCase().trim();
+    const icons = document.querySelectorAll('#programsIcons .program-icon');
+    const headers = document.querySelectorAll('#programsIcons .category-header');
+    const grids = document.querySelectorAll('#programsIcons .category-grid');
+
+    icons.forEach(icon => {
+        const match = !query || icon.dataset.search.includes(query);
+        icon.style.display = match ? '' : 'none';
+    });
+
+    // Hide empty categories
+    grids.forEach(grid => {
+        const cat = grid.dataset.category;
+        const visible = grid.querySelectorAll('.program-icon:not([style*="display: none"])');
+        const hidden = visible.length === 0;
+        grid.style.display = hidden ? 'none' : '';
+        const header = document.querySelector(`.category-header[data-category="${cat}"]`);
+        if (header) header.style.display = hidden ? 'none' : '';
     });
 }
 

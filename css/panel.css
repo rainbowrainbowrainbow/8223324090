@@ -133,6 +133,28 @@
    PROGRAM ICONS
    ========================================== */
 
+/* v5.49: Program search */
+.program-search-wrap { margin-bottom: 8px; }
+
+.program-search-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 16px;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    background: var(--white);
+}
+
+.program-search-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.1);
+}
+
+.program-search-input::placeholder { color: var(--gray-400); }
+
 .programs-icons {
     display: flex;
     flex-direction: column;

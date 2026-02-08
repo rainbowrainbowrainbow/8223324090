@@ -12,29 +12,20 @@ const log = createLogger('Auth');
 
 router.post('/login', async (req, res) => {
     try {
-        const { username, password } = req.body;
-        if (!username || !password) {
-            return res.status(400).json({ error: 'Username and password required' });
+        const { username } = req.body;
+        if (!username) {
+            return res.status(400).json({ error: 'Username required' });
         }
 
-        const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-        if (result.rows.length === 0) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
-
-        const user = result.rows[0];
-        const validPassword = await bcrypt.compare(password, user.password_hash);
-        if (!validPassword) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
-
+        // v6.0: Temporary test mode — passwordless login with full admin access
+        const testUser = { username: username.trim() || 'User1', role: 'admin', name: username.trim() || 'User1' };
         const token = jwt.sign(
-            { id: user.id, username: user.username, role: user.role, name: user.name },
+            { id: 'test-user', username: testUser.username, role: testUser.role, name: testUser.name },
             JWT_SECRET,
-            { expiresIn: '8h' }
+            { expiresIn: '24h' }
         );
 
-        res.json({ token, user: { username: user.username, role: user.role, name: user.name } });
+        res.json({ token, user: testUser });
     } catch (err) {
         log.error('Login error', err);
         res.status(500).json({ error: 'Server error' });

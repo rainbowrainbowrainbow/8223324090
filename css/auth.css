@@ -219,6 +219,18 @@
     transform: translateY(0);
 }
 
+/* v6.0: Test mode hint */
+.test-mode-hint {
+    text-align: center;
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: #FEF3C7;
+    color: #92400E;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-xs);
+    font-weight: 700;
+}
+
 .error-message {
     color: var(--danger);
     text-align: center;

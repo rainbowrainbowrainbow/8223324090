@@ -681,6 +681,7 @@ async function showBookingDetails(bookingId) {
         </div>
         <div class="booking-actions modal-footer-sticky">
             <button onclick="editBooking('${booking.id}')" class="btn-edit-booking">✏️ Редагувати</button>
+            <button onclick="duplicateBooking('${booking.id}')" class="btn-duplicate-booking">📋 Повторити</button>
             <button onclick="deleteBooking('${booking.id}')" class="btn-delete-booking">Видалити</button>
         </div>
     `;
@@ -797,6 +798,68 @@ async function editBooking(bookingId) {
         await populateSecondAnimatorSelect();
         document.getElementById('secondAnimatorSelect').value = booking.secondAnimator;
     }
+}
+
+// ==========================================
+// DUPLICATE BOOKING (v5.50)
+// ==========================================
+
+async function duplicateBooking(bookingId) {
+    const bookings = await getBookingsForDate(AppState.selectedDate);
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+
+    closeAllModals();
+
+    // НЕ встановлюємо editingBookingId — це створення нового
+    AppState.editingBookingId = null;
+
+    await openBookingPanel(booking.time, booking.lineId);
+
+    // Заголовок для дублювання
+    document.querySelector('#bookingPanel .panel-header h3').textContent = 'Повторити бронювання';
+    document.querySelector('#bookingForm .btn-submit').textContent = 'Створити копію';
+
+    // Pre-fill форму (ідентично editBooking)
+    document.getElementById('roomSelect').value = booking.room || '';
+    document.getElementById('costumeSelect').value = booking.costume || '';
+    document.getElementById('bookingNotes').value = booking.notes || '';
+    const groupInput = document.getElementById('bookingGroupName');
+    if (groupInput) groupInput.value = booking.groupName || '';
+
+    if (booking.programId) {
+        selectProgram(booking.programId);
+
+        const program = PROGRAMS.find(p => p.id === booking.programId);
+        if (program && program.isCustom) {
+            const customName = document.getElementById('customName');
+            const customDuration = document.getElementById('customDuration');
+            if (customName) customName.value = booking.programName || '';
+            if (customDuration) customDuration.value = booking.duration || 30;
+        }
+
+        if (program && program.hasFiller && booking.pinataFiller) {
+            document.getElementById('pinataFillerSelect').value = booking.pinataFiller;
+        }
+
+        if (program && program.perChild && booking.kidsCount) {
+            const kidsInput = document.getElementById('kidsCountInput');
+            if (kidsInput) {
+                kidsInput.value = booking.kidsCount;
+                kidsInput.dispatchEvent(new Event('input'));
+            }
+        }
+    }
+
+    const statusRadio = document.querySelector(`input[name="bookingStatus"][value="${booking.status || 'confirmed'}"]`);
+    if (statusRadio) statusRadio.checked = true;
+
+    if (booking.secondAnimator) {
+        await populateSecondAnimatorSelect();
+        document.getElementById('secondAnimatorSelect').value = booking.secondAnimator;
+    }
+
+    showNotification('Форму заповнено — оберіть час та аніматора', 'info');
 }
 
 // ==========================================

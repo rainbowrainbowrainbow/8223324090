@@ -201,6 +201,17 @@
     box-shadow: 0 8px 24px rgba(239,68,68,0.3);
 }
 
+/* v5.50: Duplicate button — blue/info */
+.booking-actions .btn-duplicate-booking {
+    background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%);
+    color: var(--white);
+}
+
+.booking-actions .btn-duplicate-booking:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(59,130,246,0.3);
+}
+
 /* Time shift buttons */
 .booking-time-shift {
     margin-top: 20px;

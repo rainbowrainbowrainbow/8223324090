@@ -544,7 +544,9 @@ async function handleBookingSubmit(e) {
                 unlockSubmitBtn(); return;
             }
             await apiAddHistory('edit', AppState.currentUser?.username, booking);
-            // v5.18.1: Telegram notification handled server-side in PUT handler (removed frontend duplicate)
+
+            // v5.51: Save undo for edit (store old state)
+            if (oldBooking) pushUndo('edit', { old: { ...oldBooking }, updated: { ...booking } });
 
             AppState.editingBookingId = null;
 
@@ -1018,6 +1020,9 @@ async function shiftBookingTime(bookingId, minutes) {
         }
 
         await apiAddHistory('shift', AppState.currentUser?.username, { ...newBooking, shiftMinutes: minutes });
+
+        // v5.51: Push undo for shift (stores bookingId, reverse minutes, linked bookings)
+        pushUndo('shift', { bookingId, minutes: -minutes, linked: linkedBookings.map(l => l.id) });
 
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         closeAllModals();

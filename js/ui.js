@@ -256,6 +256,31 @@ async function handleUndo() {
         }
         await apiAddHistory('undo_delete', AppState.currentUser?.username, item.data[0]);
         showNotification('Видалення скасовано', 'warning');
+    } else if (item.action === 'edit') {
+        // v5.51: Undo edit — restore old booking state
+        const old = item.data.old;
+        await apiUpdateBooking(old.id, old);
+        await apiAddHistory('undo_edit', AppState.currentUser?.username, old);
+        showNotification('Редагування скасовано', 'warning');
+    } else if (item.action === 'shift') {
+        // v5.51: Undo shift — reverse the time shift
+        const { bookingId, minutes, linked } = item.data;
+        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const booking = bookings.find(b => b.id === bookingId);
+        if (booking) {
+            const revertedTime = addMinutesToTime(booking.time, minutes);
+            await apiUpdateBooking(bookingId, { ...booking, time: revertedTime });
+            // Revert linked bookings
+            for (const linkedId of linked) {
+                const lb = bookings.find(b => b.id === linkedId);
+                if (lb) {
+                    const lbTime = addMinutesToTime(lb.time, minutes);
+                    await apiUpdateBooking(linkedId, { ...lb, time: lbTime });
+                }
+            }
+            await apiAddHistory('undo_shift', AppState.currentUser?.username, { ...booking, time: revertedTime, shiftMinutes: minutes });
+        }
+        showNotification('Перенос часу скасовано', 'warning');
     }
 
     AppState.cachedBookings = {};

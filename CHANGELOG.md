@@ -4,6 +4,26 @@
 
 ---
 
+## 2026-02-08 — v5.51 Undo for Edit & Shift
+
+**Що вирішили:**
+- Розширити undo-систему: раніше працювала тільки для create/delete, тепер і для edit/shift
+- Зберігати попередній стан перед редагуванням для можливості відкату
+
+**Що додали/поміняли:**
+- `js/booking.js` — `pushUndo('edit', { old, updated })` після успішного edit (зберігає старий стан)
+- `js/booking.js` — `pushUndo('shift', { bookingId, minutes: -minutes, linked })` після shift (зберігає зворотний зсув)
+- `js/ui.js` — `handleUndo()` розширено: 'edit' → `apiUpdateBooking(old)`, 'shift' → reverse time shift для main + linked bookings
+- Нові history actions: `undo_edit`, `undo_shift`
+- Version bump 5.51.0, changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- Серія нових фіч v5.49–v5.51 завершена!
+
+---
+
 ## 2026-02-08 — v5.50 Duplicate Booking
 
 **Що вирішили:**

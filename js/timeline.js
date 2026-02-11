@@ -9,6 +9,26 @@
 // v7.0: Render generation counter — prevents stale renders from overwriting fresh ones
 let _renderGen = 0;
 
+// v7.0.1: Debug log for render tracking
+const _renderLog = [];
+function _debugRender(msg) {
+    const ts = new Date().toLocaleTimeString('uk-UA');
+    const entry = `${ts} ${msg}`;
+    _renderLog.push(entry);
+    if (_renderLog.length > 20) _renderLog.shift();
+    console.log('[RT]', entry);
+    // Show on screen for debugging
+    let el = document.getElementById('_rtDebug');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = '_rtDebug';
+        el.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.85);color:#0f0;font:10px/1.3 monospace;padding:4px 8px;z-index:99999;max-height:120px;overflow:auto;pointer-events:none;';
+        document.body.appendChild(el);
+    }
+    el.innerHTML = _renderLog.map(l => `<div>${l}</div>`).join('');
+    el.scrollTop = el.scrollHeight;
+}
+
 // v3.9: Cache with TTL
 async function getLinesForDate(date) {
     const dateStr = formatDate(date);
@@ -103,6 +123,7 @@ function renderTimeScale(date) {
 
 async function renderTimeline() {
     const thisGen = ++_renderGen;
+    _debugRender(`START gen=${thisGen} date=${formatDate(AppState.selectedDate)}`);
     // v7.0.1: Snapshot date — protect against AppState.selectedDate mutation during async ops
     const selectedDate = new Date(AppState.selectedDate);
 
@@ -121,8 +142,13 @@ async function renderTimeline() {
     const lines = await getLinesForDate(selectedDate);
     const bookings = await getBookingsForDate(selectedDate);
 
+    _debugRender(`DATA gen=${thisGen} lines=${lines.length} bookings=${bookings.length} stale=${thisGen !== _renderGen}`);
+
     // v7.0: If a newer render started while we were loading data, abort this stale render
-    if (thisGen !== _renderGen) return;
+    if (thisGen !== _renderGen) {
+        _debugRender(`ABORT gen=${thisGen} (current=${_renderGen})`);
+        return;
+    }
 
     const { start } = getTimeRange(selectedDate);
 
@@ -157,7 +183,7 @@ async function renderTimeline() {
                 <span class="line-sub">редагувати</span>
             </div>
             <div class="line-grid" data-line-id="${escapeHtml(line.id)}">
-                ${renderGridCells(line.id)}
+                ${renderGridCells(line.id, selectedDate)}
             </div>
         `;
 
@@ -169,6 +195,8 @@ async function renderTimeline() {
 
         lineEl.querySelector('.line-header').addEventListener('click', () => editLineModal(line.id));
     });
+
+    _debugRender(`RENDERED gen=${thisGen} blocks=${container.querySelectorAll('.booking-block').length}`);
 
     document.querySelectorAll('.grid-cell').forEach(cell => {
         cell.addEventListener('click', (e) => {
@@ -182,7 +210,10 @@ async function renderTimeline() {
     // v5.18: Afisha as blocking layer — render on ALL lines, not just first
     try {
         const afishaEvents = await apiGetAfishaByDate(formatDate(selectedDate));
-        if (thisGen !== _renderGen) return; // v7.0: stale render guard
+        if (thisGen !== _renderGen) {
+            _debugRender(`ABORT-AFISHA gen=${thisGen} (current=${_renderGen})`);
+            return;
+        }
         if (afishaEvents && afishaEvents.length > 0) {
             const allGrids = container.querySelectorAll('.line-grid');
             allGrids.forEach((grid, idx) => {
@@ -215,6 +246,10 @@ async function renderTimeline() {
     if (AppState.pendingPollInterval) {
         renderPendingLine();
     }
+
+    const finalBlocks = document.querySelectorAll('#timelineLines .booking-block').length;
+    const hiddenBlocks = document.querySelectorAll('#timelineLines .booking-block.status-hidden').length;
+    _debugRender(`DONE gen=${thisGen} visible=${finalBlocks - hiddenBlocks} hidden=${hiddenBlocks} filter=${AppState.statusFilter}`);
 }
 
 // v5.15: Filter booking blocks by status (CSS-only, no re-render)
@@ -239,9 +274,9 @@ function updateTodayButton() {
     btn.classList.toggle('is-today', isToday);
 }
 
-function renderGridCells(lineId) {
+function renderGridCells(lineId, date) {
     let html = '';
-    const { start, end } = getTimeRange();
+    const { start, end } = getTimeRange(date);
 
     for (let h = start; h < end; h++) {
         for (let m = 0; m < 60; m += CONFIG.TIMELINE.CELL_MINUTES) {
@@ -488,6 +523,7 @@ function removePendingLine() {
 // ==========================================
 
 function changeDate(days) {
+    _debugRender(`changeDate(${days}) from=${formatDate(AppState.selectedDate)}`);
     // C2: Auto-close booking panel on date change
     closeBookingPanel();
     // v3.9: Cleanup pending poll on date change

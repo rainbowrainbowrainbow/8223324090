@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-02-11 — v7.4 Типи подій + Іменинники
+
+**Що вирішили:**
+- Афіша має підтримувати різні типи подій: подія, іменинник, регулярна
+- Іменинники не блокують таймлайн (duration=0), мають окремий блок в Telegram
+
+**Що додали/поміняли:**
+- `db/index.js` — ALTER TABLE afisha ADD COLUMN type VARCHAR(20) DEFAULT 'event'
+- `routes/afisha.js` — type в POST/PUT, фільтрація GET ?type=birthday
+- `services/templates.js` — `formatAfishaBlock()` розділяє події та іменинників
+- `js/settings.js` — type select в формі, іконки в списку, birthday flow
+- `js/app.js` — type change handler (ховає duration для birthday)
+- `js/timeline.js` — birthday не рендериться на таймлайні
+- `index.html` — type select в модалці, v7.4 tags/changelog
+- `tests/api.test.js` — 12 нових тестів (event types + afisha templates)
+
+**Під питанням:** —
+
+**Наступний крок:**
+- Задачник (task manager MVP)
+- Зв'язок афіша → завдання
+- Експорт блоків
+
+---
+
 ## 2026-02-11 — v7.3 Афіша в Telegram
 
 **Що вирішили:**

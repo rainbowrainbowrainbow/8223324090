@@ -14,16 +14,16 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=7.3.0">
-    <link rel="stylesheet" href="css/auth.css?v=7.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=7.3.0">
-    <link rel="stylesheet" href="css/timeline.css?v=7.3.0">
-    <link rel="stylesheet" href="css/panel.css?v=7.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=7.3.0">
-    <link rel="stylesheet" href="css/controls.css?v=7.3.0">
-    <link rel="stylesheet" href="css/features.css?v=7.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=7.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=7.3.0">
+    <link rel="stylesheet" href="css/base.css?v=7.4.0">
+    <link rel="stylesheet" href="css/auth.css?v=7.4.0">
+    <link rel="stylesheet" href="css/layout.css?v=7.4.0">
+    <link rel="stylesheet" href="css/timeline.css?v=7.4.0">
+    <link rel="stylesheet" href="css/panel.css?v=7.4.0">
+    <link rel="stylesheet" href="css/modals.css?v=7.4.0">
+    <link rel="stylesheet" href="css/controls.css?v=7.4.0">
+    <link rel="stylesheet" href="css/features.css?v=7.4.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=7.4.0">
+    <link rel="stylesheet" href="css/responsive.css?v=7.4.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -34,9 +34,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v7.3.0</p>
+                <p class="tagline">Система бронювання v7.4.0</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v7.3.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v7.4.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -655,6 +655,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v7.4 — Типи подій + Іменинники</h4>
+                    <ul>
+                        <li>Тип події: 🎪 подія, 🎂 іменинник, 🔄 регулярна</li>
+                        <li>Іменинники: тривалість = 0, не блокують таймлайн</li>
+                        <li>Фільтрація афіші по типу: GET /api/afisha?type=birthday</li>
+                        <li>Telegram: окремий блок 🎂 Іменинники в дайджесті</li>
+                        <li>Редагування дати події (переміщення на інший день)</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v7.3 — Афіша в Telegram</h4>
                     <ul>
@@ -1412,6 +1422,11 @@
             <h3>🎭 Афіша / Події</h3>
             <div class="afisha-form">
                 <div class="afisha-form-row">
+                    <select id="afishaType" class="afisha-input afisha-type-select" title="Тип події">
+                        <option value="event">🎪 Подія</option>
+                        <option value="birthday">🎂 Іменинник</option>
+                        <option value="regular">🔄 Регулярна</option>
+                    </select>
                     <input type="date" id="afishaDate" class="afisha-input">
                     <input type="time" id="afishaTime" class="afisha-input" value="12:00">
                     <button type="button" id="afishaAutoTimeBtn" class="btn-auto-time" title="Знайти вільний слот">🎯</button>
@@ -1434,13 +1449,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=7.3.0"></script>
-    <script src="js/api.js?v=7.3.0"></script>
-    <script src="js/ui.js?v=7.3.0"></script>
-    <script src="js/auth.js?v=7.3.0"></script>
-    <script src="js/timeline.js?v=7.3.0"></script>
-    <script src="js/booking.js?v=7.3.0"></script>
-    <script src="js/settings.js?v=7.3.0"></script>
-    <script src="js/app.js?v=7.3.0"></script>
+    <script src="js/config.js?v=7.4.0"></script>
+    <script src="js/api.js?v=7.4.0"></script>
+    <script src="js/ui.js?v=7.4.0"></script>
+    <script src="js/auth.js?v=7.4.0"></script>
+    <script src="js/timeline.js?v=7.4.0"></script>
+    <script src="js/booking.js?v=7.4.0"></script>
+    <script src="js/settings.js?v=7.4.0"></script>
+    <script src="js/app.js?v=7.4.0"></script>
 </body>
 </html>

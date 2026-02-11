@@ -100,6 +100,9 @@ async function initDatabase() {
         `);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_afisha_date ON afisha(date)');
 
+        // v7.4: Event type (event/birthday/regular)
+        await pool.query(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'event'`);
+
         await pool.query(`
             CREATE TABLE IF NOT EXISTS telegram_known_chats (
                 chat_id BIGINT PRIMARY KEY,

@@ -3,7 +3,7 @@
 > Оновлюється кожні 10-15 повідомлень. Швидкий контекст для продовження роботи.
 
 ## Де ми
-Версія **v7.3.0**. Афіша в Telegram — **ЗАВЕРШЕНА**.
+Версія **v7.4.0**. Типи подій + Іменинники — **ЗАВЕРШЕНА**.
 
 ## Що готово
 - v5.30–v5.38: UI/UX overhaul (design system, responsive, dark mode, PWA)
@@ -15,19 +15,21 @@
 - v7.1: Admin CRUD каталогу (create/edit/deactivate, role manager, product form)
 - v7.2: Clawd Bot (7 Telegram-команд: today/tomorrow/programs/find/price/stats/menu)
 - v7.3: Афіша в Telegram (дайджест + нагадування про завтра)
+- v7.4: Типи подій (event/birthday/regular), іменинники в Telegram
 
 ## Що далі (план)
-- Тести для афіші в Telegram
-- Регулярні заходи (іменинники), задачник, експорт
+- Задачник (task manager MVP)
+- Зв'язок афіша → завдання
+- Експорт блоків
 - Export PDF/Excel
 
 ## Технічний стан
-- 156/157 тестів (1 flaky — rate limit в auth edge cases)
 - Branch: `claude/project-passport-docs-XKYIn`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
 - services/bot.js — Clawd Bot command router
-- services/templates.js — formatAfishaBlock() для Telegram
+- services/templates.js — formatAfishaBlock() з розділенням подій/іменинників
+- afisha.type: event | birthday | regular
 - requireRole middleware, canManageProducts/isAdmin helpers
 
 ---
-*Оновлено: 2026-02-11, після v7.3*
+*Оновлено: 2026-02-11, після v7.4*

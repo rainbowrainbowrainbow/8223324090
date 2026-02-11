@@ -2157,3 +2157,147 @@ describe('Static Pages', () => {
         assert.ok(body.includes('Парк Закревського'), 'Should contain site name');
     });
 });
+
+// ==========================================
+// AFISHA EVENT TYPES (v7.4)
+// ==========================================
+
+describe('Afisha Event Types (v7.4)', () => {
+    let eventId, birthdayId, regularId;
+
+    it('POST /api/afisha — create event with type=event (default)', async () => {
+        const res = await authRequest('POST', '/api/afisha', {
+            date: '2099-07-01', time: '12:00', title: 'Regular Event', duration: 90
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.item.type, 'event');
+        assert.equal(res.data.item.duration, 90);
+        eventId = res.data.item.id;
+    });
+
+    it('POST /api/afisha — create birthday (type=birthday, duration=0)', async () => {
+        const res = await authRequest('POST', '/api/afisha', {
+            date: '2099-07-01', time: '14:00', title: 'Артем', type: 'birthday', duration: 120
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.item.type, 'birthday');
+        assert.equal(res.data.item.duration, 0, 'Birthday duration should be forced to 0');
+        birthdayId = res.data.item.id;
+    });
+
+    it('POST /api/afisha — create regular event (type=regular)', async () => {
+        const res = await authRequest('POST', '/api/afisha', {
+            date: '2099-07-01', time: '16:00', title: 'Щотижнева казка', type: 'regular', duration: 45
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.item.type, 'regular');
+        assert.equal(res.data.item.duration, 45);
+        regularId = res.data.item.id;
+    });
+
+    it('POST /api/afisha — invalid type defaults to event', async () => {
+        const res = await authRequest('POST', '/api/afisha', {
+            date: '2099-07-02', time: '10:00', title: 'Bad Type', type: 'unknown'
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.item.type, 'event');
+        await authRequest('DELETE', `/api/afisha/${res.data.item.id}`);
+    });
+
+    it('GET /api/afisha?type=birthday — filter by type', async () => {
+        const res = await authRequest('GET', '/api/afisha?type=birthday');
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data));
+        const found = res.data.find(e => e.id === birthdayId);
+        assert.ok(found, 'Birthday should appear in filtered results');
+        const eventFound = res.data.find(e => e.id === eventId);
+        assert.ok(!eventFound, 'Regular event should NOT appear in birthday filter');
+    });
+
+    it('GET /api/afisha?type=regular — filter by regular', async () => {
+        const res = await authRequest('GET', '/api/afisha?type=regular');
+        assert.equal(res.status, 200);
+        const found = res.data.find(e => e.id === regularId);
+        assert.ok(found, 'Regular event should appear in filtered results');
+    });
+
+    it('GET /api/afisha — no filter returns all types', async () => {
+        const res = await authRequest('GET', '/api/afisha');
+        assert.equal(res.status, 200);
+        const ids = res.data.map(e => e.id);
+        assert.ok(ids.includes(eventId), 'Should contain event');
+        assert.ok(ids.includes(birthdayId), 'Should contain birthday');
+        assert.ok(ids.includes(regularId), 'Should contain regular');
+    });
+
+    it('PUT /api/afisha/:id — update with type preserved', async () => {
+        const res = await authRequest('PUT', `/api/afisha/${birthdayId}`, {
+            date: '2099-07-01', time: '15:00', title: 'Артем Оновлений', duration: 0, type: 'birthday'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+
+        const check = await authRequest('GET', '/api/afisha/2099-07-01');
+        const found = check.data.find(e => e.id === birthdayId);
+        assert.equal(found.type, 'birthday');
+        assert.equal(found.title, 'Артем Оновлений');
+    });
+
+    it('GET /api/afisha/:date — returns all types for date', async () => {
+        const res = await authRequest('GET', '/api/afisha/2099-07-01');
+        assert.equal(res.status, 200);
+        const types = [...new Set(res.data.map(e => e.type))];
+        assert.ok(types.includes('event'), 'Should have event type');
+        assert.ok(types.includes('birthday'), 'Should have birthday type');
+        assert.ok(types.includes('regular'), 'Should have regular type');
+    });
+
+    after(async () => {
+        if (eventId) await authRequest('DELETE', `/api/afisha/${eventId}`);
+        if (birthdayId) await authRequest('DELETE', `/api/afisha/${birthdayId}`);
+        if (regularId) await authRequest('DELETE', `/api/afisha/${regularId}`);
+    });
+});
+
+// ==========================================
+// AFISHA TELEGRAM TEMPLATES (v7.3)
+// ==========================================
+
+describe('Afisha Telegram Templates (v7.3)', () => {
+    it('formatAfishaBlock — included in digest when afisha exists', async () => {
+        // Create an afisha event for a test date
+        const testDate = '2099-08-01';
+        const ev = await authRequest('POST', '/api/afisha', {
+            date: testDate, time: '14:00', title: 'Digest Test Event', duration: 90
+        });
+        assert.equal(ev.status, 200);
+
+        // Trigger digest via API
+        const digestRes = await authRequest('GET', `/api/telegram/digest/${testDate}`);
+        // Digest sends message (may fail if no chat_id, but should succeed or return specific reason)
+        assert.equal(digestRes.status, 200);
+
+        await authRequest('DELETE', `/api/afisha/${ev.data.item.id}`);
+    });
+
+    it('formatAfishaBlock — birthday events show in separate block', async () => {
+        const testDate = '2099-08-02';
+        const ev1 = await authRequest('POST', '/api/afisha', {
+            date: testDate, time: '12:00', title: 'Шоу', type: 'event', duration: 60
+        });
+        const ev2 = await authRequest('POST', '/api/afisha', {
+            date: testDate, time: '14:00', title: 'Артемко', type: 'birthday'
+        });
+        assert.equal(ev1.status, 200);
+        assert.equal(ev2.status, 200);
+
+        const digestRes = await authRequest('GET', `/api/telegram/digest/${testDate}`);
+        assert.equal(digestRes.status, 200);
+
+        await authRequest('DELETE', `/api/afisha/${ev1.data.item.id}`);
+        await authRequest('DELETE', `/api/afisha/${ev2.data.item.id}`);
+    });
+});

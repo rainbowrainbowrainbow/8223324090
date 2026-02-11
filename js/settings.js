@@ -1088,7 +1088,7 @@ async function shiftAfishaItem(id, deltaMinutes) {
     const newTime = minutesToTime(newMin);
 
     const result = await apiUpdateAfisha(id, {
-        date: item.date, time: newTime, title: item.title, duration: item.duration
+        date: item.date, time: newTime, title: item.title, duration: item.duration, type: item.type
     });
     if (result && result.success) {
         await renderAfishaList();
@@ -1105,22 +1105,32 @@ async function editAfishaItem(id) {
     const item = items.find(i => i.id === id);
     if (!item) return;
 
-    const newTitle = prompt('Назва події:', item.title);
+    const isBirthday = item.type === 'birthday';
+    const newTitle = prompt(isBirthday ? "Ім'я іменинника:" : 'Назва події:', item.title);
     if (newTitle === null) return;
     const newTime = prompt('Час (HH:MM):', item.time);
     if (newTime === null || !/^\d{2}:\d{2}$/.test(newTime)) return;
-    const newDuration = prompt('Тривалість (хв):', item.duration);
-    if (newDuration === null) return;
+    const newDate = prompt('Дата (YYYY-MM-DD):', item.date);
+    if (newDate === null || !/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
+
+    let newDuration = item.duration;
+    if (!isBirthday) {
+        const durStr = prompt('Тривалість (хв):', item.duration);
+        if (durStr === null) return;
+        newDuration = parseInt(durStr) || item.duration;
+    }
 
     const result = await apiUpdateAfisha(id, {
-        date: item.date, time: newTime, title: newTitle.trim() || item.title,
-        duration: parseInt(newDuration) || item.duration
+        date: newDate, time: newTime, title: newTitle.trim() || item.title,
+        duration: newDuration, type: item.type
     });
     if (result && result.success) {
         showNotification('Подію оновлено', 'success');
         await renderAfishaList();
-        if (formatDate(AppState.selectedDate) === item.date) {
-            delete AppState.cachedBookings[item.date];
+        const oldDate = item.date;
+        if (formatDate(AppState.selectedDate) === oldDate || formatDate(AppState.selectedDate) === newDate) {
+            delete AppState.cachedBookings[oldDate];
+            delete AppState.cachedBookings[newDate];
             await renderTimeline();
         }
     }
@@ -1142,11 +1152,15 @@ async function renderAfishaList() {
         container.innerHTML = '<p class="no-data">Немає подій. Додайте першу!</p>';
         return;
     }
-    container.innerHTML = items.map(item => `
-        <div class="afisha-item" data-id="${item.id}">
+    const typeIcons = { event: '🎪', birthday: '🎂', regular: '🔄' };
+    container.innerHTML = items.map(item => {
+        const icon = typeIcons[item.type] || '🎪';
+        const durationText = item.type === 'birthday' ? '' : ` (${item.duration} хв)`;
+        return `
+        <div class="afisha-item" data-id="${item.id}" data-type="${item.type || 'event'}">
             <div class="afisha-item-info">
-                <strong>${escapeHtml(item.title)}</strong>
-                <span class="afisha-date">${escapeHtml(item.date)} ${escapeHtml(item.time)} (${item.duration} хв)</span>
+                <strong>${icon} ${escapeHtml(item.title)}</strong>
+                <span class="afisha-date">${escapeHtml(item.date)} ${escapeHtml(item.time)}${durationText}</span>
             </div>
             <div class="afisha-item-actions">
                 <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, -15)" title="−15 хв">◀</button>
@@ -1154,48 +1168,52 @@ async function renderAfishaList() {
                 <button class="btn-edit btn-sm" onclick="editAfishaItem(${item.id})" title="Редагувати">✏️</button>
                 <button class="btn-danger btn-sm" onclick="deleteAfishaItem(${item.id})" title="Видалити">✕</button>
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 async function addAfishaItem() {
+    const typeSelect = document.getElementById('afishaType');
     const dateInput = document.getElementById('afishaDate');
     const timeInput = document.getElementById('afishaTime');
     const titleInput = document.getElementById('afishaTitle');
     const durationInput = document.getElementById('afishaDuration');
     if (!dateInput || !timeInput || !titleInput) return;
 
+    const type = typeSelect?.value || 'event';
     const date = dateInput.value;
     const time = timeInput.value;
     const title = titleInput.value.trim();
-    const duration = parseInt(durationInput?.value) || 60;
+    const duration = type === 'birthday' ? 0 : (parseInt(durationInput?.value) || 60);
 
     if (!date || !time || !title) {
         showNotification('Заповніть дату, час та назву', 'error');
         return;
     }
 
-    // F4: Basic time conflict check
-    const existingBookings = await getBookingsForDate(new Date(date));
-    const newStart = timeToMinutes(time);
-    const newEnd = newStart + duration;
-    const conflict = existingBookings.find(b => {
-        const bStart = timeToMinutes(b.time);
-        const bEnd = bStart + b.duration;
-        return (newStart < bEnd && newEnd > bStart);
-    });
-    if (conflict) {
-        const proceed = await customConfirm(
-            `Конфлікт з "${conflict.label || conflict.programCode}" о ${conflict.time}. Додати все одно?`,
-            'Конфлікт часу'
-        );
-        if (!proceed) return;
+    // F4: Basic time conflict check (skip for birthdays — they don't block timeline)
+    if (type !== 'birthday') {
+        const existingBookings = await getBookingsForDate(new Date(date));
+        const newStart = timeToMinutes(time);
+        const newEnd = newStart + duration;
+        const conflict = existingBookings.find(b => {
+            const bStart = timeToMinutes(b.time);
+            const bEnd = bStart + b.duration;
+            return (newStart < bEnd && newEnd > bStart);
+        });
+        if (conflict) {
+            const proceed = await customConfirm(
+                `Конфлікт з "${conflict.label || conflict.programCode}" о ${conflict.time}. Додати все одно?`,
+                'Конфлікт часу'
+            );
+            if (!proceed) return;
+        }
     }
 
-    const result = await apiCreateAfisha({ date, time, title, duration });
+    const result = await apiCreateAfisha({ date, time, title, duration, type });
     if (result && result.success) {
         titleInput.value = '';
-        showNotification('Подію додано до афіші!', 'success');
+        showNotification(type === 'birthday' ? 'Іменинника додано!' : 'Подію додано до афіші!', 'success');
         await renderAfishaList();
         // Refresh timeline if viewing same date
         if (formatDate(AppState.selectedDate) === date) {

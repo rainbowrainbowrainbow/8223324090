@@ -294,6 +294,20 @@ function initSettingsListeners() {
     // v5.10: Afisha bulk import button
     const afishaImportBtn = document.getElementById('afishaImportBtn');
     if (afishaImportBtn) afishaImportBtn.addEventListener('click', importAfishaBulk);
+
+    // v7.4: Afisha type selector — toggle duration visibility for birthday
+    const afishaType = document.getElementById('afishaType');
+    if (afishaType) afishaType.addEventListener('change', () => {
+        const durationInput = document.getElementById('afishaDuration');
+        const titleInput = document.getElementById('afishaTitle');
+        if (afishaType.value === 'birthday') {
+            if (durationInput) durationInput.style.display = 'none';
+            if (titleInput) titleInput.placeholder = "Ім'я іменинника";
+        } else {
+            if (durationInput) durationInput.style.display = '';
+            if (titleInput) titleInput.placeholder = 'Назва події';
+        }
+    });
 }
 
 function initUIControlListeners() {

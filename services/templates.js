@@ -58,20 +58,37 @@ function formatBookingNotification(type, booking, extra = {}) {
 
 /**
  * Format afisha events block for digest/reminder messages
- * @param {Array} events - afisha rows [{date, time, title, duration}, ...]
+ * Splits events by type: regular events + birthday block
+ * @param {Array} events - afisha rows [{date, time, title, duration, type}, ...]
  * @returns {string} formatted HTML text block (empty string if no events)
  */
 function formatAfishaBlock(events) {
     if (!events || events.length === 0) return '';
 
-    let text = '🎪 <b>Афіша:</b>\n';
-    for (const ev of events) {
-        const endMinutes = timeToMinutes(ev.time) + (ev.duration || 60);
-        const endTime = minutesToTime(endMinutes);
-        text += `  🎭 ${ev.time}-${endTime} ${ev.title}`;
-        if (ev.duration && ev.duration !== 60) text += ` (${ev.duration}хв)`;
-        text += '\n';
+    const regular = events.filter(ev => ev.type !== 'birthday');
+    const birthdays = events.filter(ev => ev.type === 'birthday');
+
+    let text = '';
+
+    if (regular.length > 0) {
+        text += '🎪 <b>Афіша:</b>\n';
+        for (const ev of regular) {
+            const endMinutes = timeToMinutes(ev.time) + (ev.duration || 60);
+            const endTime = minutesToTime(endMinutes);
+            const icon = ev.type === 'regular' ? '🔄' : '🎭';
+            text += `  ${icon} ${ev.time}-${endTime} ${ev.title}`;
+            if (ev.duration && ev.duration !== 60) text += ` (${ev.duration}хв)`;
+            text += '\n';
+        }
     }
+
+    if (birthdays.length > 0) {
+        text += '🎂 <b>Іменинники:</b>\n';
+        for (const ev of birthdays) {
+            text += `  🎂 ${ev.time} ${ev.title}\n`;
+        }
+    }
+
     return text;
 }
 

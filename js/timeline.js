@@ -197,10 +197,13 @@ async function renderTimeline() {
             _debugRender(`ABORT-AFISHA gen=${thisGen} (current=${_renderGen})`);
             return;
         }
-        if (afishaEvents && afishaEvents.length > 0) {
+        // v7.4: Skip birthday events on timeline (they don't block time)
+        const blockingEvents = (afishaEvents || []).filter(ev => ev.type !== 'birthday');
+        if (blockingEvents.length > 0) {
+            const typeIcons = { event: '🎭', regular: '🔄' };
             const allGrids = container.querySelectorAll('.line-grid');
             allGrids.forEach((grid, idx) => {
-                afishaEvents.forEach(ev => {
+                blockingEvents.forEach(ev => {
                     const startMin = timeToMinutes(ev.time) - start * 60;
                     if (startMin < 0) return;
                     const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
@@ -210,8 +213,8 @@ async function renderTimeline() {
                     marker.style.left = `${left}px`;
                     marker.style.width = `${Math.max(width, 30)}px`;
                     marker.title = `🚫 Афіша: ${ev.title} (${ev.time}, ${ev.duration} хв)`;
-                    // Only show text on first line
-                    marker.innerHTML = idx === 0 ? `<span class="afisha-marker-text">🎭 ${escapeHtml(ev.title)}</span>` : '';
+                    const icon = typeIcons[ev.type] || '🎭';
+                    marker.innerHTML = idx === 0 ? `<span class="afisha-marker-text">${icon} ${escapeHtml(ev.title)}</span>` : '';
                     grid.appendChild(marker);
                 });
             });

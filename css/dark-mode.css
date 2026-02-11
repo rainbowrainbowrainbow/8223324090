@@ -449,6 +449,40 @@ body.dark-mode .catalog-tag.kids {
     background: rgba(139,92,246,0.15);
 }
 
+/* v7.1: Product form & manage buttons in dark mode */
+body.dark-mode .btn-catalog-edit,
+body.dark-mode .btn-catalog-delete {
+    background: var(--gray-200);
+    color: var(--gray-500);
+}
+
+body.dark-mode .btn-catalog-edit:hover {
+    background: rgba(37,99,235,0.2);
+    color: #60A5FA;
+}
+
+body.dark-mode .btn-catalog-delete:hover {
+    background: rgba(220,38,38,0.2);
+    color: #F87171;
+}
+
+body.dark-mode .catalog-badge-inactive {
+    background: rgba(220,38,38,0.2);
+    color: #F87171;
+}
+
+body.dark-mode #productForm input,
+body.dark-mode #productForm select,
+body.dark-mode #productForm textarea {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: var(--dark);
+}
+
+body.dark-mode .pf-check {
+    color: var(--gray-400);
+}
+
 /* Buttons in dark mode */
 body.dark-mode .btn-nav {
     background: var(--gray-100);

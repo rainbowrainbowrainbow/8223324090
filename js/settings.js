@@ -91,16 +91,35 @@ async function loadHistoryPage() {
 async function showProgramsCatalog() {
     const modal = document.getElementById('programsCatalogModal');
     const container = document.getElementById('programsCatalogList');
+    const manage = canManageProducts();
 
     // v7.0: Load products from API (with fallback)
     container.innerHTML = '<div class="loading-spinner">Завантаження каталогу...</div>';
     modal.classList.remove('hidden');
 
-    const allProducts = await getProducts();
+    // v7.1: Load all products (including inactive) for managers
+    const allProducts = manage ? (await apiGetProducts(false) || PROGRAMS) : await getProducts();
+    // Map API format for manage mode
+    const products = manage ? allProducts.map(p => ({
+        id: p.id, code: p.code, label: p.label, name: p.name, icon: p.icon,
+        category: p.category, duration: p.duration, price: p.price, hosts: p.hosts,
+        age: p.ageRange || p.age, kids: p.kidsCapacity || p.kids,
+        description: p.description, perChild: p.isPerChild || p.perChild,
+        hasFiller: p.hasFiller, isCustom: p.isCustom, isActive: p.isActive !== false,
+        sortOrder: p.sortOrder || p.sort_order || 0
+    })) : allProducts;
+
     let html = '';
 
+    // v7.1: Add product button for admin/manager
+    if (manage) {
+        html += `<div class="catalog-manage-bar">
+            <button class="btn-submit btn-catalog-add" onclick="openProductForm()">+ Додати програму</button>
+        </div>`;
+    }
+
     CATEGORY_ORDER_CATALOG.forEach(cat => {
-        const programs = allProducts.filter(p => p.category === cat);
+        const programs = products.filter(p => p.category === cat);
         if (programs.length === 0) return;
 
         html += `<div class="catalog-category">
@@ -112,21 +131,26 @@ async function showProgramsCatalog() {
             const durationText = p.duration > 0 ? `${p.duration} хв` : '';
             const hostsText = p.hosts > 0 ? `${p.hosts} вед.` : '';
             const infoItems = [durationText, hostsText].filter(Boolean).join(', ');
+            const inactiveClass = p.isActive === false ? ' catalog-inactive' : '';
 
             html += `
-                <div class="catalog-program-card ${cat}">
+                <div class="catalog-program-card ${cat}${inactiveClass}" data-product-id="${p.id}">
                     <div class="catalog-program-header">
                         <span class="catalog-icon">${p.icon}</span>
                         <div class="catalog-program-info">
-                            <span class="catalog-program-name">${p.name}</span>
+                            <span class="catalog-program-name">${escapeHtml(p.name)}${p.isActive === false ? ' <span class="catalog-badge-inactive">неактивна</span>' : ''}</span>
                             <span class="catalog-program-meta">${priceText}${infoItems ? ' · ' + infoItems : ''}</span>
                         </div>
+                        ${manage ? `<div class="catalog-card-actions">
+                            <button class="btn-catalog-edit" onclick="openProductForm('${p.id}')" title="Редагувати">&#9998;</button>
+                            ${isAdmin() && p.isActive !== false ? `<button class="btn-catalog-delete" onclick="deleteProduct('${p.id}')" title="Деактивувати">&#10005;</button>` : ''}
+                        </div>` : ''}
                     </div>
                     ${p.age || p.kids ? `<div class="catalog-program-tags">
-                        ${p.age ? `<span class="catalog-tag age">${p.age}</span>` : ''}
-                        ${p.kids ? `<span class="catalog-tag kids">${p.kids} діт</span>` : ''}
+                        ${p.age ? `<span class="catalog-tag age">${escapeHtml(p.age)}</span>` : ''}
+                        ${p.kids ? `<span class="catalog-tag kids">${escapeHtml(p.kids)} діт</span>` : ''}
                     </div>` : ''}
-                    ${p.description ? `<p class="catalog-program-desc">${p.description}</p>` : ''}
+                    ${p.description ? `<p class="catalog-program-desc">${escapeHtml(p.description)}</p>` : ''}
                 </div>
             `;
         });
@@ -135,6 +159,118 @@ async function showProgramsCatalog() {
     });
 
     container.innerHTML = html;
+}
+
+// v7.1: Open product form (create or edit)
+async function openProductForm(productId) {
+    const modal = document.getElementById('productFormModal');
+    const title = document.getElementById('productFormTitle');
+    const form = document.getElementById('productForm');
+
+    form.reset();
+    form.dataset.productId = '';
+
+    if (productId) {
+        title.textContent = 'Редагувати програму';
+        form.dataset.productId = productId;
+
+        // Load product data
+        const product = await apiGetProduct(productId);
+        if (!product) {
+            alert('Не вдалося завантажити програму');
+            return;
+        }
+
+        document.getElementById('pf-code').value = product.code || '';
+        document.getElementById('pf-label').value = product.label || '';
+        document.getElementById('pf-name').value = product.name || '';
+        document.getElementById('pf-icon').value = product.icon || '';
+        document.getElementById('pf-category').value = product.category || '';
+        document.getElementById('pf-duration').value = product.duration || 0;
+        document.getElementById('pf-price').value = product.price || 0;
+        document.getElementById('pf-hosts').value = product.hosts || 1;
+        document.getElementById('pf-age').value = product.ageRange || '';
+        document.getElementById('pf-kids').value = product.kidsCapacity || '';
+        document.getElementById('pf-description').value = product.description || '';
+        document.getElementById('pf-perchild').checked = product.isPerChild || false;
+        document.getElementById('pf-filler').checked = product.hasFiller || false;
+        document.getElementById('pf-active').checked = product.isActive !== false;
+        document.getElementById('pf-sort').value = product.sortOrder || 0;
+    } else {
+        title.textContent = 'Нова програма';
+        document.getElementById('pf-active').checked = true;
+        document.getElementById('pf-hosts').value = 1;
+        document.getElementById('pf-duration').value = 60;
+        document.getElementById('pf-price').value = 0;
+        document.getElementById('pf-sort').value = 0;
+    }
+
+    modal.classList.remove('hidden');
+}
+
+// v7.1: Save product (create or update)
+async function saveProduct() {
+    const form = document.getElementById('productForm');
+    const productId = form.dataset.productId;
+
+    const code = document.getElementById('pf-code').value.trim();
+    const label = document.getElementById('pf-label').value.trim();
+    const name = document.getElementById('pf-name').value.trim();
+
+    if (!code || !label || !name) {
+        alert('Заповніть обов\'язкові поля: Код, Мітка, Назва');
+        return;
+    }
+
+    const data = {
+        code,
+        label,
+        name,
+        icon: document.getElementById('pf-icon').value.trim(),
+        category: document.getElementById('pf-category').value,
+        duration: parseInt(document.getElementById('pf-duration').value) || 0,
+        price: parseInt(document.getElementById('pf-price').value) || 0,
+        hosts: parseInt(document.getElementById('pf-hosts').value) || 1,
+        ageRange: document.getElementById('pf-age').value.trim() || null,
+        kidsCapacity: document.getElementById('pf-kids').value.trim() || null,
+        description: document.getElementById('pf-description').value.trim() || null,
+        isPerChild: document.getElementById('pf-perchild').checked,
+        hasFiller: document.getElementById('pf-filler').checked,
+        isActive: document.getElementById('pf-active').checked,
+        sortOrder: parseInt(document.getElementById('pf-sort').value) || 0
+    };
+
+    let result;
+    if (productId) {
+        result = await apiUpdateProduct(productId, data);
+    } else {
+        result = await apiCreateProduct(data);
+    }
+
+    if (result.success) {
+        document.getElementById('productFormModal').classList.add('hidden');
+        // Invalidate products cache
+        AppState.products = null;
+        AppState.productsLoadedAt = 0;
+        // Refresh catalog
+        await showProgramsCatalog();
+    } else {
+        alert('Помилка: ' + (result.error || 'Невідома помилка'));
+    }
+}
+
+// v7.1: Delete (deactivate) product
+async function deleteProduct(productId) {
+    if (!confirm('Деактивувати цю програму? Вона зникне з каталогу бронювань.')) return;
+
+    const result = await apiDeleteProduct(productId);
+    if (result.success) {
+        AppState.products = null;
+        AppState.productsLoadedAt = 0;
+        await showProgramsCatalog();
+    } else {
+        alert('Помилка: ' + (result.error || 'Невідома помилка'));
+    }
 }
 
 // ==========================================

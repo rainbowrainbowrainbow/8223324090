@@ -57,6 +57,15 @@ function isViewer() {
     return AppState.currentUser && AppState.currentUser.role === 'viewer';
 }
 
+// v7.1: Can manage products (admin or manager)
+function canManageProducts() {
+    return AppState.currentUser && (AppState.currentUser.role === 'admin' || AppState.currentUser.role === 'manager');
+}
+
+function isAdmin() {
+    return AppState.currentUser && AppState.currentUser.role === 'admin';
+}
+
 function showMainApp() {
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('mainApp').classList.remove('hidden');

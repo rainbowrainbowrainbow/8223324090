@@ -14,16 +14,16 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=7.0.1">
-    <link rel="stylesheet" href="css/auth.css?v=7.0.1">
-    <link rel="stylesheet" href="css/layout.css?v=7.0.1">
-    <link rel="stylesheet" href="css/timeline.css?v=7.0.1">
-    <link rel="stylesheet" href="css/panel.css?v=7.0.1">
-    <link rel="stylesheet" href="css/modals.css?v=7.0.1">
-    <link rel="stylesheet" href="css/controls.css?v=7.0.1">
-    <link rel="stylesheet" href="css/features.css?v=7.0.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=7.0.1">
-    <link rel="stylesheet" href="css/responsive.css?v=7.0.1">
+    <link rel="stylesheet" href="css/base.css?v=7.1.0">
+    <link rel="stylesheet" href="css/auth.css?v=7.1.0">
+    <link rel="stylesheet" href="css/layout.css?v=7.1.0">
+    <link rel="stylesheet" href="css/timeline.css?v=7.1.0">
+    <link rel="stylesheet" href="css/panel.css?v=7.1.0">
+    <link rel="stylesheet" href="css/modals.css?v=7.1.0">
+    <link rel="stylesheet" href="css/controls.css?v=7.1.0">
+    <link rel="stylesheet" href="css/features.css?v=7.1.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=7.1.0">
+    <link rel="stylesheet" href="css/responsive.css?v=7.1.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -34,9 +34,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v7.0.1</p>
+                <p class="tagline">Система бронювання v7.1.0</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v7.0.1</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v7.1.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -655,6 +655,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v7.1 — Admin: управління каталогом програм</h4>
+                    <ul>
+                        <li>CRUD для програм: створення, редагування, деактивація</li>
+                        <li>Роль manager з доступом до управління каталогом</li>
+                        <li>Форма програми: всі поля, категорії, чекбокси</li>
+                        <li>Неактивні програми позначаються в каталозі</li>
+                        <li>Soft-delete: деактивація замість видалення</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v7.0.1 — Bugfix: зникаючі бронювання</h4>
                     <ul>
@@ -1296,6 +1306,87 @@
         </div>
     </div>
 
+    <!-- v7.1: Модальне вікно форми продукту -->
+    <div id="productFormModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Форма програми">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3 id="productFormTitle">Нова програма</h3>
+            <form id="productForm" onsubmit="event.preventDefault(); saveProduct();">
+                <div class="pf-grid">
+                    <div class="form-group">
+                        <label for="pf-code">Код *</label>
+                        <input type="text" id="pf-code" maxlength="20" required placeholder="КВ12">
+                    </div>
+                    <div class="form-group">
+                        <label for="pf-label">Мітка *</label>
+                        <input type="text" id="pf-label" maxlength="100" required placeholder="КВ12(60)">
+                    </div>
+                    <div class="form-group">
+                        <label for="pf-icon">Іконка</label>
+                        <input type="text" id="pf-icon" maxlength="10" placeholder="🎭">
+                    </div>
+                    <div class="form-group">
+                        <label for="pf-category">Категорія *</label>
+                        <select id="pf-category" required>
+                            <option value="quest">Квести</option>
+                            <option value="animation">Анімація</option>
+                            <option value="show">Шоу</option>
+                            <option value="photo">Фото</option>
+                            <option value="masterclass">Майстер-класи</option>
+                            <option value="pinata">Піньяти</option>
+                            <option value="custom">Інше</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="pf-name">Назва *</label>
+                    <input type="text" id="pf-name" maxlength="200" required placeholder="Назва програми">
+                </div>
+                <div class="pf-grid">
+                    <div class="form-group">
+                        <label for="pf-duration">Тривалість (хв) *</label>
+                        <input type="number" id="pf-duration" min="0" max="600" value="60" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="pf-price">Ціна (грн)</label>
+                        <input type="number" id="pf-price" min="0" max="99999" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="pf-hosts">Ведучих</label>
+                        <input type="number" id="pf-hosts" min="0" max="10" value="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="pf-sort">Порядок</label>
+                        <input type="number" id="pf-sort" min="0" max="999" value="0">
+                    </div>
+                </div>
+                <div class="pf-grid">
+                    <div class="form-group">
+                        <label for="pf-age">Вік</label>
+                        <input type="text" id="pf-age" maxlength="30" placeholder="5-12р">
+                    </div>
+                    <div class="form-group">
+                        <label for="pf-kids">Діти</label>
+                        <input type="text" id="pf-kids" maxlength="30" placeholder="4-10">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="pf-description">Опис</label>
+                    <textarea id="pf-description" rows="3" maxlength="2000" placeholder="Опис програми..."></textarea>
+                </div>
+                <div class="pf-checkboxes">
+                    <label class="pf-check"><input type="checkbox" id="pf-perchild"> Ціна за дитину</label>
+                    <label class="pf-check"><input type="checkbox" id="pf-filler"> Наповнювач (піньята)</label>
+                    <label class="pf-check"><input type="checkbox" id="pf-active" checked> Активна</label>
+                </div>
+                <div class="pf-actions">
+                    <button type="submit" class="btn-submit">Зберегти</button>
+                    <button type="button" class="btn-submit btn-secondary" onclick="document.getElementById('productFormModal').classList.add('hidden')">Скасувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- F: Модальне вікно Афіша -->
     <div id="afishaModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Афіша подій">
         <div class="modal-content modal-large">
@@ -1325,13 +1416,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=7.0.1"></script>
-    <script src="js/api.js?v=7.0.1"></script>
-    <script src="js/ui.js?v=7.0.1"></script>
-    <script src="js/auth.js?v=7.0.1"></script>
-    <script src="js/timeline.js?v=7.0.1"></script>
-    <script src="js/booking.js?v=7.0.1"></script>
-    <script src="js/settings.js?v=7.0.1"></script>
-    <script src="js/app.js?v=7.0.1"></script>
+    <script src="js/config.js?v=7.1.0"></script>
+    <script src="js/api.js?v=7.1.0"></script>
+    <script src="js/ui.js?v=7.1.0"></script>
+    <script src="js/auth.js?v=7.1.0"></script>
+    <script src="js/timeline.js?v=7.1.0"></script>
+    <script src="js/booking.js?v=7.1.0"></script>
+    <script src="js/settings.js?v=7.1.0"></script>
+    <script src="js/app.js?v=7.1.0"></script>
 </body>
 </html>

@@ -286,6 +286,65 @@ async function apiGetProduct(id) {
     }
 }
 
+// v7.1: Products CRUD API
+async function apiCreateProduct(product) {
+    try {
+        const response = await fetch(`${API_BASE}/products`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(product)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        const data = await response.json();
+        return { success: true, product: data };
+    } catch (err) {
+        console.error('API createProduct error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiUpdateProduct(id, product) {
+    try {
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(product)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        const data = await response.json();
+        return { success: true, product: data };
+    } catch (err) {
+        console.error('API updateProduct error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiDeleteProduct(id) {
+    try {
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API deleteProduct error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
 // v5.0: Auth API
 async function apiLogin(username, password) {
     const response = await fetch(`${API_BASE}/auth/login`, {

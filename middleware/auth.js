@@ -26,4 +26,14 @@ function authenticateToken(req, res, next) {
     }
 }
 
-module.exports = { JWT_SECRET, authenticateToken };
+// v7.1: Role-based access control
+function requireRole(...roles) {
+    return (req, res, next) => {
+        if (!req.user || !roles.includes(req.user.role)) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
+        next();
+    };
+}
+
+module.exports = { JWT_SECRET, authenticateToken, requireRole };

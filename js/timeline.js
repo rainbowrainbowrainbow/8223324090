@@ -304,7 +304,10 @@ function createBookingBlock(booking, startHour) {
 
     const isPreliminary = booking.status === 'preliminary';
     const isLinked = !!booking.linkedTo;
-    block.className = `booking-block ${booking.category}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}`;
+    // v7.0.1: Apply status filter immediately to prevent flash of hidden bookings
+    const filter = AppState.statusFilter || 'all';
+    const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
+    block.className = `booking-block ${booking.category}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}`;
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 

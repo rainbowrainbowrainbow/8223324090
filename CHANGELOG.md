@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-02-11 — v7.6.1 Переключення ліній + Bugfix
+
+**Що вирішили:**
+- Бронювання має легко переміщуватись між лініями аніматорів
+- Confirm modal не видно при видаленні з афіші (z-index конфлікт)
+
+**Що додали/поміняли:**
+- `js/booking.js` — switchBookingLine() + кнопки ліній у деталях бронювання
+- `css/modals.css` — стилі .line-switch-buttons + #confirmModal z-index fix
+- `css/base.css` — --z-modal-confirm: 1050
+- `index.html` — version bump + changelog entry
+
+**Під питанням:** —
+
+**Наступний крок:**
+- Переосмислити UX афіші
+
+---
+
 ## 2026-02-11 — v7.6 Афіша → Задачі
 
 **Що вирішили:**

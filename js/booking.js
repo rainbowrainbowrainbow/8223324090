@@ -660,6 +660,16 @@ async function showBookingDetails(bookingId) {
     const fullInviteUrl = `${window.location.origin}/invite?${inviteParams.toString()}`;
     const inviteShareText = `Запрошуємо на ${escapeHtml(booking.programName || booking.label)} ${escapeHtml(booking.date)}! Парк Закревського Періоду — вул. Закревського 31/2, 3 поверх`;
 
+    // v7.6.1: Line switch buttons
+    const otherLines = lines.filter(l => l.id !== booking.lineId);
+    const lineSwitchHtml = otherLines.length > 0 ? `
+        <div class="booking-line-switch">
+            <span class="label">Перемістити на лінію:</span>
+            <div class="line-switch-buttons">
+                ${otherLines.map(l => `<button onclick="switchBookingLine('${booking.id}', '${l.id}')" style="border-color: ${l.color}; color: ${l.color}">${escapeHtml(l.name)}</button>`).join('')}
+            </div>
+        </div>` : '';
+
     const editControls = isViewer() ? '' : `
         <div class="booking-time-shift">
             <span class="label">Перенести час:</span>
@@ -672,6 +682,7 @@ async function showBookingDetails(bookingId) {
                 <button onclick="shiftBookingTime('${booking.id}', 60)">+60</button>
             </div>
         </div>
+        ${lineSwitchHtml}
         <div class="invite-section">
             <div class="invite-section-header">🎉 Запрошення для клієнта</div>
             <div class="invite-preview">
@@ -1036,5 +1047,50 @@ async function shiftBookingTime(bookingId, minutes) {
         showNotification(`Час перенесено на ${minutes > 0 ? '+' : ''}${minutes} хв${linkedMsg}`, 'success');
     } catch (error) {
         handleError('Перенос часу', error);
+    }
+}
+
+// ==========================================
+// ПЕРЕКЛЮЧЕННЯ ЛІНІЇ (v7.6.1)
+// ==========================================
+
+async function switchBookingLine(bookingId, targetLineId) {
+    try {
+        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const booking = bookings.find(b => b.id === bookingId);
+        if (!booking) return;
+
+        if (booking.lineId === targetLineId) return;
+
+        // Перевірка конфліктів на цільовій лінії
+        const targetLineBookings = bookings.filter(b => b.lineId === targetLineId && b.id !== bookingId);
+        const myStart = timeToMinutes(booking.time);
+        const myEnd = myStart + booking.duration;
+
+        for (const other of targetLineBookings) {
+            const start = timeToMinutes(other.time);
+            const end = start + other.duration;
+            if (myStart < end && myEnd > start) {
+                showNotification(`Неможливо — накладка з "${other.label || other.programCode}" о ${other.time}`, 'error');
+                return;
+            }
+        }
+
+        const updated = { ...booking, lineId: targetLineId };
+        const result = await apiUpdateBooking(bookingId, updated);
+        if (result && result.success === false) {
+            showNotification(result.error || 'Помилка переключення лінії', 'error');
+            return;
+        }
+
+        const lines = await getLinesForDate(AppState.selectedDate);
+        const targetLine = lines.find(l => l.id === targetLineId);
+
+        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        closeAllModals();
+        await renderTimeline();
+        showNotification(`Переміщено на: ${targetLine ? targetLine.name : 'іншу лінію'}`, 'success');
+    } catch (error) {
+        handleError('Переключення лінії', error);
     }
 }

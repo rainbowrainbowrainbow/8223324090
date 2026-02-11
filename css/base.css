@@ -128,6 +128,7 @@
     --z-sticky: 100;
     --z-panel: 90;
     --z-modal: 1000;
+    --z-modal-confirm: 1050;
     --z-notification: 1100;
     --z-tooltip: 2000;
 }

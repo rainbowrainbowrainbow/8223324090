@@ -255,9 +255,56 @@
     transform: translateY(-1px);
 }
 
+/* v7.6.1: Line switch buttons */
+.booking-line-switch {
+    margin-top: 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.booking-line-switch .label {
+    display: block;
+    color: var(--gray-500);
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+.line-switch-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.line-switch-buttons button {
+    flex: 1;
+    min-width: 80px;
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 2px solid var(--gray-300);
+    border-radius: var(--radius-sm);
+    background: var(--white);
+    font-weight: 600;
+    font-size: var(--font-sm);
+    cursor: pointer;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.line-switch-buttons button:hover {
+    background: var(--gray-50);
+    transform: translateY(-1px);
+}
+
 /* ==========================================
    CONFIRM MODAL
    ========================================== */
+
+/* Confirm & note modals must always appear above other modals */
+#confirmModal,
+#noteModal {
+    z-index: var(--z-modal-confirm);
+}
 
 .modal-confirm {
     max-width: 340px;

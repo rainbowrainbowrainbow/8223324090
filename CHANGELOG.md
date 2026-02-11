@@ -4,6 +4,26 @@
 
 ---
 
+## 2026-02-11 — v7.2 Clawd Bot
+
+**Що вирішили:**
+- Telegram-бот для управління парком прямо з чату
+- 7 команд: меню, бронювання, каталог, пошук, ціни, статистика
+
+**Що додали/поміняли:**
+- `services/bot.js` — NEW: 7 command handlers (menu, today, tomorrow, programs, find, price, stats)
+- `routes/telegram.js` — webhook тепер обробляє текстові команди через `handleBotCommand()`
+- `index.html` — v7.2 tags, tagline, changelog entry
+- `package.json` — version 7.2.0
+- 156/157 тестів pass
+
+**Під питанням:** —
+
+**Наступний крок:**
+- Можливі: export PDF/Excel, graphic assets, batch price update
+
+---
+
 ## 2026-02-11 — v7.1 Admin Product Catalog CRUD
 
 **Що вирішили:**

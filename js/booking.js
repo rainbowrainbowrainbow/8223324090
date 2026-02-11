@@ -130,10 +130,12 @@ function closeBookingPanel() {
 
 async function renderProgramIcons() {
     const container = document.getElementById('programsIcons');
-    container.innerHTML = '';
 
     // v7.0: Load products from API (with fallback to PROGRAMS)
+    // Don't clear DOM until data is ready — prevents blank flash
     const allProducts = await getProducts();
+
+    container.innerHTML = '';
 
     CATEGORY_ORDER_BOOKING.forEach(cat => {
         const programs = allProducts.filter(p => p.category === cat);

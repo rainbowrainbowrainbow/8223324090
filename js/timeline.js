@@ -6,6 +6,9 @@
 // ЛІНІЇ ПО ДАТАХ (кеш)
 // ==========================================
 
+// v7.0: Render generation counter — prevents stale renders from overwriting fresh ones
+let _renderGen = 0;
+
 // v3.9: Cache with TTL
 async function getLinesForDate(date) {
     const dateStr = formatDate(date);
@@ -93,6 +96,8 @@ function renderTimeScale() {
 }
 
 async function renderTimeline() {
+    const thisGen = ++_renderGen;
+
     const addLineBtn = document.getElementById('addLineBtn');
     if (addLineBtn) addLineBtn.style.display = isViewer() ? 'none' : '';
 
@@ -107,6 +112,10 @@ async function renderTimeline() {
     const container = document.getElementById('timelineLines');
     const lines = await getLinesForDate(AppState.selectedDate);
     const bookings = await getBookingsForDate(AppState.selectedDate);
+
+    // v7.0: If a newer render started while we were loading data, abort this stale render
+    if (thisGen !== _renderGen) return;
+
     const { start } = getTimeRange();
 
     // v5.11: Pass line IDs so Quick Stats only counts bookings on existing lines
@@ -165,6 +174,7 @@ async function renderTimeline() {
     // v5.18: Afisha as blocking layer — render on ALL lines, not just first
     try {
         const afishaEvents = await apiGetAfishaByDate(formatDate(AppState.selectedDate));
+        if (thisGen !== _renderGen) return; // v7.0: stale render guard
         if (afishaEvents && afishaEvents.length > 0) {
             const allGrids = container.querySelectorAll('.line-grid');
             allGrids.forEach((grid, idx) => {
@@ -387,6 +397,8 @@ function attachMultiDayListeners() {
 }
 
 async function renderMultiDayTimeline() {
+    const gen = _renderGen; // v7.0: capture current generation
+
     const timeScaleEl = document.getElementById('timeScale');
     const linesContainer = document.getElementById('timelineLines');
     const addLineBtn = document.getElementById('addLineBtn');
@@ -412,6 +424,7 @@ async function renderMultiDayTimeline() {
     let multiDayHtml = '<div class="multi-day-container">';
     for (const date of dates) {
         multiDayHtml += await renderDaySectionHtml(date);
+        if (gen !== _renderGen) return; // v7.0: stale render guard
     }
     multiDayHtml += '</div>';
 

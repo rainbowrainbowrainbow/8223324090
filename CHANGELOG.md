@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-02-11 — v7.5 Задачник MVP
+
+**Що вирішили:**
+- Потрібен задачник для планування дня/тижня (закупівлі, підготовка, рутина)
+- Статуси: todo → in_progress → done, пріоритети: low/normal/high
+
+**Що додали/поміняли:**
+- `db/index.js` — CREATE TABLE tasks (title, date, status, priority, assigned_to, ...)
+- `routes/tasks.js` — NEW: CRUD + PATCH status, фільтрація, сортування
+- `server.js` — mount /api/tasks
+- `js/settings.js` — API functions + UI render (tasks modal, status cycling)
+- `js/app.js` — event listeners для tasks button/filter
+- `index.html` — tasks modal, tasks button в меню, v7.5 changelog
+- `css/features.css` — task-item styles
+- `css/dark-mode.css` — dark mode support
+- `tests/api.test.js` — 13 нових тестів tasks CRUD
+
+**Під питанням:** —
+
+**Наступний крок:**
+- Зв'язок афіша → завдання (автоматичне створення)
+- Clawd Bot команди для задач (/tasks, /done)
+- Експорт блоків
+
+---
+
 ## 2026-02-11 — v7.4 Типи подій + Іменинники
 
 **Що вирішили:**

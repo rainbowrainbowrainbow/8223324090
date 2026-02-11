@@ -709,6 +709,45 @@
     width: auto;
 }
 
+/* v7.5: Tasks list */
+.tasks-toolbar { margin-bottom: 12px; }
+.tasks-form-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+.tasks-filters { display: flex; gap: 8px; }
+.tasks-list { display: flex; flex-direction: column; gap: 6px; max-height: 400px; overflow-y: auto; }
+.task-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--gray-50, #f9fafb);
+    border-radius: 8px;
+    border: 1px solid var(--gray-100, #f3f4f6);
+}
+.task-item.task-done { opacity: 0.5; }
+.task-item-left { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.task-status-btn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 2px;
+    min-width: 28px;
+}
+.task-item-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.task-item-info strong { color: var(--gray-800); font-size: var(--font-base); }
+.task-done .task-item-info strong { text-decoration: line-through; }
+.task-meta { display: flex; gap: 8px; font-size: var(--font-xs); color: var(--gray-400); }
+.task-date { color: var(--primary, #7C3AED); }
+.task-assignee { color: var(--gray-500); }
+.task-item-actions { display: flex; gap: 4px; align-items: center; }
+.task-item-actions .btn-sm { padding: 6px 10px; font-size: 12px; width: auto; }
+
 /* Afisha timeline markers */
 .afisha-marker {
     position: absolute;

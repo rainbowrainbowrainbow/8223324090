@@ -14,16 +14,16 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=7.4.0">
-    <link rel="stylesheet" href="css/auth.css?v=7.4.0">
-    <link rel="stylesheet" href="css/layout.css?v=7.4.0">
-    <link rel="stylesheet" href="css/timeline.css?v=7.4.0">
-    <link rel="stylesheet" href="css/panel.css?v=7.4.0">
-    <link rel="stylesheet" href="css/modals.css?v=7.4.0">
-    <link rel="stylesheet" href="css/controls.css?v=7.4.0">
-    <link rel="stylesheet" href="css/features.css?v=7.4.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=7.4.0">
-    <link rel="stylesheet" href="css/responsive.css?v=7.4.0">
+    <link rel="stylesheet" href="css/base.css?v=7.5.0">
+    <link rel="stylesheet" href="css/auth.css?v=7.5.0">
+    <link rel="stylesheet" href="css/layout.css?v=7.5.0">
+    <link rel="stylesheet" href="css/timeline.css?v=7.5.0">
+    <link rel="stylesheet" href="css/panel.css?v=7.5.0">
+    <link rel="stylesheet" href="css/modals.css?v=7.5.0">
+    <link rel="stylesheet" href="css/controls.css?v=7.5.0">
+    <link rel="stylesheet" href="css/features.css?v=7.5.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=7.5.0">
+    <link rel="stylesheet" href="css/responsive.css?v=7.5.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -34,9 +34,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v7.4.0</p>
+                <p class="tagline">Система бронювання v7.5.0</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v7.4.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v7.5.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -130,6 +130,7 @@
                             <button type="button" id="digestBtn" class="dropdown-item hidden" role="menuitem" title="Надіслати дайджест в Telegram">📲 Дайджест</button>
                             <button type="button" id="afishaBtn" class="dropdown-item" role="menuitem" title="Управління подіями афіші">🎭 Афіша</button>
                             <button type="button" id="programsTabBtn" class="dropdown-item" role="menuitem" title="Каталог розважальних програм">📚 Програми</button>
+                            <button type="button" id="tasksBtn" class="dropdown-item" role="menuitem" title="Задачник — завдання на день/тиждень">📝 Задачі</button>
                             <button type="button" id="dashboardBtn" class="dropdown-item hidden" role="menuitem" title="Фінансова статистика та аналітика">📊 Статистика</button>
                             <button type="button" id="settingsBtn" class="dropdown-item hidden" role="menuitem" title="Налаштування системи та Telegram">⚙️ Налаштування</button>
                         </div>
@@ -655,6 +656,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v7.5 — Задачник MVP</h4>
+                    <ul>
+                        <li>Таблиця tasks: title, date, status, priority, assigned_to</li>
+                        <li>CRUD API: GET/POST/PUT/DELETE + PATCH status</li>
+                        <li>Фільтрація: по статусу, даті, відповідальному</li>
+                        <li>Сортування: пріоритет → статус → дата створення</li>
+                        <li>UI: модалка задачника з кнопкою в меню</li>
+                        <li>Цикл статусів: ⬜ → 🔄 → ✅ по кліку</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v7.4 — Типи подій + Іменинники</h4>
                     <ul>
@@ -1415,6 +1427,36 @@
         </div>
     </div>
 
+    <!-- v7.5: Модальне вікно Задачник -->
+    <div id="tasksModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Задачник">
+        <div class="modal-content modal-large">
+            <span class="modal-close">&times;</span>
+            <h3>📝 Задачник</h3>
+            <div class="tasks-toolbar">
+                <div class="tasks-form-row">
+                    <input type="text" id="taskTitle" class="afisha-input" placeholder="Нове завдання..." style="flex:2">
+                    <input type="date" id="taskDate" class="afisha-input">
+                    <select id="taskPriority" class="afisha-input afisha-type-select">
+                        <option value="normal">Звичайна</option>
+                        <option value="high">Висока</option>
+                        <option value="low">Низька</option>
+                    </select>
+                    <input type="text" id="taskAssignedTo" class="afisha-input" placeholder="Відповідальний" style="max-width:120px">
+                    <button type="button" id="addTaskBtn" class="btn-afisha-add">Додати</button>
+                </div>
+                <div class="tasks-filters">
+                    <select id="tasksFilterStatus" class="afisha-input afisha-type-select">
+                        <option value="">Всі статуси</option>
+                        <option value="todo">Зробити</option>
+                        <option value="in_progress">В роботі</option>
+                        <option value="done">Готово</option>
+                    </select>
+                </div>
+            </div>
+            <div id="tasksList" class="tasks-list"></div>
+        </div>
+    </div>
+
     <!-- F: Модальне вікно Афіша -->
     <div id="afishaModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Афіша подій">
         <div class="modal-content modal-large">
@@ -1449,13 +1491,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=7.4.0"></script>
-    <script src="js/api.js?v=7.4.0"></script>
-    <script src="js/ui.js?v=7.4.0"></script>
-    <script src="js/auth.js?v=7.4.0"></script>
-    <script src="js/timeline.js?v=7.4.0"></script>
-    <script src="js/booking.js?v=7.4.0"></script>
-    <script src="js/settings.js?v=7.4.0"></script>
-    <script src="js/app.js?v=7.4.0"></script>
+    <script src="js/config.js?v=7.5.0"></script>
+    <script src="js/api.js?v=7.5.0"></script>
+    <script src="js/ui.js?v=7.5.0"></script>
+    <script src="js/auth.js?v=7.5.0"></script>
+    <script src="js/timeline.js?v=7.5.0"></script>
+    <script src="js/booking.js?v=7.5.0"></script>
+    <script src="js/settings.js?v=7.5.0"></script>
+    <script src="js/app.js?v=7.5.0"></script>
 </body>
 </html>

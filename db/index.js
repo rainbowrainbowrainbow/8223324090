@@ -196,6 +196,25 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)');
 
+        // v7.5: Tasks table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS tasks (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(200) NOT NULL,
+                description TEXT,
+                date VARCHAR(20),
+                status VARCHAR(20) DEFAULT 'todo',
+                priority VARCHAR(20) DEFAULT 'normal',
+                assigned_to VARCHAR(50),
+                created_by VARCHAR(50),
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW(),
+                completed_at TIMESTAMP
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_date ON tasks(date)');
+
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date_status ON bookings(date, status)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_line_date ON bookings(line_id, date)');

@@ -1335,3 +1335,206 @@ async function importAfishaBulk() {
     showNotification(`Імпортовано: ${imported}, помилок: ${errors}`, imported > 0 ? 'success' : 'error');
     await renderAfishaList();
 }
+
+// ==========================================
+// ЗАДАЧНИК (v7.5)
+// ==========================================
+
+async function apiGetTasks(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.status) params.set('status', filters.status);
+        if (filters.date) params.set('date', filters.date);
+        if (filters.assigned_to) params.set('assigned_to', filters.assigned_to);
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}/tasks${qs}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('Tasks fetch error:', err);
+        return [];
+    }
+}
+
+async function apiCreateTask(data) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Task create error:', err);
+        return null;
+    }
+}
+
+async function apiUpdateTask(id, data) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Task update error:', err);
+        return null;
+    }
+}
+
+async function apiChangeTaskStatus(id, status) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${id}/status`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ status })
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Task status error:', err);
+        return null;
+    }
+}
+
+async function apiDeleteTask(id) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Task delete error:', err);
+        return null;
+    }
+}
+
+async function showTasksModal() {
+    const modal = document.getElementById('tasksModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    await renderTasksList();
+}
+
+async function renderTasksList() {
+    const container = document.getElementById('tasksList');
+    if (!container) return;
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
+
+    const statusFilter = document.getElementById('tasksFilterStatus')?.value || '';
+    const tasks = await apiGetTasks({ status: statusFilter || undefined });
+
+    if (tasks.length === 0) {
+        container.innerHTML = '<p class="no-data">Немає завдань. Додайте перше!</p>';
+        return;
+    }
+
+    const statusIcons = { todo: '⬜', in_progress: '🔄', done: '✅' };
+    const statusLabels = { todo: 'Зробити', in_progress: 'В роботі', done: 'Готово' };
+    const priorityIcons = { high: '🔴', normal: '', low: '🔵' };
+    const nextStatus = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
+
+    container.innerHTML = tasks.map(task => {
+        const icon = statusIcons[task.status] || '⬜';
+        const pIcon = priorityIcons[task.priority] || '';
+        const doneClass = task.status === 'done' ? ' task-done' : '';
+        const dateStr = task.date ? `<span class="task-date">${escapeHtml(task.date)}</span>` : '';
+        const assignee = task.assigned_to ? `<span class="task-assignee">👤 ${escapeHtml(task.assigned_to)}</span>` : '';
+        const next = nextStatus[task.status] || 'todo';
+        const nextLabel = statusLabels[next];
+        return `
+        <div class="task-item${doneClass}" data-id="${task.id}" data-status="${task.status}">
+            <div class="task-item-left">
+                <button class="task-status-btn" onclick="cycleTaskStatus(${task.id}, '${next}')" title="${nextLabel}">${icon}</button>
+                <div class="task-item-info">
+                    <strong>${pIcon} ${escapeHtml(task.title)}</strong>
+                    <div class="task-meta">${dateStr} ${assignee}</div>
+                </div>
+            </div>
+            <div class="task-item-actions">
+                <button class="btn-edit btn-sm" onclick="editTask(${task.id})" title="Редагувати">✏️</button>
+                <button class="btn-danger btn-sm" onclick="deleteTask(${task.id})" title="Видалити">✕</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function addTask() {
+    const titleInput = document.getElementById('taskTitle');
+    const dateInput = document.getElementById('taskDate');
+    const prioritySelect = document.getElementById('taskPriority');
+    const assignedInput = document.getElementById('taskAssignedTo');
+
+    const title = titleInput?.value.trim();
+    if (!title) {
+        showNotification('Введіть назву завдання', 'error');
+        return;
+    }
+
+    const result = await apiCreateTask({
+        title,
+        date: dateInput?.value || null,
+        priority: prioritySelect?.value || 'normal',
+        assigned_to: assignedInput?.value.trim() || null
+    });
+
+    if (result && result.success) {
+        titleInput.value = '';
+        showNotification('Завдання додано!', 'success');
+        await renderTasksList();
+    } else {
+        showNotification('Помилка додавання', 'error');
+    }
+}
+
+async function cycleTaskStatus(id, newStatus) {
+    const result = await apiChangeTaskStatus(id, newStatus);
+    if (result && result.success) {
+        await renderTasksList();
+    }
+}
+
+async function editTask(id) {
+    const tasks = await apiGetTasks();
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+
+    const newTitle = prompt('Назва завдання:', task.title);
+    if (newTitle === null) return;
+    const newDate = prompt('Дата (YYYY-MM-DD або порожньо):', task.date || '');
+    if (newDate === null) return;
+    const newPriority = prompt('Пріоритет (low/normal/high):', task.priority || 'normal');
+    if (newPriority === null) return;
+    const newAssigned = prompt('Відповідальний:', task.assigned_to || '');
+    if (newAssigned === null) return;
+
+    const result = await apiUpdateTask(id, {
+        title: newTitle.trim() || task.title,
+        description: task.description,
+        date: (newDate && /^\d{4}-\d{2}-\d{2}$/.test(newDate)) ? newDate : null,
+        status: task.status,
+        priority: ['low', 'normal', 'high'].includes(newPriority) ? newPriority : task.priority,
+        assigned_to: newAssigned.trim() || null
+    });
+
+    if (result && result.success) {
+        showNotification('Завдання оновлено', 'success');
+        await renderTasksList();
+    }
+}
+
+async function deleteTask(id) {
+    const confirmed = await customConfirm('Видалити це завдання?', 'Видалення');
+    if (!confirmed) return;
+    const result = await apiDeleteTask(id);
+    if (result && result.success) {
+        showNotification('Завдання видалено', 'success');
+        await renderTasksList();
+    }
+}

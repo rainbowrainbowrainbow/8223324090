@@ -308,6 +308,16 @@ function initSettingsListeners() {
             if (titleInput) titleInput.placeholder = 'Назва події';
         }
     });
+
+    // v7.5: Tasks button
+    const tasksBtn = document.getElementById('tasksBtn');
+    if (tasksBtn) tasksBtn.addEventListener('click', showTasksModal);
+
+    const addTaskBtn = document.getElementById('addTaskBtn');
+    if (addTaskBtn) addTaskBtn.addEventListener('click', addTask);
+
+    const tasksFilterStatus = document.getElementById('tasksFilterStatus');
+    if (tasksFilterStatus) tasksFilterStatus.addEventListener('change', renderTasksList);
 }
 
 function initUIControlListeners() {

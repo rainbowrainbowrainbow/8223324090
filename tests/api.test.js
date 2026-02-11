@@ -2301,3 +2301,114 @@ describe('Afisha Telegram Templates (v7.3)', () => {
         await authRequest('DELETE', `/api/afisha/${ev2.data.item.id}`);
     });
 });
+
+// ==========================================
+// TASKS CRUD (v7.5)
+// ==========================================
+
+describe('Tasks CRUD (v7.5)', () => {
+    let taskId;
+
+    it('GET /api/tasks — should return array', async () => {
+        const res = await authRequest('GET', '/api/tasks');
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data), 'Should return an array');
+    });
+
+    it('POST /api/tasks — create task', async () => {
+        const res = await authRequest('POST', '/api/tasks', {
+            title: 'Test Task', date: '2099-09-01', priority: 'high', assigned_to: 'Natalia'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(res.data.task);
+        assert.equal(res.data.task.title, 'Test Task');
+        assert.equal(res.data.task.status, 'todo');
+        assert.equal(res.data.task.priority, 'high');
+        assert.equal(res.data.task.assigned_to, 'Natalia');
+        taskId = res.data.task.id;
+    });
+
+    it('GET /api/tasks/:id — get single task', async () => {
+        assert.ok(taskId);
+        const res = await authRequest('GET', `/api/tasks/${taskId}`);
+        assert.equal(res.status, 200);
+        assert.equal(res.data.title, 'Test Task');
+    });
+
+    it('GET /api/tasks?status=todo — filter by status', async () => {
+        const res = await authRequest('GET', '/api/tasks?status=todo');
+        assert.equal(res.status, 200);
+        const found = res.data.find(t => t.id === taskId);
+        assert.ok(found, 'Task should appear in todo filter');
+    });
+
+    it('PATCH /api/tasks/:id/status — change status to in_progress', async () => {
+        const res = await authRequest('PATCH', `/api/tasks/${taskId}/status`, { status: 'in_progress' });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.task.status, 'in_progress');
+    });
+
+    it('PATCH /api/tasks/:id/status — change status to done sets completed_at', async () => {
+        const res = await authRequest('PATCH', `/api/tasks/${taskId}/status`, { status: 'done' });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.task.status, 'done');
+        assert.ok(res.data.task.completed_at, 'Should have completed_at timestamp');
+    });
+
+    it('PUT /api/tasks/:id — full update', async () => {
+        const res = await authRequest('PUT', `/api/tasks/${taskId}`, {
+            title: 'Updated Task', date: '2099-09-02', status: 'todo', priority: 'low', assigned_to: 'Sergey'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.task.title, 'Updated Task');
+        assert.equal(res.data.task.priority, 'low');
+        assert.equal(res.data.task.assigned_to, 'Sergey');
+    });
+
+    it('DELETE /api/tasks/:id — delete task', async () => {
+        const res = await authRequest('DELETE', `/api/tasks/${taskId}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+
+        const check = await authRequest('GET', `/api/tasks/${taskId}`);
+        assert.equal(check.status, 404);
+    });
+
+    it('POST /api/tasks — missing title returns 400', async () => {
+        const res = await authRequest('POST', '/api/tasks', { date: '2099-09-01' });
+        assert.equal(res.status, 400);
+    });
+
+    it('POST /api/tasks — invalid date returns 400', async () => {
+        const res = await authRequest('POST', '/api/tasks', { title: 'Bad Date', date: 'not-a-date' });
+        assert.equal(res.status, 400);
+    });
+
+    it('PATCH /api/tasks/:id/status — invalid status returns 400', async () => {
+        const t = await authRequest('POST', '/api/tasks', { title: 'Status Test' });
+        const res = await authRequest('PATCH', `/api/tasks/${t.data.task.id}/status`, { status: 'invalid' });
+        assert.equal(res.status, 400);
+        await authRequest('DELETE', `/api/tasks/${t.data.task.id}`);
+    });
+
+    it('DELETE /api/tasks/:id — non-existent returns 404', async () => {
+        const res = await authRequest('DELETE', '/api/tasks/999999');
+        assert.equal(res.status, 404);
+    });
+
+    it('GET /api/tasks — without token returns 401', async () => {
+        const res = await request('GET', '/api/tasks');
+        assert.equal(res.status, 401);
+    });
+
+    it('POST /api/tasks — default priority is normal', async () => {
+        const res = await authRequest('POST', '/api/tasks', { title: 'Default Priority' });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.task.priority, 'normal');
+        assert.equal(res.data.task.status, 'todo');
+        await authRequest('DELETE', `/api/tasks/${res.data.task.id}`);
+    });
+});

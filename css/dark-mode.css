@@ -1060,6 +1060,11 @@ body.dark-mode .afisha-item {
     background: var(--gray-100);
     border-left-color: #7C3AED;
 }
+body.dark-mode .task-item {
+    background: var(--gray-100);
+    border-color: var(--gray-200);
+}
+body.dark-mode .task-item-info strong { color: var(--gray-800); }
 
 /* v5.37: Category header in dark */
 body.dark-mode .category-header {

@@ -9,25 +9,8 @@
 // v7.0: Render generation counter — prevents stale renders from overwriting fresh ones
 let _renderGen = 0;
 
-// v7.0.1: Debug log for render tracking
-const _renderLog = [];
-function _debugRender(msg) {
-    const ts = new Date().toLocaleTimeString('uk-UA');
-    const entry = `${ts} ${msg}`;
-    _renderLog.push(entry);
-    if (_renderLog.length > 20) _renderLog.shift();
-    console.log('[RT]', entry);
-    // Show on screen for debugging
-    let el = document.getElementById('_rtDebug');
-    if (!el) {
-        el = document.createElement('div');
-        el.id = '_rtDebug';
-        el.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.85);color:#0f0;font:10px/1.3 monospace;padding:4px 8px;z-index:99999;max-height:120px;overflow:auto;pointer-events:none;';
-        document.body.appendChild(el);
-    }
-    el.innerHTML = _renderLog.map(l => `<div>${l}</div>`).join('');
-    el.scrollTop = el.scrollHeight;
-}
+// v7.0.1: Render debug (console only)
+function _debugRender() {}
 
 // v3.9: Cache with TTL
 async function getLinesForDate(date) {
@@ -247,9 +230,6 @@ async function renderTimeline() {
         renderPendingLine();
     }
 
-    const finalBlocks = document.querySelectorAll('#timelineLines .booking-block').length;
-    const hiddenBlocks = document.querySelectorAll('#timelineLines .booking-block.status-hidden').length;
-    _debugRender(`DONE gen=${thisGen} visible=${finalBlocks - hiddenBlocks} hidden=${hiddenBlocks} filter=${AppState.statusFilter}`);
 }
 
 // v5.15: Filter booking blocks by status (CSS-only, no re-render)

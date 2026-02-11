@@ -13,7 +13,7 @@ const VALID_PRIORITIES = ['low', 'normal', 'high'];
 // GET /api/tasks — list with optional filters
 router.get('/', async (req, res) => {
     try {
-        const { status, date, assigned_to } = req.query;
+        const { status, date, assigned_to, afisha_id } = req.query;
         const conditions = [];
         const params = [];
         let idx = 1;
@@ -29,6 +29,10 @@ router.get('/', async (req, res) => {
         if (assigned_to) {
             conditions.push(`assigned_to = $${idx++}`);
             params.push(assigned_to);
+        }
+        if (afisha_id && /^\d+$/.test(afisha_id)) {
+            conditions.push(`afisha_id = $${idx++}`);
+            params.push(parseInt(afisha_id));
         }
 
         const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

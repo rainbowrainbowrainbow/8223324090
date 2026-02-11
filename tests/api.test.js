@@ -2412,3 +2412,87 @@ describe('Tasks CRUD (v7.5)', () => {
         await authRequest('DELETE', `/api/tasks/${res.data.task.id}`);
     });
 });
+
+// ==========================================
+// v7.6: Afisha → Tasks generation
+// ==========================================
+describe('Afisha → Tasks (v7.6)', () => {
+    let testAfishaId;
+
+    it('POST /api/afisha/:id/generate-tasks — creates tasks for event', async () => {
+        const ev = await authRequest('POST', '/api/afisha', {
+            date: '2099-12-01', time: '10:00', title: 'Тест генерації', duration: 60, type: 'event'
+        });
+        assert.equal(ev.status, 200);
+        testAfishaId = ev.data.item.id;
+
+        const res = await authRequest('POST', `/api/afisha/${testAfishaId}/generate-tasks`);
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+        assert.ok(res.data.success);
+        assert.equal(res.data.count, 3, 'Event type should generate 3 tasks');
+        assert.ok(res.data.tasks.every(t => t.afisha_id === testAfishaId));
+        assert.ok(res.data.tasks.every(t => t.date === '2099-12-01'));
+    });
+
+    it('POST /api/afisha/:id/generate-tasks — duplicate returns 409', async () => {
+        const res = await authRequest('POST', `/api/afisha/${testAfishaId}/generate-tasks`);
+        assert.equal(res.status, 409, 'Should reject duplicate generation');
+        assert.ok(res.data.existing > 0);
+    });
+
+    it('POST /api/afisha/:id/generate-tasks — birthday generates 2 tasks', async () => {
+        const ev = await authRequest('POST', '/api/afisha', {
+            date: '2099-12-02', time: '12:00', title: 'Петрик', type: 'birthday'
+        });
+        const res = await authRequest('POST', `/api/afisha/${ev.data.item.id}/generate-tasks`);
+        assert.equal(res.status, 200);
+        assert.equal(res.data.count, 2, 'Birthday type should generate 2 tasks');
+        // cleanup
+        await authRequest('DELETE', `/api/afisha/${ev.data.item.id}`);
+    });
+
+    it('POST /api/afisha/:id/generate-tasks — regular generates 1 task', async () => {
+        const ev = await authRequest('POST', '/api/afisha', {
+            date: '2099-12-03', time: '15:00', title: 'Щоденна подія', type: 'regular'
+        });
+        const res = await authRequest('POST', `/api/afisha/${ev.data.item.id}/generate-tasks`);
+        assert.equal(res.status, 200);
+        assert.equal(res.data.count, 1, 'Regular type should generate 1 task');
+        // cleanup
+        await authRequest('DELETE', `/api/afisha/${ev.data.item.id}`);
+    });
+
+    it('GET /api/tasks?afisha_id= — filters by afisha_id', async () => {
+        const res = await authRequest('GET', `/api/tasks?afisha_id=${testAfishaId}`);
+        assert.equal(res.status, 200);
+        assert.equal(res.data.length, 3, 'Should return 3 tasks linked to event');
+        assert.ok(res.data.every(t => t.afisha_id === testAfishaId));
+    });
+
+    it('DELETE /api/afisha/:id — cascade deletes todo tasks', async () => {
+        await authRequest('DELETE', `/api/afisha/${testAfishaId}`);
+        const res = await authRequest('GET', `/api/tasks?afisha_id=${testAfishaId}`);
+        assert.equal(res.data.length, 0, 'Todo tasks should be cascade-deleted');
+    });
+
+    it('DELETE /api/afisha/:id — keeps done tasks', async () => {
+        const ev = await authRequest('POST', '/api/afisha', {
+            date: '2099-12-04', time: '11:00', title: 'Подія з done', type: 'event'
+        });
+        const gen = await authRequest('POST', `/api/afisha/${ev.data.item.id}/generate-tasks`);
+        // Mark one task as done
+        await authRequest('PATCH', `/api/tasks/${gen.data.tasks[0].id}/status`, { status: 'done' });
+        // Delete afisha
+        await authRequest('DELETE', `/api/afisha/${ev.data.item.id}`);
+        // Check: done task survives
+        const remaining = await authRequest('GET', `/api/tasks?afisha_id=${ev.data.item.id}`);
+        assert.equal(remaining.data.length, 1, 'Done task should survive cascade delete');
+        // cleanup
+        await authRequest('DELETE', `/api/tasks/${gen.data.tasks[0].id}`);
+    });
+
+    it('POST /api/afisha/999999/generate-tasks — 404 for non-existent', async () => {
+        const res = await authRequest('POST', '/api/afisha/999999/generate-tasks');
+        assert.equal(res.status, 404);
+    });
+});

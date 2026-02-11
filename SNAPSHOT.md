@@ -3,7 +3,7 @@
 > Оновлюється кожні 10-15 повідомлень. Швидкий контекст для продовження роботи.
 
 ## Де ми
-Версія **v7.5.0**. Задачник MVP — **ЗАВЕРШЕНА**.
+Версія **v7.6.0**. Афіша → Задачі — **ЗАВЕРШЕНА**.
 
 ## Що готово
 - v5.30–v5.38: UI/UX overhaul (design system, responsive, dark mode, PWA)
@@ -17,9 +17,9 @@
 - v7.3: Афіша в Telegram (дайджест + нагадування про завтра)
 - v7.4: Типи подій (event/birthday/regular), іменинники в Telegram
 - v7.5: Задачник MVP (tasks CRUD, статуси, пріоритети, фільтрація)
+- v7.6: Афіша → Задачі (генерація задач по кнопці, шаблони, каскад)
 
 ## Що далі (план)
-- Зв'язок афіша → завдання (автоматичне створення)
 - Clawd Bot команди для задач (/tasks, /done)
 - Експорт блоків
 - Export PDF/Excel
@@ -27,12 +27,15 @@
 ## Технічний стан
 - Branch: `claude/project-passport-docs-XKYIn`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
-- routes/tasks.js — CRUD + PATCH status, фільтрація, сортування
+- routes/tasks.js — CRUD + PATCH status, фільтрація, сортування + afisha_id filter
+- routes/afisha.js — POST /:id/generate-tasks, cascade delete todo-задач
+- services/taskTemplates.js — шаблони задач за типом (event/birthday/regular)
 - services/bot.js — Clawd Bot command router
 - services/templates.js — formatAfishaBlock() з розділенням подій/іменинників
 - afisha.type: event | birthday | regular
 - tasks.status: todo | in_progress | done
 - tasks.priority: low | normal | high
+- tasks.afisha_id: зв'язок із афішею (soft link)
 
 ---
-*Оновлено: 2026-02-11, після v7.5*
+*Оновлено: 2026-02-11, після v7.6*

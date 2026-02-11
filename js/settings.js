@@ -1163,6 +1163,7 @@ async function renderAfishaList() {
                 <span class="afisha-date">${escapeHtml(item.date)} ${escapeHtml(item.time)}${durationText}</span>
             </div>
             <div class="afisha-item-actions">
+                <button class="btn-shift btn-sm" onclick="generateTasksForAfisha(${item.id})" title="Створити задачі">📝</button>
                 <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, -15)" title="−15 хв">◀</button>
                 <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, +15)" title="+15 хв">▶</button>
                 <button class="btn-edit btn-sm" onclick="editAfishaItem(${item.id})" title="Редагувати">✏️</button>
@@ -1232,6 +1233,28 @@ async function deleteAfishaItem(id) {
     if (result && result.success) {
         showNotification('Подію видалено', 'success');
         await renderAfishaList();
+    }
+}
+
+// v7.6: Generate tasks for afisha event
+async function generateTasksForAfisha(id) {
+    try {
+        const response = await fetch(`${API_BASE}/afisha/${id}/generate-tasks`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        if (handleAuthError(response)) return;
+        const data = await response.json();
+        if (data.success) {
+            showNotification(`Створено ${data.count} завдань для події!`, 'success');
+        } else if (response.status === 409) {
+            showNotification(`Задачі вже створені (${data.existing} шт)`, 'info');
+        } else {
+            showNotification(data.error || 'Помилка', 'error');
+        }
+    } catch (err) {
+        console.error('Generate tasks error:', err);
+        showNotification('Помилка створення задач', 'error');
     }
 }
 
@@ -1346,6 +1369,7 @@ async function apiGetTasks(filters = {}) {
         if (filters.status) params.set('status', filters.status);
         if (filters.date) params.set('date', filters.date);
         if (filters.assigned_to) params.set('assigned_to', filters.assigned_to);
+        if (filters.afisha_id) params.set('afisha_id', filters.afisha_id);
         const qs = params.toString() ? `?${params.toString()}` : '';
         const response = await fetch(`${API_BASE}/tasks${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
@@ -1446,6 +1470,7 @@ async function renderTasksList() {
         const doneClass = task.status === 'done' ? ' task-done' : '';
         const dateStr = task.date ? `<span class="task-date">${escapeHtml(task.date)}</span>` : '';
         const assignee = task.assigned_to ? `<span class="task-assignee">👤 ${escapeHtml(task.assigned_to)}</span>` : '';
+        const afishaBadge = task.afisha_id ? '<span class="task-afisha-badge" title="З афіші">🎭</span>' : '';
         const next = nextStatus[task.status] || 'todo';
         const nextLabel = statusLabels[next];
         return `
@@ -1453,7 +1478,7 @@ async function renderTasksList() {
             <div class="task-item-left">
                 <button class="task-status-btn" onclick="cycleTaskStatus(${task.id}, '${next}')" title="${nextLabel}">${icon}</button>
                 <div class="task-item-info">
-                    <strong>${pIcon} ${escapeHtml(task.title)}</strong>
+                    <strong>${pIcon} ${afishaBadge} ${escapeHtml(task.title)}</strong>
                     <div class="task-meta">${dateStr} ${assignee}</div>
                 </div>
             </div>

@@ -215,6 +215,10 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_date ON tasks(date)');
 
+        // v7.6: Link tasks to afisha events
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS afisha_id INTEGER`);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_afisha_id ON tasks(afisha_id)');
+
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date_status ON bookings(date, status)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_line_date ON bookings(line_id, date)');

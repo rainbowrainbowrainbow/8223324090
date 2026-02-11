@@ -1,0 +1,505 @@
+/**
+ * layout.css - Header, nav, content, date controls, warnings — v4.0 redesign
+ */
+
+/* ==========================================
+   MAIN APP SHELL
+   ========================================== */
+
+.main-app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header — emerald gradient */
+.header {
+    background: linear-gradient(135deg, #064E3B 0%, #065F46 40%, #047857 100%);
+    border-bottom: none;
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    transition: box-shadow var(--speed-normal);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+}
+
+.header-content {
+    padding: 10px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1800px;
+    margin: 0 auto;
+    gap: 16px;
+}
+
+.logo { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+.logo-img-small {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    border: 2px solid rgba(255,255,255,0.2);
+}
+
+.logo-text h1 {
+    font-size: 16px;
+    font-weight: 900;
+    color: #FFFFFF;
+    letter-spacing: -0.3px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* Header nav */
+.header-nav { display: flex; align-items: center; gap: 4px; }
+
+/* User panel */
+.user-panel { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.user-name { font-weight: 700; font-size: var(--font-sm); color: rgba(255,255,255,0.9); }
+
+.btn-logout {
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.8);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: var(--radius-xs);
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.btn-logout:hover {
+    background: rgba(239,68,68,0.2);
+    color: #FCA5A5;
+    border-color: rgba(239,68,68,0.3);
+}
+
+/* Animators management */
+.animators-management textarea {
+    width: 100%;
+    padding: 14px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-base);
+    font-family: inherit;
+    resize: vertical;
+    min-height: 200px;
+    transition: border-color var(--speed-fast);
+}
+
+.animators-management textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.1);
+}
+
+.animators-management .btn-submit { margin-top: 16px; }
+
+/* ==========================================
+   MAIN CONTENT
+   ========================================== */
+
+.main-content {
+    flex: 1;
+    padding: 20px 24px;
+    max-width: 1800px;
+    margin: 0 auto;
+    width: 100%;
+    transition: padding-right var(--speed-slow) var(--ease-smooth);
+}
+
+.main-content.panel-open {
+    padding-right: 360px;
+}
+
+/* ==========================================
+   CONTROL PANEL
+   ========================================== */
+
+.control-panel {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 16px;
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-100);
+}
+
+.date-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.btn-nav {
+    width: 44px;
+    height: 44px;
+    background: linear-gradient(135deg, var(--gray-50) 0%, var(--white) 100%);
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    color: var(--gray-700);
+    box-shadow: var(--shadow-xs);
+}
+
+.btn-nav:hover {
+    border-color: var(--primary);
+    color: #FFFFFF;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    box-shadow: var(--shadow-primary);
+    transform: translateY(-1px);
+}
+
+input[type="date"] {
+    padding: 12px 16px;
+    border: 2px solid var(--primary);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-md);
+    font-weight: 700;
+    font-family: inherit;
+    background: var(--white);
+    color: var(--gray-800);
+    box-shadow: var(--shadow-sm);
+}
+
+.day-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.day-label {
+    padding: 6px 16px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #FFFFFF;
+    border-radius: var(--radius-full);
+    font-weight: 800;
+    font-size: var(--font-sm);
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(16,185,129,0.3);
+}
+
+.working-hours {
+    font-size: var(--font-xs);
+    color: var(--gray-400);
+    text-align: center;
+    font-weight: 600;
+}
+
+/* ==========================================
+   VIEW MODE CONTROLS
+   ========================================== */
+
+.view-mode-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.view-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.view-mode-toggle input { display: none; }
+
+.toggle-slider {
+    width: 44px;
+    height: 24px;
+    background: var(--gray-300);
+    border-radius: 12px;
+    position: relative;
+    transition: all var(--speed-normal) var(--ease-smooth);
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    background: var(--white);
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: all var(--speed-normal) var(--ease-bounce);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+}
+
+.view-mode-toggle input:checked + .toggle-slider {
+    background: var(--primary);
+    box-shadow: 0 0 8px rgba(16,185,129,0.3);
+}
+
+.view-mode-toggle input:checked + .toggle-slider::before {
+    left: 22px;
+}
+
+.toggle-label {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    color: var(--gray-700);
+}
+
+.days-select {
+    padding: 8px 12px;
+    border: 2px solid var(--primary);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+    font-weight: 600;
+    font-family: inherit;
+    background: var(--white);
+    cursor: pointer;
+    box-shadow: var(--shadow-xs);
+}
+
+/* ==========================================
+   ACTION BUTTONS
+   ========================================== */
+
+.action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+/* Colored action buttons */
+.btn-export {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius-xs);
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    box-shadow: 0 2px 8px rgba(6,182,212,0.3);
+}
+
+.btn-export:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(6,182,212,0.4);
+}
+
+.btn-history {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius-xs);
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    box-shadow: 0 2px 8px rgba(139,92,246,0.3);
+}
+
+.btn-history:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139,92,246,0.4);
+}
+
+/* Invite button */
+.btn-invite {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%) !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(16,185,129,0.3);
+}
+
+.btn-invite:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16,185,129,0.4) !important;
+}
+
+/* Dashboard button */
+#dashboardBtn {
+    background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
+    color: #FFFFFF;
+    border: none;
+    box-shadow: 0 2px 8px rgba(249,115,22,0.3);
+}
+
+#dashboardBtn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(249,115,22,0.4);
+}
+
+/* Settings button */
+#settingsBtn {
+    background: linear-gradient(135deg, #64748B 0%, #475569 100%);
+    color: #FFFFFF;
+    border: none;
+    box-shadow: 0 2px 8px rgba(100,116,139,0.3);
+}
+
+#settingsBtn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(100,116,139,0.4);
+}
+
+/* ==========================================
+   ADMIN DROPDOWN MENU (v5.8)
+   ========================================== */
+
+.admin-dropdown {
+    position: relative;
+}
+
+/* Menu toggle button — emerald accent */
+.btn-menu-toggle {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #064E3B 0%, #065F46 100%);
+    color: #FFFFFF;
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: var(--radius-xs);
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    box-shadow: 0 2px 8px rgba(6,78,59,0.4);
+}
+
+.btn-menu-toggle:hover {
+    transform: translateY(-1px);
+    background: linear-gradient(135deg, #065F46 0%, #047857 100%);
+    box-shadow: 0 4px 16px rgba(6,78,59,0.5);
+    border-color: rgba(16,185,129,0.5);
+}
+
+/* Dropdown — premium dark emerald */
+.dropdown-content {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: linear-gradient(180deg, #063B2A 0%, #0B5A3E 55%, #063B2A 100%);
+    border: 1px solid rgba(16,185,129,0.2);
+    border-radius: var(--radius-card);
+    box-shadow:
+        0 20px 50px rgba(0,0,0,0.35),
+        0 8px 20px rgba(0,0,0,0.2),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+    min-width: 200px;
+    z-index: 100;
+    overflow: hidden;
+    padding: 6px 0;
+}
+
+.dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 11px 18px;
+    background: none;
+    border: none;
+    border-top: none;
+    text-align: left;
+    font-size: var(--font-sm);
+    font-weight: 700;
+    color: rgba(255,255,255,0.85);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    position: relative;
+    letter-spacing: 0.01em;
+}
+
+.dropdown-item:first-child {
+    border-top: none;
+}
+
+.dropdown-item:hover {
+    background: rgba(16,185,129,0.15);
+    color: #FFFFFF;
+    padding-left: 22px;
+}
+
+.dropdown-item:active {
+    background: rgba(16,185,129,0.25);
+}
+
+.dropdown-item.hidden {
+    display: none;
+}
+
+/* Subtle separator between menu groups */
+.dropdown-item + .dropdown-item:not(.hidden) {
+    border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+/* ==========================================
+   QUICK STATS BAR (v5.8)
+   ========================================== */
+
+.quick-stats-bar {
+    background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
+    border: 1px solid #BBF7D0;
+    border-radius: var(--radius-sm);
+    padding: 8px 16px;
+    margin-bottom: 12px;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    color: #166534;
+    text-align: center;
+}
+
+.quick-stats-bar.hidden {
+    display: none;
+}
+
+/* ==========================================
+   WARNING BANNERS
+   ========================================== */
+
+.warning-banner {
+    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+    border: 1px solid #FCD34D;
+    border-radius: var(--radius-sm);
+    padding: 14px 20px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 700;
+    font-size: var(--font-sm);
+    color: #92400E;
+    box-shadow: var(--shadow-xs);
+}
+
+.warning-banner.danger {
+    background: linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%);
+    border-color: #FCA5A5;
+    color: var(--danger);
+}
+
+.btn-close-warning {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.6;
+    transition: opacity var(--speed-fast);
+}
+
+.btn-close-warning:hover { opacity: 1; }

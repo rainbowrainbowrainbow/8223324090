@@ -1,0 +1,381 @@
+/**
+ * responsive.css - All media queries — v4.0 redesign
+ */
+
+/* ==========================================
+   DESKTOP TOOLBAR (>=769px) — v5.35 two-row grid
+   ========================================== */
+
+@media (min-width: 769px) {
+    .control-panel {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 10px 16px;
+        align-items: center;
+    }
+    .date-controls { grid-column: 1; grid-row: 1; }
+    .status-filter-controls { grid-column: 2; grid-row: 1; justify-self: center; }
+    .view-mode-controls { grid-column: 3; grid-row: 1; }
+    .v32-controls { grid-column: 1 / span 2; grid-row: 2; }
+    .action-buttons { grid-column: 3; grid-row: 2; justify-self: end; }
+}
+
+/* v5.35: Backdrop fade-in animation */
+@keyframes backdropFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ==========================================
+   TABLET (<=1024px)
+   ========================================== */
+
+@media (max-width: 1024px) {
+    .main-content.panel-open { padding-right: 24px; }
+
+    /* v5.35: Panel backdrop — semi-transparent overlay */
+    .panel-backdrop:not(.hidden) {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.4);
+        z-index: 89;
+        backdrop-filter: blur(2px);
+        animation: backdropFadeIn var(--speed-normal) var(--ease-smooth);
+    }
+
+    /* v5.35: Panel overlay (not full-width) */
+    .booking-panel {
+        width: 380px;
+        top: 0;
+        height: 100vh;
+    }
+
+    /* v5.33: Lock body scroll when panel is open on mobile */
+    body.panel-open {
+        overflow: hidden;
+    }
+
+    /* v5.35: Tablet program grid — 5 columns */
+    .category-grid { grid-template-columns: repeat(5, 1fr); }
+
+    /* v5.35: Tablet modals — not full screen */
+    .modal-content { max-width: 90%; }
+    .modal-large { max-width: 90%; }
+    .modal-catalog { max-width: 90%; max-height: 90vh; }
+}
+
+/* ==========================================
+   MOBILE (<=768px)
+   ========================================== */
+
+@media (max-width: 768px) {
+    .header-content { padding: 12px 16px; }
+    .logo-text h1 { font-size: 14px; }
+
+    .main-content { padding: 12px; }
+    .control-panel { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+
+    /* v5.35: Panel full-width on mobile */
+    .booking-panel { width: 100%; }
+
+    /* v5.34: Row 1 — Date navigation (full width, centered) */
+    .date-controls {
+        display: flex;
+        justify-content: center;
+        flex-wrap: nowrap;
+        gap: 6px;
+        width: 100%;
+        order: 1;
+    }
+
+    .date-controls .btn-nav {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        flex-shrink: 0;
+    }
+
+    .date-controls input[type="date"] {
+        flex: 1;
+        min-width: 120px;
+        max-width: 140px;
+        padding: 10px 8px;
+        font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
+    }
+
+    .date-controls .day-info {
+        flex: 1;
+        min-width: 80px;
+        max-width: 100px;
+    }
+
+    .day-label {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+    }
+
+    .timeline-scroll { padding: 12px; }
+    .time-scale { margin-left: 90px; }
+    .line-header { width: 90px; min-width: 90px; }
+    .line-name { font-size: 12px; }
+
+    .user-panel { gap: 8px; }
+    .btn-logout {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+
+    /* v5.15: Today button mobile */
+    .btn-today {
+        padding: 8px 12px;
+        font-size: 12px;
+        min-height: 44px;
+    }
+
+    /* v5.34: Row 2 — Status filter + Period selector side by side */
+    .status-filter-controls {
+        order: 2;
+        flex: 1;
+        min-width: 0;
+        justify-content: center;
+    }
+
+    .status-filter-btn {
+        flex: 1;
+        text-align: center;
+        padding: 8px 6px;
+        font-size: 11px;
+    }
+
+    .view-mode-controls {
+        order: 2;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .period-btn {
+        font-size: 11px;
+        padding: 8px 10px;
+    }
+
+    /* v5.36: Afisha form — stack on mobile */
+    .afisha-form-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .afisha-form-row .afisha-input {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .afisha-form-row .afisha-input[type="time"],
+    .afisha-form-row .afisha-input[type="number"] {
+        width: 100%;
+    }
+
+    /* Afisha: date + time + auto-time in one row */
+    .afisha-form-row .btn-auto-time {
+        min-height: 44px;
+    }
+
+    .btn-afisha-add {
+        width: 100%;
+    }
+
+    /* Afisha items: stack actions below */
+    .afisha-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .afisha-item-actions {
+        justify-content: flex-end;
+    }
+
+    /* v5.36: History filters — full stack on mobile */
+    .history-filter-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .history-filter-select,
+    .history-filter-input[type="text"] {
+        width: 100%;
+    }
+
+    .history-date-range {
+        width: 100%;
+    }
+
+    .history-date-range .history-filter-input[type="date"] {
+        flex: 1;
+        width: auto;
+    }
+
+    /* v5.36: History filter buttons — full width row */
+    .btn-history-filter,
+    .btn-history-reset {
+        flex: 1;
+        min-height: 44px;
+    }
+
+    /* v5.34: Row 3 — Zoom, toggles, action buttons */
+    .v32-controls {
+        order: 3;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .action-buttons {
+        order: 3;
+    }
+
+    .zoom-controls .zoom-btn {
+        padding: 8px 10px;
+        font-size: 11px;
+        min-height: 44px;
+    }
+
+    .toggle-mini {
+        font-size: 14px;
+        padding: 6px 8px;
+    }
+
+    /* v5.34: Timeline scroll hint */
+    .timeline-scroll {
+        scroll-snap-type: x proximity;
+    }
+
+    /* Category grid */
+    .category-grid { grid-template-columns: repeat(3, 1fr); }
+    .btn-programs { padding: 8px 12px; font-size: 12px; }
+    .modal-catalog { max-height: 90vh; }
+}
+
+/* ==========================================
+   SMALL MOBILE (<=480px)
+   ========================================== */
+
+@media (max-width: 480px) {
+    .main-content { padding: 8px; }
+
+    .category-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .program-icon { min-height: 68px; padding: 10px 4px; }
+    .program-icon .icon { font-size: 22px; }
+    .program-icon .name { font-size: 9px; }
+    .program-duration { font-size: 8px; padding: 1px 4px; }
+
+    .date-controls input[type="date"] {
+        min-width: 100px;
+        max-width: 120px;
+        font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
+    }
+
+    .day-info { display: none; }
+    .logo-text h1 { display: none; }
+    .logo-img-small { width: 32px; height: 32px; }
+
+    .v32-controls { gap: 4px; }
+
+    /* v5.34: Full-screen modals on small screens */
+    .modal { padding: 0; }
+    .modal-content {
+        max-width: 100%;
+        max-height: 100vh;
+        border-radius: 0;
+        border: none;
+        animation: none;
+    }
+    .modal-large { max-width: 100%; }
+    .modal-catalog { max-width: 100%; max-height: 100vh; border-radius: 0; }
+
+    /* v5.34: Status filter stacks on very small screens */
+    .control-panel { gap: 6px; }
+    .status-filter-btn { font-size: 10px; padding: 8px 4px; min-width: 0; }
+    .period-btn { font-size: 10px; padding: 8px 6px; }
+
+    /* v5.34: Timeline compact */
+    .timeline-scroll { padding: 8px; }
+    .time-scale { margin-left: 70px; }
+    .line-header { width: 70px; min-width: 70px; }
+    .line-name { font-size: 11px; }
+
+    /* Dashboard */
+    .dashboard-grid { grid-template-columns: 1fr; }
+    .dash-card-value { font-size: 18px; }
+    .modal-wide { max-width: 100%; }
+}
+
+/* ==========================================
+   EXTRA SMALL (<=390px) — iPhone SE, Galaxy A03
+   ========================================== */
+
+@media (max-width: 390px) {
+    .main-content { padding: 6px; }
+
+    /* v5.34: Toolbar ultra-compact */
+    .date-controls { gap: 4px; }
+    .date-controls input[type="date"] {
+        min-width: 90px;
+        max-width: 110px;
+        padding: 8px 4px;
+        font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
+    }
+    .date-controls .btn-nav {
+        width: 40px;
+        height: 44px;
+        min-width: 40px;
+        padding: 0;
+        font-size: 14px;
+    }
+    .btn-today {
+        padding: 8px;
+        font-size: 11px;
+    }
+
+    /* Status filter: icon-only */
+    .status-filter-btn { font-size: 10px; padding: 8px 3px; }
+
+    /* Zoom: tighter */
+    .zoom-controls .zoom-btn {
+        padding: 6px 8px;
+        font-size: 10px;
+    }
+
+    /* Toggle labels hidden */
+    .toggle-mini-label { display: none; }
+    .toggle-mini { padding: 6px; }
+
+    /* Timeline: narrower headers */
+    .time-scale { margin-left: 60px; }
+    .line-header { width: 60px; min-width: 60px; }
+    .line-name { font-size: 10px; }
+
+    /* Action buttons: icon-only */
+    .btn-export { font-size: 11px; padding: 8px; }
+    .btn-menu-toggle { font-size: 11px; padding: 8px; }
+}
+
+/* ==========================================
+   LANDSCAPE PHONES (short viewport) — v5.35
+   ========================================== */
+
+@media (max-height: 500px) and (orientation: landscape) {
+    .panel-header { padding: 10px 16px; }
+    .booking-form { padding: 12px 16px; }
+    .form-section { margin-bottom: 12px; }
+    .control-panel { padding: 8px 12px; gap: 8px; }
+    .modal-content { max-height: 90vh; }
+}

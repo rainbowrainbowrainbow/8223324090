@@ -2,7 +2,7 @@
 
 > Ультра-детальний паспорт для передачі в новий чат. Усе що потрібно для продовження роботи.
 >
-> Оновлено: 2026-02-11, v6.0.0
+> Оновлено: 2026-02-11, v7.0.0
 
 ---
 
@@ -18,7 +18,7 @@
 |---|---|
 | Хостинг | Railway |
 | Гілка на Railway | `claude/review-project-docs-1y3qH` |
-| Поточна версія | v6.0.0 (тестовий режим — вхід без пароля) |
+| Поточна версія | v7.0.0 (Product Catalog MVP + тестовий режим) |
 | Remote | `origin` → `rainbowrainbowrainbow/8223324090` |
 | Домен | через `RAILWAY_PUBLIC_DOMAIN` env |
 | Порт | `PORT` (default 3000) |
@@ -63,7 +63,7 @@ node --test tests/api.test.js
 | Frontend | Vanilla HTML + CSS + JS SPA (**NO React, NO Next.js, NO Astro**) |
 | CSS | 10-file modular architecture + Design System v4.0 |
 | Font | Nunito (Google Fonts) |
-| Testing | Node.js built-in `node --test` (157 тестів, 50 suites) |
+| Testing | Node.js built-in `node --test` (157 тестів) |
 | PWA | `manifest.json` (standalone, theme emerald) |
 
 ### Dependencies (package.json)
@@ -82,10 +82,11 @@ node --test tests/api.test.js
 
 ```
 server.js              (97)  — Entry point, middleware, routes mount, schedulers
-db/index.js           (186)  — Pool, schema creation, 10 таблиць, seed users, indexes
+db/index.js           (400+) — Pool, schema creation, 11 таблиць, seed users+products, indexes
 
 routes/
   auth.js              (39)  — Login (v6.0: passwordless), verify
+  products.js          (68)  — Product catalog (GET list, GET by id)
   bookings.js         (349)  — CRUD, linked bookings, conflict checks, transactions
   lines.js             (62)  — Animator lines per date
   history.js           (77)  — Audit log with JSONB search, filters, pagination
@@ -111,7 +112,7 @@ utils/
   logger.js            (83)  — Structured logging, JSON/pretty formats
 
 js/
-  config.js           (175)  — 40 programs, 28 costumes, 14 rooms, category config
+  config.js           (220+) — 40 programs, 28 costumes, 14 rooms, category config, products cache
   api.js               (?)   — Fetch wrapper with JWT auth
   auth.js              (?)   — Login/logout, session management
   app.js               (?)   — Event listeners, escapeHtml, preferences
@@ -150,7 +151,7 @@ manifest.json — PWA manifest (standalone, uk, emerald theme)
 
 ---
 
-## 5. База даних (10 таблиць)
+## 5. База даних (11 таблиць)
 
 ### bookings (головна)
 
@@ -246,7 +247,32 @@ chat_id BIGINT PK, title, type, updated_at
 thread_id + chat_id (composite PK), title, updated_at
 ```
 
-### Indexes (7)
+### products (v7.0)
+
+```sql
+id VARCHAR(50) PK              -- same as PROGRAMS id (e.g. 'kv1')
+code VARCHAR(20)               -- 'КВ1'
+label VARCHAR(100)             -- 'КВ1(60)'
+name VARCHAR(200)              -- 'Легендарний тренд'
+icon VARCHAR(10)               -- '🎭'
+category VARCHAR(50)           -- 'quest'
+duration INTEGER               -- 60
+price INTEGER DEFAULT 0        -- 2200
+hosts INTEGER DEFAULT 1
+age_range VARCHAR(30)          -- '5-10р'
+kids_capacity VARCHAR(30)      -- '4-10'
+description TEXT
+is_per_child BOOLEAN DEFAULT FALSE
+has_filler BOOLEAN DEFAULT FALSE
+is_custom BOOLEAN DEFAULT FALSE
+is_active BOOLEAN DEFAULT TRUE
+sort_order INTEGER DEFAULT 0
+created_at TIMESTAMP
+updated_at TIMESTAMP
+updated_by VARCHAR(50)
+```
+
+### Indexes (9)
 
 ```
 idx_bookings_date (date)
@@ -256,6 +282,8 @@ idx_bookings_linked_to (linked_to)
 idx_lines_by_date_date (date)
 idx_history_created_at (created_at)
 idx_afisha_date (date)
+idx_products_category (category)
+idx_products_active (is_active)
 ```
 
 ---
@@ -264,7 +292,7 @@ idx_afisha_date (date)
 
 | Method | Path | Auth | Опис |
 |---|---|---|---|
-| POST | `/api/auth/login` | No | Login -> JWT 24h (v6.0: passwordless) |
+| POST | `/api/auth/login` | No | Login -> JWT 24h (v6.0: passwordless, тимчасово) |
 | GET | `/api/auth/verify` | Yes | Token check |
 | GET | `/api/bookings/:date` | Yes | Bookings for date |
 | POST | `/api/bookings/` | Yes | Create booking |
@@ -289,6 +317,8 @@ idx_afisha_date (date)
 | GET | `/api/stats/:from/:to` | Yes | Statistics |
 | GET/POST | `/api/settings/:key` | Yes | Settings CRUD |
 | GET | `/api/rooms/free/:date/:time/:dur` | Yes | Free rooms |
+| GET | `/api/products` | Yes | Product catalog (?active=true) |
+| GET | `/api/products/:id` | Yes | Single product |
 | GET | `/api/health` | No | Health check |
 
 ---
@@ -475,21 +505,24 @@ Marvel, Ninja, Minecraft, Monster High, Elsa, Растішка, Rock, Minion, Fo
 
 ---
 
-## 12. Поточний стан (v6.0.0)
+## 12. Поточний стан (v7.0.0)
 
-### v6.0 — Test Mode (ТИМЧАСОВО!)
+### v7.0 — Product Catalog MVP
 
-- Вхід без пароля: будь-яке ім'я -> admin з повним доступом
-- `routes/auth.js` — passwordless login
-- `index.html` — пароль приховано, pre-fill "User1", amber badge "Тестовий режим"
+- **Нова таблиця `products`** — 40 програм мігровано з хардкоду (PROGRAMS) в БД
+- `routes/products.js` — GET /api/products (?active=true), GET /api/products/:id
+- `js/api.js` — apiGetProducts(), apiGetProduct()
+- `js/config.js` — кешування: getProducts() (async, TTL 5хв), getProductsSync() (синхронний fallback)
+- `js/booking.js` + `js/settings.js` — всі PROGRAMS.find/filter замінено на getProductsSync()/getProducts()
+- Auto-seed: при першому запуску 40 програм з PROGRAMS заливаються в products table
+- **Backward compatible:** якщо API недоступний → fallback на PROGRAMS масив
+- Вхід без пароля працює (v6.0 test mode)
 - **УВАГА: Перед production повернути стандартну авторизацію!**
 - 157/157 тестів проходять
-- 0 inline styles в коді
-- Undo працює для 4 типів: create, delete, edit, shift
 
 ---
 
-## 13. Історія версій (v5.30 -> v6.0)
+## 13. Історія версій (v5.30 -> v7.0)
 
 | Version | Feature |
 |---|---|
@@ -516,26 +549,29 @@ Marvel, Ninja, Minecraft, Monster High, Elsa, Растішка, Rock, Minion, Fo
 | v5.50 | Duplicate Booking |
 | v5.51 | Undo for Edit & Shift |
 | v6.0 | Test Mode (passwordless, temporary) |
+| v7.0 | Product Catalog MVP (products table, API, caching, migration) |
 
 ---
 
 ## 14. Git
 
-- **Branch:** `claude/review-project-docs-1y3qH` <-- ЦЯ ГІЛКА НА RAILWAY
+- **Branch (Railway):** `claude/review-project-docs-1y3qH` <-- v6.0, потребує оновлення
+- **Branch (v7.0):** `claude/project-passport-docs-XKYIn` <-- АКТУАЛЬНА ГІЛКА з v7.0
 - **Друга гілка (стара):** `claude/theme-park-booking-pZL5g`
-- **Last commit:** `fe12c9d` feat: v6.0 — Test Mode (temporary)
+- **Last commit:** `f7f701d` feat: v7.0 — Product Catalog MVP
 
 ---
 
-## 15. Що далі (план на затвердженні)
+## 15. Що далі (план ЗАТВЕРДЖЕНИЙ)
 
-Був підготовлений план міні-CRM трансформації з 12 питаннями. План **НЕ ЗАТВЕРДЖЕНИЙ** — імплементація не починалась. Включає:
+Міні-CRM трансформація. План затверджений, Q&A пройдено (12 питань). Детальний план у `IMPROVEMENT_PLAN.md`.
 
-- **Product Catalog** (з цінами підрядників)
-- **Contractors** (підрядники з контактами, навичками)
-- **Task Manager** (завдання з дедлайнами)
-- **Bot integration** (Telegram бот для підрядників)
-- **Нова рольова модель** (owner/admin/manager/animator)
+- ~~**v7.0 Product Catalog MVP**~~ ✅ DONE
+- **v7.1 Admin-Bot API** — CRUD продуктів, роль manager, Clawd Bot зв'язка
+- **v7.2 Contractors** — підрядники з контактами, навичками (до 10 шт)
+- **v7.3 Tasks** — завдання з дедлайнами, розширені типи
+- **v7.4 Automation** — автозамовлення через Telegram бот
+- **v7.5 Polish** — RBAC, дашборд, фінал
 
 Також можливі:
 

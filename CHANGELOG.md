@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-02-11 — v7.0 Product Catalog MVP
+
+**Що вирішили:**
+- Міграція програм з хардкоду (PROGRAMS масив) в БД (таблиця `products`)
+- API для каталогу продуктів (read-only)
+- Кешування на клієнті з TTL 5хв
+- Backward-compatible fallback на PROGRAMS якщо API недоступний
+
+**Що додали/поміняли:**
+- `db/index.js` — нова таблиця `products` (20 полів), auto-seed 40 програм, 2 індекси
+- `routes/products.js` — NEW: GET /api/products (?active=true), GET /api/products/:id
+- `server.js` — mount `/api/products` route
+- `js/api.js` — `apiGetProducts(activeOnly)`, `apiGetProduct(id)`
+- `js/config.js` — `AppState.products`, `getProducts()` (async+cache), `getProductsSync()` (sync fallback)
+- `js/booking.js` — `renderProgramIcons()` async, всі `PROGRAMS.find/filter` → `getProductsSync()`
+- `js/settings.js` — `showProgramsCatalog()` async з loading spinner
+- `index.html` — v7.0 tags, tagline, changelog entry
+- `package.json` — version 7.0.0
+- 157/157 тестів pass
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v7.1 — Admin-Bot API (CRUD продуктів, роль manager, Clawd Bot)
+
+---
+
 ## 2026-02-08 — v6.0 Test Mode
 
 **Що вирішили:**

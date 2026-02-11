@@ -171,5 +171,64 @@ const AppState = {
     nowLineInterval: null,
     pendingPollInterval: null,  // v3.9: track polling for cleanup
     editingBookingId: null,     // v5.5: ID бронювання в режимі редагування
-    statusFilter: 'all'         // v5.15: 'all' | 'confirmed' | 'preliminary'
+    statusFilter: 'all',        // v5.15: 'all' | 'confirmed' | 'preliminary'
+    // v7.0: Products cache from API
+    products: null,             // Array of products from API (or null = not loaded)
+    productsLoadedAt: 0         // Timestamp when products were loaded
 };
+
+// v7.0: Products cache TTL (5 minutes)
+const PRODUCTS_CACHE_TTL = 5 * 60 * 1000;
+
+/**
+ * v7.0: Get products — from API cache, or fallback to hardcoded PROGRAMS.
+ * Maps API response format (camelCase) to match PROGRAMS format for backward compat.
+ */
+async function getProducts() {
+    const now = Date.now();
+    // Return cached if still fresh
+    if (AppState.products && (now - AppState.productsLoadedAt) < PRODUCTS_CACHE_TTL) {
+        return AppState.products;
+    }
+    // Try to load from API
+    if (typeof apiGetProducts === 'function') {
+        const apiProducts = await apiGetProducts(true);
+        if (apiProducts && apiProducts.length > 0) {
+            // Map API camelCase to match existing PROGRAMS format
+            AppState.products = apiProducts.map(p => ({
+                id: p.id,
+                code: p.code,
+                label: p.label,
+                name: p.name,
+                icon: p.icon,
+                category: p.category,
+                duration: p.duration,
+                price: p.price,
+                hosts: p.hosts,
+                age: p.ageRange,
+                kids: p.kidsCapacity,
+                description: p.description,
+                perChild: p.isPerChild,
+                hasFiller: p.hasFiller,
+                isCustom: p.isCustom,
+                isActive: p.isActive,
+                sortOrder: p.sortOrder
+            }));
+            AppState.productsLoadedAt = now;
+            return AppState.products;
+        }
+    }
+    // Fallback to hardcoded PROGRAMS
+    return PROGRAMS;
+}
+
+/**
+ * v7.0: Sync helper — get products from cache or PROGRAMS (no await).
+ * Use this when you need sync access and products were already loaded.
+ */
+function getProductsSync() {
+    if (AppState.products && AppState.products.length > 0) {
+        return AppState.products;
+    }
+    return PROGRAMS;
+}

@@ -264,6 +264,32 @@ async function apiSaveSetting(key, value) {
     }
 }
 
+// v7.0: Products catalog API
+async function apiGetProducts(activeOnly = true) {
+    try {
+        const qs = activeOnly ? '?active=true' : '';
+        const response = await fetch(`${API_BASE}/products${qs}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getProducts error:', err);
+        return null; // caller should fallback to PROGRAMS
+    }
+}
+
+async function apiGetProduct(id) {
+    try {
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getProduct error:', err);
+        return null;
+    }
+}
+
 // v5.0: Auth API
 async function apiLogin(username, password) {
     const response = await fetch(`${API_BASE}/auth/login`, {

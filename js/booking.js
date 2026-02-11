@@ -79,7 +79,7 @@ async function showFreeRooms() {
     // v5.19: fallback to selected cell time
     if (!time && AppState.selectedCell) time = AppState.selectedCell.dataset.time;
     const programId = document.getElementById('selectedProgram')?.value;
-    const program = programId ? PROGRAMS.find(p => p.id === programId) : null;
+    const program = programId ? getProductsSync().find(p => p.id === programId) : null;
     const duration = program ? program.duration : 60;
 
     if (!time) {
@@ -128,12 +128,15 @@ function closeBookingPanel() {
     }
 }
 
-function renderProgramIcons() {
+async function renderProgramIcons() {
     const container = document.getElementById('programsIcons');
     container.innerHTML = '';
 
+    // v7.0: Load products from API (with fallback to PROGRAMS)
+    const allProducts = await getProducts();
+
     CATEGORY_ORDER_BOOKING.forEach(cat => {
-        const programs = PROGRAMS.filter(p => p.category === cat);
+        const programs = allProducts.filter(p => p.category === cat);
         if (programs.length === 0) return;
 
         const header = document.createElement('div');
@@ -194,7 +197,7 @@ function filterPrograms() {
 }
 
 function selectProgram(programId) {
-    const program = PROGRAMS.find(p => p.id === programId);
+    const program = getProductsSync().find(p => p.id === programId);
     if (!program) return;
 
     document.querySelectorAll('.program-icon').forEach(i => i.classList.remove('selected'));
@@ -322,7 +325,7 @@ function updateCustomDuration() {
 function getBookingFormData() {
     const programId = document.getElementById('selectedProgram').value;
     const room = document.getElementById('roomSelect').value;
-    const program = programId ? PROGRAMS.find(p => p.id === programId) : null;
+    const program = programId ? getProductsSync().find(p => p.id === programId) : null;
     const time = document.getElementById('bookingTime').value;
     const lineId = document.getElementById('bookingLine').value;
 
@@ -638,7 +641,7 @@ async function showBookingDetails(bookingId) {
     const lines = await getLinesForDate(bookingDate);
     const line = lines.find(l => l.id === booking.lineId);
 
-    const program = PROGRAMS.find(p => p.id === booking.programId);
+    const program = getProductsSync().find(p => p.id === booking.programId);
     const descriptionHtml = program && program.description
         ? `<div class="booking-detail-description"><span class="label">Опис:</span><p>${program.description}</p></div>`
         : '';
@@ -768,7 +771,7 @@ async function editBooking(bookingId) {
         selectProgram(booking.programId);
 
         // Кастомна програма
-        const program = PROGRAMS.find(p => p.id === booking.programId);
+        const program = getProductsSync().find(p => p.id === booking.programId);
         if (program && program.isCustom) {
             const customName = document.getElementById('customName');
             const customDuration = document.getElementById('customDuration');
@@ -832,7 +835,7 @@ async function duplicateBooking(bookingId) {
     if (booking.programId) {
         selectProgram(booking.programId);
 
-        const program = PROGRAMS.find(p => p.id === booking.programId);
+        const program = getProductsSync().find(p => p.id === booking.programId);
         if (program && program.isCustom) {
             const customName = document.getElementById('customName');
             const customDuration = document.getElementById('customDuration');

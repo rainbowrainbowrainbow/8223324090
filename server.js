@@ -54,6 +54,7 @@ app.use('/api/history', require('./routes/history'));
 app.use('/api/afisha', require('./routes/afisha'));
 app.use('/api/telegram', require('./routes/telegram'));
 app.use('/api/backup', require('./routes/backup'));
+app.use('/api/products', require('./routes/products'));
 
 // Settings router handles /api/stats, /api/settings, /api/rooms, /api/health
 const settingsRouter = require('./routes/settings');

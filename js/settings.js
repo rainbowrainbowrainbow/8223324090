@@ -88,14 +88,19 @@ async function loadHistoryPage() {
 // РОЗВАЖАЛЬНІ ПРОГРАМИ (каталог)
 // ==========================================
 
-function showProgramsCatalog() {
+async function showProgramsCatalog() {
     const modal = document.getElementById('programsCatalogModal');
     const container = document.getElementById('programsCatalogList');
 
+    // v7.0: Load products from API (with fallback)
+    container.innerHTML = '<div class="loading-spinner">Завантаження каталогу...</div>';
+    modal.classList.remove('hidden');
+
+    const allProducts = await getProducts();
     let html = '';
 
     CATEGORY_ORDER_CATALOG.forEach(cat => {
-        const programs = PROGRAMS.filter(p => p.category === cat);
+        const programs = allProducts.filter(p => p.category === cat);
         if (programs.length === 0) return;
 
         html += `<div class="catalog-category">
@@ -130,7 +135,6 @@ function showProgramsCatalog() {
     });
 
     container.innerHTML = html;
-    modal.classList.remove('hidden');
 }
 
 // ==========================================

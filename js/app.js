@@ -110,10 +110,12 @@ function initTimelineListeners() {
     document.getElementById('prevDay').addEventListener('click', () => changeDate(-1));
     document.getElementById('nextDay').addEventListener('click', () => changeDate(1));
     document.getElementById('timelineDate').addEventListener('change', (e) => {
+        const newDate = new Date(e.target.value);
+        // Skip if date hasn't actually changed (prevents double-render from programmatic .value set)
+        if (formatDate(newDate) === formatDate(AppState.selectedDate)) return;
         closeBookingPanel(); // C2: auto-close on date change
-        AppState.selectedDate = new Date(e.target.value);
+        AppState.selectedDate = newDate;
         renderTimeline();
-        fetchAnimatorsFromSheet();
     });
 
     document.getElementById('addLineBtn').addEventListener('click', addNewLine);
@@ -126,7 +128,6 @@ function initTimelineListeners() {
             AppState.selectedDate = new Date();
             document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
             renderTimeline();
-            fetchAnimatorsFromSheet();
         });
     }
 

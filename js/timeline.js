@@ -491,7 +491,6 @@ function changeDate(days) {
     AppState.selectedDate.setDate(AppState.selectedDate.getDate() + days);
     document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
     renderTimeline();
-    fetchAnimatorsFromSheet();
 }
 
 // v3.9: Cache with TTL

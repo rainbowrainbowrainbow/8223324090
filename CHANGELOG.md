@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-02-11 — v7.1 Admin Product Catalog CRUD
+
+**Що вирішили:**
+- Повний CRUD для каталогу програм через адмін-панель
+- Нова роль `manager` з доступом до створення/редагування програм
+- Soft-delete замість жорсткого видалення (деактивація)
+
+**Що додали/поміняли:**
+- `middleware/auth.js` — `requireRole(...roles)` middleware для route-level авторизації
+- `routes/products.js` — POST (create), PUT (update), DELETE (soft-delete) з валідацією
+- `js/api.js` — `apiCreateProduct()`, `apiUpdateProduct()`, `apiDeleteProduct()`
+- `js/auth.js` — `canManageProducts()`, `isAdmin()` helpers
+- `js/settings.js` — `showProgramsCatalog()` з кнопками edit/delete, `openProductForm()`, `saveProduct()`, `deleteProduct()`
+- `index.html` — модалка `#productFormModal` з повною формою (код, мітка, назва, категорія, ціна, тривалість, опис, чекбокси)
+- `css/modals.css` — `.pf-grid`, `.pf-checkboxes`, `.btn-catalog-edit/delete`, `.catalog-inactive`, `.catalog-badge-inactive`
+- `css/dark-mode.css` — dark mode для форми продукту та кнопок управління
+- `package.json` — version 7.1.0
+- 156/157 тестів pass (1 — rate limit flaky test)
+
+**Під питанням:** —
+
+**Наступний крок:**
+- v7.2 — Clawd Bot інтеграція (Telegram bot для управління каталогом)
+
+---
+
 ## 2026-02-11 — v7.0 Product Catalog MVP
 
 **Що вирішили:**

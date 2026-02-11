@@ -13,6 +13,7 @@ const log = createLogger('Scheduler');
 let digestSentToday = null;
 let reminderSentToday = null;
 let backupSentToday = null;
+let recurringCreatedToday = null;
 
 async function buildAndSendDigest(date) {
     const chatId = await getConfiguredChatId();
@@ -201,7 +202,70 @@ async function checkAutoBackup() {
     }
 }
 
+// v7.8: Auto-create recurring tasks from templates
+async function checkRecurringTasks() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (recurringCreatedToday === todayStr) return;
+
+        const kyiv = getKyivDate();
+        const nowTime = getKyivTimeStr();
+        // Run at 00:05 Kyiv time
+        if (nowTime !== '00:05') return;
+
+        recurringCreatedToday = todayStr;
+        const dayOfWeek = kyiv.getDay() || 7; // 1=Mon...7=Sun
+
+        const templates = await pool.query('SELECT * FROM task_templates WHERE is_active = true');
+        let created = 0;
+
+        for (const tpl of templates.rows) {
+            let shouldCreate = false;
+
+            switch (tpl.recurrence_pattern) {
+                case 'daily':
+                    shouldCreate = true;
+                    break;
+                case 'weekdays':
+                    shouldCreate = dayOfWeek <= 5;
+                    break;
+                case 'weekly':
+                    shouldCreate = dayOfWeek === 1; // Monday
+                    break;
+                case 'custom':
+                    if (tpl.recurrence_days) {
+                        const days = tpl.recurrence_days.split(',').map(d => parseInt(d.trim()));
+                        shouldCreate = days.includes(dayOfWeek);
+                    }
+                    break;
+            }
+
+            if (!shouldCreate) continue;
+
+            // Dedup: skip if task with this template_id already exists for today
+            const existing = await pool.query(
+                'SELECT id FROM tasks WHERE template_id = $1 AND date = $2',
+                [tpl.id, todayStr]
+            );
+            if (existing.rows.length > 0) continue;
+
+            await pool.query(
+                `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, template_id)
+                 VALUES ($1, $2, $3, $4, $5, 'system', 'recurring', $6)`,
+                [tpl.title, tpl.description, todayStr, tpl.priority, tpl.assigned_to, tpl.id]
+            );
+            created++;
+        }
+
+        if (created > 0) {
+            log.info(`Recurring tasks created: ${created} for ${todayStr}`);
+        }
+    } catch (err) {
+        log.error('RecurringTasks error', err);
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
-    checkAutoDigest, checkAutoReminder, checkAutoBackup
+    checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks
 };

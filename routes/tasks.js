@@ -13,7 +13,7 @@ const VALID_PRIORITIES = ['low', 'normal', 'high'];
 // GET /api/tasks — list with optional filters
 router.get('/', async (req, res) => {
     try {
-        const { status, date, assigned_to, afisha_id } = req.query;
+        const { status, date, assigned_to, afisha_id, type } = req.query;
         const conditions = [];
         const params = [];
         let idx = 1;
@@ -33,6 +33,10 @@ router.get('/', async (req, res) => {
         if (afisha_id && /^\d+$/.test(afisha_id)) {
             conditions.push(`afisha_id = $${idx++}`);
             params.push(parseInt(afisha_id));
+        }
+        if (type) {
+            conditions.push(`type = $${idx++}`);
+            params.push(type);
         }
 
         const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -66,17 +70,19 @@ router.get('/:id', async (req, res) => {
 // POST /api/tasks — create
 router.post('/', async (req, res) => {
     try {
-        const { title, description, date, priority, assigned_to } = req.body;
+        const { title, description, date, priority, assigned_to, type, template_id, afisha_id } = req.body;
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date' });
 
         const taskPriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
+        const taskType = ['manual', 'recurring', 'afisha', 'auto_complete'].includes(type) ? type : 'manual';
         const username = req.user?.username || 'system';
 
         const result = await pool.query(
-            `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-            [title.trim(), description || null, date || null, taskPriority, assigned_to || null, username]
+            `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, template_id, afisha_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            [title.trim(), description || null, date || null, taskPriority, assigned_to || null, username,
+             taskType, template_id || null, afisha_id || null]
         );
         res.json({ success: true, task: result.rows[0] });
     } catch (err) {

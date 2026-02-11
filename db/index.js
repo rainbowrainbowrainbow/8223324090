@@ -219,6 +219,26 @@ async function initDatabase() {
         await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS afisha_id INTEGER`);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_afisha_id ON tasks(afisha_id)');
 
+        // v7.8: Task types + recurring templates
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'manual'`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS template_id INTEGER`);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS task_templates (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(200) NOT NULL,
+                description TEXT,
+                priority VARCHAR(20) DEFAULT 'normal',
+                assigned_to VARCHAR(50),
+                recurrence_pattern VARCHAR(20) NOT NULL,
+                recurrence_days VARCHAR(20),
+                is_active BOOLEAN DEFAULT TRUE,
+                created_by VARCHAR(50),
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_type ON tasks(type)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_template_id ON tasks(template_id)');
+
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date_status ON bookings(date, status)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_line_date ON bookings(line_id, date)');

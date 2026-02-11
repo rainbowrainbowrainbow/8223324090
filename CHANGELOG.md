@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-02-11 — v7.8 Окремі сторінки Задач і Програм
+
+**Що вирішили:**
+- Задачі та Програми мають бути окремими повноцінними сторінками (не модалками)
+- Задачі потребують типів: manual, recurring, afisha, auto_complete
+- Recurring задачі мають створюватись автоматично за шаблонами
+
+**Що додали/поміняли:**
+- `tasks.html` + `js/tasks-page.js` — NEW: повна сторінка задач з фільтрами, типами, CRUD
+- `programs.html` + `js/programs-page.js` — NEW: повна сторінка каталогу з категоріями
+- `css/pages.css` — NEW: спільні стилі для окремих сторінок
+- `routes/task-templates.js` — NEW: CRUD для recurring шаблонів
+- `db/index.js` — task_templates table + ALTER tasks (type, template_id)
+- `services/scheduler.js` — checkRecurringTasks() для авто-створення
+- `server.js` — маршрути /tasks, /programs + task-templates API + scheduler
+- `routes/tasks.js` — фільтр ?type= + підтримка type/template_id в POST
+- `index.html` — nav-bar з посиланнями, меню оновлено
+
+**Під питанням:**
+- Clawd Bot для авто-задач (контент для соцмереж, нагадування)
+
+**Наступний крок:**
+- Підключення бота для авто-задач
+- Drag-n-drop сортування програм
+
+---
+
 ## 2026-02-11 — v7.6.1 Переключення ліній + Bugfix
 
 **Що вирішили:**

@@ -241,8 +241,7 @@ function initSettingsListeners() {
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) settingsBtn.addEventListener('click', showSettings);
 
-    const programsTabBtn = document.getElementById('programsTabBtn');
-    if (programsTabBtn) programsTabBtn.addEventListener('click', showProgramsCatalog);
+    // v7.8: Programs page is now a standalone page (/programs)
 
     const telegramSetupBtn = document.getElementById('telegramSetupBtn');
     if (telegramSetupBtn) telegramSetupBtn.addEventListener('click', showTelegramSetup);
@@ -309,9 +308,7 @@ function initSettingsListeners() {
         }
     });
 
-    // v7.5: Tasks button
-    const tasksBtn = document.getElementById('tasksBtn');
-    if (tasksBtn) tasksBtn.addEventListener('click', showTasksModal);
+    // v7.8: Tasks page is now a standalone page (/tasks)
 
     const addTaskBtn = document.getElementById('addTaskBtn');
     if (addTaskBtn) addTaskBtn.addEventListener('click', addTask);

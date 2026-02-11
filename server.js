@@ -15,7 +15,7 @@ const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks } = require('./services/scheduler');
 const { createLogger } = require('./utils/logger');
 
 const log = createLogger('Server');
@@ -56,6 +56,7 @@ app.use('/api/telegram', require('./routes/telegram'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/tasks', require('./routes/tasks'));
+app.use('/api/task-templates', require('./routes/task-templates'));
 
 // Settings router handles /api/stats, /api/settings, /api/rooms, /api/health
 const settingsRouter = require('./routes/settings');
@@ -64,6 +65,14 @@ app.use('/api', settingsRouter);
 // --- Static pages ---
 app.get('/invite', (req, res) => {
     res.sendFile(path.join(__dirname, 'invite.html'));
+});
+
+// v7.8: Standalone pages
+app.get('/tasks', (req, res) => {
+    res.sendFile(path.join(__dirname, 'tasks.html'));
+});
+app.get('/programs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'programs.html'));
 });
 
 // SPA fallback (must be last)
@@ -94,6 +103,7 @@ initDatabase().then(() => {
         setInterval(checkAutoDigest, 60000);
         setInterval(checkAutoReminder, 60000);
         setInterval(checkAutoBackup, 60000);
-        log.info('Schedulers started: digest + reminder + backup (every 60s)');
+        setInterval(checkRecurringTasks, 60000);
+        log.info('Schedulers started: digest + reminder + backup + recurring (every 60s)');
     });
 });

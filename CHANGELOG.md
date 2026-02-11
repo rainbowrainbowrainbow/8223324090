@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-02-11 — v7.3 Афіша в Telegram
+
+**Що вирішили:**
+- Афіша має приходити разом з дайджестом і нагадуванням про завтра
+- Якщо є тільки афіша (без бронювань) — все одно відправляти повідомлення
+
+**Що додали/поміняли:**
+- `services/templates.js` — `formatAfishaBlock()` шаблон для Telegram
+- `services/scheduler.js` — афіша в `buildAndSendDigest()` та `sendTomorrowReminder()`
+- `index.html` — v7.3 tags, tagline, changelog entry
+- `package.json` — version 7.3.0
+- 156/157 тестів pass
+
+**Під питанням:** —
+
+**Наступний крок:**
+- Тести для афіші в Telegram
+- Регулярні заходи (іменинники), задачник, експорт
+
+---
+
 ## 2026-02-11 — v7.2 Clawd Bot
 
 **Що вирішили:**

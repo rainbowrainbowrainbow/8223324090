@@ -17,6 +17,11 @@ async function getLinesForDate(date) {
         return cached.data;
     }
     const lines = await apiGetLines(dateStr);
+    // v7.0.1: If API errored (null), preserve cached data instead of caching empty
+    if (lines === null) {
+        if (cached) return cached.data;
+        return [];
+    }
     AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
     return lines;
 }
@@ -59,8 +64,9 @@ function updateQuickStats(bookings, lineIds) {
 // ТАЙМЛАЙН
 // ==========================================
 
-function getTimeRange() {
-    const dayOfWeek = AppState.selectedDate.getDay();
+function getTimeRange(date) {
+    const d = date || AppState.selectedDate;
+    const dayOfWeek = d.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
     return {
@@ -75,11 +81,11 @@ function initializeTimeline() {
     renderTimeline();
 }
 
-function renderTimeScale() {
+function renderTimeScale(date) {
     const container = document.getElementById('timeScale');
     container.innerHTML = '';
 
-    const { start, end } = getTimeRange();
+    const { start, end } = getTimeRange(date);
 
     for (let h = start; h < end; h++) {
         for (let m = 0; m < 60; m += CONFIG.TIMELINE.CELL_MINUTES) {
@@ -97,6 +103,8 @@ function renderTimeScale() {
 
 async function renderTimeline() {
     const thisGen = ++_renderGen;
+    // v7.0.1: Snapshot date — protect against AppState.selectedDate mutation during async ops
+    const selectedDate = new Date(AppState.selectedDate);
 
     const addLineBtn = document.getElementById('addLineBtn');
     if (addLineBtn) addLineBtn.style.display = isViewer() ? 'none' : '';
@@ -107,16 +115,16 @@ async function renderTimeline() {
         return;
     }
 
-    renderTimeScale();
+    renderTimeScale(selectedDate);
 
     const container = document.getElementById('timelineLines');
-    const lines = await getLinesForDate(AppState.selectedDate);
-    const bookings = await getBookingsForDate(AppState.selectedDate);
+    const lines = await getLinesForDate(selectedDate);
+    const bookings = await getBookingsForDate(selectedDate);
 
     // v7.0: If a newer render started while we were loading data, abort this stale render
     if (thisGen !== _renderGen) return;
 
-    const { start } = getTimeRange();
+    const { start } = getTimeRange(selectedDate);
 
     // v5.11: Pass line IDs so Quick Stats only counts bookings on existing lines
     const lineIds = lines.map(l => l.id);
@@ -131,9 +139,9 @@ async function renderTimeline() {
         digestBtn.classList.toggle('hidden', isViewer());
     }
 
-    document.getElementById('dayOfWeekLabel').textContent = DAYS[AppState.selectedDate.getDay()];
+    document.getElementById('dayOfWeekLabel').textContent = DAYS[selectedDate.getDay()];
 
-    const dayOfWeek = AppState.selectedDate.getDay();
+    const dayOfWeek = selectedDate.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
     document.getElementById('workingHours').textContent = isWeekend ? '10:00-20:00' : '12:00-20:00';
 
@@ -173,7 +181,7 @@ async function renderTimeline() {
     // F3: Render afisha events as overlay markers on timeline
     // v5.18: Afisha as blocking layer — render on ALL lines, not just first
     try {
-        const afishaEvents = await apiGetAfishaByDate(formatDate(AppState.selectedDate));
+        const afishaEvents = await apiGetAfishaByDate(formatDate(selectedDate));
         if (thisGen !== _renderGen) return; // v7.0: stale render guard
         if (afishaEvents && afishaEvents.length > 0) {
             const allGrids = container.querySelectorAll('.line-grid');
@@ -197,7 +205,7 @@ async function renderTimeline() {
     } catch (e) { /* afisha optional */ }
 
     renderNowLine();
-    renderMinimap();
+    renderMinimap(selectedDate);
 
     // v5.15: Apply status filter after render
     applyStatusFilter();
@@ -488,7 +496,11 @@ function changeDate(days) {
         AppState.pendingPollInterval = null;
         removePendingLine();
     }
-    AppState.selectedDate.setDate(AppState.selectedDate.getDate() + days);
+    // v7.0.1: Create new Date object instead of mutating — prevents race conditions
+    // when an in-progress render still references the old Date via snapshot
+    const newDate = new Date(AppState.selectedDate);
+    newDate.setDate(newDate.getDate() + days);
+    AppState.selectedDate = newDate;
     document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
     renderTimeline();
 }
@@ -501,6 +513,11 @@ async function getBookingsForDate(date) {
         return cached.data;
     }
     const bookings = await apiGetBookings(dateStr);
+    // v7.0.1: If API errored (null), preserve cached data instead of caching empty
+    if (bookings === null) {
+        if (cached) return cached.data;
+        return [];
+    }
     AppState.cachedBookings[dateStr] = { data: bookings, ts: Date.now() };
     return bookings;
 }

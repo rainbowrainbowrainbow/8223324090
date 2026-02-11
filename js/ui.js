@@ -315,17 +315,19 @@ function setupSwipe() {
 // MINIMAP
 // ==========================================
 
-function renderMinimap() {
+function renderMinimap(snapshotDate) {
     const minimap = document.getElementById('minimapContainer');
     if (!minimap || AppState.multiDayMode) {
         if (minimap) minimap.classList.add('hidden');
         return;
     }
     minimap.classList.remove('hidden');
-    renderMinimapAsync(minimap);
+    renderMinimapAsync(minimap, snapshotDate);
 }
 
-async function renderMinimapAsync(container) {
+async function renderMinimapAsync(container, snapshotDate) {
+    // v7.0.1: Use snapshot date to avoid reading stale AppState.selectedDate
+    const date = snapshotDate || AppState.selectedDate;
     const canvas = container.querySelector('canvas');
     if (!canvas) return;
     canvas.width = container.clientWidth || 300;
@@ -335,9 +337,9 @@ async function renderMinimapAsync(container) {
     ctx.fillStyle = AppState.darkMode ? '#2a2a3e' : '#f0f0f0';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const bookings = await getBookingsForDate(AppState.selectedDate);
-    const lines = await getLinesForDate(AppState.selectedDate);
-    const { start, end } = getTimeRange();
+    const bookings = await getBookingsForDate(date);
+    const lines = await getLinesForDate(date);
+    const { start, end } = getTimeRange(date);
     const totalMin = (end - start) * 60;
     const lh = Math.max(6, (canvas.height - 4) / Math.max(lines.length, 1));
 
@@ -356,7 +358,7 @@ async function renderMinimapAsync(container) {
 
     // Now line
     const now = new Date();
-    if (formatDate(AppState.selectedDate) === formatDate(now)) {
+    if (formatDate(date) === formatDate(now)) {
         const nowMin = now.getHours() * 60 + now.getMinutes() - start * 60;
         if (nowMin >= 0 && nowMin <= totalMin) {
             const x = (nowMin / totalMin) * canvas.width;

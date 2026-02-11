@@ -33,8 +33,8 @@ async function apiGetBookings(date) {
         return await response.json();
     } catch (err) {
         console.error('API getBookings error:', err);
-        const bookings = JSON.parse(localStorage.getItem(CONFIG.STORAGE.BOOKINGS) || '[]');
-        return bookings.filter(b => b.date === date);
+        // v7.0.1: Return null on error so cache layer can preserve existing data
+        return null;
     }
 }
 
@@ -122,12 +122,8 @@ async function apiGetLines(date) {
         return await response.json();
     } catch (err) {
         console.error('API getLines error:', err);
-        const linesByDate = JSON.parse(localStorage.getItem(CONFIG.STORAGE.LINES_BY_DATE) || '{}');
-        if (linesByDate[date]) return linesByDate[date];
-        return [
-            { id: 'line1_' + date, name: 'Аніматор 1', color: '#4CAF50' },
-            { id: 'line2_' + date, name: 'Аніматор 2', color: '#2196F3' }
-        ];
+        // v7.0.1: Return null on error so cache layer can preserve existing data
+        return null;
     }
 }
 

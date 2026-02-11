@@ -11,6 +11,7 @@ const {
 } = require('../services/telegram');
 const { ensureDefaultLines } = require('../services/booking');
 const { buildAndSendDigest, sendTomorrowReminder } = require('../services/scheduler');
+const { handleBotCommand } = require('../services/bot');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('TelegramRoute');
@@ -190,6 +191,13 @@ router.post('/webhook', async (req, res) => {
                  ON CONFLICT (chat_id, thread_id) DO UPDATE SET title = COALESCE(NULLIF($3, ''), telegram_known_threads.title), updated_at = NOW()`,
                 [msg.message_thread_id, msg.chat.id, threadTitle]
             ).catch(e => log.error(`Failed to save thread info: ${e.message}`));
+        }
+
+        // v7.2: Clawd Bot — handle text commands
+        if (update.message && update.message.text && update.message.text.startsWith('/')) {
+            const botChatId = update.message.chat.id;
+            const botThreadId = update.message.message_thread_id || null;
+            await handleBotCommand(botChatId, botThreadId, update.message.text);
         }
 
         if (update.callback_query) {

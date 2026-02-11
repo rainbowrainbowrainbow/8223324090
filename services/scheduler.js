@@ -5,6 +5,7 @@ const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId, scheduleAutoDelete } = require('./telegram');
 const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr, timeToMinutes, minutesToTime } = require('./booking');
 const { sendBackupToTelegram } = require('./backup');
+const { formatAfishaBlock } = require('./templates');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Scheduler');
@@ -23,7 +24,11 @@ async function buildAndSendDigest(date) {
     const bookingsResult = await pool.query("SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time", [date]);
     const bookings = bookingsResult.rows;
 
-    if (bookings.length === 0) {
+    // Fetch afisha events for the same date
+    const afishaResult = await pool.query('SELECT * FROM afisha WHERE date = $1 ORDER BY time', [date]);
+    const afishaEvents = afishaResult.rows;
+
+    if (bookings.length === 0 && afishaEvents.length === 0) {
         const text = `📅 <b>${date}</b>\n\nНемає бронювань на цей день.`;
         const result = await sendTelegramMessage(chatId, text);
         return { success: result?.ok || false, count: 0 };
@@ -51,6 +56,12 @@ async function buildAndSendDigest(date) {
         text += '\n';
     }
 
+    // Append afisha block if there are events
+    const afishaBlock = formatAfishaBlock(afishaEvents);
+    if (afishaBlock) {
+        text += afishaBlock + '\n';
+    }
+
     const result = await sendTelegramMessage(chatId, text, { silent: false });
     log.info(`Digest sent for ${date}: ${result?.ok ? 'OK' : 'FAIL'}`);
 
@@ -71,7 +82,12 @@ async function sendTomorrowReminder(todayStr) {
             "SELECT * FROM bookings WHERE date = $1 AND linked_to IS NULL AND status != 'cancelled' ORDER BY time",
             [tomorrowStr]
         );
-        if (bookingsResult.rows.length === 0) {
+
+        // Fetch afisha events for tomorrow
+        const afishaResult = await pool.query('SELECT * FROM afisha WHERE date = $1 ORDER BY time', [tomorrowStr]);
+        const afishaEvents = afishaResult.rows;
+
+        if (bookingsResult.rows.length === 0 && afishaEvents.length === 0) {
             return { success: true, count: 0, reason: 'no_bookings_tomorrow' };
         }
 
@@ -97,6 +113,12 @@ async function sendTomorrowReminder(todayStr) {
                 text += '\n';
             }
             text += '\n';
+        }
+
+        // Append afisha block if there are events
+        const afishaBlock = formatAfishaBlock(afishaEvents);
+        if (afishaBlock) {
+            text += afishaBlock + '\n';
         }
 
         const sendResult = await sendTelegramMessage(chatId, text, { silent: false });

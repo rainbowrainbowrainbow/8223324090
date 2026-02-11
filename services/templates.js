@@ -56,4 +56,23 @@ function formatBookingNotification(type, booking, extra = {}) {
     return template(booking, extra);
 }
 
-module.exports = { notificationTemplates, formatBookingNotification };
+/**
+ * Format afisha events block for digest/reminder messages
+ * @param {Array} events - afisha rows [{date, time, title, duration}, ...]
+ * @returns {string} formatted HTML text block (empty string if no events)
+ */
+function formatAfishaBlock(events) {
+    if (!events || events.length === 0) return '';
+
+    let text = '🎪 <b>Афіша:</b>\n';
+    for (const ev of events) {
+        const endMinutes = timeToMinutes(ev.time) + (ev.duration || 60);
+        const endTime = minutesToTime(endMinutes);
+        text += `  🎭 ${ev.time}-${endTime} ${ev.title}`;
+        if (ev.duration && ev.duration !== 60) text += ` (${ev.duration}хв)`;
+        text += '\n';
+    }
+    return text;
+}
+
+module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock };

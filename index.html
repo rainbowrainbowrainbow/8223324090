@@ -34,9 +34,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v7.0</p>
+                <p class="tagline">Система бронювання v7.0.1</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v7.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v7.0.1</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -655,6 +655,15 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v7.0.1 — Bugfix: зникаючі бронювання</h4>
+                    <ul>
+                        <li>Фікс: бронювання більше не зникають при гортанні дат</li>
+                        <li>Snapshot дати для захисту від race conditions</li>
+                        <li>Кеш зберігає дані при помилках API</li>
+                        <li>Іммутабельна зміна дати в changeDate()</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v7.0 — Product Catalog MVP</h4>
                     <ul>

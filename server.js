@@ -15,7 +15,7 @@ const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions } = require('./services/scheduler');
 const { createLogger } = require('./utils/logger');
 
 const log = createLogger('Server');
@@ -103,11 +103,12 @@ initDatabase().then(() => {
             ensureWebhook(appUrl).catch(err => log.error('Webhook auto-setup error', err));
         }
 
-        // Schedulers: digest + reminder + backup (check every 60s)
+        // Schedulers: digest + reminder + backup + recurring + auto-delete (check every 60s)
         setInterval(checkAutoDigest, 60000);
         setInterval(checkAutoReminder, 60000);
         setInterval(checkAutoBackup, 60000);
         setInterval(checkRecurringTasks, 60000);
-        log.info('Schedulers started: digest + reminder + backup + recurring (every 60s)');
+        setInterval(checkScheduledDeletions, 60000);
+        log.info('Schedulers started: digest + reminder + backup + recurring + auto-delete (every 60s)');
     });
 });

@@ -1,5 +1,34 @@
 /**
  * routes/staff.js — Staff & schedule management API (v7.10)
+ *
+ * LLM HINT FOR SCHEDULE MANAGEMENT:
+ * This API manages employee schedules for a children's entertainment park.
+ * The Клавбот (main AI bot) and other LLMs will frequently use these endpoints
+ * to set/modify staff schedules.
+ *
+ * TABLES:
+ *   staff (id, name, department, position, phone, hire_date, is_active, color)
+ *   staff_schedule (id, staff_id, date, shift_start, shift_end, status, note)
+ *     - UNIQUE(staff_id, date) — one entry per person per day
+ *
+ * SCHEDULE STATUSES:
+ *   working  — робочий день (shift_start/shift_end required, e.g. "09:00"/"18:00")
+ *   dayoff   — вихідний (shift_start/shift_end = null)
+ *   vacation — відпустка (shift_start/shift_end = null)
+ *   sick     — лікарняний (shift_start/shift_end = null)
+ *
+ * DEPARTMENTS: animators, admin, cafe, tech, cleaning, security
+ *
+ * TYPICAL LLM USAGE:
+ *   1. GET /api/staff?active=true — list all active employees
+ *   2. GET /api/staff/schedule?from=2026-02-09&to=2026-02-15 — get week schedule
+ *   3. PUT /api/staff/schedule — set/update a single day for an employee:
+ *      { staffId: 5, date: "2026-02-12", shiftStart: "10:00", shiftEnd: "20:00", status: "working" }
+ *   4. PUT /api/staff/schedule — mark vacation:
+ *      { staffId: 5, date: "2026-02-12", status: "vacation", note: "Відпустка до 20.02" }
+ *
+ * BULK OPERATIONS: Loop over dates/staff and call PUT /api/staff/schedule for each.
+ * Each PUT is an UPSERT (ON CONFLICT DO UPDATE), so safe to call multiple times.
  */
 const express = require('express');
 const router = express.Router();

@@ -1,5 +1,11 @@
 /**
  * staff-page.js — Staff schedule page (v7.10)
+ *
+ * LLM HINT: This is the frontend for the /staff page.
+ * Shows a weekly schedule grid: rows = employees grouped by department, columns = days.
+ * Click on a cell to edit shift via modal (status, time, note).
+ * API used: GET /api/staff, GET /api/staff/schedule, PUT /api/staff/schedule.
+ * State is in StaffState object (weekStart, staff[], schedule{}, activeDept).
  */
 
 // ==========================================

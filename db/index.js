@@ -134,9 +134,12 @@ async function initDatabase() {
         `);
 
         // Seed default users if table is empty
+        // LLM HINT: Test user is admin/admin123. Real users have Ukrainian names.
+        // Roles: admin (full access), user (standard), viewer (read-only timeline).
         const userCount = await pool.query('SELECT COUNT(*) FROM users');
         if (parseInt(userCount.rows[0].count) === 0) {
             const defaultUsers = [
+                { username: 'admin', password: 'admin123', role: 'admin', name: 'Адмін' },
                 { username: 'Vitalina', password: 'Vitalina109', role: 'user', name: 'Віталіна' },
                 { username: 'Dasha', password: 'Dasha743', role: 'user', name: 'Даша' },
                 { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
@@ -244,6 +247,18 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category)');
         // Also add category to templates
         await pool.query(`ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'admin'`);
+
+        // v7.10: Scheduled Telegram message deletions (replaces setTimeout)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS scheduled_deletions (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                message_id INTEGER NOT NULL,
+                delete_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_scheduled_deletions_delete_at ON scheduled_deletions(delete_at)');
 
         // v7.10: Staff schedule
         await pool.query(`

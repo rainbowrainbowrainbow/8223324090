@@ -1,8 +1,13 @@
 /**
  * services/scheduler.js — Auto-digest, reminder & backup schedulers
+ *
+ * LLM HINT: Scheduler runs on 60-second intervals (setInterval in server.js).
+ * "Sent today" flags are persisted in the `settings` table to survive restarts.
+ * Auto-delete of Telegram messages uses `scheduled_deletions` table (not setTimeout).
+ * All times are in Europe/Kyiv timezone (getKyivTimeStr returns "HH:MM").
  */
 const { pool } = require('../db');
-const { sendTelegramMessage, getConfiguredChatId, scheduleAutoDelete } = require('./telegram');
+const { sendTelegramMessage, getConfiguredChatId, telegramRequest } = require('./telegram');
 const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr, timeToMinutes, minutesToTime } = require('./booking');
 const { sendBackupToTelegram } = require('./backup');
 const { formatAfishaBlock } = require('./templates');
@@ -10,10 +15,27 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Scheduler');
 
+// In-memory cache (fallback — DB is source of truth via getLastSent/setLastSent)
 let digestSentToday = null;
 let reminderSentToday = null;
 let backupSentToday = null;
 let recurringCreatedToday = null;
+
+// DB-persistent sent-today helpers (survive restarts)
+async function getLastSent(key) {
+    try {
+        const r = await pool.query("SELECT value FROM settings WHERE key = $1", [`last_${key}`]);
+        return r.rows[0]?.value || null;
+    } catch { return null; }
+}
+async function setLastSent(key, dateStr) {
+    try {
+        await pool.query(
+            "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
+            [`last_${key}`, dateStr]
+        );
+    } catch (err) { log.error(`setLastSent(${key}) error`, err); }
+}
 
 async function buildAndSendDigest(date) {
     const chatId = await getConfiguredChatId();
@@ -213,11 +235,16 @@ async function checkAutoDigest() {
         const nowTime = getKyivTimeStr();
         const todayStr = getKyivDateStr();
 
-        if (nowTime === digestTime && digestSentToday !== todayStr) {
-            digestSentToday = todayStr;
-            log.info(`Sending daily digest for ${todayStr} at ${digestTime} (${isWeekend ? 'weekend' : 'weekday'})`);
-            await buildAndSendDigest(todayStr);
-        }
+        // Check in-memory first, then DB (survives restarts)
+        if (digestSentToday === todayStr) return;
+        if (nowTime !== digestTime) return;
+        const dbLast = await getLastSent('digest');
+        if (dbLast === todayStr) { digestSentToday = todayStr; return; }
+
+        digestSentToday = todayStr;
+        await setLastSent('digest', todayStr);
+        log.info(`Sending daily digest for ${todayStr} at ${digestTime} (${isWeekend ? 'weekend' : 'weekday'})`);
+        await buildAndSendDigest(todayStr);
     } catch (err) {
         log.error('AutoDigest error', err);
     }
@@ -232,11 +259,15 @@ async function checkAutoReminder() {
         const nowTime = getKyivTimeStr();
         const todayStr = getKyivDateStr();
 
-        if (nowTime === reminderTime && reminderSentToday !== todayStr) {
-            reminderSentToday = todayStr;
-            log.info(`Sending tomorrow reminder at ${reminderTime}`);
-            await sendTomorrowReminder(todayStr);
-        }
+        if (reminderSentToday === todayStr) return;
+        if (nowTime !== reminderTime) return;
+        const dbLast = await getLastSent('reminder');
+        if (dbLast === todayStr) { reminderSentToday = todayStr; return; }
+
+        reminderSentToday = todayStr;
+        await setLastSent('reminder', todayStr);
+        log.info(`Sending tomorrow reminder at ${reminderTime}`);
+        await sendTomorrowReminder(todayStr);
     } catch (err) {
         log.error('AutoReminder error', err);
     }
@@ -251,11 +282,15 @@ async function checkAutoBackup() {
         const nowTime = getKyivTimeStr();
         const todayStr = getKyivDateStr();
 
-        if (nowTime === backupTime && backupSentToday !== todayStr) {
-            backupSentToday = todayStr;
-            log.info(`Running daily backup at ${backupTime}`);
-            await sendBackupToTelegram();
-        }
+        if (backupSentToday === todayStr) return;
+        if (nowTime !== backupTime) return;
+        const dbLast = await getLastSent('backup');
+        if (dbLast === todayStr) { backupSentToday = todayStr; return; }
+
+        backupSentToday = todayStr;
+        await setLastSent('backup', todayStr);
+        log.info(`Running daily backup at ${backupTime}`);
+        await sendBackupToTelegram();
     } catch (err) {
         log.error('AutoBackup error', err);
     }
@@ -272,7 +307,11 @@ async function checkRecurringTasks() {
         // Run at 00:05 Kyiv time
         if (nowTime !== '00:05') return;
 
+        const dbLast = await getLastSent('recurring');
+        if (dbLast === todayStr) { recurringCreatedToday = todayStr; return; }
+
         recurringCreatedToday = todayStr;
+        await setLastSent('recurring', todayStr);
         const dayOfWeek = kyiv.getDay() || 7; // 1=Mon...7=Sun
 
         const templates = await pool.query('SELECT * FROM task_templates WHERE is_active = true');
@@ -324,7 +363,38 @@ async function checkRecurringTasks() {
     }
 }
 
+// v7.10: DB-based auto-delete (replaces setTimeout in telegram.js)
+// LLM HINT: scheduled_deletions table stores Telegram messages to be deleted after N hours.
+// checkScheduledDeletions() runs every 60s via setInterval in server.js.
+async function checkScheduledDeletions() {
+    try {
+        const now = new Date().toISOString();
+        const result = await pool.query(
+            "SELECT id, chat_id, message_id FROM scheduled_deletions WHERE delete_at <= $1 LIMIT 10",
+            [now]
+        );
+        for (const row of result.rows) {
+            try {
+                await telegramRequest('deleteMessage', {
+                    chat_id: row.chat_id,
+                    message_id: row.message_id
+                });
+                log.info(`AutoDelete: deleted message ${row.message_id}`);
+            } catch (err) {
+                log.error(`AutoDelete: failed message ${row.message_id}: ${err.message}`);
+            }
+            await pool.query("DELETE FROM scheduled_deletions WHERE id = $1", [row.id]);
+        }
+    } catch (err) {
+        // Table may not exist yet on first run — ignore silently
+        if (!err.message.includes('does not exist')) {
+            log.error('checkScheduledDeletions error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
-    checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks
+    checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
+    checkScheduledDeletions
 };

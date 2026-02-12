@@ -41,11 +41,13 @@
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
-                    <input type="text" id="username" placeholder="Введіть ім'я" value="User1" required>
+                    <input type="text" id="username" placeholder="Введіть ім'я" required>
                 </div>
-                <input type="hidden" id="password" value="test">
+                <div class="form-group">
+                    <label for="password">Пароль</label>
+                    <input type="password" id="password" placeholder="Введіть пароль" required>
+                </div>
                 <button type="submit" class="btn-login">Увійти</button>
-                <p class="test-mode-hint">Тестовий режим — повний доступ без пароля</p>
                 <p id="loginError" class="error-message"></p>
             </form>
         </div>

@@ -229,6 +229,12 @@ async function getTelegramChatId() {
     return Array.from(chatMap.values());
 }
 
+/**
+ * Schedule a Telegram message for auto-deletion after configured hours.
+ * LLM HINT: Stores deletion job in `scheduled_deletions` table (DB-persistent).
+ * Actual deletion is handled by checkScheduledDeletions() in scheduler.js (every 60s).
+ * Settings: auto_delete_enabled (true/false), auto_delete_hours (default 10).
+ */
 async function scheduleAutoDelete(chatId, messageId) {
     try {
         const result = await pool.query("SELECT key, value FROM settings WHERE key IN ('auto_delete_enabled', 'auto_delete_hours')");
@@ -237,20 +243,13 @@ async function scheduleAutoDelete(chatId, messageId) {
         if (settings.auto_delete_enabled !== 'true') return;
 
         const hours = parseInt(settings.auto_delete_hours) || 10;
-        const deleteAfterMs = hours * 60 * 60 * 1000;
+        const deleteAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 
-        log.info(`AutoDelete scheduled: message ${messageId} in ${hours}h`);
-        setTimeout(async () => {
-            try {
-                await telegramRequest('deleteMessage', {
-                    chat_id: chatId,
-                    message_id: messageId
-                });
-                log.info(`AutoDelete: deleted message ${messageId}`);
-            } catch (err) {
-                log.error(`AutoDelete: failed to delete message ${messageId}: ${err.message}`);
-            }
-        }, deleteAfterMs);
+        await pool.query(
+            "INSERT INTO scheduled_deletions (chat_id, message_id, delete_at) VALUES ($1, $2, $3)",
+            [chatId, messageId, deleteAt]
+        );
+        log.info(`AutoDelete scheduled: message ${messageId} in ${hours}h (DB-persistent)`);
     } catch (err) {
         log.error(`AutoDelete schedule error: ${err.message}`);
     }

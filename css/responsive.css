@@ -246,12 +246,18 @@
     .line-header { width: 90px; min-width: 90px; }
     .line-name { font-size: 12px; }
 
-    /* v7.8.6: Compact "add animator" button on mobile */
     /* v7.8.8: WCAG touch targets for action buttons */
     .btn-export,
     .btn-menu-toggle {
         min-height: 44px;
     }
+
+    /* v7.8.8: Dropdown fixed positioning to escape overflow:hidden */
+    .dropdown-content {
+        z-index: 200;
+    }
+
+    /* v7.8.6: Compact "add animator" button on mobile */
 
     .btn-add-line-big {
         padding: 10px;

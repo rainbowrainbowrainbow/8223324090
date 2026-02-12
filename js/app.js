@@ -332,12 +332,26 @@ function initUIControlListeners() {
     if (undoBtn) undoBtn.addEventListener('click', handleUndo);
 
     // v5.8: Admin dropdown toggle
+    // v7.8.8: Fixed dropdown positioning on mobile (overflow:hidden parent fix)
     const menuToggle = document.getElementById('menuToggleBtn');
     if (menuToggle) {
         menuToggle.addEventListener('click', (e) => {
             e.stopPropagation();
             const content = document.getElementById('dropdownContent');
-            if (content) content.classList.toggle('hidden');
+            if (content) {
+                content.classList.toggle('hidden');
+                // On mobile, position dropdown fixed to escape overflow:hidden
+                if (!content.classList.contains('hidden') && window.innerWidth <= 768) {
+                    const rect = menuToggle.getBoundingClientRect();
+                    content.style.position = 'fixed';
+                    content.style.top = (rect.bottom + 8) + 'px';
+                    content.style.right = (window.innerWidth - rect.right) + 'px';
+                } else if (window.innerWidth > 768) {
+                    content.style.position = '';
+                    content.style.top = '';
+                    content.style.right = '';
+                }
+            }
         });
     }
     // Close dropdown on outside click

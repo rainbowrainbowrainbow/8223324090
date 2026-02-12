@@ -489,18 +489,19 @@ body.dark-mode .btn-nav {
     border-color: var(--gray-300);
 }
 
-/* v7.8.4: Glass buttons in dark mode */
+/* v7.8.5: Glass buttons in dark mode */
 body.dark-mode .btn-export,
 body.dark-mode .btn-history {
-    background: rgba(255,255,255,0.1);
-    border-color: rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.12);
     color: rgba(255,255,255,0.85);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.06);
 }
 
 body.dark-mode .btn-export:hover,
 body.dark-mode .btn-history:hover {
-    background: rgba(255,255,255,0.15);
-    border-color: var(--primary);
+    background: rgba(255,255,255,0.14);
+    border-color: rgba(255,255,255,0.2);
     color: #FFFFFF;
 }
 
@@ -514,13 +515,14 @@ body.dark-mode .btn-logout {
     color: rgba(255,255,255,0.7);
 }
 
-/* v7.8.4: Admin dropdown glass in dark */
+/* v7.8.5: Admin dropdown liquid glass in dark */
 body.dark-mode .dropdown-content {
-    background: rgba(30,30,45,0.82);
+    background: rgba(20,20,35,0.5);
     border-color: rgba(255,255,255,0.1);
     box-shadow:
-        0 8px 32px rgba(0,0,0,0.3),
-        0 2px 8px rgba(0,0,0,0.2);
+        0 8px 40px rgba(0,0,0,0.3),
+        0 2px 12px rgba(0,0,0,0.2),
+        inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
 body.dark-mode .dropdown-item {
@@ -528,19 +530,20 @@ body.dark-mode .dropdown-item {
 }
 
 body.dark-mode .dropdown-item:hover {
-    background: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.1);
     color: #FFFFFF;
 }
 
 body.dark-mode .btn-menu-toggle {
-    background: rgba(255,255,255,0.1);
-    border-color: rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.12);
     color: rgba(255,255,255,0.85);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.06);
 }
 
 body.dark-mode .btn-menu-toggle:hover {
-    background: rgba(255,255,255,0.15);
-    border-color: var(--primary);
+    background: rgba(255,255,255,0.14);
+    border-color: rgba(255,255,255,0.2);
     color: #FFFFFF;
 }
 

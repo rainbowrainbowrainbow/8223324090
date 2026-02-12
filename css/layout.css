@@ -280,29 +280,30 @@ input[type="date"] {
     flex-wrap: wrap;
 }
 
-/* v7.8.4: Unified action buttons — subtle glass style */
+/* v7.8.5: Unified action buttons — liquid glass */
 .btn-export,
 .btn-history {
     padding: 8px 14px;
-    background: rgba(255,255,255,0.85);
+    background: rgba(255,255,255,0.4);
     color: var(--gray-700);
-    border: 1px solid var(--gray-200);
-    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255,255,255,0.5);
+    border-radius: 10px;
     font-weight: 600;
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.4);
 }
 
 .btn-export:hover,
 .btn-history:hover {
-    background: rgba(255,255,255,0.95);
-    border-color: var(--primary);
-    color: var(--primary-dark);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    background: rgba(255,255,255,0.6);
+    border-color: rgba(255,255,255,0.7);
+    color: var(--gray-900);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.5);
 }
 
 /* Invite button */
@@ -326,42 +327,44 @@ input[type="date"] {
     position: relative;
 }
 
-/* v7.8.4: Menu toggle — matches export button style */
+/* v7.8.5: Menu toggle — liquid glass */
 .btn-menu-toggle {
     padding: 8px 14px;
-    background: rgba(255,255,255,0.85);
+    background: rgba(255,255,255,0.4);
     color: var(--gray-700);
-    border: 1px solid var(--gray-200);
-    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255,255,255,0.5);
+    border-radius: 10px;
     font-weight: 600;
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.4);
 }
 
 .btn-menu-toggle:hover {
-    background: rgba(255,255,255,0.95);
-    border-color: var(--primary);
-    color: var(--primary-dark);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    background: rgba(255,255,255,0.6);
+    border-color: rgba(255,255,255,0.7);
+    color: var(--gray-900);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.5);
 }
 
-/* v7.8.4: Dropdown — iOS glassmorphism */
+/* v7.8.5: Dropdown — liquid glass (iOS-style) */
 .dropdown-content {
     position: absolute;
     right: 0;
     top: calc(100% + 8px);
-    background: rgba(255,255,255,0.82);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255,255,255,0.6);
-    border-radius: var(--radius-card);
+    background: rgba(255,255,255,0.45);
+    backdrop-filter: blur(40px) saturate(200%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%);
+    border: 1px solid rgba(255,255,255,0.5);
+    border-radius: 16px;
     box-shadow:
-        0 8px 32px rgba(0,0,0,0.12),
-        0 2px 8px rgba(0,0,0,0.06);
+        0 8px 40px rgba(0,0,0,0.10),
+        0 2px 12px rgba(0,0,0,0.06),
+        inset 0 1px 0 rgba(255,255,255,0.6);
     min-width: 210px;
     z-index: 100;
     overflow: hidden;
@@ -378,25 +381,25 @@ input[type="date"] {
     text-align: left;
     font-size: var(--font-sm);
     font-weight: 600;
-    color: var(--gray-700);
+    color: var(--gray-800);
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
     position: relative;
     letter-spacing: 0.01em;
-    border-radius: var(--radius-xs);
+    border-radius: 10px;
     text-decoration: none;
     gap: 2px;
 }
 
 .dropdown-item:hover {
-    background: rgba(0,0,0,0.05);
+    background: rgba(255,255,255,0.5);
     color: var(--gray-900);
 }
 
 .dropdown-item:active {
-    background: rgba(0,0,0,0.08);
-    transform: scale(0.98);
+    background: rgba(255,255,255,0.6);
+    transform: scale(0.97);
 }
 
 .dropdown-item.hidden {

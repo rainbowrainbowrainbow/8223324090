@@ -254,6 +254,26 @@
         font-size: 18px;
     }
 
+    /* v7.8.7: Compact pending line on mobile */
+    .pending-grid {
+        min-height: 44px;
+        border-width: 1.5px !important;
+    }
+
+    .pending-overlay {
+        gap: 8px;
+        padding: 0 12px;
+    }
+
+    .pending-pulse {
+        width: 8px;
+        height: 8px;
+    }
+
+    .pending-text {
+        font-size: 11px;
+    }
+
     .user-panel { gap: 8px; }
     .btn-logout {
         padding: 8px 12px;

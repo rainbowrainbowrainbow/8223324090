@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-02-12 — v8.3.2 Фікс історії + extra_data
+
+**Історія — рендеринг афіша-дій:**
+- actionMap: додано afisha_create/edit/move/delete, tasks_generated, automation_triggered
+- Smart details: afisha_move → "Квест: 15:00 → 15:30", інші афіша → "Квест (event, 60хв): дата час"
+- automation_triggered → "Назва правила — бронювання BK-2026-0001"
+- Фільтр: додано 5 нових опцій (4 афіша + 1 автоматизація)
+
+**Linked bookings — extra_data:**
+- INSERT для linked booking тепер включає extra_data (раніше пропускався)
+- МК Футболки з 2м аніматором зберігає розміри в обох бронюваннях
+- Fallback: якщо linked booking не має свого extraData, бере з main booking
+
+---
+
 ## 2026-02-12 — v8.3.1 МК Футболки + Афіша-фікс
 
 **МК Футболки — workflow розмірів:**

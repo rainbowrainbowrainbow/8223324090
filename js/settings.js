@@ -54,7 +54,8 @@ async function loadHistoryPage() {
                 undo_create: '↩ Скасовано створення', undo_delete: '↩ Скасовано видалення',
                 afisha_create: '🎪 Афіша створена', afisha_edit: '🎪 Афіша змінена',
                 afisha_move: '🎪 Афіша перенесена', afisha_delete: '🎪 Афіша видалена',
-                tasks_generated: '📋 Завдання створені'
+                tasks_generated: '📋 Завдання створені',
+                automation_triggered: '🤖 Автоматизація'
             };
             const actionText = actionMap[item.action] || item.action;
             const isAfisha = item.action.startsWith('afisha_');
@@ -67,6 +68,8 @@ async function loadHistoryPage() {
                 details = `${escapeHtml(item.data?.title || '')} (${escapeHtml(item.data?.type || 'event')}, ${item.data?.duration || 60}хв): ${escapeHtml(item.data?.date || '')} ${escapeHtml(item.data?.time || '')}`;
             } else if (item.action === 'tasks_generated') {
                 details = `${escapeHtml(item.data?.title || '')} — ${item.data?.count || 0} завдань`;
+            } else if (item.action === 'automation_triggered') {
+                details = `${escapeHtml(item.data?.rule_name || '')} — бронювання ${escapeHtml(item.data?.booking_id || '')}`;
             } else {
                 details = `${escapeHtml(item.data?.label || item.data?.programCode || '')}: ${escapeHtml(item.data?.room || '')} (${escapeHtml(item.data?.date || '')} ${escapeHtml(item.data?.time || '')})`;
             }

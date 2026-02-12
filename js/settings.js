@@ -52,6 +52,7 @@ async function loadHistoryPage() {
                 create: 'Створено', delete: 'Видалено', permanent_delete: 'Видалено назавжди',
                 shift: 'Перенесено', edit: 'Змінено',
                 undo_create: '↩ Скасовано створення', undo_delete: '↩ Скасовано видалення',
+                undo_edit: '↩ Скасовано зміну', undo_shift: '↩ Скасовано перенос',
                 afisha_create: '🎪 Афіша створена', afisha_edit: '🎪 Афіша змінена',
                 afisha_move: '🎪 Афіша перенесена', afisha_delete: '🎪 Афіша видалена',
                 tasks_generated: '📋 Завдання створені',
@@ -59,7 +60,7 @@ async function loadHistoryPage() {
             };
             const actionText = actionMap[item.action] || item.action;
             const isAfisha = item.action.startsWith('afisha_');
-            const actionClass = item.action.includes('undo') ? 'action-undo' : (item.action.includes('edit') || item.action === 'afisha_move' ? 'action-edit' : (item.action.includes('create') ? 'action-create' : 'action-delete'));
+            const actionClass = item.action.includes('undo') ? 'action-undo' : (item.action === 'automation_triggered' || item.action === 'tasks_generated') ? 'action-edit' : (item.action.includes('edit') || item.action === 'afisha_move' || item.action === 'shift' ? 'action-edit' : (item.action.includes('create') ? 'action-create' : 'action-delete'));
 
             let details;
             if (item.action === 'afisha_move') {

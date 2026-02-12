@@ -900,8 +900,14 @@ body.dark-mode .afisha-line-grid .grid-cell:hover {
     background: rgba(139,92,246,0.12);
 }
 
-body.dark-mode .afisha-block:hover {
-    box-shadow: 0 3px 8px rgba(139,92,246,0.4);
+body.dark-mode .afisha-type-event:hover {
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.6), 0 0 24px rgba(139, 92, 246, 0.3);
+}
+body.dark-mode .afisha-type-regular:hover {
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.6), 0 0 24px rgba(59, 130, 246, 0.3);
+}
+body.dark-mode .afisha-type-birthday:hover {
+    box-shadow: 0 4px 16px rgba(245, 158, 11, 0.6), 0 0 24px rgba(245, 158, 11, 0.3);
 }
 
 /* Afisha blocking layer in dark */

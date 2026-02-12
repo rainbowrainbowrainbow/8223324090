@@ -71,23 +71,27 @@ function formatAfishaBlock(events) {
     let text = '';
 
     if (regular.length > 0) {
-        text += '🎪 <b>Афіша:</b>\n';
-        for (const ev of regular) {
+        text += '\n🎪 <b>АФІША</b>\n';
+        for (let i = 0; i < regular.length; i++) {
+            const ev = regular[i];
             const endMinutes = timeToMinutes(ev.time) + (ev.duration || 60);
             const endTime = minutesToTime(endMinutes);
             const icon = ev.type === 'regular' ? '🔄' : '🎭';
-            text += `  ${icon} ${ev.time}-${endTime} ${ev.title}`;
+            const prefix = i === regular.length - 1 && birthdays.length === 0 ? '└' : '├';
+            text += `${prefix} ${icon} <code>${ev.time}–${endTime}</code> ${ev.title}`;
             if (ev.duration && ev.duration !== 60) text += ` (${ev.duration}хв)`;
-            if (ev.description) text += ` — ${ev.description}`;
+            if (ev.description) text += `\n│   <i>${ev.description}</i>`;
             text += '\n';
         }
     }
 
     if (birthdays.length > 0) {
-        text += '🎂 <b>Іменинники:</b>\n';
-        for (const ev of birthdays) {
-            text += `  🎂 ${ev.title} (14:00 + 18:00, 15хв)`;
-            if (ev.description) text += ` — ${ev.description}`;
+        text += '\n🎂 <b>ІМЕНИННИКИ</b>\n';
+        for (let i = 0; i < birthdays.length; i++) {
+            const ev = birthdays[i];
+            const prefix = i === birthdays.length - 1 ? '└' : '├';
+            text += `${prefix} 🎉 <b>${ev.title}</b> — 14:00 + 18:00`;
+            if (ev.description) text += `\n│   <i>${ev.description}</i>`;
             text += '\n';
         }
     }

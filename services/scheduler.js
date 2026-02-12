@@ -44,6 +44,9 @@ async function buildAndSendDigest(date) {
         return { success: false, reason: 'no_chat_id' };
     }
 
+    // v8.1: Ensure recurring afisha templates applied before building digest
+    try { await ensureRecurringAfishaForDate(date); } catch (e) { /* non-blocking */ }
+
     const bookingsResult = await pool.query("SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time", [date]);
     const bookings = bookingsResult.rows;
 
@@ -61,49 +64,63 @@ async function buildAndSendDigest(date) {
     const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id', [date]);
     const lines = linesResult.rows;
 
-    let text = `📅 <b>Розклад на ${date}</b>\n`;
-    text += `Всього бронювань: ${bookings.filter(b => !b.linked_to).length}\n\n`;
+    // v8.1: Redesigned digest format with tree structure
+    const mainCount = bookings.filter(b => !b.linked_to).length;
+    const [y, m, d] = date.split('-');
+    const dateFormatted = `${d}.${m}.${y}`;
+
+    let text = `━━━━━━━━━━━━━━━━━\n`;
+    text += `📊 <b>РОЗКЛАД НА ${dateFormatted}</b>\n`;
+    text += `━━━━━━━━━━━━━━━━━\n`;
+    text += `📋 Бронювань: <b>${mainCount}</b>`;
+    if (afishaEvents.length > 0) text += ` │ 🎪 Афіша: <b>${afishaEvents.length}</b>`;
+    text += '\n\n';
+
+    // Count total kids across all bookings
+    const totalKids = bookings.reduce((sum, b) => sum + (b.kids_count || 0), 0);
 
     for (const line of lines) {
         const lineBookings = bookings.filter(b => b.line_id === line.line_id && !b.linked_to);
-        // v7.8.10: Include bookings where this animator is second_animator (name-based match)
         const secondBookings = bookings.filter(b =>
             b.second_animator && b.second_animator === line.name && !b.linked_to && b.line_id !== line.line_id
         );
-        // v7.9.3: Also include linked bookings on this line (reliable line_id-based match)
         const linkedOnLine = bookings.filter(b => b.line_id === line.line_id && b.linked_to);
-        // Deduplicate: skip linked bookings whose main booking is already shown via secondBookings
         const extraLinked = linkedOnLine.filter(lb =>
             !secondBookings.some(sb => sb.id === lb.linked_to)
         );
         if (lineBookings.length === 0 && secondBookings.length === 0 && extraLinked.length === 0) continue;
 
-        text += `👤 <b>${line.name}</b>\n`;
-        for (const b of lineBookings) {
+        const allItems = [...lineBookings, ...secondBookings, ...extraLinked];
+        const lineKids = lineBookings.reduce((sum, b) => sum + (b.kids_count || 0), 0);
+
+        text += `🎭 <b>${line.name}</b>`;
+        if (lineKids > 0) text += ` · 👶 ${lineKids}`;
+        text += '\n';
+
+        for (let i = 0; i < allItems.length; i++) {
+            const b = allItems[i];
+            const isLast = i === allItems.length - 1;
+            const prefix = isLast ? '└' : '├';
             const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
             const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
-            text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room})`;
-            if (b.second_animator) {
-                // v7.9.3: Resolve second_animator to current line name (handles renamed lines)
-                const linkedBk = bookings.find(lb => lb.linked_to === b.id && lb.line_id !== b.line_id);
-                const resolvedName = linkedBk ? (lines.find(l => l.line_id === linkedBk.line_id)?.name || b.second_animator) : b.second_animator;
-                text += ` 👥${resolvedName}`;
+
+            if (secondBookings.includes(b)) {
+                const mainLine = lines.find(l => l.line_id === b.line_id);
+                text += `${prefix} ${statusIcon} <code>${b.time}–${endTime}</code> ${b.label || b.program_code} (${b.room}) 👥2й з ${mainLine?.name || '?'}\n`;
+            } else if (extraLinked.includes(b)) {
+                const mainBooking = bookings.find(mb => mb.id === b.linked_to);
+                const mainLine = mainBooking ? lines.find(l => l.line_id === mainBooking.line_id) : null;
+                text += `${prefix} ${statusIcon} <code>${b.time}–${endTime}</code> ${b.label || b.program_code} (${b.room || mainBooking?.room || '?'}) 👥2й з ${mainLine?.name || '?'}\n`;
+            } else {
+                text += `${prefix} ${statusIcon} <code>${b.time}–${endTime}</code> ${b.label || b.program_code} (${b.room})`;
+                if (b.second_animator) {
+                    const linkedBk = bookings.find(lb => lb.linked_to === b.id && lb.line_id !== b.line_id);
+                    const resolvedName = linkedBk ? (lines.find(l => l.line_id === linkedBk.line_id)?.name || b.second_animator) : b.second_animator;
+                    text += ` 👥${resolvedName}`;
+                }
+                if (b.kids_count) text += ` [${b.kids_count} діт]`;
+                text += '\n';
             }
-            if (b.kids_count) text += ` [${b.kids_count} діт]`;
-            text += '\n';
-        }
-        for (const b of secondBookings) {
-            const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
-            const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
-            const mainLine = lines.find(l => l.line_id === b.line_id);
-            text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room}) 👥2й з ${mainLine?.name || '?'}\n`;
-        }
-        for (const b of extraLinked) {
-            const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
-            const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
-            const mainBooking = bookings.find(mb => mb.id === b.linked_to);
-            const mainLine = mainBooking ? lines.find(l => l.line_id === mainBooking.line_id) : null;
-            text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room || mainBooking?.room || '?'}) 👥2й з ${mainLine?.name || '?'}\n`;
         }
         text += '\n';
     }
@@ -113,6 +130,11 @@ async function buildAndSendDigest(date) {
     if (afishaBlock) {
         text += afishaBlock + '\n';
     }
+
+    if (totalKids > 0) {
+        text += `\n👶 <b>Всього дітей: ${totalKids}</b>\n`;
+    }
+    text += `━━━━━━━━━━━━━━━━━`;
 
     const result = await sendTelegramMessage(chatId, text, { silent: false });
     log.info(`Digest sent for ${date}: ${result?.ok ? 'OK' : 'FAIL'}`);
@@ -148,60 +170,84 @@ async function sendTomorrowReminder(todayStr) {
         const chatId = await getConfiguredChatId();
         if (!chatId) return { success: false, reason: 'no_chat_id' };
 
+        // v8.1: Ensure recurring afisha for tomorrow
+        try { await ensureRecurringAfishaForDate(tomorrowStr); } catch (e) { /* non-blocking */ }
+        // Re-fetch after ensuring recurring
+        const afishaResult2 = await pool.query('SELECT * FROM afisha WHERE date = $1 ORDER BY time', [tomorrowStr]);
+        const afishaFinal = afishaResult2.rows;
+
         await ensureDefaultLines(tomorrowStr);
         const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id', [tomorrowStr]);
+        const lines = linesResult.rows;
+        const bookings = bookingsResult.rows;
 
-        let text = `⏰ <b>Нагадування: завтра ${tomorrowStr}</b>\n`;
-        text += `📋 ${mainBookingsCount} бронювань\n\n`;
+        const [yt, mt, dt] = tomorrowStr.split('-');
+        const dateFormatted = `${dt}.${mt}.${yt}`;
 
-        for (const line of linesResult.rows) {
-            const lineBookings = bookingsResult.rows.filter(b => b.line_id === line.line_id && !b.linked_to);
-            // v7.8.10: Include bookings where this animator is second_animator (name-based match)
-            const secondBookings = bookingsResult.rows.filter(b =>
+        let text = `━━━━━━━━━━━━━━━━━\n`;
+        text += `⏰ <b>ЗАВТРА ${dateFormatted}</b>\n`;
+        text += `━━━━━━━━━━━━━━━━━\n`;
+        text += `📋 Бронювань: <b>${mainBookingsCount}</b>`;
+        if (afishaFinal.length > 0) text += ` │ 🎪 Афіша: <b>${afishaFinal.length}</b>`;
+        text += '\n\n';
+
+        const totalKids = bookings.reduce((sum, b) => sum + (b.kids_count || 0), 0);
+
+        for (const line of lines) {
+            const lineBookings = bookings.filter(b => b.line_id === line.line_id && !b.linked_to);
+            const secondBookings = bookings.filter(b =>
                 b.second_animator && b.second_animator === line.name && !b.linked_to && b.line_id !== line.line_id
             );
-            // v7.9.3: Also include linked bookings on this line (reliable line_id-based match)
-            const linkedOnLine = bookingsResult.rows.filter(b => b.line_id === line.line_id && b.linked_to);
+            const linkedOnLine = bookings.filter(b => b.line_id === line.line_id && b.linked_to);
             const extraLinked = linkedOnLine.filter(lb =>
                 !secondBookings.some(sb => sb.id === lb.linked_to)
             );
             if (lineBookings.length === 0 && secondBookings.length === 0 && extraLinked.length === 0) continue;
 
-            text += `👤 <b>${line.name}</b>\n`;
-            for (const b of lineBookings) {
+            const allItems = [...lineBookings, ...secondBookings, ...extraLinked];
+            const lineKids = lineBookings.reduce((sum, b) => sum + (b.kids_count || 0), 0);
+
+            text += `🎭 <b>${line.name}</b>`;
+            if (lineKids > 0) text += ` · 👶 ${lineKids}`;
+            text += '\n';
+
+            for (let i = 0; i < allItems.length; i++) {
+                const b = allItems[i];
+                const isLast = i === allItems.length - 1;
+                const prefix = isLast ? '└' : '├';
                 const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
                 const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
-                text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room})`;
-                if (b.second_animator) {
-                    // v7.9.3: Resolve second_animator to current line name (handles renamed lines)
-                    const linkedBk = bookingsResult.rows.find(lb => lb.linked_to === b.id && lb.line_id !== b.line_id);
-                    const resolvedName = linkedBk ? (linesResult.rows.find(l => l.line_id === linkedBk.line_id)?.name || b.second_animator) : b.second_animator;
-                    text += ` 👥${resolvedName}`;
+
+                if (secondBookings.includes(b)) {
+                    const mainLine = lines.find(l => l.line_id === b.line_id);
+                    text += `${prefix} ${statusIcon} <code>${b.time}–${endTime}</code> ${b.label || b.program_code} (${b.room}) 👥2й з ${mainLine?.name || '?'}\n`;
+                } else if (extraLinked.includes(b)) {
+                    const mainBooking = bookings.find(mb => mb.id === b.linked_to);
+                    const mainLine = mainBooking ? lines.find(l => l.line_id === mainBooking.line_id) : null;
+                    text += `${prefix} ${statusIcon} <code>${b.time}–${endTime}</code> ${b.label || b.program_code} (${b.room || mainBooking?.room || '?'}) 👥2й з ${mainLine?.name || '?'}\n`;
+                } else {
+                    text += `${prefix} ${statusIcon} <code>${b.time}–${endTime}</code> ${b.label || b.program_code} (${b.room})`;
+                    if (b.second_animator) {
+                        const linkedBk = bookings.find(lb => lb.linked_to === b.id && lb.line_id !== b.line_id);
+                        const resolvedName = linkedBk ? (lines.find(l => l.line_id === linkedBk.line_id)?.name || b.second_animator) : b.second_animator;
+                        text += ` 👥${resolvedName}`;
+                    }
+                    if (b.kids_count) text += ` [${b.kids_count} діт]`;
+                    text += '\n';
                 }
-                if (b.kids_count) text += ` [${b.kids_count} діт]`;
-                text += '\n';
-            }
-            for (const b of secondBookings) {
-                const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
-                const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
-                const mainLine = linesResult.rows.find(l => l.line_id === b.line_id);
-                text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room}) 👥2й з ${mainLine?.name || '?'}\n`;
-            }
-            for (const b of extraLinked) {
-                const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
-                const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
-                const mainBooking = bookingsResult.rows.find(mb => mb.id === b.linked_to);
-                const mainLine = mainBooking ? linesResult.rows.find(l => l.line_id === mainBooking.line_id) : null;
-                text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room || mainBooking?.room || '?'}) 👥2й з ${mainLine?.name || '?'}\n`;
             }
             text += '\n';
         }
 
-        // Append afisha block if there are events
-        const afishaBlock = formatAfishaBlock(afishaEvents);
+        const afishaBlock = formatAfishaBlock(afishaFinal);
         if (afishaBlock) {
             text += afishaBlock + '\n';
         }
+
+        if (totalKids > 0) {
+            text += `\n👶 <b>Всього дітей: ${totalKids}</b>\n`;
+        }
+        text += `━━━━━━━━━━━━━━━━━`;
 
         const sendResult = await sendTelegramMessage(chatId, text, { silent: false });
         log.info(`Tomorrow reminder sent for ${tomorrowStr}`);
@@ -396,12 +442,57 @@ async function checkScheduledDeletions() {
 // v8.0: Auto-create recurring afisha from templates
 let afishaRecurringCreatedToday = null;
 
+/**
+ * v8.1: Ensure all recurring afisha templates are applied for a given date.
+ * Reusable by both scheduler (00:06) and digest (before sending).
+ * Returns number of created events.
+ */
+async function ensureRecurringAfishaForDate(dateStr) {
+    const dateObj = new Date(dateStr + 'T12:00:00');
+    const dayOfWeek = dateObj.getDay() || 7; // 1=Mon...7=Sun
+
+    const templates = await pool.query('SELECT * FROM afisha_templates WHERE is_active = true');
+    let created = 0;
+
+    for (const tpl of templates.rows) {
+        if (tpl.date_from && dateStr < tpl.date_from) continue;
+        if (tpl.date_to && dateStr > tpl.date_to) continue;
+
+        let shouldCreate = false;
+        switch (tpl.recurrence_pattern) {
+            case 'daily': shouldCreate = true; break;
+            case 'weekdays': shouldCreate = dayOfWeek <= 5; break;
+            case 'weekends': shouldCreate = dayOfWeek >= 6; break;
+            case 'weekly': shouldCreate = dayOfWeek === 6; break;
+            case 'custom':
+                if (tpl.recurrence_days) {
+                    shouldCreate = tpl.recurrence_days.split(',').map(d => parseInt(d.trim())).includes(dayOfWeek);
+                }
+                break;
+        }
+        if (!shouldCreate) continue;
+
+        const existing = await pool.query(
+            'SELECT id FROM afisha WHERE template_id = $1 AND date = $2',
+            [tpl.id, dateStr]
+        );
+        if (existing.rows.length > 0) continue;
+
+        await pool.query(
+            `INSERT INTO afisha (date, time, title, duration, type, description, template_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [dateStr, tpl.time, tpl.title, tpl.duration, tpl.type, tpl.description, tpl.id]
+        );
+        created++;
+    }
+    return created;
+}
+
 async function checkRecurringAfisha() {
     try {
         const todayStr = getKyivDateStr();
         if (afishaRecurringCreatedToday === todayStr) return;
 
-        const kyiv = getKyivDate();
         const nowTime = getKyivTimeStr();
         // Run at 00:06 Kyiv time (1 min after recurring tasks)
         if (nowTime !== '00:06') return;
@@ -411,55 +502,8 @@ async function checkRecurringAfisha() {
 
         afishaRecurringCreatedToday = todayStr;
         await setLastSent('recurring_afisha', todayStr);
-        const dayOfWeek = kyiv.getDay() || 7; // 1=Mon...7=Sun
 
-        const templates = await pool.query('SELECT * FROM afisha_templates WHERE is_active = true');
-        let created = 0;
-
-        for (const tpl of templates.rows) {
-            // Check date range
-            if (tpl.date_from && todayStr < tpl.date_from) continue;
-            if (tpl.date_to && todayStr > tpl.date_to) continue;
-
-            let shouldCreate = false;
-            switch (tpl.recurrence_pattern) {
-                case 'daily':
-                    shouldCreate = true;
-                    break;
-                case 'weekdays':
-                    shouldCreate = dayOfWeek <= 5;
-                    break;
-                case 'weekends':
-                    shouldCreate = dayOfWeek >= 6;
-                    break;
-                case 'weekly':
-                    shouldCreate = dayOfWeek === 6; // Saturday (park is busiest)
-                    break;
-                case 'custom':
-                    if (tpl.recurrence_days) {
-                        const days = tpl.recurrence_days.split(',').map(d => parseInt(d.trim()));
-                        shouldCreate = days.includes(dayOfWeek);
-                    }
-                    break;
-            }
-
-            if (!shouldCreate) continue;
-
-            // Dedup: skip if afisha with this template_id already exists for today
-            const existing = await pool.query(
-                'SELECT id FROM afisha WHERE template_id = $1 AND date = $2',
-                [tpl.id, todayStr]
-            );
-            if (existing.rows.length > 0) continue;
-
-            await pool.query(
-                `INSERT INTO afisha (date, time, title, duration, type, description, template_id)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                [todayStr, tpl.time, tpl.title, tpl.duration, tpl.type, tpl.description, tpl.id]
-            );
-            created++;
-        }
-
+        const created = await ensureRecurringAfishaForDate(todayStr);
         if (created > 0) {
             log.info(`Recurring afisha created: ${created} for ${todayStr}`);
         }
@@ -473,5 +517,5 @@ async function checkRecurringAfisha() {
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
-    checkScheduledDeletions, checkRecurringAfisha
+    checkScheduledDeletions, checkRecurringAfisha, ensureRecurringAfishaForDate
 };

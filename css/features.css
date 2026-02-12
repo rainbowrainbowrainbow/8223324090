@@ -844,12 +844,14 @@
 .afisha-block {
     border-radius: 6px !important;
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.2s ease,
+                filter 0.2s ease;
 }
 
 .afisha-block:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 3px 8px rgba(139,92,246,0.25);
+    transform: scale(1.08) translateY(-2px);
+    filter: brightness(1.1);
     z-index: 30;
 }
 
@@ -858,11 +860,12 @@
     border: none !important;
     color: #fff !important;
 }
+.afisha-type-event:hover {
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.45), 0 0 20px rgba(139, 92, 246, 0.2);
+}
 
 .afisha-type-event .title,
-.afisha-type-event .subtitle {
-    color: #fff !important;
-}
+.afisha-type-event .subtitle { color: #fff !important; }
 
 .afisha-type-event .user-letter {
     background: rgba(255,255,255,0.2) !important;
@@ -874,11 +877,12 @@
     border: none !important;
     color: #fff !important;
 }
+.afisha-type-regular:hover {
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.45), 0 0 20px rgba(59, 130, 246, 0.2);
+}
 
 .afisha-type-regular .title,
-.afisha-type-regular .subtitle {
-    color: #fff !important;
-}
+.afisha-type-regular .subtitle { color: #fff !important; }
 
 .afisha-type-regular .user-letter {
     background: rgba(255,255,255,0.2) !important;
@@ -889,17 +893,37 @@
     background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%) !important;
     border: none !important;
     color: #fff !important;
+    animation: birthday-glow 2s ease-in-out infinite;
+}
+.afisha-type-birthday:hover {
+    box-shadow: 0 4px 16px rgba(245, 158, 11, 0.5), 0 0 24px rgba(245, 158, 11, 0.3);
+    animation: none;
+}
+
+@keyframes birthday-glow {
+    0%, 100% { box-shadow: 0 1px 4px rgba(245, 158, 11, 0.2); }
+    50% { box-shadow: 0 2px 12px rgba(245, 158, 11, 0.4), 0 0 16px rgba(245, 158, 11, 0.15); }
 }
 
 .afisha-type-birthday .title,
-.afisha-type-birthday .subtitle {
-    color: #fff !important;
-}
+.afisha-type-birthday .subtitle { color: #fff !important; }
 
 .afisha-type-birthday .user-letter {
     background: rgba(255,255,255,0.2) !important;
     color: #fff !important;
 }
+
+/* Afisha line header shimmer on hover */
+.afisha-line-header { position: relative; overflow: hidden; }
+.afisha-line-header::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    transition: left 0.5s ease;
+    pointer-events: none;
+}
+.afisha-line-header:hover::after { left: 150%; }
 
 /* Afisha description in list */
 .afisha-desc {

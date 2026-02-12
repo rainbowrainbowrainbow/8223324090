@@ -3,9 +3,29 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { validateDate, validateTime, timeToMinutes } = require('../services/booking');
+const { validateDate, validateTime, timeToMinutes, getKyivDateStr, getKyivDate } = require('../services/booking');
 const { generateTasksForEvent } = require('../services/taskTemplates');
 const { createLogger } = require('../utils/logger');
+
+/**
+ * Check if a recurring template should create an event for a given date.
+ * Extracted from scheduler logic to reuse in eager-apply on template creation.
+ */
+function shouldTemplateRunOnDate(tpl, dateStr, dateObj) {
+    if (tpl.date_from && dateStr < tpl.date_from) return false;
+    if (tpl.date_to && dateStr > tpl.date_to) return false;
+    const dayOfWeek = dateObj.getDay() || 7; // 1=Mon...7=Sun
+    switch (tpl.recurrence_pattern) {
+        case 'daily': return true;
+        case 'weekdays': return dayOfWeek <= 5;
+        case 'weekends': return dayOfWeek >= 6;
+        case 'weekly': return dayOfWeek === 6;
+        case 'custom':
+            if (!tpl.recurrence_days) return false;
+            return tpl.recurrence_days.split(',').map(d => parseInt(d.trim())).includes(dayOfWeek);
+        default: return false;
+    }
+}
 
 const log = createLogger('Afisha');
 
@@ -48,7 +68,32 @@ router.post('/templates', async (req, res) => {
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
             [title, time, duration || 60, type || 'event', description || null, pattern, recurrence_days || null, date_from || null, date_to || null]
         );
-        res.json({ success: true, template: result.rows[0] });
+        const tpl = result.rows[0];
+
+        // v8.1: Eager-apply — if template matches today, create afisha event immediately
+        let todayCreated = false;
+        try {
+            const todayStr = getKyivDateStr();
+            const kyiv = getKyivDate();
+            if (shouldTemplateRunOnDate(tpl, todayStr, kyiv)) {
+                const exists = await pool.query(
+                    'SELECT id FROM afisha WHERE template_id = $1 AND date = $2', [tpl.id, todayStr]
+                );
+                if (exists.rows.length === 0) {
+                    await pool.query(
+                        `INSERT INTO afisha (date, time, title, duration, type, description, template_id)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                        [todayStr, tpl.time, tpl.title, tpl.duration, tpl.type, tpl.description, tpl.id]
+                    );
+                    todayCreated = true;
+                    log.info(`Eager-apply: created afisha "${tpl.title}" for today ${todayStr}`);
+                }
+            }
+        } catch (eagerErr) {
+            log.error('Eager-apply error (non-blocking)', eagerErr);
+        }
+
+        res.json({ success: true, template: tpl, todayCreated });
     } catch (err) {
         log.error('Template create error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -180,7 +225,14 @@ router.post('/', async (req, res) => {
             'INSERT INTO afisha (date, time, title, duration, type, description) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
             [date, time, title, eventDuration, eventType, description || null]
         );
-        res.json({ success: true, item: result.rows[0] });
+        const item = result.rows[0];
+        // v8.1: Log to history
+        const username = req.user?.username || 'system';
+        await pool.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['afisha_create', username, JSON.stringify({ id: item.id, title, date, time, type: eventType, duration: eventDuration })]
+        ).catch(err => log.error('History log error', err));
+        res.json({ success: true, item });
     } catch (err) {
         log.error('Create error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -205,6 +257,12 @@ router.put('/:id', async (req, res) => {
                 [date, time, title, duration || 60, description !== undefined ? description : null, id]
             );
         }
+        // v8.1: Log to history
+        const username = req.user?.username || 'system';
+        await pool.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['afisha_edit', username, JSON.stringify({ id, title, date, time, type: eventType, duration: duration || 60 })]
+        ).catch(err => log.error('History log error', err));
         res.json({ success: true });
     } catch (err) {
         log.error('Update error', err);
@@ -249,6 +307,8 @@ router.post('/:id/generate-tasks', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        // v8.1: Fetch before delete for history logging
+        const original = await pool.query('SELECT * FROM afisha WHERE id = $1', [id]);
         // v7.6: Cascade — delete linked todo tasks (keep in_progress/done)
         const deleted = await pool.query(
             `DELETE FROM tasks WHERE afisha_id = $1 AND status = 'todo' RETURNING id`, [id]
@@ -257,6 +317,15 @@ router.delete('/:id', async (req, res) => {
             log.info(`Cascade-deleted ${deleted.rows.length} todo tasks for afisha #${id}`);
         }
         await pool.query('DELETE FROM afisha WHERE id = $1', [id]);
+        // v8.1: Log to history
+        if (original.rows.length > 0) {
+            const username = req.user?.username || 'system';
+            const ev = original.rows[0];
+            await pool.query(
+                'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+                ['afisha_delete', username, JSON.stringify({ id: ev.id, title: ev.title, date: ev.date, time: ev.time, type: ev.type })]
+            ).catch(err => log.error('History log error', err));
+        }
         res.json({ success: true, deletedTasks: deleted.rows.length });
     } catch (err) {
         log.error('Delete error', err);

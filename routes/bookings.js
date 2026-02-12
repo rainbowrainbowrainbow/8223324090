@@ -144,11 +144,12 @@ router.post('/full', async (req, res) => {
             main.id = await generateBookingNumber(client);
         }
 
+        // v7.9.3: Added group_name ($22) — was missing from /full POST
         const mainInsert = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
              RETURNING *`,
-            [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null]
+            [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null]
         );
 
         const linkedRows = [];
@@ -165,10 +166,10 @@ router.post('/full', async (req, res) => {
 
                 const lbId = await generateBookingNumber(client);
                 const lbInsert = await client.query(
-                    `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                    `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
                      RETURNING *`,
-                    [lbId, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.costume || null, lb.room, lb.notes, lb.createdBy, main.id, lb.status || main.status || 'confirmed', lb.kidsCount || null]
+                    [lbId, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.costume || null, lb.room, lb.notes, lb.createdBy, main.id, lb.status || main.status || 'confirmed', lb.kidsCount || null, lb.groupName || main.groupName || null]
                 );
                 if (lbInsert.rows[0]) linkedRows.push(lbInsert.rows[0]);
             }
@@ -305,9 +306,10 @@ router.put('/:id', async (req, res) => {
         if (!b.linkedTo) {
             const linkedResult = await client.query('SELECT id FROM bookings WHERE linked_to = $1', [id]);
             for (const linked of linkedResult.rows) {
+                // v7.9.3: Also cascade room (was missing — linked kept old room on edit)
                 await client.query(
-                    `UPDATE bookings SET date=$1, time=$2, duration=$3, status=$4, updated_at=NOW() WHERE id=$5`,
-                    [b.date, b.time, b.duration, newStatus, linked.id]
+                    `UPDATE bookings SET date=$1, time=$2, duration=$3, status=$4, room=$5, updated_at=NOW() WHERE id=$6`,
+                    [b.date, b.time, b.duration, newStatus, b.room, linked.id]
                 );
             }
         }

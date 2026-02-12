@@ -798,7 +798,7 @@ async function showBookingDetails(bookingId) {
             </div>
             <div class="invite-actions">
                 <a href="${inviteUrl}" target="_blank" class="btn-invite-open">👁 Відкрити</a>
-                <button onclick="copyInviteLink('${escapeHtml(fullInviteUrl)}')" class="btn-invite-copy">📋 Копіювати</button>
+                <button onclick="copyInviteLink('${escapeHtml(fullInviteUrl)}', this)" class="btn-invite-copy">📋 Копіювати</button>
                 ${navigator.share ? '<button onclick="shareInviteLink()" class="btn-invite-share">📤 Поділитися</button>' : ''}
             </div>
         </div>
@@ -1006,29 +1006,36 @@ async function duplicateBooking(bookingId) {
 // INVITE HELPERS (v5.48)
 // ==========================================
 
-function copyInviteLink(url) {
+function copyInviteLink(url, btn) {
     navigator.clipboard.writeText(url).then(() => {
-        const btn = event.target.closest('.btn-invite-copy');
         if (btn) {
             const original = btn.innerHTML;
             btn.innerHTML = '✅ Скопійовано!';
             setTimeout(() => { btn.innerHTML = original; }, 2000);
         }
-    });
+    }).catch(() => showNotification('Не вдалося скопіювати', 'error'));
 }
 
 function shareInviteLink() {
-    const modal = document.getElementById('bookingDetails');
-    if (!modal) return;
-    const preview = modal.querySelector('.invite-preview');
-    const link = modal.querySelector('.btn-invite-open');
-    if (!link) return;
-    const url = link.href;
-    const spans = preview ? preview.querySelectorAll('span') : [];
-    const text = spans.length > 0
-        ? `Запрошуємо! ${Array.from(spans).map(s => s.textContent).join(' | ')} — Парк Закревського Періоду`
-        : 'Запрошуємо на свято! Парк Закревського Періоду';
-    navigator.share({ title: 'Парк Закревського Періоду', text, url }).catch(() => {});
+    try {
+        const modal = document.getElementById('bookingDetails');
+        if (!modal) return;
+        const preview = modal.querySelector('.invite-preview');
+        const link = modal.querySelector('.btn-invite-open');
+        if (!link) return;
+        const url = link.href;
+        const spans = preview ? preview.querySelectorAll('span') : [];
+        const text = spans.length > 0
+            ? `Запрошуємо! ${Array.from(spans).map(s => s.textContent).join(' | ')} — Парк Закревського Періоду`
+            : 'Запрошуємо на свято! Парк Закревського Періоду';
+        if (navigator.share) {
+            navigator.share({ title: 'Парк Закревського Періоду', text, url }).catch(() => {});
+        } else {
+            copyInviteLink(url);
+        }
+    } catch (e) {
+        showNotification('Поділитися не вдалося', 'error');
+    }
 }
 
 // ==========================================

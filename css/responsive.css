@@ -204,6 +204,133 @@
         font-size: 12px;
     }
 
+    /* v7.8.6: Booking panel — compact on mobile */
+    .panel-header {
+        padding: 12px 14px;
+    }
+
+    .panel-header h3 {
+        font-size: var(--font-base);
+    }
+
+    .booking-form {
+        padding: 12px 14px;
+    }
+
+    .selected-info {
+        padding: 10px 12px;
+        margin-bottom: 12px;
+    }
+
+    .info-item {
+        margin-bottom: 5px;
+    }
+
+    .info-label { font-size: 12px; }
+    .info-value { font-size: 13px; }
+
+    .form-section {
+        margin-bottom: 12px;
+    }
+
+    .form-section label {
+        margin-bottom: 5px;
+        font-size: 11px;
+    }
+
+    .form-section select,
+    .form-section input {
+        padding: 9px 10px;
+        font-size: 16px; /* >= 16px prevents iOS auto-zoom */
+        border-width: 1.5px;
+    }
+
+    .program-search-input {
+        padding: 8px 10px;
+        font-size: 16px;
+        border-width: 1.5px;
+    }
+
+    .program-details {
+        padding: 10px 12px;
+        margin-bottom: 12px;
+    }
+
+    .custom-program-section,
+    .second-animator-section,
+    .extra-host-section,
+    .kids-count-section {
+        padding: 10px 12px;
+        margin-bottom: 12px;
+    }
+
+    .extra-host-section .toggle-label {
+        font-size: 12px;
+        gap: 8px;
+    }
+
+    .extra-host-section select {
+        margin-top: 8px;
+        padding: 8px;
+    }
+
+    .hosts-warning {
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        font-size: 11px;
+    }
+
+    .kids-count-section input {
+        padding: 8px;
+    }
+
+    .category-header {
+        font-size: 10px;
+        padding: 6px 0 3px;
+    }
+
+    .program-icon {
+        padding: 8px 4px;
+        min-height: 64px;
+        border-radius: 10px;
+    }
+
+    .program-icon .icon {
+        font-size: 22px;
+        margin-bottom: 4px;
+    }
+
+    .program-icon .name {
+        font-size: 9px;
+    }
+
+    .btn-submit {
+        padding: 14px;
+        font-size: var(--font-base);
+        margin-top: 6px;
+    }
+
+    .btn-change-program {
+        padding: 7px 12px;
+        margin-bottom: 8px;
+        font-size: 12px;
+    }
+
+    .status-section {
+        margin-bottom: 12px;
+    }
+
+    .btn-status-toggle {
+        padding: 10px 14px;
+        margin-top: 8px;
+        font-size: 12px;
+    }
+
+    .detail-row {
+        font-size: 12px;
+        margin-bottom: 4px;
+    }
+
     /* v5.36: Afisha form — stack on mobile */
     .afisha-form-row {
         flex-direction: column;
@@ -324,6 +451,26 @@
     .date-controls .btn-nav { width: 36px; height: 34px; min-width: 36px; }
     .btn-export { font-size: 10px; padding: 5px 8px; }
     .btn-menu-toggle { font-size: 10px; padding: 5px 8px; }
+
+    /* v7.8.6: Booking panel extra compact on small screens */
+    .panel-header { padding: 10px 12px; }
+    .booking-form { padding: 10px 12px; }
+    .selected-info { padding: 8px 10px; margin-bottom: 10px; }
+    .form-section { margin-bottom: 10px; }
+    .form-section label { margin-bottom: 4px; font-size: 10px; }
+    .form-section select,
+    .form-section input { padding: 8px 9px; border-width: 1.5px; }
+    .program-search-input { padding: 7px 9px; border-width: 1.5px; }
+    .program-details,
+    .custom-program-section,
+    .second-animator-section,
+    .extra-host-section,
+    .kids-count-section { padding: 8px 10px; margin-bottom: 10px; }
+    .hosts-warning { padding: 8px 10px; margin-bottom: 10px; }
+    .btn-submit { padding: 12px; font-size: 13px; }
+    .program-icon { padding: 6px 3px; min-height: 58px; }
+    .program-icon .icon { font-size: 20px; margin-bottom: 3px; }
+    .program-icon .name { font-size: 8px; }
 
     /* v5.34: Timeline compact */
     .timeline-scroll { padding: 8px; }

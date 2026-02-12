@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-02-12 — v7.8.8 WCAG адаптація + нові брейкпоінти
+
+**WCAG Touch Targets (мін. 44px):**
+- <=768px: всі кнопки toolbar (status, period, zoom, toggle, today, nav, export, menu) — 44px
+- <=480px: 38px компроміс для малих екранів
+- <=390px: 34px мінімум
+- Кнопки каталогу edit/delete: 32px → 44px на мобільному
+
+**Нові/оновлені брейкпоінти:**
+- <=360px (Galaxy S10/S20, старі Android): ultra-compact toolbar, 50px line-header
+- Mini-timeline responsive: time-mark 120px→80px, line-header 80px→60px
+
+**Модалки:**
+- `.modal-catalog`: full-width + 95vh на мобільному
+
+---
+
 ## 2026-02-12 — v7.8.7 Мобільна адаптація
 
 **Що зроблено:**

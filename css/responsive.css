@@ -104,6 +104,10 @@
         font-size: 15px;
         border-radius: 6px;
         line-height: 1;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .nav-link.active {
@@ -115,6 +119,7 @@
     .btn-logout {
         padding: 5px 10px;
         font-size: 11px;
+        min-height: 44px;
     }
 
     .main-content { padding: 12px; }
@@ -145,9 +150,9 @@
     }
 
     .date-controls .btn-nav {
-        width: 40px;
-        height: 38px;
-        min-width: 40px;
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
         flex-shrink: 0;
     }
 
@@ -180,7 +185,7 @@
         text-align: center;
         padding: 6px 4px;
         font-size: 10px;
-        min-height: 36px;
+        min-height: 44px;
         min-width: 0;
         white-space: nowrap;
         overflow: hidden;
@@ -196,7 +201,7 @@
     .period-btn {
         font-size: 10px;
         padding: 6px 8px;
-        min-height: 36px;
+        min-height: 44px;
     }
 
     /* v7.8.3: Row 3 — Zoom + toggles + action buttons */
@@ -220,20 +225,20 @@
     .zoom-controls .zoom-btn {
         padding: 6px 8px;
         font-size: 10px;
-        min-height: 36px;
+        min-height: 44px;
     }
 
     .toggle-mini {
         font-size: 13px;
         padding: 4px 6px;
-        min-height: 36px;
+        min-height: 44px;
     }
 
     /* v5.15: Today button mobile */
     .btn-today {
         padding: 6px 10px;
         font-size: 11px;
-        min-height: 38px;
+        min-height: 44px;
     }
 
     .timeline-scroll { padding: 12px; }
@@ -242,6 +247,12 @@
     .line-name { font-size: 12px; }
 
     /* v7.8.6: Compact "add animator" button on mobile */
+    /* v7.8.8: WCAG touch targets for action buttons */
+    .btn-export,
+    .btn-menu-toggle {
+        min-height: 44px;
+    }
+
     .btn-add-line-big {
         padding: 10px;
         margin-top: 8px;
@@ -478,7 +489,35 @@
     /* Category grid */
     .category-grid { grid-template-columns: repeat(3, 1fr); }
     .btn-programs { padding: 8px 12px; font-size: 12px; }
-    .modal-catalog { max-height: 90vh; }
+    .modal-catalog { max-width: 100%; max-height: 95vh; }
+
+    /* v7.8.8: Catalog card buttons — WCAG 44px */
+    .btn-catalog-edit,
+    .btn-catalog-delete {
+        width: 44px;
+        height: 44px;
+    }
+
+    .catalog-program-card {
+        padding: 12px;
+    }
+
+    /* v7.8.8: Mini-timeline responsive */
+    .mini-time-mark {
+        width: 80px;
+        min-width: 80px;
+    }
+
+    .mini-time-scale {
+        margin-left: 60px;
+    }
+
+    .mini-line-header {
+        width: 60px;
+        min-width: 60px;
+        font-size: 10px;
+        padding: 4px 6px;
+    }
 }
 
 /* ==========================================
@@ -518,15 +557,15 @@
     .modal-large { max-width: 100%; }
     .modal-catalog { max-width: 100%; max-height: 100vh; border-radius: 0; }
 
-    /* v7.8.3: Compact filters on small screens */
-    .status-filter-btn { font-size: 9px; padding: 5px 3px; min-width: 0; min-height: 32px; }
-    .period-btn { font-size: 9px; padding: 5px 6px; min-height: 32px; }
-    .zoom-controls .zoom-btn { padding: 5px 7px; font-size: 9px; min-height: 32px; }
-    .toggle-mini { padding: 4px 5px; min-height: 32px; font-size: 12px; }
-    .btn-today { padding: 5px 8px; font-size: 10px; min-height: 34px; }
-    .date-controls .btn-nav { width: 36px; height: 34px; min-width: 36px; }
-    .btn-export { font-size: 10px; padding: 5px 8px; }
-    .btn-menu-toggle { font-size: 10px; padding: 5px 8px; }
+    /* v7.8.8: WCAG-friendly compact controls (min 38px) */
+    .status-filter-btn { font-size: 9px; padding: 5px 3px; min-width: 0; min-height: 38px; }
+    .period-btn { font-size: 9px; padding: 5px 6px; min-height: 38px; }
+    .zoom-controls .zoom-btn { padding: 5px 7px; font-size: 9px; min-height: 38px; }
+    .toggle-mini { padding: 4px 5px; min-height: 38px; font-size: 12px; }
+    .btn-today { padding: 5px 8px; font-size: 10px; min-height: 38px; }
+    .date-controls .btn-nav { width: 38px; height: 38px; min-width: 38px; }
+    .btn-export { font-size: 10px; padding: 5px 8px; min-height: 38px; }
+    .btn-menu-toggle { font-size: 10px; padding: 5px 8px; min-height: 38px; }
 
     /* v7.8.6: Booking panel extra compact on small screens */
     .panel-header { padding: 10px 12px; }
@@ -593,28 +632,48 @@
         min-height: 32px;
     }
 
-    /* Status filter + period: even smaller */
-    .status-filter-btn { font-size: 9px; padding: 4px 2px; min-height: 30px; }
-    .period-btn { font-size: 9px; padding: 4px 5px; min-height: 30px; }
-
-    /* Zoom: tighter */
-    .zoom-controls .zoom-btn {
-        padding: 4px 6px;
-        font-size: 9px;
-        min-height: 30px;
-    }
-
-    /* Toggle labels hidden, toggles compact */
-    .toggle-mini { padding: 4px 5px; min-height: 30px; font-size: 12px; }
+    /* v7.8.8: WCAG compromise — min 34px on extra small */
+    .status-filter-btn { font-size: 9px; padding: 4px 2px; min-height: 34px; }
+    .period-btn { font-size: 9px; padding: 4px 5px; min-height: 34px; }
+    .zoom-controls .zoom-btn { padding: 4px 6px; font-size: 9px; min-height: 34px; }
+    .toggle-mini { padding: 4px 5px; min-height: 34px; font-size: 12px; }
 
     /* Timeline: narrower headers */
     .time-scale { margin-left: 60px; }
     .line-header { width: 60px; min-width: 60px; }
     .line-name { font-size: 10px; }
 
-    /* Action buttons: compact */
-    .btn-export { font-size: 10px; padding: 4px 6px; min-height: 30px; }
-    .btn-menu-toggle { font-size: 10px; padding: 4px 6px; min-height: 30px; }
+    .btn-export { font-size: 10px; padding: 4px 6px; min-height: 34px; }
+    .btn-menu-toggle { font-size: 10px; padding: 4px 6px; min-height: 34px; }
+}
+
+/* ==========================================
+   ULTRA SMALL (<=360px) — Galaxy S10/S20, old Android
+   ========================================== */
+
+@media (max-width: 360px) {
+    .main-content { padding: 4px; }
+
+    .header-content { padding: 4px 6px; }
+    .logo-img-small { width: 24px; height: 24px; }
+    .nav-link { padding: 3px 8px; font-size: 13px; }
+    .btn-logout { padding: 3px 6px; font-size: 9px; }
+
+    .control-panel { gap: 2px; padding: 4px; }
+    .date-controls { gap: 2px; }
+    .date-controls .btn-nav { width: 32px; height: 32px; min-width: 32px; font-size: 12px; }
+
+    .time-scale { margin-left: 50px; }
+    .line-header { width: 50px; min-width: 50px; }
+    .line-name { font-size: 9px; }
+
+    .status-filter-btn { font-size: 8px; min-height: 32px; }
+    .period-btn { font-size: 8px; min-height: 32px; }
+    .zoom-controls .zoom-btn { font-size: 8px; min-height: 32px; }
+
+    .mini-time-mark { width: 60px; min-width: 60px; }
+    .mini-time-scale { margin-left: 50px; }
+    .mini-line-header { width: 50px; min-width: 50px; }
 }
 
 /* ==========================================

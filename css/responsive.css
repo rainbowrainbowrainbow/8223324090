@@ -77,12 +77,21 @@
     .logo-text h1 { font-size: 14px; }
 
     .main-content { padding: 12px; }
-    .control-panel { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+
+    /* v7.8.2: Toolbar uses flex-wrap row so groups share lines */
+    .control-panel {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+    }
 
     /* v5.35: Panel full-width on mobile */
     .booking-panel { width: 100%; }
 
-    /* v5.34: Row 1 — Date navigation (full width, centered) */
+    /* v7.8.2: Row 1 — Date navigation (full width) */
     .date-controls {
         display: flex;
         justify-content: center;
@@ -93,9 +102,9 @@
     }
 
     .date-controls .btn-nav {
-        width: 44px;
-        height: 44px;
-        min-width: 44px;
+        width: 40px;
+        height: 38px;
+        min-width: 40px;
         flex-shrink: 0;
     }
 
@@ -103,7 +112,7 @@
         flex: 1;
         min-width: 120px;
         max-width: 140px;
-        padding: 10px 8px;
+        padding: 8px 6px;
         font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
     }
 
@@ -114,14 +123,71 @@
     }
 
     .day-label {
-        padding: 6px 10px;
-        font-size: 12px;
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+
+    /* v7.8.2: Row 2 — Status filter + Period selector SAME ROW */
+    .status-filter-controls {
+        order: 2;
+        flex: 1;
+        min-width: 0;
+        justify-content: center;
+    }
+
+    .status-filter-btn {
+        flex: 1;
+        text-align: center;
+        padding: 6px 4px;
+        font-size: 10px;
+        min-height: 36px;
+    }
+
+    .view-mode-controls {
+        order: 2;
+        flex: 0 0 auto;
+        min-width: 0;
+    }
+
+    .period-btn {
+        font-size: 10px;
+        padding: 6px 8px;
+        min-height: 36px;
+    }
+
+    /* v7.8.2: Row 3 — Zoom + toggles + action buttons SAME ROW */
+    .v32-controls {
+        order: 3;
+        flex: 1;
+        min-width: 0;
+        justify-content: flex-start;
     }
 
     .action-buttons {
+        order: 3;
         display: flex;
-        gap: 8px;
-        justify-content: center;
+        gap: 6px;
+        flex: 0 0 auto;
+        justify-content: flex-end;
+    }
+
+    .zoom-controls .zoom-btn {
+        padding: 6px 8px;
+        font-size: 10px;
+        min-height: 36px;
+    }
+
+    .toggle-mini {
+        font-size: 13px;
+        padding: 4px 6px;
+        min-height: 36px;
+    }
+
+    /* v5.15: Today button mobile */
+    .btn-today {
+        padding: 6px 10px;
+        font-size: 11px;
+        min-height: 38px;
     }
 
     .timeline-scroll { padding: 12px; }
@@ -133,39 +199,6 @@
     .btn-logout {
         padding: 8px 12px;
         font-size: 12px;
-    }
-
-    /* v5.15: Today button mobile */
-    .btn-today {
-        padding: 8px 12px;
-        font-size: 12px;
-        min-height: 44px;
-    }
-
-    /* v5.34: Row 2 — Status filter + Period selector side by side */
-    .status-filter-controls {
-        order: 2;
-        flex: 1;
-        min-width: 0;
-        justify-content: center;
-    }
-
-    .status-filter-btn {
-        flex: 1;
-        text-align: center;
-        padding: 8px 6px;
-        font-size: 11px;
-    }
-
-    .view-mode-controls {
-        order: 2;
-        flex: 1;
-        min-width: 0;
-    }
-
-    .period-btn {
-        font-size: 11px;
-        padding: 8px 10px;
     }
 
     /* v5.36: Afisha form — stack on mobile */
@@ -231,28 +264,6 @@
         min-height: 44px;
     }
 
-    /* v5.34: Row 3 — Zoom, toggles, action buttons */
-    .v32-controls {
-        order: 3;
-        width: 100%;
-        justify-content: center;
-    }
-
-    .action-buttons {
-        order: 3;
-    }
-
-    .zoom-controls .zoom-btn {
-        padding: 8px 10px;
-        font-size: 11px;
-        min-height: 44px;
-    }
-
-    .toggle-mini {
-        font-size: 14px;
-        padding: 6px 8px;
-    }
-
     /* v5.34: Timeline scroll hint */
     .timeline-scroll {
         scroll-snap-type: x proximity;
@@ -277,6 +288,9 @@
     .program-icon .name { font-size: 9px; }
     .program-duration { font-size: 8px; padding: 1px 4px; }
 
+    /* v7.8.2: Ultra-compact toolbar */
+    .control-panel { gap: 4px; padding: 8px; }
+
     .date-controls input[type="date"] {
         min-width: 100px;
         max-width: 120px;
@@ -288,6 +302,9 @@
     .logo-img-small { width: 32px; height: 32px; }
 
     .v32-controls { gap: 4px; }
+
+    /* v7.8.2: Hide toggle labels to save space */
+    .toggle-mini-label { display: none; }
 
     /* v5.34: Full-screen modals on small screens */
     .modal { padding: 0; }
@@ -301,10 +318,13 @@
     .modal-large { max-width: 100%; }
     .modal-catalog { max-width: 100%; max-height: 100vh; border-radius: 0; }
 
-    /* v5.34: Status filter stacks on very small screens */
-    .control-panel { gap: 6px; }
-    .status-filter-btn { font-size: 10px; padding: 8px 4px; min-width: 0; }
-    .period-btn { font-size: 10px; padding: 8px 6px; }
+    /* v7.8.2: Compact filters on small screens */
+    .status-filter-btn { font-size: 9px; padding: 5px 3px; min-width: 0; min-height: 32px; }
+    .period-btn { font-size: 9px; padding: 5px 6px; min-height: 32px; }
+    .zoom-controls .zoom-btn { padding: 5px 7px; font-size: 9px; min-height: 32px; }
+    .toggle-mini { padding: 4px 5px; min-height: 32px; font-size: 12px; }
+    .btn-today { padding: 5px 8px; font-size: 10px; min-height: 34px; }
+    .date-controls .btn-nav { width: 36px; height: 34px; min-width: 36px; }
 
     /* v5.34: Timeline compact */
     .timeline-scroll { padding: 8px; }
@@ -325,47 +345,50 @@
 @media (max-width: 390px) {
     .main-content { padding: 6px; }
 
-    /* v5.34: Toolbar ultra-compact */
-    .date-controls { gap: 4px; }
+    /* v7.8.2: Toolbar ultra-compact */
+    .control-panel { gap: 3px; padding: 6px; }
+    .date-controls { gap: 3px; }
     .date-controls input[type="date"] {
         min-width: 90px;
         max-width: 110px;
-        padding: 8px 4px;
+        padding: 6px 4px;
         font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
     }
     .date-controls .btn-nav {
-        width: 40px;
-        height: 44px;
-        min-width: 40px;
+        width: 34px;
+        height: 32px;
+        min-width: 34px;
         padding: 0;
-        font-size: 14px;
+        font-size: 13px;
     }
     .btn-today {
-        padding: 8px;
-        font-size: 11px;
+        padding: 5px 6px;
+        font-size: 10px;
+        min-height: 32px;
     }
 
-    /* Status filter: icon-only */
-    .status-filter-btn { font-size: 10px; padding: 8px 3px; }
+    /* Status filter + period: even smaller */
+    .status-filter-btn { font-size: 9px; padding: 4px 2px; min-height: 30px; }
+    .period-btn { font-size: 9px; padding: 4px 5px; min-height: 30px; }
 
     /* Zoom: tighter */
     .zoom-controls .zoom-btn {
-        padding: 6px 8px;
-        font-size: 10px;
+        padding: 4px 6px;
+        font-size: 9px;
+        min-height: 30px;
     }
 
-    /* Toggle labels hidden */
-    .toggle-mini-label { display: none; }
-    .toggle-mini { padding: 6px; }
+    /* Toggle labels hidden, toggles compact */
+    .toggle-mini { padding: 4px 5px; min-height: 30px; font-size: 12px; }
 
     /* Timeline: narrower headers */
     .time-scale { margin-left: 60px; }
     .line-header { width: 60px; min-width: 60px; }
     .line-name { font-size: 10px; }
 
-    /* Action buttons: icon-only */
-    .btn-export { font-size: 11px; padding: 8px; }
-    .btn-menu-toggle { font-size: 11px; padding: 8px; }
+    /* Action buttons: compact */
+    .btn-export { font-size: 10px; padding: 4px 6px; min-height: 30px; }
+    .btn-menu-toggle { font-size: 10px; padding: 4px 6px; min-height: 30px; }
 }
 
 /* ==========================================

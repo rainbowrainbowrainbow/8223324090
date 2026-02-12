@@ -315,6 +315,35 @@ async function populateExtraHostAnimatorSelect() {
     await populateAnimatorSelectById('extraHostAnimatorSelect', 'Оберіть аніматора');
 }
 
+// v7.9.3: Resolve secondAnimator name when line was renamed
+// If the stored name doesn't match any current line, tries to find via linked booking
+async function resolveSecondAnimatorSelect(storedName, bookingId) {
+    const select = document.getElementById('secondAnimatorSelect');
+    if (!select) return;
+    select.value = storedName;
+    // If the stored name matches an option, we're done
+    if (select.value === storedName) return;
+
+    // Name doesn't match — try to resolve via linked booking's line_id
+    if (bookingId) {
+        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const mainBooking = bookings.find(b => b.id === bookingId);
+        if (mainBooking) {
+            const linked = bookings.find(b => b.linkedTo === bookingId && b.lineId !== mainBooking.lineId);
+            if (linked) {
+                const lines = await getLinesForDate(AppState.selectedDate);
+                const resolvedLine = lines.find(l => l.id === linked.lineId);
+                if (resolvedLine) {
+                    select.value = resolvedLine.name;
+                    if (select.value === resolvedLine.name) return;
+                }
+            }
+        }
+    }
+    // Couldn't resolve — show warning
+    showNotification(`⚠️ Другий аніматор "${storedName}" не знайдений (лінію перейменовано?)`, 'warning');
+}
+
 function updateCustomDuration() {
     const duration = parseInt(document.getElementById('customDuration').value) || 30;
     document.getElementById('detailDuration').textContent = `${duration} хв`;
@@ -814,7 +843,7 @@ async function editBooking(bookingId) {
     // Другий аніматор
     if (booking.secondAnimator) {
         await populateSecondAnimatorSelect();
-        document.getElementById('secondAnimatorSelect').value = booking.secondAnimator;
+        await resolveSecondAnimatorSelect(booking.secondAnimator, booking.id);
     }
 }
 
@@ -874,7 +903,7 @@ async function duplicateBooking(bookingId) {
 
     if (booking.secondAnimator) {
         await populateSecondAnimatorSelect();
-        document.getElementById('secondAnimatorSelect').value = booking.secondAnimator;
+        await resolveSecondAnimatorSelect(booking.secondAnimator, booking.id);
     }
 
     showNotification('Форму заповнено — оберіть час та аніматора', 'info');

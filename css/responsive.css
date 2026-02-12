@@ -241,6 +241,19 @@
     .line-header { width: 90px; min-width: 90px; }
     .line-name { font-size: 12px; }
 
+    /* v7.8.6: Compact "add animator" button on mobile */
+    .btn-add-line-big {
+        padding: 10px;
+        margin-top: 8px;
+        border-width: 1.5px;
+        font-size: 12px;
+        gap: 6px;
+    }
+
+    .btn-add-line-big span:first-child {
+        font-size: 18px;
+    }
+
     .user-panel { gap: 8px; }
     .btn-logout {
         padding: 8px 12px;

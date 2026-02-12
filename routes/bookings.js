@@ -5,6 +5,7 @@ const router = require('express').Router();
 const { pool, generateBookingNumber } = require('../db');
 const { validateDate, validateTime, validateId, mapBookingRow, checkServerConflicts, checkServerDuplicate, checkRoomConflict } = require('../services/booking');
 const { notifyTelegram } = require('../services/telegram');
+const { processBookingAutomation } = require('../services/bookingAutomation');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Bookings');
@@ -89,6 +90,12 @@ router.post('/', async (req, res) => {
                 created_by: b.createdBy
             }, { username: b.createdBy || req.user?.username })
                 .catch(err => log.error(`Telegram notify failed (create): ${err.message}`));
+        }
+
+        // v8.3: Run automation rules (fire-and-forget after commit)
+        if (!b.linkedTo) {
+            processBookingAutomation(b)
+                .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         }
 
         const booking = insertResult.rows[0] ? mapBookingRow(insertResult.rows[0]) : { id: b.id };
@@ -189,6 +196,10 @@ router.post('/full', async (req, res) => {
             }, { username: main.createdBy || req.user?.username })
                 .catch(err => log.error(`Telegram notify failed (create/full): ${err.message}`));
         }
+
+        // v8.3: Run automation rules (fire-and-forget after commit)
+        processBookingAutomation(main)
+            .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
 
         const mainBooking = mainInsert.rows[0] ? mapBookingRow(mainInsert.rows[0]) : { id: main.id };
         const linkedBookings = linkedRows.map(mapBookingRow);
@@ -332,6 +343,9 @@ router.put('/:id', async (req, res) => {
         const notifyCatch = err => log.error(`Telegram notify failed (update): ${err.message}`);
         if (statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
             notifyTelegram('create', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
+            // v8.3: Trigger automation when preliminary → confirmed
+            processBookingAutomation({ ...b, id, status: newStatus })
+                .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         } else if (statusChanged) {
             notifyTelegram('status_change', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
         } else if (!b.linkedTo && newStatus !== 'preliminary') {

@@ -99,4 +99,59 @@ router.get('/health', async (req, res) => {
     }
 });
 
+// v8.3: Automation rules CRUD
+router.get('/automation-rules', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM automation_rules ORDER BY created_at DESC');
+        res.json(result.rows);
+    } catch (err) {
+        if (err.message.includes('does not exist')) return res.json([]);
+        log.error('Automation rules get error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/automation-rules', async (req, res) => {
+    try {
+        const { name, trigger_type, trigger_condition, actions, days_before } = req.body;
+        if (!name || !trigger_condition || !actions) {
+            return res.status(400).json({ error: 'name, trigger_condition, actions required' });
+        }
+        const result = await pool.query(
+            `INSERT INTO automation_rules (name, trigger_type, trigger_condition, actions, days_before)
+             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+            [name, trigger_type || 'booking_create', trigger_condition, actions, days_before || 0]
+        );
+        res.json({ success: true, rule: result.rows[0] });
+    } catch (err) {
+        log.error('Automation rule create error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.put('/automation-rules/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, trigger_type, trigger_condition, actions, days_before, is_active } = req.body;
+        await pool.query(
+            `UPDATE automation_rules SET name=$1, trigger_type=$2, trigger_condition=$3, actions=$4, days_before=$5, is_active=$6 WHERE id=$7`,
+            [name, trigger_type || 'booking_create', trigger_condition, actions, days_before || 0, is_active !== false, id]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Automation rule update error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.delete('/automation-rules/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM automation_rules WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Automation rule delete error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

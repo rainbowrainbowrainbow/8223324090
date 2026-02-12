@@ -332,6 +332,48 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_lines_by_date_date ON lines_by_date(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)');
 
+        // v8.3: Booking automation rules
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS automation_rules (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                trigger_type VARCHAR(30) NOT NULL DEFAULT 'booking_create',
+                trigger_condition JSONB NOT NULL,
+                actions JSONB NOT NULL,
+                days_before INTEGER DEFAULT 0,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        // v8.3: Extra data for bookings (t-shirt sizes, etc.)
+        await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS extra_data JSONB`);
+
+        // Seed default automation rules if empty
+        const rulesCount = await pool.query('SELECT COUNT(*) FROM automation_rules');
+        if (parseInt(rulesCount.rows[0].count) === 0) {
+            await pool.query(
+                `INSERT INTO automation_rules (name, trigger_type, trigger_condition, actions, days_before) VALUES
+                ($1, 'booking_create', $2, $3, 3),
+                ($4, 'booking_create', $5, $6, 5)`,
+                [
+                    'Замовлення друку піньяти',
+                    JSON.stringify({ product_ids: ['pinata', 'pinata_custom'] }),
+                    JSON.stringify([
+                        { type: 'create_task', title: '🪅 Замовити друк піньяти №{pinataFiller} на {date}', priority: 'high', category: 'purchase' },
+                        { type: 'telegram_group', template: '🪅 <b>Замовлення піньяти</b>\n\n📋 Друк: №{pinataFiller}\n📅 Дата: {date} о {time}\n🏠 Кімната: {room}\n👤 Створив: {createdBy}\n\nПотрібно замовити друк!' }
+                    ]),
+                    'Підготовка МК Футболки',
+                    JSON.stringify({ product_ids: ['mk_tshirt'] }),
+                    JSON.stringify([
+                        { type: 'create_task', title: '👕 Замовити {kidsCount} футболок для МК на {date}', priority: 'high', category: 'purchase' },
+                        { type: 'create_task', title: '📏 Уточнити розміри футболок у клієнта ({groupName})', priority: 'high', category: 'admin' },
+                        { type: 'telegram_group', template: '👕 <b>МК Футболки</b>\n\n📅 Дата: {date} о {time}\n👶 Дітей: {kidsCount}\n🏠 Кімната: {room}\n\nПотрібно уточнити розміри та замовити футболки!' }
+                    ])
+                ]
+            );
+            log.info('Automation rules seeded (2 rules)');
+        }
+
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);

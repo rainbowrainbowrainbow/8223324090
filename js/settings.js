@@ -1,0 +1,1565 @@
+/**
+ * settings.js - Історія, каталог програм, лінії/аніматори, Telegram, налаштування
+ */
+
+// ==========================================
+// ПОКАЗ ІСТОРІЇ
+// ==========================================
+
+// v5.16: History with filters and pagination
+const HISTORY_PAGE_SIZE = 50;
+let historyCurrentOffset = 0;
+
+async function showHistory() {
+    if (!canViewHistory()) return;
+    historyCurrentOffset = 0;
+    await loadHistoryPage();
+    document.getElementById('historyModal').classList.remove('hidden');
+}
+
+function getHistoryFilters() {
+    return {
+        action: document.getElementById('historyFilterAction')?.value || '',
+        user: document.getElementById('historyFilterUser')?.value.trim() || '',
+        from: document.getElementById('historyFilterFrom')?.value || '',
+        to: document.getElementById('historyFilterTo')?.value || ''
+    };
+}
+
+async function loadHistoryPage() {
+    const filters = getHistoryFilters();
+    const result = await apiGetHistory({
+        ...filters,
+        limit: HISTORY_PAGE_SIZE,
+        offset: historyCurrentOffset
+    });
+    const { items, total } = result;
+
+    // Stats
+    const statsEl = document.getElementById('historyStats');
+    if (statsEl) {
+        statsEl.textContent = `Знайдено: ${total} запис${total === 1 ? '' : total < 5 ? 'и' : 'ів'}`;
+    }
+
+    // Render items
+    const container = document.getElementById('historyList');
+    if (items.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">Історія порожня</div><div class="empty-state-text">Тут з\'являться записи про створення, редагування та видалення бронювань</div></div>';
+    } else {
+        container.innerHTML = items.map(item => {
+            const date = new Date(item.timestamp).toLocaleString('uk-UA');
+            const actionMap = { create: 'Створено', delete: 'Видалено', shift: 'Перенесено', edit: 'Змінено', undo_create: '↩ Скасовано створення', undo_delete: '↩ Скасовано видалення' };
+            const actionText = actionMap[item.action] || item.action;
+            const actionClass = item.action.includes('undo') ? 'action-undo' : (item.action === 'edit' ? 'action-edit' : (item.action === 'create' ? 'action-create' : 'action-delete'));
+            return `
+                <div class="history-item ${actionClass}">
+                    <div class="history-header">
+                        <span class="history-action">${escapeHtml(actionText)}</span>
+                        <span class="history-user">${escapeHtml(item.user || '')}</span>
+                        <span class="history-date">${escapeHtml(date)}</span>
+                    </div>
+                    <div class="history-details">
+                        ${escapeHtml(item.data?.label || item.data?.programCode || '')}: ${escapeHtml(item.data?.room || '')} (${escapeHtml(item.data?.date || '')} ${escapeHtml(item.data?.time || '')})
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+    container.scrollTop = 0;
+
+    // Pagination
+    const pagEl = document.getElementById('historyPagination');
+    const prevBtn = document.getElementById('historyPrevPage');
+    const nextBtn = document.getElementById('historyNextPage');
+    const pageInfo = document.getElementById('historyPageInfo');
+    if (pagEl && total > HISTORY_PAGE_SIZE) {
+        pagEl.classList.remove('hidden');
+        const page = Math.floor(historyCurrentOffset / HISTORY_PAGE_SIZE) + 1;
+        const totalPages = Math.ceil(total / HISTORY_PAGE_SIZE);
+        pageInfo.textContent = `${page} / ${totalPages}`;
+        prevBtn.disabled = historyCurrentOffset === 0;
+        nextBtn.disabled = historyCurrentOffset + HISTORY_PAGE_SIZE >= total;
+    } else if (pagEl) {
+        pagEl.classList.add('hidden');
+    }
+}
+
+// ==========================================
+// РОЗВАЖАЛЬНІ ПРОГРАМИ (каталог)
+// ==========================================
+
+async function showProgramsCatalog() {
+    const modal = document.getElementById('programsCatalogModal');
+    const container = document.getElementById('programsCatalogList');
+    const manage = canManageProducts();
+
+    // v7.0: Load products from API (with fallback)
+    container.innerHTML = '<div class="loading-spinner">Завантаження каталогу...</div>';
+    modal.classList.remove('hidden');
+
+    // v7.1: Load all products (including inactive) for managers
+    const allProducts = manage ? (await apiGetProducts(false) || PROGRAMS) : await getProducts();
+    // Map API format for manage mode
+    const products = manage ? allProducts.map(p => ({
+        id: p.id, code: p.code, label: p.label, name: p.name, icon: p.icon,
+        category: p.category, duration: p.duration, price: p.price, hosts: p.hosts,
+        age: p.ageRange || p.age, kids: p.kidsCapacity || p.kids,
+        description: p.description, perChild: p.isPerChild || p.perChild,
+        hasFiller: p.hasFiller, isCustom: p.isCustom, isActive: p.isActive !== false,
+        sortOrder: p.sortOrder || p.sort_order || 0
+    })) : allProducts;
+
+    let html = '';
+
+    // v7.1: Add product button for admin/manager
+    if (manage) {
+        html += `<div class="catalog-manage-bar">
+            <button class="btn-submit btn-catalog-add" onclick="openProductForm()">+ Додати програму</button>
+        </div>`;
+    }
+
+    CATEGORY_ORDER_CATALOG.forEach(cat => {
+        const programs = products.filter(p => p.category === cat);
+        if (programs.length === 0) return;
+
+        html += `<div class="catalog-category">
+            <h4 class="catalog-category-title ${cat}">${CATEGORY_ICONS_CATALOG[cat] || ''} ${CATEGORY_NAMES_CATALOG[cat] || cat}</h4>
+            <div class="catalog-programs">`;
+
+        programs.forEach(p => {
+            const priceText = p.perChild ? `${formatPrice(p.price)}/дит` : formatPrice(p.price);
+            const durationText = p.duration > 0 ? `${p.duration} хв` : '';
+            const hostsText = p.hosts > 0 ? `${p.hosts} вед.` : '';
+            const infoItems = [durationText, hostsText].filter(Boolean).join(', ');
+            const inactiveClass = p.isActive === false ? ' catalog-inactive' : '';
+
+            html += `
+                <div class="catalog-program-card ${cat}${inactiveClass}" data-product-id="${p.id}">
+                    <div class="catalog-program-header">
+                        <span class="catalog-icon">${p.icon}</span>
+                        <div class="catalog-program-info">
+                            <span class="catalog-program-name">${escapeHtml(p.name)}${p.isActive === false ? ' <span class="catalog-badge-inactive">неактивна</span>' : ''}</span>
+                            <span class="catalog-program-meta">${priceText}${infoItems ? ' · ' + infoItems : ''}</span>
+                        </div>
+                        ${manage ? `<div class="catalog-card-actions">
+                            <button class="btn-catalog-edit" onclick="openProductForm('${p.id}')" title="Редагувати">&#9998;</button>
+                            ${isAdmin() && p.isActive !== false ? `<button class="btn-catalog-delete" onclick="deleteProduct('${p.id}')" title="Деактивувати">&#10005;</button>` : ''}
+                        </div>` : ''}
+                    </div>
+                    ${p.age || p.kids ? `<div class="catalog-program-tags">
+                        ${p.age ? `<span class="catalog-tag age">${escapeHtml(p.age)}</span>` : ''}
+                        ${p.kids ? `<span class="catalog-tag kids">${escapeHtml(p.kids)} діт</span>` : ''}
+                    </div>` : ''}
+                    ${p.description ? `<p class="catalog-program-desc">${escapeHtml(p.description)}</p>` : ''}
+                </div>
+            `;
+        });
+
+        html += `</div></div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+// v7.1: Open product form (create or edit)
+async function openProductForm(productId) {
+    const modal = document.getElementById('productFormModal');
+    const title = document.getElementById('productFormTitle');
+    const form = document.getElementById('productForm');
+
+    form.reset();
+    form.dataset.productId = '';
+
+    if (productId) {
+        title.textContent = 'Редагувати програму';
+        form.dataset.productId = productId;
+
+        // Load product data
+        const product = await apiGetProduct(productId);
+        if (!product) {
+            alert('Не вдалося завантажити програму');
+            return;
+        }
+
+        document.getElementById('pf-code').value = product.code || '';
+        document.getElementById('pf-label').value = product.label || '';
+        document.getElementById('pf-name').value = product.name || '';
+        document.getElementById('pf-icon').value = product.icon || '';
+        document.getElementById('pf-category').value = product.category || '';
+        document.getElementById('pf-duration').value = product.duration || 0;
+        document.getElementById('pf-price').value = product.price || 0;
+        document.getElementById('pf-hosts').value = product.hosts || 1;
+        document.getElementById('pf-age').value = product.ageRange || '';
+        document.getElementById('pf-kids').value = product.kidsCapacity || '';
+        document.getElementById('pf-description').value = product.description || '';
+        document.getElementById('pf-perchild').checked = product.isPerChild || false;
+        document.getElementById('pf-filler').checked = product.hasFiller || false;
+        document.getElementById('pf-active').checked = product.isActive !== false;
+        document.getElementById('pf-sort').value = product.sortOrder || 0;
+    } else {
+        title.textContent = 'Нова програма';
+        document.getElementById('pf-active').checked = true;
+        document.getElementById('pf-hosts').value = 1;
+        document.getElementById('pf-duration').value = 60;
+        document.getElementById('pf-price').value = 0;
+        document.getElementById('pf-sort').value = 0;
+    }
+
+    modal.classList.remove('hidden');
+}
+
+// v7.1: Save product (create or update)
+async function saveProduct() {
+    const form = document.getElementById('productForm');
+    const productId = form.dataset.productId;
+
+    const code = document.getElementById('pf-code').value.trim();
+    const label = document.getElementById('pf-label').value.trim();
+    const name = document.getElementById('pf-name').value.trim();
+
+    if (!code || !label || !name) {
+        alert('Заповніть обов\'язкові поля: Код, Мітка, Назва');
+        return;
+    }
+
+    const data = {
+        code,
+        label,
+        name,
+        icon: document.getElementById('pf-icon').value.trim(),
+        category: document.getElementById('pf-category').value,
+        duration: parseInt(document.getElementById('pf-duration').value) || 0,
+        price: parseInt(document.getElementById('pf-price').value) || 0,
+        hosts: parseInt(document.getElementById('pf-hosts').value) || 1,
+        ageRange: document.getElementById('pf-age').value.trim() || null,
+        kidsCapacity: document.getElementById('pf-kids').value.trim() || null,
+        description: document.getElementById('pf-description').value.trim() || null,
+        isPerChild: document.getElementById('pf-perchild').checked,
+        hasFiller: document.getElementById('pf-filler').checked,
+        isActive: document.getElementById('pf-active').checked,
+        sortOrder: parseInt(document.getElementById('pf-sort').value) || 0
+    };
+
+    let result;
+    if (productId) {
+        result = await apiUpdateProduct(productId, data);
+    } else {
+        result = await apiCreateProduct(data);
+    }
+
+    if (result.success) {
+        document.getElementById('productFormModal').classList.add('hidden');
+        // Invalidate products cache
+        AppState.products = null;
+        AppState.productsLoadedAt = 0;
+        // Refresh catalog
+        await showProgramsCatalog();
+    } else {
+        alert('Помилка: ' + (result.error || 'Невідома помилка'));
+    }
+}
+
+// v7.1: Delete (deactivate) product
+async function deleteProduct(productId) {
+    if (!confirm('Деактивувати цю програму? Вона зникне з каталогу бронювань.')) return;
+
+    const result = await apiDeleteProduct(productId);
+    if (result.success) {
+        AppState.products = null;
+        AppState.productsLoadedAt = 0;
+        await showProgramsCatalog();
+    } else {
+        alert('Помилка: ' + (result.error || 'Невідома помилка'));
+    }
+}
+
+// ==========================================
+// ЛІНІЇ (АНІМАТОРИ)
+// ==========================================
+
+// v3.9: Modal instead of prompt() for note input
+function showNoteModal() {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('noteModal');
+        const input = document.getElementById('noteModalInput');
+        if (!modal || !input) {
+            resolve(prompt('Примітка (опціонально):') || '');
+            return;
+        }
+        input.value = '';
+        modal.classList.remove('hidden');
+
+        function cleanup() {
+            modal.classList.add('hidden');
+            document.getElementById('noteModalOk').removeEventListener('click', onOk);
+            document.getElementById('noteModalCancel').removeEventListener('click', onCancel);
+        }
+        function onOk() { cleanup(); resolve(input.value || ''); }
+        function onCancel() { cleanup(); resolve(null); }
+
+        document.getElementById('noteModalOk').addEventListener('click', onOk);
+        document.getElementById('noteModalCancel').addEventListener('click', onCancel);
+        input.focus();
+    });
+}
+
+// v3.9: Clean up previous poll before starting new one
+function cleanupPendingPoll() {
+    if (AppState.pendingPollInterval) {
+        clearInterval(AppState.pendingPollInterval);
+        AppState.pendingPollInterval = null;
+        removePendingLine();
+    }
+}
+
+async function addNewLine() {
+    const dateStr = formatDate(AppState.selectedDate);
+
+    // v3.9: Modal instead of prompt()
+    const note = await showNoteModal();
+    if (note === null) return; // Скасовано
+
+    // v3.9: Cleanup any existing poll
+    cleanupPendingPoll();
+
+    // Показати заглушку "Очікування..."
+    renderPendingLine();
+    showNotification('Запит надіслано в Telegram...', 'success');
+
+    // Надіслати запит в Telegram
+    const result = await apiTelegramAskAnimator(dateStr, note.trim());
+    if (!result || !result.success || !result.requestId) {
+        removePendingLine();
+        showNotification('Помилка надсилання в Telegram', 'error');
+        return;
+    }
+
+    // Поллінг статусу кожні 3 секунди (макс 5 хвилин)
+    const requestId = result.requestId;
+    let attempts = 0;
+    const maxAttempts = 100; // 100 * 3 сек = 5 хв
+
+    // v3.9: Store interval in AppState for cleanup
+    AppState.pendingPollInterval = setInterval(async () => {
+        attempts++;
+        const statusResult = await apiCheckAnimatorStatus(requestId);
+
+        // Оновити таймер на заглушці
+        updatePendingLineTimer(attempts * 3);
+
+        if (statusResult.status === 'approved') {
+            clearInterval(AppState.pendingPollInterval);
+            AppState.pendingPollInterval = null;
+            removePendingLine();
+            // Очистити кеш та перерендерити
+            delete AppState.cachedLines[dateStr];
+            await renderTimeline();
+            showNotification('Аніматора додано!', 'success');
+        } else if (statusResult.status === 'rejected') {
+            clearInterval(AppState.pendingPollInterval);
+            AppState.pendingPollInterval = null;
+            removePendingLine();
+            showNotification('На жаль, не вдалося додати аніматора', 'error');
+        } else if (attempts >= maxAttempts) {
+            clearInterval(AppState.pendingPollInterval);
+            AppState.pendingPollInterval = null;
+            removePendingLine();
+            showNotification('Час очікування вичерпано', 'error');
+        }
+    }, 3000);
+}
+
+async function editLineModal(lineId) {
+    const lines = await getLinesForDate(AppState.selectedDate);
+    const line = lines.find(l => l.id === lineId);
+    if (!line) return;
+
+    document.getElementById('editLineId').value = line.id;
+    document.getElementById('editLineName').value = line.name;
+    document.getElementById('editLineColor').value = line.color;
+
+    populateAnimatorsSelect();
+
+    document.getElementById('editLineModal').classList.remove('hidden');
+}
+
+function getSavedAnimators() {
+    const saved = localStorage.getItem('pzp_animators_list');
+    if (saved) {
+        return JSON.parse(saved);
+    }
+    return ['Женя', 'Анлі', 'Маша', 'Діма', 'Оля', 'Катя', 'Настя', 'Саша'];
+}
+
+function saveAnimatorsList() {
+    const textarea = document.getElementById('animatorsList');
+    const names = textarea.value.split('\n').map(n => n.trim()).filter(n => n.length > 0);
+
+    if (names.length === 0) {
+        showNotification('Введіть хоча б одного аніматора', 'error');
+        return;
+    }
+
+    localStorage.setItem('pzp_animators_list', JSON.stringify(names));
+    closeAllModals();
+    showNotification('Список аніматорів збережено!', 'success');
+}
+
+function showAnimatorsModal() {
+    const animators = getSavedAnimators();
+    document.getElementById('animatorsList').value = animators.join('\n');
+    document.getElementById('animatorsModal').classList.remove('hidden');
+}
+
+function populateAnimatorsSelect() {
+    const select = document.getElementById('editLineNameSelect');
+    if (!select) return;
+
+    const animators = getSavedAnimators();
+
+    select.innerHTML = '<option value="">Оберіть аніматора</option>';
+    animators.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+    });
+}
+
+async function handleEditLine(e) {
+    e.preventDefault();
+
+    const lineId = document.getElementById('editLineId').value;
+    const lines = await getLinesForDate(AppState.selectedDate);
+    const index = lines.findIndex(l => l.id === lineId);
+
+    if (index !== -1) {
+        // v5.9: Validate empty name
+        const newName = document.getElementById('editLineName').value.trim();
+        if (!newName) {
+            showNotification('Введіть ім\'я аніматора', 'error');
+            return;
+        }
+        // v5.9.1: Check for duplicate names
+        const duplicate = lines.find((l, i) => i !== index && l.name === newName);
+        if (duplicate) {
+            showNotification(`Аніматор "${newName}" вже існує на цю дату`, 'error');
+            return;
+        }
+        lines[index].name = newName;
+        lines[index].color = document.getElementById('editLineColor').value;
+        await saveLinesForDate(AppState.selectedDate, lines);
+
+        closeAllModals();
+        await renderTimeline();
+        showNotification('Збережено', 'success');
+    }
+}
+
+async function deleteLine() {
+    const lineId = document.getElementById('editLineId').value;
+    const lines = await getLinesForDate(AppState.selectedDate);
+
+    if (lines.length <= 1) {
+        showNotification('Має бути хоча б один аніматор', 'error');
+        return;
+    }
+
+    const confirmed = await customConfirm('Видалити цього аніматора?', 'Видалення аніматора');
+    if (!confirmed) return;
+
+    const newLines = lines.filter(l => l.id !== lineId);
+    await saveLinesForDate(AppState.selectedDate, newLines);
+
+    closeAllModals();
+    await renderTimeline();
+    showNotification('Аніматора видалено', 'success');
+}
+
+// ==========================================
+// TELEGRAM СПОВІЩЕННЯ
+// ==========================================
+
+function handleTelegramResult(r) {
+    if (r && r.success) {
+        showNotification('Сповіщення надіслано в Telegram', 'success');
+    } else if (r && r.reason === 'no_chat_id') {
+        console.warn('[Telegram] Не налаштовано Chat ID');
+        showNotification('Telegram: не налаштовано Chat ID. Перейдіть в Налаштування.', 'error');
+    } else if (r && r.reason === 'no_bot_token') {
+        console.warn('[Telegram] Бот токен не налаштовано');
+        showNotification('Telegram: бот-токен не налаштовано на сервері', 'error');
+    } else {
+        console.warn('[Telegram] Не вдалося надіслати:', r);
+        showNotification('Telegram: не вдалося надіслати сповіщення', 'error');
+    }
+}
+
+function notifyBookingCreated(booking) {
+    if (booking.status === 'preliminary') return;
+
+    const endTime = addMinutesToTime(booking.time, booking.duration);
+    let text = `📌 <b>Нове бронювання</b>\n\n`;
+    text += `✅ Підтверджене\n`;
+    text += `🎭 ${booking.label}: ${booking.programName}\n`;
+    text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+    text += `🏠 ${booking.room}\n`;
+    if (booking.kidsCount) text += `👶 ${booking.kidsCount} дітей\n`;
+    if (booking.notes) text += `📝 ${booking.notes}\n`;
+    text += `\n👤 Створив: ${booking.createdBy}`;
+    apiTelegramNotify(text).then(handleTelegramResult);
+}
+
+function notifyBookingDeleted(booking) {
+    const text = `🗑 <b>Видалено бронювання</b>\n\n` +
+        `🎭 ${booking.label}: ${booking.programName}\n` +
+        `🕐 ${booking.date} | ${booking.time}\n` +
+        `🏠 ${booking.room}\n` +
+        `\n👤 Видалив: ${AppState.currentUser?.username || '?'}`;
+    apiTelegramNotify(text).then(handleTelegramResult);
+}
+
+function notifyBookingEdited(booking) {
+    const endTime = addMinutesToTime(booking.time, booking.duration);
+    let text = `✏️ <b>Бронювання змінено</b>\n\n`;
+    text += `🔖 ${booking.id}\n`;
+    text += `🎭 ${booking.label}: ${booking.programName}\n`;
+    text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+    text += `🏠 ${booking.room}\n`;
+    if (booking.kidsCount) text += `👶 ${booking.kidsCount} дітей\n`;
+    if (booking.notes) text += `📝 ${booking.notes}\n`;
+    text += `\n👤 Змінив: ${AppState.currentUser?.username || '?'}`;
+    apiTelegramNotify(text).then(handleTelegramResult);
+}
+
+function notifyStatusChanged(booking, newStatus) {
+    const icon = newStatus === 'confirmed' ? '✅' : '⏳';
+    const statusText = newStatus === 'confirmed' ? 'ПІДТВЕРДЖЕНО' : 'Попереднє';
+    const text = `${icon} <b>Статус змінено: ${statusText}</b>\n\n` +
+        `🎭 ${booking.label}: ${booking.programName}\n` +
+        `🕐 ${booking.date} | ${booking.time}\n` +
+        `🏠 ${booking.room}\n` +
+        `\n👤 Змінив: ${AppState.currentUser?.username || '?'}`;
+    apiTelegramNotify(text).then(handleTelegramResult);
+}
+
+async function sendDailyDigest() {
+    const dateStr = formatDate(AppState.selectedDate);
+    try {
+        const response = await fetch(`${API_BASE}/telegram/digest/${dateStr}`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return;
+        const result = await response.json();
+        if (result.success) {
+            showNotification('Дайджест відправлено в Telegram!', 'success');
+        } else {
+            showNotification(result.reason === 'no_chat_id' ? 'Telegram Chat ID не налаштовано' : 'Помилка відправки дайджесту', 'error');
+        }
+    } catch (err) {
+        console.error('Digest send error:', err);
+        showNotification('Помилка відправки дайджесту', 'error');
+    }
+}
+
+async function fetchAndRenderTelegramChats(chatIdInputId, chatsContainerId) {
+    const container = document.getElementById(chatsContainerId);
+    if (!container) return;
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
+
+    try {
+        const response = await fetch(`${API_BASE}/telegram/chats`, { headers: getAuthHeaders(false) });
+        const data = await response.json();
+        if (data.chats && data.chats.length > 0) {
+            container.innerHTML = data.chats.map(c =>
+                `<div class="telegram-chat-item" onclick="document.getElementById('${escapeHtml(chatIdInputId)}').value='${escapeHtml(String(c.id))}'">
+                    <strong>${escapeHtml(c.title || 'Чат')}</strong> <span class="chat-id">${escapeHtml(String(c.id))}</span> <span class="chat-type">${escapeHtml(c.type)}</span>
+                </div>`
+            ).join('');
+        } else {
+            container.innerHTML = '<p class="no-chats">Бот ще не доданий до жодної групи або немає повідомлень. Додайте бота @MySuperReport_bot до групи і напишіть повідомлення.</p>';
+        }
+    } catch (err) {
+        container.innerHTML = '<p>Помилка завантаження</p>';
+    }
+}
+
+// v5.17: Fetch and render known threads/topics for thread picker
+async function fetchAndRenderThreads() {
+    const container = document.getElementById('settingsTelegramThreads');
+    if (!container) return;
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
+
+    try {
+        const response = await fetch(`${API_BASE}/telegram/threads`, { headers: getAuthHeaders(false) });
+        const data = await response.json();
+        if (data.threads && data.threads.length > 0) {
+            container.innerHTML = data.threads.map(t =>
+                `<div class="telegram-chat-item" onclick="document.getElementById('settingsTelegramThreadId').value='${t.thread_id}'">
+                    <strong>${escapeHtml(t.title || 'Тема #' + t.thread_id)}</strong> <span class="chat-id">ID: ${t.thread_id}</span>
+                </div>`
+            ).join('');
+        } else {
+            container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">💬</div><div class="empty-state-title">Тем не знайдено</div><div class="empty-state-text">Напишіть повідомлення в потрібну тему групи, щоб бот її побачив</div></div>';
+        }
+    } catch (err) {
+        container.innerHTML = '<p>Помилка завантаження</p>';
+    }
+}
+
+async function showTelegramSetup() {
+    const chatId = await apiGetSetting('telegram_chat_id');
+    const modal = document.getElementById('telegramModal');
+    document.getElementById('telegramChatId').value = chatId || '';
+    // v5.17: Load thread ID
+    const threadId = await apiGetSetting('telegram_thread_id');
+    const threadInput = document.getElementById('telegramThreadId');
+    if (threadInput) threadInput.value = threadId || '';
+    modal.classList.remove('hidden');
+    await fetchAndRenderTelegramChats('telegramChatId', 'telegramChats');
+}
+
+async function saveTelegramChatId() {
+    const chatId = document.getElementById('telegramChatId').value.trim();
+    if (!chatId) {
+        showNotification('Введіть Chat ID', 'error');
+        return;
+    }
+    await apiSaveSetting('telegram_chat_id', chatId);
+
+    // v5.17: Save thread ID if provided
+    const threadId = document.getElementById('telegramThreadId')?.value.trim();
+    if (threadId) {
+        await apiSaveSetting('telegram_thread_id', threadId);
+    }
+
+    const result = await apiTelegramNotify('🤖 Telegram підключено до системи бронювання Парку Закревського Періоду!');
+    closeAllModals();
+    showNotification('Telegram налаштовано!', 'success');
+}
+
+// ==========================================
+// НАЛАШТУВАННЯ (Settings v3.6)
+// ==========================================
+
+async function showSettings() {
+    const animators = getSavedAnimators();
+    const animatorsTextarea = document.getElementById('settingsAnimatorsList');
+    if (animatorsTextarea) animatorsTextarea.value = animators.join('\n');
+
+    const tgSection = document.getElementById('settingsTelegramSection');
+    if (tgSection) {
+        tgSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
+    }
+
+    // Load chat ID into input (user can also type it manually)
+    const chatId = await apiGetSetting('telegram_chat_id');
+    const chatIdInput = document.getElementById('settingsTelegramChatId');
+    if (chatIdInput) chatIdInput.value = chatId || '';
+
+    // v5.17: Load thread ID
+    const threadId = await apiGetSetting('telegram_thread_id');
+    const threadIdInput = document.getElementById('settingsTelegramThreadId');
+    if (threadIdInput) threadIdInput.value = threadId || '';
+
+    // v5.11: Load digest + reminder + auto-delete settings
+    const [digestWeekday, digestWeekend, digestLegacy, reminderTime, autoDeleteEnabled, autoDeleteHours] = await Promise.all([
+        apiGetSetting('digest_time_weekday'),
+        apiGetSetting('digest_time_weekend'),
+        apiGetSetting('digest_time'),
+        apiGetSetting('reminder_time'),
+        apiGetSetting('auto_delete_enabled'),
+        apiGetSetting('auto_delete_hours')
+    ]);
+    const weekdayInput = document.getElementById('settingsDigestTimeWeekday');
+    const weekendInput = document.getElementById('settingsDigestTimeWeekend');
+    if (weekdayInput) weekdayInput.value = digestWeekday || digestLegacy || '';
+    if (weekendInput) weekendInput.value = digestWeekend || digestLegacy || '';
+
+    const reminderInput = document.getElementById('settingsReminderTime');
+    if (reminderInput) reminderInput.value = reminderTime || '20:00';
+
+    const autoDelToggle = document.getElementById('settingsAutoDeleteEnabled');
+    if (autoDelToggle) autoDelToggle.checked = autoDeleteEnabled === 'true';
+    const autoDelHours = document.getElementById('settingsAutoDeleteHours');
+    if (autoDelHours) autoDelHours.value = autoDeleteHours || '10';
+
+    document.getElementById('settingsModal').classList.remove('hidden');
+    fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
+    fetchAndRenderThreads();
+}
+
+// v5.11: Save all notification settings (digest + reminder + auto-delete)
+async function saveDigestTime() {
+    const weekdayVal = (document.getElementById('settingsDigestTimeWeekday')?.value || '').trim();
+    const weekendVal = (document.getElementById('settingsDigestTimeWeekend')?.value || '').trim();
+    const reminderVal = (document.getElementById('settingsReminderTime')?.value || '').trim();
+    const autoDelEnabled = document.getElementById('settingsAutoDeleteEnabled')?.checked ? 'true' : 'false';
+    const autoDelHours = document.getElementById('settingsAutoDeleteHours')?.value || '10';
+
+    const timeRegex = /^\d{2}:\d{2}$/;
+    if (weekdayVal && !timeRegex.test(weekdayVal)) {
+        showNotification('Дайджест будні: введіть час у форматі ГГ:ХХ', 'error');
+        return;
+    }
+    if (weekendVal && !timeRegex.test(weekendVal)) {
+        showNotification('Дайджест вихідні: введіть час у форматі ГГ:ХХ', 'error');
+        return;
+    }
+    if (reminderVal && !timeRegex.test(reminderVal)) {
+        showNotification('Нагадування: введіть час у форматі ГГ:ХХ', 'error');
+        return;
+    }
+
+    await Promise.all([
+        apiSaveSetting('digest_time_weekday', weekdayVal),
+        apiSaveSetting('digest_time_weekend', weekendVal),
+        apiSaveSetting('reminder_time', reminderVal),
+        apiSaveSetting('auto_delete_enabled', autoDelEnabled),
+        apiSaveSetting('auto_delete_hours', autoDelHours)
+    ]);
+
+    const parts = [];
+    if (weekdayVal) parts.push(`дайджест будні ${weekdayVal}`);
+    if (weekendVal) parts.push(`дайджест вихідні ${weekendVal}`);
+    if (reminderVal) parts.push(`нагадування ${reminderVal}`);
+    if (autoDelEnabled === 'true') parts.push(`автовидалення ${autoDelHours}г`);
+    showNotification(parts.length > 0 ? `Збережено: ${parts.join(', ')}` : 'Сповіщення вимкнено', 'success');
+    closeAllModals();
+}
+
+async function sendTestDigest() {
+    const dateStr = formatDate(AppState.selectedDate);
+    showNotification('Надсилаю тестовий дайджест...', 'success');
+    try {
+        const response = await fetch(`${API_BASE}/telegram/digest/${dateStr}`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return;
+        const result = await response.json();
+        if (result.success) {
+            showNotification('Тестовий дайджест надіслано!', 'success');
+        } else {
+            showNotification('Помилка: ' + (result.reason || 'невідома'), 'error');
+        }
+    } catch (err) {
+        showNotification('Помилка надсилання', 'error');
+    }
+}
+
+// v5.11: Test tomorrow reminder
+async function sendTestReminder() {
+    const dateStr = formatDate(AppState.selectedDate);
+    showNotification('Надсилаю тестове нагадування...', 'success');
+    try {
+        const response = await fetch(`${API_BASE}/telegram/reminder/${dateStr}`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return;
+        const result = await response.json();
+        if (result.success) {
+            showNotification('Тестове нагадування надіслано!', 'success');
+        } else {
+            showNotification('Помилка: ' + (result.reason || result.error || 'невідома'), 'error');
+        }
+    } catch (err) {
+        showNotification('Помилка надсилання', 'error');
+    }
+}
+
+function saveAnimatorsListFromSettings() {
+    const textarea = document.getElementById('settingsAnimatorsList');
+    if (!textarea) return;
+    const names = textarea.value.split('\n').map(n => n.trim()).filter(n => n);
+    // FIX: використовуємо правильний ключ pzp_animators_list (раніше був баг з pzp_animators)
+    localStorage.setItem('pzp_animators_list', JSON.stringify(names));
+    populateAnimatorsSelect();
+    showNotification('Список аніматорів збережено!', 'success');
+    closeAllModals();
+}
+
+async function saveTelegramChatIdFromSettings() {
+    const chatId = document.getElementById('settingsTelegramChatId').value.trim();
+    if (!chatId) {
+        showNotification('Введіть Chat ID', 'error');
+        return;
+    }
+    await apiSaveSetting('telegram_chat_id', chatId);
+    const result = await apiTelegramNotify('🤖 Telegram підключено до системи бронювання Парку Закревського Періоду!');
+    if (result && result.success) {
+        showNotification('Telegram налаштовано та протестовано!', 'success');
+        closeAllModals();
+    } else {
+        showNotification('Chat ID збережено, але тестове повідомлення не надіслалось: ' + (result?.reason || 'невідома помилка'), 'error');
+    }
+}
+
+// v5.17: Save thread ID from settings modal
+async function saveThreadIdFromSettings() {
+    const threadId = document.getElementById('settingsTelegramThreadId')?.value.trim();
+    if (threadId && !/^\d+$/.test(threadId)) {
+        showNotification('Thread ID має бути числом', 'error');
+        return;
+    }
+    await apiSaveSetting('telegram_thread_id', threadId || '');
+    if (threadId) {
+        showNotification('Thread ID збережено! Сповіщення будуть у гілку #' + threadId, 'success');
+    } else {
+        showNotification('Thread ID очищено — сповіщення в General', 'success');
+    }
+}
+
+// ==========================================
+// ДАШБОРД (Фінанси + Статистика + Навантаження)
+// ==========================================
+
+function getDashboardDateRanges() {
+    const today = new Date();
+    const dayOfWeek = today.getDay() || 7;
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - dayOfWeek + 1);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    // v5.10: Year range
+    const yearStart = new Date(today.getFullYear(), 0, 1);
+    const yearEnd = new Date(today.getFullYear(), 11, 31);
+    return { today, weekStart, weekEnd, monthStart, monthEnd, yearStart, yearEnd };
+}
+
+function calcRevenue(bookings) {
+    return bookings.filter(b => b.status === 'confirmed').reduce((s, b) => s + (b.price || 0), 0);
+}
+
+function renderRevenueCards(todayBookings, weekBookings, monthBookings, yearBookings) {
+    return `<div class="dashboard-grid">
+        <div class="dash-card revenue">
+            <div class="dash-card-title">Сьогодні</div>
+            <div class="dash-card-value">${formatPrice(calcRevenue(todayBookings))}</div>
+            <div class="dash-card-sub">${todayBookings.length} бронювань</div>
+        </div>
+        <div class="dash-card revenue">
+            <div class="dash-card-title">Тиждень</div>
+            <div class="dash-card-value">${formatPrice(calcRevenue(weekBookings))}</div>
+            <div class="dash-card-sub">${weekBookings.length} бронювань</div>
+        </div>
+        <div class="dash-card revenue">
+            <div class="dash-card-title">Місяць</div>
+            <div class="dash-card-value">${formatPrice(calcRevenue(monthBookings))}</div>
+            <div class="dash-card-sub">${monthBookings.length} бронювань</div>
+        </div>
+        <div class="dash-card revenue">
+            <div class="dash-card-title">Рік ${new Date().getFullYear()}</div>
+            <div class="dash-card-value">${formatPrice(calcRevenue(yearBookings))}</div>
+            <div class="dash-card-sub">${yearBookings.length} бронювань</div>
+        </div>
+    </div>`;
+}
+
+function renderTopProgramsSection(bookingsData, periodLabel) {
+    const counts = {};
+    bookingsData.forEach(b => {
+        const key = b.programName || b.label;
+        if (!counts[key]) counts[key] = { count: 0, revenue: 0 };
+        counts[key].count++;
+        counts[key].revenue += b.price || 0;
+    });
+    const top = Object.entries(counts).sort((a, b) => b[1].count - a[1].count).slice(0, 8);
+
+    return `<div class="dashboard-section">
+        <h4>🏆 Топ програм (${periodLabel || 'Місяць'})</h4>
+        <div class="dash-list">
+            ${top.map(([name, data], i) =>
+                `<div class="dash-list-item">
+                    <span class="dash-rank">${i + 1}</span>
+                    <span class="dash-name">${name}</span>
+                    <span class="dash-count">${data.count}x</span>
+                    <span class="dash-revenue">${formatPrice(data.revenue)}</span>
+                </div>`
+            ).join('') || '<p class="no-data">Немає даних</p>'}
+        </div>
+    </div>`;
+}
+
+function renderCategoryBarsSection(bookingsData, periodLabel) {
+    const catCounts = {};
+    bookingsData.forEach(b => {
+        const cat = CATEGORY_NAMES_SHORT[b.category] || b.category;
+        if (!catCounts[cat]) catCounts[cat] = 0;
+        catCounts[cat]++;
+    });
+    const total = bookingsData.length;
+
+    return `<div class="dashboard-section">
+        <h4>📊 Категорії (${periodLabel || 'Місяць'})</h4>
+        <div class="dash-bars">
+            ${Object.entries(catCounts).sort((a, b) => b[1] - a[1]).map(([cat, count]) => {
+                const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                return `<div class="dash-bar-row">
+                    <span class="dash-bar-label">${cat}</span>
+                    <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%"></div></div>
+                    <span class="dash-bar-value">${count} (${pct}%)</span>
+                </div>`;
+            }).join('') || '<p class="no-data">Немає даних</p>'}
+        </div>
+    </div>`;
+}
+
+// v5.10: Dashboard state for period selection
+let dashboardPeriod = 'month';
+let dashboardAllData = {};
+
+async function showDashboard() {
+    if (isViewer()) return;
+
+    const modal = document.getElementById('dashboardModal');
+    const container = document.getElementById('dashboardContent');
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
+    modal.classList.remove('hidden');
+
+    const ranges = getDashboardDateRanges();
+    const [todayBookings, weekBookings, monthBookings, yearBookings] = await Promise.all([
+        apiGetStats(formatDate(ranges.today), formatDate(ranges.today)),
+        apiGetStats(formatDate(ranges.weekStart), formatDate(ranges.weekEnd)),
+        apiGetStats(formatDate(ranges.monthStart), formatDate(ranges.monthEnd)),
+        apiGetStats(formatDate(ranges.yearStart), formatDate(ranges.yearEnd))
+    ]);
+
+    dashboardAllData = { todayBookings, weekBookings, monthBookings, yearBookings };
+    dashboardPeriod = 'month';
+
+    renderDashboardContent();
+}
+
+function renderDashboardContent() {
+    const container = document.getElementById('dashboardContent');
+    const { todayBookings, weekBookings, monthBookings, yearBookings } = dashboardAllData;
+
+    const periodNames = { today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік', custom: 'Довільний' };
+    const periodData = {
+        today: todayBookings,
+        week: weekBookings,
+        month: monthBookings,
+        year: yearBookings
+    };
+
+    // Period tabs for "Top programs" and "Categories" sections
+    const tabsHtml = `<div class="dash-period-tabs">
+        ${['month', 'year', 'custom'].map(p =>
+            `<button class="dash-tab ${dashboardPeriod === p ? 'active' : ''}" onclick="switchDashboardPeriod('${p}')">${periodNames[p]}</button>`
+        ).join('')}
+    </div>`;
+
+    const customRangeHtml = dashboardPeriod === 'custom' ? `<div class="dash-custom-range">
+        <input type="date" id="dashCustomFrom" value="">
+        <span>—</span>
+        <input type="date" id="dashCustomTo" value="">
+        <button class="dash-tab active" onclick="loadDashboardCustomRange()">Показати</button>
+    </div>` : '';
+
+    const dataForSections = periodData[dashboardPeriod] || monthBookings;
+    const periodLabel = periodNames[dashboardPeriod] || 'Місяць';
+
+    container.innerHTML =
+        renderRevenueCards(todayBookings, weekBookings, monthBookings, yearBookings) +
+        tabsHtml + customRangeHtml +
+        renderTopProgramsSection(dataForSections, periodLabel) +
+        renderCategoryBarsSection(dataForSections, periodLabel);
+}
+
+function switchDashboardPeriod(period) {
+    dashboardPeriod = period;
+    renderDashboardContent();
+}
+
+async function loadDashboardCustomRange() {
+    const from = document.getElementById('dashCustomFrom')?.value;
+    const to = document.getElementById('dashCustomTo')?.value;
+    if (!from || !to) {
+        showNotification('Оберіть обидві дати', 'error');
+        return;
+    }
+    const customBookings = await apiGetStats(from, to);
+    dashboardAllData.customBookings = customBookings;
+    const container = document.getElementById('dashboardContent');
+    // Re-render with custom data
+    const { todayBookings, weekBookings, monthBookings, yearBookings } = dashboardAllData;
+
+    const periodLabel = `${from} — ${to}`;
+    const tabsHtml = `<div class="dash-period-tabs">
+        ${['month', 'year', 'custom'].map(p =>
+            `<button class="dash-tab ${p === 'custom' ? 'active' : ''}" onclick="switchDashboardPeriod('${p}')">${p === 'custom' ? 'Довільний' : p === 'month' ? 'Місяць' : 'Рік'}</button>`
+        ).join('')}
+    </div>`;
+    const customRangeHtml = `<div class="dash-custom-range">
+        <input type="date" id="dashCustomFrom" value="${from}">
+        <span>—</span>
+        <input type="date" id="dashCustomTo" value="${to}">
+        <button class="dash-tab active" onclick="loadDashboardCustomRange()">Показати</button>
+    </div>`;
+
+    container.innerHTML =
+        renderRevenueCards(todayBookings, weekBookings, monthBookings, yearBookings) +
+        tabsHtml + customRangeHtml +
+        renderTopProgramsSection(customBookings, periodLabel) +
+        renderCategoryBarsSection(customBookings, periodLabel);
+}
+
+// ==========================================
+// АФІША (F1-F5: MVP poster/events)
+// ==========================================
+
+async function apiGetAfisha() {
+    try {
+        const response = await fetch(`${API_BASE}/afisha`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('Afisha fetch error:', err);
+        return [];
+    }
+}
+
+async function apiGetAfishaByDate(date) {
+    try {
+        const response = await fetch(`${API_BASE}/afisha/${date}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        return await response.json();
+    } catch (err) {
+        return [];
+    }
+}
+
+async function apiCreateAfisha(data) {
+    try {
+        const response = await fetch(`${API_BASE}/afisha`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Afisha create error:', err);
+        return null;
+    }
+}
+
+async function apiDeleteAfisha(id) {
+    try {
+        const response = await fetch(`${API_BASE}/afisha/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Afisha delete error:', err);
+        return null;
+    }
+}
+
+// v5.19: Update afisha item
+async function apiUpdateAfisha(id, data) {
+    try {
+        const response = await fetch(`${API_BASE}/afisha/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Afisha update error:', err);
+        return null;
+    }
+}
+
+// v5.19: Shift afisha item by ±N minutes
+async function shiftAfishaItem(id, deltaMinutes) {
+    const items = await apiGetAfisha();
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+
+    const currentMin = timeToMinutes(item.time);
+    const newMin = currentMin + deltaMinutes;
+    if (newMin < 0 || newMin > 23 * 60 + 45) return;
+    const newTime = minutesToTime(newMin);
+
+    const result = await apiUpdateAfisha(id, {
+        date: item.date, time: newTime, title: item.title, duration: item.duration, type: item.type
+    });
+    if (result && result.success) {
+        await renderAfishaList();
+        if (formatDate(AppState.selectedDate) === item.date) {
+            delete AppState.cachedBookings[item.date];
+            await renderTimeline();
+        }
+    }
+}
+
+// v5.19: Edit afisha item — fill the form with existing data for re-save
+async function editAfishaItem(id) {
+    const items = await apiGetAfisha();
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+
+    const isBirthday = item.type === 'birthday';
+    const newTitle = prompt(isBirthday ? "Ім'я іменинника:" : 'Назва події:', item.title);
+    if (newTitle === null) return;
+    const newTime = prompt('Час (HH:MM):', item.time);
+    if (newTime === null || !/^\d{2}:\d{2}$/.test(newTime)) return;
+    const newDate = prompt('Дата (YYYY-MM-DD):', item.date);
+    if (newDate === null || !/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
+
+    let newDuration = item.duration;
+    if (!isBirthday) {
+        const durStr = prompt('Тривалість (хв):', item.duration);
+        if (durStr === null) return;
+        newDuration = parseInt(durStr) || item.duration;
+    }
+
+    const result = await apiUpdateAfisha(id, {
+        date: newDate, time: newTime, title: newTitle.trim() || item.title,
+        duration: newDuration, type: item.type
+    });
+    if (result && result.success) {
+        showNotification('Подію оновлено', 'success');
+        await renderAfishaList();
+        const oldDate = item.date;
+        if (formatDate(AppState.selectedDate) === oldDate || formatDate(AppState.selectedDate) === newDate) {
+            delete AppState.cachedBookings[oldDate];
+            delete AppState.cachedBookings[newDate];
+            await renderTimeline();
+        }
+    }
+}
+
+async function showAfishaModal() {
+    const modal = document.getElementById('afishaModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    await renderAfishaList();
+}
+
+async function renderAfishaList() {
+    const container = document.getElementById('afishaList');
+    if (!container) return;
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
+    const items = await apiGetAfisha();
+    if (items.length === 0) {
+        container.innerHTML = '<p class="no-data">Немає подій. Додайте першу!</p>';
+        return;
+    }
+    const typeIcons = { event: '🎪', birthday: '🎂', regular: '🔄' };
+    container.innerHTML = items.map(item => {
+        const icon = typeIcons[item.type] || '🎪';
+        const durationText = item.type === 'birthday' ? '' : ` (${item.duration} хв)`;
+        return `
+        <div class="afisha-item" data-id="${item.id}" data-type="${item.type || 'event'}">
+            <div class="afisha-item-info">
+                <strong>${icon} ${escapeHtml(item.title)}</strong>
+                <span class="afisha-date">${escapeHtml(item.date)} ${escapeHtml(item.time)}${durationText}</span>
+            </div>
+            <div class="afisha-item-actions">
+                <button class="btn-shift btn-sm" onclick="generateTasksForAfisha(${item.id})" title="Створити задачі">📝</button>
+                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, -15)" title="−15 хв">◀</button>
+                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, +15)" title="+15 хв">▶</button>
+                <button class="btn-edit btn-sm" onclick="editAfishaItem(${item.id})" title="Редагувати">✏️</button>
+                <button class="btn-danger btn-sm" onclick="deleteAfishaItem(${item.id})" title="Видалити">✕</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function addAfishaItem() {
+    const typeSelect = document.getElementById('afishaType');
+    const dateInput = document.getElementById('afishaDate');
+    const timeInput = document.getElementById('afishaTime');
+    const titleInput = document.getElementById('afishaTitle');
+    const durationInput = document.getElementById('afishaDuration');
+    if (!dateInput || !timeInput || !titleInput) return;
+
+    const type = typeSelect?.value || 'event';
+    const date = dateInput.value;
+    const time = timeInput.value;
+    const title = titleInput.value.trim();
+    const duration = type === 'birthday' ? 0 : (parseInt(durationInput?.value) || 60);
+
+    if (!date || !time || !title) {
+        showNotification('Заповніть дату, час та назву', 'error');
+        return;
+    }
+
+    // F4: Basic time conflict check (skip for birthdays — they don't block timeline)
+    if (type !== 'birthday') {
+        const existingBookings = await getBookingsForDate(new Date(date));
+        const newStart = timeToMinutes(time);
+        const newEnd = newStart + duration;
+        const conflict = existingBookings.find(b => {
+            const bStart = timeToMinutes(b.time);
+            const bEnd = bStart + b.duration;
+            return (newStart < bEnd && newEnd > bStart);
+        });
+        if (conflict) {
+            const proceed = await customConfirm(
+                `Конфлікт з "${conflict.label || conflict.programCode}" о ${conflict.time}. Додати все одно?`,
+                'Конфлікт часу'
+            );
+            if (!proceed) return;
+        }
+    }
+
+    const result = await apiCreateAfisha({ date, time, title, duration, type });
+    if (result && result.success) {
+        titleInput.value = '';
+        showNotification(type === 'birthday' ? 'Іменинника додано!' : 'Подію додано до афіші!', 'success');
+        await renderAfishaList();
+        // Refresh timeline if viewing same date
+        if (formatDate(AppState.selectedDate) === date) {
+            delete AppState.cachedBookings[date];
+            await renderTimeline();
+        }
+    } else {
+        showNotification('Помилка додавання', 'error');
+    }
+}
+
+async function deleteAfishaItem(id) {
+    const confirmed = await customConfirm('Видалити цю подію з афіші?', 'Видалення');
+    if (!confirmed) return;
+    const result = await apiDeleteAfisha(id);
+    if (result && result.success) {
+        showNotification('Подію видалено', 'success');
+        await renderAfishaList();
+    }
+}
+
+// v7.6: Generate tasks for afisha event
+async function generateTasksForAfisha(id) {
+    try {
+        const response = await fetch(`${API_BASE}/afisha/${id}/generate-tasks`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        if (handleAuthError(response)) return;
+        const data = await response.json();
+        if (data.success) {
+            showNotification(`Створено ${data.count} завдань для події!`, 'success');
+        } else if (response.status === 409) {
+            showNotification(`Задачі вже створені (${data.existing} шт)`, 'info');
+        } else {
+            showNotification(data.error || 'Помилка', 'error');
+        }
+    } catch (err) {
+        console.error('Generate tasks error:', err);
+        showNotification('Помилка створення задач', 'error');
+    }
+}
+
+// v5.10: Auto-positioning — find best free time slot for afisha event
+async function autoPositionAfisha() {
+    const dateInput = document.getElementById('afishaDate');
+    const durationInput = document.getElementById('afishaDuration');
+    if (!dateInput?.value) {
+        showNotification('Спочатку оберіть дату', 'error');
+        return;
+    }
+
+    const date = new Date(dateInput.value);
+    const duration = parseInt(durationInput?.value) || 60;
+    const dayOfWeek = date.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const startHour = isWeekend ? 10 : 12;
+    const endHour = 20;
+
+    // Get all bookings and afisha events for this date
+    const [bookings, afishaEvents] = await Promise.all([
+        getBookingsForDate(date),
+        apiGetAfishaByDate(dateInput.value)
+    ]);
+
+    // Build occupied intervals (in minutes from midnight)
+    const occupied = [];
+    bookings.forEach(b => {
+        const start = timeToMinutes(b.time);
+        occupied.push({ start, end: start + b.duration });
+    });
+    afishaEvents.forEach(ev => {
+        const start = timeToMinutes(ev.time);
+        occupied.push({ start, end: start + (ev.duration || 60) });
+    });
+
+    // Find first free slot of `duration` minutes
+    for (let min = startHour * 60; min + duration <= endHour * 60; min += 15) {
+        const slotEnd = min + duration;
+        const conflict = occupied.some(o => min < o.end && slotEnd > o.start);
+        if (!conflict) {
+            const h = Math.floor(min / 60);
+            const m = min % 60;
+            const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            document.getElementById('afishaTime').value = timeStr;
+            showNotification(`Вільний слот: ${timeStr}`, 'success');
+            return;
+        }
+    }
+
+    showNotification('Немає вільних слотів на цю дату', 'error');
+}
+
+// v5.10: Afisha bulk import from text
+async function importAfishaBulk() {
+    const textArea = document.getElementById('afishaImportText');
+    if (!textArea) return;
+
+    const text = textArea.value.trim();
+    if (!text) {
+        showNotification('Вставте дані для імпорту', 'error');
+        return;
+    }
+
+    const lines = text.split('\n').filter(l => l.trim());
+    let imported = 0;
+    let errors = 0;
+
+    for (const line of lines) {
+        // Support formats:
+        // 2026-02-14 12:00 60 Назва події
+        // 2026-02-14;12:00;60;Назва події
+        const parts = line.includes(';') ? line.split(';').map(s => s.trim()) : null;
+        let date, time, duration, title;
+
+        if (parts && parts.length >= 4) {
+            [date, time, duration, title] = parts;
+            duration = parseInt(duration) || 60;
+        } else {
+            // Space-separated: date time duration title...
+            const match = line.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(\d+)\s+(.+)$/);
+            if (!match) {
+                errors++;
+                continue;
+            }
+            [, date, time, duration, title] = match;
+            duration = parseInt(duration) || 60;
+        }
+
+        if (!date || !time || !title) { errors++; continue; }
+
+        const result = await apiCreateAfisha({ date, time, title, duration });
+        if (result && result.success) {
+            imported++;
+        } else {
+            errors++;
+        }
+    }
+
+    textArea.value = '';
+    showNotification(`Імпортовано: ${imported}, помилок: ${errors}`, imported > 0 ? 'success' : 'error');
+    await renderAfishaList();
+}
+
+// ==========================================
+// ЗАДАЧНИК (v7.5)
+// ==========================================
+
+async function apiGetTasks(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.status) params.set('status', filters.status);
+        if (filters.date) params.set('date', filters.date);
+        if (filters.assigned_to) params.set('assigned_to', filters.assigned_to);
+        if (filters.afisha_id) params.set('afisha_id', filters.afisha_id);
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}/tasks${qs}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('Tasks fetch error:', err);
+        return [];
+    }
+}
+
+async function apiCreateTask(data) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Task create error:', err);
+        return null;
+    }
+}
+
+async function apiUpdateTask(id, data) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Task update error:', err);
+        return null;
+    }
+}
+
+async function apiChangeTaskStatus(id, status) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${id}/status`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ status })
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Task status error:', err);
+        return null;
+    }
+}
+
+async function apiDeleteTask(id) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Task delete error:', err);
+        return null;
+    }
+}
+
+async function showTasksModal() {
+    const modal = document.getElementById('tasksModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    await renderTasksList();
+}
+
+async function renderTasksList() {
+    const container = document.getElementById('tasksList');
+    if (!container) return;
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
+
+    const statusFilter = document.getElementById('tasksFilterStatus')?.value || '';
+    const tasks = await apiGetTasks({ status: statusFilter || undefined });
+
+    if (tasks.length === 0) {
+        container.innerHTML = '<p class="no-data">Немає завдань. Додайте перше!</p>';
+        return;
+    }
+
+    const statusIcons = { todo: '⬜', in_progress: '🔄', done: '✅' };
+    const statusLabels = { todo: 'Зробити', in_progress: 'В роботі', done: 'Готово' };
+    const priorityIcons = { high: '🔴', normal: '', low: '🔵' };
+    const nextStatus = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
+
+    container.innerHTML = tasks.map(task => {
+        const icon = statusIcons[task.status] || '⬜';
+        const pIcon = priorityIcons[task.priority] || '';
+        const doneClass = task.status === 'done' ? ' task-done' : '';
+        const dateStr = task.date ? `<span class="task-date">${escapeHtml(task.date)}</span>` : '';
+        const assignee = task.assigned_to ? `<span class="task-assignee">👤 ${escapeHtml(task.assigned_to)}</span>` : '';
+        const afishaBadge = task.afisha_id ? '<span class="task-afisha-badge" title="З афіші">🎭</span>' : '';
+        const next = nextStatus[task.status] || 'todo';
+        const nextLabel = statusLabels[next];
+        return `
+        <div class="task-item${doneClass}" data-id="${task.id}" data-status="${task.status}">
+            <div class="task-item-left">
+                <button class="task-status-btn" onclick="cycleTaskStatus(${task.id}, '${next}')" title="${nextLabel}">${icon}</button>
+                <div class="task-item-info">
+                    <strong>${pIcon} ${afishaBadge} ${escapeHtml(task.title)}</strong>
+                    <div class="task-meta">${dateStr} ${assignee}</div>
+                </div>
+            </div>
+            <div class="task-item-actions">
+                <button class="btn-edit btn-sm" onclick="editTask(${task.id})" title="Редагувати">✏️</button>
+                <button class="btn-danger btn-sm" onclick="deleteTask(${task.id})" title="Видалити">✕</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function addTask() {
+    const titleInput = document.getElementById('taskTitle');
+    const dateInput = document.getElementById('taskDate');
+    const prioritySelect = document.getElementById('taskPriority');
+    const assignedInput = document.getElementById('taskAssignedTo');
+
+    const title = titleInput?.value.trim();
+    if (!title) {
+        showNotification('Введіть назву завдання', 'error');
+        return;
+    }
+
+    const result = await apiCreateTask({
+        title,
+        date: dateInput?.value || null,
+        priority: prioritySelect?.value || 'normal',
+        assigned_to: assignedInput?.value.trim() || null
+    });
+
+    if (result && result.success) {
+        titleInput.value = '';
+        showNotification('Завдання додано!', 'success');
+        await renderTasksList();
+    } else {
+        showNotification('Помилка додавання', 'error');
+    }
+}
+
+async function cycleTaskStatus(id, newStatus) {
+    const result = await apiChangeTaskStatus(id, newStatus);
+    if (result && result.success) {
+        await renderTasksList();
+    }
+}
+
+async function editTask(id) {
+    const tasks = await apiGetTasks();
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+
+    const newTitle = prompt('Назва завдання:', task.title);
+    if (newTitle === null) return;
+    const newDate = prompt('Дата (YYYY-MM-DD або порожньо):', task.date || '');
+    if (newDate === null) return;
+    const newPriority = prompt('Пріоритет (low/normal/high):', task.priority || 'normal');
+    if (newPriority === null) return;
+    const newAssigned = prompt('Відповідальний:', task.assigned_to || '');
+    if (newAssigned === null) return;
+
+    const result = await apiUpdateTask(id, {
+        title: newTitle.trim() || task.title,
+        description: task.description,
+        date: (newDate && /^\d{4}-\d{2}-\d{2}$/.test(newDate)) ? newDate : null,
+        status: task.status,
+        priority: ['low', 'normal', 'high'].includes(newPriority) ? newPriority : task.priority,
+        assigned_to: newAssigned.trim() || null
+    });
+
+    if (result && result.success) {
+        showNotification('Завдання оновлено', 'success');
+        await renderTasksList();
+    }
+}
+
+async function deleteTask(id) {
+    const confirmed = await customConfirm('Видалити це завдання?', 'Видалення');
+    if (!confirmed) return;
+    const result = await apiDeleteTask(id);
+    if (result && result.success) {
+        showNotification('Завдання видалено', 'success');
+        await renderTasksList();
+    }
+}

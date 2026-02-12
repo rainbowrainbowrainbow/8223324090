@@ -1,0 +1,585 @@
+/**
+ * panel.css - Booking sidebar panel, form, programs, status — v4.0 redesign
+ */
+
+/* ==========================================
+   SIDEBAR PANEL
+   ========================================== */
+
+.booking-panel {
+    position: fixed;
+    top: 56px;
+    right: 0;
+    width: 340px;
+    height: calc(100vh - 56px);
+    background: var(--white);
+    box-shadow: -4px 0 24px rgba(0,0,0,0.08);
+    z-index: var(--z-panel);
+    overflow: hidden;
+    animation: panelSlideIn var(--speed-normal) var(--ease-smooth);
+    border-left: 1px solid var(--gray-100);
+    display: flex;
+    flex-direction: column;
+}
+
+@keyframes panelSlideIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}
+
+/* v5.35: Panel backdrop — hidden on desktop, visible on tablet/mobile via responsive.css */
+.panel-backdrop {
+    display: none;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--gray-200);
+    background: var(--white);
+    z-index: 10;
+    flex-shrink: 0;
+}
+
+.panel-header h3 {
+    font-size: var(--font-lg);
+    font-weight: 800;
+    color: var(--gray-800);
+}
+
+.btn-close {
+    width: 36px;
+    height: 36px;
+    background: var(--gray-50);
+    border: none;
+    border-radius: 50%;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    color: var(--gray-500);
+}
+
+.btn-close:hover { background: var(--danger); color: var(--white); }
+
+.booking-form {
+    padding: 20px;
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.selected-info {
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary-50) 100%);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(16,185,129,0.15);
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.info-item:last-child { margin-bottom: 0; }
+
+.info-label { color: var(--gray-500); font-size: var(--font-sm); }
+.info-value { font-weight: 800; font-size: var(--font-base); color: var(--gray-800); }
+
+.form-section { margin-bottom: 18px; }
+
+.form-section label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-section select,
+.form-section input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    background: var(--white);
+}
+
+.form-section select:focus,
+.form-section input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.1);
+}
+
+.form-section select:focus-visible,
+.form-section input:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* ==========================================
+   PROGRAM ICONS
+   ========================================== */
+
+/* v5.49: Program search */
+.program-search-wrap { margin-bottom: 8px; }
+
+.program-search-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 16px;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    background: var(--white);
+}
+
+.program-search-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.1);
+}
+
+.program-search-input::placeholder { color: var(--gray-400); }
+
+.programs-icons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.category-header {
+    font-size: var(--font-xs);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--gray-400);
+    padding: 8px 0 4px;
+    border-bottom: 1px solid var(--gray-200);
+    margin-top: 4px;
+}
+
+.category-header:first-child { margin-top: 0; }
+
+.category-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+
+.program-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 6px;
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all var(--speed-normal) var(--ease-smooth);
+    min-height: 80px;
+    position: relative;
+    overflow: hidden;
+}
+
+.program-icon::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 12px 12px 0 0;
+    transition: height var(--speed-fast);
+}
+
+.program-icon:hover {
+    border-color: transparent;
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+}
+
+.program-icon:hover::before { height: 4px; }
+
+.program-icon.selected {
+    border-color: var(--primary);
+    background: var(--primary-50);
+    box-shadow: 0 4px 16px rgba(16,185,129,0.25);
+    transform: scale(1.04);
+}
+
+.program-icon.selected::after {
+    content: '\2713';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 18px;
+    height: 18px;
+    background: var(--primary);
+    color: var(--white);
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+
+.program-icon .icon {
+    font-size: 26px;
+    margin-bottom: 6px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+}
+
+.program-icon .name {
+    font-size: 10px;
+    font-weight: 800;
+    text-align: center;
+    line-height: 1.2;
+    color: var(--gray-700);
+    letter-spacing: -0.2px;
+}
+
+/* v5.32: Duration badge — top-right corner of program card */
+.program-duration {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1.4;
+    z-index: 1;
+}
+
+.program-duration.short {
+    background: #DBEAFE;
+    color: #1E40AF;
+}
+
+.program-duration.long {
+    background: #FDE68A;
+    color: #92400E;
+}
+
+/* Hide duration badge when card is selected (checkmark replaces it) */
+.program-icon.selected .program-duration {
+    display: none;
+}
+
+/* Category color variants — subtle tint bg, 1px border */
+.program-icon.quest { border-color: rgba(139,92,246,0.2); background: #FAFAFF; }
+.program-icon.quest::before { background: var(--quest); }
+.program-icon.quest:hover { border-color: var(--quest); background: #F5F3FF; }
+
+.program-icon.animation { border-color: rgba(59,130,246,0.2); background: #FAFBFF; }
+.program-icon.animation::before { background: var(--animation); }
+.program-icon.animation:hover { border-color: var(--animation); background: #EFF6FF; }
+
+.program-icon.show { border-color: rgba(249,115,22,0.2); background: #FFFAF8; }
+.program-icon.show::before { background: var(--show); }
+.program-icon.show:hover { border-color: var(--show); background: #FFF7ED; }
+
+.program-icon.masterclass { border-color: rgba(132,204,22,0.2); background: #FAFFF8; }
+.program-icon.masterclass::before { background: var(--masterclass); }
+.program-icon.masterclass:hover { border-color: var(--masterclass); background: #F7FEE7; }
+
+.program-icon.pinata { border-color: rgba(236,72,153,0.2); background: #FFFAFC; }
+.program-icon.pinata::before { background: var(--pinata); }
+.program-icon.pinata:hover { border-color: var(--pinata); background: #FDF2F8; }
+
+.program-icon.photo { border-color: rgba(6,182,212,0.2); background: #FAFFFF; }
+.program-icon.photo::before { background: var(--photo); }
+.program-icon.photo:hover { border-color: var(--photo); background: #ECFEFF; }
+
+.program-icon.custom { border-color: rgba(100,116,139,0.2); background: var(--gray-50); }
+.program-icon.custom::before { background: var(--custom); }
+.program-icon.custom:hover { border-color: var(--custom); background: var(--gray-100); }
+
+/* Program details */
+.program-details {
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+    border: 1px solid var(--gray-100);
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--font-sm);
+    margin-bottom: 6px;
+    color: var(--gray-500);
+}
+
+.detail-row:last-child { margin-bottom: 0; }
+.detail-row span:last-child { font-weight: 800; color: var(--gray-800); }
+
+/* Custom program section */
+.custom-program-section {
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+}
+
+.custom-program-section .form-section { margin-bottom: 12px; }
+.custom-program-section .form-section:last-child { margin-bottom: 0; }
+
+/* Second animator */
+.second-animator-section {
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+}
+
+.second-animator-section .form-section { margin-bottom: 0; }
+
+/* Hosts warning */
+.hosts-warning {
+    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+    border: 1px solid #FCD34D;
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #92400E;
+}
+
+/* Extra host toggle */
+.extra-host-section {
+    background: linear-gradient(135deg, var(--primary-50) 0%, var(--primary-light) 100%);
+    border: 1px solid rgba(16,185,129,0.2);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+}
+
+.extra-host-section .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    color: var(--primary-dark);
+}
+
+.extra-host-section .toggle-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+}
+
+.extra-host-section select {
+    margin-top: 12px;
+    width: 100%;
+    padding: 10px;
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+}
+
+/* Submit button */
+.btn-submit {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-md);
+    font-weight: 800;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    box-shadow: var(--shadow-primary);
+    /* v5.33: sticky bottom inside scrollable form */
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin-top: 8px;
+}
+
+.btn-submit:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(16,185,129,0.3);
+}
+
+/* ==========================================
+   PROGRAMS BUTTON
+   ========================================== */
+
+.btn-programs {
+    padding: 10px 18px;
+    background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: var(--font-sm);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.btn-programs:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(139,92,246,0.3);
+}
+
+/* ==========================================
+   BOOKING DESCRIPTION
+   ========================================== */
+
+.booking-detail-description {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.booking-detail-description .label {
+    display: block;
+    font-size: 12px;
+    color: var(--gray-500);
+    margin-bottom: 6px;
+}
+
+.booking-detail-description p {
+    font-size: var(--font-sm);
+    line-height: 1.6;
+    color: var(--gray-800);
+}
+
+/* ==========================================
+   STATUS (Preliminary/Confirmed)
+   ========================================== */
+
+.booking-block.preliminary {
+    border: 2px dashed rgba(255,255,255,0.7);
+    opacity: 0.75;
+}
+
+.booking-block .status-icon {
+    position: absolute;
+    top: 3px;
+    left: 5px;
+    font-size: 9px;
+    font-weight: 800;
+    background: rgba(255,255,255,0.3);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.status-section { margin-bottom: 18px; }
+
+/* Status radio styles moved to controls.css (v5.31 segmented control) */
+
+.status-value.preliminary { color: var(--warning); }
+.status-value.confirmed { color: var(--success); }
+
+/* v5.31: Status toggle — clear segmented-like action button */
+.btn-status-toggle {
+    width: 100%;
+    padding: 12px 16px;
+    min-height: 44px;
+    margin-top: 12px;
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: var(--font-sm);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    color: var(--gray-600);
+}
+
+.btn-status-toggle:hover {
+    border-color: var(--primary);
+    background: var(--primary-50);
+    color: var(--primary-dark);
+}
+
+.status-toggle-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.preliminary-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-xs);
+    border: 2px dashed var(--gray-400);
+    background: var(--gray-200);
+}
+
+/* ==========================================
+   KIDS COUNT
+   ========================================== */
+
+.kids-count-section {
+    background: var(--primary-50);
+    border: 1px solid rgba(16,185,129,0.2);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+}
+
+.kids-count-section input {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid rgba(16,185,129,0.3);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-base);
+    font-family: inherit;
+    text-align: center;
+    font-weight: 700;
+}
+
+/* v5.9: Change program button (focus mode) */
+.btn-change-program {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    margin-bottom: 10px;
+    background: var(--primary-50);
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+    font-weight: 700;
+    color: var(--primary-dark);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.btn-change-program:hover {
+    background: var(--primary-light);
+    border-color: var(--primary);
+}

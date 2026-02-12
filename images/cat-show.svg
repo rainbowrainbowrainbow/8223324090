@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Background glow -->
+  <circle cx="32" cy="32" r="30" fill="url(#gs)" opacity="0.12"/>
+  <!-- Magic wand -->
+  <line x1="16" y1="52" x2="38" y2="18" stroke="url(#gs2)" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Wand tip glow -->
+  <circle cx="38" cy="18" r="6" fill="#FFF176" opacity="0.4"/>
+  <circle cx="38" cy="18" r="3" fill="#FFEE58" opacity="0.6"/>
+  <!-- Main star -->
+  <path d="M38 6 l2.5 5.5 6 .8-4.3 4.2 1 6-5.2-2.7-5.2 2.7 1-6-4.3-4.2 6-.8z" fill="#FFD54F" stroke="#FFA000" stroke-width="0.8"/>
+  <!-- Sparkles around -->
+  <path d="M50 28 l1.5-3 1.5 3 3 1.5-3 1.5-1.5 3-1.5-3-3-1.5z" fill="#FF7043"/>
+  <path d="M22 14 l1-2 1 2 2 1-2 1-1 2-1-2-2-1z" fill="#E040FB"/>
+  <path d="M48 10 l1-2 1 2 2 1-2 1-1 2-1-2-2-1z" fill="#4FC3F7"/>
+  <path d="M54 20 l0.8-1.5 0.8 1.5 1.5 0.8-1.5 0.8-0.8 1.5-0.8-1.5-1.5-0.8z" fill="#69F0AE"/>
+  <!-- Small stars -->
+  <circle cx="26" cy="24" r="1.5" fill="#FF80AB"/>
+  <circle cx="46" cy="38" r="1" fill="#FFD54F"/>
+  <circle cx="44" cy="14" r="1.2" fill="#B388FF"/>
+  <!-- Trail sparkles -->
+  <circle cx="30" cy="30" r="1.5" fill="#FFAB40" opacity="0.7"/>
+  <circle cx="24" cy="40" r="1.2" fill="#FF5252" opacity="0.5"/>
+  <circle cx="20" cy="46" r="1" fill="#E040FB" opacity="0.5"/>
+  <defs>
+    <radialGradient id="gs"><stop offset="0%" stop-color="#F4511E"/><stop offset="100%" stop-color="#F4511E" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gs2" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#5D4037"/><stop offset="100%" stop-color="#8D6E63"/></linearGradient>
+  </defs>
+</svg>

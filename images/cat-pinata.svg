@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Background glow -->
+  <circle cx="32" cy="32" r="30" fill="url(#gpi)" opacity="0.12"/>
+  <!-- String -->
+  <line x1="32" y1="4" x2="32" y2="16" stroke="#9E9E9E" stroke-width="1.5"/>
+  <!-- Star body -->
+  <path d="M32 14 L37 24 L48 24 L39 31 L42 42 L32 35 L22 42 L25 31 L16 24 L27 24 Z" fill="url(#gpi2)" stroke="#C2185B" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Fringe layers -->
+  <path d="M27 24 L32 14 L37 24" fill="#FF80AB" opacity="0.5"/>
+  <path d="M39 31 L48 24 L37 24" fill="#F48FB1" opacity="0.4"/>
+  <path d="M25 31 L16 24 L27 24" fill="#CE93D8" opacity="0.4"/>
+  <!-- Fringe details -->
+  <path d="M20 28 Q22 30 20 32 Q18 30 20 28" fill="#FFD54F" opacity="0.6"/>
+  <path d="M44 28 Q42 30 44 32 Q46 30 44 28" fill="#4FC3F7" opacity="0.6"/>
+  <path d="M32 38 Q34 40 32 42 Q30 40 32 38" fill="#69F0AE" opacity="0.6"/>
+  <!-- Candy falling -->
+  <rect x="22" y="46" width="4" height="3" rx="1" fill="#FF5252" transform="rotate(15 24 47)"/>
+  <rect x="36" y="48" width="4" height="3" rx="1" fill="#2196F3" transform="rotate(-20 38 49)"/>
+  <circle cx="30" cy="50" r="2" fill="#FFD54F"/>
+  <circle cx="42" y="52" r="1.5" fill="#4CAF50"/>
+  <rect x="26" y="54" width="3" height="3" rx="0.5" fill="#E040FB" transform="rotate(30 27 55)"/>
+  <circle cx="34" cy="56" r="1.5" fill="#FF9800"/>
+  <!-- Stars -->
+  <path d="M10 20 l1-2 1 2 2 1-2 1-1 2-1-2-2-1z" fill="#FFD54F"/>
+  <path d="M52 18 l1-2 1 2 2 1-2 1-1 2-1-2-2-1z" fill="#FF80AB"/>
+  <defs>
+    <radialGradient id="gpi"><stop offset="0%" stop-color="#EC407A"/><stop offset="100%" stop-color="#EC407A" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gpi2" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="#F48FB1"/><stop offset="100%" stop-color="#EC407A"/></linearGradient>
+  </defs>
+</svg>

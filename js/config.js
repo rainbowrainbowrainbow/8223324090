@@ -132,6 +132,17 @@ const CATEGORY_ICONS_CATALOG = {
     animation: '🎪', show: '✨', quest: '🗝️', photo: '📸', masterclass: '🎨', pinata: '🎊'
 };
 
+// SVG icons per category (replaces emojis in program grid)
+const CATEGORY_SVG_ICONS = {
+    quest: 'images/cat-quest.svg',
+    animation: 'images/cat-animation.svg',
+    show: 'images/cat-show.svg',
+    photo: 'images/cat-photo.svg',
+    masterclass: 'images/cat-masterclass.svg',
+    pinata: 'images/cat-pinata.svg',
+    custom: 'images/cat-custom.svg'
+};
+
 // Дашборд: скорочені назви
 const CATEGORY_NAMES_SHORT = {
     quest: 'Квести', animation: 'Анімація', show: 'Шоу',

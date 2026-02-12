@@ -323,6 +323,12 @@
     line-height: 1;
 }
 
+.program-card .program-icon .icon-svg {
+    width: 28px;
+    height: 28px;
+    vertical-align: middle;
+}
+
 .program-card .program-price {
     font-size: var(--font-lg);
     font-weight: 800;

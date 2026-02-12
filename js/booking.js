@@ -158,9 +158,13 @@ async function renderProgramIcons() {
             const durationBadge = p.duration > 0
                 ? `<span class="program-duration ${p.duration <= 60 ? 'short' : 'long'}">${p.duration}'</span>`
                 : '';
+            const svgSrc = CATEGORY_SVG_ICONS[p.category];
+            const iconHtml = svgSrc
+                ? `<img src="${svgSrc}" alt="${p.code}" class="icon-svg" draggable="false">`
+                : `<span class="icon">${p.icon}</span>`;
             icon.innerHTML = `
                 ${durationBadge}
-                <span class="icon">${p.icon}</span>
+                ${iconHtml}
                 <span class="name">${p.code}</span>
             `;
             icon.addEventListener('click', () => selectProgram(p.id));

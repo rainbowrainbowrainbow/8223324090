@@ -392,6 +392,12 @@
         margin-bottom: 4px;
     }
 
+    .program-icon .icon-svg {
+        width: 28px;
+        height: 28px;
+        margin-bottom: 3px;
+    }
+
     .program-icon .name {
         font-size: 9px;
     }
@@ -535,6 +541,7 @@
     .category-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
     .program-icon { min-height: 68px; padding: 10px 4px; }
     .program-icon .icon { font-size: 22px; }
+    .program-icon .icon-svg { width: 26px; height: 26px; }
     .program-icon .name { font-size: 9px; }
     .program-duration { font-size: 8px; padding: 1px 4px; }
 
@@ -590,6 +597,7 @@
     .btn-submit { padding: 12px; font-size: 13px; }
     .program-icon { padding: 6px 3px; min-height: 58px; }
     .program-icon .icon { font-size: 20px; margin-bottom: 3px; }
+    .program-icon .icon-svg { width: 24px; height: 24px; margin-bottom: 2px; }
     .program-icon .name { font-size: 8px; }
 
     /* v5.34: Timeline compact */

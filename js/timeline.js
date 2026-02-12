@@ -450,83 +450,80 @@ function openAfishaModalAt(date, time) {
 
 let _afishaDragState = null;
 
+function _beginAfishaDrag(block, event, startHour, clientX) {
+    hideTooltip();
+    const grid = block.closest('.line-grid');
+    if (!grid) return;
+
+    const originalTime = event.original_time || event.time;
+    const origMin = timeToMinutes(originalTime);
+    const currentMin = timeToMinutes(event.time);
+    const maxDelta = event.template_id ? 90 : 120;
+    const minAllowed = Math.max(origMin - maxDelta, startHour * 60);
+    const maxAllowed = origMin + maxDelta;
+
+    const rangeEl = document.createElement('div');
+    rangeEl.className = 'afisha-drag-range';
+    const rangeLeftMin = minAllowed - startHour * 60;
+    const rangeRightMin = maxAllowed - startHour * 60;
+    const cellW = CONFIG.TIMELINE.CELL_WIDTH;
+    const cellM = CONFIG.TIMELINE.CELL_MINUTES;
+    rangeEl.style.left = `${(rangeLeftMin / cellM) * cellW}px`;
+    rangeEl.style.width = `${((rangeRightMin - rangeLeftMin) / cellM) * cellW}px`;
+    grid.appendChild(rangeEl);
+
+    const timeEl = document.createElement('div');
+    timeEl.className = 'afisha-drag-time';
+    timeEl.textContent = event.time;
+    block.appendChild(timeEl);
+
+    block.classList.add('dragging');
+
+    _afishaDragState = {
+        block, event, grid, rangeEl, timeEl,
+        startX: clientX,
+        startLeft: parseFloat(block.style.left),
+        currentMin, minAllowed, maxAllowed, startHour,
+        moved: false, newMin: currentMin
+    };
+}
+
 function initAfishaDrag(block, event, startHour) {
     block.addEventListener('mousedown', (e) => {
         if (e.button !== 0) return;
         e.preventDefault();
         e.stopPropagation();
-        hideTooltip();
-
-        const grid = block.closest('.line-grid');
-        if (!grid) return;
-
-        const gridRect = grid.getBoundingClientRect();
-        const originalTime = event.original_time || event.time;
-        const origMin = timeToMinutes(originalTime);
-        const currentMin = timeToMinutes(event.time);
-        const maxDelta = event.template_id ? 90 : 120;
-        const minAllowed = Math.max(origMin - maxDelta, startHour * 60);
-        const maxAllowed = origMin + maxDelta;
-
-        // Show drag range indicator
-        const rangeEl = document.createElement('div');
-        rangeEl.className = 'afisha-drag-range';
-        const rangeLeftMin = minAllowed - startHour * 60;
-        const rangeRightMin = maxAllowed - startHour * 60;
-        const cellW = CONFIG.TIMELINE.CELL_WIDTH;
-        const cellM = CONFIG.TIMELINE.CELL_MINUTES;
-        rangeEl.style.left = `${(rangeLeftMin / cellM) * cellW}px`;
-        rangeEl.style.width = `${((rangeRightMin - rangeLeftMin) / cellM) * cellW}px`;
-        grid.appendChild(rangeEl);
-
-        // Time indicator
-        const timeEl = document.createElement('div');
-        timeEl.className = 'afisha-drag-time';
-        timeEl.textContent = event.time;
-        block.appendChild(timeEl);
-
-        block.classList.add('dragging');
-
-        _afishaDragState = {
-            block,
-            event,
-            grid,
-            rangeEl,
-            timeEl,
-            startX: e.clientX,
-            startLeft: parseFloat(block.style.left),
-            currentMin,
-            minAllowed,
-            maxAllowed,
-            startHour,
-            moved: false,
-            newMin: currentMin
-        };
+        _beginAfishaDrag(block, event, startHour, e.clientX);
     });
+    block.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        e.preventDefault();
+        _beginAfishaDrag(block, event, startHour, e.touches[0].clientX);
+    }, { passive: false });
 }
 
-document.addEventListener('mousemove', (e) => {
+function _moveAfishaDrag(clientX) {
     if (!_afishaDragState) return;
     const s = _afishaDragState;
-    const deltaX = e.clientX - s.startX;
+    const deltaX = clientX - s.startX;
 
-    if (Math.abs(deltaX) > 3) s.moved = true;
+    if (Math.abs(deltaX) > 8) s.moved = true;
     if (!s.moved) return;
 
     const cellW = CONFIG.TIMELINE.CELL_WIDTH;
     const cellM = CONFIG.TIMELINE.CELL_MINUTES;
     const deltaMin = (deltaX / cellW) * cellM;
 
-    let newMin = Math.round((s.currentMin + deltaMin) / 5) * 5; // snap to 5 min
+    let newMin = Math.round((s.currentMin + deltaMin) / 5) * 5;
     newMin = Math.max(s.minAllowed, Math.min(s.maxAllowed, newMin));
 
     const newLeft = ((newMin - s.startHour * 60) / cellM) * cellW;
     s.block.style.left = `${newLeft}px`;
     s.timeEl.textContent = minutesToTime(newMin);
     s.newMin = newMin;
-});
+}
 
-document.addEventListener('mouseup', async () => {
+async function _endAfishaDrag() {
     if (!_afishaDragState) return;
     const s = _afishaDragState;
 
@@ -543,24 +540,30 @@ document.addEventListener('mouseup', async () => {
                 body: JSON.stringify({ time: newTime })
             });
             if (!resp.ok) throw new Error('API error');
-            // Update subtitle
             const subtitle = s.block.querySelector('.subtitle');
             const dur = s.event.duration || 60;
             if (subtitle) subtitle.textContent = `${newTime} · ${dur}хв`;
             s.block.dataset.eventTime = newTime;
             showNotification(`Час афіші оновлено: ${newTime}`);
         } catch (err) {
-            // Revert
             s.block.style.left = `${s.startLeft}px`;
             showNotification('Помилка оновлення часу', 'error');
         }
     } else if (!s.moved) {
-        // Click without drag → edit
         editAfishaItem(s.event.id);
     }
 
     _afishaDragState = null;
-});
+}
+
+document.addEventListener('mousemove', (e) => _moveAfishaDrag(e.clientX));
+document.addEventListener('mouseup', () => _endAfishaDrag());
+document.addEventListener('touchmove', (e) => {
+    if (!_afishaDragState) return;
+    e.preventDefault();
+    _moveAfishaDrag(e.touches[0].clientX);
+}, { passive: false });
+document.addEventListener('touchend', () => _endAfishaDrag());
 
 // ==========================================
 // РЕЖИМ ДЕКІЛЬКОХ ДНІВ

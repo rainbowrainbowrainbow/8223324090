@@ -568,6 +568,43 @@
         </div>
     </div>
 
+    <!-- Модальне вікно створення правила автоматизації (v8.3.1) -->
+    <div id="automationRuleModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Нове правило">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3>🤖 Нове правило автоматизації</h3>
+            <form id="automationRuleForm" onsubmit="handleAutomationRuleSubmit(event)">
+                <div class="form-group">
+                    <label for="arName">Назва правила</label>
+                    <input type="text" id="arName" placeholder="напр: Піньята — друк" required>
+                </div>
+                <div class="form-group">
+                    <label for="arProductIds">ID продуктів (через кому)</label>
+                    <input type="text" id="arProductIds" placeholder="напр: pinata,pinata_custom" required>
+                </div>
+                <div class="form-group">
+                    <label for="arTriggerType">Тригер</label>
+                    <select id="arTriggerType">
+                        <option value="booking_create">При створенні бронювання</option>
+                        <option value="booking_confirm">При підтвердженні</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="arDaysBefore">За скільки днів створити задачу (0 = у день)</label>
+                    <input type="number" id="arDaysBefore" value="3" min="0" max="30">
+                </div>
+                <div class="form-group">
+                    <label for="arTaskTitle">Шаблон задачі</label>
+                    <input type="text" id="arTaskTitle" value="📋 Підготовка до {programName} на {date}" placeholder="Плейсхолдери: {date}, {time}, {programName}, {pinataFiller}...">
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="arSendTelegram"> Також надіслати в Telegram групу</label>
+                </div>
+                <button type="submit" class="btn-submit btn-full">✅ Створити правило</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Модальне вікно історії (v5.16: з фільтрами) -->
     <div id="historyModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Історія змін">
         <div class="modal-content modal-large">

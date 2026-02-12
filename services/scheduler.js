@@ -445,9 +445,16 @@ let afishaRecurringCreatedToday = null;
 /**
  * v8.1: Ensure all recurring afisha templates are applied for a given date.
  * Reusable by both scheduler (00:06) and digest (before sending).
+ * v8.3: In-memory cache (5 min TTL) prevents N+1 queries on every GET /afisha/:date.
  * Returns number of created events.
  */
+const _ensureCache = {};
+const ENSURE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 async function ensureRecurringAfishaForDate(dateStr) {
+    const now = Date.now();
+    if (_ensureCache[dateStr] && (now - _ensureCache[dateStr]) < ENSURE_CACHE_TTL) return 0;
+    _ensureCache[dateStr] = now;
     const dateObj = new Date(dateStr + 'T12:00:00');
     const dayOfWeek = dateObj.getDay() || 7; // 1=Mon...7=Sun
 

@@ -119,6 +119,7 @@ async function executeTelegramGroup(action, booking) {
  * Called after booking INSERT + COMMIT (fire-and-forget pattern).
  */
 async function processBookingAutomation(booking) {
+    if (!booking || !booking.date) return;
     try {
         const rules = await pool.query(
             'SELECT * FROM automation_rules WHERE is_active = true'

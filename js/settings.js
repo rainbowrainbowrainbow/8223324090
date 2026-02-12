@@ -1885,20 +1885,34 @@ async function deleteAutomationRule(id) {
     }
 }
 
-async function showAddAutomationRule() {
-    const name = prompt('Назва правила:');
-    if (!name) return;
-    const productIds = prompt('ID продуктів через кому (напр: pinata,pinata_custom):');
-    if (!productIds) return;
-    const daysBefore = parseInt(prompt('За скільки днів до події створити задачу? (0 = у день бронювання):', '3')) || 0;
-    const taskTitle = prompt('Шаблон задачі (плейсхолдери: {date}, {time}, {pinataFiller}, {kidsCount}, {room}, {groupName}):', `📋 Підготовка до {programName} на {date}`);
-    if (!taskTitle) return;
+function showAddAutomationRule() {
+    const modal = document.getElementById('automationRuleModal');
+    if (!modal) return;
+    document.getElementById('automationRuleForm').reset();
+    document.getElementById('arDaysBefore').value = '3';
+    document.getElementById('arTaskTitle').value = '📋 Підготовка до {programName} на {date}';
+    modal.classList.remove('hidden');
+    document.getElementById('arName').focus();
+}
+
+async function handleAutomationRuleSubmit(e) {
+    e.preventDefault();
+    const name = document.getElementById('arName').value.trim();
+    const productIds = document.getElementById('arProductIds').value.trim();
+    const triggerType = document.getElementById('arTriggerType').value;
+    const daysBefore = parseInt(document.getElementById('arDaysBefore').value) || 0;
+    const taskTitle = document.getElementById('arTaskTitle').value.trim();
+    const sendTelegram = document.getElementById('arSendTelegram').checked;
+
+    if (!name || !productIds || !taskTitle) {
+        showNotification('Заповніть всі поля', 'error');
+        return;
+    }
 
     const actions = [
         { type: 'create_task', title: taskTitle, priority: 'high', category: 'purchase' }
     ];
 
-    const sendTelegram = confirm('Також надіслати повідомлення в Telegram групу?');
     if (sendTelegram) {
         actions.push({
             type: 'telegram_group',
@@ -1912,7 +1926,7 @@ async function showAddAutomationRule() {
             headers: getAuthHeaders(),
             body: JSON.stringify({
                 name,
-                trigger_type: 'booking_create',
+                trigger_type: triggerType,
                 trigger_condition: { product_ids: productIds.split(',').map(s => s.trim()) },
                 actions,
                 days_before: daysBefore
@@ -1920,6 +1934,7 @@ async function showAddAutomationRule() {
         });
         const data = await response.json();
         if (data.success) {
+            document.getElementById('automationRuleModal').classList.add('hidden');
             showNotification('Правило створено!', 'success');
             renderAutomationRules();
         } else {

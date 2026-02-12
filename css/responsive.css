@@ -78,22 +78,45 @@
         overflow-x: hidden;
     }
 
-    /* v7.8.6: Compact header on mobile */
+    /* v7.8.6: Clean mobile header — icon nav centered */
     .header-content {
-        padding: 10px 12px;
-        gap: 8px;
+        padding: 8px 12px;
     }
 
     .logo-text { display: none; }
 
-    .header-nav { gap: 2px; }
+    .logo-img-small {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+    }
+
+    .header-nav {
+        flex: 1;
+        justify-content: center;
+        gap: 4px;
+    }
+
+    .nav-link .nav-text { display: none; }
 
     .nav-link {
-        padding: 6px 8px;
-        font-size: 12px;
+        padding: 8px 16px;
+        font-size: 18px;
+        border-radius: 10px;
+        line-height: 1;
+    }
+
+    .nav-link.active {
+        background: rgba(255,255,255,0.2);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
     }
 
     .user-name { display: none; }
+
+    .btn-logout {
+        padding: 7px 12px;
+        font-size: 11px;
+    }
 
     .main-content { padding: 12px; }
 
@@ -433,12 +456,6 @@
 @media (max-width: 480px) {
     .main-content { padding: 8px; }
 
-    /* v7.8.6: Icon-only nav on small phones */
-    .nav-link .nav-text { display: none; }
-    .nav-link { padding: 6px 10px; font-size: 16px; }
-
-    .btn-logout { padding: 6px 10px; font-size: 11px; }
-
     .category-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
     .program-icon { min-height: 68px; padding: 10px 4px; }
     .program-icon .icon { font-size: 22px; }
@@ -519,9 +536,9 @@
     .main-content { padding: 6px; }
 
     /* v7.8.6: Ultra-compact header */
-    .header-content { padding: 8px 10px; gap: 6px; }
-    .logo-img-small { width: 30px; height: 30px; }
-    .nav-link { padding: 5px 8px; font-size: 14px; }
+    .header-content { padding: 6px 8px; }
+    .logo-img-small { width: 28px; height: 28px; }
+    .nav-link { padding: 6px 12px; font-size: 16px; }
     .btn-logout { padding: 5px 8px; font-size: 10px; }
 
     /* v7.8.3: Toolbar ultra-compact */

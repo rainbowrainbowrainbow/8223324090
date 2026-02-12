@@ -525,10 +525,7 @@
         align-items: flex-start;
     }
 
-    .nav-link {
-        padding: 6px 10px;
-        font-size: 12px;
-    }
+    /* .nav-link styles moved to responsive.css (v7.8.6) */
 
     .inline-form {
         flex-direction: column;

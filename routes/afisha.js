@@ -81,9 +81,9 @@ router.post('/templates', async (req, res) => {
                 );
                 if (exists.rows.length === 0) {
                     await pool.query(
-                        `INSERT INTO afisha (date, time, title, duration, type, description, template_id)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                        [todayStr, tpl.time, tpl.title, tpl.duration, tpl.type, tpl.description, tpl.id]
+                        `INSERT INTO afisha (date, time, title, duration, type, description, template_id, original_time)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                        [todayStr, tpl.time, tpl.title, tpl.duration, tpl.type, tpl.description, tpl.id, tpl.time]
                     );
                     todayCreated = true;
                     log.info(`Eager-apply: created afisha "${tpl.title}" for today ${todayStr}`);
@@ -222,8 +222,8 @@ router.post('/', async (req, res) => {
         const eventType = validTypes.includes(type) ? type : 'event';
         const eventDuration = eventType === 'birthday' ? 15 : (duration || 60);
         const result = await pool.query(
-            'INSERT INTO afisha (date, time, title, duration, type, description) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [date, time, title, eventDuration, eventType, description || null]
+            'INSERT INTO afisha (date, time, title, duration, type, description, original_time) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [date, time, title, eventDuration, eventType, description || null, time]
         );
         const item = result.rows[0];
         // v8.1: Log to history
@@ -300,6 +300,41 @@ router.post('/:id/generate-tasks', async (req, res) => {
         res.json({ success: true, tasks: created, count: created.length });
     } catch (err) {
         log.error('Generate tasks error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// v8.3: Quick time update for drag-to-move
+router.patch('/:id/time', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { time } = req.body;
+        if (!time || !validateTime(time)) return res.status(400).json({ error: 'Valid time required' });
+
+        const event = await pool.query('SELECT * FROM afisha WHERE id = $1', [id]);
+        if (event.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+        const ev = event.rows[0];
+        const originalTime = ev.original_time || ev.time;
+        const maxDelta = ev.template_id ? 90 : 120;
+
+        const newMin = timeToMinutes(time);
+        const origMin = timeToMinutes(originalTime);
+        if (Math.abs(newMin - origMin) > maxDelta) {
+            return res.status(400).json({ error: 'Time exceeds allowed range' });
+        }
+
+        await pool.query('UPDATE afisha SET time = $1 WHERE id = $2', [time, id]);
+
+        const username = req.user?.username || 'system';
+        await pool.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['afisha_move', username, JSON.stringify({ id: ev.id, title: ev.title, from: ev.time, to: time })]
+        ).catch(err => log.error('History log error', err));
+
+        res.json({ success: true, time, originalTime });
+    } catch (err) {
+        log.error('Move error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

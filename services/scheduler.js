@@ -479,9 +479,9 @@ async function ensureRecurringAfishaForDate(dateStr) {
         if (existing.rows.length > 0) continue;
 
         await pool.query(
-            `INSERT INTO afisha (date, time, title, duration, type, description, template_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [dateStr, tpl.time, tpl.title, tpl.duration, tpl.type, tpl.description, tpl.id]
+            `INSERT INTO afisha (date, time, title, duration, type, description, template_id, original_time)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [dateStr, tpl.time, tpl.title, tpl.duration, tpl.type, tpl.description, tpl.id, tpl.time]
         );
         created++;
     }

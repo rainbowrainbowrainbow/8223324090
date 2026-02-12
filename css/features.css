@@ -813,18 +813,19 @@
 
 .afisha-timeline-line {
     background: linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(109,40,217,0.04) 100%);
-    border-top: 3px solid #8B5CF6;
-    border-bottom: 3px solid #8B5CF6;
-    margin: 12px 0;
+    border-top: 2px solid #8B5CF6;
+    border-bottom: 2px solid #8B5CF6;
+    margin: 8px 0;
     box-shadow: 0 2px 12px rgba(139,92,246,0.15), inset 0 0 0 1px rgba(139,92,246,0.1);
     position: relative;
+    min-height: 44px;
 }
 
 .afisha-line-header {
     background: linear-gradient(135deg, #DDD6FE 0%, #C4B5FD 100%) !important;
     cursor: pointer;
     border-left: 4px solid #7C3AED !important;
-    min-height: 52px;
+    min-height: 40px;
 }
 
 .afisha-line-header .line-name {
@@ -843,16 +844,80 @@
 /* Afisha blocks on the dedicated line */
 .afisha-block {
     border-radius: 6px !important;
-    cursor: pointer;
+    cursor: grab;
+    height: 28px;
+    top: 50% !important;
+    bottom: auto !important;
+    margin-top: -14px;
+    padding: 2px 8px !important;
+    display: flex !important;
+    align-items: center;
+    gap: 6px;
     transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
                 box-shadow 0.2s ease,
                 filter 0.2s ease;
 }
 
 .afisha-block:hover {
-    transform: scale(1.08) translateY(-2px);
-    filter: brightness(1.1);
+    transform: scale(1.04) translateY(-1px);
+    filter: brightness(1.08);
     z-index: 30;
+}
+
+.afisha-block.dragging {
+    cursor: grabbing;
+    opacity: 0.85;
+    z-index: 50;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    transition: box-shadow 0.15s ease;
+}
+
+.afisha-block .user-letter {
+    display: none !important;
+}
+
+.afisha-block .title {
+    font-size: 11px !important;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
+.afisha-block .subtitle {
+    font-size: 9px !important;
+    opacity: 0.85;
+    white-space: nowrap;
+    margin-top: 0 !important;
+    line-height: 1.2;
+}
+
+/* Drag time indicator */
+.afisha-drag-time {
+    position: absolute;
+    top: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.8);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 100;
+}
+
+/* Drag constraint visual guide */
+.afisha-drag-range {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: rgba(139,92,246,0.08);
+    border-left: 1px dashed rgba(139,92,246,0.3);
+    border-right: 1px dashed rgba(139,92,246,0.3);
+    pointer-events: none;
+    z-index: 5;
+    border-radius: 4px;
 }
 
 .afisha-type-event {
@@ -867,11 +932,6 @@
 .afisha-type-event .title,
 .afisha-type-event .subtitle { color: #fff !important; }
 
-.afisha-type-event .user-letter {
-    background: rgba(255,255,255,0.2) !important;
-    color: #fff !important;
-}
-
 .afisha-type-regular {
     background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%) !important;
     border: none !important;
@@ -883,11 +943,6 @@
 
 .afisha-type-regular .title,
 .afisha-type-regular .subtitle { color: #fff !important; }
-
-.afisha-type-regular .user-letter {
-    background: rgba(255,255,255,0.2) !important;
-    color: #fff !important;
-}
 
 .afisha-type-birthday {
     background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%) !important;
@@ -907,11 +962,6 @@
 
 .afisha-type-birthday .title,
 .afisha-type-birthday .subtitle { color: #fff !important; }
-
-.afisha-type-birthday .user-letter {
-    background: rgba(255,255,255,0.2) !important;
-    color: #fff !important;
-}
 
 /* Afisha line header shimmer on hover */
 .afisha-line-header { position: relative; overflow: hidden; }

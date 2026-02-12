@@ -381,8 +381,6 @@ function createAfishaBlock(event, startHour) {
     const duration = event.duration || (event.type === 'birthday' ? 15 : 60);
     const width = (duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
 
-    const typeIcons = { event: '🎭', regular: '🔄', birthday: '🎂' };
-    const icon = typeIcons[event.type] || '🎭';
     const typeClass = event.type || 'event';
 
     block.className = `booking-block afisha-block afisha-type-${typeClass}`;
@@ -390,23 +388,27 @@ function createAfishaBlock(event, startHour) {
     block.style.width = `${Math.max(width, 40)}px`;
     block.dataset.afishaId = event.id;
 
-    const tooltipText = event.description
-        ? `${event.title} — ${event.description}`
-        : event.title;
-    block.title = tooltipText;
+    // Store drag data
+    const originalTime = event.original_time || event.time;
+    block.dataset.originalTime = originalTime;
+    block.dataset.eventTime = event.time;
+    block.dataset.eventType = event.type || 'event';
+    block.dataset.templateId = event.template_id || '';
 
     block.innerHTML = `
-        <div class="user-letter">${icon}</div>
         <div class="title">${escapeHtml(event.title)}</div>
-        <div class="subtitle">${event.time}${duration > 0 ? ' (' + duration + 'хв)' : ''}</div>
+        <div class="subtitle">${event.time}${duration > 0 ? ' · ' + duration + 'хв' : ''}</div>
     `;
 
-    if (!isViewer()) {
+    // Drag-to-move for non-birthday blocks (birthday has synthetic 14:00/18:00 blocks)
+    if (!isViewer() && event.type !== 'birthday') {
+        initAfishaDrag(block, event, startHour);
+    } else if (!isViewer()) {
         block.addEventListener('click', () => editAfishaItem(event.id));
     }
 
     block.addEventListener('mouseenter', (e) => showAfishaTooltip(e, event));
-    block.addEventListener('mousemove', (e) => moveTooltip(e));
+    block.addEventListener('mousemove', (e) => { if (!_afishaDragState) moveTooltip(e); });
     block.addEventListener('mouseleave', hideTooltip);
 
     return block;
@@ -441,6 +443,124 @@ function openAfishaModalAt(date, time) {
     if (time && timeInput) timeInput.value = time;
     renderAfishaList();
 }
+
+// ==========================================
+// DRAG-TO-MOVE AFISHA BLOCKS
+// ==========================================
+
+let _afishaDragState = null;
+
+function initAfishaDrag(block, event, startHour) {
+    block.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        hideTooltip();
+
+        const grid = block.closest('.line-grid');
+        if (!grid) return;
+
+        const gridRect = grid.getBoundingClientRect();
+        const originalTime = event.original_time || event.time;
+        const origMin = timeToMinutes(originalTime);
+        const currentMin = timeToMinutes(event.time);
+        const maxDelta = event.template_id ? 90 : 120;
+        const minAllowed = Math.max(origMin - maxDelta, startHour * 60);
+        const maxAllowed = origMin + maxDelta;
+
+        // Show drag range indicator
+        const rangeEl = document.createElement('div');
+        rangeEl.className = 'afisha-drag-range';
+        const rangeLeftMin = minAllowed - startHour * 60;
+        const rangeRightMin = maxAllowed - startHour * 60;
+        const cellW = CONFIG.TIMELINE.CELL_WIDTH;
+        const cellM = CONFIG.TIMELINE.CELL_MINUTES;
+        rangeEl.style.left = `${(rangeLeftMin / cellM) * cellW}px`;
+        rangeEl.style.width = `${((rangeRightMin - rangeLeftMin) / cellM) * cellW}px`;
+        grid.appendChild(rangeEl);
+
+        // Time indicator
+        const timeEl = document.createElement('div');
+        timeEl.className = 'afisha-drag-time';
+        timeEl.textContent = event.time;
+        block.appendChild(timeEl);
+
+        block.classList.add('dragging');
+
+        _afishaDragState = {
+            block,
+            event,
+            grid,
+            rangeEl,
+            timeEl,
+            startX: e.clientX,
+            startLeft: parseFloat(block.style.left),
+            currentMin,
+            minAllowed,
+            maxAllowed,
+            startHour,
+            moved: false,
+            newMin: currentMin
+        };
+    });
+}
+
+document.addEventListener('mousemove', (e) => {
+    if (!_afishaDragState) return;
+    const s = _afishaDragState;
+    const deltaX = e.clientX - s.startX;
+
+    if (Math.abs(deltaX) > 3) s.moved = true;
+    if (!s.moved) return;
+
+    const cellW = CONFIG.TIMELINE.CELL_WIDTH;
+    const cellM = CONFIG.TIMELINE.CELL_MINUTES;
+    const deltaMin = (deltaX / cellW) * cellM;
+
+    let newMin = Math.round((s.currentMin + deltaMin) / 5) * 5; // snap to 5 min
+    newMin = Math.max(s.minAllowed, Math.min(s.maxAllowed, newMin));
+
+    const newLeft = ((newMin - s.startHour * 60) / cellM) * cellW;
+    s.block.style.left = `${newLeft}px`;
+    s.timeEl.textContent = minutesToTime(newMin);
+    s.newMin = newMin;
+});
+
+document.addEventListener('mouseup', async () => {
+    if (!_afishaDragState) return;
+    const s = _afishaDragState;
+
+    s.block.classList.remove('dragging');
+    if (s.rangeEl && s.rangeEl.parentNode) s.rangeEl.remove();
+    if (s.timeEl && s.timeEl.parentNode) s.timeEl.remove();
+
+    if (s.moved && s.newMin !== s.currentMin) {
+        const newTime = minutesToTime(s.newMin);
+        try {
+            const resp = await fetch(`${API_BASE}/afisha/${s.event.id}/time`, {
+                method: 'PATCH',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ time: newTime })
+            });
+            if (!resp.ok) throw new Error('API error');
+            // Update subtitle
+            const subtitle = s.block.querySelector('.subtitle');
+            const dur = s.event.duration || 60;
+            if (subtitle) subtitle.textContent = `${newTime} · ${dur}хв`;
+            s.block.dataset.eventTime = newTime;
+            showNotification(`Час афіші оновлено: ${newTime}`);
+        } catch (err) {
+            // Revert
+            s.block.style.left = `${s.startLeft}px`;
+            showNotification('Помилка оновлення часу', 'error');
+        }
+    } else if (!s.moved) {
+        // Click without drag → edit
+        editAfishaItem(s.event.id);
+    }
+
+    _afishaDragState = null;
+});
 
 // ==========================================
 // РЕЖИМ ДЕКІЛЬКОХ ДНІВ

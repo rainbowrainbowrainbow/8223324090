@@ -295,17 +295,26 @@ async function handleUndo() {
 function setupSwipe() {
     const container = document.getElementById('timelineScroll');
     if (!container) return;
-    let startX = 0, startY = 0;
+    let startX = 0, startY = 0, startScrollLeft = 0;
 
     container.addEventListener('touchstart', (e) => {
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
+        startScrollLeft = container.scrollLeft;
     }, { passive: true });
 
     container.addEventListener('touchend', (e) => {
+        // v7.8.1: Ignore swipe if timeline actually scrolled horizontally
+        const scrollDelta = Math.abs(container.scrollLeft - startScrollLeft);
+        if (scrollDelta > 5) return;
+
+        // v7.8.1: Skip date swipe in multi-day mode
+        if (AppState.multiDayMode) return;
+
         const dx = e.changedTouches[0].clientX - startX;
         const dy = e.changedTouches[0].clientY - startY;
-        if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) {
+        // v7.8.1: Increased threshold 80→150px to prevent accidental date switches
+        if (Math.abs(dx) > 150 && Math.abs(dx) > Math.abs(dy) * 2.5) {
             changeDate(dx > 0 ? -1 : 1);
         }
     }, { passive: true });

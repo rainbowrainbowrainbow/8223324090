@@ -45,7 +45,7 @@ router.post('/', async (req, res) => {
         if (!validateTime(time)) return res.status(400).json({ error: 'Invalid time' });
         const validTypes = ['event', 'birthday', 'regular'];
         const eventType = validTypes.includes(type) ? type : 'event';
-        const eventDuration = eventType === 'birthday' ? 0 : (duration || 60);
+        const eventDuration = eventType === 'birthday' ? 15 : (duration || 60);
         const result = await pool.query(
             'INSERT INTO afisha (date, time, title, duration, type) VALUES ($1, $2, $3, $4, $5) RETURNING *',
             [date, time, title, eventDuration, eventType]

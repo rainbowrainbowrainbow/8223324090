@@ -294,6 +294,10 @@ function initSettingsListeners() {
     const afishaImportBtn = document.getElementById('afishaImportBtn');
     if (afishaImportBtn) afishaImportBtn.addEventListener('click', importAfishaBulk);
 
+    // v8.0: Afisha edit modal form
+    const afishaEditForm = document.getElementById('afishaEditForm');
+    if (afishaEditForm) afishaEditForm.addEventListener('submit', handleAfishaEditSubmit);
+
     // v7.4: Afisha type selector — toggle duration visibility for birthday
     const afishaType = document.getElementById('afishaType');
     if (afishaType) afishaType.addEventListener('change', () => {

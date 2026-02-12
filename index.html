@@ -1603,6 +1603,38 @@
         </div>
     </div>
 
+    <!-- v8.0: Afisha edit modal (replaces prompt() dialogs) -->
+    <div id="afishaEditModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Редагувати подію">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3 id="afishaEditTitle">✏️ Редагувати подію</h3>
+            <form id="afishaEditForm" class="settings-form">
+                <input type="hidden" id="afishaEditId">
+                <input type="hidden" id="afishaEditType">
+                <div class="form-group">
+                    <label for="afishaEditName">Назва</label>
+                    <input type="text" id="afishaEditName" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="afishaEditDate">Дата</label>
+                    <input type="date" id="afishaEditDate" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="afishaEditTime">Час</label>
+                    <input type="time" id="afishaEditTime" class="form-input" required>
+                </div>
+                <div class="form-group" id="afishaEditDurationGroup">
+                    <label for="afishaEditDuration">Тривалість (хв)</label>
+                    <input type="number" id="afishaEditDuration" class="form-input" min="15" step="15" value="60">
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-submit">Зберегти</button>
+                    <button type="button" class="btn-cancel" onclick="document.getElementById('afishaEditModal').classList.add('hidden')">Скасувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="notification" class="notification hidden">
         <span id="notificationText"></span>
     </div>

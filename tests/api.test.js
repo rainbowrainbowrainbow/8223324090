@@ -2177,14 +2177,14 @@ describe('Afisha Event Types (v7.4)', () => {
         eventId = res.data.item.id;
     });
 
-    it('POST /api/afisha — create birthday (type=birthday, duration=0)', async () => {
+    it('POST /api/afisha — create birthday (type=birthday, duration=15)', async () => {
         const res = await authRequest('POST', '/api/afisha', {
             date: '2099-07-01', time: '14:00', title: 'Артем', type: 'birthday', duration: 120
         });
         assert.equal(res.status, 200);
         assert.ok(res.data.success);
         assert.equal(res.data.item.type, 'birthday');
-        assert.equal(res.data.item.duration, 0, 'Birthday duration should be forced to 0');
+        assert.equal(res.data.item.duration, 15, 'Birthday duration should be forced to 15');
         birthdayId = res.data.item.id;
     });
 
@@ -2236,7 +2236,7 @@ describe('Afisha Event Types (v7.4)', () => {
 
     it('PUT /api/afisha/:id — update with type preserved', async () => {
         const res = await authRequest('PUT', `/api/afisha/${birthdayId}`, {
-            date: '2099-07-01', time: '15:00', title: 'Артем Оновлений', duration: 0, type: 'birthday'
+            date: '2099-07-01', time: '15:00', title: 'Артем Оновлений', duration: 15, type: 'birthday'
         });
         assert.equal(res.status, 200);
         assert.ok(res.data.success);

@@ -1099,38 +1099,60 @@ async function shiftAfishaItem(id, deltaMinutes) {
     }
 }
 
-// v5.19: Edit afisha item — fill the form with existing data for re-save
+// v8.0: Edit afisha item — proper modal instead of prompt()
 async function editAfishaItem(id) {
     const items = await apiGetAfisha();
     const item = items.find(i => i.id === id);
     if (!item) return;
 
     const isBirthday = item.type === 'birthday';
-    const newTitle = prompt(isBirthday ? "Ім'я іменинника:" : 'Назва події:', item.title);
-    if (newTitle === null) return;
-    const newTime = prompt('Час (HH:MM):', item.time);
-    if (newTime === null || !/^\d{2}:\d{2}$/.test(newTime)) return;
-    const newDate = prompt('Дата (YYYY-MM-DD):', item.date);
-    if (newDate === null || !/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
+    const modal = document.getElementById('afishaEditModal');
+    const titleEl = document.getElementById('afishaEditTitle');
+    titleEl.textContent = isBirthday ? "🎂 Редагувати іменинника" : "✏️ Редагувати подію";
 
-    let newDuration = item.duration;
-    if (!isBirthday) {
-        const durStr = prompt('Тривалість (хв):', item.duration);
-        if (durStr === null) return;
-        newDuration = parseInt(durStr) || item.duration;
+    document.getElementById('afishaEditId').value = id;
+    document.getElementById('afishaEditType').value = item.type;
+    document.getElementById('afishaEditName').value = item.title;
+    document.getElementById('afishaEditDate').value = item.date;
+    document.getElementById('afishaEditTime').value = item.time;
+    document.getElementById('afishaEditDuration').value = item.duration || 60;
+
+    // Hide duration for birthday
+    const durGroup = document.getElementById('afishaEditDurationGroup');
+    if (durGroup) durGroup.style.display = isBirthday ? 'none' : '';
+
+    modal.classList.remove('hidden');
+    document.getElementById('afishaEditName').focus();
+}
+
+// v8.0: Handle afisha edit form submit
+async function handleAfishaEditSubmit(e) {
+    e.preventDefault();
+    const id = document.getElementById('afishaEditId').value;
+    const type = document.getElementById('afishaEditType').value;
+    const title = document.getElementById('afishaEditName').value.trim();
+    const date = document.getElementById('afishaEditDate').value;
+    const time = document.getElementById('afishaEditTime').value;
+    const duration = type === 'birthday' ? 15 : (parseInt(document.getElementById('afishaEditDuration').value) || 60);
+
+    if (!title || !date || !time) {
+        showNotification('Заповніть всі поля', 'error');
+        return;
     }
 
-    const result = await apiUpdateAfisha(id, {
-        date: newDate, time: newTime, title: newTitle.trim() || item.title,
-        duration: newDuration, type: item.type
-    });
+    // Get old date for cache invalidation
+    const items = await apiGetAfisha();
+    const oldItem = items.find(i => String(i.id) === String(id));
+    const oldDate = oldItem ? oldItem.date : null;
+
+    const result = await apiUpdateAfisha(id, { date, time, title, duration, type });
     if (result && result.success) {
+        document.getElementById('afishaEditModal').classList.add('hidden');
         showNotification('Подію оновлено', 'success');
         await renderAfishaList();
-        const oldDate = item.date;
-        if (formatDate(AppState.selectedDate) === oldDate || formatDate(AppState.selectedDate) === newDate) {
-            delete AppState.cachedBookings[oldDate];
-            delete AppState.cachedBookings[newDate];
+        if (formatDate(AppState.selectedDate) === oldDate || formatDate(AppState.selectedDate) === date) {
+            if (oldDate) delete AppState.cachedBookings[oldDate];
+            delete AppState.cachedBookings[date];
             await renderTimeline();
         }
     }
@@ -1155,7 +1177,7 @@ async function renderAfishaList() {
     const typeIcons = { event: '🎪', birthday: '🎂', regular: '🔄' };
     container.innerHTML = items.map(item => {
         const icon = typeIcons[item.type] || '🎪';
-        const durationText = item.type === 'birthday' ? '' : ` (${item.duration} хв)`;
+        const durationText = item.type === 'birthday' ? ' (14:00 + 18:00, 15хв)' : ` (${item.duration} хв)`;
         return `
         <div class="afisha-item" data-id="${item.id}" data-type="${item.type || 'event'}">
             <div class="afisha-item-info">
@@ -1187,7 +1209,7 @@ async function addAfishaItem() {
     const date = dateInput.value;
     const time = timeInput.value;
     const title = titleInput.value.trim();
-    const duration = type === 'birthday' ? 0 : (parseInt(durationInput?.value) || 60);
+    const duration = type === 'birthday' ? 15 : (parseInt(durationInput?.value) || 60);
 
     if (!date || !time || !title) {
         showNotification('Заповніть дату, час та назву', 'error');

@@ -13,7 +13,7 @@ router.get('/:date', async (req, res) => {
         const { date } = req.params;
         await ensureDefaultLines(date);
         const result = await pool.query(
-            'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id',
+            'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id',
             [date]
         );
         const lines = result.rows.map(row => ({

@@ -220,7 +220,7 @@ router.post('/webhook', async (req, res) => {
                 await ensureDefaultLines(date);
 
                 const linesResult = await pool.query(
-                    'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]
+                    'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id', [date]
                 );
                 const existingNumbers = linesResult.rows
                     .map(row => { const m = row.name.match(/^Аніматор (\d+)$/); return m ? parseInt(m[1]) : 0; })

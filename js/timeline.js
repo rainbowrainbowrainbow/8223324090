@@ -324,10 +324,14 @@ function renderAfishaLine(container, events, startHour, date) {
         ? ` · 🎂 ${birthdays.map(b => b.title).join(', ')}`
         : '';
 
+    const nonBirthdayCount = events.filter(ev => ev.type !== 'birthday').length;
+    const birthdayBlockCount = birthdays.length * 2; // each birthday = 2 blocks (14:00 + 18:00)
+    const totalBlocks = nonBirthdayCount + birthdayBlockCount;
+
     lineEl.innerHTML = `
         <div class="line-header afisha-line-header" style="border-left-color: #8B5CF6">
             <span class="line-name">🎪 Афіша${birthdayLabel}</span>
-            <span class="line-sub">${events.length > 0 ? events.length + ' подій' : ''}</span>
+            <span class="line-sub">${totalBlocks > 0 ? totalBlocks + ' подій' : ''}</span>
         </div>
         <div class="line-grid afisha-line-grid" data-line-id="afisha">
             ${renderGridCells('afisha', date)}
@@ -337,8 +341,16 @@ function renderAfishaLine(container, events, startHour, date) {
     const grid = lineEl.querySelector('.line-grid');
 
     events.forEach(ev => {
-        const block = createAfishaBlock(ev, startHour);
-        if (block) grid.appendChild(block);
+        if (ev.type === 'birthday') {
+            // Birthday greetings: show at 14:00 and 18:00, 15 min each
+            const block14 = createAfishaBlock({ ...ev, time: '14:00', duration: 15 }, startHour);
+            const block18 = createAfishaBlock({ ...ev, time: '18:00', duration: 15 }, startHour);
+            if (block14) grid.appendChild(block14);
+            if (block18) grid.appendChild(block18);
+        } else {
+            const block = createAfishaBlock(ev, startHour);
+            if (block) grid.appendChild(block);
+        }
     });
 
     container.appendChild(lineEl);
@@ -366,7 +378,7 @@ function createAfishaBlock(event, startHour) {
 
     const block = document.createElement('div');
     const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
-    const duration = event.duration || (event.type === 'birthday' ? 30 : 60);
+    const duration = event.duration || (event.type === 'birthday' ? 15 : 60);
     const width = (duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
 
     const typeIcons = { event: '🎭', regular: '🔄', birthday: '🎂' };

@@ -61,7 +61,12 @@ async function buildAndSendDigest(date) {
             const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
             const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
             text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room})`;
-            if (b.second_animator) text += ` 👥${b.second_animator}`;
+            if (b.second_animator) {
+                // v7.9.3: Resolve second_animator to current line name (handles renamed lines)
+                const linkedBk = bookings.find(lb => lb.linked_to === b.id && lb.line_id !== b.line_id);
+                const resolvedName = linkedBk ? (lines.find(l => l.line_id === linkedBk.line_id)?.name || b.second_animator) : b.second_animator;
+                text += ` 👥${resolvedName}`;
+            }
             if (b.kids_count) text += ` [${b.kids_count} діт]`;
             text += '\n';
         }
@@ -145,7 +150,12 @@ async function sendTomorrowReminder(todayStr) {
                 const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
                 const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
                 text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room})`;
-                if (b.second_animator) text += ` 👥${b.second_animator}`;
+                if (b.second_animator) {
+                    // v7.9.3: Resolve second_animator to current line name (handles renamed lines)
+                    const linkedBk = bookingsResult.rows.find(lb => lb.linked_to === b.id && lb.line_id !== b.line_id);
+                    const resolvedName = linkedBk ? (linesResult.rows.find(l => l.line_id === linkedBk.line_id)?.name || b.second_animator) : b.second_animator;
+                    text += ` 👥${resolvedName}`;
+                }
                 if (b.kids_count) text += ` [${b.kids_count} діт]`;
                 text += '\n';
             }

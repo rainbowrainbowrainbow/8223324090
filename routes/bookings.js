@@ -70,10 +70,10 @@ router.post('/', async (req, res) => {
         }
 
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
              RETURNING *`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null]
+            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null]
         );
 
         await client.query(
@@ -151,12 +151,11 @@ router.post('/full', async (req, res) => {
             main.id = await generateBookingNumber(client);
         }
 
-        // v7.9.3: Added group_name ($22) — was missing from /full POST
         const mainInsert = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
              RETURNING *`,
-            [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null]
+            [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null]
         );
 
         const linkedRows = [];
@@ -306,12 +305,12 @@ router.put('/:id', async (req, res) => {
             `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
              label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
              second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-             linked_to=$18, status=$19, kids_count=$20, group_name=$21, updated_at=NOW()
-             WHERE id=$22`,
+             linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, updated_at=NOW()
+             WHERE id=$23`,
             [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
              b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
              b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
-             b.kidsCount || null, b.groupName || null, id]
+             b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id]
         );
 
         if (!b.linkedTo) {
@@ -344,7 +343,7 @@ router.put('/:id', async (req, res) => {
         if (statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
             notifyTelegram('create', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
             // v8.3: Trigger automation when preliminary → confirmed
-            processBookingAutomation({ ...b, id, status: newStatus })
+            processBookingAutomation({ ...b, id, status: newStatus, _event: 'confirm' })
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         } else if (statusChanged) {
             notifyTelegram('status_change', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);

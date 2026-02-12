@@ -397,7 +397,7 @@ function createAfishaBlock(event, startHour) {
 
     block.innerHTML = `
         <div class="title">${escapeHtml(event.title)}</div>
-        <div class="subtitle">${event.time}${duration > 0 ? ' · ' + duration + 'хв' : ''}</div>
+        <div class="subtitle">${event.time}</div>
     `;
 
     // Drag-to-move for non-birthday blocks (birthday has synthetic 14:00/18:00 blocks)

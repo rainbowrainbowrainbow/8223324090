@@ -14,17 +14,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=8.3.0">
-    <link rel="stylesheet" href="css/auth.css?v=8.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=8.3.0">
-    <link rel="stylesheet" href="css/timeline.css?v=8.3.0">
-    <link rel="stylesheet" href="css/panel.css?v=8.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=8.3.0">
-    <link rel="stylesheet" href="css/controls.css?v=8.3.0">
-    <link rel="stylesheet" href="css/features.css?v=8.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=8.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=8.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=8.3.0">
+    <link rel="stylesheet" href="css/base.css?v=8.3.1">
+    <link rel="stylesheet" href="css/auth.css?v=8.3.1">
+    <link rel="stylesheet" href="css/layout.css?v=8.3.1">
+    <link rel="stylesheet" href="css/timeline.css?v=8.3.1">
+    <link rel="stylesheet" href="css/panel.css?v=8.3.1">
+    <link rel="stylesheet" href="css/modals.css?v=8.3.1">
+    <link rel="stylesheet" href="css/controls.css?v=8.3.1">
+    <link rel="stylesheet" href="css/features.css?v=8.3.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=8.3.1">
+    <link rel="stylesheet" href="css/responsive.css?v=8.3.1">
+    <link rel="stylesheet" href="css/pages.css?v=8.3.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -35,9 +35,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v8.3.0 — Графік + Афіша + Автоматизація</p>
+                <p class="tagline">Система бронювання v8.3.1 — Футболки + Афіша-фікс</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.3.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.3.1</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -393,6 +393,19 @@
                     <input type="number" id="kidsCountInput" min="1" max="50" placeholder="Введіть к-кість дітей">
                 </div>
 
+                <!-- v8.3.1: Розміри футболок (для МК Футболок) -->
+                <div id="tshirtSizesSection" class="form-section tshirt-sizes-section hidden">
+                    <label>👕 Розміри футболок</label>
+                    <p class="form-hint">Вкажіть кількість кожного розміру (можна заповнити пізніше)</p>
+                    <div class="tshirt-sizes-grid">
+                        <div class="tshirt-size-item"><label>XS</label><input type="number" id="tshirtXS" min="0" max="30" value="0"></div>
+                        <div class="tshirt-size-item"><label>S</label><input type="number" id="tshirtS" min="0" max="30" value="0"></div>
+                        <div class="tshirt-size-item"><label>M</label><input type="number" id="tshirtM" min="0" max="30" value="0"></div>
+                        <div class="tshirt-size-item"><label>L</label><input type="number" id="tshirtL" min="0" max="30" value="0"></div>
+                        <div class="tshirt-size-item"><label>XL</label><input type="number" id="tshirtXL" min="0" max="30" value="0"></div>
+                    </div>
+                </div>
+
                 <!-- v3.2: Статус бронювання -->
                 <div class="form-section status-section">
                     <label>Статус</label>
@@ -707,6 +720,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v8.3.1 — МК Футболки + Афіша-фікс</h4>
+                    <ul>
+                        <li>МК Футболки: розміри (XS/S/M/L/XL) у формі бронювання, збереження в extra_data</li>
+                        <li>Автоматизація: 2 правила для футболок — уточнити розміри (create) + замовити (confirm)</li>
+                        <li>Інтерполяція {tshirtSizes} у шаблонах задач та Telegram</li>
+                        <li>Афіша-блоки: flex-direction: row — title + час в один рядок, без обрізання</li>
+                        <li>extra_data JSONB підтримка у всіх CRUD-ендпоінтах бронювань</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v8.3.0 — Автоматизація + Drag-to-Move</h4>
                     <ul>
@@ -1826,13 +1849,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=8.3.0"></script>
-    <script src="js/api.js?v=8.3.0"></script>
-    <script src="js/ui.js?v=8.3.0"></script>
-    <script src="js/auth.js?v=8.3.0"></script>
-    <script src="js/timeline.js?v=8.3.0"></script>
-    <script src="js/booking.js?v=8.3.0"></script>
-    <script src="js/settings.js?v=8.3.0"></script>
-    <script src="js/app.js?v=8.3.0"></script>
+    <script src="js/config.js?v=8.3.1"></script>
+    <script src="js/api.js?v=8.3.1"></script>
+    <script src="js/ui.js?v=8.3.1"></script>
+    <script src="js/auth.js?v=8.3.1"></script>
+    <script src="js/timeline.js?v=8.3.1"></script>
+    <script src="js/booking.js?v=8.3.1"></script>
+    <script src="js/settings.js?v=8.3.1"></script>
+    <script src="js/app.js?v=8.3.1"></script>
 </body>
 </html>

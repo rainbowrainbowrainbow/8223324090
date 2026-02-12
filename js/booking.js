@@ -287,6 +287,20 @@ function selectProgram(programId) {
             kidsCountSection.classList.add('hidden');
         }
     }
+
+    // v8.3.1: T-shirt sizes section
+    const tshirtSection = document.getElementById('tshirtSizesSection');
+    if (tshirtSection) {
+        if (programId === 'mk_tshirt') {
+            tshirtSection.classList.remove('hidden');
+            ['XS', 'S', 'M', 'L', 'XL'].forEach(s => {
+                const inp = document.getElementById('tshirt' + s);
+                if (inp) inp.value = '0';
+            });
+        } else {
+            tshirtSection.classList.add('hidden');
+        }
+    }
 }
 
 async function populateAnimatorSelectById(selectId, placeholder) {
@@ -463,8 +477,21 @@ function buildBookingObject(formData, program) {
         createdAt: new Date().toISOString(),
         status: status,
         kidsCount: kidsCount || null,
-        groupName: document.getElementById('bookingGroupName')?.value.trim() || null
+        groupName: document.getElementById('bookingGroupName')?.value.trim() || null,
+        extraData: buildExtraData(formData.programId)
     };
+}
+
+function buildExtraData(programId) {
+    if (programId === 'mk_tshirt') {
+        const sizes = {};
+        ['XS', 'S', 'M', 'L', 'XL'].forEach(s => {
+            const val = parseInt(document.getElementById('tshirt' + s)?.value) || 0;
+            if (val > 0) sizes[s] = val;
+        });
+        if (Object.keys(sizes).length > 0) return { tshirt_sizes: sizes };
+    }
+    return null;
 }
 
 // v5.7: Build linked bookings array (for transactional create)
@@ -618,6 +645,7 @@ async function handleBookingSubmit(e) {
             if (oldBooking) {
                 booking.createdBy = oldBooking.createdBy;
                 booking.createdAt = oldBooking.createdAt;
+                if (!booking.extraData && oldBooking.extraData) booking.extraData = oldBooking.extraData;
             }
 
             const updateResult = await apiUpdateBooking(booking.id, booking);
@@ -881,6 +909,15 @@ async function editBooking(bookingId) {
                 kidsInput.value = booking.kidsCount;
                 kidsInput.dispatchEvent(new Event('input'));
             }
+        }
+
+        // v8.3.1: T-shirt sizes
+        if (booking.programId === 'mk_tshirt' && booking.extraData?.tshirt_sizes) {
+            const sizes = booking.extraData.tshirt_sizes;
+            ['XS', 'S', 'M', 'L', 'XL'].forEach(s => {
+                const inp = document.getElementById('tshirt' + s);
+                if (inp) inp.value = sizes[s] || 0;
+            });
         }
     }
 

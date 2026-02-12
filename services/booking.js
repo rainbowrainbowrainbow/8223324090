@@ -145,7 +145,8 @@ function mapBookingRow(row) {
         status: row.status || 'confirmed',
         kidsCount: row.kids_count,
         updatedAt: row.updated_at,
-        groupName: row.group_name || null
+        groupName: row.group_name || null,
+        extraData: row.extra_data || null
     };
 }
 

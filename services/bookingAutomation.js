@@ -17,10 +17,23 @@ const log = createLogger('Automation');
 /**
  * Replace placeholders in template strings with booking data.
  * Placeholders: {date}, {time}, {programName}, {pinataFiller}, {kidsCount},
- *               {room}, {groupName}, {createdBy}, {label}, {notes}
+ *               {room}, {groupName}, {createdBy}, {label}, {notes}, {tshirtSizes}
  */
 function interpolate(template, booking) {
     if (!template) return '';
+
+    // v8.3.1: Build t-shirt sizes string from extra_data
+    const extraData = booking.extraData || booking.extra_data;
+    let tshirtStr = '';
+    if (extraData?.tshirt_sizes && typeof extraData.tshirt_sizes === 'object') {
+        tshirtStr = Object.entries(extraData.tshirt_sizes)
+            .filter(([, v]) => v > 0)
+            .map(([s, v]) => `${s}×${v}`)
+            .join(', ') || 'не вказано';
+    } else {
+        tshirtStr = 'не вказано';
+    }
+
     return template
         .replace(/\{date\}/g, booking.date || '')
         .replace(/\{time\}/g, booking.time || '')
@@ -31,7 +44,8 @@ function interpolate(template, booking) {
         .replace(/\{groupName\}/g, booking.groupName || booking.group_name || '')
         .replace(/\{createdBy\}/g, booking.createdBy || booking.created_by || '')
         .replace(/\{label\}/g, booking.label || '')
-        .replace(/\{notes\}/g, booking.notes || '');
+        .replace(/\{notes\}/g, booking.notes || '')
+        .replace(/\{tshirtSizes\}/g, tshirtStr);
 }
 
 /**
@@ -126,9 +140,11 @@ async function processBookingAutomation(booking) {
         );
 
         let triggered = 0;
+        const event = booking._event || 'create';
         for (const rule of rules.rows) {
-            // Filter by trigger_type
-            if (rule.trigger_type === 'booking_confirm' && booking.status === 'preliminary') continue;
+            // Filter by trigger_type vs event
+            if (rule.trigger_type === 'booking_create' && event !== 'create') continue;
+            if (rule.trigger_type === 'booking_confirm' && event !== 'confirm') continue;
 
             if (matchesCondition(rule.trigger_condition, booking)) {
                 const actions = Array.isArray(rule.actions) ? rule.actions : [];

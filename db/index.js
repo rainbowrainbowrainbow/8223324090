@@ -354,7 +354,8 @@ async function initDatabase() {
             await pool.query(
                 `INSERT INTO automation_rules (name, trigger_type, trigger_condition, actions, days_before) VALUES
                 ($1, 'booking_create', $2, $3, 3),
-                ($4, 'booking_create', $5, $6, 5)`,
+                ($4, 'booking_create', $5, $6, 5),
+                ($7, 'booking_confirm', $8, $9, 5)`,
                 [
                     'Замовлення друку піньяти',
                     JSON.stringify({ product_ids: ['pinata', 'pinata_custom'] }),
@@ -362,16 +363,21 @@ async function initDatabase() {
                         { type: 'create_task', title: '🪅 Замовити друк піньяти №{pinataFiller} на {date}', priority: 'high', category: 'purchase' },
                         { type: 'telegram_group', template: '🪅 <b>Замовлення піньяти</b>\n\n📋 Друк: №{pinataFiller}\n📅 Дата: {date} о {time}\n🏠 Кімната: {room}\n👤 Створив: {createdBy}\n\nПотрібно замовити друк!' }
                     ]),
-                    'Підготовка МК Футболки',
+                    'МК Футболки — уточнити розміри',
                     JSON.stringify({ product_ids: ['mk_tshirt'] }),
                     JSON.stringify([
-                        { type: 'create_task', title: '👕 Замовити {kidsCount} футболок для МК на {date}', priority: 'high', category: 'purchase' },
-                        { type: 'create_task', title: '📏 Уточнити розміри футболок у клієнта ({groupName})', priority: 'high', category: 'admin' },
-                        { type: 'telegram_group', template: '👕 <b>МК Футболки</b>\n\n📅 Дата: {date} о {time}\n👶 Дітей: {kidsCount}\n🏠 Кімната: {room}\n\nПотрібно уточнити розміри та замовити футболки!' }
+                        { type: 'create_task', title: '📏 Уточнити розміри футболок у клієнта ({groupName}) на {date}', priority: 'high', category: 'admin' },
+                        { type: 'telegram_group', template: '👕 <b>МК Футболки — нове бронювання</b>\n\n📅 Дата: {date} о {time}\n👶 Дітей: {kidsCount}\n🏠 Кімната: {room}\n👥 Група: {groupName}\n\n📏 Потрібно уточнити розміри футболок!' }
+                    ]),
+                    'МК Футболки — замовити у підрядника',
+                    JSON.stringify({ product_ids: ['mk_tshirt'] }),
+                    JSON.stringify([
+                        { type: 'create_task', title: '👕 Замовити {kidsCount} футболок ({tshirtSizes}) на {date}', priority: 'high', category: 'purchase' },
+                        { type: 'telegram_group', template: '👕 <b>Замовлення футболок</b>\n\n📅 Дата: {date} о {time}\n👶 Дітей: {kidsCount}\n👕 Розміри: {tshirtSizes}\n🏠 Кімната: {room}\n👥 Група: {groupName}\n\n✅ Підтверджено — замовити у підрядника!' }
                     ])
                 ]
             );
-            log.info('Automation rules seeded (2 rules)');
+            log.info('Automation rules seeded (3 rules)');
         }
 
         log.info('Database initialized');

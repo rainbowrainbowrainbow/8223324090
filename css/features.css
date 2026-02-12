@@ -746,6 +746,7 @@
 .task-meta { display: flex; gap: 8px; font-size: var(--font-xs); color: var(--gray-400); }
 .task-date { color: var(--primary, #7C3AED); }
 .task-assignee { color: var(--gray-500); }
+.task-afisha-badge { font-size: 12px; vertical-align: middle; opacity: 0.7; }
 .task-item-actions { display: flex; gap: 4px; align-items: center; }
 .task-item-actions .btn-sm { padding: 6px 10px; font-size: 12px; width: auto; }
 

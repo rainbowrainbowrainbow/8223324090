@@ -1263,8 +1263,15 @@ async function deleteAfishaItem(id) {
     if (!confirmed) return;
     const result = await apiDeleteAfisha(id);
     if (result && result.success) {
-        showNotification('Подію видалено', 'success');
+        const msg = result.deletedTasks > 0
+            ? `Подію видалено (+ ${result.deletedTasks} задач)`
+            : 'Подію видалено';
+        showNotification(msg, 'success');
         await renderAfishaList();
+        // v8.3: Refresh timeline to remove deleted block
+        const currentDate = formatDate(AppState.selectedDate);
+        delete AppState.cachedBookings[currentDate];
+        await renderTimeline();
     }
 }
 

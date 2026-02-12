@@ -5,6 +5,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { validateDate, validateTime, timeToMinutes, getKyivDateStr, getKyivDate } = require('../services/booking');
 const { generateTasksForEvent } = require('../services/taskTemplates');
+const { ensureRecurringAfishaForDate } = require('../services/scheduler');
 const { createLogger } = require('../utils/logger');
 
 /**
@@ -204,6 +205,8 @@ router.get('/:date', async (req, res) => {
     try {
         const { date } = req.params;
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
+        // v8.3: Ensure recurring templates are applied before returning results
+        try { await ensureRecurringAfishaForDate(date); } catch (e) { /* non-blocking */ }
         const result = await pool.query('SELECT * FROM afisha WHERE date = $1 ORDER BY time', [date]);
         res.json(result.rows);
     } catch (err) {
@@ -297,6 +300,11 @@ router.post('/:id/generate-tasks', async (req, res) => {
         }
 
         log.info(`Generated ${created.length} tasks for afisha #${id}`);
+        // v8.3: Log to history
+        await pool.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['tasks_generated', username, JSON.stringify({ afisha_id: id, title: event.rows[0].title, count: created.length })]
+        ).catch(err => log.error('History log error', err));
         res.json({ success: true, tasks: created, count: created.length });
     } catch (err) {
         log.error('Generate tasks error', err);

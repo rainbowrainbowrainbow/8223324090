@@ -7,10 +7,12 @@
 ## 2026-02-12 — v8.3.2 Фікс історії + extra_data
 
 **Історія — рендеринг афіша-дій:**
-- actionMap: додано afisha_create/edit/move/delete, tasks_generated, automation_triggered
+- actionMap: додано afisha_create/edit/move/delete, tasks_generated, automation_triggered, undo_edit, undo_shift
 - Smart details: afisha_move → "Квест: 15:00 → 15:30", інші афіша → "Квест (event, 60хв): дата час"
 - automation_triggered → "Назва правила — бронювання BK-2026-0001"
-- Фільтр: додано 5 нових опцій (4 афіша + 1 автоматизація)
+- undo_edit/undo_shift: відображаються як "↩ Скасовано зміну/перенос" (раніше — сирий текст)
+- CSS класи: automation_triggered, tasks_generated, shift → action-edit (нейтральний) замість action-delete (червоний)
+- Фільтр: додано 8 нових опцій (4 афіша + автоматизація + permanent_delete + undo_edit/undo_shift)
 
 **Linked bookings — extra_data:**
 - INSERT для linked booking тепер включає extra_data (раніше пропускався)

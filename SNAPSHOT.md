@@ -77,4 +77,4 @@ bookings, lines_by_date, history, settings, users, booking_counter, pending_anim
 - Кольори: фіолетовий (quest), блакитний (animation), помаранчевий (show), бірюзовий (photo), зелений (masterclass), рожевий (pinata), сірий (custom)
 
 ---
-*Оновлено: 2026-02-12, v7.9.2*
+*Оновлено: 2026-02-12, v8.3.2*

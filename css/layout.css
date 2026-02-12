@@ -280,43 +280,29 @@ input[type="date"] {
     flex-wrap: wrap;
 }
 
-/* Colored action buttons */
-.btn-export {
-    padding: 8px 16px;
-    background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
-    color: #FFFFFF;
-    border: none;
-    border-radius: var(--radius-xs);
-    font-weight: 700;
-    font-size: 12px;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all var(--speed-fast) var(--ease-smooth);
-    box-shadow: 0 2px 8px rgba(6,182,212,0.3);
-}
-
-.btn-export:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(6,182,212,0.4);
-}
-
+/* v7.8.4: Unified action buttons — subtle glass style */
+.btn-export,
 .btn-history {
-    padding: 8px 16px;
-    background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
-    color: #FFFFFF;
-    border: none;
-    border-radius: var(--radius-xs);
-    font-weight: 700;
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.85);
+    color: var(--gray-700);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-weight: 600;
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
-    box-shadow: 0 2px 8px rgba(139,92,246,0.3);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 
+.btn-export:hover,
 .btn-history:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(139,92,246,0.4);
+    background: rgba(255,255,255,0.95);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
 /* Invite button */
@@ -332,32 +318,6 @@ input[type="date"] {
     box-shadow: 0 4px 12px rgba(16,185,129,0.4) !important;
 }
 
-/* Dashboard button */
-#dashboardBtn {
-    background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
-    color: #FFFFFF;
-    border: none;
-    box-shadow: 0 2px 8px rgba(249,115,22,0.3);
-}
-
-#dashboardBtn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(249,115,22,0.4);
-}
-
-/* Settings button */
-#settingsBtn {
-    background: linear-gradient(135deg, #64748B 0%, #475569 100%);
-    color: #FFFFFF;
-    border: none;
-    box-shadow: 0 2px 8px rgba(100,116,139,0.3);
-}
-
-#settingsBtn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(100,116,139,0.4);
-}
-
 /* ==========================================
    ADMIN DROPDOWN MENU (v5.8)
    ========================================== */
@@ -366,85 +326,81 @@ input[type="date"] {
     position: relative;
 }
 
-/* Menu toggle button — emerald accent */
+/* v7.8.4: Menu toggle — matches export button style */
 .btn-menu-toggle {
-    padding: 8px 16px;
-    background: linear-gradient(135deg, #064E3B 0%, #065F46 100%);
-    color: #FFFFFF;
-    border: 1px solid rgba(16,185,129,0.3);
-    border-radius: var(--radius-xs);
-    font-weight: 700;
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.85);
+    color: var(--gray-700);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-weight: 600;
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
-    box-shadow: 0 2px 8px rgba(6,78,59,0.4);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 
 .btn-menu-toggle:hover {
-    transform: translateY(-1px);
-    background: linear-gradient(135deg, #065F46 0%, #047857 100%);
-    box-shadow: 0 4px 16px rgba(6,78,59,0.5);
-    border-color: rgba(16,185,129,0.5);
+    background: rgba(255,255,255,0.95);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
-/* Dropdown — premium dark emerald */
+/* v7.8.4: Dropdown — iOS glassmorphism */
 .dropdown-content {
     position: absolute;
     right: 0;
-    top: calc(100% + 6px);
-    background: linear-gradient(180deg, #063B2A 0%, #0B5A3E 55%, #063B2A 100%);
-    border: 1px solid rgba(16,185,129,0.2);
+    top: calc(100% + 8px);
+    background: rgba(255,255,255,0.82);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.6);
     border-radius: var(--radius-card);
     box-shadow:
-        0 20px 50px rgba(0,0,0,0.35),
-        0 8px 20px rgba(0,0,0,0.2),
-        inset 0 1px 0 rgba(255,255,255,0.05);
-    min-width: 200px;
+        0 8px 32px rgba(0,0,0,0.12),
+        0 2px 8px rgba(0,0,0,0.06);
+    min-width: 210px;
     z-index: 100;
     overflow: hidden;
-    padding: 6px 0;
+    padding: 6px;
 }
 
 .dropdown-item {
-    display: block;
+    display: flex;
+    align-items: center;
     width: 100%;
-    padding: 11px 18px;
+    padding: 10px 14px;
     background: none;
     border: none;
-    border-top: none;
     text-align: left;
     font-size: var(--font-sm);
-    font-weight: 700;
-    color: rgba(255,255,255,0.85);
+    font-weight: 600;
+    color: var(--gray-700);
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
     position: relative;
     letter-spacing: 0.01em;
-}
-
-.dropdown-item:first-child {
-    border-top: none;
+    border-radius: var(--radius-xs);
+    text-decoration: none;
+    gap: 2px;
 }
 
 .dropdown-item:hover {
-    background: rgba(16,185,129,0.15);
-    color: #FFFFFF;
-    padding-left: 22px;
+    background: rgba(0,0,0,0.05);
+    color: var(--gray-900);
 }
 
 .dropdown-item:active {
-    background: rgba(16,185,129,0.25);
+    background: rgba(0,0,0,0.08);
+    transform: scale(0.98);
 }
 
 .dropdown-item.hidden {
     display: none;
-}
-
-/* Subtle separator between menu groups */
-.dropdown-item + .dropdown-item:not(.hidden) {
-    border-top: 1px solid rgba(255,255,255,0.06);
 }
 
 /* ==========================================

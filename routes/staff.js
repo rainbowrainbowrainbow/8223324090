@@ -102,90 +102,14 @@ const DEPARTMENTS = {
     security: 'Охорона'
 };
 
-// GET /api/staff — list all staff (optionally filter by department)
-router.get('/', async (req, res) => {
-    try {
-        const { department, active } = req.query;
-        let sql = 'SELECT * FROM staff';
-        const params = [];
-        const conditions = [];
-
-        if (department) {
-            params.push(department);
-            conditions.push(`department = $${params.length}`);
-        }
-        if (active !== undefined) {
-            params.push(active === 'true');
-            conditions.push(`is_active = $${params.length}`);
-        }
-
-        if (conditions.length > 0) {
-            sql += ' WHERE ' + conditions.join(' AND ');
-        }
-        sql += ' ORDER BY department, name';
-
-        const result = await pool.query(sql, params);
-        res.json({ success: true, data: result.rows, departments: DEPARTMENTS });
-    } catch (err) {
-        log.error('GET /staff error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
-    }
+// GET /api/staff/departments — list department names
+router.get('/departments', async (req, res) => {
+    res.json({ success: true, data: DEPARTMENTS });
 });
 
-// POST /api/staff — create new employee
-// LLM HINT: telegramUsername is optional — used for @-mentions in schedule notifications
-router.post('/', async (req, res) => {
-    try {
-        const { name, department, position, phone, hireDate, color, telegramUsername } = req.body;
-        if (!name || !department || !position) {
-            return res.status(400).json({ success: false, error: 'Обов\'язкові поля: ім\'я, відділ, посада' });
-        }
-        const result = await pool.query(
-            `INSERT INTO staff (name, department, position, phone, hire_date, color, telegram_username)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [name, department, position, phone || null, hireDate || null, color || null, telegramUsername || null]
-        );
-        res.json({ success: true, data: result.rows[0] });
-    } catch (err) {
-        log.error('POST /staff error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
-    }
-});
-
-// PUT /api/staff/:id — update employee
-// LLM HINT: telegramUsername — set to Telegram @username (without @) for schedule notifications
-router.put('/:id', async (req, res) => {
-    try {
-        const { name, department, position, phone, hireDate, color, isActive, telegramUsername } = req.body;
-        // Only update telegram_username if explicitly passed (even empty string clears it)
-        const tgUser = telegramUsername !== undefined ? (telegramUsername || null) : undefined;
-        const result = await pool.query(
-            `UPDATE staff SET name=COALESCE($1,name), department=COALESCE($2,department),
-             position=COALESCE($3,position), phone=$4, hire_date=$5, color=$6,
-             is_active=COALESCE($7,is_active),
-             telegram_username = CASE WHEN $9::boolean THEN $10 ELSE telegram_username END
-             WHERE id=$8 RETURNING *`,
-            [name, department, position, phone || null, hireDate || null, color || null, isActive, req.params.id,
-             telegramUsername !== undefined, tgUser]
-        );
-        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
-        res.json({ success: true, data: result.rows[0] });
-    } catch (err) {
-        log.error('PUT /staff error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
-    }
-});
-
-// DELETE /api/staff/:id — remove employee
-router.delete('/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM staff WHERE id=$1', [req.params.id]);
-        res.json({ success: true });
-    } catch (err) {
-        log.error('DELETE /staff error', err);
-        res.status(500).json({ success: false, error: 'Помилка сервера' });
-    }
-});
+// ==========================================
+// SCHEDULE ROUTES (must be before /:id to avoid param capture)
+// ==========================================
 
 // GET /api/staff/schedule — get schedule for date range
 router.get('/schedule', async (req, res) => {
@@ -415,9 +339,93 @@ router.get('/schedule/check/:date', async (req, res) => {
     }
 });
 
-// GET /api/staff/departments — list department names
-router.get('/departments', async (req, res) => {
-    res.json({ success: true, data: DEPARTMENTS });
+// ==========================================
+// STAFF CRUD (/:id routes AFTER /schedule to avoid param capture)
+// ==========================================
+
+// GET /api/staff — list all staff (optionally filter by department)
+router.get('/', async (req, res) => {
+    try {
+        const { department, active } = req.query;
+        let sql = 'SELECT * FROM staff';
+        const params = [];
+        const conditions = [];
+
+        if (department) {
+            params.push(department);
+            conditions.push(`department = $${params.length}`);
+        }
+        if (active !== undefined) {
+            params.push(active === 'true');
+            conditions.push(`is_active = $${params.length}`);
+        }
+
+        if (conditions.length > 0) {
+            sql += ' WHERE ' + conditions.join(' AND ');
+        }
+        sql += ' ORDER BY department, name';
+
+        const result = await pool.query(sql, params);
+        res.json({ success: true, data: result.rows, departments: DEPARTMENTS });
+    } catch (err) {
+        log.error('GET /staff error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/staff — create new employee
+// LLM HINT: telegramUsername is optional — used for @-mentions in schedule notifications
+router.post('/', async (req, res) => {
+    try {
+        const { name, department, position, phone, hireDate, color, telegramUsername } = req.body;
+        if (!name || !department || !position) {
+            return res.status(400).json({ success: false, error: 'Обов\'язкові поля: ім\'я, відділ, посада' });
+        }
+        const result = await pool.query(
+            `INSERT INTO staff (name, department, position, phone, hire_date, color, telegram_username)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [name, department, position, phone || null, hireDate || null, color || null, telegramUsername || null]
+        );
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('POST /staff error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// PUT /api/staff/:id — update employee
+// LLM HINT: telegramUsername — set to Telegram @username (without @) for schedule notifications
+router.put('/:id', async (req, res) => {
+    try {
+        const { name, department, position, phone, hireDate, color, isActive, telegramUsername } = req.body;
+        // Only update telegram_username if explicitly passed (even empty string clears it)
+        const tgUser = telegramUsername !== undefined ? (telegramUsername || null) : undefined;
+        const result = await pool.query(
+            `UPDATE staff SET name=COALESCE($1,name), department=COALESCE($2,department),
+             position=COALESCE($3,position), phone=$4, hire_date=$5, color=$6,
+             is_active=COALESCE($7,is_active),
+             telegram_username = CASE WHEN $9::boolean THEN $10 ELSE telegram_username END
+             WHERE id=$8 RETURNING *`,
+            [name, department, position, phone || null, hireDate || null, color || null, isActive, req.params.id,
+             telegramUsername !== undefined, tgUser]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('PUT /staff error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// DELETE /api/staff/:id — remove employee
+router.delete('/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM staff WHERE id=$1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /staff error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
 });
 
 module.exports = router;

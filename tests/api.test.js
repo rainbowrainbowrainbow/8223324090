@@ -2547,3 +2547,391 @@ describe('Afisha → Tasks (v7.6)', () => {
         assert.equal(res.status, 404);
     });
 });
+
+// ==========================================
+// STAFF CRUD (v7.10)
+// ==========================================
+
+describe('Staff CRUD (v7.10)', () => {
+    let staffId;
+
+    it('GET /api/staff — returns array with departments', async () => {
+        const res = await authRequest('GET', '/api/staff');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(Array.isArray(res.data.data), 'Should return data array');
+        assert.ok(res.data.departments, 'Should return departments map');
+        assert.ok(res.data.departments.animators, 'Should have animators department');
+    });
+
+    it('GET /api/staff?active=true — filters active only', async () => {
+        const res = await authRequest('GET', '/api/staff?active=true');
+        assert.equal(res.status, 200);
+        for (const s of res.data.data) {
+            assert.equal(s.is_active, true);
+        }
+    });
+
+    it('GET /api/staff?department=animators — filters by department', async () => {
+        const res = await authRequest('GET', '/api/staff?department=animators');
+        assert.equal(res.status, 200);
+        for (const s of res.data.data) {
+            assert.equal(s.department, 'animators');
+        }
+    });
+
+    it('POST /api/staff — create employee', async () => {
+        const res = await authRequest('POST', '/api/staff', {
+            name: 'Тест Працівник', department: 'tech', position: 'Тестер',
+            phone: '+380990000000', color: '#FF5500', telegramUsername: 'test_worker'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.data.name, 'Тест Працівник');
+        assert.equal(res.data.data.department, 'tech');
+        assert.equal(res.data.data.telegram_username, 'test_worker');
+        staffId = res.data.data.id;
+    });
+
+    it('POST /api/staff — missing required fields returns 400', async () => {
+        const res = await authRequest('POST', '/api/staff', { name: 'No Department' });
+        assert.equal(res.status, 400);
+    });
+
+    it('PUT /api/staff/:id — update employee', async () => {
+        const res = await authRequest('PUT', `/api/staff/${staffId}`, {
+            name: 'Оновлений Працівник', position: 'Старший тестер',
+            telegramUsername: 'updated_worker'
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.data.name, 'Оновлений Працівник');
+        assert.equal(res.data.data.telegram_username, 'updated_worker');
+    });
+
+    it('PUT /api/staff/:id — without telegramUsername preserves existing', async () => {
+        const res = await authRequest('PUT', `/api/staff/${staffId}`, {
+            position: 'Ще старший тестер'
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.data.telegram_username, 'updated_worker', 'Should preserve telegram_username');
+    });
+
+    it('PUT /api/staff/:id — non-existent returns 404', async () => {
+        const res = await authRequest('PUT', '/api/staff/999999', { name: 'Nobody' });
+        assert.equal(res.status, 404);
+    });
+
+    it('DELETE /api/staff/:id — delete employee', async () => {
+        const res = await authRequest('DELETE', `/api/staff/${staffId}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+
+    it('GET /api/staff — without token returns 401', async () => {
+        const res = await request('GET', '/api/staff');
+        assert.equal(res.status, 401);
+    });
+
+    it('GET /api/staff/departments — returns department map', async () => {
+        const res = await authRequest('GET', '/api/staff/departments');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.data.animators);
+        assert.ok(res.data.data.cafe);
+    });
+});
+
+// ==========================================
+// STAFF SCHEDULE (v7.10)
+// ==========================================
+
+describe('Staff Schedule (v7.10)', () => {
+    let testStaffId;
+
+    before(async () => {
+        const res = await authRequest('POST', '/api/staff', {
+            name: 'Графік Тест', department: 'animators', position: 'Тест-аніматор'
+        });
+        testStaffId = res.data.data.id;
+    });
+
+    it('PUT /api/staff/schedule — create schedule entry', async () => {
+        const res = await authRequest('PUT', '/api/staff/schedule', {
+            staffId: testStaffId, date: '2099-06-01',
+            shiftStart: '10:00', shiftEnd: '20:00', status: 'working'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.data.status, 'working');
+        assert.equal(res.data.data.shift_start, '10:00');
+    });
+
+    it('PUT /api/staff/schedule — upsert overwrites existing', async () => {
+        const res = await authRequest('PUT', '/api/staff/schedule', {
+            staffId: testStaffId, date: '2099-06-01',
+            status: 'dayoff', note: 'Перезаписано'
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.data.status, 'dayoff');
+        assert.equal(res.data.data.note, 'Перезаписано');
+    });
+
+    it('PUT /api/staff/schedule — missing staffId returns 400', async () => {
+        const res = await authRequest('PUT', '/api/staff/schedule', { date: '2099-06-01' });
+        assert.equal(res.status, 400);
+    });
+
+    it('PUT /api/staff/schedule — missing date returns 400', async () => {
+        const res = await authRequest('PUT', '/api/staff/schedule', { staffId: testStaffId });
+        assert.equal(res.status, 400);
+    });
+
+    it('GET /api/staff/schedule — returns entries for date range', async () => {
+        // Create a few entries
+        await authRequest('PUT', '/api/staff/schedule', {
+            staffId: testStaffId, date: '2099-06-02',
+            shiftStart: '09:00', shiftEnd: '18:00', status: 'working'
+        });
+        await authRequest('PUT', '/api/staff/schedule', {
+            staffId: testStaffId, date: '2099-06-03',
+            status: 'vacation', note: 'Відпустка'
+        });
+
+        const res = await authRequest('GET', '/api/staff/schedule?from=2099-06-01&to=2099-06-07');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        const entries = res.data.data.filter(e => e.staff_id === testStaffId);
+        assert.ok(entries.length >= 3, `Should have at least 3 entries, got ${entries.length}`);
+    });
+
+    it('GET /api/staff/schedule — missing params returns 400', async () => {
+        const res = await authRequest('GET', '/api/staff/schedule');
+        assert.equal(res.status, 400);
+    });
+
+    after(async () => {
+        if (testStaffId) await authRequest('DELETE', `/api/staff/${testStaffId}`);
+    });
+});
+
+// ==========================================
+// STAFF SCHEDULE BULK (v7.10)
+// ==========================================
+
+describe('Staff Schedule Bulk (v7.10)', () => {
+    let testStaffId;
+
+    before(async () => {
+        const res = await authRequest('POST', '/api/staff', {
+            name: 'Bulk Тест', department: 'cafe', position: 'Тест-кухар',
+            telegramUsername: 'bulk_test_worker'
+        });
+        testStaffId = res.data.data.id;
+    });
+
+    it('POST /api/staff/schedule/bulk — mass upsert', async () => {
+        const entries = [];
+        for (let d = 1; d <= 5; d++) {
+            entries.push({
+                staffId: testStaffId, date: `2099-07-0${d}`,
+                shiftStart: '08:00', shiftEnd: '19:00', status: 'working'
+            });
+        }
+        entries.push({
+            staffId: testStaffId, date: '2099-07-06',
+            status: 'dayoff', note: 'Вихідний'
+        });
+        entries.push({
+            staffId: testStaffId, date: '2099-07-07',
+            status: 'dayoff', note: 'Вихідний'
+        });
+
+        const res = await authRequest('POST', '/api/staff/schedule/bulk', { entries });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.count, 7, 'Should upsert 7 entries');
+    });
+
+    it('POST /api/staff/schedule/bulk — empty array returns 400', async () => {
+        const res = await authRequest('POST', '/api/staff/schedule/bulk', { entries: [] });
+        assert.equal(res.status, 400);
+    });
+
+    it('POST /api/staff/schedule/bulk — non-array returns 400', async () => {
+        const res = await authRequest('POST', '/api/staff/schedule/bulk', { entries: 'bad' });
+        assert.equal(res.status, 400);
+    });
+
+    it('POST /api/staff/schedule/bulk — over 500 entries returns 400', async () => {
+        const entries = Array.from({ length: 501 }, (_, i) => ({
+            staffId: testStaffId, date: '2099-07-01', status: 'working'
+        }));
+        const res = await authRequest('POST', '/api/staff/schedule/bulk', { entries });
+        assert.equal(res.status, 400);
+    });
+
+    it('POST /api/staff/schedule/bulk — skips entries without staffId', async () => {
+        const res = await authRequest('POST', '/api/staff/schedule/bulk', {
+            entries: [
+                { date: '2099-07-10', status: 'working' },
+                { staffId: testStaffId, date: '2099-07-10', status: 'working' }
+            ]
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.count, 1, 'Should skip entry without staffId');
+    });
+
+    after(async () => {
+        if (testStaffId) await authRequest('DELETE', `/api/staff/${testStaffId}`);
+    });
+});
+
+// ==========================================
+// STAFF SCHEDULE COPY WEEK (v7.10)
+// ==========================================
+
+describe('Staff Schedule Copy Week (v7.10)', () => {
+    let testStaffId;
+
+    before(async () => {
+        const res = await authRequest('POST', '/api/staff', {
+            name: 'Copy Тест', department: 'animators', position: 'Копіювальник'
+        });
+        testStaffId = res.data.data.id;
+        // Fill source week Mon-Sun 2099-08-04 to 2099-08-10
+        const entries = [];
+        for (let d = 4; d <= 10; d++) {
+            entries.push({
+                staffId: testStaffId, date: `2099-08-${d < 10 ? '0' + d : d}`,
+                shiftStart: d <= 8 ? '10:00' : null, shiftEnd: d <= 8 ? '20:00' : null,
+                status: d <= 8 ? 'working' : 'dayoff'
+            });
+        }
+        await authRequest('POST', '/api/staff/schedule/bulk', { entries });
+    });
+
+    it('POST /api/staff/schedule/copy-week — copies week to next', async () => {
+        const res = await authRequest('POST', '/api/staff/schedule/copy-week', {
+            fromMonday: '2099-08-04', toMonday: '2099-08-11'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(res.data.count > 0, 'Should copy at least 1 entry');
+
+        // Verify target week has entries
+        const check = await authRequest('GET', '/api/staff/schedule?from=2099-08-11&to=2099-08-17');
+        const copied = check.data.data.filter(e => e.staff_id === testStaffId);
+        assert.ok(copied.length > 0, 'Target week should have copied entries');
+    });
+
+    it('POST /api/staff/schedule/copy-week — missing params returns 400', async () => {
+        const res = await authRequest('POST', '/api/staff/schedule/copy-week', { fromMonday: '2099-08-04' });
+        assert.equal(res.status, 400);
+    });
+
+    it('POST /api/staff/schedule/copy-week — with department filter', async () => {
+        const res = await authRequest('POST', '/api/staff/schedule/copy-week', {
+            fromMonday: '2099-08-04', toMonday: '2099-08-18', department: 'animators'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+
+    after(async () => {
+        if (testStaffId) await authRequest('DELETE', `/api/staff/${testStaffId}`);
+    });
+});
+
+// ==========================================
+// STAFF SCHEDULE HOURS (v7.10)
+// ==========================================
+
+describe('Staff Schedule Hours (v7.10)', () => {
+    let testStaffId;
+
+    before(async () => {
+        const res = await authRequest('POST', '/api/staff', {
+            name: 'Hours Тест', department: 'admin', position: 'Годинувальник'
+        });
+        testStaffId = res.data.data.id;
+        // Create 5 working days + 2 dayoffs
+        const entries = [];
+        for (let d = 1; d <= 5; d++) {
+            entries.push({
+                staffId: testStaffId, date: `2099-09-0${d}`,
+                shiftStart: '09:00', shiftEnd: '18:00', status: 'working'
+            });
+        }
+        entries.push({ staffId: testStaffId, date: '2099-09-06', status: 'dayoff' });
+        entries.push({ staffId: testStaffId, date: '2099-09-07', status: 'sick', note: 'Хворий' });
+        await authRequest('POST', '/api/staff/schedule/bulk', { entries });
+    });
+
+    it('GET /api/staff/schedule/hours — returns hours statistics', async () => {
+        const res = await authRequest('GET', '/api/staff/schedule/hours?from=2099-09-01&to=2099-09-07');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        const stats = res.data.data[testStaffId];
+        assert.ok(stats, 'Should have stats for test staff');
+        assert.equal(stats.totalHours, 45, '5 days * 9 hours = 45');
+        assert.equal(stats.workingDays, 5);
+        assert.equal(stats.dayoffs, 1);
+        assert.equal(stats.sickDays, 1);
+    });
+
+    it('GET /api/staff/schedule/hours — missing params returns 400', async () => {
+        const res = await authRequest('GET', '/api/staff/schedule/hours');
+        assert.equal(res.status, 400);
+    });
+
+    after(async () => {
+        if (testStaffId) await authRequest('DELETE', `/api/staff/${testStaffId}`);
+    });
+});
+
+// ==========================================
+// STAFF SCHEDULE CHECK DATE (v7.10)
+// ==========================================
+
+describe('Staff Schedule Check Date (v7.10)', () => {
+    let availableId, unavailableId;
+
+    before(async () => {
+        const a = await authRequest('POST', '/api/staff', {
+            name: 'Available Аніматор', department: 'animators', position: 'Аніматор'
+        });
+        availableId = a.data.data.id;
+        await authRequest('PUT', '/api/staff/schedule', {
+            staffId: availableId, date: '2099-11-01',
+            shiftStart: '10:00', shiftEnd: '20:00', status: 'working'
+        });
+
+        const u = await authRequest('POST', '/api/staff', {
+            name: 'Sick Аніматор', department: 'animators', position: 'Аніматор'
+        });
+        unavailableId = u.data.data.id;
+        await authRequest('PUT', '/api/staff/schedule', {
+            staffId: unavailableId, date: '2099-11-01', status: 'sick', note: 'Лікарняний'
+        });
+    });
+
+    it('GET /api/staff/schedule/check/:date — returns available and unavailable', async () => {
+        const res = await authRequest('GET', '/api/staff/schedule/check/2099-11-01');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(Array.isArray(res.data.available));
+        assert.ok(Array.isArray(res.data.unavailable));
+
+        const avail = res.data.available.find(a => a.id === availableId);
+        assert.ok(avail, 'Available animator should be in available list');
+        assert.equal(avail.shiftStart, '10:00');
+
+        const unavail = res.data.unavailable.find(u => u.id === unavailableId);
+        assert.ok(unavail, 'Sick animator should be in unavailable list');
+        assert.equal(unavail.status, 'sick');
+    });
+
+    after(async () => {
+        if (availableId) await authRequest('DELETE', `/api/staff/${availableId}`);
+        if (unavailableId) await authRequest('DELETE', `/api/staff/${unavailableId}`);
+    });
+});

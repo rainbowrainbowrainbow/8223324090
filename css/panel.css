@@ -240,19 +240,39 @@
     z-index: 2;
 }
 
-.program-icon .icon {
-    font-size: 26px;
-    margin-bottom: 6px;
-    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+/* Emoji circle container */
+.program-icon .icon-circle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    margin-bottom: 4px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(240,240,240,0.7));
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08), inset 0 1px 2px rgba(255,255,255,0.8);
+    transition: all var(--speed-normal) var(--ease-smooth);
 }
 
-.program-icon .icon-svg {
-    width: 32px;
-    height: 32px;
-    margin-bottom: 4px;
-    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
-    pointer-events: none;
+.program-icon:hover .icon-circle {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12), inset 0 1px 2px rgba(255,255,255,0.8);
 }
+
+.program-icon .icon {
+    font-size: 22px;
+    line-height: 1;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.15));
+}
+
+/* Category-colored circle backgrounds */
+.program-icon.quest .icon-circle { background: linear-gradient(135deg, #F3E5F5, #E1BEE7); box-shadow: 0 2px 8px rgba(156,39,176,0.15), inset 0 1px 2px rgba(255,255,255,0.6); }
+.program-icon.animation .icon-circle { background: linear-gradient(135deg, #E3F2FD, #BBDEFB); box-shadow: 0 2px 8px rgba(3,155,229,0.15), inset 0 1px 2px rgba(255,255,255,0.6); }
+.program-icon.show .icon-circle { background: linear-gradient(135deg, #FFF3E0, #FFCCBC); box-shadow: 0 2px 8px rgba(244,81,30,0.15), inset 0 1px 2px rgba(255,255,255,0.6); }
+.program-icon.photo .icon-circle { background: linear-gradient(135deg, #E0F7FA, #B2EBF2); box-shadow: 0 2px 8px rgba(0,172,193,0.15), inset 0 1px 2px rgba(255,255,255,0.6); }
+.program-icon.masterclass .icon-circle { background: linear-gradient(135deg, #F1F8E9, #DCEDC8); box-shadow: 0 2px 8px rgba(124,179,66,0.15), inset 0 1px 2px rgba(255,255,255,0.6); }
+.program-icon.pinata .icon-circle { background: linear-gradient(135deg, #FCE4EC, #F8BBD0); box-shadow: 0 2px 8px rgba(236,64,122,0.15), inset 0 1px 2px rgba(255,255,255,0.6); }
+.program-icon.custom .icon-circle { background: linear-gradient(135deg, #ECEFF1, #CFD8DC); box-shadow: 0 2px 8px rgba(84,110,122,0.15), inset 0 1px 2px rgba(255,255,255,0.6); }
 
 .program-icon .name {
     font-size: 10px;

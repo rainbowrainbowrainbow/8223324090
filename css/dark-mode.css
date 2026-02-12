@@ -202,6 +202,16 @@ body.dark-mode .program-icon.photo:hover { background: rgba(6,182,212,0.2); bord
 body.dark-mode .program-icon.custom { background: rgba(100,116,139,0.15); border-color: rgba(100,116,139,0.3); }
 body.dark-mode .program-icon.custom:hover { background: rgba(100,116,139,0.25); border-color: rgba(100,116,139,0.4); }
 
+/* Dark mode icon circles */
+body.dark-mode .program-icon .icon-circle { background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04)); box-shadow: 0 2px 6px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.1); }
+body.dark-mode .program-icon.quest .icon-circle { background: linear-gradient(135deg, rgba(156,39,176,0.25), rgba(156,39,176,0.1)); }
+body.dark-mode .program-icon.animation .icon-circle { background: linear-gradient(135deg, rgba(3,155,229,0.25), rgba(3,155,229,0.1)); }
+body.dark-mode .program-icon.show .icon-circle { background: linear-gradient(135deg, rgba(244,81,30,0.25), rgba(244,81,30,0.1)); }
+body.dark-mode .program-icon.photo .icon-circle { background: linear-gradient(135deg, rgba(0,172,193,0.25), rgba(0,172,193,0.1)); }
+body.dark-mode .program-icon.masterclass .icon-circle { background: linear-gradient(135deg, rgba(124,179,66,0.25), rgba(124,179,66,0.1)); }
+body.dark-mode .program-icon.pinata .icon-circle { background: linear-gradient(135deg, rgba(236,64,122,0.25), rgba(236,64,122,0.1)); }
+body.dark-mode .program-icon.custom .icon-circle { background: linear-gradient(135deg, rgba(84,110,122,0.25), rgba(84,110,122,0.1)); }
+
 /* v5.32: Duration badge dark mode */
 body.dark-mode .program-duration.short {
     background: rgba(59,130,246,0.2);

@@ -387,15 +387,14 @@
         border-radius: 10px;
     }
 
-    .program-icon .icon {
-        font-size: 22px;
-        margin-bottom: 4px;
+    .program-icon .icon-circle {
+        width: 36px;
+        height: 36px;
+        margin-bottom: 3px;
     }
 
-    .program-icon .icon-svg {
-        width: 28px;
-        height: 28px;
-        margin-bottom: 3px;
+    .program-icon .icon {
+        font-size: 18px;
     }
 
     .program-icon .name {
@@ -540,8 +539,8 @@
 
     .category-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
     .program-icon { min-height: 68px; padding: 10px 4px; }
-    .program-icon .icon { font-size: 22px; }
-    .program-icon .icon-svg { width: 26px; height: 26px; }
+    .program-icon .icon-circle { width: 34px; height: 34px; margin-bottom: 3px; }
+    .program-icon .icon { font-size: 17px; }
     .program-icon .name { font-size: 9px; }
     .program-duration { font-size: 8px; padding: 1px 4px; }
 
@@ -596,8 +595,8 @@
     .hosts-warning { padding: 8px 10px; margin-bottom: 10px; }
     .btn-submit { padding: 12px; font-size: 13px; }
     .program-icon { padding: 6px 3px; min-height: 58px; }
-    .program-icon .icon { font-size: 20px; margin-bottom: 3px; }
-    .program-icon .icon-svg { width: 24px; height: 24px; margin-bottom: 2px; }
+    .program-icon .icon-circle { width: 30px; height: 30px; margin-bottom: 2px; }
+    .program-icon .icon { font-size: 15px; }
     .program-icon .name { font-size: 8px; }
 
     /* v5.34: Timeline compact */

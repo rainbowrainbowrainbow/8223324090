@@ -116,7 +116,7 @@ function renderProducts() {
         <div class="card program-card${p.isActive === false ? ' inactive' : ''}" data-id="${escapeHtml(p.id)}">
             <div class="card-header">
                 <div>
-                    <span class="program-icon">${CATEGORY_SVG_ICONS && CATEGORY_SVG_ICONS[p.category] ? '<img src="' + CATEGORY_SVG_ICONS[p.category] + '" alt="" class="icon-svg" draggable="false">' : escapeHtml(p.icon)}</span>
+                    <span class="program-icon">${escapeHtml(p.icon)}</span>
                     <span class="card-title">${escapeHtml(p.name)}</span>
                     ${p.isActive === false ? '<span class="badge badge-normal">неактивна</span>' : ''}
                 </div>

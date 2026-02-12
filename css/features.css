@@ -807,6 +807,96 @@
 }
 
 /* ==========================================
+   AFISHA TIMELINE LINE (v7.9.3)
+   ========================================== */
+
+.afisha-timeline-line {
+    background: linear-gradient(135deg, rgba(139,92,246,0.03) 0%, rgba(109,40,217,0.02) 100%);
+    border-bottom: 2px solid rgba(139,92,246,0.15);
+}
+
+.afisha-line-header {
+    background: linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%) !important;
+    cursor: pointer;
+}
+
+.afisha-line-header .line-name {
+    color: #6D28D9;
+    font-weight: 800;
+    font-size: 11px;
+}
+
+.afisha-line-header .line-sub {
+    color: #8B5CF6;
+}
+
+/* Afisha blocks on the dedicated line */
+.afisha-block {
+    border-radius: 6px !important;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.afisha-block:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(139,92,246,0.25);
+    z-index: 30;
+}
+
+.afisha-type-event {
+    background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%) !important;
+    border: none !important;
+    color: #fff !important;
+}
+
+.afisha-type-event .title,
+.afisha-type-event .subtitle {
+    color: #fff !important;
+}
+
+.afisha-type-event .user-letter {
+    background: rgba(255,255,255,0.2) !important;
+    color: #fff !important;
+}
+
+.afisha-type-regular {
+    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%) !important;
+    border: none !important;
+    color: #fff !important;
+}
+
+.afisha-type-regular .title,
+.afisha-type-regular .subtitle {
+    color: #fff !important;
+}
+
+.afisha-type-regular .user-letter {
+    background: rgba(255,255,255,0.2) !important;
+    color: #fff !important;
+}
+
+.afisha-type-birthday {
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%) !important;
+    border: none !important;
+    color: #fff !important;
+}
+
+.afisha-type-birthday .title,
+.afisha-type-birthday .subtitle {
+    color: #fff !important;
+}
+
+.afisha-type-birthday .user-letter {
+    background: rgba(255,255,255,0.2) !important;
+    color: #fff !important;
+}
+
+/* Afisha cell hover (for adding new events) */
+.afisha-line-grid .grid-cell:hover {
+    background: rgba(139,92,246,0.08);
+}
+
+/* ==========================================
    PER-EVENT INVITE SECTION (v5.48)
    ========================================== */
 

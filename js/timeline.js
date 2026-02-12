@@ -126,10 +126,14 @@ async function renderTimeline() {
     const savedScrollLeft = timelineScroll ? timelineScroll.scrollLeft : 0;
 
     const container = document.getElementById('timelineLines');
-    const lines = await getLinesForDate(selectedDate);
-    const bookings = await getBookingsForDate(selectedDate);
+    // v7.9.3: Fetch lines, bookings, and afisha in parallel
+    const [lines, bookings, afishaEvents] = await Promise.all([
+        getLinesForDate(selectedDate),
+        getBookingsForDate(selectedDate),
+        apiGetAfishaByDate(formatDate(selectedDate)).catch(() => [])
+    ]);
 
-    _debugRender(`DATA gen=${thisGen} lines=${lines.length} bookings=${bookings.length} stale=${thisGen !== _renderGen}`);
+    _debugRender(`DATA gen=${thisGen} lines=${lines.length} bookings=${bookings.length} afisha=${(afishaEvents||[]).length} stale=${thisGen !== _renderGen}`);
 
     // v7.0: If a newer render started while we were loading data, abort this stale render
     if (thisGen !== _renderGen) {
@@ -160,6 +164,9 @@ async function renderTimeline() {
 
     container.innerHTML = '';
 
+    // v7.9.3: Render afisha line at the top (replaces overlay markers)
+    renderAfishaLine(container, afishaEvents || [], start, selectedDate);
+
     lines.forEach(line => {
         const lineEl = document.createElement('div');
         lineEl.className = 'timeline-line';
@@ -187,43 +194,12 @@ async function renderTimeline() {
 
     document.querySelectorAll('.grid-cell').forEach(cell => {
         cell.addEventListener('click', (e) => {
-            if (e.target === cell) {
+            // v7.9.3: Skip afisha cells (handled separately)
+            if (e.target === cell && cell.dataset.line !== 'afisha') {
                 selectCell(cell);
             }
         });
     });
-
-    // F3: Render afisha events as overlay markers on timeline
-    // v5.18: Afisha as blocking layer — render on ALL lines, not just first
-    try {
-        const afishaEvents = await apiGetAfishaByDate(formatDate(selectedDate));
-        if (thisGen !== _renderGen) {
-            _debugRender(`ABORT-AFISHA gen=${thisGen} (current=${_renderGen})`);
-            return;
-        }
-        // v7.4: Skip birthday events on timeline (they don't block time)
-        const blockingEvents = (afishaEvents || []).filter(ev => ev.type !== 'birthday');
-        if (blockingEvents.length > 0) {
-            const typeIcons = { event: '🎭', regular: '🔄' };
-            const allGrids = container.querySelectorAll('.line-grid');
-            allGrids.forEach((grid, idx) => {
-                blockingEvents.forEach(ev => {
-                    const startMin = timeToMinutes(ev.time) - start * 60;
-                    if (startMin < 0) return;
-                    const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
-                    const width = ((ev.duration || 60) / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
-                    const marker = document.createElement('div');
-                    marker.className = 'afisha-marker afisha-blocking';
-                    marker.style.left = `${left}px`;
-                    marker.style.width = `${Math.max(width, 30)}px`;
-                    marker.title = `🚫 Афіша: ${ev.title} (${ev.time}, ${ev.duration} хв)`;
-                    const icon = typeIcons[ev.type] || '🎭';
-                    marker.innerHTML = idx === 0 ? `<span class="afisha-marker-text">${icon} ${escapeHtml(ev.title)}</span>` : '';
-                    grid.appendChild(marker);
-                });
-            });
-        }
-    } catch (e) { /* afisha optional */ }
 
     renderNowLine();
     renderMinimap(selectedDate);
@@ -333,6 +309,120 @@ function createBookingBlock(booking, startHour) {
     block.addEventListener('touchstart', (e) => showTooltip(e.touches[0], booking), { passive: true });
     block.addEventListener('touchend', hideTooltip, { passive: true });
     return block;
+}
+
+// ==========================================
+// ЛІНІЯ АФІШІ (v7.9.3)
+// ==========================================
+
+function renderAfishaLine(container, events, startHour, date) {
+    const lineEl = document.createElement('div');
+    lineEl.className = 'timeline-line afisha-timeline-line';
+
+    const birthdays = events.filter(ev => ev.type === 'birthday');
+    const birthdayLabel = birthdays.length > 0
+        ? ` · 🎂 ${birthdays.map(b => b.title).join(', ')}`
+        : '';
+
+    lineEl.innerHTML = `
+        <div class="line-header afisha-line-header" style="border-left-color: #8B5CF6">
+            <span class="line-name">🎪 Афіша${birthdayLabel}</span>
+            <span class="line-sub">${events.length > 0 ? events.length + ' подій' : ''}</span>
+        </div>
+        <div class="line-grid afisha-line-grid" data-line-id="afisha">
+            ${renderGridCells('afisha', date)}
+        </div>
+    `;
+
+    const grid = lineEl.querySelector('.line-grid');
+
+    events.forEach(ev => {
+        const block = createAfishaBlock(ev, startHour);
+        if (block) grid.appendChild(block);
+    });
+
+    container.appendChild(lineEl);
+
+    // Click on header → open afisha modal
+    lineEl.querySelector('.line-header').addEventListener('click', () => {
+        openAfishaModalAt(formatDate(date), null);
+    });
+
+    // Click on empty cells → open afisha modal with pre-filled time
+    if (!isViewer()) {
+        lineEl.querySelectorAll('.grid-cell').forEach(cell => {
+            cell.addEventListener('click', (e) => {
+                if (e.target === cell) {
+                    openAfishaModalAt(formatDate(date), cell.dataset.time);
+                }
+            });
+        });
+    }
+}
+
+function createAfishaBlock(event, startHour) {
+    const startMin = timeToMinutes(event.time) - startHour * 60;
+    if (startMin < 0) return null;
+
+    const block = document.createElement('div');
+    const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
+    const duration = event.duration || (event.type === 'birthday' ? 30 : 60);
+    const width = (duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+
+    const typeIcons = { event: '🎭', regular: '🔄', birthday: '🎂' };
+    const icon = typeIcons[event.type] || '🎭';
+    const typeClass = event.type || 'event';
+
+    block.className = `booking-block afisha-block afisha-type-${typeClass}`;
+    block.style.left = `${left}px`;
+    block.style.width = `${Math.max(width, 40)}px`;
+    block.dataset.afishaId = event.id;
+
+    block.innerHTML = `
+        <div class="user-letter">${icon}</div>
+        <div class="title">${escapeHtml(event.title)}</div>
+        <div class="subtitle">${event.time}${duration > 0 ? ' (' + duration + 'хв)' : ''}</div>
+    `;
+
+    if (!isViewer()) {
+        block.addEventListener('click', () => editAfishaItem(event.id));
+    }
+
+    block.addEventListener('mouseenter', (e) => showAfishaTooltip(e, event));
+    block.addEventListener('mousemove', (e) => moveTooltip(e));
+    block.addEventListener('mouseleave', hideTooltip);
+
+    return block;
+}
+
+function showAfishaTooltip(e, event) {
+    const typeLabels = { event: 'Подія', regular: 'Регулярна', birthday: 'Іменинник' };
+    const typeIcons = { event: '🎭', regular: '🔄', birthday: '🎂' };
+    const duration = event.duration || 60;
+    const endTime = minutesToTime(timeToMinutes(event.time) + duration);
+
+    const tooltip = document.getElementById('bookingTooltip');
+    if (!tooltip) return;
+
+    tooltip.innerHTML = `
+        <strong>${typeIcons[event.type] || '🎭'} ${escapeHtml(event.title)}</strong><br>
+        ${typeLabels[event.type] || 'Подія'}<br>
+        🕐 ${event.time} - ${endTime} (${duration} хв)
+    `;
+    tooltip.style.display = 'block';
+    tooltip.style.left = `${e.pageX + 10}px`;
+    tooltip.style.top = `${e.pageY + 10}px`;
+}
+
+function openAfishaModalAt(date, time) {
+    const modal = document.getElementById('afishaModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    const dateInput = document.getElementById('afishaDate');
+    const timeInput = document.getElementById('afishaTime');
+    if (dateInput) dateInput.value = date;
+    if (time && timeInput) timeInput.value = time;
+    renderAfishaList();
 }
 
 // ==========================================

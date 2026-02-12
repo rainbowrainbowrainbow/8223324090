@@ -44,11 +44,17 @@ async function buildAndSendDigest(date) {
 
     for (const line of lines) {
         const lineBookings = bookings.filter(b => b.line_id === line.line_id && !b.linked_to);
-        // v7.8.10: Include bookings where this animator is second_animator
+        // v7.8.10: Include bookings where this animator is second_animator (name-based match)
         const secondBookings = bookings.filter(b =>
             b.second_animator && b.second_animator === line.name && !b.linked_to && b.line_id !== line.line_id
         );
-        if (lineBookings.length === 0 && secondBookings.length === 0) continue;
+        // v7.9.3: Also include linked bookings on this line (reliable line_id-based match)
+        const linkedOnLine = bookings.filter(b => b.line_id === line.line_id && b.linked_to);
+        // Deduplicate: skip linked bookings whose main booking is already shown via secondBookings
+        const extraLinked = linkedOnLine.filter(lb =>
+            !secondBookings.some(sb => sb.id === lb.linked_to)
+        );
+        if (lineBookings.length === 0 && secondBookings.length === 0 && extraLinked.length === 0) continue;
 
         text += `👤 <b>${line.name}</b>\n`;
         for (const b of lineBookings) {
@@ -64,6 +70,13 @@ async function buildAndSendDigest(date) {
             const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
             const mainLine = lines.find(l => l.line_id === b.line_id);
             text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room}) 👥2й з ${mainLine?.name || '?'}\n`;
+        }
+        for (const b of extraLinked) {
+            const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
+            const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
+            const mainBooking = bookings.find(mb => mb.id === b.linked_to);
+            const mainLine = mainBooking ? lines.find(l => l.line_id === mainBooking.line_id) : null;
+            text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room || mainBooking?.room || '?'}) 👥2й з ${mainLine?.name || '?'}\n`;
         }
         text += '\n';
     }
@@ -90,16 +103,18 @@ async function sendTomorrowReminder(todayStr) {
         const tomorrow = new Date(y, m - 1, d + 1);
         const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
 
+        // v7.9.3: Fetch ALL bookings including linked (for second animator display)
         const bookingsResult = await pool.query(
-            "SELECT * FROM bookings WHERE date = $1 AND linked_to IS NULL AND status != 'cancelled' ORDER BY time",
+            "SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time",
             [tomorrowStr]
         );
+        const mainBookingsCount = bookingsResult.rows.filter(b => !b.linked_to).length;
 
         // Fetch afisha events for tomorrow
         const afishaResult = await pool.query('SELECT * FROM afisha WHERE date = $1 ORDER BY time', [tomorrowStr]);
         const afishaEvents = afishaResult.rows;
 
-        if (bookingsResult.rows.length === 0 && afishaEvents.length === 0) {
+        if (mainBookingsCount === 0 && afishaEvents.length === 0) {
             return { success: true, count: 0, reason: 'no_bookings_tomorrow' };
         }
 
@@ -110,15 +125,20 @@ async function sendTomorrowReminder(todayStr) {
         const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [tomorrowStr]);
 
         let text = `⏰ <b>Нагадування: завтра ${tomorrowStr}</b>\n`;
-        text += `📋 ${bookingsResult.rows.length} бронювань\n\n`;
+        text += `📋 ${mainBookingsCount} бронювань\n\n`;
 
         for (const line of linesResult.rows) {
-            const lineBookings = bookingsResult.rows.filter(b => b.line_id === line.line_id);
-            // v7.8.10: Include bookings where this animator is second_animator
+            const lineBookings = bookingsResult.rows.filter(b => b.line_id === line.line_id && !b.linked_to);
+            // v7.8.10: Include bookings where this animator is second_animator (name-based match)
             const secondBookings = bookingsResult.rows.filter(b =>
-                b.second_animator && b.second_animator === line.name && b.line_id !== line.line_id
+                b.second_animator && b.second_animator === line.name && !b.linked_to && b.line_id !== line.line_id
             );
-            if (lineBookings.length === 0 && secondBookings.length === 0) continue;
+            // v7.9.3: Also include linked bookings on this line (reliable line_id-based match)
+            const linkedOnLine = bookingsResult.rows.filter(b => b.line_id === line.line_id && b.linked_to);
+            const extraLinked = linkedOnLine.filter(lb =>
+                !secondBookings.some(sb => sb.id === lb.linked_to)
+            );
+            if (lineBookings.length === 0 && secondBookings.length === 0 && extraLinked.length === 0) continue;
 
             text += `👤 <b>${line.name}</b>\n`;
             for (const b of lineBookings) {
@@ -134,6 +154,13 @@ async function sendTomorrowReminder(todayStr) {
                 const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
                 const mainLine = linesResult.rows.find(l => l.line_id === b.line_id);
                 text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room}) 👥2й з ${mainLine?.name || '?'}\n`;
+            }
+            for (const b of extraLinked) {
+                const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
+                const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
+                const mainBooking = bookingsResult.rows.find(mb => mb.id === b.linked_to);
+                const mainLine = mainBooking ? linesResult.rows.find(l => l.line_id === mainBooking.line_id) : null;
+                text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room || mainBooking?.room || '?'}) 👥2й з ${mainLine?.name || '?'}\n`;
             }
             text += '\n';
         }

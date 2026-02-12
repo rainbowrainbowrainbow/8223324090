@@ -878,6 +878,32 @@ body.dark-mode .occupied-rooms {
     color: #6B7280;
 }
 
+/* v7.9.3: Afisha timeline line dark mode */
+body.dark-mode .afisha-timeline-line {
+    background: linear-gradient(135deg, rgba(139,92,246,0.06) 0%, rgba(109,40,217,0.04) 100%);
+    border-bottom-color: rgba(139,92,246,0.2);
+}
+
+body.dark-mode .afisha-line-header {
+    background: linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(109,40,217,0.1) 100%) !important;
+}
+
+body.dark-mode .afisha-line-header .line-name {
+    color: #C4B5FD;
+}
+
+body.dark-mode .afisha-line-header .line-sub {
+    color: #A78BFA;
+}
+
+body.dark-mode .afisha-line-grid .grid-cell:hover {
+    background: rgba(139,92,246,0.12);
+}
+
+body.dark-mode .afisha-block:hover {
+    box-shadow: 0 3px 8px rgba(139,92,246,0.4);
+}
+
 /* Afisha blocking layer in dark */
 body.dark-mode .afisha-marker.afisha-blocking {
     background: repeating-linear-gradient(

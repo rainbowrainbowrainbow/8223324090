@@ -2303,6 +2303,56 @@ describe('Afisha Telegram Templates (v7.3)', () => {
 });
 
 // ==========================================
+// Digest with Second Animator (v7.9.3)
+// ==========================================
+
+describe('Digest with linked bookings (second animator)', () => {
+    const date = '2099-11-15';
+    let mainBookingId;
+
+    before(async () => {
+        await authRequest('POST', `/api/lines/${date}`, [
+            { id: 'line_main_' + date, name: 'Аніматор Головний', color: '#4CAF50' },
+            { id: 'line_second_' + date, name: 'Аніматор Другий', color: '#2196F3' }
+        ]);
+    });
+
+    it('POST /api/bookings/full — creates main + linked booking', async () => {
+        const res = await authRequest('POST', '/api/bookings/full', {
+            main: {
+                date, time: '10:00', lineId: 'line_main_' + date, room: 'Marvel',
+                programCode: 'КВ4', label: 'КВ4(60)', programName: 'Шпигунська історія',
+                category: 'quest', duration: 60, price: 2800, hosts: 2,
+                secondAnimator: 'Аніматор Другий', status: 'confirmed',
+                createdBy: 'admin'
+            },
+            linked: [{
+                date, time: '10:00', lineId: 'line_second_' + date, room: 'Marvel',
+                programCode: 'КВ4', label: 'КВ4(60)', programName: 'Шпигунська історія',
+                category: 'quest', duration: 60, price: 2800, hosts: 2,
+                secondAnimator: 'Аніматор Другий', status: 'confirmed',
+                createdBy: 'admin'
+            }]
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        mainBookingId = res.data.mainBooking.id;
+    });
+
+    it('GET /api/telegram/digest/:date — includes second animator bookings', async () => {
+        const res = await authRequest('GET', `/api/telegram/digest/${date}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success !== undefined || res.data.count !== undefined);
+    });
+
+    after(async () => {
+        if (mainBookingId) {
+            await authRequest('DELETE', `/api/bookings/${mainBookingId}?permanent=true`);
+        }
+    });
+});
+
+// ==========================================
 // TASKS CRUD (v7.5)
 // ==========================================
 

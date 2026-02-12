@@ -48,9 +48,29 @@ async function loadHistoryPage() {
     } else {
         container.innerHTML = items.map(item => {
             const date = new Date(item.timestamp).toLocaleString('uk-UA');
-            const actionMap = { create: 'Створено', delete: 'Видалено', shift: 'Перенесено', edit: 'Змінено', undo_create: '↩ Скасовано створення', undo_delete: '↩ Скасовано видалення' };
+            const actionMap = {
+                create: 'Створено', delete: 'Видалено', permanent_delete: 'Видалено назавжди',
+                shift: 'Перенесено', edit: 'Змінено',
+                undo_create: '↩ Скасовано створення', undo_delete: '↩ Скасовано видалення',
+                afisha_create: '🎪 Афіша створена', afisha_edit: '🎪 Афіша змінена',
+                afisha_move: '🎪 Афіша перенесена', afisha_delete: '🎪 Афіша видалена',
+                tasks_generated: '📋 Завдання створені'
+            };
             const actionText = actionMap[item.action] || item.action;
-            const actionClass = item.action.includes('undo') ? 'action-undo' : (item.action === 'edit' ? 'action-edit' : (item.action === 'create' ? 'action-create' : 'action-delete'));
+            const isAfisha = item.action.startsWith('afisha_');
+            const actionClass = item.action.includes('undo') ? 'action-undo' : (item.action.includes('edit') || item.action === 'afisha_move' ? 'action-edit' : (item.action.includes('create') ? 'action-create' : 'action-delete'));
+
+            let details;
+            if (item.action === 'afisha_move') {
+                details = `${escapeHtml(item.data?.title || '')}: ${escapeHtml(item.data?.from || '')} → ${escapeHtml(item.data?.to || '')}`;
+            } else if (isAfisha) {
+                details = `${escapeHtml(item.data?.title || '')} (${escapeHtml(item.data?.type || 'event')}, ${item.data?.duration || 60}хв): ${escapeHtml(item.data?.date || '')} ${escapeHtml(item.data?.time || '')}`;
+            } else if (item.action === 'tasks_generated') {
+                details = `${escapeHtml(item.data?.title || '')} — ${item.data?.count || 0} завдань`;
+            } else {
+                details = `${escapeHtml(item.data?.label || item.data?.programCode || '')}: ${escapeHtml(item.data?.room || '')} (${escapeHtml(item.data?.date || '')} ${escapeHtml(item.data?.time || '')})`;
+            }
+
             return `
                 <div class="history-item ${actionClass}">
                     <div class="history-header">
@@ -58,9 +78,7 @@ async function loadHistoryPage() {
                         <span class="history-user">${escapeHtml(item.user || '')}</span>
                         <span class="history-date">${escapeHtml(date)}</span>
                     </div>
-                    <div class="history-details">
-                        ${escapeHtml(item.data?.label || item.data?.programCode || '')}: ${escapeHtml(item.data?.room || '')} (${escapeHtml(item.data?.date || '')} ${escapeHtml(item.data?.time || '')})
-                    </div>
+                    <div class="history-details">${details}</div>
                 </div>
             `;
         }).join('');

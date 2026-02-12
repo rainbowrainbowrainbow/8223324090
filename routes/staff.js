@@ -168,6 +168,180 @@ router.put('/schedule', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/staff/schedule/bulk — upsert multiple schedule entries at once
+ * LLM HINT: Send array of entries. Each entry: { staffId, date, shiftStart, shiftEnd, status, note }
+ * Example: set a whole week for one person, or one day for all animators.
+ * Returns count of upserted entries.
+ */
+router.post('/schedule/bulk', async (req, res) => {
+    try {
+        const { entries } = req.body;
+        if (!Array.isArray(entries) || entries.length === 0) {
+            return res.status(400).json({ success: false, error: 'Потрібен масив entries' });
+        }
+        if (entries.length > 500) {
+            return res.status(400).json({ success: false, error: 'Максимум 500 записів за раз' });
+        }
+        let count = 0;
+        for (const e of entries) {
+            if (!e.staffId || !e.date) continue;
+            await pool.query(
+                `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT (staff_id, date)
+                 DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6`,
+                [e.staffId, e.date, e.shiftStart || null, e.shiftEnd || null, e.status || 'working', e.note || null]
+            );
+            count++;
+        }
+        res.json({ success: true, count });
+    } catch (err) {
+        log.error('POST /staff/schedule/bulk error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+/**
+ * POST /api/staff/schedule/copy-week — copy schedule from one week to another
+ * LLM HINT: { fromMonday: "2026-02-09", toMonday: "2026-02-16", department?: "animators" }
+ * Copies 7 days of schedule. Optional department filter.
+ * Existing entries in target week are overwritten.
+ */
+router.post('/schedule/copy-week', async (req, res) => {
+    try {
+        const { fromMonday, toMonday, department } = req.body;
+        if (!fromMonday || !toMonday) {
+            return res.status(400).json({ success: false, error: 'Потрібні fromMonday та toMonday' });
+        }
+
+        // Build date pairs (Mon→Mon, Tue→Tue, etc.)
+        const fromDates = [];
+        const toDates = [];
+        for (let i = 0; i < 7; i++) {
+            const fd = new Date(fromMonday);
+            fd.setDate(fd.getDate() + i);
+            fromDates.push(fd.toISOString().split('T')[0]);
+            const td = new Date(toMonday);
+            td.setDate(td.getDate() + i);
+            toDates.push(td.toISOString().split('T')[0]);
+        }
+
+        // Fetch source week schedule
+        let sql = `SELECT ss.* FROM staff_schedule ss JOIN staff s ON s.id = ss.staff_id
+                    WHERE ss.date >= $1 AND ss.date <= $2 AND s.is_active = true`;
+        const params = [fromDates[0], fromDates[6]];
+        if (department) {
+            params.push(department);
+            sql += ` AND s.department = $${params.length}`;
+        }
+        const source = await pool.query(sql, params);
+
+        let count = 0;
+        for (const row of source.rows) {
+            const dayIndex = fromDates.indexOf(row.date);
+            if (dayIndex === -1) continue;
+            const targetDate = toDates[dayIndex];
+            await pool.query(
+                `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT (staff_id, date)
+                 DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6`,
+                [row.staff_id, targetDate, row.shift_start, row.shift_end, row.status, row.note]
+            );
+            count++;
+        }
+        res.json({ success: true, count });
+    } catch (err) {
+        log.error('POST /staff/schedule/copy-week error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+/**
+ * GET /api/staff/schedule/hours — calculate worked hours for a date range
+ * LLM HINT: ?from=2026-02-01&to=2026-02-28 → returns { staffId: { name, hours, days } }
+ */
+router.get('/schedule/hours', async (req, res) => {
+    try {
+        const { from, to } = req.query;
+        if (!from || !to) {
+            return res.status(400).json({ success: false, error: 'Потрібні параметри from та to' });
+        }
+        const result = await pool.query(
+            `SELECT ss.staff_id, s.name, s.department, s.position,
+                    ss.shift_start, ss.shift_end, ss.status
+             FROM staff_schedule ss
+             JOIN staff s ON s.id = ss.staff_id
+             WHERE ss.date >= $1 AND ss.date <= $2 AND s.is_active = true
+             ORDER BY s.department, s.name`,
+            [from, to]
+        );
+
+        const stats = {};
+        for (const row of result.rows) {
+            if (!stats[row.staff_id]) {
+                stats[row.staff_id] = {
+                    name: row.name, department: row.department, position: row.position,
+                    totalHours: 0, workingDays: 0, dayoffs: 0, vacationDays: 0, sickDays: 0
+                };
+            }
+            const s = stats[row.staff_id];
+            if (row.status === 'working' && row.shift_start && row.shift_end) {
+                const [sh, sm] = row.shift_start.split(':').map(Number);
+                const [eh, em] = row.shift_end.split(':').map(Number);
+                let hours = (eh * 60 + em - sh * 60 - sm) / 60;
+                if (hours < 0) hours += 24; // night shift
+                s.totalHours += hours;
+                s.workingDays++;
+            } else if (row.status === 'dayoff') s.dayoffs++;
+            else if (row.status === 'vacation') s.vacationDays++;
+            else if (row.status === 'sick') s.sickDays++;
+        }
+
+        // Round hours
+        for (const id of Object.keys(stats)) {
+            stats[id].totalHours = Math.round(stats[id].totalHours * 10) / 10;
+        }
+
+        res.json({ success: true, data: stats });
+    } catch (err) {
+        log.error('GET /staff/schedule/hours error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+/**
+ * GET /api/staff/schedule/check/:date — check which animators are available on a date
+ * LLM HINT: Used by timeline to warn if an animator is off/sick/vacation.
+ * Returns { available: [...staffIds], unavailable: [{id, name, status}] }
+ */
+router.get('/schedule/check/:date', async (req, res) => {
+    try {
+        const { date } = req.params;
+        const result = await pool.query(
+            `SELECT ss.staff_id, ss.status, ss.shift_start, ss.shift_end, s.name, s.department
+             FROM staff_schedule ss
+             JOIN staff s ON s.id = ss.staff_id
+             WHERE ss.date = $1 AND s.department = 'animators' AND s.is_active = true`,
+            [date]
+        );
+        const available = [];
+        const unavailable = [];
+        for (const row of result.rows) {
+            if (row.status === 'working') {
+                available.push({ id: row.staff_id, name: row.name, shiftStart: row.shift_start, shiftEnd: row.shift_end });
+            } else {
+                unavailable.push({ id: row.staff_id, name: row.name, status: row.status });
+            }
+        }
+        res.json({ success: true, available, unavailable });
+    } catch (err) {
+        log.error('GET /staff/schedule/check error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
 // GET /api/staff/departments — list department names
 router.get('/departments', async (req, res) => {
     res.json({ success: true, data: DEPARTMENTS });

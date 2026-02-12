@@ -269,6 +269,17 @@
             font-weight: 600;
         }
 
+        .emp-hours {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--primary-dark);
+            background: rgba(16,185,129,0.08);
+            padding: 1px 6px;
+            border-radius: 8px;
+            display: none;
+        }
+        .show-hours .emp-hours { display: inline-block; }
+
         /* Schedule cells */
         .sch-cell {
             width: 100%;
@@ -538,6 +549,9 @@
                     <span id="weekLabel" class="week-label"></span>
                     <button id="nextWeekBtn" title="Наступний тиждень">›</button>
                     <button id="todayWeekBtn" title="Поточний тиждень" style="font-size:13px;width:auto;padding:0 12px;font-weight:700">Сьогодні</button>
+                    <button id="copyWeekBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px;display:none" title="Скопіювати цей тиждень на наступний">Копія тижня →</button>
+                    <button id="fillWeekBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px;display:none" title="Масове заповнення тижня">Заповнити тиждень</button>
+                    <button id="toggleHoursBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px" title="Показати/сховати години">Години</button>
                 </div>
                 <div id="deptFilter" class="dept-filter"></div>
             </div>
@@ -585,6 +599,56 @@
             <div class="modal-actions">
                 <button id="schSaveBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
                 <button id="schCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fill week modal -->
+    <div id="fillWeekOverlay" class="sch-modal-overlay">
+        <div class="sch-modal" style="max-width:440px">
+            <h3>Заповнити тиждень</h3>
+            <div class="form-group">
+                <label>Працівник</label>
+                <select id="fillStaffSelect" style="width:100%"></select>
+            </div>
+            <div class="form-group">
+                <label>Дні тижня</label>
+                <div id="fillDaysRow" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+                    <label style="display:flex;align-items:center;gap:3px;font-size:13px;font-weight:600"><input type="checkbox" value="1" checked> Пн</label>
+                    <label style="display:flex;align-items:center;gap:3px;font-size:13px;font-weight:600"><input type="checkbox" value="2" checked> Вт</label>
+                    <label style="display:flex;align-items:center;gap:3px;font-size:13px;font-weight:600"><input type="checkbox" value="3" checked> Ср</label>
+                    <label style="display:flex;align-items:center;gap:3px;font-size:13px;font-weight:600"><input type="checkbox" value="4" checked> Чт</label>
+                    <label style="display:flex;align-items:center;gap:3px;font-size:13px;font-weight:600"><input type="checkbox" value="5" checked> Пт</label>
+                    <label style="display:flex;align-items:center;gap:3px;font-size:13px;font-weight:600"><input type="checkbox" value="6"> Сб</label>
+                    <label style="display:flex;align-items:center;gap:3px;font-size:13px;font-weight:600"><input type="checkbox" value="0"> Нд</label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Статус</label>
+                <select id="fillStatus">
+                    <option value="working">Робочий день</option>
+                    <option value="dayoff">Вихідний</option>
+                    <option value="vacation">Відпустка</option>
+                    <option value="sick">Лікарняний</option>
+                </select>
+            </div>
+            <div id="fillTimeFields">
+                <div class="form-group">
+                    <label>Початок зміни</label>
+                    <input type="time" id="fillStart" value="09:00">
+                </div>
+                <div class="form-group">
+                    <label>Кінець зміни</label>
+                    <input type="time" id="fillEnd" value="18:00">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Примітка</label>
+                <input type="text" id="fillNote" placeholder="Необов'язково">
+            </div>
+            <div class="modal-actions">
+                <button id="fillSaveBtn" class="btn-page-primary" style="flex:1">Заповнити</button>
+                <button id="fillCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
             </div>
         </div>
     </div>

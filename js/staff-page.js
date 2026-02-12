@@ -19,6 +19,8 @@ const StaffState = {
     departments: {},
     activeDept: 'all',
     editingCell: null,  // { staffId, date }
+    hoursData: null,    // { staffId: { totalHours, workingDays, ... } }
+    showHours: false,
 };
 
 const DEPT_ICONS = {
@@ -118,6 +120,36 @@ async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, no
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ staffId, date, shiftStart, shiftEnd, status, note })
+    });
+    return await res.json();
+}
+
+async function bulkSaveSchedule(entries) {
+    const token = localStorage.getItem('pzp_token');
+    const res = await fetch('/api/staff/schedule/bulk', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries })
+    });
+    return await res.json();
+}
+
+async function copyWeekSchedule(fromMonday, toMonday, department) {
+    const token = localStorage.getItem('pzp_token');
+    const body = { fromMonday, toMonday };
+    if (department && department !== 'all') body.department = department;
+    const res = await fetch('/api/staff/schedule/copy-week', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    return await res.json();
+}
+
+async function fetchScheduleHours(from, to) {
+    const token = localStorage.getItem('pzp_token');
+    const res = await fetch(`/api/staff/schedule/hours?from=${from}&to=${to}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
     });
     return await res.json();
 }
@@ -222,6 +254,8 @@ function renderSchedule() {
 
         for (const emp of grouped[dept]) {
             const initials = emp.name.split(' ').map(w => w[0]).join('').slice(0, 2);
+            const hoursData = StaffState.hoursData?.[emp.id];
+            const hoursLabel = hoursData ? `${hoursData.totalHours}г / ${hoursData.workingDays}д` : '';
             bodyHtml += `<tr>`;
             bodyHtml += `<td>
                 <div class="emp-cell">
@@ -229,6 +263,7 @@ function renderSchedule() {
                     <div class="emp-info">
                         <span class="emp-name">${emp.name}</span>
                         <span class="emp-position">${emp.position}</span>
+                        <span class="emp-hours">${hoursLabel}</span>
                     </div>
                 </div>
             </td>`;
@@ -267,6 +302,9 @@ function renderSchedule() {
     }
 
     tbody.innerHTML = bodyHtml;
+    if (StaffState.showHours) {
+        tbody.classList.add('show-hours');
+    }
     renderSummary();
 
     // Cell click handlers
@@ -355,6 +393,156 @@ function goToday() {
 }
 
 // ==========================================
+// FILL WEEK MODAL
+// ==========================================
+
+function openFillWeekModal() {
+    const select = document.getElementById('fillStaffSelect');
+    const filtered = StaffState.activeDept === 'all'
+        ? StaffState.staff
+        : StaffState.staff.filter(s => s.department === StaffState.activeDept);
+
+    select.innerHTML = '<option value="all">Всі видимі працівники</option>';
+    for (const emp of filtered) {
+        select.innerHTML += `<option value="${emp.id}">${emp.name} — ${emp.position}</option>`;
+    }
+
+    document.getElementById('fillStatus').value = 'working';
+    document.getElementById('fillStart').value = '09:00';
+    document.getElementById('fillEnd').value = '18:00';
+    document.getElementById('fillNote').value = '';
+    toggleFillTimeFields();
+    document.getElementById('fillWeekOverlay').classList.add('visible');
+}
+
+function closeFillWeekModal() {
+    document.getElementById('fillWeekOverlay').classList.remove('visible');
+}
+
+function toggleFillTimeFields() {
+    const status = document.getElementById('fillStatus').value;
+    document.getElementById('fillTimeFields').style.display = status === 'working' ? '' : 'none';
+}
+
+async function handleFillWeekSave() {
+    const staffValue = document.getElementById('fillStaffSelect').value;
+    const status = document.getElementById('fillStatus').value;
+    const shiftStart = status === 'working' ? document.getElementById('fillStart').value : null;
+    const shiftEnd = status === 'working' ? document.getElementById('fillEnd').value : null;
+    const note = document.getElementById('fillNote').value.trim() || null;
+
+    // Get selected days (checkboxes)
+    const checkedDays = [];
+    document.querySelectorAll('#fillDaysRow input[type=checkbox]:checked').forEach(cb => {
+        checkedDays.push(parseInt(cb.value));
+    });
+    if (checkedDays.length === 0) {
+        showNotification('Оберіть хоча б один день', 'error');
+        return;
+    }
+
+    // Determine which staff to fill
+    let targetStaff;
+    if (staffValue === 'all') {
+        targetStaff = StaffState.activeDept === 'all'
+            ? StaffState.staff
+            : StaffState.staff.filter(s => s.department === StaffState.activeDept);
+    } else {
+        targetStaff = StaffState.staff.filter(s => s.id === parseInt(staffValue));
+    }
+
+    // Build entries for the current week's selected days
+    const dates = getWeekDates(StaffState.weekStart);
+    const entries = [];
+    for (const emp of targetStaff) {
+        for (const d of dates) {
+            if (checkedDays.includes(d.getDay())) {
+                entries.push({
+                    staffId: emp.id,
+                    date: formatDateStr(d),
+                    shiftStart, shiftEnd, status, note
+                });
+            }
+        }
+    }
+
+    if (entries.length === 0) {
+        showNotification('Нічого заповнювати', 'error');
+        return;
+    }
+
+    const result = await bulkSaveSchedule(entries);
+    if (result.success) {
+        closeFillWeekModal();
+        showNotification(`Заповнено ${result.count} записів`);
+        await goToWeek(StaffState.weekStart);
+    } else {
+        showNotification(result.error || 'Помилка збереження', 'error');
+    }
+}
+
+// ==========================================
+// COPY WEEK
+// ==========================================
+
+async function handleCopyWeek() {
+    const fromMonday = formatDateStr(StaffState.weekStart);
+    const nextMon = new Date(StaffState.weekStart);
+    nextMon.setDate(nextMon.getDate() + 7);
+    const toMonday = formatDateStr(nextMon);
+
+    const deptLabel = StaffState.activeDept === 'all'
+        ? 'всіх відділів'
+        : (StaffState.departments[StaffState.activeDept] || StaffState.activeDept);
+
+    const ok = confirm(`Скопіювати графік ${deptLabel} з тижня ${fromMonday} на тиждень ${toMonday}?\n\nІснуючі записи будуть перезаписані.`);
+    if (!ok) return;
+
+    const result = await copyWeekSchedule(fromMonday, toMonday, StaffState.activeDept);
+    if (result.success) {
+        showNotification(`Скопійовано ${result.count} записів на наступний тиждень`);
+        // Jump to the target week to see the result
+        await goToWeek(nextMon);
+    } else {
+        showNotification(result.error || 'Помилка копіювання', 'error');
+    }
+}
+
+// ==========================================
+// HOURS TOGGLE
+// ==========================================
+
+async function toggleHours() {
+    StaffState.showHours = !StaffState.showHours;
+    const tbody = document.getElementById('scheduleBody');
+    const btn = document.getElementById('toggleHoursBtn');
+
+    if (StaffState.showHours) {
+        // Fetch hours for current week
+        const dates = getWeekDates(StaffState.weekStart);
+        const from = formatDateStr(dates[0]);
+        const to = formatDateStr(dates[6]);
+        const result = await fetchScheduleHours(from, to);
+        if (result.success) {
+            StaffState.hoursData = result.data;
+        }
+        btn.style.background = 'var(--primary)';
+        btn.style.color = '#fff';
+        btn.style.borderColor = 'var(--primary)';
+    } else {
+        StaffState.hoursData = null;
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+    }
+    renderSchedule();
+    // Apply show-hours class after render (tbody is re-created)
+    if (StaffState.showHours) {
+        document.getElementById('scheduleBody').classList.add('show-hours');
+    }
+}
+
+// ==========================================
 // DARK MODE
 // ==========================================
 
@@ -393,6 +581,12 @@ async function initPage() {
     const addBtn = document.getElementById('addStaffBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 
+    // Show admin-only buttons
+    const copyBtn = document.getElementById('copyWeekBtn');
+    const fillBtn = document.getElementById('fillWeekBtn');
+    if (copyBtn) copyBtn.style.display = canManage ? '' : 'none';
+    if (fillBtn) fillBtn.style.display = canManage ? '' : 'none';
+
     document.getElementById('logoutBtn').addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
@@ -423,8 +617,26 @@ async function initPage() {
         if (e.target === e.currentTarget) closeEditModal();
     });
 
+    // Fill week modal
+    document.getElementById('fillWeekBtn').addEventListener('click', openFillWeekModal);
+    document.getElementById('fillSaveBtn').addEventListener('click', handleFillWeekSave);
+    document.getElementById('fillCancelBtn').addEventListener('click', closeFillWeekModal);
+    document.getElementById('fillStatus').addEventListener('change', toggleFillTimeFields);
+    document.getElementById('fillWeekOverlay').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeFillWeekModal();
+    });
+
+    // Copy week
+    document.getElementById('copyWeekBtn').addEventListener('click', handleCopyWeek);
+
+    // Hours toggle
+    document.getElementById('toggleHoursBtn').addEventListener('click', toggleHours);
+
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeEditModal();
+        if (e.key === 'Escape') {
+            closeEditModal();
+            closeFillWeekModal();
+        }
     });
 }
 

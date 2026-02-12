@@ -291,6 +291,9 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_staff_schedule_date ON staff_schedule(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_staff_schedule_staff ON staff_schedule(staff_id)');
 
+        // v7.10.1: Telegram username for staff notifications
+        await pool.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100)`);
+
         // Seed staff if table is empty
         const staffCount = await pool.query('SELECT COUNT(*) FROM staff');
         if (parseInt(staffCount.rows[0].count) === 0) {

@@ -514,6 +514,51 @@ async function buildLinkedBookings(booking, program) {
     return linked;
 }
 
+/**
+ * v7.10: Check if the primary/secondary animator is off duty on the booking date.
+ * Uses GET /api/staff/schedule/check/:date which returns available/unavailable animators.
+ * Shows a warning (non-blocking) if an animator has dayoff/vacation/sick status.
+ */
+async function checkAnimatorAvailability(lineId, secondAnimatorName) {
+    try {
+        const dateStr = formatDate(AppState.selectedDate);
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch(`/api/staff/schedule/check/${dateStr}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!data.success) return;
+
+        const lines = await getLinesForDate(AppState.selectedDate);
+        const primaryLine = lines.find(l => l.id === lineId);
+        const primaryName = primaryLine?.name;
+
+        // Check primary animator
+        if (primaryName) {
+            const off = data.unavailable.find(u => u.name === primaryName);
+            if (off) {
+                showNotification(`⚠️ ${primaryName}: ${STATUS_LABELS_BOOKING[off.status] || off.status} на ${dateStr}`, 'warning');
+            }
+        }
+
+        // Check second animator
+        if (secondAnimatorName) {
+            const off = data.unavailable.find(u => u.name === secondAnimatorName);
+            if (off) {
+                showNotification(`⚠️ ${secondAnimatorName}: ${STATUS_LABELS_BOOKING[off.status] || off.status} на ${dateStr}`, 'warning');
+            }
+        }
+    } catch (err) {
+        // Non-critical: don't block booking if check fails
+    }
+}
+
+const STATUS_LABELS_BOOKING = {
+    dayoff: 'вихідний',
+    vacation: 'відпустка',
+    sick: 'лікарняний'
+};
+
 function unlockSubmitBtn() {
     const btn = document.getElementById('bookingSubmitBtn');
     if (btn) {
@@ -540,6 +585,9 @@ async function handleBookingSubmit(e) {
     if (formData.program.hasFiller && !formData.pinataFiller) {
         showNotification('Оберіть наповнювач для піньяти', 'error'); unlockSubmitBtn(); return;
     }
+
+    // v7.10: Check if animator is off duty on this date
+    await checkAnimatorAvailability(formData.lineId, formData.secondAnimator);
 
     // v5.5: excludeId для режиму редагування
     const excludeId = AppState.editingBookingId || null;

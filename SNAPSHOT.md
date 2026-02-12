@@ -3,7 +3,7 @@
 > Оновлюється кожні 10-15 повідомлень. Швидкий контекст для продовження роботи.
 
 ## Де ми
-Версія **v8.3.2**. Фікс рендерингу історії (афіша + автоматизація) + extra_data в linked bookings.
+Версія **v8.3.3**. Bugfixes: undo_edit/undo_shift в історії + share/copy invite crash fix.
 
 ## Що готово
 - v5.30-v5.38: UI/UX overhaul (design system, responsive, dark mode, PWA)
@@ -28,6 +28,7 @@
 - v8.3.0: Автоматизація (правила, задачі, Telegram) + Drag-to-Move афіша
 - v8.3.1: МК Футболки (розміри XS-XL в extra_data, 2 автоматизації) + афіша-блоки row layout
 - v8.3.2: Фікс історії (афіша/автоматизація рендеринг) + extra_data в linked bookings
+- v8.3.3: Bugfixes (undo_edit/undo_shift в історії, share/copy invite crash fix)
 
 ## Що далі (план)
 - Clawd Bot команди для задач (/tasks, /done)
@@ -77,4 +78,4 @@ bookings, lines_by_date, history, settings, users, booking_counter, pending_anim
 - Кольори: фіолетовий (quest), блакитний (animation), помаранчевий (show), бірюзовий (photo), зелений (masterclass), рожевий (pinata), сірий (custom)
 
 ---
-*Оновлено: 2026-02-12, v8.3.2*
+*Оновлено: 2026-02-12, v8.3.3*

@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-02-12 — v8.3.3 Bugfixes
+
+**Історія — повне покриття:**
+- actionMap: undo_edit → "↩ Скасовано зміну", undo_shift → "↩ Скасовано перенос"
+- CSS класи: automation_triggered, tasks_generated, shift → action-edit (нейтральний)
+- Фільтр: додано permanent_delete, undo_edit, undo_shift
+
+**Share/Copy invite fix:**
+- shareInviteLink: try/catch (navigator.share кидає sync TypeError на HTTP)
+- Fallback: якщо share недоступний → копіює посилання
+- copyInviteLink: передача кнопки як параметра замість deprecated implicit window.event
+- Додано .catch() для clipboard помилок
+
+---
+
 ## 2026-02-12 — v8.3.2 Фікс історії + extra_data
 
 **Історія — рендеринг афіша-дій:**

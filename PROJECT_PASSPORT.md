@@ -2,13 +2,13 @@
 
 > Ультра-детальний паспорт для передачі в новий чат. Усе що потрібно для продовження роботи.
 >
-> Оновлено: 2026-02-11, v7.0.0
+> Оновлено: 2026-02-12, v7.8.0
 
 ---
 
 ## 1. Що це
 
-Система бронювання для дитячого розважального парку **"Закревського Періоду"** (Київ, вул. Закревського 31/2, 3 поверх). Таймлайн аніматорів, прив'язка до кімнат/програм, Telegram-бот, дашборд, каталог, запрошення, бекапи.
+Система бронювання для дитячого розважального парку **"Закревського Періоду"** (Київ, вул. Закревського 31/2, 3 поверх). Таймлайн аніматорів, прив'язка до кімнат/програм, Telegram-бот, задачник, каталог програм, дашборд, запрошення, бекапи.
 
 ---
 
@@ -17,8 +17,9 @@
 | Параметр | Значення |
 |---|---|
 | Хостинг | Railway |
-| Гілка на Railway | `claude/review-project-docs-1y3qH` |
-| Поточна версія | v7.0.0 (Product Catalog MVP + тестовий режим) |
+| Гілка на Railway | `claude/review-project-docs-1y3qH` (потребує оновлення) |
+| Актуальна гілка | `claude/project-passport-docs-XKYIn` |
+| Поточна версія | v7.8.0 |
 | Remote | `origin` → `rainbowrainbowrainbow/8223324090` |
 | Домен | через `RAILWAY_PUBLIC_DOMAIN` env |
 | Порт | `PORT` (default 3000) |
@@ -60,10 +61,10 @@ node --test tests/api.test.js
 | Database | PostgreSQL 16 via `pg` (raw queries, **NO ORM, NO Prisma**) |
 | Auth | JWT (`jsonwebtoken`) + `bcryptjs` |
 | Bot | Custom Telegram Bot API (**NO grammY**) |
-| Frontend | Vanilla HTML + CSS + JS SPA (**NO React, NO Next.js, NO Astro**) |
-| CSS | 10-file modular architecture + Design System v4.0 |
+| Frontend | Vanilla HTML + CSS + JS, multi-page (**NO React, NO Next.js, NO Astro**) |
+| CSS | 11-file modular architecture + Design System v4.0 |
 | Font | Nunito (Google Fonts) |
-| Testing | Node.js built-in `node --test` (157 тестів) |
+| Testing | Node.js built-in `node --test` (192 тести, 54 suites) |
 | PWA | `manifest.json` (standalone, theme emerald) |
 
 ### Dependencies (package.json)
@@ -78,67 +79,77 @@ node --test tests/api.test.js
 
 ---
 
-## 4. Структура файлів (16 401 рядок)
+## 4. Структура файлів (20 238 рядків)
 
 ```
-server.js              (97)  — Entry point, middleware, routes mount, schedulers
-db/index.js           (400+) — Pool, schema creation, 11 таблиць, seed users+products, indexes
+server.js              (109)  — Entry point, middleware, routes mount, 4 schedulers
+
+db/
+  index.js             (325)  — Pool, schema (13 таблиць), seed users+products, 14 indexes
 
 routes/
-  auth.js              (39)  — Login (v6.0: passwordless), verify
-  products.js          (68)  — Product catalog (GET list, GET by id)
-  bookings.js         (349)  — CRUD, linked bookings, conflict checks, transactions
-  lines.js             (62)  — Animator lines per date
-  history.js           (77)  — Audit log with JSONB search, filters, pagination
-  settings.js         (102)  — Settings CRUD, stats, free rooms, health
-  afisha.js            (77)  — Events CRUD
-  telegram.js         (277)  — Webhook, notifications, digest, reminder, animator requests
-  backup.js            (72)  — SQL backup create/restore/download
+  auth.js               (39)  — Login (JWT), verify
+  bookings.js          (349)  — CRUD, linked bookings, conflict checks, transactions
+  lines.js              (62)  — Animator lines per date
+  history.js            (77)  — Audit log with JSONB search, filters, pagination
+  settings.js          (102)  — Settings CRUD, stats, free rooms, health
+  afisha.js            (137)  — Events CRUD + generate-tasks
+  telegram.js          (285)  — Webhook, notifications, digest, reminder, animator requests
+  backup.js             (72)  — SQL backup create/restore/download
+  products.js          (198)  — Product catalog CRUD (v7.1)
+  tasks.js             (153)  — Tasks CRUD + type/template_id support (v7.8)
+  task-templates.js    (114)  — Recurring task templates CRUD (v7.8)
 
 services/
-  booking.js          (195)  — Validators, time helpers, conflict checks, row mapper
-  telegram.js         (265)  — Bot API wrapper, retry 3x, webhook setup, auto-delete
-  templates.js         (59)  — Ukrainian notification templates
-  scheduler.js        (185)  — Auto-digest (10:00 Kyiv), auto-reminder, auto-backup
-  backup.js           (114)  — SQL dump generator, Telegram file upload
+  booking.js           (195)  — Validators, time helpers, conflict checks, row mapper
+  telegram.js          (265)  — Bot API wrapper, retry 3x, webhook setup, auto-delete
+  templates.js          (95)  — Ukrainian notification templates, afisha formatting
+  scheduler.js         (271)  — Auto-digest, auto-reminder, auto-backup, recurring tasks
+  backup.js            (114)  — SQL dump generator, Telegram file upload
 
 middleware/
-  auth.js              (29)  — JWT verification
-  rateLimit.js         (54)  — In-memory rate limiter (120/15min + 5/min login)
-  security.js          (24)  — Security headers (X-Content-Type, X-Frame, HSTS)
-  requestId.js         (41)  — AsyncLocalStorage request IDs
+  auth.js               (39)  — JWT verification
+  rateLimit.js          (54)  — In-memory rate limiter (120/15min + 5/min login)
+  security.js           (24)  — Security headers (X-Content-Type, X-Frame, HSTS)
+  requestId.js          (41)  — AsyncLocalStorage request IDs
 
 utils/
-  logger.js            (83)  — Structured logging, JSON/pretty formats
+  logger.js             (83)  — Structured logging, JSON/pretty formats
 
 js/
-  config.js           (220+) — 40 programs, 28 costumes, 14 rooms, category config, products cache
-  api.js               (?)   — Fetch wrapper with JWT auth
-  auth.js              (?)   — Login/logout, session management
-  app.js               (?)   — Event listeners, escapeHtml, preferences
-  ui.js               (526)  — Notifications, tooltip, dark/compact mode, undo, export PNG
-  booking.js         (1035)  — Booking panel, program search, form, invite, duplicate
-  timeline.js         (494)  — Timeline render, multi-day, pending lines, status filter
-  settings.js        (1179)  — History, catalogs, telegram config, dashboard, afisha
+  config.js            (234)  — 40 programs, 28 costumes, 14 rooms, category config, products cache
+  api.js               (375)  — Fetch wrapper with JWT auth, all API calls
+  auth.js              (126)  — Login/logout, session management, role checks
+  app.js               (368)  — Event listeners, escapeHtml, preferences, navigation
+  ui.js                (528)  — Notifications, tooltip, dark/compact mode, undo, export PNG
+  booking.js          (1096)  — Booking panel, program search, form, invite, duplicate
+  timeline.js          (545)  — Timeline render, multi-day, pending lines, status filter
+  settings.js         (1565)  — History, catalogs, telegram config, dashboard, afisha, tasks modal
+  programs-page.js     (257)  — Standalone programs page controller (v7.8)
+  tasks-page.js        (422)  — Standalone tasks page controller (v7.8)
 
-css/ (10 файлів):
-  base.css             (303)  — Design tokens, typography, status badges, category chips
+css/ (11 файлів):
+  base.css             (304)  — Design tokens, typography, status badges, category chips
   auth.css             (240)  — Login screen, test-mode-hint
   layout.css           (505)  — Header, nav, emerald dark dropdown
   timeline.css         (638)  — Grid, booking blocks, time scale
   panel.css            (585)  — Sidebar, programs, search input
-  modals.css           (753)  — All modals, unified buttons, empty states
+  modals.css           (947)  — All modals, unified buttons, empty states
   controls.css         (433)  — Status filter, zoom, segmented controls
-  features.css         (933)  — Telegram settings, dashboard, invite, afisha
-  dark-mode.css       (1071)  — Complete dark theme
+  features.css         (972)  — Telegram settings, dashboard, invite, afisha
+  dark-mode.css       (1110)  — Complete dark theme
   responsive.css       (381)  — 4 breakpoints + landscape
+  pages.css            (550)  — Standalone pages: nav, cards, filters, badges (v7.8)
 
-index.html           (1318)  — Full SPA, 12 modals, booking panel
-invite.html           (475)  — Standalone invitation page
+HTML pages:
+  index.html          (1536)  — Main SPA (timeline, modals, booking panel)
+  tasks.html           (159)  — Standalone tasks page (v7.8)
+  programs.html        (132)  — Standalone programs catalog (v7.8)
+  invite.html          (475)  — Standalone invitation page
 
 tests/
-  api.test.js        (2159)  — 157 tests, 50 suites
-  helpers.js            (54)  — Test utilities, cached token, testDate=2099-01-15
+  api.test.js         (2498)  — 192 tests, 54 suites
+  helpers.js             (54)  — Test utilities, cached token, testDate=2099-01-15
 
 images/ (15 files, ~3.5MB):
   favicon.svg, favicon-16/32/180/192/512.png, favicon.ico
@@ -151,7 +162,22 @@ manifest.json — PWA manifest (standalone, uk, emerald theme)
 
 ---
 
-## 5. База даних (11 таблиць)
+## 5. Навігація між сторінками
+
+Система складається з 4 HTML-сторінок з єдиним header-nav:
+
+| Шлях | Сторінка | Файли |
+|---|---|---|
+| `/` | Таймлайн (головна SPA) | `index.html` + 8 JS modules + 11 CSS |
+| `/tasks` | Задачник | `tasks.html` + `js/tasks-page.js` |
+| `/programs` | Каталог програм | `programs.html` + `js/programs-page.js` |
+| `/invite` | Запрошення (standalone) | `invite.html` |
+
+Спільні ресурси: `js/config.js`, `js/api.js`, `js/auth.js`, `css/base.css`, `css/layout.css`, `css/pages.css`, `css/dark-mode.css`
+
+---
+
+## 6. База даних (13 таблиць)
 
 ### bookings (головна)
 
@@ -232,7 +258,7 @@ id SERIAL PK, date, note TEXT, status ('pending'), created_at
 ### afisha
 
 ```
-id SERIAL PK, date, time, title, duration (default 60), created_at
+id SERIAL PK, date, time, title, duration (default 60), type ('event'/'birthday'/'regular'), created_at
 ```
 
 ### telegram_known_chats
@@ -272,7 +298,41 @@ updated_at TIMESTAMP
 updated_by VARCHAR(50)
 ```
 
-### Indexes (9)
+### tasks (v7.5 + v7.6 + v7.8)
+
+```sql
+id SERIAL PK
+title VARCHAR(200) NOT NULL
+description TEXT
+date VARCHAR(20)
+status VARCHAR(20) DEFAULT 'todo'     -- 'todo' | 'in_progress' | 'done'
+priority VARCHAR(20) DEFAULT 'normal' -- 'low' | 'normal' | 'high'
+assigned_to VARCHAR(50)
+created_by VARCHAR(50)
+created_at TIMESTAMP DEFAULT NOW()
+updated_at TIMESTAMP DEFAULT NOW()
+completed_at TIMESTAMP
+afisha_id INTEGER                      -- v7.6: зв'язок з подією афіші
+type VARCHAR(20) DEFAULT 'manual'      -- v7.8: 'manual' | 'recurring' | 'afisha' | 'auto_complete'
+template_id INTEGER                    -- v7.8: FK до task_templates
+```
+
+### task_templates (v7.8)
+
+```sql
+id SERIAL PK
+title VARCHAR(200) NOT NULL
+description TEXT
+priority VARCHAR(20) DEFAULT 'normal'
+assigned_to VARCHAR(50)
+recurrence_pattern VARCHAR(20) NOT NULL  -- 'daily' | 'weekdays' | 'weekly' | 'custom'
+recurrence_days VARCHAR(20)              -- для custom: '1,3,5' (1=Пн...7=Нд)
+is_active BOOLEAN DEFAULT TRUE
+created_by VARCHAR(50)
+created_at TIMESTAMP DEFAULT NOW()
+```
+
+### Indexes (14)
 
 ```
 idx_bookings_date (date)
@@ -284,15 +344,20 @@ idx_history_created_at (created_at)
 idx_afisha_date (date)
 idx_products_category (category)
 idx_products_active (is_active)
+idx_tasks_status (status)
+idx_tasks_date (date)
+idx_tasks_afisha_id (afisha_id)
+idx_tasks_type (type)
+idx_tasks_template_id (template_id)
 ```
 
 ---
 
-## 6. API Routes
+## 7. API Routes
 
 | Method | Path | Auth | Опис |
 |---|---|---|---|
-| POST | `/api/auth/login` | No | Login -> JWT 24h (v6.0: passwordless, тимчасово) |
+| POST | `/api/auth/login` | No | Login -> JWT 24h |
 | GET | `/api/auth/verify` | Yes | Token check |
 | GET | `/api/bookings/:date` | Yes | Bookings for date |
 | POST | `/api/bookings/` | Yes | Create booking |
@@ -303,7 +368,7 @@ idx_products_active (is_active)
 | POST | `/api/lines/:date` | Yes | Update lines |
 | GET | `/api/history` | Yes | Audit log (filters: action, user, date range, search) |
 | POST | `/api/history` | Yes | Manual history entry |
-| GET/POST/PUT/DELETE | `/api/afisha/*` | Yes | Events CRUD |
+| GET/POST/PUT/DELETE | `/api/afisha/*` | Yes | Events CRUD + generate-tasks |
 | GET | `/api/telegram/chats` | Yes | Known chats |
 | GET | `/api/telegram/threads` | Yes | Forum threads |
 | POST | `/api/telegram/notify` | Yes | Manual notification |
@@ -319,11 +384,35 @@ idx_products_active (is_active)
 | GET | `/api/rooms/free/:date/:time/:dur` | Yes | Free rooms |
 | GET | `/api/products` | Yes | Product catalog (?active=true) |
 | GET | `/api/products/:id` | Yes | Single product |
+| POST | `/api/products` | Yes | Create product (v7.1) |
+| PUT | `/api/products/:id` | Yes | Update product (v7.1) |
+| DELETE | `/api/products/:id` | Yes | Delete/deactivate product (v7.1) |
+| GET | `/api/tasks` | Yes | Tasks list (?status, ?date, ?type, ?assigned_to, ?afisha_id) |
+| GET | `/api/tasks/:id` | Yes | Single task |
+| POST | `/api/tasks` | Yes | Create task (supports type, template_id, afisha_id) |
+| PUT | `/api/tasks/:id` | Yes | Full update |
+| PATCH | `/api/tasks/:id/status` | Yes | Quick status change |
+| DELETE | `/api/tasks/:id` | Yes | Delete task |
+| GET | `/api/task-templates` | Yes | Templates list (?active=true) |
+| POST | `/api/task-templates` | Yes | Create template |
+| PUT | `/api/task-templates/:id` | Yes | Update template |
+| DELETE | `/api/task-templates/:id` | Yes | Delete template |
 | GET | `/api/health` | No | Health check |
 
 ---
 
-## 7. Design System v4.0
+## 8. Schedulers (4 штуки, кожні 60с)
+
+| Scheduler | Час (Kyiv) | Опис |
+|---|---|---|
+| `checkAutoDigest` | Налаштовується (weekday/weekend) | Дайджест дня в Telegram |
+| `checkAutoReminder` | Налаштовується | Нагадування про завтра |
+| `checkAutoBackup` | 03:00 (default) | SQL backup в Telegram |
+| `checkRecurringTasks` | 00:05 | Авто-створення recurring задач за шаблонами |
+
+---
+
+## 9. Design System v4.0
 
 ### CSS Tokens (base.css :root)
 
@@ -364,12 +453,25 @@ idx_products_active (is_active)
 .invite-section, .invite-preview, .invite-actions
 .program-search-input
 .btn-duplicate-booking
+
+/* v7.8: pages.css components */
+.nav-link / .nav-link.active
+.card / .card-header / .card-title / .card-meta / .card-actions
+.badge / .badge-{type} / .badge-{status} / .badge-{priority}
+.filter-bar
+.category-tab / .category-tab.active
+.page-tabs / .page-tab
+.inline-form / .form-field
+.btn-page-primary / .btn-page-secondary / .btn-page-danger
+.task-card[data-status] / .task-card[data-priority]
+.program-card / .program-card.inactive
+.empty-state / .page-login-overlay
 ```
 
 ### Dark Mode
 
 - Class: `body.dark-mode`
-- File: `css/dark-mode.css` (1071 lines — full coverage)
+- File: `css/dark-mode.css` (1110 lines — full coverage)
 - Toggle: `#darkModeToggle` checkbox
 
 ### Responsive Breakpoints
@@ -385,7 +487,47 @@ Landscape:   max-height: 500px + orientation: landscape
 
 ---
 
-## 8. Програми (40 шт, 7 категорій)
+## 10. Задачі (Tasks System v7.8)
+
+### Типи задач
+
+| Type | Badge | Опис |
+|---|---|---|
+| `manual` | ✋ Ручна | Створено вручну |
+| `recurring` | 🔄 Повторювана | Створено автоматично з шаблону |
+| `afisha` | 🎭 Афіша | Генеровано з події афіші |
+| `auto_complete` | ⚡ Авто | Авто-завершення |
+
+### Статуси задач
+
+| Status | Опис |
+|---|---|
+| `todo` | Очікує виконання |
+| `in_progress` | В роботі |
+| `done` | Виконано (completed_at заповнюється) |
+
+### Пріоритети
+
+| Priority | Опис |
+|---|---|
+| `high` | 🔴 Високий (сортується першим) |
+| `normal` | Звичайний |
+| `low` | 🔵 Низький |
+
+### Шаблони recurring задач (task_templates)
+
+| Pattern | Опис |
+|---|---|
+| `daily` | Щоденно |
+| `weekdays` | Будні пн-пт |
+| `weekly` | Щотижня (понеділок) |
+| `custom` | Обрані дні (recurrence_days: '1,3,5') |
+
+Scheduler створює задачі щодня о 00:05 Kyiv time. Dedup: якщо задача з тим же template_id вже існує на цю дату — пропускається.
+
+---
+
+## 11. Програми (40 шт, 7 категорій)
 
 ### Квести (11)
 
@@ -459,24 +601,24 @@ Landscape:   max-height: 500px + orientation: landscape
 
 ---
 
-## 9. Кімнати (14)
+## 12. Кімнати (14)
 
 Marvel, Ninja, Minecraft, Monster High, Elsa, Растішка, Rock, Minion, Food Court, Жовтий стіл, Диван 1, Диван 2, Диван 3, Диван 4
 
 ---
 
-## 10. Костюми (28)
+## 13. Костюми (28)
 
 Супер Кіт, Леді Баг, Тік-ток ведучий чорн, Тік-ток ведучий син, Майнкрафт Кріпер, Піратка 2, Пірат 1, Ельза, Студент Ґоґвортса, Ліло, Стіч, Єдиноріжка, Поняшка, Ютуб, Людина-павук, Neon-party 1, Neon-party 2, Супермен, Бетмен, Мавка, Лукаш, Чейз, Скай, Венсдей, Монстер Хай, Лялька рожева LOL, Барбі, Роблокс
 
 ---
 
-## 11. Ключові конвенції
+## 14. Ключові конвенції
 
 - **Дати:** зберігаються в UTC, відображаються в `Europe/Kyiv` (UTC+2/+3)
 - **Валюта:** UAH (₴), формат `formatPrice()` -> `"1 000 ₴"`
 - **Booking ID:** `BK-YYYY-NNNN` (auto via `booking_counter` table)
-- **DB -> API mapping:** `snake_case` -> `camelCase` через `mapBookingRow()`
+- **DB -> API mapping:** `snake_case` -> `camelCase` через `mapBookingRow()` / `mapTemplateRow()`
 - **Транзакції:** `pool.connect()` -> `BEGIN` -> ... -> `COMMIT` -> catch `ROLLBACK` -> finally `release()`
 - **Telegram:** fire-and-forget ПІСЛЯ commit
 - **Commits:** Conventional Commits (`feat`/`fix`/`chore`/`docs`)
@@ -485,6 +627,7 @@ Marvel, Ninja, Minecraft, Monster High, Elsa, Растішка, Rock, Minion, Fo
 - **Мова коду:** English (змінні, функції, коментарі)
 - **Мова UI:** Ukrainian (labels, повідомлення)
 - **Спілкування:** Ukrainian preferred
+- **Сторінки:** кожна standalone HTML шерить `js/config.js` + `js/api.js` + `js/auth.js`
 
 ### 5-Step Versioning Protocol
 
@@ -500,29 +643,29 @@ Marvel, Ninja, Minecraft, Monster High, Elsa, Растішка, Rock, Minion, Fo
 
 - `CHANGELOG.md` — нова секція зверху
 - `SNAPSHOT.md` — оновити стан
-- Запустити тести: `node --test tests/api.test.js` (157 pass)
+- Запустити тести: `node --test tests/api.test.js` (192 pass)
 - Commit + push
 
 ---
 
-## 12. Поточний стан (v7.0.0)
+## 15. Поточний стан (v7.8.0)
 
-### v7.0 — Product Catalog MVP
+### v7.8 — Standalone Tasks & Programs Pages + Recurring Templates
 
-- **Нова таблиця `products`** — 40 програм мігровано з хардкоду (PROGRAMS) в БД
-- `routes/products.js` — GET /api/products (?active=true), GET /api/products/:id
-- `js/api.js` — apiGetProducts(), apiGetProduct()
-- `js/config.js` — кешування: getProducts() (async, TTL 5хв), getProductsSync() (синхронний fallback)
-- `js/booking.js` + `js/settings.js` — всі PROGRAMS.find/filter замінено на getProductsSync()/getProducts()
-- Auto-seed: при першому запуску 40 програм з PROGRAMS заливаються в products table
-- **Backward compatible:** якщо API недоступний → fallback на PROGRAMS масив
-- Вхід без пароля працює (v6.0 test mode)
-- **УВАГА: Перед production повернути стандартну авторизацію!**
-- 157/157 тестів проходять
+- Задачі — окрема повна сторінка `/tasks` з фільтрами (статус, тип, дата, відповідальний)
+- Програми — окрема повна сторінка `/programs` з категоріями та inline-редагуванням
+- Типи задач: `manual`, `recurring`, `afisha`, `auto_complete`
+- Шаблони recurring задач з розкладом (daily, weekdays, weekly, custom)
+- Авто-створення recurring задач scheduler'ом (00:05 Kyiv)
+- Навігація: header з посиланнями між сторінками
+- `task_templates` — нова таблиця для шаблонів
+- `routes/task-templates.js` — CRUD API
+- `css/pages.css` — спільні стилі для standalone сторінок
+- 192/192 тестів проходять
 
 ---
 
-## 13. Історія версій (v5.30 -> v7.0)
+## 16. Історія версій (v5.30 -> v7.8)
 
 | Version | Feature |
 |---|---|
@@ -550,35 +693,32 @@ Marvel, Ninja, Minecraft, Monster High, Elsa, Растішка, Rock, Minion, Fo
 | v5.51 | Undo for Edit & Shift |
 | v6.0 | Test Mode (passwordless, temporary) |
 | v7.0 | Product Catalog MVP (products table, API, caching, migration) |
+| v7.1 | Admin CRUD каталогу (create/edit/deactivate, role manager) |
+| v7.2 | Clawd Bot (7 Telegram-команд: today/tomorrow/programs/find/price/stats/menu) |
+| v7.3 | Афіша в Telegram (дайджест + нагадування з подіями) |
+| v7.4 | Типи подій (event/birthday/regular), іменинники |
+| v7.5 | Задачник MVP (tasks CRUD, статуси, пріоритети) |
+| v7.6 | Афіша -> Задачі (auto-generation, cascade) |
+| v7.6.1 | Переключення ліній аніматорів + bugfix |
+| v7.8 | Standalone Tasks & Programs pages + recurring task templates |
 
 ---
 
-## 14. Git
+## 17. Git
 
-- **Branch (Railway):** `claude/review-project-docs-1y3qH` <-- v6.0, потребує оновлення
-- **Branch (v7.0):** `claude/project-passport-docs-XKYIn` <-- АКТУАЛЬНА ГІЛКА з v7.0
-- **Друга гілка (стара):** `claude/theme-park-booking-pZL5g`
-- **Last commit:** `f7f701d` feat: v7.0 — Product Catalog MVP
+- **Branch (Railway):** `claude/review-project-docs-1y3qH` <-- потребує оновлення
+- **Branch (актуальна):** `claude/project-passport-docs-XKYIn` <-- v7.8
+- **Last commit:** `982e2a4` feat: v7.8 — standalone Tasks & Programs pages + recurring task templates
 
 ---
 
-## 15. Що далі (план ЗАТВЕРДЖЕНИЙ)
+## 18. Що далі
 
-Міні-CRM трансформація. План затверджений, Q&A пройдено (12 питань). Детальний план у `IMPROVEMENT_PLAN.md`.
-
-- ~~**v7.0 Product Catalog MVP**~~ ✅ DONE
-- **v7.1 Admin-Bot API** — CRUD продуктів, роль manager, Clawd Bot зв'язка
-- **v7.2 Contractors** — підрядники з контактами, навичками (до 10 шт)
-- **v7.3 Tasks** — завдання з дедлайнами, розширені типи
-- **v7.4 Automation** — автозамовлення через Telegram бот
-- **v7.5 Polish** — RBAC, дашборд, фінал
-
-Також можливі:
-
-- Graphic assets (7 prompt templates для іконок/патернів)
-- Drag & drop на таймлайні
+- Clawd Bot команди для задач (/tasks, /done)
+- Авто-задачі (контент для соцмереж, нагадування)
+- Drag-n-drop сортування програм
 - Export PDF/Excel
 
 ---
 
-> Це все. Гілка на Railway: `claude/review-project-docs-1y3qH`. Копіюй цей паспорт у новий чат — там є все для продовження.
+> Це все. Актуальна гілка: `claude/project-passport-docs-XKYIn`. Копіюй цей паспорт у новий чат — там є все для продовження.

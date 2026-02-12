@@ -14,17 +14,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=7.9.2">
-    <link rel="stylesheet" href="css/auth.css?v=7.9.2">
-    <link rel="stylesheet" href="css/layout.css?v=7.9.2">
-    <link rel="stylesheet" href="css/timeline.css?v=7.9.2">
-    <link rel="stylesheet" href="css/panel.css?v=7.9.2">
-    <link rel="stylesheet" href="css/modals.css?v=7.9.2">
-    <link rel="stylesheet" href="css/controls.css?v=7.9.2">
-    <link rel="stylesheet" href="css/features.css?v=7.9.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=7.9.2">
-    <link rel="stylesheet" href="css/responsive.css?v=7.9.2">
-    <link rel="stylesheet" href="css/pages.css?v=7.9.2">
+    <link rel="stylesheet" href="css/base.css?v=8.0.0">
+    <link rel="stylesheet" href="css/auth.css?v=8.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=8.0.0">
+    <link rel="stylesheet" href="css/timeline.css?v=8.0.0">
+    <link rel="stylesheet" href="css/panel.css?v=8.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=8.0.0">
+    <link rel="stylesheet" href="css/controls.css?v=8.0.0">
+    <link rel="stylesheet" href="css/features.css?v=8.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=8.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=8.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=8.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -35,9 +35,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v7.9.2</p>
+                <p class="tagline">Система бронювання v8.0.0 — Графік працівників</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v7.9.2</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.0.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -663,6 +663,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v8.0.0 — Графік працівників</h4>
+                    <ul>
+                        <li>Нова сторінка «Графік»: тижневий канвас для 30 працівників по 6 відділах</li>
+                        <li>Масове заповнення тижня, копіювання тижня, статистика годин</li>
+                        <li>Таймлайн: попередження якщо аніматор у вихідному/відпустці/лікарняному</li>
+                        <li>Telegram: @-згадки працівників при зміні графіку</li>
+                        <li>Відновлена bcrypt авторизація, scheduler/auto-delete через БД</li>
+                        <li>28 нових тестів (221 загалом), LLM-hints для Клавбота</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v7.9.2 — Стилізовані іконки програм</h4>
                     <ul>
@@ -1597,13 +1608,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=7.9.2"></script>
-    <script src="js/api.js?v=7.9.2"></script>
-    <script src="js/ui.js?v=7.9.2"></script>
-    <script src="js/auth.js?v=7.9.2"></script>
-    <script src="js/timeline.js?v=7.9.2"></script>
-    <script src="js/booking.js?v=7.9.2"></script>
-    <script src="js/settings.js?v=7.9.2"></script>
-    <script src="js/app.js?v=7.9.2"></script>
+    <script src="js/config.js?v=8.0.0"></script>
+    <script src="js/api.js?v=8.0.0"></script>
+    <script src="js/ui.js?v=8.0.0"></script>
+    <script src="js/auth.js?v=8.0.0"></script>
+    <script src="js/timeline.js?v=8.0.0"></script>
+    <script src="js/booking.js?v=8.0.0"></script>
+    <script src="js/settings.js?v=8.0.0"></script>
+    <script src="js/app.js?v=8.0.0"></script>
 </body>
 </html>

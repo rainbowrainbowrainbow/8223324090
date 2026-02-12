@@ -33,9 +33,65 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
+const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Staff');
+
+const STATUS_UK = { working: 'Робочий', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний' };
+
+/**
+ * Send Telegram notification when schedule changes.
+ * Mentions employee by @telegram_username if set.
+ * Fire-and-forget — does not block API response.
+ */
+async function notifyScheduleChange(staffId, date, status, shiftStart, shiftEnd) {
+    try {
+        const staff = await pool.query('SELECT name, telegram_username FROM staff WHERE id = $1', [staffId]);
+        if (staff.rows.length === 0) return;
+        const { name, telegram_username } = staff.rows[0];
+
+        const mention = telegram_username ? `@${telegram_username}` : `<b>${name}</b>`;
+        const statusLabel = STATUS_UK[status] || status;
+        let timeInfo = '';
+        if (status === 'working' && shiftStart && shiftEnd) {
+            timeInfo = ` (${shiftStart}–${shiftEnd})`;
+        }
+
+        const text = `📅 Графік: ${mention} — ${date} → ${statusLabel}${timeInfo}`;
+        const chatId = await getConfiguredChatId();
+        if (chatId) {
+            sendTelegramMessage(chatId, text).catch(err => log.error('Schedule notify error', err));
+        }
+    } catch (err) {
+        log.error('notifyScheduleChange error', err);
+    }
+}
+
+/**
+ * Send summary notification for bulk schedule changes.
+ * Lists @-mentions of all affected employees.
+ */
+async function notifyBulkScheduleChange(staffIdSet, count) {
+    try {
+        if (staffIdSet.size === 0) return;
+        const ids = Array.from(staffIdSet);
+        const result = await pool.query(
+            'SELECT id, name, telegram_username FROM staff WHERE id = ANY($1)',
+            [ids]
+        );
+        const mentions = result.rows.map(r =>
+            r.telegram_username ? `@${r.telegram_username}` : r.name
+        );
+        const text = `📅 Графік оновлено (${count} записів)\n👥 ${mentions.join(', ')}`;
+        const chatId = await getConfiguredChatId();
+        if (chatId) {
+            sendTelegramMessage(chatId, text).catch(err => log.error('Bulk schedule notify error', err));
+        }
+    } catch (err) {
+        log.error('notifyBulkScheduleChange error', err);
+    }
+}
 
 const DEPARTMENTS = {
     animators: 'Аніматори',
@@ -77,16 +133,17 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/staff — create new employee
+// LLM HINT: telegramUsername is optional — used for @-mentions in schedule notifications
 router.post('/', async (req, res) => {
     try {
-        const { name, department, position, phone, hireDate, color } = req.body;
+        const { name, department, position, phone, hireDate, color, telegramUsername } = req.body;
         if (!name || !department || !position) {
             return res.status(400).json({ success: false, error: 'Обов\'язкові поля: ім\'я, відділ, посада' });
         }
         const result = await pool.query(
-            `INSERT INTO staff (name, department, position, phone, hire_date, color)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-            [name, department, position, phone || null, hireDate || null, color || null]
+            `INSERT INTO staff (name, department, position, phone, hire_date, color, telegram_username)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [name, department, position, phone || null, hireDate || null, color || null, telegramUsername || null]
         );
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
@@ -96,14 +153,20 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/staff/:id — update employee
+// LLM HINT: telegramUsername — set to Telegram @username (without @) for schedule notifications
 router.put('/:id', async (req, res) => {
     try {
-        const { name, department, position, phone, hireDate, color, isActive } = req.body;
+        const { name, department, position, phone, hireDate, color, isActive, telegramUsername } = req.body;
+        // Only update telegram_username if explicitly passed (even empty string clears it)
+        const tgUser = telegramUsername !== undefined ? (telegramUsername || null) : undefined;
         const result = await pool.query(
             `UPDATE staff SET name=COALESCE($1,name), department=COALESCE($2,department),
              position=COALESCE($3,position), phone=$4, hire_date=$5, color=$6,
-             is_active=COALESCE($7,is_active) WHERE id=$8 RETURNING *`,
-            [name, department, position, phone || null, hireDate || null, color || null, isActive, req.params.id]
+             is_active=COALESCE($7,is_active),
+             telegram_username = CASE WHEN $9::boolean THEN $10 ELSE telegram_username END
+             WHERE id=$8 RETURNING *`,
+            [name, department, position, phone || null, hireDate || null, color || null, isActive, req.params.id,
+             telegramUsername !== undefined, tgUser]
         );
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         res.json({ success: true, data: result.rows[0] });
@@ -161,6 +224,8 @@ router.put('/schedule', async (req, res) => {
              RETURNING *`,
             [staffId, date, shiftStart || null, shiftEnd || null, status || 'working', note || null]
         );
+        // Fire-and-forget Telegram notification
+        notifyScheduleChange(staffId, date, status || 'working', shiftStart, shiftEnd);
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         log.error('PUT /staff/schedule error', err);
@@ -184,6 +249,7 @@ router.post('/schedule/bulk', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Максимум 500 записів за раз' });
         }
         let count = 0;
+        const affectedStaff = new Set();
         for (const e of entries) {
             if (!e.staffId || !e.date) continue;
             await pool.query(
@@ -193,8 +259,11 @@ router.post('/schedule/bulk', async (req, res) => {
                  DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6`,
                 [e.staffId, e.date, e.shiftStart || null, e.shiftEnd || null, e.status || 'working', e.note || null]
             );
+            affectedStaff.add(e.staffId);
             count++;
         }
+        // Fire-and-forget: bulk notification summary
+        notifyBulkScheduleChange(affectedStaff, count);
         res.json({ success: true, count });
     } catch (err) {
         log.error('POST /staff/schedule/bulk error', err);
@@ -238,6 +307,7 @@ router.post('/schedule/copy-week', async (req, res) => {
         const source = await pool.query(sql, params);
 
         let count = 0;
+        const affectedStaff = new Set();
         for (const row of source.rows) {
             const dayIndex = fromDates.indexOf(row.date);
             if (dayIndex === -1) continue;
@@ -249,8 +319,11 @@ router.post('/schedule/copy-week', async (req, res) => {
                  DO UPDATE SET shift_start=$3, shift_end=$4, status=$5, note=$6`,
                 [row.staff_id, targetDate, row.shift_start, row.shift_end, row.status, row.note]
             );
+            affectedStaff.add(row.staff_id);
             count++;
         }
+        // Fire-and-forget notification
+        if (count > 0) notifyBulkScheduleChange(affectedStaff, count);
         res.json({ success: true, count });
     } catch (err) {
         log.error('POST /staff/schedule/copy-week error', err);

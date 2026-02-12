@@ -388,10 +388,11 @@ async function seedProducts() {
 async function seedStaff() {
     const staff = [
         // Аніматори (10)
-        { name: 'Женя Коваленко', department: 'animators', position: 'Старший аніматор', phone: '+380501234501', hire_date: '2023-03-15', color: '#10B981' },
-        { name: 'Даша Мельник', department: 'animators', position: 'Аніматор', phone: '+380501234502', hire_date: '2023-06-01', color: '#34D399' },
-        { name: 'Віталіна Бондар', department: 'animators', position: 'Аніматор', phone: '+380501234503', hire_date: '2023-07-10', color: '#6EE7B7' },
-        { name: 'Олег Шевченко', department: 'animators', position: 'Аніматор', phone: '+380501234504', hire_date: '2023-09-01', color: '#A7F3D0' },
+        // LLM HINT: telegram_username is used for @-mentions when schedule changes are sent to the group chat
+        { name: 'Валерія', department: 'animators', position: 'Аніматор', phone: '+380501234501', hire_date: '2023-03-15', color: '#10B981', telegram_username: 'keralunay' },
+        { name: 'Кріс', department: 'animators', position: 'Аніматор МК', phone: '+380501234502', hire_date: '2023-06-01', color: '#34D399', telegram_username: 'chaoticstrange' },
+        { name: 'Армонія', department: 'animators', position: 'Аніматор', phone: '+380501234503', hire_date: '2023-07-10', color: '#6EE7B7', telegram_username: 'armonia_del_mundo' },
+        { name: 'Анна', department: 'animators', position: 'Аніматор', phone: '+380501234504', hire_date: '2023-09-01', color: '#A7F3D0', telegram_username: 'SSPYahok' },
         { name: 'Марина Ткаченко', department: 'animators', position: 'Аніматор', phone: '+380501234505', hire_date: '2024-01-15', color: '#059669' },
         { name: 'Артем Лисенко', department: 'animators', position: 'Аніматор', phone: '+380501234506', hire_date: '2024-02-20', color: '#047857' },
         { name: 'Софія Кравченко', department: 'animators', position: 'Аніматор', phone: '+380501234507', hire_date: '2024-04-01', color: '#065F46' },
@@ -427,9 +428,9 @@ async function seedStaff() {
 
     for (const s of staff) {
         await pool.query(
-            `INSERT INTO staff (name, department, position, phone, hire_date, color)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [s.name, s.department, s.position, s.phone, s.hire_date, s.color]
+            `INSERT INTO staff (name, department, position, phone, hire_date, color, telegram_username)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [s.name, s.department, s.position, s.phone, s.hire_date, s.color, s.telegram_username || null]
         );
     }
 

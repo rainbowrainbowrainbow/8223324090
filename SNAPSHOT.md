@@ -3,7 +3,7 @@
 > Оновлюється кожні 10-15 повідомлень. Швидкий контекст для продовження роботи.
 
 ## Де ми
-Версія **v7.8.0**. Standalone сторінки Tasks + Programs — **ЗАВЕРШЕНІ**.
+Версія **v7.9.2**. Стилізовані емодзі іконки програм + дошка задач з категоріями.
 
 ## Що готово
 - v5.30-v5.38: UI/UX overhaul (design system, responsive, dark mode, PWA)
@@ -20,6 +20,11 @@
 - v7.6: Афіша -> Задачі (генерація задач по кнопці, шаблони, каскад)
 - v7.6.1: Переключення ліній аніматорів + bugfix
 - v7.8: Standalone Tasks & Programs pages + recurring task templates
+- v7.8.1-v7.8.9: Мобільна адаптація (свайп, тулбар, glassmorphism, WCAG touch targets)
+- v7.8.10: Дайджест для 2го ведучого + афіша ±1год
+- v7.9.0: Дошка задач з категоріями (5 вкладок, канбан, авто-задачі з афіші)
+- v7.9.1: SVG іконки (відкинуто)
+- v7.9.2: Стилізовані емодзі іконки з градієнтними колами по категоріях
 
 ## Що далі (план)
 - Clawd Bot команди для задач (/tasks, /done)
@@ -27,47 +32,46 @@
 - Drag-n-drop сортування програм
 - Export PDF/Excel
 
-## Архітектура (v7.8)
+## Архітектура (v7.9.2)
 
 ### 4 HTML-сторінки
 | Шлях | Файли | Опис |
 |---|---|---|
-| `/` | index.html + 8 JS + 11 CSS | Таймлайн (SPA) |
-| `/tasks` | tasks.html + tasks-page.js | Задачник (фільтри, типи, шаблони) |
-| `/programs` | programs.html + programs-page.js | Каталог програм (категорії, CRUD) |
-| `/invite` | invite.html | Запрошення |
+| `/` | index.html + 8 JS + 10 CSS | Таймлайн (SPA) |
+| `/tasks` | tasks.html + tasks-page.js | Задачник (5 вкладок, канбан, категорії) |
+| `/programs` | programs.html + programs-page.js | Каталог програм (категорії, CRUD, іконки) |
+| `/invite` | invite.html | Запрошення (standalone) |
 
-Спільні: config.js, api.js, auth.js, base.css, layout.css, pages.css, dark-mode.css
+CSS (10 модулів): base, auth, layout, timeline, panel, modals, controls, features, dark-mode, responsive + pages.css
+JS (10 модулів): config, api, ui, auth, timeline, booking, settings, app + programs-page, tasks-page
 
 ### 13 таблиць БД
-bookings, lines_by_date, history, settings, users, booking_counter, pending_animators, afisha, telegram_known_chats, telegram_known_threads, products, **tasks**, **task_templates**
+bookings, lines_by_date, history, settings, users, booking_counter, pending_animators, afisha, telegram_known_chats, telegram_known_threads, products, tasks, task_templates
 
 ### 4 Schedulers (60s interval)
 - checkAutoDigest (налаштовується)
 - checkAutoReminder (налаштовується)
 - checkAutoBackup (03:00)
-- **checkRecurringTasks (00:05)** — авто-створення recurring задач
+- checkRecurringTasks (00:05) — авто-створення recurring задач
 
 ## Технічний стан
-- Branch: `claude/project-passport-docs-XKYIn`
-- Last commit: `982e2a4`
+- Branch: `claude/review-project-docs-mSGjR`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
-- 20 238 рядків коду, 53 файли
-- 192 тести, 54 suites
+- 190 тестів, 54 suites
 
 ### Задачі (Tasks System)
-- routes/tasks.js — CRUD + PATCH status + filter by type/afisha_id
+- routes/tasks.js — CRUD + PATCH status + filter by type/afisha_id/category
 - routes/task-templates.js — recurring templates CRUD
-- tasks.type: manual | recurring | afisha | auto_complete
+- tasks.category: event | purchase | admin | trampoline | personal
 - tasks.status: todo | in_progress | done
 - tasks.priority: low | normal | high
 - tasks.afisha_id: зв'язок з подією
 - tasks.template_id: зв'язок з шаблоном
 - task_templates.recurrence_pattern: daily | weekdays | weekly | custom
 
-### API endpoints (нові у v7.8)
-- GET/POST/PUT/DELETE `/api/task-templates`
-- GET `/api/tasks?type=recurring`
+### Іконки програм (v7.9.2)
+- Унікальні емодзі обгорнуті в .icon-circle з градієнтним фоном по категорії
+- Кольори: фіолетовий (quest), блакитний (animation), помаранчевий (show), бірюзовий (photo), зелений (masterclass), рожевий (pinata), сірий (custom)
 
 ---
-*Оновлено: 2026-02-12, після v7.8*
+*Оновлено: 2026-02-12, v7.9.2*

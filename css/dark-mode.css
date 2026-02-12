@@ -1133,6 +1133,70 @@ body.dark-mode .btn-invite-copy {
     border-color: var(--gray-300);
 }
 
+/* v7.9.2: Kanban board dark mode */
+body.dark-mode .kanban-col {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+}
+body.dark-mode .kanban-col-header {
+    border-bottom-color: var(--gray-300);
+    color: #E2E8F0;
+}
+body.dark-mode .kanban-col-count {
+    background: var(--gray-200);
+    color: #D1D5DB;
+}
+body.dark-mode .task-card {
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(20px);
+    border-left-color: var(--gray-300);
+}
+body.dark-mode .task-card:hover {
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+body.dark-mode .task-card-title { color: #E2E8F0; }
+body.dark-mode .task-card-meta { color: #9CA3AF; }
+body.dark-mode .task-card-actions button {
+    background: var(--gray-200);
+    color: #D1D5DB;
+}
+body.dark-mode .task-card-actions .btn-done {
+    background: rgba(46,125,50,0.2);
+    color: #81C784;
+}
+body.dark-mode .task-card-actions .btn-progress {
+    background: rgba(21,101,192,0.2);
+    color: #64B5F6;
+}
+body.dark-mode .task-card-actions .btn-delete {
+    background: rgba(198,40,40,0.2);
+    color: #EF9A9A;
+}
+body.dark-mode .quick-add {
+    background: rgba(255,255,255,0.05);
+}
+body.dark-mode .quick-add input,
+body.dark-mode .quick-add select {
+    background: rgba(255,255,255,0.08);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+body.dark-mode .group-header {
+    color: #D1D5DB;
+    border-bottom-color: var(--gray-300);
+}
+body.dark-mode .cat-chip {
+    background: rgba(255,255,255,0.08);
+}
+body.dark-mode .board-tab {
+    background: rgba(255,255,255,0.05);
+    color: #9CA3AF;
+}
+body.dark-mode .board-tab.active {
+    background: rgba(255,255,255,0.12);
+    color: #E2E8F0;
+}
+
 /* Scrollbar improvement */
 body.dark-mode ::-webkit-scrollbar-track {
     background: #0f0f1a;

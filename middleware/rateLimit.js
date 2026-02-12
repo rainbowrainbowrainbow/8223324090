@@ -6,7 +6,7 @@ const loginRateLimitMap = new Map();
 const RATE_LIMIT_WINDOW = 60000;
 const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX) || 120;
 const LOGIN_RATE_LIMIT_WINDOW = 60000;
-const LOGIN_RATE_LIMIT_MAX = parseInt(process.env.LOGIN_RATE_LIMIT_MAX) || 5;
+const LOGIN_RATE_LIMIT_MAX = parseInt(process.env.LOGIN_RATE_LIMIT_MAX || process.env.RATE_LIMIT_MAX) || 5;
 
 function rateLimiter(req, res, next) {
     const ip = req.ip || req.connection.remoteAddress;

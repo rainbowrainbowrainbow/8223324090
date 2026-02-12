@@ -390,6 +390,11 @@ function createAfishaBlock(event, startHour) {
     block.style.width = `${Math.max(width, 40)}px`;
     block.dataset.afishaId = event.id;
 
+    const tooltipText = event.description
+        ? `${event.title} — ${event.description}`
+        : event.title;
+    block.title = tooltipText;
+
     block.innerHTML = `
         <div class="user-letter">${icon}</div>
         <div class="title">${escapeHtml(event.title)}</div>

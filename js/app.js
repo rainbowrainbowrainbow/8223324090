@@ -294,6 +294,19 @@ function initSettingsListeners() {
     const afishaImportBtn = document.getElementById('afishaImportBtn');
     if (afishaImportBtn) afishaImportBtn.addEventListener('click', importAfishaBulk);
 
+    // v8.0: Afisha export button
+    const afishaExportBtn = document.getElementById('afishaExportBtn');
+    if (afishaExportBtn) afishaExportBtn.addEventListener('click', exportAfishaBulk);
+
+    // v8.0: Recurring afisha templates
+    const addAfishaTplBtn = document.getElementById('addAfishaTplBtn');
+    if (addAfishaTplBtn) addAfishaTplBtn.addEventListener('click', addAfishaTemplate);
+    const afishaTplPattern = document.getElementById('afishaTplPattern');
+    if (afishaTplPattern) afishaTplPattern.addEventListener('change', () => {
+        const daysInput = document.getElementById('afishaTplDays');
+        if (daysInput) daysInput.style.display = afishaTplPattern.value === 'custom' ? '' : 'none';
+    });
+
     // v8.0: Afisha edit modal form
     const afishaEditForm = document.getElementById('afishaEditForm');
     if (afishaEditForm) afishaEditForm.addEventListener('submit', handleAfishaEditSubmit);
@@ -316,6 +329,10 @@ function initSettingsListeners() {
 
     const addTaskBtn = document.getElementById('addTaskBtn');
     if (addTaskBtn) addTaskBtn.addEventListener('click', addTask);
+
+    // v8.0: Task edit modal form
+    const taskEditForm = document.getElementById('taskEditForm');
+    if (taskEditForm) taskEditForm.addEventListener('submit', handleTaskEditSubmit);
 
     const tasksFilterStatus = document.getElementById('tasksFilterStatus');
     if (tasksFilterStatus) tasksFilterStatus.addEventListener('change', renderTasksList);

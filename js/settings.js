@@ -1116,6 +1116,7 @@ async function editAfishaItem(id) {
     document.getElementById('afishaEditDate').value = item.date;
     document.getElementById('afishaEditTime').value = item.time;
     document.getElementById('afishaEditDuration').value = item.duration || 60;
+    document.getElementById('afishaEditDescription').value = item.description || '';
 
     // Hide duration for birthday
     const durGroup = document.getElementById('afishaEditDurationGroup');
@@ -1134,6 +1135,7 @@ async function handleAfishaEditSubmit(e) {
     const date = document.getElementById('afishaEditDate').value;
     const time = document.getElementById('afishaEditTime').value;
     const duration = type === 'birthday' ? 15 : (parseInt(document.getElementById('afishaEditDuration').value) || 60);
+    const description = document.getElementById('afishaEditDescription')?.value.trim() || '';
 
     if (!title || !date || !time) {
         showNotification('Заповніть всі поля', 'error');
@@ -1145,7 +1147,7 @@ async function handleAfishaEditSubmit(e) {
     const oldItem = items.find(i => String(i.id) === String(id));
     const oldDate = oldItem ? oldItem.date : null;
 
-    const result = await apiUpdateAfisha(id, { date, time, title, duration, type });
+    const result = await apiUpdateAfisha(id, { date, time, title, duration, type, description });
     if (result && result.success) {
         document.getElementById('afishaEditModal').classList.add('hidden');
         showNotification('Подію оновлено', 'success');
@@ -1163,6 +1165,7 @@ async function showAfishaModal() {
     if (!modal) return;
     modal.classList.remove('hidden');
     await renderAfishaList();
+    renderAfishaTemplates(); // v8.0: Load recurring templates
 }
 
 async function renderAfishaList() {
@@ -1178,11 +1181,13 @@ async function renderAfishaList() {
     container.innerHTML = items.map(item => {
         const icon = typeIcons[item.type] || '🎪';
         const durationText = item.type === 'birthday' ? ' (14:00 + 18:00, 15хв)' : ` (${item.duration} хв)`;
+        const descText = item.description ? `<span class="afisha-desc">${escapeHtml(item.description)}</span>` : '';
         return `
         <div class="afisha-item" data-id="${item.id}" data-type="${item.type || 'event'}">
             <div class="afisha-item-info">
                 <strong>${icon} ${escapeHtml(item.title)}</strong>
                 <span class="afisha-date">${escapeHtml(item.date)} ${escapeHtml(item.time)}${durationText}</span>
+                ${descText}
             </div>
             <div class="afisha-item-actions">
                 <button class="btn-shift btn-sm" onclick="generateTasksForAfisha(${item.id})" title="Створити задачі">📝</button>
@@ -1210,6 +1215,8 @@ async function addAfishaItem() {
     const time = timeInput.value;
     const title = titleInput.value.trim();
     const duration = type === 'birthday' ? 15 : (parseInt(durationInput?.value) || 60);
+    const descriptionInput = document.getElementById('afishaDescription');
+    const description = descriptionInput?.value.trim() || '';
 
     if (!date || !time || !title) {
         showNotification('Заповніть дату, час та назву', 'error');
@@ -1235,9 +1242,10 @@ async function addAfishaItem() {
         }
     }
 
-    const result = await apiCreateAfisha({ date, time, title, duration, type });
+    const result = await apiCreateAfisha({ date, time, title, duration, type, description });
     if (result && result.success) {
         titleInput.value = '';
+        if (descriptionInput) descriptionInput.value = '';
         showNotification(type === 'birthday' ? 'Іменинника додано!' : 'Подію додано до афіші!', 'success');
         await renderAfishaList();
         // Refresh timeline if viewing same date
@@ -1332,7 +1340,25 @@ async function autoPositionAfisha() {
     showNotification('Немає вільних слотів на цю дату', 'error');
 }
 
-// v5.10: Afisha bulk import from text
+// v8.0: Afisha export to text
+async function exportAfishaBulk() {
+    const items = await apiGetAfisha();
+    if (items.length === 0) {
+        showNotification('Немає подій для експорту', 'error');
+        return;
+    }
+    const text = items.map(item => {
+        const parts = [item.date, item.time, item.duration || 60, item.title];
+        if (item.description) parts.push(item.description);
+        return parts.join(';');
+    }).join('\n');
+
+    const textArea = document.getElementById('afishaImportText');
+    if (textArea) textArea.value = text;
+    showNotification(`Експортовано ${items.length} подій`, 'success');
+}
+
+// v5.10: Afisha bulk import from text (v8.0: +description support)
 async function importAfishaBulk() {
     const textArea = document.getElementById('afishaImportText');
     if (!textArea) return;
@@ -1349,14 +1375,15 @@ async function importAfishaBulk() {
 
     for (const line of lines) {
         // Support formats:
+        // 2026-02-14;12:00;60;Назва події;Опис (optional)
         // 2026-02-14 12:00 60 Назва події
-        // 2026-02-14;12:00;60;Назва події
         const parts = line.includes(';') ? line.split(';').map(s => s.trim()) : null;
-        let date, time, duration, title;
+        let date, time, duration, title, description;
 
         if (parts && parts.length >= 4) {
-            [date, time, duration, title] = parts;
+            [date, time, duration, title, ...rest] = parts;
             duration = parseInt(duration) || 60;
+            description = rest.join(';').trim() || '';
         } else {
             // Space-separated: date time duration title...
             const match = line.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(\d+)\s+(.+)$/);
@@ -1366,11 +1393,12 @@ async function importAfishaBulk() {
             }
             [, date, time, duration, title] = match;
             duration = parseInt(duration) || 60;
+            description = '';
         }
 
         if (!date || !time || !title) { errors++; continue; }
 
-        const result = await apiCreateAfisha({ date, time, title, duration });
+        const result = await apiCreateAfisha({ date, time, title, duration, description });
         if (result && result.success) {
             imported++;
         } else {
@@ -1381,6 +1409,114 @@ async function importAfishaBulk() {
     textArea.value = '';
     showNotification(`Імпортовано: ${imported}, помилок: ${errors}`, imported > 0 ? 'success' : 'error');
     await renderAfishaList();
+}
+
+// ==========================================
+// ПОВТОРЮВАНІ АФІШІ (v8.0)
+// ==========================================
+
+async function loadAfishaTemplates() {
+    try {
+        const response = await fetch(`${API_BASE}/afisha/templates/list`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('Afisha templates error:', err);
+        return [];
+    }
+}
+
+async function renderAfishaTemplates() {
+    const container = document.getElementById('afishaTplList');
+    if (!container) return;
+    const templates = await loadAfishaTemplates();
+    if (templates.length === 0) {
+        container.innerHTML = '<p style="font-size:12px;color:var(--gray-400)">Немає шаблонів</p>';
+        return;
+    }
+    const patternLabels = { daily: 'Щодня', weekdays: 'Будні', weekends: 'Вихідні', weekly: 'Щотижня (Сб)', custom: 'Свої дні' };
+    container.innerHTML = templates.map(tpl => {
+        const active = tpl.is_active !== false;
+        const desc = tpl.description ? ` — ${escapeHtml(tpl.description)}` : '';
+        const range = (tpl.date_from || tpl.date_to) ? ` [${tpl.date_from || '...'} — ${tpl.date_to || '...'}]` : '';
+        return `
+        <div class="afisha-item" style="opacity:${active ? 1 : 0.5}">
+            <div class="afisha-item-info">
+                <strong>🔄 ${escapeHtml(tpl.title)} (${tpl.time}, ${tpl.duration}хв)</strong>
+                <span class="afisha-date">${patternLabels[tpl.recurrence_pattern] || tpl.recurrence_pattern}${tpl.recurrence_days ? ' [' + tpl.recurrence_days + ']' : ''}${range}${desc}</span>
+            </div>
+            <div class="afisha-item-actions">
+                <button class="btn-edit btn-sm" onclick="toggleAfishaTemplate(${tpl.id}, ${!active})" title="${active ? 'Вимкнути' : 'Увімкнути'}">${active ? '⏸' : '▶'}</button>
+                <button class="btn-danger btn-sm" onclick="deleteAfishaTemplate(${tpl.id})" title="Видалити">✕</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function addAfishaTemplate() {
+    const title = document.getElementById('afishaTplTitle')?.value.trim();
+    const time = document.getElementById('afishaTplTime')?.value;
+    const duration = parseInt(document.getElementById('afishaTplDuration')?.value) || 60;
+    const pattern = document.getElementById('afishaTplPattern')?.value || 'weekly';
+    const days = document.getElementById('afishaTplDays')?.value.trim() || null;
+    const description = document.getElementById('afishaTplDesc')?.value.trim() || '';
+
+    if (!title || !time) {
+        showNotification('Введіть назву та час', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/afisha/templates`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ title, time, duration, type: 'event', description, recurrence_pattern: pattern, recurrence_days: days })
+        });
+        const data = await response.json();
+        if (data.success) {
+            document.getElementById('afishaTplTitle').value = '';
+            document.getElementById('afishaTplDesc').value = '';
+            showNotification('Шаблон створено!', 'success');
+            await renderAfishaTemplates();
+        }
+    } catch (err) {
+        showNotification('Помилка створення шаблону', 'error');
+    }
+}
+
+async function toggleAfishaTemplate(id, isActive) {
+    try {
+        const templates = await loadAfishaTemplates();
+        const tpl = templates.find(t => t.id === id);
+        if (!tpl) return;
+        const response = await fetch(`${API_BASE}/afisha/templates/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ ...tpl, is_active: isActive })
+        });
+        const data = await response.json();
+        if (data.success) await renderAfishaTemplates();
+    } catch (err) {
+        showNotification('Помилка', 'error');
+    }
+}
+
+async function deleteAfishaTemplate(id) {
+    const confirmed = await customConfirm('Видалити шаблон?', 'Видалення');
+    if (!confirmed) return;
+    try {
+        const response = await fetch(`${API_BASE}/afisha/templates/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Шаблон видалено', 'success');
+            await renderAfishaTemplates();
+        }
+    } catch (err) {
+        showNotification('Помилка', 'error');
+    }
 }
 
 // ==========================================
@@ -1486,15 +1622,18 @@ async function renderTasksList() {
     const statusIcons = { todo: '⬜', in_progress: '🔄', done: '✅' };
     const statusLabels = { todo: 'Зробити', in_progress: 'В роботі', done: 'Готово' };
     const priorityIcons = { high: '🔴', normal: '', low: '🔵' };
+    const categoryIcons = { admin: '🏢', event: '🎪', purchase: '🛒', trampoline: '🤸', personal: '👤' };
     const nextStatus = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
 
     container.innerHTML = tasks.map(task => {
         const icon = statusIcons[task.status] || '⬜';
         const pIcon = priorityIcons[task.priority] || '';
+        const catIcon = categoryIcons[task.category] || '';
         const doneClass = task.status === 'done' ? ' task-done' : '';
         const dateStr = task.date ? `<span class="task-date">${escapeHtml(task.date)}</span>` : '';
         const assignee = task.assigned_to ? `<span class="task-assignee">👤 ${escapeHtml(task.assigned_to)}</span>` : '';
         const afishaBadge = task.afisha_id ? '<span class="task-afisha-badge" title="З афіші">🎭</span>' : '';
+        const descLine = task.description ? `<div class="task-desc">${escapeHtml(task.description)}</div>` : '';
         const next = nextStatus[task.status] || 'todo';
         const nextLabel = statusLabels[next];
         return `
@@ -1502,7 +1641,8 @@ async function renderTasksList() {
             <div class="task-item-left">
                 <button class="task-status-btn" onclick="cycleTaskStatus(${task.id}, '${next}')" title="${nextLabel}">${icon}</button>
                 <div class="task-item-info">
-                    <strong>${pIcon} ${afishaBadge} ${escapeHtml(task.title)}</strong>
+                    <strong>${pIcon} ${catIcon} ${afishaBadge} ${escapeHtml(task.title)}</strong>
+                    ${descLine}
                     <div class="task-meta">${dateStr} ${assignee}</div>
                 </div>
             </div>
@@ -1526,11 +1666,13 @@ async function addTask() {
         return;
     }
 
+    const categorySelect = document.getElementById('taskCategory');
     const result = await apiCreateTask({
         title,
         date: dateInput?.value || null,
         priority: prioritySelect?.value || 'normal',
-        assigned_to: assignedInput?.value.trim() || null
+        assigned_to: assignedInput?.value.trim() || null,
+        category: categorySelect?.value || 'admin'
     });
 
     if (result && result.success) {
@@ -1549,30 +1691,48 @@ async function cycleTaskStatus(id, newStatus) {
     }
 }
 
+// v8.0: Edit task — open modal instead of prompt()
 async function editTask(id) {
     const tasks = await apiGetTasks();
     const task = tasks.find(t => t.id === id);
     if (!task) return;
 
-    const newTitle = prompt('Назва завдання:', task.title);
-    if (newTitle === null) return;
-    const newDate = prompt('Дата (YYYY-MM-DD або порожньо):', task.date || '');
-    if (newDate === null) return;
-    const newPriority = prompt('Пріоритет (low/normal/high):', task.priority || 'normal');
-    if (newPriority === null) return;
-    const newAssigned = prompt('Відповідальний:', task.assigned_to || '');
-    if (newAssigned === null) return;
+    document.getElementById('taskEditId').value = id;
+    document.getElementById('taskEditTitle').value = task.title;
+    document.getElementById('taskEditDescription').value = task.description || '';
+    document.getElementById('taskEditDate').value = task.date || '';
+    document.getElementById('taskEditPriority').value = task.priority || 'normal';
+    document.getElementById('taskEditAssigned').value = task.assigned_to || '';
+    document.getElementById('taskEditCategory').value = task.category || 'admin';
 
-    const result = await apiUpdateTask(id, {
-        title: newTitle.trim() || task.title,
-        description: task.description,
-        date: (newDate && /^\d{4}-\d{2}-\d{2}$/.test(newDate)) ? newDate : null,
-        status: task.status,
-        priority: ['low', 'normal', 'high'].includes(newPriority) ? newPriority : task.priority,
-        assigned_to: newAssigned.trim() || null
-    });
+    document.getElementById('taskEditModal').classList.remove('hidden');
+    document.getElementById('taskEditTitle').focus();
+}
 
+// v8.0: Handle task edit form submit
+async function handleTaskEditSubmit(e) {
+    e.preventDefault();
+    const id = document.getElementById('taskEditId').value;
+    const title = document.getElementById('taskEditTitle').value.trim();
+    const description = document.getElementById('taskEditDescription').value.trim();
+    const date = document.getElementById('taskEditDate').value || null;
+    const priority = document.getElementById('taskEditPriority').value || 'normal';
+    const assigned_to = document.getElementById('taskEditAssigned').value.trim() || null;
+    const category = document.getElementById('taskEditCategory').value || 'admin';
+
+    if (!title) {
+        showNotification('Введіть назву', 'error');
+        return;
+    }
+
+    // Get current status to preserve it
+    const tasks = await apiGetTasks();
+    const task = tasks.find(t => String(t.id) === String(id));
+    const status = task ? task.status : 'todo';
+
+    const result = await apiUpdateTask(id, { title, description, date, status, priority, assigned_to, category });
     if (result && result.success) {
+        document.getElementById('taskEditModal').classList.add('hidden');
         showNotification('Завдання оновлено', 'success');
         await renderTasksList();
     }

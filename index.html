@@ -35,7 +35,7 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v8.0.0 — Графік працівників</p>
+                <p class="tagline">Система бронювання v8.0.0 — Графік + Афіша + Задачник</p>
             </div>
             <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.0.0</button>
             <form id="loginForm" class="login-form">
@@ -664,13 +664,17 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v8.0.0 — Графік працівників</h4>
+                    <h4>v8.0.0 — Графік + Афіша + Задачник</h4>
                     <ul>
                         <li>Нова сторінка «Графік»: тижневий канвас для 30 працівників по 6 відділах</li>
                         <li>Масове заповнення тижня, копіювання тижня, статистика годин</li>
                         <li>Таймлайн: попередження якщо аніматор у вихідному/відпустці/лікарняному</li>
                         <li>Telegram: @-згадки працівників при зміні графіку</li>
-                        <li>Відновлена bcrypt авторизація, scheduler/auto-delete через БД</li>
+                        <li>Афіша: іменинники о 14:00+18:00 (15хв), яскравий фіолетовий лайн</li>
+                        <li>Афіша: описи, експорт/імпорт, повторювані шаблони</li>
+                        <li>Афіша: чесний розподіл подій між аніматорами</li>
+                        <li>Задачник: модальне редагування, категорії, описи</li>
+                        <li>Виправлено: дайджест, prompt()-діалоги, порядок ліній</li>
                         <li>28 нових тестів (221 загалом), LLM-hints для Клавбота</li>
                     </ul>
                 </div>
@@ -1555,8 +1559,15 @@
                     <input type="date" id="taskDate" class="afisha-input">
                     <select id="taskPriority" class="afisha-input afisha-type-select">
                         <option value="normal">Звичайна</option>
-                        <option value="high">Висока</option>
-                        <option value="low">Низька</option>
+                        <option value="high">🔴 Висока</option>
+                        <option value="low">🔵 Низька</option>
+                    </select>
+                    <select id="taskCategory" class="afisha-input afisha-type-select">
+                        <option value="admin">Адмін</option>
+                        <option value="event">Подія</option>
+                        <option value="purchase">Закупівля</option>
+                        <option value="trampoline">Батути</option>
+                        <option value="personal">Особисте</option>
                     </select>
                     <input type="text" id="taskAssignedTo" class="afisha-input" placeholder="Відповідальний" style="max-width:120px">
                     <button type="button" id="addTaskBtn" class="btn-afisha-add">Додати</button>
@@ -1564,9 +1575,9 @@
                 <div class="tasks-filters">
                     <select id="tasksFilterStatus" class="afisha-input afisha-type-select">
                         <option value="">Всі статуси</option>
-                        <option value="todo">Зробити</option>
-                        <option value="in_progress">В роботі</option>
-                        <option value="done">Готово</option>
+                        <option value="todo">⬜ Зробити</option>
+                        <option value="in_progress">🔄 В роботі</option>
+                        <option value="done">✅ Готово</option>
                     </select>
                 </div>
             </div>
@@ -1593,12 +1604,38 @@
                     <input type="number" id="afishaDuration" class="afisha-input" value="60" min="15" step="15" title="Тривалість (хв)">
                     <button type="button" id="addAfishaBtn" class="btn-afisha-add">Додати</button>
                 </div>
+                <div class="afisha-form-row" style="margin-top:6px">
+                    <input type="text" id="afishaDescription" class="afisha-input" placeholder="Опис (опціонально)" style="flex:1">
+                </div>
             </div>
             <div id="afishaList" class="afisha-list"></div>
             <div class="afisha-import-section">
-                <label>Імпорт подій (формат: дата;час;хвилини;назва — по одній на рядок):</label>
-                <textarea id="afishaImportText" rows="3" placeholder="2026-03-01;12:00;60;Піратська вечірка&#10;2026-03-01;14:00;90;Шоу бульбашок"></textarea>
-                <button type="button" id="afishaImportBtn" class="btn-afisha-import">📥 Імпортувати</button>
+                <label>Імпорт/Експорт (формат: дата;час;хвилини;назва;опис — по одній на рядок):</label>
+                <textarea id="afishaImportText" rows="3" placeholder="2026-03-01;12:00;60;Піратська вечірка;Капітан Джек та команда&#10;2026-03-01;14:00;90;Шоу бульбашок;Мильні бульбашки для дітей"></textarea>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button type="button" id="afishaImportBtn" class="btn-afisha-import">📥 Імпортувати</button>
+                    <button type="button" id="afishaExportBtn" class="btn-afisha-import" style="background:linear-gradient(135deg,#3B82F6,#2563EB)">📤 Експортувати</button>
+                </div>
+            </div>
+            <!-- v8.0: Recurring afisha templates -->
+            <div class="afisha-recurring-section" style="margin-top:16px;border-top:1px solid var(--gray-200,#E5E7EB);padding-top:12px">
+                <h4 style="margin:0 0 8px">🔄 Повторювані події</h4>
+                <div class="afisha-form-row" style="flex-wrap:wrap;gap:6px">
+                    <input type="text" id="afishaTplTitle" class="afisha-input" placeholder="Назва" style="flex:2">
+                    <input type="time" id="afishaTplTime" class="afisha-input" value="12:00">
+                    <input type="number" id="afishaTplDuration" class="afisha-input" value="60" min="15" step="15" title="Хвилини">
+                    <select id="afishaTplPattern" class="afisha-input afisha-type-select" title="Повторення">
+                        <option value="daily">Щодня</option>
+                        <option value="weekdays">Будні</option>
+                        <option value="weekends">Вихідні</option>
+                        <option value="weekly" selected>Щотижня (Сб)</option>
+                        <option value="custom">Свої дні</option>
+                    </select>
+                    <input type="text" id="afishaTplDays" class="afisha-input" placeholder="Дні: 1,3,5" style="max-width:90px;display:none" title="1=Пн, 2=Вт, 3=Ср, 4=Чт, 5=Пт, 6=Сб, 7=Нд">
+                    <input type="text" id="afishaTplDesc" class="afisha-input" placeholder="Опис" style="flex:1">
+                    <button type="button" id="addAfishaTplBtn" class="btn-afisha-add">+ Шаблон</button>
+                </div>
+                <div id="afishaTplList" style="margin-top:8px"></div>
             </div>
         </div>
     </div>
@@ -1627,9 +1664,62 @@
                     <label for="afishaEditDuration">Тривалість (хв)</label>
                     <input type="number" id="afishaEditDuration" class="form-input" min="15" step="15" value="60">
                 </div>
+                <div class="form-group">
+                    <label for="afishaEditDescription">Опис</label>
+                    <input type="text" id="afishaEditDescription" class="form-input" placeholder="Опис події (опціонально)">
+                </div>
                 <div class="modal-actions">
                     <button type="submit" class="btn-submit">Зберегти</button>
                     <button type="button" class="btn-cancel" onclick="document.getElementById('afishaEditModal').classList.add('hidden')">Скасувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- v8.0: Task edit modal (replaces prompt() dialogs) -->
+    <div id="taskEditModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Редагувати завдання">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3>✏️ Редагувати завдання</h3>
+            <form id="taskEditForm" class="settings-form">
+                <input type="hidden" id="taskEditId">
+                <div class="form-group">
+                    <label for="taskEditTitle">Назва</label>
+                    <input type="text" id="taskEditTitle" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="taskEditDescription">Опис</label>
+                    <input type="text" id="taskEditDescription" class="form-input" placeholder="Деталі завдання (опціонально)">
+                </div>
+                <div class="form-group">
+                    <label for="taskEditDate">Дата</label>
+                    <input type="date" id="taskEditDate" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label for="taskEditPriority">Пріоритет</label>
+                    <select id="taskEditPriority" class="form-input">
+                        <option value="low">🔵 Низький</option>
+                        <option value="normal" selected>Звичайний</option>
+                        <option value="high">🔴 Високий</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="taskEditAssigned">Відповідальний</label>
+                    <input type="text" id="taskEditAssigned" class="form-input" placeholder="Хто виконує">
+                </div>
+                <div class="form-group">
+                    <label for="taskEditCategory">Категорія</label>
+                    <select id="taskEditCategory" class="form-input">
+                        <option value="admin">Адміністрація</option>
+                        <option value="event">Подія</option>
+                        <option value="purchase">Закупівля</option>
+                        <option value="trampoline">Батути</option>
+                        <option value="personal">Особисте</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-submit">Зберегти</button>
+                    <button type="button" class="btn-cancel" onclick="document.getElementById('taskEditModal').classList.add('hidden')">Скасувати</button>
                 </div>
             </form>
         </div>

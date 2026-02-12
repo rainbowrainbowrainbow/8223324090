@@ -7,7 +7,7 @@
  * All times are in Europe/Kyiv timezone (getKyivTimeStr returns "HH:MM").
  */
 const { pool } = require('../db');
-const { sendTelegramMessage, getConfiguredChatId, telegramRequest } = require('./telegram');
+const { sendTelegramMessage, getConfiguredChatId, telegramRequest, scheduleAutoDelete } = require('./telegram');
 const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr, timeToMinutes, minutesToTime } = require('./booking');
 const { sendBackupToTelegram } = require('./backup');
 const { formatAfishaBlock } = require('./templates');
@@ -58,7 +58,7 @@ async function buildAndSendDigest(date) {
     }
 
     await ensureDefaultLines(date);
-    const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [date]);
+    const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id', [date]);
     const lines = linesResult.rows;
 
     let text = `📅 <b>Розклад на ${date}</b>\n`;
@@ -149,7 +149,7 @@ async function sendTomorrowReminder(todayStr) {
         if (!chatId) return { success: false, reason: 'no_chat_id' };
 
         await ensureDefaultLines(tomorrowStr);
-        const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY line_id', [tomorrowStr]);
+        const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id', [tomorrowStr]);
 
         let text = `⏰ <b>Нагадування: завтра ${tomorrowStr}</b>\n`;
         text += `📋 ${mainBookingsCount} бронювань\n\n`;
@@ -393,8 +393,85 @@ async function checkScheduledDeletions() {
     }
 }
 
+// v8.0: Auto-create recurring afisha from templates
+let afishaRecurringCreatedToday = null;
+
+async function checkRecurringAfisha() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (afishaRecurringCreatedToday === todayStr) return;
+
+        const kyiv = getKyivDate();
+        const nowTime = getKyivTimeStr();
+        // Run at 00:06 Kyiv time (1 min after recurring tasks)
+        if (nowTime !== '00:06') return;
+
+        const dbLast = await getLastSent('recurring_afisha');
+        if (dbLast === todayStr) { afishaRecurringCreatedToday = todayStr; return; }
+
+        afishaRecurringCreatedToday = todayStr;
+        await setLastSent('recurring_afisha', todayStr);
+        const dayOfWeek = kyiv.getDay() || 7; // 1=Mon...7=Sun
+
+        const templates = await pool.query('SELECT * FROM afisha_templates WHERE is_active = true');
+        let created = 0;
+
+        for (const tpl of templates.rows) {
+            // Check date range
+            if (tpl.date_from && todayStr < tpl.date_from) continue;
+            if (tpl.date_to && todayStr > tpl.date_to) continue;
+
+            let shouldCreate = false;
+            switch (tpl.recurrence_pattern) {
+                case 'daily':
+                    shouldCreate = true;
+                    break;
+                case 'weekdays':
+                    shouldCreate = dayOfWeek <= 5;
+                    break;
+                case 'weekends':
+                    shouldCreate = dayOfWeek >= 6;
+                    break;
+                case 'weekly':
+                    shouldCreate = dayOfWeek === 6; // Saturday (park is busiest)
+                    break;
+                case 'custom':
+                    if (tpl.recurrence_days) {
+                        const days = tpl.recurrence_days.split(',').map(d => parseInt(d.trim()));
+                        shouldCreate = days.includes(dayOfWeek);
+                    }
+                    break;
+            }
+
+            if (!shouldCreate) continue;
+
+            // Dedup: skip if afisha with this template_id already exists for today
+            const existing = await pool.query(
+                'SELECT id FROM afisha WHERE template_id = $1 AND date = $2',
+                [tpl.id, todayStr]
+            );
+            if (existing.rows.length > 0) continue;
+
+            await pool.query(
+                `INSERT INTO afisha (date, time, title, duration, type, description, template_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [todayStr, tpl.time, tpl.title, tpl.duration, tpl.type, tpl.description, tpl.id]
+            );
+            created++;
+        }
+
+        if (created > 0) {
+            log.info(`Recurring afisha created: ${created} for ${todayStr}`);
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('RecurringAfisha error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
-    checkScheduledDeletions
+    checkScheduledDeletions, checkRecurringAfisha
 };

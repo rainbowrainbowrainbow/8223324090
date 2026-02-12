@@ -102,6 +102,28 @@ async function initDatabase() {
 
         // v7.4: Event type (event/birthday/regular)
         await pool.query(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'event'`);
+        // v8.0: Afisha description
+        await pool.query(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS description TEXT`);
+        // v8.0: Source template for recurring afisha
+        await pool.query(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS template_id INTEGER`);
+
+        // v8.0: Recurring afisha templates
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS afisha_templates (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(200) NOT NULL,
+                time VARCHAR(10) NOT NULL,
+                duration INTEGER DEFAULT 60,
+                type VARCHAR(20) DEFAULT 'event',
+                description TEXT,
+                recurrence_pattern VARCHAR(20) NOT NULL DEFAULT 'weekly',
+                recurrence_days VARCHAR(50),
+                date_from VARCHAR(20),
+                date_to VARCHAR(20),
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS telegram_known_chats (

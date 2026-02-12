@@ -78,6 +78,7 @@ function formatAfishaBlock(events) {
             const icon = ev.type === 'regular' ? '🔄' : '🎭';
             text += `  ${icon} ${ev.time}-${endTime} ${ev.title}`;
             if (ev.duration && ev.duration !== 60) text += ` (${ev.duration}хв)`;
+            if (ev.description) text += ` — ${ev.description}`;
             text += '\n';
         }
     }
@@ -85,7 +86,9 @@ function formatAfishaBlock(events) {
     if (birthdays.length > 0) {
         text += '🎂 <b>Іменинники:</b>\n';
         for (const ev of birthdays) {
-            text += `  🎂 ${ev.time} ${ev.title}\n`;
+            text += `  🎂 ${ev.title} (14:00 + 18:00, 15хв)`;
+            if (ev.description) text += ` — ${ev.description}`;
+            text += '\n';
         }
     }
 

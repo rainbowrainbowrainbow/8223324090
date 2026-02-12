@@ -15,7 +15,7 @@ const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha } = require('./services/scheduler');
 const { createLogger } = require('./utils/logger');
 
 const log = createLogger('Server');
@@ -108,7 +108,8 @@ initDatabase().then(() => {
         setInterval(checkAutoReminder, 60000);
         setInterval(checkAutoBackup, 60000);
         setInterval(checkRecurringTasks, 60000);
+        setInterval(checkRecurringAfisha, 60000);
         setInterval(checkScheduledDeletions, 60000);
-        log.info('Schedulers started: digest + reminder + backup + recurring + auto-delete (every 60s)');
+        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete (every 60s)');
     });
 });

@@ -542,7 +542,7 @@ async function _endAfishaDrag() {
             if (!resp.ok) throw new Error('API error');
             const subtitle = s.block.querySelector('.subtitle');
             const dur = s.event.duration || 60;
-            if (subtitle) subtitle.textContent = `${newTime} · ${dur}хв`;
+            if (subtitle) subtitle.textContent = newTime;
             s.block.dataset.eventTime = newTime;
             showNotification(`Час афіші оновлено: ${newTime}`);
         } catch (err) {

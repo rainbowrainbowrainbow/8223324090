@@ -645,7 +645,7 @@ async function handleBookingSubmit(e) {
             if (oldBooking) {
                 booking.createdBy = oldBooking.createdBy;
                 booking.createdAt = oldBooking.createdAt;
-                if (!booking.extraData && oldBooking.extraData) booking.extraData = oldBooking.extraData;
+                // v8.3.2: Don't restore old extraData — respect user's choice to clear sizes
             }
 
             const updateResult = await apiUpdateBooking(booking.id, booking);
@@ -980,6 +980,14 @@ async function duplicateBooking(bookingId) {
                 kidsInput.value = booking.kidsCount;
                 kidsInput.dispatchEvent(new Event('input'));
             }
+        }
+
+        // v8.3.2: Copy tshirt sizes from extraData
+        if (booking.extraData?.tshirt_sizes) {
+            ['XS', 'S', 'M', 'L', 'XL'].forEach(s => {
+                const input = document.getElementById('tshirt' + s);
+                if (input) input.value = booking.extraData.tshirt_sizes[s] || 0;
+            });
         }
     }
 

@@ -342,8 +342,9 @@ router.put('/:id', async (req, res) => {
         const notifyCatch = err => log.error(`Telegram notify failed (update): ${err.message}`);
         if (statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
             notifyTelegram('create', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
-            // v8.3: Trigger automation when preliminary → confirmed
-            processBookingAutomation({ ...b, id, status: newStatus, _event: 'confirm' })
+            // v8.3.2: Fetch fresh row from DB for automation (req.body may lack extra_data)
+            pool.query('SELECT * FROM bookings WHERE id = $1', [id])
+                .then(r => r.rows[0] ? processBookingAutomation({ ...mapBookingRow(r.rows[0]), _event: 'confirm' }) : null)
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         } else if (statusChanged) {
             notifyTelegram('status_change', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);

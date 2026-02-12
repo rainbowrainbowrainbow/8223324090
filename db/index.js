@@ -239,6 +239,12 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_type ON tasks(type)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_template_id ON tasks(template_id)');
 
+        // v7.9: Task categories for children's center
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'admin'`);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category)');
+        // Also add category to templates
+        await pool.query(`ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'admin'`);
+
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date_status ON bookings(date, status)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_line_date ON bookings(line_id, date)');

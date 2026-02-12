@@ -1,9 +1,33 @@
 /**
- * tasks-page.js — Standalone Tasks page (v7.8)
+ * tasks-page.js — Task Board v7.9
+ * Views: Today, Week, My Tasks, Kanban, Templates
+ * Categories: event, purchase, admin, trampoline, personal
  */
 
 // ==========================================
-// PAGE AUTH & INIT
+// CONSTANTS
+// ==========================================
+
+const CAT_LABELS = {
+    event: { icon: '📅', label: 'Івент', color: '#E65100' },
+    purchase: { icon: '🛒', label: 'Закупівлі', color: '#2E7D32' },
+    admin: { icon: '🏢', label: 'Адмін', color: '#1565C0' },
+    trampoline: { icon: '🤸', label: 'Батути', color: '#7B1FA2' },
+    personal: { icon: '👤', label: 'Особисті', color: '#455A64' }
+};
+
+const STATUS_CYCLE = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
+const STATUS_ICONS = { todo: '⬜', in_progress: '🔄', done: '✅' };
+const STATUS_LABELS = { todo: 'Todo', in_progress: 'В роботі', done: 'Готово' };
+const PRIORITY_ICONS = { high: '🔴', normal: '', low: '🔵' };
+const PATTERN_LABELS = { daily: 'Щоденно', weekdays: 'Будні', weekly: 'Щотижня (пн)', custom: 'Обрані дні' };
+
+let currentView = 'today';
+let currentCategory = 'all';
+let allTasks = [];
+
+// ==========================================
+// UTILITIES
 // ==========================================
 
 function showNotification(message, type = '') {
@@ -20,33 +44,34 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-const TYPE_BADGES = {
-    manual: { icon: '✋', label: 'Ручна', cls: 'badge-manual' },
-    recurring: { icon: '🔄', label: 'Повторювана', cls: 'badge-recurring' },
-    afisha: { icon: '🎭', label: 'Афіша', cls: 'badge-afisha' },
-    auto_complete: { icon: '⚡', label: 'Авто', cls: 'badge-auto' }
-};
+function getTodayStr() {
+    return new Date().toISOString().split('T')[0];
+}
 
-const STATUS_BADGES = {
-    todo: { icon: '⬜', label: 'Todo', cls: 'badge-todo' },
-    in_progress: { icon: '🔄', label: 'В роботі', cls: 'badge-in-progress' },
-    done: { icon: '✅', label: 'Виконано', cls: 'badge-done' }
-};
+function getWeekRange() {
+    const now = new Date();
+    const day = now.getDay() || 7; // Mon=1, Sun=7
+    const mon = new Date(now);
+    mon.setDate(now.getDate() - day + 1);
+    const sun = new Date(mon);
+    sun.setDate(mon.getDate() + 6);
+    return {
+        from: mon.toISOString().split('T')[0],
+        to: sun.toISOString().split('T')[0]
+    };
+}
 
-const PRIORITY_BADGES = {
-    high: { icon: '🔴', label: 'Високий', cls: 'badge-high' },
-    normal: { icon: '', label: 'Звичайний', cls: 'badge-normal' },
-    low: { icon: '🔵', label: 'Низький', cls: 'badge-low' }
-};
+function formatDateShort(dateStr) {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    const days = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+    const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+    return `${d}.${m} ${days[dt.getDay()]}`;
+}
 
-const STATUS_CYCLE = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
-
-const PATTERN_LABELS = {
-    daily: 'Щоденно',
-    weekdays: 'Будні (пн-пт)',
-    weekly: 'Щотижня (пн)',
-    custom: 'Обрані дні'
-};
+// ==========================================
+// PAGE INIT
+// ==========================================
 
 async function initPage() {
     const token = localStorage.getItem('pzp_token');
@@ -72,56 +97,54 @@ async function initPage() {
         window.location = '/';
     });
 
-    // Set default date to today
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('taskDate').value = today;
-
-    // Tab switching
-    document.querySelectorAll('.page-tab').forEach(tab => {
+    // Board tab switching
+    document.querySelectorAll('.board-tab').forEach(tab => {
         tab.addEventListener('click', () => {
-            document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.board-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
-            const tabId = tab.dataset.tab;
-            document.getElementById('tasksTab').style.display = tabId === 'tasks' ? '' : 'none';
-            document.getElementById('templatesTab').style.display = tabId === 'templates' ? '' : 'none';
-            if (tabId === 'templates') loadTemplates();
+            currentView = tab.dataset.view;
+
+            const isTemplates = currentView === 'templates';
+            document.getElementById('catFilters').style.display = isTemplates ? 'none' : '';
+            document.getElementById('quickAdd').style.display = isTemplates ? 'none' : '';
+            document.getElementById('boardContent').style.display = isTemplates ? 'none' : '';
+            document.getElementById('templatesSection').style.display = isTemplates ? '' : 'none';
+
+            if (isTemplates) {
+                loadTemplates();
+            } else {
+                renderBoard();
+            }
         });
     });
 
-    // Show custom days field
-    document.getElementById('tplPattern').addEventListener('change', (e) => {
-        document.getElementById('tplDaysGroup').style.display = e.target.value === 'custom' ? '' : 'none';
+    // Category filter chips
+    document.querySelectorAll('.cat-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            currentCategory = chip.dataset.cat;
+            renderBoard();
+        });
     });
 
-    // Filters
-    document.getElementById('filterStatus').addEventListener('change', loadTasks);
-    document.getElementById('filterType').addEventListener('change', loadTasks);
-    document.getElementById('filterDate').addEventListener('change', loadTasks);
-    document.getElementById('filterAssigned').addEventListener('input', debounce(loadTasks, 400));
-    document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
-
-    // Add task
+    // Quick add task
     document.getElementById('addTaskBtn').addEventListener('click', addTask);
     document.getElementById('taskTitle').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') addTask();
     });
 
-    // Add template
+    // Templates
     document.getElementById('addTemplateBtn').addEventListener('click', addTemplate);
+    document.getElementById('tplPattern').addEventListener('change', (e) => {
+        document.getElementById('tplDays').style.display = e.target.value === 'custom' ? '' : 'none';
+    });
 
-    await loadTasks();
-}
-
-function debounce(fn, ms) {
-    let timer;
-    return (...args) => {
-        clearTimeout(timer);
-        timer = setTimeout(() => fn(...args), ms);
-    };
+    await loadAllTasks();
 }
 
 // ==========================================
-// TASKS API WRAPPERS
+// API WRAPPERS
 // ==========================================
 
 async function apiGetTasks(filters = {}) {
@@ -142,154 +165,248 @@ async function apiGetTasks(filters = {}) {
 async function apiCreateTask(data) {
     try {
         const response = await fetch(`${API_BASE}/tasks`, {
-            method: 'POST',
-            headers: getAuthHeaders(),
-            body: JSON.stringify(data)
+            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
         return await response.json();
-    } catch (err) {
-        console.error('API createTask error:', err);
-        return null;
-    }
+    } catch (err) { console.error('API createTask error:', err); return null; }
 }
 
 async function apiPatchTaskStatus(id, status) {
     try {
         const response = await fetch(`${API_BASE}/tasks/${id}/status`, {
-            method: 'PATCH',
-            headers: getAuthHeaders(),
-            body: JSON.stringify({ status })
+            method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ status })
         });
         if (handleAuthError(response)) return null;
         return await response.json();
-    } catch (err) {
-        console.error('API patchTaskStatus error:', err);
-        return null;
-    }
+    } catch (err) { console.error('API patchTaskStatus error:', err); return null; }
 }
 
 async function apiDeleteTask(id) {
     try {
         const response = await fetch(`${API_BASE}/tasks/${id}`, {
-            method: 'DELETE',
-            headers: getAuthHeaders(false)
+            method: 'DELETE', headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return null;
         return await response.json();
-    } catch (err) {
-        console.error('API deleteTask error:', err);
-        return null;
-    }
+    } catch (err) { console.error('API deleteTask error:', err); return null; }
 }
 
-// Template API wrappers
 async function apiGetTemplates() {
     try {
         const response = await fetch(`${API_BASE}/task-templates`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
-        if (!response.ok) throw new Error('API error');
         return await response.json();
-    } catch (err) {
-        console.error('API getTemplates error:', err);
-        return [];
-    }
+    } catch (err) { console.error('API getTemplates error:', err); return []; }
 }
 
 async function apiCreateTemplate(data) {
     try {
         const response = await fetch(`${API_BASE}/task-templates`, {
-            method: 'POST',
-            headers: getAuthHeaders(),
-            body: JSON.stringify(data)
+            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
         return await response.json();
-    } catch (err) {
-        console.error('API createTemplate error:', err);
-        return null;
-    }
+    } catch (err) { console.error('API createTemplate error:', err); return null; }
 }
 
 async function apiDeleteTemplate(id) {
     try {
         const response = await fetch(`${API_BASE}/task-templates/${id}`, {
-            method: 'DELETE',
-            headers: getAuthHeaders(false)
+            method: 'DELETE', headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return null;
         return await response.json();
-    } catch (err) {
-        console.error('API deleteTemplate error:', err);
-        return null;
+    } catch (err) { console.error('API deleteTemplate error:', err); return null; }
+}
+
+// ==========================================
+// LOAD & RENDER
+// ==========================================
+
+async function loadAllTasks() {
+    allTasks = await apiGetTasks();
+    updateCounts();
+    renderBoard();
+}
+
+function filterByCategory(tasks) {
+    if (currentCategory === 'all') return tasks;
+    return tasks.filter(t => (t.category || 'admin') === currentCategory);
+}
+
+function updateCounts() {
+    const today = getTodayStr();
+    const week = getWeekRange();
+    const username = AppState.currentUser?.name;
+
+    const active = allTasks.filter(t => t.status !== 'done');
+    const todayTasks = active.filter(t => t.date === today || !t.date);
+    const weekTasks = active.filter(t => t.date >= week.from && t.date <= week.to);
+    const myTasks = active.filter(t => t.assigned_to && t.assigned_to === username);
+
+    document.getElementById('countToday').textContent = todayTasks.length;
+    document.getElementById('countWeek').textContent = weekTasks.length;
+    document.getElementById('countMy').textContent = myTasks.length;
+}
+
+function renderBoard() {
+    const container = document.getElementById('boardContent');
+
+    switch (currentView) {
+        case 'today': renderTodayView(container); break;
+        case 'week': renderWeekView(container); break;
+        case 'my': renderMyView(container); break;
+        case 'board': renderKanbanView(container); break;
+        default: renderTodayView(container);
     }
 }
 
 // ==========================================
-// TASKS LIST
+// VIEW: TODAY
 // ==========================================
 
-async function loadTasks() {
-    const filters = {};
-    const status = document.getElementById('filterStatus').value;
-    const type = document.getElementById('filterType').value;
-    const date = document.getElementById('filterDate').value;
-    const assigned = document.getElementById('filterAssigned').value.trim();
-    if (status) filters.status = status;
-    if (type) filters.type = type;
-    if (date) filters.date = date;
-    if (assigned) filters.assigned_to = assigned;
-
-    const tasks = await apiGetTasks(filters);
-    renderTasks(tasks);
-}
-
-function renderTasks(tasks) {
-    const grid = document.getElementById('tasksList');
+function renderTodayView(container) {
+    const today = getTodayStr();
+    let tasks = allTasks.filter(t => t.date === today || (!t.date && t.status !== 'done'));
+    tasks = filterByCategory(tasks);
 
     if (tasks.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📝</div><div class="empty-state-text">Немає задач за цими фільтрами</div></div>';
+        container.innerHTML = '<div class="empty-state"><span>🎉</span>Немає задач на сьогодні!</div>';
         return;
     }
 
-    grid.innerHTML = tasks.map(t => {
-        const typeBadge = TYPE_BADGES[t.type] || TYPE_BADGES.manual;
-        const statusBadge = STATUS_BADGES[t.status] || STATUS_BADGES.todo;
-        const priorityBadge = PRIORITY_BADGES[t.priority] || PRIORITY_BADGES.normal;
-        const nextStatus = STATUS_CYCLE[t.status] || 'todo';
+    // Group by category
+    const groups = {};
+    for (const t of tasks) {
+        const cat = t.category || 'admin';
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(t);
+    }
 
-        return `
-        <div class="card task-card" data-status="${t.status}" data-priority="${t.priority}">
-            <div class="card-header">
-                <div>
-                    <span class="card-title">${escapeHtml(t.title)}</span>
-                </div>
-                <button class="btn-page-secondary" style="min-height:36px;padding:6px 12px;" onclick="cycleStatus(${t.id}, '${nextStatus}')" title="Змінити статус">
-                    ${statusBadge.icon}
-                </button>
-            </div>
-            <div class="card-meta">
-                <span class="badge ${typeBadge.cls}">${typeBadge.icon} ${typeBadge.label}</span>
-                <span class="badge ${statusBadge.cls}">${statusBadge.label}</span>
-                ${t.priority !== 'normal' ? `<span class="badge ${priorityBadge.cls}">${priorityBadge.icon} ${priorityBadge.label}</span>` : ''}
-                ${t.date ? `<span>📅 ${escapeHtml(t.date)}</span>` : ''}
-                ${t.assigned_to ? `<span>👤 ${escapeHtml(t.assigned_to)}</span>` : ''}
-                ${t.afisha_id ? '<span>🎭</span>' : ''}
-            </div>
-            ${t.description ? `<p style="font-size:13px;color:var(--gray-500);margin-top:8px;">${escapeHtml(t.description)}</p>` : ''}
-            <div class="card-actions">
-                <button class="btn-page-danger" onclick="deleteTask(${t.id})">Видалити</button>
-            </div>
-        </div>`;
-    }).join('');
+    let html = '';
+    for (const cat of ['event', 'purchase', 'admin', 'trampoline', 'personal']) {
+        if (!groups[cat]) continue;
+        const info = CAT_LABELS[cat];
+        html += `<div class="group-header">${info.icon} ${info.label} <span style="font-size:12px;color:var(--gray-400)">(${groups[cat].length})</span></div>`;
+        html += groups[cat].map(t => renderTaskCard(t)).join('');
+    }
+    container.innerHTML = html;
 }
 
-function clearFilters() {
-    document.getElementById('filterStatus').value = '';
-    document.getElementById('filterType').value = '';
-    document.getElementById('filterDate').value = '';
-    document.getElementById('filterAssigned').value = '';
-    loadTasks();
+// ==========================================
+// VIEW: WEEK
+// ==========================================
+
+function renderWeekView(container) {
+    const week = getWeekRange();
+    let tasks = allTasks.filter(t => t.date >= week.from && t.date <= week.to && t.status !== 'done');
+    tasks = filterByCategory(tasks);
+
+    if (tasks.length === 0) {
+        container.innerHTML = '<div class="empty-state"><span>📆</span>Немає задач на цей тиждень!</div>';
+        return;
+    }
+
+    // Group by date
+    const groups = {};
+    for (const t of tasks) {
+        const d = t.date || 'no-date';
+        if (!groups[d]) groups[d] = [];
+        groups[d].push(t);
+    }
+
+    let html = '';
+    const sortedDates = Object.keys(groups).sort();
+    for (const date of sortedDates) {
+        const label = date === 'no-date' ? 'Без дати' : formatDateShort(date);
+        const isToday = date === getTodayStr();
+        html += `<div class="group-header">${isToday ? '📌 ' : ''}${label} <span style="font-size:12px;color:var(--gray-400)">(${groups[date].length})</span></div>`;
+        html += groups[date].map(t => renderTaskCard(t)).join('');
+    }
+    container.innerHTML = html;
+}
+
+// ==========================================
+// VIEW: MY TASKS
+// ==========================================
+
+function renderMyView(container) {
+    const username = AppState.currentUser?.name;
+    let tasks = allTasks.filter(t => t.assigned_to && t.assigned_to === username && t.status !== 'done');
+    tasks = filterByCategory(tasks);
+
+    if (tasks.length === 0) {
+        container.innerHTML = '<div class="empty-state"><span>👤</span>Немає задач, призначених вам!</div>';
+        return;
+    }
+
+    container.innerHTML = tasks.map(t => renderTaskCard(t)).join('');
+}
+
+// ==========================================
+// VIEW: KANBAN
+// ==========================================
+
+function renderKanbanView(container) {
+    let tasks = filterByCategory(allTasks);
+
+    const todo = tasks.filter(t => t.status === 'todo');
+    const inProgress = tasks.filter(t => t.status === 'in_progress');
+    const done = tasks.filter(t => t.status === 'done');
+
+    container.innerHTML = `
+        <div class="kanban">
+            <div class="kanban-col">
+                <div class="kanban-col-header">
+                    ⬜ Todo <span class="kanban-col-count">${todo.length}</span>
+                </div>
+                ${todo.length ? todo.map(t => renderTaskCard(t)).join('') : '<div class="empty-state"><span>📭</span>Порожньо</div>'}
+            </div>
+            <div class="kanban-col">
+                <div class="kanban-col-header">
+                    🔄 В роботі <span class="kanban-col-count">${inProgress.length}</span>
+                </div>
+                ${inProgress.length ? inProgress.map(t => renderTaskCard(t)).join('') : '<div class="empty-state"><span>📭</span>Порожньо</div>'}
+            </div>
+            <div class="kanban-col">
+                <div class="kanban-col-header">
+                    ✅ Готово <span class="kanban-col-count">${done.length}</span>
+                </div>
+                ${done.length ? done.map(t => renderTaskCard(t)).join('') : '<div class="empty-state"><span>📭</span>Порожньо</div>'}
+            </div>
+        </div>`;
+}
+
+// ==========================================
+// TASK CARD
+// ==========================================
+
+function renderTaskCard(t) {
+    const cat = t.category || 'admin';
+    const catInfo = CAT_LABELS[cat] || CAT_LABELS.admin;
+    const nextStatus = STATUS_CYCLE[t.status] || 'todo';
+    const nextLabel = STATUS_LABELS[nextStatus];
+    const priorityIcon = PRIORITY_ICONS[t.priority] || '';
+
+    const btnClass = nextStatus === 'done' ? 'btn-done' :
+                     nextStatus === 'in_progress' ? 'btn-progress' : '';
+
+    return `
+    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''}">
+        <div class="task-card-title">${priorityIcon ? priorityIcon + ' ' : ''}${escapeHtml(t.title)}</div>
+        <div class="task-card-meta">
+            <span>${catInfo.icon} ${catInfo.label}</span>
+            ${t.date ? `<span>📅 ${formatDateShort(t.date)}</span>` : ''}
+            ${t.assigned_to ? `<span>👤 ${escapeHtml(t.assigned_to)}</span>` : ''}
+            ${t.type === 'recurring' ? '<span>🔄</span>' : ''}
+            ${t.type === 'afisha' ? '<span>🎭</span>' : ''}
+        </div>
+        <div class="task-card-actions">
+            <button class="${btnClass}" onclick="cycleStatus(${t.id}, '${nextStatus}')">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
+            <button class="btn-delete" onclick="deleteTask(${t.id})">✕</button>
+        </div>
+    </div>`;
 }
 
 // ==========================================
@@ -302,15 +419,16 @@ async function addTask() {
         showNotification('Введіть назву задачі', 'error');
         return;
     }
-    const date = document.getElementById('taskDate').value || null;
-    const priority = document.getElementById('taskPriority').value;
-    const assignedTo = document.getElementById('taskAssignedTo').value.trim() || null;
 
-    const result = await apiCreateTask({ title, date, priority, assigned_to: assignedTo, type: 'manual' });
+    const category = document.getElementById('taskCategory').value;
+    const priority = document.getElementById('taskPriority').value;
+    const today = getTodayStr();
+
+    const result = await apiCreateTask({ title, date: today, priority, category, type: 'manual' });
     if (result && result.success) {
         document.getElementById('taskTitle').value = '';
         showNotification('Задачу додано', 'success');
-        await loadTasks();
+        await loadAllTasks();
     } else {
         showNotification('Помилка додавання', 'error');
     }
@@ -319,7 +437,11 @@ async function addTask() {
 async function cycleStatus(taskId, newStatus) {
     const result = await apiPatchTaskStatus(taskId, newStatus);
     if (result && result.success) {
-        await loadTasks();
+        // Update local cache
+        const task = allTasks.find(t => t.id === taskId);
+        if (task) task.status = newStatus;
+        updateCounts();
+        renderBoard();
     } else {
         showNotification('Помилка зміни статусу', 'error');
     }
@@ -329,8 +451,10 @@ async function deleteTask(taskId) {
     if (!confirm('Видалити цю задачу?')) return;
     const result = await apiDeleteTask(taskId);
     if (result && result.success) {
+        allTasks = allTasks.filter(t => t.id !== taskId);
+        updateCounts();
+        renderBoard();
         showNotification('Задачу видалено', 'success');
-        await loadTasks();
     } else {
         showNotification('Помилка видалення', 'error');
     }
@@ -349,28 +473,26 @@ function renderTemplates(templates) {
     const grid = document.getElementById('templatesList');
 
     if (templates.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-text">Немає шаблонів. Додайте перший!</div></div>';
+        grid.innerHTML = '<div class="empty-state"><span>🔄</span>Немає шаблонів. Додайте перший!</div>';
         return;
     }
 
     grid.innerHTML = templates.map(t => {
-        const patternLabel = PATTERN_LABELS[t.recurrencePattern] || t.recurrencePattern;
-        const daysInfo = t.recurrenceDays ? ` (дні: ${escapeHtml(t.recurrenceDays)})` : '';
-        const priorityBadge = PRIORITY_BADGES[t.priority] || PRIORITY_BADGES.normal;
+        const pattern = PATTERN_LABELS[t.recurrencePattern] || t.recurrencePattern;
+        const days = t.recurrenceDays ? ` (${escapeHtml(t.recurrenceDays)})` : '';
+        const cat = CAT_LABELS[t.category] || CAT_LABELS.admin;
 
         return `
-        <div class="card">
-            <div class="card-header">
-                <span class="card-title">🔄 ${escapeHtml(t.title)}</span>
+        <div class="task-card cat-${t.category || 'admin'}">
+            <div class="task-card-title">🔄 ${escapeHtml(t.title)}</div>
+            <div class="task-card-meta">
+                <span>${cat.icon} ${cat.label}</span>
+                <span>📅 ${pattern}${days}</span>
+                ${t.assignedTo ? `<span>👤 ${escapeHtml(t.assignedTo)}</span>` : ''}
                 <span class="badge ${t.isActive ? 'badge-done' : 'badge-normal'}">${t.isActive ? 'Активний' : 'Пауза'}</span>
             </div>
-            <div class="card-meta">
-                <span>📅 ${patternLabel}${daysInfo}</span>
-                ${t.priority !== 'normal' ? `<span class="badge ${priorityBadge.cls}">${priorityBadge.icon} ${priorityBadge.label}</span>` : ''}
-                ${t.assignedTo ? `<span>👤 ${escapeHtml(t.assignedTo)}</span>` : ''}
-            </div>
-            <div class="card-actions">
-                <button class="btn-page-danger" onclick="deleteTemplate(${t.id})">Видалити</button>
+            <div class="task-card-actions">
+                <button class="btn-delete" onclick="deleteTemplate(${t.id})">✕ Видалити</button>
             </div>
         </div>`;
     }).join('');
@@ -387,13 +509,14 @@ async function addTemplate() {
     const recurrenceDays = document.getElementById('tplDays').value.trim() || null;
     const priority = document.getElementById('tplPriority').value;
     const assignedTo = document.getElementById('tplAssignedTo').value.trim() || null;
+    const category = document.getElementById('tplCategory').value;
 
     if (recurrencePattern === 'custom' && !recurrenceDays) {
         showNotification('Вкажіть дні для кастомного розкладу', 'error');
         return;
     }
 
-    const result = await apiCreateTemplate({ title, recurrencePattern, recurrenceDays, priority, assignedTo });
+    const result = await apiCreateTemplate({ title, recurrencePattern, recurrenceDays, priority, assignedTo, category });
     if (result && result.success) {
         document.getElementById('tplTitle').value = '';
         document.getElementById('tplDays').value = '';

@@ -9,11 +9,12 @@ const log = createLogger('Tasks');
 
 const VALID_STATUSES = ['todo', 'in_progress', 'done'];
 const VALID_PRIORITIES = ['low', 'normal', 'high'];
+const VALID_CATEGORIES = ['event', 'purchase', 'admin', 'trampoline', 'personal'];
 
 // GET /api/tasks — list with optional filters
 router.get('/', async (req, res) => {
     try {
-        const { status, date, assigned_to, afisha_id, type } = req.query;
+        const { status, date, assigned_to, afisha_id, type, category, date_from, date_to } = req.query;
         const conditions = [];
         const params = [];
         let idx = 1;
@@ -26,6 +27,15 @@ router.get('/', async (req, res) => {
             conditions.push(`date = $${idx++}`);
             params.push(date);
         }
+        // v7.9: Date range filter for week view
+        if (date_from && /^\d{4}-\d{2}-\d{2}$/.test(date_from)) {
+            conditions.push(`date >= $${idx++}`);
+            params.push(date_from);
+        }
+        if (date_to && /^\d{4}-\d{2}-\d{2}$/.test(date_to)) {
+            conditions.push(`date <= $${idx++}`);
+            params.push(date_to);
+        }
         if (assigned_to) {
             conditions.push(`assigned_to = $${idx++}`);
             params.push(assigned_to);
@@ -37,6 +47,11 @@ router.get('/', async (req, res) => {
         if (type) {
             conditions.push(`type = $${idx++}`);
             params.push(type);
+        }
+        // v7.9: Category filter
+        if (category && VALID_CATEGORIES.includes(category)) {
+            conditions.push(`category = $${idx++}`);
+            params.push(category);
         }
 
         const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -70,19 +85,20 @@ router.get('/:id', async (req, res) => {
 // POST /api/tasks — create
 router.post('/', async (req, res) => {
     try {
-        const { title, description, date, priority, assigned_to, type, template_id, afisha_id } = req.body;
+        const { title, description, date, priority, assigned_to, type, template_id, afisha_id, category } = req.body;
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date' });
 
         const taskPriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
         const taskType = ['manual', 'recurring', 'afisha', 'auto_complete'].includes(type) ? type : 'manual';
+        const taskCategory = VALID_CATEGORIES.includes(category) ? category : 'admin';
         const username = req.user?.username || 'system';
 
         const result = await pool.query(
-            `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, template_id, afisha_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, template_id, afisha_id, category)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
             [title.trim(), description || null, date || null, taskPriority, assigned_to || null, username,
-             taskType, template_id || null, afisha_id || null]
+             taskType, template_id || null, afisha_id || null, taskCategory]
         );
         res.json({ success: true, task: result.rows[0] });
     } catch (err) {
@@ -95,17 +111,26 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, date, status, priority, assigned_to } = req.body;
+        const { title, description, date, status, priority, assigned_to, category } = req.body;
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
 
         const taskStatus = VALID_STATUSES.includes(status) ? status : 'todo';
         const taskPriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
+        const taskCategory = VALID_CATEGORIES.includes(category) ? category : undefined;
         const completedAt = taskStatus === 'done' ? 'NOW()' : 'NULL';
 
+        const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
+            'assigned_to=$6', `updated_at=NOW()`, `completed_at=${completedAt}`];
+        const values = [title.trim(), description || null, date || null, taskStatus, taskPriority, assigned_to || null];
+        let paramIdx = 7;
+        if (taskCategory) {
+            setClauses.push(`category=$${paramIdx++}`);
+            values.push(taskCategory);
+        }
+        values.push(id);
         await pool.query(
-            `UPDATE tasks SET title=$1, description=$2, date=$3, status=$4, priority=$5,
-             assigned_to=$6, updated_at=NOW(), completed_at=${completedAt} WHERE id=$7`,
-            [title.trim(), description || null, date || null, taskStatus, taskPriority, assigned_to || null, id]
+            `UPDATE tasks SET ${setClauses.join(', ')} WHERE id=$${paramIdx}`,
+            values
         );
         const updated = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
         if (updated.rows.length === 0) return res.status(404).json({ error: 'Task not found' });

@@ -101,9 +101,9 @@ router.post('/:id/generate-tasks', async (req, res) => {
 
         for (const task of tasks) {
             const result = await pool.query(
-                `INSERT INTO tasks (title, date, status, priority, afisha_id, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-                [task.title, task.date, task.status, task.priority, task.afisha_id, task.created_by]
+                `INSERT INTO tasks (title, date, status, priority, afisha_id, created_by, type, category)
+                 VALUES ($1, $2, $3, $4, $5, $6, 'afisha', $7) RETURNING *`,
+                [task.title, task.date, task.status, task.priority, task.afisha_id, task.created_by, task.category || 'event']
             );
             created.push(result.rows[0]);
         }

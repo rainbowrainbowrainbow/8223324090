@@ -272,9 +272,9 @@ async function checkRecurringTasks() {
             if (existing.rows.length > 0) continue;
 
             await pool.query(
-                `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, template_id)
-                 VALUES ($1, $2, $3, $4, $5, 'system', 'recurring', $6)`,
-                [tpl.title, tpl.description, todayStr, tpl.priority, tpl.assigned_to, tpl.id]
+                `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, template_id, category)
+                 VALUES ($1, $2, $3, $4, $5, 'system', 'recurring', $6, $7)`,
+                [tpl.title, tpl.description, todayStr, tpl.priority, tpl.assigned_to, tpl.id, tpl.category || 'admin']
             );
             created++;
         }

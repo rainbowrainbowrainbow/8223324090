@@ -1,5 +1,5 @@
 /**
- * routes/task-templates.js — Recurring task templates CRUD (v7.8)
+ * routes/task-templates.js — Recurring task templates CRUD (v7.9)
  */
 const router = require('express').Router();
 const { pool } = require('../db');
@@ -9,6 +9,7 @@ const log = createLogger('TaskTemplates');
 
 const VALID_PATTERNS = ['daily', 'weekly', 'weekdays', 'custom'];
 const VALID_PRIORITIES = ['low', 'normal', 'high'];
+const VALID_CATEGORIES = ['event', 'purchase', 'admin', 'trampoline', 'personal'];
 
 function mapTemplateRow(row) {
     return {
@@ -16,6 +17,7 @@ function mapTemplateRow(row) {
         title: row.title,
         description: row.description,
         priority: row.priority,
+        category: row.category || 'admin',
         assignedTo: row.assigned_to,
         recurrencePattern: row.recurrence_pattern,
         recurrenceDays: row.recurrence_days,
@@ -46,7 +48,7 @@ router.get('/', async (req, res) => {
 // POST /api/task-templates
 router.post('/', async (req, res) => {
     try {
-        const { title, description, priority, assignedTo, recurrencePattern, recurrenceDays } = req.body;
+        const { title, description, priority, category, assignedTo, recurrencePattern, recurrenceDays } = req.body;
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (!VALID_PATTERNS.includes(recurrencePattern)) {
             return res.status(400).json({ error: 'Invalid recurrence pattern' });
@@ -56,12 +58,13 @@ router.post('/', async (req, res) => {
         }
 
         const templatePriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
+        const templateCategory = VALID_CATEGORIES.includes(category) ? category : 'admin';
         const username = req.user?.username || 'system';
 
         const result = await pool.query(
-            `INSERT INTO task_templates (title, description, priority, assigned_to, recurrence_pattern, recurrence_days, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [title.trim(), description || null, templatePriority, assignedTo || null,
+            `INSERT INTO task_templates (title, description, priority, category, assigned_to, recurrence_pattern, recurrence_days, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [title.trim(), description || null, templatePriority, templateCategory, assignedTo || null,
              recurrencePattern, recurrenceDays || null, username]
         );
         res.json({ success: true, template: mapTemplateRow(result.rows[0]) });
@@ -75,18 +78,19 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, priority, assignedTo, recurrencePattern, recurrenceDays, isActive } = req.body;
+        const { title, description, priority, category, assignedTo, recurrencePattern, recurrenceDays, isActive } = req.body;
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (!VALID_PATTERNS.includes(recurrencePattern)) {
             return res.status(400).json({ error: 'Invalid recurrence pattern' });
         }
 
         const templatePriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
+        const templateCategory = VALID_CATEGORIES.includes(category) ? category : 'admin';
 
         await pool.query(
-            `UPDATE task_templates SET title=$1, description=$2, priority=$3, assigned_to=$4,
-             recurrence_pattern=$5, recurrence_days=$6, is_active=$7 WHERE id=$8`,
-            [title.trim(), description || null, templatePriority, assignedTo || null,
+            `UPDATE task_templates SET title=$1, description=$2, priority=$3, category=$4, assigned_to=$5,
+             recurrence_pattern=$6, recurrence_days=$7, is_active=$8 WHERE id=$9`,
+            [title.trim(), description || null, templatePriority, templateCategory, assignedTo || null,
              recurrencePattern, recurrenceDays || null, isActive !== false, id]
         );
         const updated = await pool.query('SELECT * FROM task_templates WHERE id = $1', [id]);

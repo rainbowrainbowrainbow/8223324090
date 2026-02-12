@@ -684,6 +684,13 @@ async function showSettings() {
     const autoDelHours = document.getElementById('settingsAutoDeleteHours');
     if (autoDelHours) autoDelHours.value = autoDeleteHours || '10';
 
+    // v8.3: Load automation rules
+    const automationSection = document.getElementById('settingsAutomationSection');
+    if (automationSection) {
+        automationSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
+        if (AppState.currentUser.role === 'admin') renderAutomationRules();
+    }
+
     document.getElementById('settingsModal').classList.remove('hidden');
     fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
     fetchAndRenderThreads();
@@ -1790,5 +1797,135 @@ async function handleImprovementSubmit(e) {
         showNotification('Ідею надіслано в задачі!', 'success');
     } else {
         showNotification('Помилка надсилання', 'error');
+    }
+}
+
+// ==========================================
+// v8.3: AUTOMATION RULES UI
+// ==========================================
+
+async function renderAutomationRules() {
+    const container = document.getElementById('automationRulesList');
+    if (!container) return;
+    try {
+        const response = await fetch(`${API_BASE}/settings/automation-rules`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return;
+        const rules = await response.json();
+        if (!rules || rules.length === 0) {
+            container.innerHTML = '<p class="no-data">Немає правил автоматизації.</p>';
+            return;
+        }
+        const triggerLabels = { booking_create: 'При створенні', booking_confirm: 'При підтвердженні' };
+        container.innerHTML = rules.map(rule => {
+            const cond = rule.trigger_condition || {};
+            const products = (cond.product_ids || []).join(', ');
+            const actions = (rule.actions || []);
+            const taskCount = actions.filter(a => a.type === 'create_task').length;
+            const tgCount = actions.filter(a => a.type === 'telegram_group').length;
+            const activeClass = rule.is_active ? '' : ' rule-inactive';
+            return `
+            <div class="automation-rule${activeClass}" data-id="${rule.id}">
+                <div class="automation-rule-header">
+                    <div class="automation-rule-info">
+                        <strong>${escapeHtml(rule.name)}</strong>
+                        <span class="automation-rule-meta">
+                            ${triggerLabels[rule.trigger_type] || rule.trigger_type}
+                            ${products ? ` · Продукти: ${escapeHtml(products)}` : ''}
+                            ${rule.days_before ? ` · За ${rule.days_before} дн.` : ''}
+                        </span>
+                        <span class="automation-rule-actions-info">
+                            ${taskCount > 0 ? `📝 ${taskCount} задач` : ''}
+                            ${tgCount > 0 ? ` 📲 ${tgCount} повід.` : ''}
+                        </span>
+                    </div>
+                    <div class="automation-rule-controls">
+                        <label class="toggle-switch toggle-sm">
+                            <input type="checkbox" ${rule.is_active ? 'checked' : ''} onchange="toggleAutomationRule(${rule.id}, this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <button class="btn-danger btn-sm" onclick="deleteAutomationRule(${rule.id})">✕</button>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        container.innerHTML = '<p class="no-data">Помилка завантаження правил</p>';
+    }
+}
+
+async function toggleAutomationRule(id, isActive) {
+    try {
+        const response = await fetch(`${API_BASE}/settings/automation-rules`, { headers: getAuthHeaders(false) });
+        const rules = await response.json();
+        const rule = rules.find(r => r.id === id);
+        if (!rule) return;
+        await fetch(`${API_BASE}/settings/automation-rules/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ ...rule, is_active: isActive })
+        });
+        showNotification(isActive ? 'Правило увімкнено' : 'Правило вимкнено', 'success');
+    } catch (err) {
+        showNotification('Помилка оновлення', 'error');
+    }
+}
+
+async function deleteAutomationRule(id) {
+    const confirmed = await customConfirm('Видалити це правило автоматизації?', 'Видалення');
+    if (!confirmed) return;
+    try {
+        await fetch(`${API_BASE}/settings/automation-rules/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        showNotification('Правило видалено', 'success');
+        renderAutomationRules();
+    } catch (err) {
+        showNotification('Помилка видалення', 'error');
+    }
+}
+
+async function showAddAutomationRule() {
+    const name = prompt('Назва правила:');
+    if (!name) return;
+    const productIds = prompt('ID продуктів через кому (напр: pinata,pinata_custom):');
+    if (!productIds) return;
+    const daysBefore = parseInt(prompt('За скільки днів до події створити задачу? (0 = у день бронювання):', '3')) || 0;
+    const taskTitle = prompt('Шаблон задачі (плейсхолдери: {date}, {time}, {pinataFiller}, {kidsCount}, {room}, {groupName}):', `📋 Підготовка до {programName} на {date}`);
+    if (!taskTitle) return;
+
+    const actions = [
+        { type: 'create_task', title: taskTitle, priority: 'high', category: 'purchase' }
+    ];
+
+    const sendTelegram = confirm('Також надіслати повідомлення в Telegram групу?');
+    if (sendTelegram) {
+        actions.push({
+            type: 'telegram_group',
+            template: `📋 <b>${escapeHtml(name)}</b>\n\n📅 Дата: {date} о {time}\n🏠 Кімната: {room}\n\n${escapeHtml(taskTitle)}`
+        });
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/settings/automation-rules`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                name,
+                trigger_type: 'booking_create',
+                trigger_condition: { product_ids: productIds.split(',').map(s => s.trim()) },
+                actions,
+                days_before: daysBefore
+            })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Правило створено!', 'success');
+            renderAutomationRules();
+        } else {
+            showNotification(data.error || 'Помилка', 'error');
+        }
+    } catch (err) {
+        showNotification('Помилка створення', 'error');
     }
 }

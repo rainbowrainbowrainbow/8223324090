@@ -750,6 +750,24 @@
 .task-item-actions { display: flex; gap: 4px; align-items: center; }
 .task-item-actions .btn-sm { padding: 6px 10px; font-size: 12px; width: auto; }
 
+/* v8.3: Automation rules */
+.automation-rules-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.automation-rule {
+    padding: 10px 14px;
+    background: var(--gray-50, #f9fafb);
+    border: 1px solid var(--gray-100, #f3f4f6);
+    border-left: 4px solid #8B5CF6;
+    border-radius: 8px;
+}
+.automation-rule.rule-inactive { opacity: 0.5; border-left-color: var(--gray-300); }
+.automation-rule-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.automation-rule-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.automation-rule-info strong { font-size: var(--font-base, 14px); color: var(--gray-800); }
+.automation-rule-meta { font-size: 11px; color: var(--gray-500); }
+.automation-rule-actions-info { font-size: 11px; color: #7C3AED; font-weight: 600; }
+.automation-rule-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.toggle-sm { transform: scale(0.8); }
+
 /* Afisha timeline markers */
 .afisha-marker {
     position: absolute;

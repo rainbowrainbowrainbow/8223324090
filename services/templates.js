@@ -13,7 +13,9 @@ const notificationTemplates = {
         text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
         text += `🏠 ${booking.room}\n`;
         if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${booking.second_animator || booking.secondAnimator}\n`;
+        if (booking.pinata_filler || booking.pinataFiller) text += `🪅 Наповнювач: №${booking.pinata_filler || booking.pinataFiller}\n`;
         if (booking.kids_count) text += `👶 ${booking.kids_count} дітей\n`;
+        if (booking.group_name || booking.groupName) text += `👥 Група: ${booking.group_name || booking.groupName}\n`;
         if (booking.notes) text += `📝 ${booking.notes}\n`;
         text += `\n👤 Створив: ${extra.username || booking.created_by}`;
         return text;
@@ -26,7 +28,9 @@ const notificationTemplates = {
         text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
         text += `🏠 ${booking.room}\n`;
         if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${booking.second_animator || booking.secondAnimator}\n`;
+        if (booking.pinata_filler || booking.pinataFiller) text += `🪅 Наповнювач: №${booking.pinata_filler || booking.pinataFiller}\n`;
         if (booking.kids_count) text += `👶 ${booking.kids_count} дітей\n`;
+        if (booking.group_name || booking.groupName) text += `👥 Група: ${booking.group_name || booking.groupName}\n`;
         if (booking.notes) text += `📝 ${booking.notes}\n`;
         text += `\n👤 Змінив: ${extra.username || '?'}`;
         return text;

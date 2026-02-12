@@ -44,15 +44,26 @@ async function buildAndSendDigest(date) {
 
     for (const line of lines) {
         const lineBookings = bookings.filter(b => b.line_id === line.line_id && !b.linked_to);
-        if (lineBookings.length === 0) continue;
+        // v7.8.10: Include bookings where this animator is second_animator
+        const secondBookings = bookings.filter(b =>
+            b.second_animator && b.second_animator === line.name && !b.linked_to && b.line_id !== line.line_id
+        );
+        if (lineBookings.length === 0 && secondBookings.length === 0) continue;
 
         text += `👤 <b>${line.name}</b>\n`;
         for (const b of lineBookings) {
             const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
             const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
             text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room})`;
+            if (b.second_animator) text += ` 👥${b.second_animator}`;
             if (b.kids_count) text += ` [${b.kids_count} діт]`;
             text += '\n';
+        }
+        for (const b of secondBookings) {
+            const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
+            const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
+            const mainLine = lines.find(l => l.line_id === b.line_id);
+            text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room}) 👥2й з ${mainLine?.name || '?'}\n`;
         }
         text += '\n';
     }
@@ -103,15 +114,26 @@ async function sendTomorrowReminder(todayStr) {
 
         for (const line of linesResult.rows) {
             const lineBookings = bookingsResult.rows.filter(b => b.line_id === line.line_id);
-            if (lineBookings.length === 0) continue;
+            // v7.8.10: Include bookings where this animator is second_animator
+            const secondBookings = bookingsResult.rows.filter(b =>
+                b.second_animator && b.second_animator === line.name && b.line_id !== line.line_id
+            );
+            if (lineBookings.length === 0 && secondBookings.length === 0) continue;
 
             text += `👤 <b>${line.name}</b>\n`;
             for (const b of lineBookings) {
                 const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
                 const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
                 text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room})`;
+                if (b.second_animator) text += ` 👥${b.second_animator}`;
                 if (b.kids_count) text += ` [${b.kids_count} діт]`;
                 text += '\n';
+            }
+            for (const b of secondBookings) {
+                const endTime = minutesToTime(timeToMinutes(b.time) + (b.duration || 0));
+                const statusIcon = b.status === 'preliminary' ? '⏳' : '✅';
+                const mainLine = linesResult.rows.find(l => l.line_id === b.line_id);
+                text += `  ${statusIcon} ${b.time}-${endTime} ${b.label || b.program_code} (${b.room}) 👥2й з ${mainLine?.name || '?'}\n`;
             }
             text += '\n';
         }

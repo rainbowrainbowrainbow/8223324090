@@ -1164,8 +1164,10 @@ async function renderAfishaList() {
             </div>
             <div class="afisha-item-actions">
                 <button class="btn-shift btn-sm" onclick="generateTasksForAfisha(${item.id})" title="Створити задачі">📝</button>
+                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, -60)" title="−1 год">⏪</button>
                 <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, -15)" title="−15 хв">◀</button>
                 <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, +15)" title="+15 хв">▶</button>
+                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, +60)" title="+1 год">⏩</button>
                 <button class="btn-edit btn-sm" onclick="editAfishaItem(${item.id})" title="Редагувати">✏️</button>
                 <button class="btn-danger btn-sm" onclick="deleteAfishaItem(${item.id})" title="Видалити">✕</button>
             </div>

@@ -123,4 +123,7 @@ function showMainApp() {
     initializeTimeline();
     renderProgramIcons();
     setupSwipe();
+
+    // v8.0: Show improvement suggestion FAB
+    if (typeof showImprovementFab === 'function') showImprovementFab();
 }

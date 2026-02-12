@@ -21,6 +21,7 @@ const StaffState = {
     editingCell: null,  // { staffId, date }
     hoursData: null,    // { staffId: { totalHours, workingDays, ... } }
     showHours: false,
+    showLoadView: false,
 };
 
 const DEPT_ICONS = {
@@ -36,7 +37,8 @@ const STATUS_LABELS = {
     working: 'Робочий',
     dayoff: 'Вихідний',
     vacation: 'Відпустка',
-    sick: 'Лікарняний'
+    sick: 'Лікарняний',
+    remote: 'Віддалено'
 };
 
 const DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
@@ -193,13 +195,14 @@ function renderSummary() {
         ? StaffState.staff
         : StaffState.staff.filter(s => s.department === StaffState.activeDept);
 
-    let working = 0, dayoff = 0, vacation = 0, sick = 0;
+    let working = 0, dayoff = 0, vacation = 0, sick = 0, remote = 0;
     for (const s of filtered) {
         const entry = StaffState.schedule[`${s.id}_${today}`];
         if (!entry || entry.status === 'working') working++;
         else if (entry.status === 'dayoff') dayoff++;
         else if (entry.status === 'vacation') vacation++;
         else if (entry.status === 'sick') sick++;
+        else if (entry.status === 'remote') remote++;
     }
 
     container.innerHTML = `
@@ -207,6 +210,7 @@ function renderSummary() {
         <div class="summary-chip"><span class="chip-dot" style="background:#94A3B8"></span> Вихідні: <span class="chip-count">${dayoff}</span></div>
         <div class="summary-chip"><span class="chip-dot" style="background:#3B82F6"></span> Відпустка: <span class="chip-count">${vacation}</span></div>
         <div class="summary-chip"><span class="chip-dot" style="background:#EF4444"></span> Лікарняний: <span class="chip-count">${sick}</span></div>
+        <div class="summary-chip"><span class="chip-dot" style="background:#F59E0B"></span> Віддалено: <span class="chip-count">${remote}</span></div>
     `;
 }
 
@@ -277,8 +281,9 @@ function renderSchedule() {
                 const shiftEnd = entry?.shift_end;
 
                 let cellContent = '';
-                if (status === 'working' && shiftStart && shiftEnd) {
+                if ((status === 'working' || status === 'remote') && shiftStart && shiftEnd) {
                     cellContent = `<span class="sch-time">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
+                    if (status === 'remote') cellContent += `<span class="sch-label">Віддалено</span>`;
                 } else if (status === 'working') {
                     cellContent = `<span class="sch-label">${STATUS_LABELS[status]}</span>`;
                 } else {
@@ -343,14 +348,15 @@ function closeEditModal() {
 
 function toggleTimeFields() {
     const status = document.getElementById('schStatus').value;
-    document.getElementById('schTimeFields').style.display = status === 'working' ? '' : 'none';
+    document.getElementById('schTimeFields').style.display = (status === 'working' || status === 'remote') ? '' : 'none';
 }
 
 async function handleSave() {
     const { staffId, date } = StaffState.editingCell;
     const status = document.getElementById('schStatus').value;
-    const shiftStart = status === 'working' ? document.getElementById('schStart').value : null;
-    const shiftEnd = status === 'working' ? document.getElementById('schEnd').value : null;
+    const showTime = status === 'working' || status === 'remote';
+    const shiftStart = showTime ? document.getElementById('schStart').value : null;
+    const shiftEnd = showTime ? document.getElementById('schEnd').value : null;
     const note = document.getElementById('schNote').value.trim() || null;
 
     const result = await saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note);
@@ -374,6 +380,7 @@ async function goToWeek(monday) {
     const dates = getWeekDates(monday);
     await fetchSchedule(formatDateStr(dates[0]), formatDateStr(dates[6]));
     renderSchedule();
+    if (StaffState.showLoadView) renderLoadView();
 }
 
 function prevWeek() {
@@ -421,14 +428,15 @@ function closeFillWeekModal() {
 
 function toggleFillTimeFields() {
     const status = document.getElementById('fillStatus').value;
-    document.getElementById('fillTimeFields').style.display = status === 'working' ? '' : 'none';
+    document.getElementById('fillTimeFields').style.display = (status === 'working' || status === 'remote') ? '' : 'none';
 }
 
 async function handleFillWeekSave() {
     const staffValue = document.getElementById('fillStaffSelect').value;
     const status = document.getElementById('fillStatus').value;
-    const shiftStart = status === 'working' ? document.getElementById('fillStart').value : null;
-    const shiftEnd = status === 'working' ? document.getElementById('fillEnd').value : null;
+    const showTime = status === 'working' || status === 'remote';
+    const shiftStart = showTime ? document.getElementById('fillStart').value : null;
+    const shiftEnd = showTime ? document.getElementById('fillEnd').value : null;
     const note = document.getElementById('fillNote').value.trim() || null;
 
     // Get selected days (checkboxes)
@@ -543,6 +551,136 @@ async function toggleHours() {
 }
 
 // ==========================================
+// LOAD VIEW (Excel-like daily workload)
+// ==========================================
+
+function toggleLoadView() {
+    StaffState.showLoadView = !StaffState.showLoadView;
+    const loadWrapper = document.getElementById('loadViewWrapper');
+    const schedWrapper = document.getElementById('scheduleWrapper');
+    const btn = document.getElementById('toggleLoadViewBtn');
+
+    if (StaffState.showLoadView) {
+        loadWrapper.style.display = '';
+        schedWrapper.style.display = 'none';
+        btn.style.background = 'var(--primary)';
+        btn.style.color = '#fff';
+        btn.style.borderColor = 'var(--primary)';
+        renderLoadView();
+    } else {
+        loadWrapper.style.display = 'none';
+        schedWrapper.style.display = '';
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+    }
+}
+
+function renderLoadView() {
+    const dates = getWeekDates(StaffState.weekStart);
+    const today = todayStr();
+    const depts = StaffState.departments;
+    const filtered = StaffState.activeDept === 'all'
+        ? StaffState.staff
+        : StaffState.staff.filter(s => s.department === StaffState.activeDept);
+
+    // Header
+    const thead = document.getElementById('loadViewHead');
+    let headHtml = '<tr><th>Показник</th>';
+    for (const d of dates) {
+        const ds = formatDateStr(d);
+        const isToday = ds === today;
+        headHtml += `<th class="${isToday ? 'today' : ''}">
+            <span class="th-date">${d.getDate()}</span>
+            <span class="th-day">${DAYS_UK[d.getDay()]}</span>
+        </th>`;
+    }
+    headHtml += '<th>Разом</th></tr>';
+    thead.innerHTML = headHtml;
+
+    // Calculate stats per day
+    const statuses = ['working', 'remote', 'dayoff', 'vacation', 'sick'];
+    const statusNames = { working: 'На роботі', remote: 'Віддалено', dayoff: 'Вихідні', vacation: 'Відпустка', sick: 'Лікарняний' };
+    const statusCss = { working: 'working', remote: 'remote', dayoff: 'dayoff', vacation: 'vacation', sick: 'sick' };
+
+    const dayStats = dates.map(d => {
+        const ds = formatDateStr(d);
+        const counts = { working: 0, remote: 0, dayoff: 0, vacation: 0, sick: 0, total: filtered.length };
+        for (const emp of filtered) {
+            const entry = StaffState.schedule[`${emp.id}_${ds}`];
+            const status = entry ? entry.status : 'working';
+            if (counts[status] !== undefined) counts[status]++;
+            else counts.working++; // unknown status defaults to working
+        }
+        return counts;
+    });
+
+    // Render rows per status
+    const tbody = document.getElementById('loadViewBody');
+    let bodyHtml = '';
+
+    for (const status of statuses) {
+        const weekTotal = dayStats.reduce((sum, d) => sum + d[status], 0);
+        bodyHtml += `<tr class="load-row-status">`;
+        bodyHtml += `<td>${statusNames[status]}</td>`;
+        for (const day of dayStats) {
+            const val = day[status];
+            bodyHtml += `<td class="${val > 0 ? 'load-cell-' + statusCss[status] : ''}">${val || '-'}</td>`;
+        }
+        bodyHtml += `<td class="load-cell-total">${weekTotal}</td>`;
+        bodyHtml += `</tr>`;
+    }
+
+    // Total active row
+    bodyHtml += `<tr class="load-total"><td>Всього працює</td>`;
+    for (const day of dayStats) {
+        const active = day.working + day.remote;
+        bodyHtml += `<td class="load-cell-working">${active}</td>`;
+    }
+    const totalActive = dayStats.reduce((sum, d) => sum + d.working + d.remote, 0);
+    bodyHtml += `<td class="load-cell-total">${totalActive}</td></tr>`;
+
+    // Department breakdown (if showing all departments)
+    if (StaffState.activeDept === 'all') {
+        const deptOrder = ['animators', 'admin', 'cafe', 'tech', 'cleaning', 'security'];
+        bodyHtml += `<tr><td colspan="${dates.length + 2}" style="padding:8px 16px;font-weight:800;font-size:12px;color:var(--gray-500);background:var(--gray-50);border-top:2px solid var(--gray-200)">По відділах (на роботі + віддалено)</td></tr>`;
+
+        for (const dept of deptOrder) {
+            const deptStaff = StaffState.staff.filter(s => s.department === dept);
+            if (deptStaff.length === 0) continue;
+            const icon = DEPT_ICONS[dept] || '';
+            const label = depts[dept] || dept;
+            bodyHtml += `<tr class="load-row-status"><td>${icon} ${label}</td>`;
+            for (const d of dates) {
+                const ds = formatDateStr(d);
+                let active = 0;
+                for (const emp of deptStaff) {
+                    const entry = StaffState.schedule[`${emp.id}_${ds}`];
+                    const status = entry ? entry.status : 'working';
+                    if (status === 'working' || status === 'remote') active++;
+                }
+                const ratio = active / deptStaff.length;
+                const cls = ratio >= 0.7 ? 'load-cell-working' : ratio >= 0.4 ? 'load-cell-remote' : 'load-cell-sick';
+                bodyHtml += `<td class="${cls}">${active}/${deptStaff.length}</td>`;
+            }
+            const weekActive = dates.reduce((sum, d) => {
+                const ds = formatDateStr(d);
+                let cnt = 0;
+                for (const emp of deptStaff) {
+                    const entry = StaffState.schedule[`${emp.id}_${ds}`];
+                    const status = entry ? entry.status : 'working';
+                    if (status === 'working' || status === 'remote') cnt++;
+                }
+                return sum + cnt;
+            }, 0);
+            bodyHtml += `<td class="load-cell-total">${weekActive}</td></tr>`;
+        }
+    }
+
+    tbody.innerHTML = bodyHtml;
+}
+
+// ==========================================
 // DARK MODE
 // ==========================================
 
@@ -631,6 +769,9 @@ async function initPage() {
 
     // Hours toggle
     document.getElementById('toggleHoursBtn').addEventListener('click', toggleHours);
+
+    // Load view toggle
+    document.getElementById('toggleLoadViewBtn').addEventListener('click', toggleLoadView);
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {

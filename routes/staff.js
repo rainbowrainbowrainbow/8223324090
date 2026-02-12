@@ -13,6 +13,7 @@
  *
  * SCHEDULE STATUSES:
  *   working  — робочий день (shift_start/shift_end required, e.g. "09:00"/"18:00")
+ *   remote   — віддалено (shift_start/shift_end optional, e.g. "09:00"/"18:00")
  *   dayoff   — вихідний (shift_start/shift_end = null)
  *   vacation — відпустка (shift_start/shift_end = null)
  *   sick     — лікарняний (shift_start/shift_end = null)
@@ -38,7 +39,7 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Staff');
 
-const STATUS_UK = { working: 'Робочий', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний' };
+const STATUS_UK = { working: 'Робочий', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний', remote: 'Віддалено' };
 
 /**
  * Send Telegram notification when schedule changes.
@@ -280,20 +281,22 @@ router.get('/schedule/hours', async (req, res) => {
             if (!stats[row.staff_id]) {
                 stats[row.staff_id] = {
                     name: row.name, department: row.department, position: row.position,
-                    totalHours: 0, workingDays: 0, dayoffs: 0, vacationDays: 0, sickDays: 0
+                    totalHours: 0, workingDays: 0, dayoffs: 0, vacationDays: 0, sickDays: 0, remoteDays: 0
                 };
             }
             const s = stats[row.staff_id];
-            if (row.status === 'working' && row.shift_start && row.shift_end) {
+            if ((row.status === 'working' || row.status === 'remote') && row.shift_start && row.shift_end) {
                 const [sh, sm] = row.shift_start.split(':').map(Number);
                 const [eh, em] = row.shift_end.split(':').map(Number);
                 let hours = (eh * 60 + em - sh * 60 - sm) / 60;
                 if (hours < 0) hours += 24; // night shift
                 s.totalHours += hours;
-                s.workingDays++;
+                if (row.status === 'remote') s.remoteDays++;
+                else s.workingDays++;
             } else if (row.status === 'dayoff') s.dayoffs++;
             else if (row.status === 'vacation') s.vacationDays++;
             else if (row.status === 'sick') s.sickDays++;
+            else if (row.status === 'remote') s.remoteDays++;
         }
 
         // Round hours
@@ -328,6 +331,8 @@ router.get('/schedule/check/:date', async (req, res) => {
         for (const row of result.rows) {
             if (row.status === 'working') {
                 available.push({ id: row.staff_id, name: row.name, shiftStart: row.shift_start, shiftEnd: row.shift_end });
+            } else if (row.status === 'remote') {
+                available.push({ id: row.staff_id, name: row.name, shiftStart: row.shift_start, shiftEnd: row.shift_end, remote: true });
             } else {
                 unavailable.push({ id: row.staff_id, name: row.name, status: row.status });
             }

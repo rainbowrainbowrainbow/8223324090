@@ -1622,7 +1622,7 @@ async function renderTasksList() {
     const statusIcons = { todo: '⬜', in_progress: '🔄', done: '✅' };
     const statusLabels = { todo: 'Зробити', in_progress: 'В роботі', done: 'Готово' };
     const priorityIcons = { high: '🔴', normal: '', low: '🔵' };
-    const categoryIcons = { admin: '🏢', event: '🎪', purchase: '🛒', trampoline: '🤸', personal: '👤' };
+    const categoryIcons = { admin: '🏢', event: '🎪', purchase: '🛒', trampoline: '🤸', personal: '👤', improvement: '💡' };
     const nextStatus = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
 
     container.innerHTML = tasks.map(task => {
@@ -1745,5 +1745,43 @@ async function deleteTask(id) {
     if (result && result.success) {
         showNotification('Завдання видалено', 'success');
         await renderTasksList();
+    }
+}
+
+// ==========================================
+// IMPROVEMENT SUGGESTIONS (v8.0)
+// ==========================================
+
+function showImprovementFab() {
+    const fab = document.getElementById('improvementFab');
+    if (fab) fab.classList.remove('hidden');
+}
+
+async function handleImprovementSubmit(e) {
+    e.preventDefault();
+    const title = document.getElementById('improvementTitle').value.trim();
+    const description = document.getElementById('improvementDescription')?.value.trim() || null;
+    if (!title) {
+        showNotification('Введіть опис ідеї', 'error');
+        return;
+    }
+
+    const username = AppState.currentUser?.name || 'admin';
+    const result = await apiCreateTask({
+        title,
+        description,
+        category: 'improvement',
+        priority: 'normal',
+        assigned_to: username,
+        type: 'manual'
+    });
+
+    if (result && result.success) {
+        document.getElementById('improvementTitle').value = '';
+        document.getElementById('improvementDescription').value = '';
+        document.getElementById('improvementModal').classList.add('hidden');
+        showNotification('Ідею надіслано в задачі!', 'success');
+    } else {
+        showNotification('Помилка надсилання', 'error');
     }
 }

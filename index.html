@@ -668,12 +668,14 @@
                     <ul>
                         <li>Нова сторінка «Графік»: тижневий канвас для 30 працівників по 6 відділах</li>
                         <li>Масове заповнення тижня, копіювання тижня, статистика годин</li>
+                        <li>Графік: статус «Віддалено» з годинами, Excel-подібна таблиця навантаження</li>
                         <li>Таймлайн: попередження якщо аніматор у вихідному/відпустці/лікарняному</li>
                         <li>Telegram: @-згадки працівників при зміні графіку</li>
                         <li>Афіша: іменинники о 14:00+18:00 (15хв), яскравий фіолетовий лайн</li>
                         <li>Афіша: описи, експорт/імпорт, повторювані шаблони</li>
                         <li>Афіша: чесний розподіл подій між аніматорами</li>
                         <li>Задачник: модальне редагування, категорії, описи</li>
+                        <li>Задачник: категорія «Покращення» + кнопка швидкої подачі ідей</li>
                         <li>Виправлено: дайджест, prompt()-діалоги, порядок ліній</li>
                         <li>28 нових тестів (221 загалом), LLM-hints для Клавбота</li>
                     </ul>
@@ -1720,6 +1722,30 @@
                 <div class="modal-actions">
                     <button type="submit" class="btn-submit">Зберегти</button>
                     <button type="button" class="btn-cancel" onclick="document.getElementById('taskEditModal').classList.add('hidden')">Скасувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- v8.0: Floating improvement suggestion button -->
+    <button id="improvementFab" class="improvement-fab hidden" title="Запропонувати покращення">💡</button>
+
+    <!-- v8.0: Improvement suggestion modal -->
+    <div id="improvementModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Пропозиція покращення">
+        <div class="modal-content modal-confirm">
+            <h3>💡 Ідея покращення</h3>
+            <form id="improvementForm">
+                <div class="form-group">
+                    <label>Опис ідеї</label>
+                    <input type="text" id="improvementTitle" placeholder="Що можна покращити?" required style="font-size:16px">
+                </div>
+                <div class="form-group">
+                    <label>Деталі (необов'язково)</label>
+                    <textarea id="improvementDescription" placeholder="Детальніше..." rows="3" style="width:100%;border:1px solid var(--gray-200);border-radius:var(--radius-sm);padding:10px;font-family:inherit;font-size:14px;resize:vertical"></textarea>
+                </div>
+                <div class="confirm-buttons">
+                    <button type="button" class="btn-cancel" onclick="document.getElementById('improvementModal').classList.add('hidden')">Скасувати</button>
+                    <button type="submit" class="btn-submit">Надіслати</button>
                 </div>
             </form>
         </div>

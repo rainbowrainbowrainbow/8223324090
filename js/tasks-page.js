@@ -13,7 +13,8 @@ const CAT_LABELS = {
     purchase: { icon: '🛒', label: 'Закупівлі', color: '#2E7D32' },
     admin: { icon: '🏢', label: 'Адмін', color: '#1565C0' },
     trampoline: { icon: '🤸', label: 'Батути', color: '#7B1FA2' },
-    personal: { icon: '👤', label: 'Особисті', color: '#455A64' }
+    personal: { icon: '👤', label: 'Особисті', color: '#455A64' },
+    improvement: { icon: '💡', label: 'Покращення', color: '#0891B2' }
 };
 
 const STATUS_CYCLE = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
@@ -285,7 +286,7 @@ function renderTodayView(container) {
     }
 
     let html = '';
-    for (const cat of ['event', 'purchase', 'admin', 'trampoline', 'personal']) {
+    for (const cat of ['event', 'purchase', 'admin', 'trampoline', 'personal', 'improvement']) {
         if (!groups[cat]) continue;
         const info = CAT_LABELS[cat];
         html += `<div class="group-header">${info.icon} ${info.label} <span style="font-size:12px;color:var(--gray-400)">(${groups[cat].length})</span></div>`;

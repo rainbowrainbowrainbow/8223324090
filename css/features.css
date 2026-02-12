@@ -1079,3 +1079,36 @@
     color: var(--gray-400);
     padding: 4px 0;
 }
+
+/* ==========================================
+   IMPROVEMENT SUGGESTION FAB (v8.0)
+   ========================================== */
+
+.improvement-fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(8,145,178,0.4);
+    z-index: 900;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.improvement-fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 24px rgba(8,145,178,0.5);
+}
+
+.improvement-fab.hidden {
+    display: none;
+}

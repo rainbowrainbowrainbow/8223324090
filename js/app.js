@@ -336,6 +336,15 @@ function initSettingsListeners() {
 
     const tasksFilterStatus = document.getElementById('tasksFilterStatus');
     if (tasksFilterStatus) tasksFilterStatus.addEventListener('change', renderTasksList);
+
+    // v8.0: Improvement suggestion FAB + form
+    const improvementFab = document.getElementById('improvementFab');
+    if (improvementFab) improvementFab.addEventListener('click', () => {
+        document.getElementById('improvementModal').classList.remove('hidden');
+        document.getElementById('improvementTitle').focus();
+    });
+    const improvementForm = document.getElementById('improvementForm');
+    if (improvementForm) improvementForm.addEventListener('submit', handleImprovementSubmit);
 }
 
 function initUIControlListeners() {

@@ -9,7 +9,7 @@ const log = createLogger('Tasks');
 
 const VALID_STATUSES = ['todo', 'in_progress', 'done'];
 const VALID_PRIORITIES = ['low', 'normal', 'high'];
-const VALID_CATEGORIES = ['event', 'purchase', 'admin', 'trampoline', 'personal'];
+const VALID_CATEGORIES = ['event', 'purchase', 'admin', 'trampoline', 'personal', 'improvement'];
 
 // GET /api/tasks — list with optional filters
 router.get('/', async (req, res) => {

@@ -42,6 +42,7 @@
         .cat-chip[data-cat="admin"] { color: #1565C0; }
         .cat-chip[data-cat="trampoline"] { color: #7B1FA2; }
         .cat-chip[data-cat="personal"] { color: #455A64; }
+        .cat-chip[data-cat="improvement"] { color: #0891B2; }
         .cat-chip[data-cat="all"] { color: var(--gray-700); }
 
         /* Kanban columns (desktop) */
@@ -75,6 +76,7 @@
         .task-card.cat-admin { border-left-color: #1565C0; }
         .task-card.cat-trampoline { border-left-color: #7B1FA2; }
         .task-card.cat-personal { border-left-color: #455A64; }
+        .task-card.cat-improvement { border-left-color: #0891B2; }
         .task-card.status-done { opacity: 0.5; }
         .task-card-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
         .task-card-meta { font-size: 11px; color: var(--gray-500); display: flex; gap: 8px; flex-wrap: wrap; }
@@ -174,6 +176,7 @@
                 <button class="cat-chip" data-cat="admin">🏢 Адмін</button>
                 <button class="cat-chip" data-cat="trampoline">🤸 Батути</button>
                 <button class="cat-chip" data-cat="personal">👤 Особисті</button>
+                <button class="cat-chip" data-cat="improvement">💡 Покращення</button>
             </div>
 
             <!-- Quick add task -->
@@ -185,6 +188,7 @@
                     <option value="purchase">🛒 Закупівлі</option>
                     <option value="trampoline">🤸 Батути</option>
                     <option value="personal">👤 Особисті</option>
+                    <option value="improvement">💡 Покращення</option>
                 </select>
                 <select id="taskPriority">
                     <option value="normal">Звичайний</option>

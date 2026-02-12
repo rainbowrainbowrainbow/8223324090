@@ -348,6 +348,17 @@
             background: rgba(239,68,68,0.1);
         }
 
+        .sch-cell.status-remote {
+            background: rgba(245,158,11,0.08);
+        }
+        .sch-cell.status-remote .sch-label {
+            color: #D97706;
+            background: rgba(245,158,11,0.12);
+        }
+        .sch-cell.status-remote .sch-time {
+            color: #B45309;
+        }
+
         .sch-cell.today-col {
             box-shadow: inset 0 0 0 2px rgba(16,185,129,0.15);
         }
@@ -486,6 +497,33 @@
             color: var(--gray-200);
         }
 
+        /* Load table (Excel-like workload view) */
+        .load-table td, .load-table th {
+            text-align: center;
+            padding: 6px 10px;
+            font-size: 13px;
+        }
+        .load-table td:first-child {
+            text-align: left;
+            font-weight: 700;
+            padding-left: 16px;
+        }
+        .load-table .load-row-status td {
+            font-weight: 700;
+        }
+        .load-table .load-total td {
+            font-weight: 800;
+            border-top: 2px solid var(--gray-300);
+            background: var(--gray-50);
+        }
+        .load-cell-working { color: #059669; background: rgba(16,185,129,0.08); }
+        .load-cell-dayoff { color: #94A3B8; background: rgba(148,163,184,0.08); }
+        .load-cell-vacation { color: #2563EB; background: rgba(59,130,246,0.08); }
+        .load-cell-sick { color: #DC2626; background: rgba(239,68,68,0.08); }
+        .load-cell-remote { color: #D97706; background: rgba(245,158,11,0.08); }
+        .load-cell-total { font-weight: 800; }
+        [data-theme="dark"] .load-table .load-total td { background: var(--gray-700); border-top-color: var(--gray-600); }
+
         /* Responsive */
         @media (max-width: 768px) {
             .schedule-controls {
@@ -552,6 +590,7 @@
                     <button id="copyWeekBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px;display:none" title="Скопіювати цей тиждень на наступний">Копія тижня →</button>
                     <button id="fillWeekBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px;display:none" title="Масове заповнення тижня">Заповнити тиждень</button>
                     <button id="toggleHoursBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px" title="Показати/сховати години">Години</button>
+                    <button id="toggleLoadViewBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px" title="Навантаження по дням">📊 Навантаження</button>
                 </div>
                 <div id="deptFilter" class="dept-filter"></div>
             </div>
@@ -559,8 +598,16 @@
             <!-- Summary -->
             <div id="scheduleSummary" class="schedule-summary"></div>
 
+            <!-- Load view (Excel-like daily workload) -->
+            <div id="loadViewWrapper" class="schedule-wrapper" style="display:none">
+                <table class="schedule-table load-table">
+                    <thead id="loadViewHead"></thead>
+                    <tbody id="loadViewBody"></tbody>
+                </table>
+            </div>
+
             <!-- Schedule table -->
-            <div class="schedule-wrapper">
+            <div id="scheduleWrapper" class="schedule-wrapper">
                 <table class="schedule-table">
                     <thead id="scheduleHead"></thead>
                     <tbody id="scheduleBody"></tbody>
@@ -577,6 +624,7 @@
                 <label>Статус</label>
                 <select id="schStatus">
                     <option value="working">Робочий день</option>
+                    <option value="remote">Віддалено</option>
                     <option value="dayoff">Вихідний</option>
                     <option value="vacation">Відпустка</option>
                     <option value="sick">Лікарняний</option>
@@ -627,6 +675,7 @@
                 <label>Статус</label>
                 <select id="fillStatus">
                     <option value="working">Робочий день</option>
+                    <option value="remote">Віддалено</option>
                     <option value="dayoff">Вихідний</option>
                     <option value="vacation">Відпустка</option>
                     <option value="sick">Лікарняний</option>

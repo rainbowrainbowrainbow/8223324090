@@ -121,6 +121,10 @@ async function renderTimeline() {
 
     renderTimeScale(selectedDate);
 
+    // v7.8.6: Preserve horizontal scroll position across date changes
+    const timelineScroll = document.getElementById('timelineScroll');
+    const savedScrollLeft = timelineScroll ? timelineScroll.scrollLeft : 0;
+
     const container = document.getElementById('timelineLines');
     const lines = await getLinesForDate(selectedDate);
     const bookings = await getBookingsForDate(selectedDate);
@@ -223,6 +227,11 @@ async function renderTimeline() {
 
     renderNowLine();
     renderMinimap(selectedDate);
+
+    // v7.8.6: Restore horizontal scroll position after render
+    if (timelineScroll && savedScrollLeft > 0) {
+        timelineScroll.scrollLeft = savedScrollLeft;
+    }
 
     // v5.15: Apply status filter after render
     applyStatusFilter();

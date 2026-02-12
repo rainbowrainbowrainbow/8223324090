@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Графік — Парк Закревського Періоду</title>
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=7.9.2">
+    <link rel="stylesheet" href="css/layout.css?v=7.9.2">
+    <link rel="stylesheet" href="css/pages.css?v=7.9.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=7.9.2">
+    <link rel="stylesheet" href="css/responsive.css?v=7.9.2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* ==========================================
+           SCHEDULE CANVAS
+           ========================================== */
+
+        .schedule-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .schedule-controls .week-nav {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .schedule-controls .week-nav button {
+            width: 40px; height: 40px;
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            border-radius: var(--radius-sm);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+            font-family: inherit;
+        }
+
+        .schedule-controls .week-nav button:hover {
+            background: var(--gray-50);
+            border-color: var(--primary);
+        }
+
+        .schedule-controls .week-label {
+            font-weight: 800;
+            font-size: 15px;
+            color: var(--gray-800);
+            min-width: 200px;
+            text-align: center;
+        }
+
+        .dept-filter {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .dept-chip {
+            padding: 6px 12px;
+            border: 2px solid transparent;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+            background: var(--gray-100);
+            color: var(--gray-600);
+            transition: all 0.15s;
+        }
+
+        .dept-chip.active {
+            color: #fff;
+        }
+
+        .dept-chip[data-dept="all"] { color: var(--gray-700); }
+        .dept-chip[data-dept="all"].active { background: var(--gray-700); color: #fff; }
+        .dept-chip[data-dept="animators"] { color: #059669; }
+        .dept-chip[data-dept="animators"].active { background: #059669; color: #fff; }
+        .dept-chip[data-dept="admin"] { color: #4F46E5; }
+        .dept-chip[data-dept="admin"].active { background: #4F46E5; color: #fff; }
+        .dept-chip[data-dept="cafe"] { color: #D97706; }
+        .dept-chip[data-dept="cafe"].active { background: #D97706; color: #fff; }
+        .dept-chip[data-dept="tech"] { color: #DC2626; }
+        .dept-chip[data-dept="tech"].active { background: #DC2626; color: #fff; }
+        .dept-chip[data-dept="cleaning"] { color: #7C3AED; }
+        .dept-chip[data-dept="cleaning"].active { background: #7C3AED; color: #fff; }
+        .dept-chip[data-dept="security"] { color: #64748B; }
+        .dept-chip[data-dept="security"].active { background: #64748B; color: #fff; }
+
+        /* Summary chips */
+        .schedule-summary {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .summary-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: var(--white);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--gray-100);
+            font-size: 13px;
+            font-weight: 700;
+            box-shadow: var(--shadow-xs);
+        }
+
+        .summary-chip .chip-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .summary-chip .chip-count {
+            font-size: 16px;
+            font-weight: 800;
+        }
+
+        /* ==========================================
+           SCHEDULE TABLE
+           ========================================== */
+
+        .schedule-wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--gray-100);
+        }
+
+        .schedule-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 900px;
+            background: var(--white);
+        }
+
+        .schedule-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: var(--gray-50);
+            padding: 10px 8px;
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--gray-600);
+            text-align: center;
+            border-bottom: 2px solid var(--gray-200);
+            white-space: nowrap;
+        }
+
+        .schedule-table thead th:first-child {
+            text-align: left;
+            padding-left: 16px;
+            min-width: 200px;
+            position: sticky;
+            left: 0;
+            z-index: 11;
+        }
+
+        .schedule-table thead th.today {
+            background: var(--primary);
+            color: #fff;
+            border-radius: 0;
+        }
+
+        .schedule-table thead .th-date {
+            display: block;
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .schedule-table thead .th-day {
+            display: block;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            opacity: 0.7;
+        }
+
+        /* Department group header */
+        .dept-row td {
+            background: var(--gray-50);
+            padding: 6px 16px;
+            font-weight: 800;
+            font-size: 13px;
+            color: var(--gray-700);
+            border-top: 2px solid var(--gray-200);
+        }
+
+        .dept-row .dept-icon {
+            margin-right: 6px;
+        }
+
+        /* Employee rows */
+        .schedule-table tbody tr:not(.dept-row) {
+            transition: background 0.1s;
+        }
+
+        .schedule-table tbody tr:not(.dept-row):hover {
+            background: rgba(16,185,129,0.03);
+        }
+
+        .schedule-table td {
+            padding: 0;
+            border-bottom: 1px solid var(--gray-100);
+            border-right: 1px solid var(--gray-50);
+        }
+
+        .schedule-table td:first-child {
+            position: sticky;
+            left: 0;
+            background: var(--white);
+            z-index: 5;
+            padding: 8px 12px;
+            border-right: 1px solid var(--gray-100);
+        }
+
+        .schedule-table tbody tr:not(.dept-row):hover td:first-child {
+            background: rgba(16,185,129,0.03);
+        }
+
+        .emp-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .emp-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 11px;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .emp-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .emp-name {
+            font-weight: 700;
+            font-size: 13px;
+            color: var(--gray-800);
+            line-height: 1.2;
+        }
+
+        .emp-position {
+            font-size: 10px;
+            color: var(--gray-400);
+            font-weight: 600;
+        }
+
+        /* Schedule cells */
+        .sch-cell {
+            width: 100%;
+            min-height: 44px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.1s;
+            padding: 4px 2px;
+            text-align: center;
+        }
+
+        .sch-cell:hover {
+            background: rgba(16,185,129,0.08);
+        }
+
+        .sch-cell .sch-time {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gray-700);
+            line-height: 1.3;
+        }
+
+        .sch-cell .sch-label {
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-top: 1px;
+        }
+
+        /* Status colors */
+        .sch-cell.status-working {
+            background: rgba(16,185,129,0.06);
+        }
+        .sch-cell.status-working .sch-label {
+            color: #059669;
+            background: rgba(16,185,129,0.12);
+        }
+
+        .sch-cell.status-dayoff {
+            background: var(--gray-50);
+        }
+        .sch-cell.status-dayoff .sch-label {
+            color: var(--gray-400);
+            background: var(--gray-100);
+        }
+
+        .sch-cell.status-vacation {
+            background: rgba(59,130,246,0.06);
+        }
+        .sch-cell.status-vacation .sch-label {
+            color: #2563EB;
+            background: rgba(59,130,246,0.12);
+        }
+
+        .sch-cell.status-sick {
+            background: rgba(239,68,68,0.06);
+        }
+        .sch-cell.status-sick .sch-label {
+            color: #DC2626;
+            background: rgba(239,68,68,0.1);
+        }
+
+        .sch-cell.today-col {
+            box-shadow: inset 0 0 0 2px rgba(16,185,129,0.15);
+        }
+
+        /* Edit modal */
+        .sch-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .sch-modal-overlay.visible {
+            display: flex;
+        }
+
+        .sch-modal {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            max-width: 380px;
+            width: 90%;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .sch-modal h3 {
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--gray-800);
+            margin-bottom: 16px;
+        }
+
+        .sch-modal .form-group {
+            margin-bottom: 12px;
+        }
+
+        .sch-modal label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .sch-modal select,
+        .sch-modal input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: var(--font-sm);
+            font-family: inherit;
+            min-height: 44px;
+            box-sizing: border-box;
+        }
+
+        .sch-modal select:focus,
+        .sch-modal input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+        }
+
+        .sch-modal .modal-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        /* Dark mode overrides */
+        [data-theme="dark"] .schedule-table {
+            background: var(--gray-800);
+        }
+        [data-theme="dark"] .schedule-table thead th {
+            background: var(--gray-700);
+            color: var(--gray-300);
+            border-bottom-color: var(--gray-600);
+        }
+        [data-theme="dark"] .schedule-table td {
+            border-bottom-color: var(--gray-700);
+            border-right-color: var(--gray-700);
+        }
+        [data-theme="dark"] .schedule-table td:first-child {
+            background: var(--gray-800);
+            border-right-color: var(--gray-700);
+        }
+        [data-theme="dark"] .schedule-table tbody tr:not(.dept-row):hover td,
+        [data-theme="dark"] .schedule-table tbody tr:not(.dept-row):hover td:first-child {
+            background: rgba(16,185,129,0.05);
+        }
+        [data-theme="dark"] .dept-row td {
+            background: var(--gray-700);
+            color: var(--gray-300);
+            border-top-color: var(--gray-600);
+        }
+        [data-theme="dark"] .emp-name { color: var(--gray-200); }
+        [data-theme="dark"] .emp-position { color: var(--gray-500); }
+        [data-theme="dark"] .schedule-wrapper {
+            border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .sch-cell .sch-time { color: var(--gray-300); }
+        [data-theme="dark"] .sch-cell.status-dayoff {
+            background: rgba(100,116,139,0.1);
+        }
+        [data-theme="dark"] .summary-chip {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+            color: var(--gray-300);
+        }
+        [data-theme="dark"] .schedule-controls .week-nav button {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+            color: var(--gray-300);
+        }
+        [data-theme="dark"] .schedule-controls .week-label {
+            color: var(--gray-200);
+        }
+        [data-theme="dark"] .dept-chip {
+            background: var(--gray-800);
+        }
+        [data-theme="dark"] .sch-modal {
+            background: var(--gray-800);
+            border: 1px solid var(--gray-700);
+        }
+        [data-theme="dark"] .sch-modal h3 { color: var(--gray-200); }
+        [data-theme="dark"] .sch-modal select,
+        [data-theme="dark"] .sch-modal input {
+            background: var(--gray-700);
+            border-color: var(--gray-600);
+            color: var(--gray-200);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .schedule-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .schedule-controls .week-nav {
+                justify-content: center;
+            }
+            .dept-filter {
+                justify-content: center;
+            }
+            .schedule-summary {
+                justify-content: center;
+            }
+            .schedule-table td:first-child {
+                min-width: 140px;
+            }
+            .emp-position { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Login overlay -->
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/favicon-512.png" alt="Логотип" class="logo-img-small">
+                    <div class="logo-text">
+                        <h1>Парк Закревського Періоду</h1>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                    <a href="/staff" class="nav-link active">👥 <span class="nav-text">Графік</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="page-container">
+            <div class="page-header">
+                <h2>👥 Графік роботи</h2>
+                <button id="addStaffBtn" class="btn-page-primary" style="display:none">+ Додати співробітника</button>
+            </div>
+
+            <!-- Week navigation + department filter -->
+            <div class="schedule-controls">
+                <div class="week-nav">
+                    <button id="prevWeekBtn" title="Попередній тиждень">‹</button>
+                    <span id="weekLabel" class="week-label"></span>
+                    <button id="nextWeekBtn" title="Наступний тиждень">›</button>
+                    <button id="todayWeekBtn" title="Поточний тиждень" style="font-size:13px;width:auto;padding:0 12px;font-weight:700">Сьогодні</button>
+                </div>
+                <div id="deptFilter" class="dept-filter"></div>
+            </div>
+
+            <!-- Summary -->
+            <div id="scheduleSummary" class="schedule-summary"></div>
+
+            <!-- Schedule table -->
+            <div class="schedule-wrapper">
+                <table class="schedule-table">
+                    <thead id="scheduleHead"></thead>
+                    <tbody id="scheduleBody"></tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Edit schedule modal -->
+    <div id="schModalOverlay" class="sch-modal-overlay">
+        <div class="sch-modal">
+            <h3 id="schModalTitle">Редагувати зміну</h3>
+            <div class="form-group">
+                <label>Статус</label>
+                <select id="schStatus">
+                    <option value="working">Робочий день</option>
+                    <option value="dayoff">Вихідний</option>
+                    <option value="vacation">Відпустка</option>
+                    <option value="sick">Лікарняний</option>
+                </select>
+            </div>
+            <div id="schTimeFields">
+                <div class="form-group">
+                    <label>Початок зміни</label>
+                    <input type="time" id="schStart" value="09:00">
+                </div>
+                <div class="form-group">
+                    <label>Кінець зміни</label>
+                    <input type="time" id="schEnd" value="18:00">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Примітка</label>
+                <input type="text" id="schNote" placeholder="Необов'язково">
+            </div>
+            <div class="modal-actions">
+                <button id="schSaveBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
+                <button id="schCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=7.9.2"></script>
+    <script src="js/api.js?v=7.9.2"></script>
+    <script src="js/auth.js?v=7.9.2"></script>
+    <script src="js/staff-page.js?v=7.9.2"></script>
+</body>
+</html>

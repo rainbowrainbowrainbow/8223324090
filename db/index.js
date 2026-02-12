@@ -245,6 +245,44 @@ async function initDatabase() {
         // Also add category to templates
         await pool.query(`ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'admin'`);
 
+        // v7.10: Staff schedule
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS staff (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                department VARCHAR(50) NOT NULL,
+                position VARCHAR(100) NOT NULL,
+                phone VARCHAR(30),
+                hire_date VARCHAR(20),
+                is_active BOOLEAN DEFAULT TRUE,
+                color VARCHAR(20),
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS staff_schedule (
+                id SERIAL PRIMARY KEY,
+                staff_id INTEGER NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+                date VARCHAR(20) NOT NULL,
+                shift_start VARCHAR(10),
+                shift_end VARCHAR(10),
+                status VARCHAR(20) DEFAULT 'working',
+                note TEXT,
+                UNIQUE(staff_id, date)
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_staff_department ON staff(department)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_staff_active ON staff(is_active)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_staff_schedule_date ON staff_schedule(date)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_staff_schedule_staff ON staff_schedule(staff_id)');
+
+        // Seed staff if table is empty
+        const staffCount = await pool.query('SELECT COUNT(*) FROM staff');
+        if (parseInt(staffCount.rows[0].count) === 0) {
+            await seedStaff();
+            log.info('Staff seeded (30 employees)');
+        }
+
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_date_status ON bookings(date, status)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_line_date ON bookings(line_id, date)');
@@ -325,6 +363,137 @@ async function seedProducts() {
              ON CONFLICT (id) DO NOTHING`,
             [p.id, p.code, p.label, p.name, p.icon, p.category, p.duration, p.price, p.hosts, p.age_range, p.kids_capacity, p.is_per_child, p.has_filler, p.is_custom, p.sort_order]
         );
+    }
+}
+
+// v7.10: Seed staff with 30 employees across departments
+async function seedStaff() {
+    const staff = [
+        // Аніматори (10)
+        { name: 'Женя Коваленко', department: 'animators', position: 'Старший аніматор', phone: '+380501234501', hire_date: '2023-03-15', color: '#10B981' },
+        { name: 'Даша Мельник', department: 'animators', position: 'Аніматор', phone: '+380501234502', hire_date: '2023-06-01', color: '#34D399' },
+        { name: 'Віталіна Бондар', department: 'animators', position: 'Аніматор', phone: '+380501234503', hire_date: '2023-07-10', color: '#6EE7B7' },
+        { name: 'Олег Шевченко', department: 'animators', position: 'Аніматор', phone: '+380501234504', hire_date: '2023-09-01', color: '#A7F3D0' },
+        { name: 'Марина Ткаченко', department: 'animators', position: 'Аніматор', phone: '+380501234505', hire_date: '2024-01-15', color: '#059669' },
+        { name: 'Артем Лисенко', department: 'animators', position: 'Аніматор', phone: '+380501234506', hire_date: '2024-02-20', color: '#047857' },
+        { name: 'Софія Кравченко', department: 'animators', position: 'Аніматор', phone: '+380501234507', hire_date: '2024-04-01', color: '#065F46' },
+        { name: 'Микола Петренко', department: 'animators', position: 'Аніматор-фотограф', phone: '+380501234508', hire_date: '2024-05-15', color: '#064E3B' },
+        { name: 'Катерина Іваненко', department: 'animators', position: 'Аніматор', phone: '+380501234509', hire_date: '2024-08-01', color: '#0D9488' },
+        { name: 'Денис Сидоренко', department: 'animators', position: 'Стажер-аніматор', phone: '+380501234510', hire_date: '2025-01-10', color: '#14B8A6' },
+        // Адміністрація (5)
+        { name: 'Наталія Григоренко', department: 'admin', position: 'Директор', phone: '+380501234511', hire_date: '2022-01-10', color: '#6366F1' },
+        { name: 'Сергій Романенко', department: 'admin', position: 'Заступник директора', phone: '+380501234512', hire_date: '2022-03-01', color: '#818CF8' },
+        { name: 'Олена Василенко', department: 'admin', position: 'Адміністратор', phone: '+380501234513', hire_date: '2023-02-15', color: '#A5B4FC' },
+        { name: 'Ірина Козаченко', department: 'admin', position: 'Адміністратор', phone: '+380501234514', hire_date: '2023-11-01', color: '#C7D2FE' },
+        { name: 'Тетяна Мороз', department: 'admin', position: 'Бухгалтер', phone: '+380501234515', hire_date: '2022-06-01', color: '#4F46E5' },
+        // Кафе (6)
+        { name: 'Анна Савченко', department: 'cafe', position: 'Шеф-кухар', phone: '+380501234516', hire_date: '2022-08-01', color: '#F59E0B' },
+        { name: 'Вікторія Поліщук', department: 'cafe', position: 'Кухар', phone: '+380501234517', hire_date: '2023-04-10', color: '#FBBF24' },
+        { name: 'Юлія Левченко', department: 'cafe', position: 'Кухар', phone: '+380501234518', hire_date: '2024-01-20', color: '#FCD34D' },
+        { name: 'Максим Бойко', department: 'cafe', position: 'Бариста', phone: '+380501234519', hire_date: '2024-03-01', color: '#FDE68A' },
+        { name: 'Оксана Руденко', department: 'cafe', position: 'Офіціант', phone: '+380501234520', hire_date: '2024-06-15', color: '#D97706' },
+        { name: 'Андрій Клименко', department: 'cafe', position: 'Офіціант', phone: '+380501234521', hire_date: '2025-02-01', color: '#B45309' },
+        // Технічний відділ (4)
+        { name: 'Павло Марченко', department: 'tech', position: 'Головний технік', phone: '+380501234522', hire_date: '2022-05-01', color: '#EF4444' },
+        { name: 'Володимир Гончар', department: 'tech', position: 'Технік', phone: '+380501234523', hire_date: '2023-08-15', color: '#F87171' },
+        { name: 'Ігор Тимченко', department: 'tech', position: 'Звукорежисер', phone: '+380501234524', hire_date: '2024-02-01', color: '#FCA5A5' },
+        { name: 'Роман Кузьменко', department: 'tech', position: 'Освітлювач', phone: '+380501234525', hire_date: '2024-09-01', color: '#DC2626' },
+        // Прибирання (3)
+        { name: 'Людмила Захарченко', department: 'cleaning', position: 'Старша прибиральниця', phone: '+380501234526', hire_date: '2022-04-01', color: '#8B5CF6' },
+        { name: 'Світлана Пономаренко', department: 'cleaning', position: 'Прибиральниця', phone: '+380501234527', hire_date: '2023-10-01', color: '#A78BFA' },
+        { name: 'Галина Коваль', department: 'cleaning', position: 'Прибиральниця', phone: '+380501234528', hire_date: '2024-07-01', color: '#C4B5FD' },
+        // Охорона (2)
+        { name: 'Олександр Ященко', department: 'security', position: 'Охоронець', phone: '+380501234529', hire_date: '2022-02-01', color: '#64748B' },
+        { name: 'Дмитро Федоренко', department: 'security', position: 'Охоронець', phone: '+380501234530', hire_date: '2023-05-15', color: '#94A3B8' },
+    ];
+
+    for (const s of staff) {
+        await pool.query(
+            `INSERT INTO staff (name, department, position, phone, hire_date, color)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [s.name, s.department, s.position, s.phone, s.hire_date, s.color]
+        );
+    }
+
+    // Seed schedule for current week + next week (14 days)
+    const staffRows = await pool.query('SELECT id, department FROM staff ORDER BY id');
+    const today = new Date();
+    for (let d = -7; d <= 14; d++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() + d);
+        const dateStr = date.toISOString().split('T')[0];
+        const dayOfWeek = date.getDay(); // 0=Sun, 6=Sat
+
+        for (const row of staffRows.rows) {
+            let status = 'working';
+            let shiftStart = '09:00';
+            let shiftEnd = '18:00';
+            let note = null;
+
+            // Weekend logic — some departments have rotating weekends
+            if (dayOfWeek === 0) {
+                // Sunday — most off, animators/cafe work
+                if (!['animators', 'cafe'].includes(row.department)) {
+                    status = 'dayoff'; shiftStart = null; shiftEnd = null;
+                }
+            }
+
+            // Animators: shift schedule (some work weekdays, some weekends)
+            if (row.department === 'animators') {
+                shiftStart = '10:00'; shiftEnd = '20:00';
+                // Rotate: even IDs work Mon-Wed-Fri-Sun, odd Tue-Thu-Sat
+                const isEven = row.id % 2 === 0;
+                if (isEven && [2, 4, 6].includes(dayOfWeek)) { status = 'dayoff'; shiftStart = null; shiftEnd = null; }
+                if (!isEven && [1, 3, 5].includes(dayOfWeek)) { status = 'dayoff'; shiftStart = null; shiftEnd = null; }
+            }
+
+            // Cafe: longer hours on weekends
+            if (row.department === 'cafe') {
+                shiftStart = '08:00'; shiftEnd = '19:00';
+                if ([0, 6].includes(dayOfWeek)) { shiftStart = '08:00'; shiftEnd = '21:00'; }
+                // One day off per week, rotated by ID
+                if ((row.id + d) % 7 === 3) { status = 'dayoff'; shiftStart = null; shiftEnd = null; }
+            }
+
+            // Admin: standard Mon-Fri
+            if (row.department === 'admin') {
+                shiftStart = '09:00'; shiftEnd = '18:00';
+                if ([0, 6].includes(dayOfWeek)) { status = 'dayoff'; shiftStart = null; shiftEnd = null; }
+            }
+
+            // Tech: Mon-Sat, Sun off
+            if (row.department === 'tech') {
+                shiftStart = '08:00'; shiftEnd = '17:00';
+                if (dayOfWeek === 0) { status = 'dayoff'; shiftStart = null; shiftEnd = null; }
+                if (dayOfWeek === 6) { shiftEnd = '14:00'; }
+            }
+
+            // Cleaning: every day, alternating shifts
+            if (row.department === 'cleaning') {
+                shiftStart = row.id % 2 === 0 ? '07:00' : '14:00';
+                shiftEnd = row.id % 2 === 0 ? '15:00' : '22:00';
+                if ((row.id + d) % 7 === 0) { status = 'dayoff'; shiftStart = null; shiftEnd = null; }
+            }
+
+            // Security: 12h shifts, rotating
+            if (row.department === 'security') {
+                shiftStart = row.id % 2 === 0 ? '08:00' : '20:00';
+                shiftEnd = row.id % 2 === 0 ? '20:00' : '08:00';
+                if (d % 2 === (row.id % 2)) { status = 'dayoff'; shiftStart = null; shiftEnd = null; }
+            }
+
+            // Sprinkle some vacations / sick leaves
+            if (d >= 2 && d <= 5 && row.id === 7) { status = 'vacation'; shiftStart = null; shiftEnd = null; note = 'Відпустка'; }
+            if (d >= 0 && d <= 2 && row.id === 18) { status = 'sick'; shiftStart = null; shiftEnd = null; note = 'Лікарняний'; }
+            if (d >= 3 && d <= 8 && row.id === 25) { status = 'vacation'; shiftStart = null; shiftEnd = null; note = 'Відпустка'; }
+
+            await pool.query(
+                `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT (staff_id, date) DO NOTHING`,
+                [row.id, dateStr, shiftStart, shiftEnd, status, note]
+            );
+        }
     }
 }
 

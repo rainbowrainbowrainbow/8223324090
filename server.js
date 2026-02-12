@@ -57,6 +57,7 @@ app.use('/api/backup', require('./routes/backup'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/task-templates', require('./routes/task-templates'));
+app.use('/api/staff', require('./routes/staff'));
 
 // Settings router handles /api/stats, /api/settings, /api/rooms, /api/health
 const settingsRouter = require('./routes/settings');
@@ -73,6 +74,9 @@ app.get('/tasks', (req, res) => {
 });
 app.get('/programs', (req, res) => {
     res.sendFile(path.join(__dirname, 'programs.html'));
+});
+app.get('/staff', (req, res) => {
+    res.sendFile(path.join(__dirname, 'staff.html'));
 });
 
 // SPA fallback (must be last)

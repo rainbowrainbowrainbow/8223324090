@@ -2253,16 +2253,25 @@ function copyCertText(text) {
 // Certificate Image Generator (Canvas)
 // ==========================================
 
-let _certLogoCache = null;
+const _certMascotCache = {};
 
-function loadCertLogo() {
-    if (_certLogoCache) return Promise.resolve(_certLogoCache);
+function getCertSeason(dateStr) {
+    const d = dateStr ? new Date(dateStr) : new Date();
+    const m = d.getMonth(); // 0-11
+    if (m >= 2 && m <= 4) return 'spring';
+    if (m >= 5 && m <= 7) return 'summer';
+    if (m >= 8 && m <= 10) return 'autumn';
+    return 'winter';
+}
+
+function loadCertMascot(season) {
+    if (_certMascotCache[season]) return Promise.resolve(_certMascotCache[season]);
     return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        img.onload = () => { _certLogoCache = img; resolve(img); };
+        img.onload = () => { _certMascotCache[season] = img; resolve(img); };
         img.onerror = () => resolve(null);
-        img.src = 'images/logo-new.png';
+        img.src = `images/mr-zak-${season}.png`;
     });
 }
 
@@ -2419,8 +2428,9 @@ async function generateCertificateCanvas(cert) {
     ctx.restore();
     ctx.fillText('🎁', titleX + tw + 15, titleY);
 
-    // === LOGO (big dinosaur, RIGHT side) ===
-    const logo = await loadCertLogo();
+    // === MASCOT (Mr. Zak, seasonal, RIGHT side) ===
+    const season = getCertSeason(cert.issuedAt);
+    const logo = await loadCertMascot(season);
     if (logo) {
         const logoSize = 320;
         const logoX = W - logoSize - 30;

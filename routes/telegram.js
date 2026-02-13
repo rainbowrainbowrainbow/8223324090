@@ -11,7 +11,7 @@ const {
 } = require('../services/telegram');
 const { ensureDefaultLines } = require('../services/booking');
 const { buildAndSendDigest, sendTomorrowReminder } = require('../services/scheduler');
-const { handleBotCommand } = require('../services/bot');
+const { handleBotCommand, handleCertUse } = require('../services/bot');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('TelegramRoute');
@@ -248,6 +248,12 @@ router.post('/webhook', async (req, res) => {
                     text: message.text + `\n\n✅ <b>Додано: ${newName}</b>`,
                     parse_mode: 'HTML'
                 });
+
+            } else if (data.startsWith('cert_use:')) {
+                const certId = parseInt(data.split(':')[1]);
+                const threadId = message.message_thread_id || null;
+                await handleCertUse(certId, id, chatId, threadId);
+                return res.sendStatus(200);
 
             } else if (data.startsWith('no_anim:')) {
                 const requestId = parseInt(data.split(':')[1]);

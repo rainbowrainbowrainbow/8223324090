@@ -498,6 +498,32 @@
         scroll-snap-type: x proximity;
     }
 
+    /* v8.5.2: Certificate detail mobile — stack rows, bigger touch targets */
+    .cert-detail-row {
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .cert-detail-label {
+        min-width: unset;
+    }
+
+    .cert-detail-actions {
+        flex-direction: column;
+    }
+
+    .cert-detail-actions .btn-sm {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .cert-card-header {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
     /* Category grid */
     .category-grid { grid-template-columns: repeat(3, 1fr); }
     .btn-programs { padding: 8px 12px; font-size: 12px; }
@@ -557,6 +583,13 @@
 
     /* v7.8.3: Hide toggle labels to save space */
     .toggle-mini-label { display: none; }
+
+    /* v8.5.2: Cert detail compact */
+    .cert-detail-val { font-size: 13px; }
+    .cert-detail-label { font-size: 11px; }
+    .cert-card { padding: 10px 12px; }
+    .cert-display-value { font-size: 14px; }
+    .cert-badge { font-size: 10px; padding: 2px 8px; }
 
     /* v5.34: Full-screen modals on small screens */
     .modal { padding: 0; }

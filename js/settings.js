@@ -2419,26 +2419,29 @@ async function generateCertificateCanvas(cert) {
     ctx.fillText('СЕРТИФІКАТ', titleX, titleY);
     ctx.restore();
 
-    // Gift emoji next to title
-    ctx.font = '60px sans-serif';
-    const titleWidth = ctx.measureText('СЕРТИФІКАТ').width;
-    ctx.save();
-    ctx.font = '900 72px Nunito, sans-serif';
-    const tw = ctx.measureText('СЕРТИФІКАТ').width;
-    ctx.restore();
-    ctx.fillText('🎁', titleX + tw + 15, titleY);
+    // (emoji removed — cleaner look)
 
-    // === MASCOT (Mr. Zak, seasonal, RIGHT side) ===
+    // === MASCOT (Mr. Zak, seasonal, RIGHT side — clipped to circle) ===
     const season = getCertSeason(cert.issuedAt);
     const logo = await loadCertMascot(season);
     if (logo) {
-        const logoSize = 320;
-        const logoX = W - logoSize - 30;
+        const logoSize = 300;
+        const logoX = W - logoSize - 40;
         const logoY = (H - logoSize) / 2 + 10;
+        const cx = logoX + logoSize / 2;
+        const cy = logoY + logoSize / 2;
+        const r = logoSize / 2;
         ctx.save();
-        ctx.globalAlpha = 0.92;
+        // White circle background to mask PNG transparency artifacts
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fill();
+        // Clip mascot to circle
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.clip();
         ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
-        ctx.globalAlpha = 1;
         ctx.restore();
     }
 

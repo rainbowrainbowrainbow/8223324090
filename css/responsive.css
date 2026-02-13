@@ -48,7 +48,8 @@
     }
 
     /* v5.35: Panel overlay (not full-width) */
-    .booking-panel {
+    .booking-panel,
+    .certificates-panel {
         width: 380px;
         top: 0;
         height: 100vh;
@@ -136,7 +137,8 @@
     }
 
     /* v5.35: Panel full-width on mobile */
-    .booking-panel { width: 100%; }
+    .booking-panel,
+    .certificates-panel { width: 100%; }
 
     /* v7.8.3: Row 1 — Date navigation (full width) */
     .date-controls {

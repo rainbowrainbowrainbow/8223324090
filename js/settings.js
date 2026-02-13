@@ -713,12 +713,7 @@ async function showSettings() {
         if (AppState.currentUser.role === 'admin') renderAutomationRules();
     }
 
-    // v8.4: Certificates section
-    const certSection = document.getElementById('settingsCertificatesSection');
-    if (certSection) {
-        certSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
-        if (AppState.currentUser.role === 'admin') loadCertificates();
-    }
+    // v8.4: Certificates moved to timeline panel (see openCertificatesPanel)
 
     document.getElementById('settingsModal').classList.remove('hidden');
     fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
@@ -1984,6 +1979,45 @@ function debounceCertSearch() {
     certSearchTimeout = setTimeout(loadCertificates, 400);
 }
 
+function openCertificatesPanel() {
+    const panel = document.getElementById('certificatesPanel');
+    if (!panel) return;
+
+    // Close booking panel if open
+    const bookingPanel = document.getElementById('bookingPanel');
+    if (bookingPanel && !bookingPanel.classList.contains('hidden')) {
+        bookingPanel.classList.add('hidden');
+    }
+
+    // Close dropdown menu
+    const dd = document.getElementById('dropdownContent');
+    if (dd) dd.classList.add('hidden');
+
+    panel.classList.remove('hidden');
+    document.body.classList.add('panel-open');
+
+    // Show backdrop on mobile
+    const backdrop = document.getElementById('panelBackdrop');
+    if (backdrop) {
+        backdrop.classList.remove('hidden');
+        backdrop.onclick = closeCertificatesPanel;
+    }
+
+    loadCertificates();
+}
+
+function closeCertificatesPanel() {
+    const panel = document.getElementById('certificatesPanel');
+    if (panel) panel.classList.add('hidden');
+    document.body.classList.remove('panel-open');
+
+    const backdrop = document.getElementById('panelBackdrop');
+    if (backdrop) {
+        backdrop.classList.add('hidden');
+        backdrop.onclick = null;
+    }
+}
+
 async function loadCertificates() {
     const container = document.getElementById('certificatesList');
     if (!container) return;
@@ -1996,8 +2030,11 @@ async function loadCertificates() {
     const result = await apiGetCertificates({ status, search, limit: 200 });
     if (!result.items || result.items.length === 0) {
         container.innerHTML = '<p class="empty-state">Сертифікатів не знайдено</p>';
+        renderCertStats([]);
         return;
     }
+
+    renderCertStats(result.items);
 
     container.innerHTML = result.items.map(cert => {
         const statusBadge = getCertStatusBadge(cert.status);
@@ -2018,6 +2055,20 @@ async function loadCertificates() {
             </div>
         </div>`;
     }).join('');
+}
+
+function renderCertStats(items) {
+    const statsEl = document.getElementById('certPanelStats');
+    if (!statsEl) return;
+
+    const counts = { active: 0, used: 0, expired: 0 };
+    items.forEach(c => { if (counts[c.status] !== undefined) counts[c.status]++; });
+
+    statsEl.innerHTML = `
+        <span class="cert-stat-chip active"><span class="cert-stat-num">${counts.active}</span> активних</span>
+        <span class="cert-stat-chip used"><span class="cert-stat-num">${counts.used}</span> використаних</span>
+        <span class="cert-stat-chip expired"><span class="cert-stat-num">${counts.expired}</span> прострочених</span>
+    `;
 }
 
 function getCertStatusBadge(status) {

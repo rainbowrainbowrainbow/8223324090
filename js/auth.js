@@ -77,6 +77,12 @@ function showMainApp() {
         settingsBtn.classList.toggle('hidden', AppState.currentUser.role !== 'admin');
     }
 
+    // Certificates — тільки для адмінів
+    const certificatesBtn = document.getElementById('certificatesBtn');
+    if (certificatesBtn) {
+        certificatesBtn.classList.toggle('hidden', AppState.currentUser.role !== 'admin');
+    }
+
     // Дашборд (icon) — не для Animator
     const dashboardBtn = document.getElementById('dashboardBtn');
     if (dashboardBtn) {

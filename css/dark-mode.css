@@ -125,7 +125,8 @@ body.dark-mode .modal-content {
 }
 
 /* Panel */
-body.dark-mode .booking-panel {
+body.dark-mode .booking-panel,
+body.dark-mode .certificates-panel {
     background: #1e1e32;
     border-left-color: var(--gray-200);
 }

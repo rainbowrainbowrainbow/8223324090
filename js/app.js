@@ -241,6 +241,9 @@ function initSettingsListeners() {
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) settingsBtn.addEventListener('click', showSettings);
 
+    const certificatesBtn = document.getElementById('certificatesBtn');
+    if (certificatesBtn) certificatesBtn.addEventListener('click', openCertificatesPanel);
+
     // v7.8: Programs page is now a standalone page (/programs)
 
     const telegramSetupBtn = document.getElementById('telegramSetupBtn');

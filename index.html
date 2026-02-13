@@ -140,6 +140,7 @@
                             <a href="/tasks" class="dropdown-item" role="menuitem" title="Задачник — завдання на день/тиждень">📝 Задачі</a>
                             <button type="button" id="dashboardBtn" class="dropdown-item hidden" role="menuitem" title="Фінансова статистика та аналітика">📊 Статистика</button>
                             <button type="button" id="settingsBtn" class="dropdown-item hidden" role="menuitem" title="Налаштування системи та Telegram">⚙️ Налаштування</button>
+                            <button type="button" id="certificatesBtn" class="dropdown-item hidden" role="menuitem" title="Реєстр сертифікатів на вхід">📄 Сертифікати</button>
                         </div>
                     </div>
                 </div>
@@ -424,6 +425,34 @@
                 <button type="submit" id="bookingSubmitBtn" class="btn-submit">Додати бронювання</button>
             </form>
         </aside>
+
+        <!-- Панель сертифікатів (slide-in) -->
+        <aside id="certificatesPanel" class="certificates-panel hidden">
+            <div class="panel-header">
+                <h3>📄 Сертифікати</h3>
+                <button id="closeCertPanel" class="btn-close" onclick="closeCertificatesPanel()">✕</button>
+            </div>
+            <div class="cert-panel-body">
+                <div class="cert-panel-stats" id="certPanelStats"></div>
+                <div class="cert-toolbar">
+                    <div class="cert-filters">
+                        <select id="certFilterStatus" class="cert-filter-select" onchange="loadCertificates()">
+                            <option value="">Всі</option>
+                            <option value="active">🟢 Активні</option>
+                            <option value="used">✅ Використані</option>
+                            <option value="expired">⏰ Прострочені</option>
+                            <option value="revoked">❌ Анульовані</option>
+                            <option value="blocked">🚫 Заблоковані</option>
+                        </select>
+                        <input type="text" id="certFilterSearch" class="cert-filter-input" placeholder="Пошук..." oninput="debounceCertSearch()">
+                    </div>
+                </div>
+                <div id="certificatesList" class="certificates-list">
+                    <p class="empty-state">Натисніть кнопку, щоб завантажити</p>
+                </div>
+                <button type="button" class="btn-submit cert-panel-add-btn" onclick="showCreateCertificateModal()">➕ Видати сертифікат</button>
+            </div>
+        </aside>
     </div>
 
     <!-- Модальне вікно деталей бронювання -->
@@ -576,28 +605,6 @@
                     <p class="digest-hint">Правила автоматично створюють задачі та надсилають повідомлення при бронюванні певних програм. Головний бот буде підключено пізніше.</p>
                     <div id="automationRulesList" class="automation-rules-list"></div>
                     <button type="button" id="addAutomationRuleBtn" class="btn-submit btn-purple" onclick="showAddAutomationRule()">➕ Додати правило</button>
-                </div>
-                <!-- v8.4: Certificates -->
-                <div class="settings-section" id="settingsCertificatesSection">
-                    <h4>📄 Сертифікати</h4>
-                    <p class="digest-hint">Реєстр виданих сертифікатів з відстеженням статусу та Telegram-сповіщеннями.</p>
-                    <div class="cert-toolbar">
-                        <div class="cert-filters">
-                            <select id="certFilterStatus" class="cert-filter-select" onchange="loadCertificates()">
-                                <option value="">Всі статуси</option>
-                                <option value="active">🟢 Активні</option>
-                                <option value="used">✅ Використані</option>
-                                <option value="expired">⏰ Прострочені</option>
-                                <option value="revoked">❌ Анульовані</option>
-                                <option value="blocked">🚫 Заблоковані</option>
-                            </select>
-                            <input type="text" id="certFilterSearch" class="cert-filter-input" placeholder="Пошук за ПІБ або кодом..." oninput="debounceCertSearch()">
-                        </div>
-                        <button type="button" id="addCertificateBtn" class="btn-submit btn-purple" onclick="showCreateCertificateModal()">➕ Видати сертифікат</button>
-                    </div>
-                    <div id="certificatesList" class="certificates-list">
-                        <p class="empty-state">Завантаження...</p>
-                    </div>
                 </div>
             </div>
         </div>

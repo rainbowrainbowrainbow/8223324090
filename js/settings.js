@@ -2250,29 +2250,177 @@ function copyCertText(text) {
 }
 
 // ==========================================
-// Certificate Image Generator (Canvas)
+// Certificate Image Generator (Canvas + Image Layers)
 // ==========================================
 
-const _certMascotCache = {};
+const _certImageCache = {};
 
-function getCertSeason(dateStr) {
-    const d = dateStr ? new Date(dateStr) : new Date();
-    const m = d.getMonth(); // 0-11
-    if (m >= 2 && m <= 4) return 'spring';
-    if (m >= 5 && m <= 7) return 'summer';
-    if (m >= 8 && m <= 10) return 'autumn';
-    return 'winter';
-}
+// Asset configuration: all 15 image layers + positions on 1200×675 canvas
+const CERT_ASSETS = {
+    // Layer 01 — Background gradient (fills entire canvas)
+    bgGradient: {
+        src: 'images/certificate/bg-gradient.png',
+        x: 0, y: 0, w: 1200, h: 675,
+        required: true
+    },
+    // Layer 02 — Clouds top border (21:9 image, cropped to top strip)
+    cloudsTop: {
+        src: 'images/certificate/clouds-top.png',
+        x: 0, y: -20, w: 1200, h: 160
+    },
+    // Layer 03 — Snow bottom border (21:9 image, cropped to bottom strip)
+    snowBottom: {
+        src: 'images/certificate/snow-bottom.png',
+        x: 0, y: 545, w: 1200, h: 130
+    },
+    // Layer 04 — Trampoline park (main visual, center-bottom area)
+    trampolinePark: {
+        src: 'images/certificate/trampoline-park.png',
+        x: 180, y: 280, w: 650, h: 365
+    },
+    // Layer 05 — Mascot hero (right side, overlaps trampoline)
+    mascotHero: {
+        src: 'images/certificate/mascot-hero.png',
+        x: 830, y: 80, w: 340, h: 425
+    },
+    // Layer 06 — Zipline silhouette (atmospheric, top-right area)
+    ziplineSilhouette: {
+        src: 'images/certificate/zipline-silhouette.png',
+        x: 600, y: 30, w: 560, h: 315,
+        alpha: 0.15
+    },
+    // Layer 07 — Gamepad (small decoration, left area)
+    gamepad: {
+        src: 'images/certificate/gamepad.png',
+        x: 40, y: 380, w: 65, h: 65,
+        alpha: 0.25
+    },
+    // Layer 08 — Title "СЕРТИФІКАТ" (3D styled text image)
+    titleSertifikat: {
+        src: 'images/certificate/title-sertifikat.png',
+        x: 35, y: 85, w: 520, h: 90
+    },
+    // Layer 09 — Star gold (scattered decorations, drawn multiple times)
+    starGold: {
+        src: 'images/certificate/star-gold.png',
+        instances: [
+            { x: 80, y: 85, w: 36, h: 36 },
+            { x: 268, y: 55, w: 28, h: 28 },
+            { x: 510, y: 72, w: 24, h: 24 },
+            { x: 158, y: 162, w: 20, h: 20 },
+            { x: 1088, y: 85, w: 32, h: 32 },
+            { x: 970, y: 148, w: 22, h: 22 },
+            { x: 78, y: 518, w: 26, h: 26 },
+            { x: 238, y: 568, w: 20, h: 20 }
+        ]
+    },
+    // Layer 10 — Heart pink (scattered decorations)
+    heartPink: {
+        src: 'images/certificate/heart-pink.png',
+        instances: [
+            { x: 178, y: 102, w: 28, h: 28 },
+            { x: 420, y: 82, w: 22, h: 22 },
+            { x: 1038, y: 128, w: 26, h: 26 },
+            { x: 138, y: 548, w: 22, h: 22 }
+        ]
+    },
+    // Layer 11 — Snowflake detailed (scattered)
+    snowflakeDetailed: {
+        src: 'images/certificate/snowflake-detailed.png',
+        instances: [
+            { x: 325, y: 115, w: 30, h: 30, alpha: 0.55 },
+            { x: 588, y: 98, w: 26, h: 26, alpha: 0.45 }
+        ]
+    },
+    // Layer 12 — Snowflake simple (scattered)
+    snowflakeSimple: {
+        src: 'images/certificate/snowflake-simple.png',
+        instances: [
+            { x: 120, y: 430, w: 24, h: 24, alpha: 0.4 },
+            { x: 338, y: 548, w: 28, h: 28, alpha: 0.45 }
+        ]
+    },
+    // Layer 13 — Sparkle (tiny accents)
+    sparkle: {
+        src: 'images/certificate/sparkle.png',
+        instances: [
+            { x: 140, y: 140, w: 12, h: 12, alpha: 0.5 },
+            { x: 460, y: 75, w: 10, h: 10, alpha: 0.4 },
+            { x: 900, y: 120, w: 14, h: 14, alpha: 0.5 },
+            { x: 300, y: 500, w: 11, h: 11, alpha: 0.35 },
+            { x: 1060, y: 200, w: 10, h: 10, alpha: 0.4 },
+            { x: 750, y: 60, w: 8, h: 8, alpha: 0.3 }
+        ]
+    },
+    // Layer 14 — Scan label (below QR code)
+    scanLabel: {
+        src: 'images/certificate/scan-label.png',
+        x: 500, y: 618, w: 200, h: 25
+    },
+    // Layer 15 — Branding strip (bottom of certificate)
+    brandingStrip: {
+        src: 'images/certificate/branding-strip.png',
+        x: 650, y: 630, w: 500, h: 50
+    }
+};
 
-function loadCertMascot(season) {
-    if (_certMascotCache[season]) return Promise.resolve(_certMascotCache[season]);
+// Drawing order for layers (back to front)
+const CERT_LAYER_ORDER = [
+    'bgGradient',
+    'ziplineSilhouette',
+    'cloudsTop',
+    'snowBottom',
+    'trampolinePark',
+    'starGold',
+    'heartPink',
+    'snowflakeDetailed',
+    'snowflakeSimple',
+    'sparkle',
+    'gamepad',
+    'titleSertifikat',
+    // — dynamic text layers drawn here —
+    'mascotHero',
+    'scanLabel',
+    'brandingStrip'
+];
+
+function loadCertImage(key) {
+    const asset = CERT_ASSETS[key];
+    if (!asset) return Promise.resolve(null);
+    if (_certImageCache[key]) return Promise.resolve(_certImageCache[key]);
     return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        img.onload = () => { _certMascotCache[season] = img; resolve(img); };
+        img.onload = () => { _certImageCache[key] = img; resolve(img); };
         img.onerror = () => resolve(null);
-        img.src = `images/mr-zak-${season}.png`;
+        img.src = asset.src;
     });
+}
+
+function preloadCertAssets() {
+    return Promise.all(Object.keys(CERT_ASSETS).map(loadCertImage));
+}
+
+function drawCertLayer(ctx, key, img) {
+    if (!img) return;
+    const asset = CERT_ASSETS[key];
+    if (!asset) return;
+
+    if (asset.instances) {
+        // Multi-instance asset (stars, hearts, snowflakes, sparkles)
+        for (const inst of asset.instances) {
+            ctx.save();
+            ctx.globalAlpha = inst.alpha != null ? inst.alpha : 1;
+            ctx.drawImage(img, inst.x, inst.y, inst.w, inst.h);
+            ctx.restore();
+        }
+    } else {
+        // Single-instance asset
+        ctx.save();
+        ctx.globalAlpha = asset.alpha != null ? asset.alpha : 1;
+        ctx.drawImage(img, asset.x, asset.y, asset.w, asset.h);
+        ctx.restore();
+    }
 }
 
 function drawRoundedRect(ctx, x, y, w, h, r) {
@@ -2296,106 +2444,23 @@ async function generateCertificateCanvas(cert) {
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // === BACKGROUND: bright sky-blue gradient ===
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
-    bgGrad.addColorStop(0, '#64B5F6');
-    bgGrad.addColorStop(0.5, '#42A5F5');
-    bgGrad.addColorStop(1, '#1E88E5');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, W, H);
+    // Preload all image assets
+    await preloadCertAssets();
 
-    // === THICK WHITE CLOUDS (top edge) ===
-    ctx.fillStyle = '#fff';
-    function drawCloudRow(y, count, sMin, sMax) {
-        for (let i = 0; i < count; i++) {
-            const cx = (W / count) * i + (W / count) * 0.5;
-            const s = sMin + Math.random() * (sMax - sMin);
-            ctx.beginPath();
-            ctx.arc(cx - 30 * s, y, 35 * s, 0, Math.PI * 2);
-            ctx.arc(cx, y - 18 * s, 40 * s, 0, Math.PI * 2);
-            ctx.arc(cx + 30 * s, y, 35 * s, 0, Math.PI * 2);
-            ctx.arc(cx + 60 * s, y + 5 * s, 30 * s, 0, Math.PI * 2);
-            ctx.arc(cx - 55 * s, y + 5 * s, 28 * s, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-    // Top clouds — thick border
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, W, 20);
-    drawCloudRow(28, 7, 0.7, 1.1);
-    drawCloudRow(15, 5, 0.9, 1.3);
+    // === DRAW IMAGE LAYERS (back to front) ===
+    const dynamicTextAfter = 'titleSertifikat'; // insert dynamic text after this layer
 
-    // Bottom clouds — thick border
-    ctx.fillRect(0, H - 20, W, 20);
-    drawCloudRow(H - 28, 7, 0.7, 1.1);
-    drawCloudRow(H - 15, 5, 0.9, 1.3);
+    for (const key of CERT_LAYER_ORDER) {
+        const img = _certImageCache[key];
+        drawCertLayer(ctx, key, img);
 
-    // === DECORATIVE ELEMENTS ===
-    function drawStar5(cx, cy, outerR, innerR, color) {
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        for (let i = 0; i < 10; i++) {
-            const r = i % 2 === 0 ? outerR : innerR;
-            const angle = (Math.PI / 5) * i - Math.PI / 2;
-            const method = i === 0 ? 'moveTo' : 'lineTo';
-            ctx[method](cx + r * Math.cos(angle), cy + r * Math.sin(angle));
-        }
-        ctx.closePath();
-        ctx.fill();
-    }
-    function drawHeart(cx, cy, s, color) {
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy + s * 0.6);
-        ctx.bezierCurveTo(cx - s, cy - s * 0.2, cx - s * 0.5, cy - s, cx, cy - s * 0.4);
-        ctx.bezierCurveTo(cx + s * 0.5, cy - s, cx + s, cy - s * 0.2, cx, cy + s * 0.6);
-        ctx.fill();
-    }
-    function drawSnowflake(cx, cy, r, color) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
-        for (let i = 0; i < 6; i++) {
-            const a = (i * Math.PI) / 3;
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
-            ctx.stroke();
-            const bx = cx + r * 0.6 * Math.cos(a);
-            const by = cy + r * 0.6 * Math.sin(a);
-            ctx.beginPath();
-            ctx.moveTo(bx, by);
-            ctx.lineTo(bx + r * 0.25 * Math.cos(a + 0.7), by + r * 0.25 * Math.sin(a + 0.7));
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(bx, by);
-            ctx.lineTo(bx + r * 0.25 * Math.cos(a - 0.7), by + r * 0.25 * Math.sin(a - 0.7));
-            ctx.stroke();
+        // After title image — draw dynamic text content
+        if (key === dynamicTextAfter) {
+            drawCertDynamicContent(ctx, cert, W, H);
         }
     }
 
-    // Stars scattered in sky
-    drawStar5(95, 100, 18, 8, '#FFB300');
-    drawStar5(280, 70, 14, 6, '#FFD54F');
-    drawStar5(520, 85, 12, 5, '#FFC107');
-    drawStar5(170, 175, 10, 4, '#FFE082');
-    drawStar5(1100, 100, 16, 7, '#FFB300');
-    drawStar5(980, 160, 11, 5, '#FFD54F');
-    drawStar5(90, 530, 13, 6, '#FFC107');
-    drawStar5(250, 580, 10, 4, '#FFE082');
-
-    // Hearts
-    drawHeart(190, 115, 14, '#F48FB1');
-    drawHeart(430, 95, 11, '#F8BBD0');
-    drawHeart(1050, 140, 13, '#F48FB1');
-    drawHeart(150, 560, 11, '#F8BBD0');
-
-    // Snowflakes
-    drawSnowflake(340, 130, 14, 'rgba(255,255,255,0.55)');
-    drawSnowflake(600, 110, 12, 'rgba(255,255,255,0.45)');
-    drawSnowflake(130, 440, 11, 'rgba(255,255,255,0.4)');
-    drawSnowflake(350, 560, 13, 'rgba(255,255,255,0.45)');
-
-    // === DASHED WHITE BORDER ===
+    // === DASHED WHITE BORDER (on top of everything) ===
     ctx.setLineDash([10, 6]);
     ctx.strokeStyle = 'rgba(255,255,255,0.6)';
     ctx.lineWidth = 2.5;
@@ -2403,47 +2468,14 @@ async function generateCertificateCanvas(cert) {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // === "СЕРТИФІКАТ" — big bold white text, LEFT side ===
-    ctx.textAlign = 'left';
+    // === QR CODE (dynamic, loaded from API) ===
+    await drawCertQRCode(ctx, cert, W, H);
+
+    return canvas;
+}
+
+function drawCertDynamicContent(ctx, cert, W, H) {
     const titleX = 60;
-    const titleY = 140;
-
-    // Shadow/outline effect
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.25)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetX = 3;
-    ctx.shadowOffsetY = 3;
-    ctx.fillStyle = '#fff';
-    ctx.font = '900 72px Nunito, sans-serif';
-    ctx.fillText('СЕРТИФІКАТ', titleX, titleY);
-    ctx.restore();
-
-    // (emoji removed — cleaner look)
-
-    // === MASCOT (Mr. Zak, seasonal, RIGHT side — clipped to circle) ===
-    const season = getCertSeason(cert.issuedAt);
-    const logo = await loadCertMascot(season);
-    if (logo) {
-        const logoSize = 300;
-        const logoX = W - logoSize - 40;
-        const logoY = (H - logoSize) / 2 + 10;
-        const cx = logoX + logoSize / 2;
-        const cy = logoY + logoSize / 2;
-        const r = logoSize / 2;
-        ctx.save();
-        // White circle background to mask PNG transparency artifacts
-        ctx.beginPath();
-        ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.35)';
-        ctx.fill();
-        // Clip mascot to circle
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
-        ctx.restore();
-    }
 
     // === RECIPIENT NAME — large dark bold, LEFT aligned ===
     const nameText = cert.displayValue || '';
@@ -2456,7 +2488,7 @@ async function generateCertificateCanvas(cert) {
     // Word wrap if name is too long
     const maxNameW = W - 420;
     const words = nameText.split(' ');
-    let lines = [];
+    const lines = [];
     let currentLine = '';
     for (const word of words) {
         const testLine = currentLine ? currentLine + ' ' + word : word;
@@ -2487,7 +2519,22 @@ async function generateCertificateCanvas(cert) {
     ctx.font = '600 16px Nunito, sans-serif';
     ctx.fillText(cert.certCode || '', titleX, typeY + 35);
 
-    // === QR CODE — bottom center ===
+    // === VALID UNTIL — bottom left ===
+    const validDate = cert.validUntil
+        ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '—';
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 22px Nunito, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`СЕРТИФІКАТ ДІЙСНИЙ ДО ${validDate}`, titleX, H - 105);
+
+    // === PHONE — bottom left ===
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 20px Nunito, sans-serif';
+    ctx.fillText('+38(0800)-75-35-53', titleX, H - 75);
+}
+
+async function drawCertQRCode(ctx, cert, W, H) {
     try {
         const qrResp = await fetch(`${API_BASE}/certificates/qr/${encodeURIComponent(cert.certCode)}`, { headers: getAuthHeaders(false) });
         if (qrResp.ok) {
@@ -2507,61 +2554,11 @@ async function generateCertificateCanvas(cert) {
                 drawRoundedRect(ctx, qrX - 6, qrY - 6, qrSize + 12, qrSize + 12, 8);
                 ctx.fill();
                 ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
-                // Label under QR
-                ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                ctx.font = '600 10px Nunito, sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('Сканувати для перевірки', W / 2, qrY + qrSize + 14);
-                ctx.textAlign = 'left';
             }
         }
     } catch (e) {
         // QR failed — continue without it
     }
-
-    // === VALID UNTIL — bottom left ===
-    const validDate = cert.validUntil
-        ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
-        : '—';
-    ctx.fillStyle = '#fff';
-    ctx.font = '700 22px Nunito, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(`СЕРТИФІКАТ ДІЙСНИЙ ДО ${validDate}`, titleX, H - 105);
-
-    // === PHONE — bottom left ===
-    ctx.fillStyle = '#fff';
-    ctx.font = '700 20px Nunito, sans-serif';
-    ctx.fillText('+38(0800)-75-35-53', titleX, H - 75);
-
-    // === PARK BRANDING — bottom right, colorful letters ===
-    ctx.textAlign = 'right';
-    const brandX = W - 50;
-    const brandY = H - 100;
-
-    // "ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ" with colored letters
-    const parkName = 'ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ';
-    const parkColors = ['#F44336', '#FF9800', '#FFEB3B', '#4CAF50', '#2196F3', '#9C27B0',
-        '#F44336', '#FF9800', '#FFEB3B', '#4CAF50', '#2196F3', '#9C27B0',
-        '#F44336', '#FF9800', '#FFEB3B', '#4CAF50', '#2196F3', '#9C27B0',
-        '#F44336', '#FF9800', '#FFEB3B', '#4CAF50', '#2196F3', '#9C27B0', '#F44336'];
-    ctx.font = '900 22px Nunito, sans-serif';
-    // Measure total width to draw right-aligned colorful text
-    const totalParkW = ctx.measureText(parkName).width;
-    let charX = brandX - totalParkW;
-    for (let i = 0; i < parkName.length; i++) {
-        ctx.fillStyle = parkName[i] === ' ' ? 'transparent' : parkColors[i % parkColors.length];
-        ctx.textAlign = 'left';
-        ctx.fillText(parkName[i], charX, brandY);
-        charX += ctx.measureText(parkName[i]).width;
-    }
-
-    // Subtitle
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.font = '600 12px Nunito, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ ТА ПІДЛІТКІВ', brandX, brandY + 20);
-
-    return canvas;
 }
 
 async function downloadCertificateImage(certId) {

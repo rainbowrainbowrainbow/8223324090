@@ -102,7 +102,7 @@ async function showFreeRooms() {
             panel.innerHTML = data.free.map(room =>
                 `<span class="free-room-chip" onclick="document.getElementById('roomSelect').value='${escapeHtml(room)}';document.getElementById('freeRoomsPanel').classList.add('hidden')">${escapeHtml(room)}</span>`
             ).join('') +
-            (data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті: ${data.occupied.join(', ')}</div>` : '');
+            (data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті: ${data.occupied.map(r => escapeHtml(r)).join(', ')}</div>` : '');
         } else {
             panel.innerHTML = '<span class="no-free-rooms">Всі кімнати зайняті в цей час</span>';
         }
@@ -169,9 +169,10 @@ async function renderProgramIcons() {
         container.appendChild(grid);
     });
 
-    // v5.49: Bind search input
+    // v5.49: Bind search input (remove old listener to avoid duplicates)
     const searchInput = document.getElementById('programSearch');
     if (searchInput) {
+        searchInput.removeEventListener('input', filterPrograms);
         searchInput.addEventListener('input', filterPrograms);
     }
 }
@@ -203,7 +204,8 @@ function selectProgram(programId) {
     if (!program) return;
 
     document.querySelectorAll('.program-icon').forEach(i => i.classList.remove('selected'));
-    document.querySelector(`[data-program-id="${programId}"]`).classList.add('selected');
+    const selectedEl = document.querySelector(`[data-program-id="${programId}"]`);
+    if (selectedEl) selectedEl.classList.add('selected');
     document.getElementById('selectedProgram').value = programId;
 
     const priceText = program.perChild ? `${formatPrice(program.price)}/дит` : formatPrice(program.price);
@@ -252,20 +254,19 @@ function selectProgram(programId) {
     });
 
     let changeBtn = document.getElementById('changeProgramBtn');
-    if (!changeBtn) {
-        changeBtn = document.createElement('button');
-        changeBtn.type = 'button';
-        changeBtn.id = 'changeProgramBtn';
-        changeBtn.className = 'btn-change-program';
-        changeBtn.textContent = '🔄 Змінити програму';
-        changeBtn.addEventListener('click', () => {
-            allHeaders.forEach(h => h.style.display = '');
-            allGrids.forEach(g => g.style.display = '');
-            changeBtn.remove();
-        });
-        const iconsContainer = document.getElementById('programsIcons');
-        if (iconsContainer) iconsContainer.parentNode.insertBefore(changeBtn, iconsContainer);
-    }
+    if (changeBtn) changeBtn.remove();
+    changeBtn = document.createElement('button');
+    changeBtn.type = 'button';
+    changeBtn.id = 'changeProgramBtn';
+    changeBtn.className = 'btn-change-program';
+    changeBtn.textContent = '🔄 Змінити програму';
+    changeBtn.addEventListener('click', () => {
+        allHeaders.forEach(h => h.style.display = '');
+        allGrids.forEach(g => g.style.display = '');
+        changeBtn.remove();
+    });
+    const iconsContainer = document.getElementById('programsIcons');
+    if (iconsContainer) iconsContainer.parentNode.insertBefore(changeBtn, iconsContainer);
 
     // К-кість дітей для МК (perChild)
     const kidsCountSection = document.getElementById('kidsCountSection');
@@ -750,7 +751,7 @@ async function showBookingDetails(bookingId) {
 
     const program = getProductsSync().find(p => p.id === booking.programId);
     const descriptionHtml = program && program.description
-        ? `<div class="booking-detail-description"><span class="label">Опис:</span><p>${program.description}</p></div>`
+        ? `<div class="booking-detail-description"><span class="label">Опис:</span><p>${escapeHtml(program.description)}</p></div>`
         : '';
 
     // B2: Per-event invite URL with booking details
@@ -771,7 +772,7 @@ async function showBookingDetails(bookingId) {
         <div class="booking-line-switch">
             <span class="label">Перемістити на лінію:</span>
             <div class="line-switch-buttons">
-                ${otherLines.map(l => `<button onclick="switchBookingLine('${booking.id}', '${l.id}')" style="border-color: ${l.color}; color: ${l.color}">${escapeHtml(l.name)}</button>`).join('')}
+                ${otherLines.map(l => `<button onclick="switchBookingLine('${escapeHtml(booking.id)}', '${escapeHtml(l.id)}')" style="border-color: ${escapeHtml(l.color)}; color: ${escapeHtml(l.color)}">${escapeHtml(l.name)}</button>`).join('')}
             </div>
         </div>` : '';
 
@@ -779,12 +780,12 @@ async function showBookingDetails(bookingId) {
         <div class="booking-time-shift">
             <span class="label">Перенести час:</span>
             <div class="time-shift-buttons">
-                <button onclick="shiftBookingTime('${booking.id}', -30)">-30</button>
-                <button onclick="shiftBookingTime('${booking.id}', -15)">-15</button>
-                <button onclick="shiftBookingTime('${booking.id}', 15)">+15</button>
-                <button onclick="shiftBookingTime('${booking.id}', 30)">+30</button>
-                <button onclick="shiftBookingTime('${booking.id}', 45)">+45</button>
-                <button onclick="shiftBookingTime('${booking.id}', 60)">+60</button>
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', -30)">-30</button>
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', -15)">-15</button>
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 15)">+15</button>
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 30)">+30</button>
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 45)">+45</button>
+                <button onclick="shiftBookingTime('${escapeHtml(booking.id)}', 60)">+60</button>
             </div>
         </div>
         ${lineSwitchHtml}
@@ -798,14 +799,14 @@ async function showBookingDetails(bookingId) {
             </div>
             <div class="invite-actions">
                 <a href="${inviteUrl}" target="_blank" class="btn-invite-open">👁 Відкрити</a>
-                <button onclick="copyInviteLink('${escapeHtml(fullInviteUrl)}', this)" class="btn-invite-copy">📋 Копіювати</button>
+                <button onclick="copyInviteLink(this)" class="btn-invite-copy" data-url="${escapeHtml(fullInviteUrl)}">📋 Копіювати</button>
                 ${navigator.share ? '<button onclick="shareInviteLink()" class="btn-invite-share">📤 Поділитися</button>' : ''}
             </div>
         </div>
         <div class="booking-actions modal-footer-sticky">
-            <button onclick="editBooking('${booking.id}')" class="btn-edit-booking">✏️ Редагувати</button>
-            <button onclick="duplicateBooking('${booking.id}')" class="btn-duplicate-booking">📋 Повторити</button>
-            <button onclick="deleteBooking('${booking.id}')" class="btn-delete-booking">Видалити</button>
+            <button onclick="editBooking('${escapeHtml(booking.id)}')" class="btn-edit-booking">✏️ Редагувати</button>
+            <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">📋 Повторити</button>
+            <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Видалити</button>
         </div>
     `;
 
@@ -1006,7 +1007,8 @@ async function duplicateBooking(bookingId) {
 // INVITE HELPERS (v5.48)
 // ==========================================
 
-function copyInviteLink(url, btn) {
+function copyInviteLink(btn) {
+    const url = btn && btn.dataset.url ? btn.dataset.url : '';
     navigator.clipboard.writeText(url).then(() => {
         if (btn) {
             const original = btn.innerHTML;

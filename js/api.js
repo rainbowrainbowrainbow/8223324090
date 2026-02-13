@@ -207,6 +207,8 @@ async function apiTelegramNotify(text) {
             headers: getAuthHeaders(),
             body: JSON.stringify({ text })
         });
+        if (handleAuthError(response)) return { success: false, reason: 'auth_error' };
+        if (!response.ok) return { success: false, reason: 'server_error' };
         return await response.json();
     } catch (err) {
         console.error('Telegram notify error:', err);
@@ -353,8 +355,9 @@ async function apiLogin(username, password) {
         body: JSON.stringify({ username, password })
     });
     if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Login failed');
+        let errMsg = 'Login failed';
+        try { const err = await response.json(); errMsg = err.error || errMsg; } catch {}
+        throw new Error(errMsg);
     }
     return await response.json();
 }

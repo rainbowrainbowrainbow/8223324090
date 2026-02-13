@@ -8,6 +8,11 @@
  * State is in StaffState object (weekStart, staff[], schedule{}, activeDept).
  */
 
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ==========================================
 // STATE
 // ==========================================
@@ -67,7 +72,10 @@ function getMonday(d) {
 }
 
 function formatDateStr(d) {
-    return d.toISOString().split('T')[0];
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function getWeekDates(monday) {
@@ -263,10 +271,10 @@ function renderSchedule() {
             bodyHtml += `<tr>`;
             bodyHtml += `<td>
                 <div class="emp-cell">
-                    <div class="emp-avatar" style="background:${emp.color || '#94A3B8'}">${initials}</div>
+                    <div class="emp-avatar" style="background:${escapeHtml(emp.color || '#94A3B8')}">${escapeHtml(initials)}</div>
                     <div class="emp-info">
-                        <span class="emp-name">${emp.name}</span>
-                        <span class="emp-position">${emp.position}</span>
+                        <span class="emp-name">${escapeHtml(emp.name)}</span>
+                        <span class="emp-position">${escapeHtml(emp.position)}</span>
                         <span class="emp-hours">${hoursLabel}</span>
                     </div>
                 </div>
@@ -291,7 +299,7 @@ function renderSchedule() {
                 }
 
                 if (entry?.note) {
-                    cellContent += `<span class="sch-label" style="font-size:8px;margin-top:1px;opacity:0.7">${entry.note}</span>`;
+                    cellContent += `<span class="sch-label" style="font-size:8px;margin-top:1px;opacity:0.7">${escapeHtml(entry.note)}</span>`;
                 }
 
                 bodyHtml += `<td>

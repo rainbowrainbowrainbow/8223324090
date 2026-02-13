@@ -25,14 +25,19 @@ function minutesToTime(totalMinutes) {
 }
 
 function addMinutesToTime(time, minutes) {
-    const total = timeToMinutes(time) + minutes;
+    let total = timeToMinutes(time) + minutes;
+    if (total < 0) total = 0;
+    if (total > 1439) total = 1439;
     const h = Math.floor(total / 60);
     const m = total % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 function closeAllModals() {
-    document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+    document.querySelectorAll('.modal').forEach(m => {
+        if (m.id === 'confirmModal') return;
+        m.classList.add('hidden');
+    });
 }
 
 function customConfirm(message, title = 'Підтвердження') {
@@ -47,6 +52,7 @@ function customConfirm(message, title = 'Підтвердження') {
         messageEl.textContent = message;
         modal.classList.remove('hidden');
 
+        let resolved = false;
         const cleanup = () => {
             modal.classList.add('hidden');
             yesBtn.removeEventListener('click', onYes);
@@ -57,12 +63,16 @@ function customConfirm(message, title = 'Підтвердження') {
 
         const onYes = (e) => {
             e.preventDefault();
+            if (resolved) return;
+            resolved = true;
             cleanup();
             resolve(true);
         };
 
         const onNo = (e) => {
             e.preventDefault();
+            if (resolved) return;
+            resolved = true;
             cleanup();
             resolve(false);
         };
@@ -74,12 +84,14 @@ function customConfirm(message, title = 'Підтвердження') {
     });
 }
 
+let _notificationTimer = null;
 function showNotification(message, type = '') {
     const el = document.getElementById('notification');
     document.getElementById('notificationText').textContent = message;
     el.className = 'notification' + (type ? ` ${type}` : '');
     el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 3000);
+    if (_notificationTimer) clearTimeout(_notificationTimer);
+    _notificationTimer = setTimeout(() => el.classList.add('hidden'), 3000);
 }
 
 function handleError(context, error) {
@@ -294,7 +306,8 @@ async function handleUndo() {
 
 function setupSwipe() {
     const container = document.getElementById('timelineScroll');
-    if (!container) return;
+    if (!container || container._swipeAttached) return;
+    container._swipeAttached = true;
     let startX = 0, startY = 0, startScrollLeft = 0;
 
     container.addEventListener('touchstart', (e) => {

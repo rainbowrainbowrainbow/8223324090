@@ -46,7 +46,11 @@ function escapeHtml(str) {
 }
 
 function getTodayStr() {
-    return new Date().toISOString().split('T')[0];
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function getWeekRange() {
@@ -56,9 +60,15 @@ function getWeekRange() {
     mon.setDate(now.getDate() - day + 1);
     const sun = new Date(mon);
     sun.setDate(mon.getDate() + 6);
+    const fmtLocal = (dt) => {
+        const y = dt.getFullYear();
+        const m = String(dt.getMonth() + 1).padStart(2, '0');
+        const dd = String(dt.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+    };
     return {
-        from: mon.toISOString().split('T')[0],
-        to: sun.toISOString().split('T')[0]
+        from: fmtLocal(mon),
+        to: fmtLocal(sun)
     };
 }
 

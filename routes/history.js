@@ -42,9 +42,10 @@ router.get('/', async (req, res) => {
         const countResult = await pool.query(`SELECT COUNT(*) FROM history ${where}`, params);
         const total = parseInt(countResult.rows[0].count);
 
+        const queryParams = [...params, lim, off];
         const result = await pool.query(
-            `SELECT * FROM history ${where} ORDER BY created_at DESC LIMIT ${lim} OFFSET ${off}`,
-            params
+            `SELECT * FROM history ${where} ORDER BY created_at DESC LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
+            queryParams
         );
         const history = result.rows.map(row => ({
             id: row.id,

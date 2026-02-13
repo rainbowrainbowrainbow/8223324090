@@ -383,6 +383,7 @@ async function initDatabase() {
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);
+        throw err;
     }
 }
 

@@ -25,7 +25,16 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Global middleware
-app.use(cors({ origin: (origin, cb) => cb(null, !origin || origin.includes(process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost')) }));
+app.use(cors({
+    origin: (origin, cb) => {
+        if (!origin) return cb(null, true);
+        const domain = process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost';
+        try {
+            const host = new URL(origin).hostname;
+            cb(null, host === domain || host === 'localhost');
+        } catch { cb(null, false); }
+    }
+}));
 app.use(express.json({ limit: '1mb' }));
 app.use(requestIdMiddleware);
 app.use(securityHeaders);
@@ -84,11 +93,29 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Global error handler
+app.use((err, req, res, next) => {
+    log.error('Unhandled express error', err);
+    res.status(500).json({ error: 'Internal server error' });
+});
+
+// Process-level error handlers
+process.on('unhandledRejection', (reason) => {
+    log.error('Unhandled promise rejection', reason);
+});
+process.on('uncaughtException', (err) => {
+    log.error('Uncaught exception', err);
+    process.exit(1);
+});
+
 // --- Start server ---
-initDatabase().then(() => {
+initDatabase().catch(err => {
+    log.error('Failed to initialize database, exiting', err);
+    process.exit(1);
+}).then(() => {
     app.listen(PORT, async () => {
         log.info(`Server running on port ${PORT}`);
-        log.info(`Telegram bot token: ${TELEGRAM_BOT_TOKEN ? 'SET (' + TELEGRAM_BOT_TOKEN.slice(0, 8) + '...)' : 'NOT SET'}`);
+        log.info(`Telegram bot token: ${TELEGRAM_BOT_TOKEN ? 'SET' : 'NOT SET'}`);
         log.info(`Telegram default chat ID: ${TELEGRAM_DEFAULT_CHAT_ID || 'NOT SET'}`);
         try {
             const dbChatId = await getConfiguredChatId();

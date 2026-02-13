@@ -902,7 +902,7 @@ function renderTopProgramsSection(bookingsData, periodLabel) {
             ${top.map(([name, data], i) =>
                 `<div class="dash-list-item">
                     <span class="dash-rank">${i + 1}</span>
-                    <span class="dash-name">${name}</span>
+                    <span class="dash-name">${escapeHtml(name)}</span>
                     <span class="dash-count">${data.count}x</span>
                     <span class="dash-revenue">${formatPrice(data.revenue)}</span>
                 </div>`
@@ -926,7 +926,7 @@ function renderCategoryBarsSection(bookingsData, periodLabel) {
             ${Object.entries(catCounts).sort((a, b) => b[1] - a[1]).map(([cat, count]) => {
                 const pct = total > 0 ? Math.round((count / total) * 100) : 0;
                 return `<div class="dash-bar-row">
-                    <span class="dash-bar-label">${cat}</span>
+                    <span class="dash-bar-label">${escapeHtml(cat)}</span>
                     <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%"></div></div>
                     <span class="dash-bar-value">${count} (${pct}%)</span>
                 </div>`;

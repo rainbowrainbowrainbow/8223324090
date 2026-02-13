@@ -273,6 +273,11 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Get current date in Kyiv timezone
+function getKyivNow() {
+    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+}
+
 // Format date as YYYY-MM-DD
 function formatDate(date) {
     const y = date.getFullYear();
@@ -298,10 +303,10 @@ async function handleBotCommand(chatId, threadId, text) {
             return handleMenu(chatId, threadId);
 
         case '/today':
-            return handleDaySummary(chatId, threadId, formatDate(new Date()), 'Сьогодні');
+            return handleDaySummary(chatId, threadId, formatDate(getKyivNow()), 'Сьогодні');
 
         case '/tomorrow': {
-            const tomorrow = new Date();
+            const tomorrow = getKyivNow();
             tomorrow.setDate(tomorrow.getDate() + 1);
             return handleDaySummary(chatId, threadId, formatDate(tomorrow), 'Завтра');
         }

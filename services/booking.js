@@ -6,11 +6,16 @@ const { pool } = require('../db');
 // --- Validators ---
 
 function validateDate(str) {
-    return typeof str === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(str);
+    if (typeof str !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+    const [y, m, d] = str.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
 }
 
 function validateTime(str) {
-    return typeof str === 'string' && /^\d{2}:\d{2}$/.test(str);
+    if (typeof str !== 'string' || !/^\d{2}:\d{2}$/.test(str)) return false;
+    const [h, m] = str.split(':').map(Number);
+    return h >= 0 && h <= 23 && m >= 0 && m <= 59;
 }
 
 function validateId(str) {

@@ -362,18 +362,23 @@ function initUIControlListeners() {
     if (undoBtn) undoBtn.addEventListener('click', handleUndo);
 
     // v5.8: Admin dropdown toggle
-    // v7.8.9: Mobile-safe dropdown with touchend fallback
     const menuToggle = document.getElementById('menuToggleBtn');
     if (menuToggle) {
-        function toggleDropdown(e) {
+        let touchFired = false;
+        menuToggle.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            touchFired = true;
+            const content = document.getElementById('dropdownContent');
+            if (content) content.classList.toggle('hidden');
+        });
+        menuToggle.addEventListener('click', (e) => {
+            if (touchFired) { touchFired = false; return; }
             e.preventDefault();
             e.stopPropagation();
             const content = document.getElementById('dropdownContent');
-            if (!content) return;
-            content.classList.toggle('hidden');
-        }
-        menuToggle.addEventListener('click', toggleDropdown);
-        menuToggle.addEventListener('touchend', toggleDropdown);
+            if (content) content.classList.toggle('hidden');
+        });
     }
     // Close dropdown on outside click
     document.addEventListener('click', (e) => {

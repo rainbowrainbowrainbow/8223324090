@@ -623,8 +623,8 @@ async function renderDaySectionHtml(date) {
 function renderMiniLineHtml(line, lineBookings, start, cellWidth) {
     let html = `
         <div class="mini-timeline-line">
-            <div class="mini-line-header" style="border-left-color: ${line.color}">
-                ${line.name}
+            <div class="mini-line-header" style="border-left-color: ${escapeHtml(line.color)}">
+                ${escapeHtml(line.name)}
             </div>
             <div class="mini-line-grid" data-start="${start}">
     `;
@@ -635,11 +635,11 @@ function renderMiniLineHtml(line, lineBookings, start, cellWidth) {
         const width = (b.duration / 60) * (cellWidth * 4) - 2;
 
         html += `
-            <div class="mini-booking-block ${b.category}"
+            <div class="mini-booking-block ${escapeHtml(b.category)}"
                  style="left: ${left}px; width: ${width}px;"
-                 data-booking-id="${b.id}"
-                 title="${b.label || b.programCode}: ${b.room} (${b.time})">
-                <span class="mini-booking-text">${b.label || b.programCode}</span>
+                 data-booking-id="${escapeHtml(b.id)}"
+                 title="${escapeHtml((b.label || b.programCode) + ': ' + b.room + ' (' + b.time + ')')}">
+                <span class="mini-booking-text">${escapeHtml(b.label || b.programCode)}</span>
             </div>
         `;
     }
@@ -655,10 +655,8 @@ function attachMultiDayListeners() {
             const daySection = item.closest('.day-section');
             if (daySection) {
                 const dateStr = daySection.dataset.date;
-                const originalDate = new Date(AppState.selectedDate);
-                AppState.selectedDate = new Date(dateStr);
+                AppState.selectedDate = new Date(dateStr + 'T00:00:00');
                 showBookingDetails(bookingId);
-                AppState.selectedDate = originalDate;
             }
         });
     });

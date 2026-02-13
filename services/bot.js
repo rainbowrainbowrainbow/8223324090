@@ -35,9 +35,69 @@ async function handleMenu(chatId, threadId) {
         + `/find <запит> — пошук програми\n`
         + `/price <код> <ціна> — змінити ціну\n`
         + `/stats — статистика за місяць\n`
+        + `/cert <код> — перевірити сертифікат\n`
         + `/menu — це меню`;
 
     return sendBotMessage(chatId, threadId, text);
+}
+
+// /cert or /start cert_CODE — verify certificate by code
+async function handleCertVerify(chatId, threadId, code) {
+    if (!code || code.trim().length < 3) {
+        return sendBotMessage(chatId, threadId, '📄 Використання: /cert <код сертифікату>\nПриклад: /cert CERT-2026-00001');
+    }
+
+    const certCode = code.trim().toUpperCase();
+
+    try {
+        const result = await pool.query('SELECT * FROM certificates WHERE cert_code = $1', [certCode]);
+
+        if (result.rows.length === 0) {
+            return sendBotMessage(chatId, threadId,
+                `❌ <b>Сертифікат не знайдено</b>\n\nКод: <code>${escapeHtml(certCode)}</code>\nМожливо, код введено невірно.`
+            );
+        }
+
+        const cert = result.rows[0];
+        const statusMap = {
+            active: '🟢 Активний',
+            used: '🔵 Використаний',
+            expired: '🟠 Прострочений',
+            revoked: '🔴 Скасований',
+            blocked: '⚫ Заблокований'
+        };
+
+        const validDate = cert.valid_until
+            ? new Date(cert.valid_until).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            : '—';
+        const issuedDate = cert.issued_at
+            ? new Date(cert.issued_at).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            : '—';
+
+        let text = `📄 <b>Сертифікат ${cert.cert_code}</b>\n\n`;
+        text += `${statusMap[cert.status] || cert.status}\n\n`;
+        text += `👤 ${escapeHtml(cert.display_value)}\n`;
+        text += `📋 ${escapeHtml(cert.type_text || 'на одноразовий вхід')}\n`;
+        text += `📅 Видано: ${issuedDate}\n`;
+        text += `⏳ Дійсний до: ${validDate}\n`;
+
+        if (cert.status === 'used' && cert.used_at) {
+            const usedDate = new Date(cert.used_at).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            text += `\n✅ Використано: ${usedDate}`;
+        }
+        if (cert.status === 'revoked' || cert.status === 'blocked') {
+            if (cert.invalid_reason) {
+                text += `\n📝 Причина: ${escapeHtml(cert.invalid_reason)}`;
+            }
+        }
+
+        text += `\n\n🏢 Парк Закревського Періоду`;
+
+        return sendBotMessage(chatId, threadId, text);
+    } catch (err) {
+        log.error('handleCertVerify error', err);
+        return sendBotMessage(chatId, threadId, '❌ Помилка перевірки сертифікату');
+    }
 }
 
 // /today or /tomorrow — bookings summary for a date
@@ -298,8 +358,14 @@ async function handleBotCommand(chatId, threadId, text) {
 
     switch (command) {
         case '/menu':
-        case '/start':
         case '/help':
+            return handleMenu(chatId, threadId);
+
+        case '/start':
+            // Deep link: /start cert_CERT-2026-00001
+            if (args && args.startsWith('cert_')) {
+                return handleCertVerify(chatId, threadId, args.slice(5));
+            }
             return handleMenu(chatId, threadId);
 
         case '/today':
@@ -322,6 +388,9 @@ async function handleBotCommand(chatId, threadId, text) {
 
         case '/stats':
             return handleStats(chatId, threadId);
+
+        case '/cert':
+            return handleCertVerify(chatId, threadId, args);
 
         default:
             return null; // Not a known command — ignore

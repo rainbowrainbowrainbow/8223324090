@@ -2487,6 +2487,38 @@ async function generateCertificateCanvas(cert) {
     ctx.font = '600 16px Nunito, sans-serif';
     ctx.fillText(cert.certCode || '', titleX, typeY + 35);
 
+    // === QR CODE — bottom center ===
+    try {
+        const qrResp = await fetch(`${API_BASE}/certificates/qr/${encodeURIComponent(cert.certCode)}`, { headers: getAuthHeaders(false) });
+        if (qrResp.ok) {
+            const qrData = await qrResp.json();
+            if (qrData.dataUrl) {
+                const qrImg = await new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = reject;
+                    img.src = qrData.dataUrl;
+                });
+                const qrSize = 110;
+                const qrX = W / 2 - qrSize / 2;
+                const qrY = H - qrSize - 45;
+                // White background for QR
+                ctx.fillStyle = '#fff';
+                drawRoundedRect(ctx, qrX - 6, qrY - 6, qrSize + 12, qrSize + 12, 8);
+                ctx.fill();
+                ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+                // Label under QR
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.font = '600 10px Nunito, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Сканувати для перевірки', W / 2, qrY + qrSize + 14);
+                ctx.textAlign = 'left';
+            }
+        }
+    } catch (e) {
+        // QR failed — continue without it
+    }
+
     // === VALID UNTIL — bottom left ===
     const validDate = cert.validUntil
         ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })

@@ -6,9 +6,10 @@ const router = require('express').Router();
 const { pool, generateCertCode } = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { mapCertificateRow, calculateValidUntil, validateCertificateInput, VALID_STATUSES } = require('../services/certificates');
-const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
+const { sendTelegramMessage, getConfiguredChatId, getBotUsername } = require('../services/telegram');
 const { formatCertificateNotification } = require('../services/templates');
 const { createLogger } = require('../utils/logger');
+const QRCode = require('qrcode');
 
 const log = createLogger('Certificates');
 
@@ -48,6 +49,34 @@ router.get('/', async (req, res) => {
         });
     } catch (err) {
         log.error('List error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/certificates/qr/:code — Generate QR code for certificate deep link
+router.get('/qr/:code', async (req, res) => {
+    try {
+        const certCode = req.params.code.trim().toUpperCase();
+        const result = await pool.query('SELECT * FROM certificates WHERE cert_code = $1', [certCode]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Certificate not found' });
+        }
+
+        const botUsername = await getBotUsername();
+        if (!botUsername) {
+            return res.status(500).json({ error: 'Bot username not available' });
+        }
+
+        const deepLink = `https://t.me/${botUsername}?start=cert_${certCode}`;
+        const dataUrl = await QRCode.toDataURL(deepLink, {
+            width: 200,
+            margin: 1,
+            color: { dark: '#0D47A1', light: '#FFFFFF' }
+        });
+
+        res.json({ dataUrl, deepLink, certCode });
+    } catch (err) {
+        log.error('QR generation error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

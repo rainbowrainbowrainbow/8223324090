@@ -14,6 +14,7 @@ const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '-10018
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || crypto.randomBytes(32).toString('hex');
 
 let webhookSet = false;
+let cachedBotUsername = null;
 
 function telegramRequest(method, body) {
     return new Promise((resolve, reject) => {
@@ -184,6 +185,29 @@ async function ensureWebhook(appUrl) {
 function setWebhookFlag(val) { webhookSet = val; }
 function getWebhookFlag() { return webhookSet; }
 
+async function getBotUsername() {
+    if (cachedBotUsername) return cachedBotUsername;
+    try {
+        // Check settings first
+        const result = await pool.query("SELECT value FROM settings WHERE key = 'bot_username'");
+        if (result.rows.length > 0 && result.rows[0].value) {
+            cachedBotUsername = result.rows[0].value;
+            return cachedBotUsername;
+        }
+    } catch (e) { /* fallback to API */ }
+    try {
+        const me = await telegramRequest('getMe');
+        if (me && me.ok && me.result && me.result.username) {
+            cachedBotUsername = me.result.username;
+            log.info(`Bot username resolved: @${cachedBotUsername}`);
+            return cachedBotUsername;
+        }
+    } catch (err) {
+        log.error(`getBotUsername error: ${err.message}`);
+    }
+    return null;
+}
+
 async function getTelegramChatId() {
     const chatMap = new Map();
 
@@ -260,5 +284,5 @@ module.exports = {
     telegramRequest, sendTelegramMessage, editTelegramMessage, deleteTelegramMessage,
     getConfiguredChatId, getConfiguredThreadId,
     notifyTelegram, ensureWebhook, getTelegramChatId, scheduleAutoDelete,
-    setWebhookFlag, getWebhookFlag
+    setWebhookFlag, getWebhookFlag, getBotUsername
 };

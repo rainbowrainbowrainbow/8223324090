@@ -2064,6 +2064,8 @@ async function handleCertificateSubmit(event) {
         document.getElementById('certificateModal').classList.add('hidden');
         showNotification(`Сертифікат ${result.certificate.certCode} видано!`, 'success');
         loadCertificates();
+        // Одразу показати деталі нового сертифіката
+        showCertDetail(result.certificate.id);
     } else {
         showNotification(result.error || 'Помилка видачі', 'error');
     }
@@ -2091,7 +2093,7 @@ async function showCertDetail(id) {
 
         content.innerHTML = `
             <div class="cert-detail-grid">
-                <div class="cert-detail-row"><span class="cert-detail-label">Код:</span><span class="cert-detail-val"><code>${cert.certCode}</code></span></div>
+                <div class="cert-detail-row"><span class="cert-detail-label">Код:</span><span class="cert-detail-val"><code>${cert.certCode}</code> <button class="btn-copy-cert" onclick="copyCertCode('${cert.certCode}')" title="Скопіювати код">📋</button></span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Статус:</span><span class="cert-detail-val">${getCertStatusBadge(cert.status)}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Режим:</span><span class="cert-detail-val">${modeLabel}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${escapeHtml(cert.displayValue)}</span></div>
@@ -2105,8 +2107,9 @@ async function showCertDetail(id) {
             </div>
         `;
 
-        // Action buttons based on status
-        let btns = '';
+        // Copy all info button + action buttons
+        const copyText = `Сертифікат: ${cert.certCode}\n${modeLabel}: ${cert.displayValue}\nТип: ${cert.typeText}\nДійсний до: ${validDate}`;
+        let btns = `<button class="btn-copy-all btn-sm" onclick="copyCertText(\`${copyText.replace(/`/g, '\\`')}\`)">📋 Скопіювати інфо</button>`;
         if (cert.status === 'active') {
             btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${cert.id}, 'used')">✅ Використано</button>`;
             btns += `<button class="btn-danger btn-sm" onclick="changeCertStatus(${cert.id}, 'revoked')">❌ Анулювати</button>`;
@@ -2149,4 +2152,33 @@ async function deleteCertificate(id) {
     } else {
         showNotification(result.error || 'Помилка видалення', 'error');
     }
+}
+
+function copyCertCode(code) {
+    navigator.clipboard.writeText(code).then(() => {
+        showNotification('Код скопійовано: ' + code, 'success');
+    }).catch(() => {
+        // Fallback
+        const ta = document.createElement('textarea');
+        ta.value = code;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showNotification('Код скопійовано: ' + code, 'success');
+    });
+}
+
+function copyCertText(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        showNotification('Інформацію скопійовано!', 'success');
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showNotification('Інформацію скопійовано!', 'success');
+    });
 }

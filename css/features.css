@@ -1431,3 +1431,26 @@
     color: var(--gray-700, #374151);
     border: 1px solid var(--gray-200, #E5E7EB);
 }
+
+.cert-detail-actions .btn-copy-all.btn-sm {
+    background: linear-gradient(135deg, #3B82F6, #2563EB);
+    color: #fff;
+}
+
+.btn-copy-cert {
+    display: inline-block;
+    padding: 2px 6px;
+    border: 1px solid var(--gray-200, #E5E7EB);
+    border-radius: 4px;
+    background: var(--gray-50, #f9fafb);
+    cursor: pointer;
+    font-size: 12px;
+    vertical-align: middle;
+    margin-left: 4px;
+    transition: all 0.15s;
+}
+
+.btn-copy-cert:hover {
+    background: var(--gray-100, #f3f4f6);
+    border-color: var(--gray-300, #D1D5DB);
+}

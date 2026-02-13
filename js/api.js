@@ -376,3 +376,113 @@ async function apiVerifyToken() {
         return null;
     }
 }
+
+// v8.4: Certificates API
+async function apiGetCertificates(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.status) params.set('status', filters.status);
+        if (filters.search) params.set('search', filters.search);
+        if (filters.limit) params.set('limit', filters.limit);
+        if (filters.offset) params.set('offset', filters.offset);
+        const qs = params.toString();
+        const url = `${API_BASE}/certificates${qs ? '?' + qs : ''}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { items: [], total: 0 };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getCertificates error:', err);
+        return { items: [], total: 0 };
+    }
+}
+
+async function apiCreateCertificate(data) {
+    try {
+        const response = await fetch(`${API_BASE}/certificates`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        const cert = await response.json();
+        return { success: true, certificate: cert };
+    } catch (err) {
+        console.error('API createCertificate error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiGetCertificateByCode(code) {
+    try {
+        const response = await fetch(`${API_BASE}/certificates/code/${encodeURIComponent(code)}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API getCertificateByCode error:', err);
+        return null;
+    }
+}
+
+async function apiUpdateCertificateStatus(id, status, reason) {
+    try {
+        const response = await fetch(`${API_BASE}/certificates/${id}/status`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ status, reason })
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        const cert = await response.json();
+        return { success: true, certificate: cert };
+    } catch (err) {
+        console.error('API updateCertificateStatus error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiUpdateCertificate(id, data) {
+    try {
+        const response = await fetch(`${API_BASE}/certificates/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        const cert = await response.json();
+        return { success: true, certificate: cert };
+    } catch (err) {
+        console.error('API updateCertificate error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiDeleteCertificate(id) {
+    try {
+        const response = await fetch(`${API_BASE}/certificates/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API deleteCertificate error:', err);
+        return { success: false, error: err.message };
+    }
+}

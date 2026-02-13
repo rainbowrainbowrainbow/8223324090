@@ -380,6 +380,39 @@ async function initDatabase() {
             log.info('Automation rules seeded (3 rules)');
         }
 
+        // v8.4: Certificates system
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS certificates (
+                id SERIAL PRIMARY KEY,
+                cert_code VARCHAR(20) UNIQUE NOT NULL,
+                display_mode VARCHAR(10) NOT NULL DEFAULT 'fio',
+                display_value VARCHAR(200) NOT NULL,
+                type_text VARCHAR(200) NOT NULL DEFAULT 'на одноразовий вхід',
+                issued_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                valid_until DATE NOT NULL,
+                issued_by_user_id INTEGER,
+                issued_by_name VARCHAR(100),
+                status VARCHAR(20) DEFAULT 'active',
+                used_at TIMESTAMP,
+                invalidated_at TIMESTAMP,
+                invalid_reason TEXT,
+                notes TEXT,
+                telegram_alert_sent BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_certificates_status ON certificates(status)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_certificates_cert_code ON certificates(cert_code)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_certificates_valid_until ON certificates(valid_until)');
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS certificate_counter (
+                year INTEGER PRIMARY KEY,
+                counter INTEGER NOT NULL DEFAULT 0
+            )
+        `);
+
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);
@@ -398,6 +431,19 @@ async function generateBookingNumber(client) {
     );
     const num = result.rows[0].counter;
     return `BK-${year}-${String(num).padStart(4, '0')}`;
+}
+
+async function generateCertCode(client) {
+    const db = client || pool;
+    const year = new Date().getFullYear();
+    const result = await db.query(
+        `INSERT INTO certificate_counter (year, counter) VALUES ($1, 1)
+         ON CONFLICT (year) DO UPDATE SET counter = certificate_counter.counter + 1
+         RETURNING counter`,
+        [year]
+    );
+    const num = result.rows[0].counter;
+    return `CERT-${year}-${String(num).padStart(5, '0')}`;
 }
 
 // v7.0: Seed products catalog from hardcoded PROGRAMS data
@@ -589,4 +635,4 @@ async function seedStaff() {
     }
 }
 
-module.exports = { pool, initDatabase, generateBookingNumber };
+module.exports = { pool, initDatabase, generateBookingNumber, generateCertCode };

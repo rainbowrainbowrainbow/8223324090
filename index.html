@@ -14,17 +14,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=8.3.3">
-    <link rel="stylesheet" href="css/auth.css?v=8.3.3">
-    <link rel="stylesheet" href="css/layout.css?v=8.3.3">
-    <link rel="stylesheet" href="css/timeline.css?v=8.3.3">
-    <link rel="stylesheet" href="css/panel.css?v=8.3.3">
-    <link rel="stylesheet" href="css/modals.css?v=8.3.3">
-    <link rel="stylesheet" href="css/controls.css?v=8.3.3">
-    <link rel="stylesheet" href="css/features.css?v=8.3.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=8.3.3">
-    <link rel="stylesheet" href="css/responsive.css?v=8.3.3">
-    <link rel="stylesheet" href="css/pages.css?v=8.3.3">
+    <link rel="stylesheet" href="css/base.css?v=8.4.0">
+    <link rel="stylesheet" href="css/auth.css?v=8.4.0">
+    <link rel="stylesheet" href="css/layout.css?v=8.4.0">
+    <link rel="stylesheet" href="css/timeline.css?v=8.4.0">
+    <link rel="stylesheet" href="css/panel.css?v=8.4.0">
+    <link rel="stylesheet" href="css/modals.css?v=8.4.0">
+    <link rel="stylesheet" href="css/controls.css?v=8.4.0">
+    <link rel="stylesheet" href="css/features.css?v=8.4.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=8.4.0">
+    <link rel="stylesheet" href="css/responsive.css?v=8.4.0">
+    <link rel="stylesheet" href="css/pages.css?v=8.4.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -35,9 +35,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v8.3.3 — Bugfixes</p>
+                <p class="tagline">Система бронювання v8.4.0 — Сертифікати</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.3.3</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.4.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -577,6 +577,28 @@
                     <div id="automationRulesList" class="automation-rules-list"></div>
                     <button type="button" id="addAutomationRuleBtn" class="btn-submit btn-purple" onclick="showAddAutomationRule()">➕ Додати правило</button>
                 </div>
+                <!-- v8.4: Certificates -->
+                <div class="settings-section" id="settingsCertificatesSection">
+                    <h4>📄 Сертифікати</h4>
+                    <p class="digest-hint">Реєстр виданих сертифікатів з відстеженням статусу та Telegram-сповіщеннями.</p>
+                    <div class="cert-toolbar">
+                        <div class="cert-filters">
+                            <select id="certFilterStatus" class="cert-filter-select" onchange="loadCertificates()">
+                                <option value="">Всі статуси</option>
+                                <option value="active">🟢 Активні</option>
+                                <option value="used">✅ Використані</option>
+                                <option value="expired">⏰ Прострочені</option>
+                                <option value="revoked">❌ Анульовані</option>
+                                <option value="blocked">🚫 Заблоковані</option>
+                            </select>
+                            <input type="text" id="certFilterSearch" class="cert-filter-input" placeholder="Пошук за ПІБ або кодом..." oninput="debounceCertSearch()">
+                        </div>
+                        <button type="button" id="addCertificateBtn" class="btn-submit btn-purple" onclick="showCreateCertificateModal()">➕ Видати сертифікат</button>
+                    </div>
+                    <div id="certificatesList" class="certificates-list">
+                        <p class="empty-state">Завантаження...</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -615,6 +637,51 @@
                 </div>
                 <button type="submit" class="btn-submit btn-full">✅ Створити правило</button>
             </form>
+        </div>
+    </div>
+
+    <!-- v8.4: Модалка видачі сертифіката -->
+    <div id="certificateModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Видати сертифікат">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3 id="certModalTitle">📄 Видати сертифікат</h3>
+            <form id="certificateForm" onsubmit="handleCertificateSubmit(event)">
+                <div class="form-group">
+                    <label for="certDisplayMode">Режим відображення</label>
+                    <select id="certDisplayMode">
+                        <option value="fio">ПІБ (прізвище та ім'я)</option>
+                        <option value="number">Номер (довільний)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="certDisplayValue" id="certDisplayValueLabel">ПІБ або ідентифікатор</label>
+                    <input type="text" id="certDisplayValue" placeholder="Іваненко Марія" required maxlength="200">
+                </div>
+                <div class="form-group">
+                    <label for="certTypeText">Тип сертифіката</label>
+                    <input type="text" id="certTypeText" value="на одноразовий вхід" placeholder="на одноразовий вхід" maxlength="200">
+                </div>
+                <div class="form-group">
+                    <label for="certValidUntil">Дійсний до</label>
+                    <input type="date" id="certValidUntil">
+                    <small class="form-hint">За замовчуванням: +45 днів</small>
+                </div>
+                <div class="form-group">
+                    <label for="certNotes">Примітка</label>
+                    <textarea id="certNotes" rows="2" placeholder="Опціонально..."></textarea>
+                </div>
+                <button type="submit" class="btn-submit btn-full">📄 Видати сертифікат</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- v8.4: Модалка перегляду/деталей сертифіката -->
+    <div id="certDetailModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Деталі сертифіката">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3>📄 Деталі сертифіката</h3>
+            <div id="certDetailContent"></div>
+            <div class="cert-detail-actions" id="certDetailActions"></div>
         </div>
     </div>
 
@@ -728,6 +795,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v8.4.0 — Сертифікати</h4>
+                    <ul>
+                        <li>Реєстр сертифікатів з кодом CERT-YYYY-NNNNN</li>
+                        <li>Режим ПІБ або номер, тип сертифіката, дата дії</li>
+                        <li>Статуси: активний → використаний / анульований / заблокований / прострочений</li>
+                        <li>Telegram-сповіщення при видачі, використанні, анулюванні</li>
+                        <li>Автоматичне закриття прострочених сертифікатів (scheduler)</li>
+                        <li>Пошук та фільтрація за статусом і ПІБ/кодом</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v8.3.3 — Bugfixes</h4>
                     <ul>
@@ -1877,13 +1955,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=8.3.3"></script>
-    <script src="js/api.js?v=8.3.3"></script>
-    <script src="js/ui.js?v=8.3.3"></script>
-    <script src="js/auth.js?v=8.3.3"></script>
-    <script src="js/timeline.js?v=8.3.3"></script>
-    <script src="js/booking.js?v=8.3.3"></script>
-    <script src="js/settings.js?v=8.3.3"></script>
-    <script src="js/app.js?v=8.3.3"></script>
+    <script src="js/config.js?v=8.4.0"></script>
+    <script src="js/api.js?v=8.4.0"></script>
+    <script src="js/ui.js?v=8.4.0"></script>
+    <script src="js/auth.js?v=8.4.0"></script>
+    <script src="js/timeline.js?v=8.4.0"></script>
+    <script src="js/booking.js?v=8.4.0"></script>
+    <script src="js/settings.js?v=8.4.0"></script>
+    <script src="js/app.js?v=8.4.0"></script>
 </body>
 </html>

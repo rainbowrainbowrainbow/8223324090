@@ -1243,3 +1243,191 @@
 .improvement-fab.hidden {
     display: none;
 }
+
+/* ==========================================
+   v8.4: CERTIFICATES
+   ========================================== */
+
+.cert-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.cert-filters {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.cert-filter-select {
+    padding: 8px 12px;
+    border: 1px solid var(--gray-200, #E5E7EB);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--white, #fff);
+    min-width: 140px;
+}
+
+.cert-filter-input {
+    padding: 8px 12px;
+    border: 1px solid var(--gray-200, #E5E7EB);
+    border-radius: 8px;
+    font-size: 16px;
+    font-family: inherit;
+    flex: 1;
+    min-width: 0;
+}
+
+.certificates-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.cert-card {
+    padding: 12px 14px;
+    background: var(--gray-50, #f9fafb);
+    border: 1px solid var(--gray-100, #f3f4f6);
+    border-left: 4px solid #10B981;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cert-card:hover {
+    background: var(--white, #fff);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transform: translateY(-1px);
+}
+
+.cert-status-used { border-left-color: #6B7280; }
+.cert-status-expired { border-left-color: #F59E0B; }
+.cert-status-revoked { border-left-color: #EF4444; }
+.cert-status-blocked { border-left-color: #374151; }
+
+.cert-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.cert-code {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gray-600, #4B5563);
+}
+
+.cert-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.cert-badge-active { background: #ECFDF5; color: #065F46; }
+.cert-badge-used { background: #F3F4F6; color: #374151; }
+.cert-badge-expired { background: #FFFBEB; color: #92400E; }
+.cert-badge-revoked { background: #FEF2F2; color: #991B1B; }
+.cert-badge-blocked { background: #F3F4F6; color: #111827; }
+
+.cert-card-body {
+    margin-bottom: 6px;
+}
+
+.cert-display-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gray-800, #1F2937);
+}
+
+.cert-type {
+    font-size: 12px;
+    color: var(--gray-500, #6B7280);
+    margin-top: 2px;
+}
+
+.cert-card-footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--gray-400, #9CA3AF);
+}
+
+/* Certificate detail modal */
+.cert-detail-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.cert-detail-row {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+}
+
+.cert-detail-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gray-500, #6B7280);
+    min-width: 100px;
+    flex-shrink: 0;
+}
+
+.cert-detail-val {
+    font-size: 14px;
+    color: var(--gray-800, #1F2937);
+}
+
+.cert-detail-val code {
+    background: var(--gray-100, #f3f4f6);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.cert-detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.cert-detail-actions .btn-sm {
+    padding: 8px 14px;
+    font-size: 12px;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    transition: all 0.15s;
+}
+
+.cert-detail-actions .btn-submit.btn-sm {
+    background: linear-gradient(135deg, #10B981, #059669);
+    color: #fff;
+}
+
+.cert-detail-actions .btn-danger.btn-sm {
+    background: linear-gradient(135deg, #EF4444, #DC2626);
+    color: #fff;
+}
+
+.cert-detail-actions .btn-cancel.btn-sm {
+    background: var(--gray-100, #f3f4f6);
+    color: var(--gray-700, #374151);
+    border: 1px solid var(--gray-200, #E5E7EB);
+}

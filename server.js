@@ -15,7 +15,7 @@ const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry } = require('./services/scheduler');
 const { createLogger } = require('./utils/logger');
 
 const log = createLogger('Server');
@@ -67,6 +67,7 @@ app.use('/api/products', require('./routes/products'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/task-templates', require('./routes/task-templates'));
 app.use('/api/staff', require('./routes/staff'));
+app.use('/api/certificates', require('./routes/certificates'));
 
 // Settings router handles /api/stats, /api/settings, /api/rooms, /api/health
 const settingsRouter = require('./routes/settings');
@@ -137,6 +138,7 @@ initDatabase().catch(err => {
         setInterval(checkRecurringTasks, 60000);
         setInterval(checkRecurringAfisha, 60000);
         setInterval(checkScheduledDeletions, 60000);
-        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete (every 60s)');
+        setInterval(checkCertificateExpiry, 60000);
+        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry (every 60s)');
     });
 });

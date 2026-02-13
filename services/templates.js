@@ -60,6 +60,53 @@ function formatBookingNotification(type, booking, extra = {}) {
     return template(booking, extra);
 }
 
+// v8.4: Certificate notification templates
+const certificateTemplates = {
+    certificate_issued(cert, extra) {
+        const issuedDate = cert.issued_at ? new Date(cert.issued_at).toLocaleDateString('uk-UA') : '—';
+        const validUntil = cert.valid_until ? new Date(cert.valid_until).toLocaleDateString('uk-UA') : '—';
+        const mode = cert.display_mode === 'fio' ? 'ПІБ' : 'Номер';
+        return `📄 <b>Видано сертифікат</b>\n\n` +
+            `🏷 Тип: ${cert.type_text || 'на одноразовий вхід'}\n` +
+            `📋 Режим: ${mode}\n` +
+            `👤 Дані: ${cert.display_value}\n` +
+            `📅 Видано: ${issuedDate}\n` +
+            `⏰ Дійсний до: ${validUntil}\n` +
+            `👤 Видав: ${extra.username || '?'}\n` +
+            `🔑 Код: <code>${cert.cert_code}</code>`;
+    },
+
+    certificate_used(cert, extra) {
+        return `✅ <b>Сертифікат використано</b>\n\n` +
+            `🔑 ${cert.cert_code}\n` +
+            `👤 ${cert.display_value}\n` +
+            `🏷 ${cert.type_text}\n` +
+            `\n👤 Змінив: ${extra.username || '?'}`;
+    },
+
+    certificate_revoked(cert, extra) {
+        return `❌ <b>Сертифікат анульовано</b>\n\n` +
+            `🔑 ${cert.cert_code}\n` +
+            `👤 ${cert.display_value}\n` +
+            (cert.invalid_reason ? `📝 Причина: ${cert.invalid_reason}\n` : '') +
+            `\n👤 Змінив: ${extra.username || '?'}`;
+    },
+
+    certificate_blocked(cert, extra) {
+        return `🚫 <b>Сертифікат заблоковано</b>\n\n` +
+            `🔑 ${cert.cert_code}\n` +
+            `👤 ${cert.display_value}\n` +
+            (cert.invalid_reason ? `📝 Причина: ${cert.invalid_reason}\n` : '') +
+            `\n👤 Змінив: ${extra.username || '?'}`;
+    }
+};
+
+function formatCertificateNotification(type, cert, extra = {}) {
+    const template = certificateTemplates[type];
+    if (!template) return '';
+    return template(cert, extra);
+}
+
 /**
  * Format afisha events block for digest/reminder messages
  * Splits events by type: regular events + birthday block
@@ -103,4 +150,4 @@ function formatAfishaBlock(events) {
     return text;
 }
 
-module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock };
+module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock, certificateTemplates, formatCertificateNotification };

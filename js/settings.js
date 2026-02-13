@@ -713,6 +713,13 @@ async function showSettings() {
         if (AppState.currentUser.role === 'admin') renderAutomationRules();
     }
 
+    // v8.4: Certificates section
+    const certSection = document.getElementById('settingsCertificatesSection');
+    if (certSection) {
+        certSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
+        if (AppState.currentUser.role === 'admin') loadCertificates();
+    }
+
     document.getElementById('settingsModal').classList.remove('hidden');
     fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
     fetchAndRenderThreads();
@@ -1964,5 +1971,182 @@ async function handleAutomationRuleSubmit(e) {
         }
     } catch (err) {
         showNotification('Помилка створення', 'error');
+    }
+}
+
+// ==========================================
+// v8.4: CERTIFICATES
+// ==========================================
+let certSearchTimeout = null;
+
+function debounceCertSearch() {
+    clearTimeout(certSearchTimeout);
+    certSearchTimeout = setTimeout(loadCertificates, 400);
+}
+
+async function loadCertificates() {
+    const container = document.getElementById('certificatesList');
+    if (!container) return;
+
+    const status = document.getElementById('certFilterStatus')?.value || '';
+    const search = document.getElementById('certFilterSearch')?.value.trim() || '';
+
+    container.innerHTML = '<p class="empty-state">Завантаження...</p>';
+
+    const result = await apiGetCertificates({ status, search, limit: 200 });
+    if (!result.items || result.items.length === 0) {
+        container.innerHTML = '<p class="empty-state">Сертифікатів не знайдено</p>';
+        return;
+    }
+
+    container.innerHTML = result.items.map(cert => {
+        const statusBadge = getCertStatusBadge(cert.status);
+        const validDate = cert.validUntil ? new Date(cert.validUntil).toLocaleDateString('uk-UA') : '—';
+        const issuedDate = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('uk-UA') : '—';
+        return `<div class="cert-card cert-status-${cert.status}" onclick="showCertDetail(${cert.id})" data-cert-id="${cert.id}">
+            <div class="cert-card-header">
+                <span class="cert-code">${cert.certCode}</span>
+                ${statusBadge}
+            </div>
+            <div class="cert-card-body">
+                <div class="cert-display-value">${escapeHtml(cert.displayValue)}</div>
+                <div class="cert-type">${escapeHtml(cert.typeText)}</div>
+            </div>
+            <div class="cert-card-footer">
+                <span>Видано: ${issuedDate}</span>
+                <span>До: ${validDate}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function getCertStatusBadge(status) {
+    const map = {
+        active: '<span class="cert-badge cert-badge-active">🟢 Активний</span>',
+        used: '<span class="cert-badge cert-badge-used">✅ Використаний</span>',
+        expired: '<span class="cert-badge cert-badge-expired">⏰ Прострочений</span>',
+        revoked: '<span class="cert-badge cert-badge-revoked">❌ Анульований</span>',
+        blocked: '<span class="cert-badge cert-badge-blocked">🚫 Заблокований</span>'
+    };
+    return map[status] || `<span class="cert-badge">${status}</span>`;
+}
+
+function showCreateCertificateModal() {
+    const modal = document.getElementById('certificateModal');
+    if (!modal) return;
+    document.getElementById('certModalTitle').textContent = '📄 Видати сертифікат';
+    document.getElementById('certificateForm').reset();
+    document.getElementById('certTypeText').value = 'на одноразовий вхід';
+    // Default valid_until = +45 days
+    const d = new Date();
+    d.setDate(d.getDate() + 45);
+    document.getElementById('certValidUntil').value = d.toISOString().split('T')[0];
+    modal.classList.remove('hidden');
+}
+
+async function handleCertificateSubmit(event) {
+    event.preventDefault();
+    const data = {
+        displayMode: document.getElementById('certDisplayMode').value,
+        displayValue: document.getElementById('certDisplayValue').value.trim(),
+        typeText: document.getElementById('certTypeText').value.trim() || 'на одноразовий вхід',
+        validUntil: document.getElementById('certValidUntil').value || undefined,
+        notes: document.getElementById('certNotes').value.trim() || undefined
+    };
+
+    if (!data.displayValue) {
+        showNotification('Вкажіть ПІБ або номер', 'error');
+        return;
+    }
+
+    const result = await apiCreateCertificate(data);
+    if (result.success) {
+        document.getElementById('certificateModal').classList.add('hidden');
+        showNotification(`Сертифікат ${result.certificate.certCode} видано!`, 'success');
+        loadCertificates();
+    } else {
+        showNotification(result.error || 'Помилка видачі', 'error');
+    }
+}
+
+async function showCertDetail(id) {
+    const modal = document.getElementById('certDetailModal');
+    const content = document.getElementById('certDetailContent');
+    const actions = document.getElementById('certDetailActions');
+    if (!modal || !content) return;
+
+    content.innerHTML = '<p class="empty-state">Завантаження...</p>';
+    actions.innerHTML = '';
+    modal.classList.remove('hidden');
+
+    try {
+        const response = await fetch(`${API_BASE}/certificates/${id}`, { headers: getAuthHeaders(false) });
+        if (!response.ok) throw new Error('Not found');
+        const cert = await response.json();
+
+        const issuedDate = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('uk-UA') : '—';
+        const validDate = cert.validUntil ? new Date(cert.validUntil).toLocaleDateString('uk-UA') : '—';
+        const usedDate = cert.usedAt ? new Date(cert.usedAt).toLocaleDateString('uk-UA', { hour: '2-digit', minute: '2-digit' }) : '—';
+        const modeLabel = cert.displayMode === 'fio' ? 'ПІБ' : 'Номер';
+
+        content.innerHTML = `
+            <div class="cert-detail-grid">
+                <div class="cert-detail-row"><span class="cert-detail-label">Код:</span><span class="cert-detail-val"><code>${cert.certCode}</code></span></div>
+                <div class="cert-detail-row"><span class="cert-detail-label">Статус:</span><span class="cert-detail-val">${getCertStatusBadge(cert.status)}</span></div>
+                <div class="cert-detail-row"><span class="cert-detail-label">Режим:</span><span class="cert-detail-val">${modeLabel}</span></div>
+                <div class="cert-detail-row"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${escapeHtml(cert.displayValue)}</span></div>
+                <div class="cert-detail-row"><span class="cert-detail-label">Тип:</span><span class="cert-detail-val">${escapeHtml(cert.typeText)}</span></div>
+                <div class="cert-detail-row"><span class="cert-detail-label">Видано:</span><span class="cert-detail-val">${issuedDate}</span></div>
+                <div class="cert-detail-row"><span class="cert-detail-label">Дійсний до:</span><span class="cert-detail-val">${validDate}</span></div>
+                ${cert.status === 'used' ? `<div class="cert-detail-row"><span class="cert-detail-label">Використано:</span><span class="cert-detail-val">${usedDate}</span></div>` : ''}
+                ${cert.issuedByName ? `<div class="cert-detail-row"><span class="cert-detail-label">Видав:</span><span class="cert-detail-val">${escapeHtml(cert.issuedByName)}</span></div>` : ''}
+                ${cert.invalidReason ? `<div class="cert-detail-row"><span class="cert-detail-label">Причина:</span><span class="cert-detail-val">${escapeHtml(cert.invalidReason)}</span></div>` : ''}
+                ${cert.notes ? `<div class="cert-detail-row"><span class="cert-detail-label">Примітка:</span><span class="cert-detail-val">${escapeHtml(cert.notes)}</span></div>` : ''}
+            </div>
+        `;
+
+        // Action buttons based on status
+        let btns = '';
+        if (cert.status === 'active') {
+            btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${cert.id}, 'used')">✅ Використано</button>`;
+            btns += `<button class="btn-danger btn-sm" onclick="changeCertStatus(${cert.id}, 'revoked')">❌ Анулювати</button>`;
+            btns += `<button class="btn-cancel btn-sm" onclick="changeCertStatus(${cert.id}, 'blocked')">🚫 Заблокувати</button>`;
+        }
+        if (cert.status === 'blocked' || cert.status === 'revoked') {
+            btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${cert.id}, 'active')">🔄 Відновити</button>`;
+        }
+        btns += `<button class="btn-danger btn-sm" onclick="deleteCertificate(${cert.id})">🗑 Видалити</button>`;
+        actions.innerHTML = btns;
+    } catch (err) {
+        content.innerHTML = '<p class="empty-state">Помилка завантаження</p>';
+    }
+}
+
+async function changeCertStatus(id, newStatus) {
+    let reason = null;
+    if (newStatus === 'revoked' || newStatus === 'blocked') {
+        reason = prompt('Причина (опціонально):');
+    }
+
+    const result = await apiUpdateCertificateStatus(id, newStatus, reason);
+    if (result.success) {
+        showNotification(`Статус змінено на: ${newStatus}`, 'success');
+        showCertDetail(id); // refresh detail
+        loadCertificates(); // refresh list
+    } else {
+        showNotification(result.error || 'Помилка зміни статусу', 'error');
+    }
+}
+
+async function deleteCertificate(id) {
+    if (!confirm('Видалити сертифікат назавжди?')) return;
+
+    const result = await apiDeleteCertificate(id);
+    if (result.success) {
+        document.getElementById('certDetailModal').classList.add('hidden');
+        showNotification('Сертифікат видалено', 'success');
+        loadCertificates();
+    } else {
+        showNotification(result.error || 'Помилка видалення', 'error');
     }
 }

@@ -2281,173 +2281,221 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
 }
 
 async function generateCertificateCanvas(cert) {
-    const W = 1200, H = 800;
+    const W = 1080, H = 1080;
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // --- Background ---
+    // === BACKGROUND: bright blue gradient ===
     const bgGrad = ctx.createLinearGradient(0, 0, W, H);
-    bgGrad.addColorStop(0, '#f0fdf4');
-    bgGrad.addColorStop(0.5, '#ffffff');
-    bgGrad.addColorStop(1, '#ecfdf5');
+    bgGrad.addColorStop(0, '#4FC3F7');
+    bgGrad.addColorStop(0.4, '#29B6F6');
+    bgGrad.addColorStop(1, '#0288D1');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, W, H);
 
-    // --- Decorative corner circles ---
-    ctx.globalAlpha = 0.06;
-    ctx.fillStyle = '#10B981';
-    ctx.beginPath(); ctx.arc(-60, -60, 250, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(W + 60, H + 60, 250, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(W + 40, -40, 180, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(-40, H + 40, 180, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1;
-
-    // --- Outer border ---
-    const borderPad = 24;
-    ctx.strokeStyle = '#10B981';
-    ctx.lineWidth = 3;
-    drawRoundedRect(ctx, borderPad, borderPad, W - borderPad * 2, H - borderPad * 2, 20);
-    ctx.stroke();
-
-    // --- Inner border (double) ---
-    const innerPad = 32;
-    ctx.strokeStyle = '#86EFAC';
-    ctx.lineWidth = 1.5;
-    drawRoundedRect(ctx, innerPad, innerPad, W - innerPad * 2, H - innerPad * 2, 16);
-    ctx.stroke();
-
-    // --- Small decorative diamonds in corners ---
-    const diamondSize = 8;
-    const dOff = 28;
-    [[dOff, dOff], [W - dOff, dOff], [dOff, H - dOff], [W - dOff, H - dOff]].forEach(([cx, cy]) => {
-        ctx.fillStyle = '#10B981';
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(Math.PI / 4);
-        ctx.fillRect(-diamondSize / 2, -diamondSize / 2, diamondSize, diamondSize);
-        ctx.restore();
-    });
-
-    // --- Logo ---
-    const logo = await loadCertLogo();
-    const logoSize = 90;
-    const logoX = (W - logoSize) / 2;
-    const logoY = 50;
-    if (logo) {
-        ctx.save();
+    // === CLOUDS ===
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    function drawCloud(cx, cy, s) {
         ctx.beginPath();
-        ctx.arc(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-        ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
-        ctx.restore();
-        // Logo ring
-        ctx.strokeStyle = '#10B981';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.arc(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 2, 0, Math.PI * 2);
-        ctx.stroke();
-    }
-
-    // --- Park name ---
-    ctx.fillStyle = '#065F46';
-    ctx.font = '700 22px Nunito, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Парк Закревського Періоду', W / 2, logoY + logoSize + 30);
-
-    // --- "СЕРТИФІКАТ" title ---
-    const titleY = logoY + logoSize + 72;
-    ctx.fillStyle = '#10B981';
-    ctx.font = '800 42px Nunito, sans-serif';
-    ctx.letterSpacing = '4px';
-    ctx.fillText('С Е Р Т И Ф І К А Т', W / 2, titleY);
-
-    // --- Decorative line under title ---
-    const lineW = 320;
-    const lineGrad = ctx.createLinearGradient(W / 2 - lineW / 2, 0, W / 2 + lineW / 2, 0);
-    lineGrad.addColorStop(0, 'rgba(16,185,129,0)');
-    lineGrad.addColorStop(0.3, '#10B981');
-    lineGrad.addColorStop(0.7, '#10B981');
-    lineGrad.addColorStop(1, 'rgba(16,185,129,0)');
-    ctx.strokeStyle = lineGrad;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(W / 2 - lineW / 2, titleY + 12);
-    ctx.lineTo(W / 2 + lineW / 2, titleY + 12);
-    ctx.stroke();
-
-    // --- Certificate type ---
-    ctx.fillStyle = '#6B7280';
-    ctx.font = '600 20px Nunito, sans-serif';
-    ctx.fillText(cert.typeText || 'на одноразовий вхід', W / 2, titleY + 48);
-
-    // --- Recipient name (main focus) ---
-    const nameY = titleY + 110;
-    ctx.fillStyle = '#1F2937';
-    const nameLen = (cert.displayValue || '').length;
-    const nameFontSize = nameLen > 30 ? 32 : nameLen > 20 ? 38 : 46;
-    ctx.font = `800 ${nameFontSize}px Nunito, sans-serif`;
-    ctx.fillText(cert.displayValue || '', W / 2, nameY);
-
-    // --- Underline for name ---
-    const nameMetrics = ctx.measureText(cert.displayValue || '');
-    const nameW = Math.min(nameMetrics.width + 60, 700);
-    ctx.strokeStyle = '#D1D5DB';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(W / 2 - nameW / 2, nameY + 12);
-    ctx.lineTo(W / 2 + nameW / 2, nameY + 12);
-    ctx.stroke();
-
-    // --- Info rows ---
-    const infoY = nameY + 60;
-    const colLeft = W / 2 - 200;
-    const colRight = W / 2 + 200;
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#9CA3AF';
-    ctx.font = '600 14px Nunito, sans-serif';
-    ctx.fillText('КОД СЕРТИФІКАТА', colLeft, infoY);
-    ctx.fillText('ДІЙСНИЙ ДО', colRight, infoY);
-
-    ctx.fillStyle = '#1F2937';
-    ctx.font = '700 22px "Courier New", monospace';
-    ctx.fillText(cert.certCode || '', colLeft, infoY + 30);
-
-    const validDate = cert.validUntil
-        ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' })
-        : '—';
-    ctx.font = '700 22px Nunito, sans-serif';
-    ctx.fillText(validDate, colRight, infoY + 30);
-
-    // --- Separator dots ---
-    ctx.fillStyle = '#D1D5DB';
-    for (let dx = -2; dx <= 2; dx++) {
-        ctx.beginPath();
-        ctx.arc(W / 2 + dx * 12, infoY + 20, 2, 0, Math.PI * 2);
+        ctx.arc(cx, cy, 40 * s, 0, Math.PI * 2);
+        ctx.arc(cx + 35 * s, cy - 15 * s, 35 * s, 0, Math.PI * 2);
+        ctx.arc(cx + 70 * s, cy, 38 * s, 0, Math.PI * 2);
+        ctx.arc(cx + 30 * s, cy + 10 * s, 30 * s, 0, Math.PI * 2);
         ctx.fill();
     }
+    drawCloud(80, 120, 1.2);
+    drawCloud(750, 80, 1.0);
+    drawCloud(900, 200, 0.8);
+    drawCloud(50, 350, 0.7);
+    drawCloud(820, 900, 0.9);
 
-    // --- Bottom footer ---
-    const footerY = H - 60;
-    ctx.fillStyle = '#D1D5DB';
-    ctx.font = '500 12px Nunito, sans-serif';
-    ctx.textAlign = 'center';
-    const issuedDate = cert.issuedAt
-        ? new Date(cert.issuedAt).toLocaleDateString('uk-UA')
-        : new Date().toLocaleDateString('uk-UA');
-    ctx.fillText(`Видано: ${issuedDate}  •  parkzp.com`, W / 2, footerY);
+    // === DECORATIVE ELEMENTS: stars, hearts, snowflakes ===
+    function drawStar(cx, cy, r, color) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+            const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+            const method = i === 0 ? 'moveTo' : 'lineTo';
+            ctx[method](cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+    function drawHeart(cx, cy, s, color) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + s * 0.6);
+        ctx.bezierCurveTo(cx - s, cy - s * 0.2, cx - s * 0.5, cy - s, cx, cy - s * 0.4);
+        ctx.bezierCurveTo(cx + s * 0.5, cy - s, cx + s, cy - s * 0.2, cx, cy + s * 0.6);
+        ctx.fill();
+    }
+    function drawSnowflake(cx, cy, r, color) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 6; i++) {
+            const a = (i * Math.PI) / 3;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+            ctx.stroke();
+            // small branches
+            const bx = cx + r * 0.6 * Math.cos(a);
+            const by = cy + r * 0.6 * Math.sin(a);
+            ctx.beginPath();
+            ctx.moveTo(bx, by);
+            ctx.lineTo(bx + r * 0.3 * Math.cos(a + 0.6), by + r * 0.3 * Math.sin(a + 0.6));
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(bx, by);
+            ctx.lineTo(bx + r * 0.3 * Math.cos(a - 0.6), by + r * 0.3 * Math.sin(a - 0.6));
+            ctx.stroke();
+        }
+    }
 
-    // --- Decorative bottom bar ---
-    const barGrad = ctx.createLinearGradient(0, H - 28, W, H - 28);
-    barGrad.addColorStop(0, '#10B981');
-    barGrad.addColorStop(0.5, '#059669');
-    barGrad.addColorStop(1, '#10B981');
-    ctx.fillStyle = barGrad;
-    drawRoundedRect(ctx, borderPad, H - borderPad - 6, W - borderPad * 2, 6, 3);
+    // Stars
+    drawStar(120, 220, 18, '#FFD54F');
+    drawStar(950, 160, 14, '#FFF176');
+    drawStar(200, 500, 12, '#FFE082');
+    drawStar(900, 450, 16, '#FFD54F');
+    drawStar(80, 750, 10, '#FFF9C4');
+    drawStar(970, 700, 13, '#FFE082');
+    drawStar(500, 100, 11, '#FFF176');
+
+    // Hearts
+    drawHeart(180, 160, 16, '#F48FB1');
+    drawHeart(880, 300, 14, '#F8BBD0');
+    drawHeart(100, 600, 12, '#F48FB1');
+    drawHeart(950, 580, 15, '#F8BBD0');
+
+    // Snowflakes
+    drawSnowflake(300, 130, 16, 'rgba(255,255,255,0.5)');
+    drawSnowflake(700, 170, 14, 'rgba(255,255,255,0.4)');
+    drawSnowflake(150, 430, 12, 'rgba(255,255,255,0.35)');
+    drawSnowflake(850, 750, 15, 'rgba(255,255,255,0.4)');
+
+    // === MAIN WHITE CARD ===
+    const cardX = 60, cardY = 250, cardW = W - 120, cardH = 540;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.15)';
+    ctx.shadowBlur = 30;
+    ctx.shadowOffsetY = 8;
+    drawRoundedRect(ctx, cardX, cardY, cardW, cardH, 30);
+    ctx.fillStyle = '#ffffff';
     ctx.fill();
+    ctx.restore();
+
+    // Card inner border
+    ctx.strokeStyle = 'rgba(41,182,246,0.15)';
+    ctx.lineWidth = 2;
+    drawRoundedRect(ctx, cardX + 10, cardY + 10, cardW - 20, cardH - 20, 24);
+    ctx.stroke();
+
+    // === TOP AREA: "СЕРТИФІКАТ" title with gift icon ===
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.font = '900 52px Nunito, sans-serif';
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.2)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 3;
+    ctx.fillText('🎁 СЕРТИФІКАТ', W / 2, 210);
+    ctx.restore();
+
+    // === PARK BRANDING at top ===
+    ctx.fillStyle = '#fff';
+    ctx.font = '800 24px Nunito, sans-serif';
+    ctx.globalAlpha = 0.9;
+    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', W / 2, 80);
+    ctx.font = '500 14px Nunito, sans-serif';
+    ctx.globalAlpha = 0.7;
+    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ ТА ПІДЛІТКІВ', W / 2, 108);
+    ctx.globalAlpha = 1;
+
+    // === LOGO (big, on the right side of card) ===
+    const logo = await loadCertLogo();
+    if (logo) {
+        const logoSize = 200;
+        const logoX = cardX + cardW - logoSize - 20;
+        const logoY = cardY + (cardH - logoSize) / 2;
+        ctx.globalAlpha = 0.15;
+        ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
+        ctx.globalAlpha = 1;
+        // Small logo top-left in card
+        const smLogo = 50;
+        ctx.drawImage(logo, cardX + 24, cardY + 20, smLogo, smLogo);
+    }
+
+    // === CERTIFICATE TYPE ===
+    const typeY = cardY + 80;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#0277BD';
+    ctx.font = '700 22px Nunito, sans-serif';
+    ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), W / 2, typeY);
+
+    // === DECORATIVE SEPARATOR ===
+    const sepY = typeY + 20;
+    ctx.strokeStyle = '#29B6F6';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - 120, sepY);
+    ctx.lineTo(W / 2 + 120, sepY);
+    ctx.stroke();
+    // center diamond
+    ctx.fillStyle = '#29B6F6';
+    ctx.save();
+    ctx.translate(W / 2, sepY);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-5, -5, 10, 10);
+    ctx.restore();
+
+    // === RECIPIENT NAME (main focus, large, green/dark) ===
+    const nameY = sepY + 70;
+    const nameText = cert.displayValue || '';
+    const nameLen = nameText.length;
+    const nameFontSize = nameLen > 30 ? 32 : nameLen > 20 ? 40 : 50;
+    ctx.fillStyle = '#1B5E20';
+    ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(nameText, W / 2, nameY);
+
+    // === CERT CODE ===
+    const codeY = nameY + 50;
+    ctx.fillStyle = '#78909C';
+    ctx.font = '600 16px Nunito, sans-serif';
+    ctx.fillText('Код сертифіката:', W / 2, codeY);
+    ctx.fillStyle = '#37474F';
+    ctx.font = '800 22px "Courier New", monospace';
+    ctx.fillText(cert.certCode || '', W / 2, codeY + 30);
+
+    // === VALID UNTIL (bottom of card) ===
+    const validDate = cert.validUntil
+        ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '—';
+    const validY = cardY + cardH - 50;
+    ctx.fillStyle = '#0277BD';
+    ctx.font = '700 20px Nunito, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`СЕРТИФІКАТ ДІЙСНИЙ ДО  ${validDate}`, W / 2, validY);
+
+    // === BOTTOM AREA: phone + site ===
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 20px Nunito, sans-serif';
+    ctx.globalAlpha = 0.9;
+    ctx.fillText('+38(0800)-75-35-53', W / 2, H - 60);
+    ctx.font = '500 14px Nunito, sans-serif';
+    ctx.globalAlpha = 0.6;
+    ctx.fillText('parkzp.com', W / 2, H - 35);
+    ctx.globalAlpha = 1;
+
+    // === BOTTOM DECORATIVE BAR ===
+    const barGrad = ctx.createLinearGradient(0, H - 16, W, H - 16);
+    barGrad.addColorStop(0, '#4FC3F7');
+    barGrad.addColorStop(0.5, '#0288D1');
+    barGrad.addColorStop(1, '#4FC3F7');
+    ctx.fillStyle = barGrad;
+    ctx.fillRect(0, H - 8, W, 8);
 
     return canvas;
 }

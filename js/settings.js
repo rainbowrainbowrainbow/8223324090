@@ -2281,42 +2281,53 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
 }
 
 async function generateCertificateCanvas(cert) {
-    const W = 1080, H = 1080;
+    const W = 1200, H = 675;
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // === BACKGROUND: bright blue gradient ===
-    const bgGrad = ctx.createLinearGradient(0, 0, W, H);
-    bgGrad.addColorStop(0, '#4FC3F7');
-    bgGrad.addColorStop(0.4, '#29B6F6');
-    bgGrad.addColorStop(1, '#0288D1');
+    // === BACKGROUND: bright sky-blue gradient ===
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, '#64B5F6');
+    bgGrad.addColorStop(0.5, '#42A5F5');
+    bgGrad.addColorStop(1, '#1E88E5');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, W, H);
 
-    // === CLOUDS ===
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    function drawCloud(cx, cy, s) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, 40 * s, 0, Math.PI * 2);
-        ctx.arc(cx + 35 * s, cy - 15 * s, 35 * s, 0, Math.PI * 2);
-        ctx.arc(cx + 70 * s, cy, 38 * s, 0, Math.PI * 2);
-        ctx.arc(cx + 30 * s, cy + 10 * s, 30 * s, 0, Math.PI * 2);
-        ctx.fill();
+    // === THICK WHITE CLOUDS (top edge) ===
+    ctx.fillStyle = '#fff';
+    function drawCloudRow(y, count, sMin, sMax) {
+        for (let i = 0; i < count; i++) {
+            const cx = (W / count) * i + (W / count) * 0.5;
+            const s = sMin + Math.random() * (sMax - sMin);
+            ctx.beginPath();
+            ctx.arc(cx - 30 * s, y, 35 * s, 0, Math.PI * 2);
+            ctx.arc(cx, y - 18 * s, 40 * s, 0, Math.PI * 2);
+            ctx.arc(cx + 30 * s, y, 35 * s, 0, Math.PI * 2);
+            ctx.arc(cx + 60 * s, y + 5 * s, 30 * s, 0, Math.PI * 2);
+            ctx.arc(cx - 55 * s, y + 5 * s, 28 * s, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
-    drawCloud(80, 120, 1.2);
-    drawCloud(750, 80, 1.0);
-    drawCloud(900, 200, 0.8);
-    drawCloud(50, 350, 0.7);
-    drawCloud(820, 900, 0.9);
+    // Top clouds — thick border
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, 20);
+    drawCloudRow(28, 7, 0.7, 1.1);
+    drawCloudRow(15, 5, 0.9, 1.3);
 
-    // === DECORATIVE ELEMENTS: stars, hearts, snowflakes ===
-    function drawStar(cx, cy, r, color) {
+    // Bottom clouds — thick border
+    ctx.fillRect(0, H - 20, W, 20);
+    drawCloudRow(H - 28, 7, 0.7, 1.1);
+    drawCloudRow(H - 15, 5, 0.9, 1.3);
+
+    // === DECORATIVE ELEMENTS ===
+    function drawStar5(cx, cy, outerR, innerR, color) {
         ctx.fillStyle = color;
         ctx.beginPath();
-        for (let i = 0; i < 5; i++) {
-            const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+        for (let i = 0; i < 10; i++) {
+            const r = i % 2 === 0 ? outerR : innerR;
+            const angle = (Math.PI / 5) * i - Math.PI / 2;
             const method = i === 0 ? 'moveTo' : 'lineTo';
             ctx[method](cx + r * Math.cos(angle), cy + r * Math.sin(angle));
         }
@@ -2333,169 +2344,177 @@ async function generateCertificateCanvas(cert) {
     }
     function drawSnowflake(cx, cy, r, color) {
         ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5;
         for (let i = 0; i < 6; i++) {
             const a = (i * Math.PI) / 3;
             ctx.beginPath();
             ctx.moveTo(cx, cy);
             ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
             ctx.stroke();
-            // small branches
             const bx = cx + r * 0.6 * Math.cos(a);
             const by = cy + r * 0.6 * Math.sin(a);
             ctx.beginPath();
             ctx.moveTo(bx, by);
-            ctx.lineTo(bx + r * 0.3 * Math.cos(a + 0.6), by + r * 0.3 * Math.sin(a + 0.6));
+            ctx.lineTo(bx + r * 0.25 * Math.cos(a + 0.7), by + r * 0.25 * Math.sin(a + 0.7));
             ctx.stroke();
             ctx.beginPath();
             ctx.moveTo(bx, by);
-            ctx.lineTo(bx + r * 0.3 * Math.cos(a - 0.6), by + r * 0.3 * Math.sin(a - 0.6));
+            ctx.lineTo(bx + r * 0.25 * Math.cos(a - 0.7), by + r * 0.25 * Math.sin(a - 0.7));
             ctx.stroke();
         }
     }
 
-    // Stars
-    drawStar(120, 220, 18, '#FFD54F');
-    drawStar(950, 160, 14, '#FFF176');
-    drawStar(200, 500, 12, '#FFE082');
-    drawStar(900, 450, 16, '#FFD54F');
-    drawStar(80, 750, 10, '#FFF9C4');
-    drawStar(970, 700, 13, '#FFE082');
-    drawStar(500, 100, 11, '#FFF176');
+    // Stars scattered in sky
+    drawStar5(95, 100, 18, 8, '#FFB300');
+    drawStar5(280, 70, 14, 6, '#FFD54F');
+    drawStar5(520, 85, 12, 5, '#FFC107');
+    drawStar5(170, 175, 10, 4, '#FFE082');
+    drawStar5(1100, 100, 16, 7, '#FFB300');
+    drawStar5(980, 160, 11, 5, '#FFD54F');
+    drawStar5(90, 530, 13, 6, '#FFC107');
+    drawStar5(250, 580, 10, 4, '#FFE082');
 
     // Hearts
-    drawHeart(180, 160, 16, '#F48FB1');
-    drawHeart(880, 300, 14, '#F8BBD0');
-    drawHeart(100, 600, 12, '#F48FB1');
-    drawHeart(950, 580, 15, '#F8BBD0');
+    drawHeart(190, 115, 14, '#F48FB1');
+    drawHeart(430, 95, 11, '#F8BBD0');
+    drawHeart(1050, 140, 13, '#F48FB1');
+    drawHeart(150, 560, 11, '#F8BBD0');
 
     // Snowflakes
-    drawSnowflake(300, 130, 16, 'rgba(255,255,255,0.5)');
-    drawSnowflake(700, 170, 14, 'rgba(255,255,255,0.4)');
-    drawSnowflake(150, 430, 12, 'rgba(255,255,255,0.35)');
-    drawSnowflake(850, 750, 15, 'rgba(255,255,255,0.4)');
+    drawSnowflake(340, 130, 14, 'rgba(255,255,255,0.55)');
+    drawSnowflake(600, 110, 12, 'rgba(255,255,255,0.45)');
+    drawSnowflake(130, 440, 11, 'rgba(255,255,255,0.4)');
+    drawSnowflake(350, 560, 13, 'rgba(255,255,255,0.45)');
 
-    // === MAIN WHITE CARD ===
-    const cardX = 60, cardY = 250, cardW = W - 120, cardH = 540;
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.15)';
-    ctx.shadowBlur = 30;
-    ctx.shadowOffsetY = 8;
-    drawRoundedRect(ctx, cardX, cardY, cardW, cardH, 30);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    ctx.restore();
-
-    // Card inner border
-    ctx.strokeStyle = 'rgba(41,182,246,0.15)';
-    ctx.lineWidth = 2;
-    drawRoundedRect(ctx, cardX + 10, cardY + 10, cardW - 20, cardH - 20, 24);
+    // === DASHED WHITE BORDER ===
+    ctx.setLineDash([10, 6]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 2.5;
+    drawRoundedRect(ctx, 14, 14, W - 28, H - 28, 18);
     ctx.stroke();
+    ctx.setLineDash([]);
 
-    // === TOP AREA: "СЕРТИФІКАТ" title with gift icon ===
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
-    ctx.font = '900 52px Nunito, sans-serif';
+    // === "СЕРТИФІКАТ" — big bold white text, LEFT side ===
+    ctx.textAlign = 'left';
+    const titleX = 60;
+    const titleY = 140;
+
+    // Shadow/outline effect
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.2)';
-    ctx.shadowBlur = 6;
+    ctx.shadowColor = 'rgba(0,0,0,0.25)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 3;
     ctx.shadowOffsetY = 3;
-    ctx.fillText('🎁 СЕРТИФІКАТ', W / 2, 210);
+    ctx.fillStyle = '#fff';
+    ctx.font = '900 72px Nunito, sans-serif';
+    ctx.fillText('СЕРТИФІКАТ', titleX, titleY);
     ctx.restore();
 
-    // === PARK BRANDING at top ===
-    ctx.fillStyle = '#fff';
-    ctx.font = '800 24px Nunito, sans-serif';
-    ctx.globalAlpha = 0.9;
-    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', W / 2, 80);
-    ctx.font = '500 14px Nunito, sans-serif';
-    ctx.globalAlpha = 0.7;
-    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ ТА ПІДЛІТКІВ', W / 2, 108);
-    ctx.globalAlpha = 1;
+    // Gift emoji next to title
+    ctx.font = '60px sans-serif';
+    const titleWidth = ctx.measureText('СЕРТИФІКАТ').width;
+    ctx.save();
+    ctx.font = '900 72px Nunito, sans-serif';
+    const tw = ctx.measureText('СЕРТИФІКАТ').width;
+    ctx.restore();
+    ctx.fillText('🎁', titleX + tw + 15, titleY);
 
-    // === LOGO (big, on the right side of card) ===
+    // === LOGO (big dinosaur, RIGHT side) ===
     const logo = await loadCertLogo();
     if (logo) {
-        const logoSize = 200;
-        const logoX = cardX + cardW - logoSize - 20;
-        const logoY = cardY + (cardH - logoSize) / 2;
-        ctx.globalAlpha = 0.15;
+        const logoSize = 320;
+        const logoX = W - logoSize - 30;
+        const logoY = (H - logoSize) / 2 + 10;
+        ctx.save();
+        ctx.globalAlpha = 0.92;
         ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
         ctx.globalAlpha = 1;
-        // Small logo top-left in card
-        const smLogo = 50;
-        ctx.drawImage(logo, cardX + 24, cardY + 20, smLogo, smLogo);
+        ctx.restore();
     }
 
-    // === CERTIFICATE TYPE ===
-    const typeY = cardY + 80;
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#0277BD';
-    ctx.font = '700 22px Nunito, sans-serif';
-    ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), W / 2, typeY);
-
-    // === DECORATIVE SEPARATOR ===
-    const sepY = typeY + 20;
-    ctx.strokeStyle = '#29B6F6';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(W / 2 - 120, sepY);
-    ctx.lineTo(W / 2 + 120, sepY);
-    ctx.stroke();
-    // center diamond
-    ctx.fillStyle = '#29B6F6';
-    ctx.save();
-    ctx.translate(W / 2, sepY);
-    ctx.rotate(Math.PI / 4);
-    ctx.fillRect(-5, -5, 10, 10);
-    ctx.restore();
-
-    // === RECIPIENT NAME (main focus, large, green/dark) ===
-    const nameY = sepY + 70;
+    // === RECIPIENT NAME — large dark bold, LEFT aligned ===
     const nameText = cert.displayValue || '';
     const nameLen = nameText.length;
-    const nameFontSize = nameLen > 30 ? 32 : nameLen > 20 ? 40 : 50;
-    ctx.fillStyle = '#1B5E20';
+    const nameFontSize = nameLen > 35 ? 36 : nameLen > 25 ? 42 : nameLen > 18 ? 48 : 56;
+    ctx.fillStyle = '#0D47A1';
     ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(nameText, W / 2, nameY);
+    ctx.textAlign = 'left';
+
+    // Word wrap if name is too long
+    const maxNameW = W - 420;
+    const words = nameText.split(' ');
+    let lines = [];
+    let currentLine = '';
+    for (const word of words) {
+        const testLine = currentLine ? currentLine + ' ' + word : word;
+        if (ctx.measureText(testLine).width > maxNameW && currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+        } else {
+            currentLine = testLine;
+        }
+    }
+    if (currentLine) lines.push(currentLine);
+
+    const nameStartY = 230;
+    const nameLineH = nameFontSize * 1.15;
+    lines.forEach((line, i) => {
+        ctx.fillText(line, titleX, nameStartY + i * nameLineH);
+    });
+
+    // === CERTIFICATE TYPE — below name ===
+    const typeY = nameStartY + lines.length * nameLineH + 15;
+    ctx.fillStyle = '#1A237E';
+    ctx.font = '800 30px Nunito, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), titleX, typeY);
 
     // === CERT CODE ===
-    const codeY = nameY + 50;
-    ctx.fillStyle = '#78909C';
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
     ctx.font = '600 16px Nunito, sans-serif';
-    ctx.fillText('Код сертифіката:', W / 2, codeY);
-    ctx.fillStyle = '#37474F';
-    ctx.font = '800 22px "Courier New", monospace';
-    ctx.fillText(cert.certCode || '', W / 2, codeY + 30);
+    ctx.fillText(cert.certCode || '', titleX, typeY + 35);
 
-    // === VALID UNTIL (bottom of card) ===
+    // === VALID UNTIL — bottom left ===
     const validDate = cert.validUntil
         ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '—';
-    const validY = cardY + cardH - 50;
-    ctx.fillStyle = '#0277BD';
-    ctx.font = '700 20px Nunito, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`СЕРТИФІКАТ ДІЙСНИЙ ДО  ${validDate}`, W / 2, validY);
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 22px Nunito, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`СЕРТИФІКАТ ДІЙСНИЙ ДО ${validDate}`, titleX, H - 105);
 
-    // === BOTTOM AREA: phone + site ===
+    // === PHONE — bottom left ===
     ctx.fillStyle = '#fff';
     ctx.font = '700 20px Nunito, sans-serif';
-    ctx.globalAlpha = 0.9;
-    ctx.fillText('+38(0800)-75-35-53', W / 2, H - 60);
-    ctx.font = '500 14px Nunito, sans-serif';
-    ctx.globalAlpha = 0.6;
-    ctx.fillText('parkzp.com', W / 2, H - 35);
-    ctx.globalAlpha = 1;
+    ctx.fillText('+38(0800)-75-35-53', titleX, H - 75);
 
-    // === BOTTOM DECORATIVE BAR ===
-    const barGrad = ctx.createLinearGradient(0, H - 16, W, H - 16);
-    barGrad.addColorStop(0, '#4FC3F7');
-    barGrad.addColorStop(0.5, '#0288D1');
-    barGrad.addColorStop(1, '#4FC3F7');
-    ctx.fillStyle = barGrad;
-    ctx.fillRect(0, H - 8, W, 8);
+    // === PARK BRANDING — bottom right, colorful letters ===
+    ctx.textAlign = 'right';
+    const brandX = W - 50;
+    const brandY = H - 100;
+
+    // "ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ" with colored letters
+    const parkName = 'ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ';
+    const parkColors = ['#F44336', '#FF9800', '#FFEB3B', '#4CAF50', '#2196F3', '#9C27B0',
+        '#F44336', '#FF9800', '#FFEB3B', '#4CAF50', '#2196F3', '#9C27B0',
+        '#F44336', '#FF9800', '#FFEB3B', '#4CAF50', '#2196F3', '#9C27B0',
+        '#F44336', '#FF9800', '#FFEB3B', '#4CAF50', '#2196F3', '#9C27B0', '#F44336'];
+    ctx.font = '900 22px Nunito, sans-serif';
+    // Measure total width to draw right-aligned colorful text
+    const totalParkW = ctx.measureText(parkName).width;
+    let charX = brandX - totalParkW;
+    for (let i = 0; i < parkName.length; i++) {
+        ctx.fillStyle = parkName[i] === ' ' ? 'transparent' : parkColors[i % parkColors.length];
+        ctx.textAlign = 'left';
+        ctx.fillText(parkName[i], charX, brandY);
+        charX += ctx.measureText(parkName[i]).width;
+    }
+
+    // Subtitle
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = '600 12px Nunito, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ ТА ПІДЛІТКІВ', brandX, brandY + 20);
 
     return canvas;
 }

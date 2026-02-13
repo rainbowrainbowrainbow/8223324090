@@ -2128,14 +2128,28 @@ async function showCertDetail(id) {
     const actions = document.getElementById('certDetailActions');
     if (!modal || !content) return;
 
+    const preview = document.getElementById('certImagePreview');
     content.innerHTML = '<p class="empty-state">Завантаження...</p>';
     actions.innerHTML = '';
+    if (preview) preview.innerHTML = '';
     modal.classList.remove('hidden');
 
     try {
         const response = await fetch(`${API_BASE}/certificates/${id}`, { headers: getAuthHeaders(false) });
         if (!response.ok) throw new Error('Not found');
         const cert = await response.json();
+
+        // Generate certificate image preview
+        if (preview) {
+            generateCertificateCanvas(cert).then(canvas => {
+                preview.innerHTML = '';
+                canvas.style.width = '100%';
+                canvas.style.height = 'auto';
+                canvas.style.borderRadius = '8px';
+                canvas.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)';
+                preview.appendChild(canvas);
+            });
+        }
 
         const issuedDate = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('uk-UA') : '—';
         const validDate = cert.validUntil ? new Date(cert.validUntil).toLocaleDateString('uk-UA') : '—';
@@ -2158,9 +2172,10 @@ async function showCertDetail(id) {
             </div>
         `;
 
-        // Copy all info button + action buttons
+        // Download + copy + action buttons
         const copyText = `Сертифікат: ${cert.certCode}\n${modeLabel}: ${cert.displayValue}\nТип: ${cert.typeText}\nДійсний до: ${validDate}`;
-        let btns = `<button class="btn-copy-all btn-sm" onclick="copyCertText(\`${copyText.replace(/`/g, '\\`')}\`)">📋 Скопіювати інфо</button>`;
+        let btns = `<button class="btn-download-cert btn-sm" onclick="downloadCertificateImage(${cert.id})">🖼️ Скачати</button>`;
+        btns += `<button class="btn-copy-all btn-sm" onclick="copyCertText(\`${copyText.replace(/`/g, '\\`')}\`)">📋 Скопіювати інфо</button>`;
         if (cert.status === 'active') {
             btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${cert.id}, 'used')">✅ Використано</button>`;
             btns += `<button class="btn-danger btn-sm" onclick="changeCertStatus(${cert.id}, 'revoked')">❌ Анулювати</button>`;
@@ -2232,4 +2247,229 @@ function copyCertText(text) {
         document.body.removeChild(ta);
         showNotification('Інформацію скопійовано!', 'success');
     });
+}
+
+// ==========================================
+// Certificate Image Generator (Canvas)
+// ==========================================
+
+let _certLogoCache = null;
+
+function loadCertLogo() {
+    if (_certLogoCache) return Promise.resolve(_certLogoCache);
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => { _certLogoCache = img; resolve(img); };
+        img.onerror = () => resolve(null);
+        img.src = 'images/logo-new.png';
+    });
+}
+
+function drawRoundedRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+async function generateCertificateCanvas(cert) {
+    const W = 1200, H = 800;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // --- Background ---
+    const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+    bgGrad.addColorStop(0, '#f0fdf4');
+    bgGrad.addColorStop(0.5, '#ffffff');
+    bgGrad.addColorStop(1, '#ecfdf5');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // --- Decorative corner circles ---
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#10B981';
+    ctx.beginPath(); ctx.arc(-60, -60, 250, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W + 60, H + 60, 250, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W + 40, -40, 180, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-40, H + 40, 180, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // --- Outer border ---
+    const borderPad = 24;
+    ctx.strokeStyle = '#10B981';
+    ctx.lineWidth = 3;
+    drawRoundedRect(ctx, borderPad, borderPad, W - borderPad * 2, H - borderPad * 2, 20);
+    ctx.stroke();
+
+    // --- Inner border (double) ---
+    const innerPad = 32;
+    ctx.strokeStyle = '#86EFAC';
+    ctx.lineWidth = 1.5;
+    drawRoundedRect(ctx, innerPad, innerPad, W - innerPad * 2, H - innerPad * 2, 16);
+    ctx.stroke();
+
+    // --- Small decorative diamonds in corners ---
+    const diamondSize = 8;
+    const dOff = 28;
+    [[dOff, dOff], [W - dOff, dOff], [dOff, H - dOff], [W - dOff, H - dOff]].forEach(([cx, cy]) => {
+        ctx.fillStyle = '#10B981';
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillRect(-diamondSize / 2, -diamondSize / 2, diamondSize, diamondSize);
+        ctx.restore();
+    });
+
+    // --- Logo ---
+    const logo = await loadCertLogo();
+    const logoSize = 90;
+    const logoX = (W - logoSize) / 2;
+    const logoY = 50;
+    if (logo) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
+        ctx.restore();
+        // Logo ring
+        ctx.strokeStyle = '#10B981';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 2, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    // --- Park name ---
+    ctx.fillStyle = '#065F46';
+    ctx.font = '700 22px Nunito, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Парк Закревського Періоду', W / 2, logoY + logoSize + 30);
+
+    // --- "СЕРТИФІКАТ" title ---
+    const titleY = logoY + logoSize + 72;
+    ctx.fillStyle = '#10B981';
+    ctx.font = '800 42px Nunito, sans-serif';
+    ctx.letterSpacing = '4px';
+    ctx.fillText('С Е Р Т И Ф І К А Т', W / 2, titleY);
+
+    // --- Decorative line under title ---
+    const lineW = 320;
+    const lineGrad = ctx.createLinearGradient(W / 2 - lineW / 2, 0, W / 2 + lineW / 2, 0);
+    lineGrad.addColorStop(0, 'rgba(16,185,129,0)');
+    lineGrad.addColorStop(0.3, '#10B981');
+    lineGrad.addColorStop(0.7, '#10B981');
+    lineGrad.addColorStop(1, 'rgba(16,185,129,0)');
+    ctx.strokeStyle = lineGrad;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - lineW / 2, titleY + 12);
+    ctx.lineTo(W / 2 + lineW / 2, titleY + 12);
+    ctx.stroke();
+
+    // --- Certificate type ---
+    ctx.fillStyle = '#6B7280';
+    ctx.font = '600 20px Nunito, sans-serif';
+    ctx.fillText(cert.typeText || 'на одноразовий вхід', W / 2, titleY + 48);
+
+    // --- Recipient name (main focus) ---
+    const nameY = titleY + 110;
+    ctx.fillStyle = '#1F2937';
+    const nameLen = (cert.displayValue || '').length;
+    const nameFontSize = nameLen > 30 ? 32 : nameLen > 20 ? 38 : 46;
+    ctx.font = `800 ${nameFontSize}px Nunito, sans-serif`;
+    ctx.fillText(cert.displayValue || '', W / 2, nameY);
+
+    // --- Underline for name ---
+    const nameMetrics = ctx.measureText(cert.displayValue || '');
+    const nameW = Math.min(nameMetrics.width + 60, 700);
+    ctx.strokeStyle = '#D1D5DB';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - nameW / 2, nameY + 12);
+    ctx.lineTo(W / 2 + nameW / 2, nameY + 12);
+    ctx.stroke();
+
+    // --- Info rows ---
+    const infoY = nameY + 60;
+    const colLeft = W / 2 - 200;
+    const colRight = W / 2 + 200;
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#9CA3AF';
+    ctx.font = '600 14px Nunito, sans-serif';
+    ctx.fillText('КОД СЕРТИФІКАТА', colLeft, infoY);
+    ctx.fillText('ДІЙСНИЙ ДО', colRight, infoY);
+
+    ctx.fillStyle = '#1F2937';
+    ctx.font = '700 22px "Courier New", monospace';
+    ctx.fillText(cert.certCode || '', colLeft, infoY + 30);
+
+    const validDate = cert.validUntil
+        ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' })
+        : '—';
+    ctx.font = '700 22px Nunito, sans-serif';
+    ctx.fillText(validDate, colRight, infoY + 30);
+
+    // --- Separator dots ---
+    ctx.fillStyle = '#D1D5DB';
+    for (let dx = -2; dx <= 2; dx++) {
+        ctx.beginPath();
+        ctx.arc(W / 2 + dx * 12, infoY + 20, 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // --- Bottom footer ---
+    const footerY = H - 60;
+    ctx.fillStyle = '#D1D5DB';
+    ctx.font = '500 12px Nunito, sans-serif';
+    ctx.textAlign = 'center';
+    const issuedDate = cert.issuedAt
+        ? new Date(cert.issuedAt).toLocaleDateString('uk-UA')
+        : new Date().toLocaleDateString('uk-UA');
+    ctx.fillText(`Видано: ${issuedDate}  •  parkzp.com`, W / 2, footerY);
+
+    // --- Decorative bottom bar ---
+    const barGrad = ctx.createLinearGradient(0, H - 28, W, H - 28);
+    barGrad.addColorStop(0, '#10B981');
+    barGrad.addColorStop(0.5, '#059669');
+    barGrad.addColorStop(1, '#10B981');
+    ctx.fillStyle = barGrad;
+    drawRoundedRect(ctx, borderPad, H - borderPad - 6, W - borderPad * 2, 6, 3);
+    ctx.fill();
+
+    return canvas;
+}
+
+async function downloadCertificateImage(certId) {
+    const btn = document.querySelector(`[onclick*="downloadCertificateImage(${certId})"]`);
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Генерація...'; }
+
+    try {
+        const response = await fetch(`${API_BASE}/certificates/${certId}`, { headers: getAuthHeaders(false) });
+        if (!response.ok) throw new Error('Not found');
+        const cert = await response.json();
+
+        const canvas = await generateCertificateCanvas(cert);
+        const link = document.createElement('a');
+        link.download = `${cert.certCode}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        showNotification('Сертифікат завантажено!', 'success');
+    } catch (err) {
+        showNotification('Помилка генерації сертифіката', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🖼️ Скачати'; }
+    }
 }

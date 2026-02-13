@@ -14,17 +14,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=8.5.0">
-    <link rel="stylesheet" href="css/auth.css?v=8.5.0">
-    <link rel="stylesheet" href="css/layout.css?v=8.5.0">
-    <link rel="stylesheet" href="css/timeline.css?v=8.5.0">
-    <link rel="stylesheet" href="css/panel.css?v=8.5.0">
-    <link rel="stylesheet" href="css/modals.css?v=8.5.0">
-    <link rel="stylesheet" href="css/controls.css?v=8.5.0">
-    <link rel="stylesheet" href="css/features.css?v=8.5.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=8.5.0">
-    <link rel="stylesheet" href="css/responsive.css?v=8.5.0">
-    <link rel="stylesheet" href="css/pages.css?v=8.5.0">
+    <link rel="stylesheet" href="css/base.css?v=8.5.1">
+    <link rel="stylesheet" href="css/auth.css?v=8.5.1">
+    <link rel="stylesheet" href="css/layout.css?v=8.5.1">
+    <link rel="stylesheet" href="css/timeline.css?v=8.5.1">
+    <link rel="stylesheet" href="css/panel.css?v=8.5.1">
+    <link rel="stylesheet" href="css/modals.css?v=8.5.1">
+    <link rel="stylesheet" href="css/controls.css?v=8.5.1">
+    <link rel="stylesheet" href="css/features.css?v=8.5.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=8.5.1">
+    <link rel="stylesheet" href="css/responsive.css?v=8.5.1">
+    <link rel="stylesheet" href="css/pages.css?v=8.5.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -35,9 +35,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v8.5.0 — Панель сертифікатів</p>
+                <p class="tagline">Система бронювання v8.5.1 — Графічні сертифікати</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.5.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.5.1</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -687,6 +687,7 @@
         <div class="modal-content">
             <span class="modal-close">&times;</span>
             <h3>📄 Деталі сертифіката</h3>
+            <div id="certImagePreview" class="cert-image-preview"></div>
             <div id="certDetailContent"></div>
             <div class="cert-detail-actions" id="certDetailActions"></div>
         </div>
@@ -802,6 +803,15 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v8.5.1 — Графічні сертифікати</h4>
+                    <ul>
+                        <li>Генерація графічного сертифіката (Canvas) з логотипом парку</li>
+                        <li>Прев'ю картинки в деталях сертифіката</li>
+                        <li>Кнопка «🖼️ Скачати» — завантажує PNG для відправки в месенджерах</li>
+                        <li>Дизайн: подвійна рамка, градієнтні акценти, ПІБ великим шрифтом</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v8.5.0 — Панель сертифікатів</h4>
                     <ul>
@@ -1973,13 +1983,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=8.5.0"></script>
-    <script src="js/api.js?v=8.5.0"></script>
-    <script src="js/ui.js?v=8.5.0"></script>
-    <script src="js/auth.js?v=8.5.0"></script>
-    <script src="js/timeline.js?v=8.5.0"></script>
-    <script src="js/booking.js?v=8.5.0"></script>
-    <script src="js/settings.js?v=8.5.0"></script>
-    <script src="js/app.js?v=8.5.0"></script>
+    <script src="js/config.js?v=8.5.1"></script>
+    <script src="js/api.js?v=8.5.1"></script>
+    <script src="js/ui.js?v=8.5.1"></script>
+    <script src="js/auth.js?v=8.5.1"></script>
+    <script src="js/timeline.js?v=8.5.1"></script>
+    <script src="js/booking.js?v=8.5.1"></script>
+    <script src="js/settings.js?v=8.5.1"></script>
+    <script src="js/app.js?v=8.5.1"></script>
 </body>
 </html>

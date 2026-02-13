@@ -1392,6 +1392,16 @@
     border-top: 1px solid var(--gray-50, #f9fafb);
 }
 
+.cert-image-preview {
+    margin-bottom: 12px;
+}
+
+.cert-image-preview canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
 /* Certificate detail modal */
 .cert-detail-grid {
     display: flex;
@@ -1442,6 +1452,12 @@
     border: none;
     font-family: inherit;
     transition: all 0.15s;
+}
+
+.cert-detail-actions .btn-download-cert.btn-sm {
+    background: linear-gradient(135deg, #8B5CF6, #7C3AED);
+    color: #fff;
+    font-weight: 800;
 }
 
 .cert-detail-actions .btn-submit.btn-sm {

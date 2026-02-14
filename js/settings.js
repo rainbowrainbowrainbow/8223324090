@@ -2299,16 +2299,29 @@ async function generateCertificateCanvas(cert) {
 function drawCertDynamicContent(ctx, cert, W, H) {
     const titleX = 45;
 
-    // === "СЕРТИФІКАТ" title — large bold decorative text ===
+    // === "СЕРТИФІКАТ" title — decorative outlined text ===
     ctx.save();
-    ctx.fillStyle = '#0D47A1';
-    ctx.font = '900 64px Nunito, sans-serif';
+    ctx.font = 'italic 900 82px Nunito, sans-serif';
     ctx.textAlign = 'left';
-    ctx.shadowColor = 'rgba(0,0,0,0.12)';
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 2;
-    ctx.fillText('СЕРТИФІКАТ', titleX, 130);
+    ctx.lineJoin = 'round';
+    ctx.miterLimit = 2;
+    // Shadow layer
+    ctx.shadowColor = 'rgba(0,0,0,0.18)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 3;
+    ctx.shadowOffsetY = 3;
+    // White outline (stroke first, then fill on top)
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 7;
+    ctx.strokeText('СЕРТИФІКАТ', titleX, 120);
+    // Reset shadow before fill
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    // Dark blue fill
+    ctx.fillStyle = '#0D47A1';
+    ctx.fillText('СЕРТИФІКАТ', titleX, 120);
     ctx.restore();
 
     // === RECIPIENT NAME — large dark bold ===
@@ -2335,7 +2348,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     }
     if (currentLine) lines.push(currentLine);
 
-    const nameStartY = 240;
+    const nameStartY = 225;
     const nameLineH = nameFontSize * 1.15;
     lines.forEach((line, i) => {
         ctx.fillText(line, titleX, nameStartY + i * nameLineH);

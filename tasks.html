@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Задачі — Парк Закревського Періоду</title>
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=8.3.3">
+    <link rel="stylesheet" href="css/layout.css?v=8.3.3">
+    <link rel="stylesheet" href="css/pages.css?v=8.3.3">
+    <link rel="stylesheet" href="css/dark-mode.css?v=8.3.3">
+    <link rel="stylesheet" href="css/responsive.css?v=8.3.3">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* v7.9: Task board styles */
+        .board-tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .board-tab {
+            padding: 8px 16px; border: none; border-radius: 10px;
+            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+            background: rgba(255,255,255,0.3); color: var(--gray-600);
+            transition: all 0.2s; backdrop-filter: blur(10px);
+        }
+        .board-tab.active { background: var(--primary); color: #fff; }
+        .board-tab .tab-count {
+            display: inline-block; min-width: 20px; height: 20px; line-height: 20px;
+            text-align: center; border-radius: 10px; font-size: 11px; font-weight: 800;
+            background: rgba(0,0,0,0.1); margin-left: 4px;
+        }
+        .board-tab.active .tab-count { background: rgba(255,255,255,0.3); }
+
+        /* Category filters */
+        .cat-filters { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+        .cat-chip {
+            padding: 6px 12px; border: 2px solid transparent; border-radius: 20px;
+            font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit;
+            background: var(--gray-100); color: var(--gray-600); transition: all 0.15s;
+        }
+        .cat-chip.active { border-color: currentColor; background: rgba(255,255,255,0.6); }
+        .cat-chip[data-cat="event"] { color: #E65100; }
+        .cat-chip[data-cat="purchase"] { color: #2E7D32; }
+        .cat-chip[data-cat="admin"] { color: #1565C0; }
+        .cat-chip[data-cat="trampoline"] { color: #7B1FA2; }
+        .cat-chip[data-cat="personal"] { color: #455A64; }
+        .cat-chip[data-cat="improvement"] { color: #0891B2; }
+        .cat-chip[data-cat="all"] { color: var(--gray-700); }
+
+        /* Kanban columns (desktop) */
+        .kanban { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+        .kanban-col {
+            background: rgba(255,255,255,0.2); border-radius: 16px;
+            padding: 12px; backdrop-filter: blur(10px); min-height: 200px;
+        }
+        .kanban-col-header {
+            font-weight: 800; font-size: 14px; margin-bottom: 10px;
+            padding-bottom: 8px; border-bottom: 2px solid var(--gray-200);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .kanban-col-count {
+            background: var(--gray-200); border-radius: 10px;
+            padding: 2px 8px; font-size: 11px; font-weight: 700;
+        }
+
+        /* Task cards */
+        .task-card {
+            background: rgba(255,255,255,0.5); border-radius: 12px;
+            padding: 10px 12px; margin-bottom: 8px; border-left: 4px solid var(--gray-300);
+            backdrop-filter: blur(20px); transition: all 0.15s;
+            cursor: pointer; position: relative;
+        }
+        .task-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
+        .task-card.priority-high { border-left-color: #E53935; }
+        .task-card.priority-low { border-left-color: #42A5F5; }
+        .task-card.cat-event { border-left-color: #E65100; }
+        .task-card.cat-purchase { border-left-color: #2E7D32; }
+        .task-card.cat-admin { border-left-color: #1565C0; }
+        .task-card.cat-trampoline { border-left-color: #7B1FA2; }
+        .task-card.cat-personal { border-left-color: #455A64; }
+        .task-card.cat-improvement { border-left-color: #0891B2; }
+        .task-card.status-done { opacity: 0.5; }
+        .task-card-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+        .task-card-meta { font-size: 11px; color: var(--gray-500); display: flex; gap: 8px; flex-wrap: wrap; }
+        .task-card-actions { display: flex; gap: 4px; margin-top: 6px; }
+        .task-card-actions button {
+            padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px;
+            cursor: pointer; font-family: inherit; font-weight: 600;
+            background: var(--gray-100); color: var(--gray-600); transition: all 0.1s;
+        }
+        .task-card-actions button:hover { background: var(--gray-200); }
+        .task-card-actions .btn-done { background: #E8F5E9; color: #2E7D32; }
+        .task-card-actions .btn-progress { background: #E3F2FD; color: #1565C0; }
+        .task-card-actions .btn-delete { background: #FFEBEE; color: #C62828; }
+
+        /* Group headers (mobile stacked view) */
+        .group-header {
+            font-weight: 800; font-size: 15px; margin: 16px 0 8px;
+            padding-bottom: 6px; border-bottom: 2px solid var(--gray-200);
+            color: var(--gray-700);
+        }
+        .group-header:first-child { margin-top: 0; }
+
+        /* Quick add (floating) */
+        .quick-add {
+            display: flex; gap: 8px; margin-bottom: 16px;
+            background: rgba(255,255,255,0.3); backdrop-filter: blur(10px);
+            padding: 10px; border-radius: 12px;
+        }
+        .quick-add input, .quick-add select {
+            padding: 8px 10px; border: 1.5px solid var(--gray-200); border-radius: 8px;
+            font-family: inherit; font-size: 14px; background: rgba(255,255,255,0.6);
+        }
+        .quick-add input { flex: 1; min-width: 0; }
+        .quick-add select { width: auto; }
+        .quick-add button {
+            padding: 8px 16px; border: none; border-radius: 8px;
+            background: var(--primary); color: #fff; font-weight: 700;
+            font-family: inherit; cursor: pointer; white-space: nowrap;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .kanban { grid-template-columns: 1fr; gap: 12px; }
+            .kanban-col { padding: 10px; }
+            .quick-add { flex-wrap: wrap; }
+            .quick-add input { flex: 1 1 100%; }
+            .board-tab { padding: 6px 10px; font-size: 12px; }
+            .cat-chip { padding: 5px 10px; font-size: 11px; }
+        }
+
+        /* Empty state */
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--gray-400); font-size: 14px; }
+        .empty-state span { font-size: 40px; display: block; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <!-- Login overlay -->
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/favicon-512.png" alt="Логотип" class="logo-img-small">
+                    <div class="logo-text"><h1>Парк Закревського Періоду</h1></div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link active">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="page-container">
+            <!-- Board view tabs -->
+            <div class="board-tabs" id="boardTabs">
+                <button class="board-tab active" data-view="today">📅 Сьогодні <span class="tab-count" id="countToday">0</span></button>
+                <button class="board-tab" data-view="week">📆 Тиждень <span class="tab-count" id="countWeek">0</span></button>
+                <button class="board-tab" data-view="my">👤 Мої <span class="tab-count" id="countMy">0</span></button>
+                <button class="board-tab" data-view="board">📋 Канбан</button>
+                <button class="board-tab" data-view="templates">🔄 Шаблони</button>
+            </div>
+
+            <!-- Category chips -->
+            <div class="cat-filters" id="catFilters">
+                <button class="cat-chip active" data-cat="all">Всі</button>
+                <button class="cat-chip" data-cat="event">📅 Івенти</button>
+                <button class="cat-chip" data-cat="purchase">🛒 Закупівлі</button>
+                <button class="cat-chip" data-cat="admin">🏢 Адмін</button>
+                <button class="cat-chip" data-cat="trampoline">🤸 Батути</button>
+                <button class="cat-chip" data-cat="personal">👤 Особисті</button>
+                <button class="cat-chip" data-cat="improvement">💡 Покращення</button>
+            </div>
+
+            <!-- Quick add task -->
+            <div class="quick-add" id="quickAdd">
+                <input type="text" id="taskTitle" placeholder="Нова задача...">
+                <select id="taskCategory">
+                    <option value="admin">🏢 Адмін</option>
+                    <option value="event">📅 Івент</option>
+                    <option value="purchase">🛒 Закупівлі</option>
+                    <option value="trampoline">🤸 Батути</option>
+                    <option value="personal">👤 Особисті</option>
+                    <option value="improvement">💡 Покращення</option>
+                </select>
+                <select id="taskPriority">
+                    <option value="normal">Звичайний</option>
+                    <option value="high">🔴 Високий</option>
+                    <option value="low">🔵 Низький</option>
+                </select>
+                <button id="addTaskBtn">+ Додати</button>
+            </div>
+
+            <!-- Task board content -->
+            <div id="boardContent"></div>
+
+            <!-- Templates section (hidden by default) -->
+            <div id="templatesSection" style="display:none;">
+                <div class="quick-add">
+                    <input type="text" id="tplTitle" placeholder="Назва шаблону...">
+                    <select id="tplPattern">
+                        <option value="daily">Щоденно</option>
+                        <option value="weekdays">Будні (пн-пт)</option>
+                        <option value="weekly">Щотижня (пн)</option>
+                        <option value="custom">Обрані дні</option>
+                    </select>
+                    <input type="text" id="tplDays" placeholder="1,3,5" style="width:80px; display:none;">
+                    <select id="tplCategory">
+                        <option value="admin">🏢 Адмін</option>
+                        <option value="event">📅 Івент</option>
+                        <option value="purchase">🛒 Закупівлі</option>
+                        <option value="trampoline">🤸 Батути</option>
+                        <option value="personal">👤 Особисті</option>
+                    </select>
+                    <select id="tplPriority">
+                        <option value="normal">Звичайний</option>
+                        <option value="high">🔴 Високий</option>
+                    </select>
+                    <input type="text" id="tplAssignedTo" placeholder="Відповідальний" style="width:120px">
+                    <button id="addTemplateBtn">+ Шаблон</button>
+                </div>
+                <div id="templatesList" class="cards-grid"></div>
+            </div>
+        </main>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=8.3.3"></script>
+    <script src="js/api.js?v=8.3.3"></script>
+    <script src="js/auth.js?v=8.3.3"></script>
+    <script src="js/tasks-page.js?v=8.3.3"></script>
+</body>
+</html>

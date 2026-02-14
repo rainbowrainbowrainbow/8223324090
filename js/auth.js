@@ -77,10 +77,10 @@ function showMainApp() {
         settingsBtn.classList.toggle('hidden', AppState.currentUser.role !== 'admin');
     }
 
-    // Certificates — тільки для адмінів
+    // Certificates — доступно всім ролям
     const certificatesBtn = document.getElementById('certificatesBtn');
     if (certificatesBtn) {
-        certificatesBtn.classList.toggle('hidden', AppState.currentUser.role !== 'admin');
+        certificatesBtn.classList.remove('hidden');
     }
 
     // Дашборд (icon) — не для Animator

@@ -2447,13 +2447,13 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     ctx.font = '700 16px Nunito, sans-serif';
     ctx.fillText('+38(0800)-75-35-53', titleX, H - 90);
 
-    // === PARK BRANDING (moved up to avoid logo/dashed line overlap) ===
+    // === PARK BRANDING (right of logo circle, above dashed border) ===
     ctx.fillStyle = '#fff';
     ctx.font = '800 13px Nunito, sans-serif';
-    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 95, H - 68);
+    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 95, H - 78);
     ctx.font = '600 10px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 95, H - 54);
+    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 95, H - 64);
 }
 
 async function drawCertQRCode(ctx, cert, W, H) {
@@ -2468,10 +2468,10 @@ async function drawCertQRCode(ctx, cert, W, H) {
                     img.onerror = reject;
                     img.src = qrData.dataUrl;
                 });
-                // QR — smaller, positioned right of text block (between text and superhero)
-                const qrSize = 80;
+                // QR — right of text block, between text and superhero
+                const qrSize = 160;
                 const qrCenterX = 530;
-                const qrCenterY = 260;
+                const qrCenterY = 280;
                 const qrX = qrCenterX - qrSize / 2;
                 const qrY = qrCenterY - qrSize / 2;
                 const qrR = 16;

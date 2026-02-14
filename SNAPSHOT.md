@@ -3,7 +3,7 @@
 > Оновлюється кожні 10-15 повідомлень. Швидкий контекст для продовження роботи.
 
 ## Де ми
-Версія **v8.3.3**. Bugfixes: undo_edit/undo_shift в історії + share/copy invite crash fix.
+Версія **v8.6.0**. Розумний розподіл: redesign birthday блоків + авто-distribute афіші перед дайджестами.
 
 ## Що готово
 - v5.30-v5.38: UI/UX overhaul (design system, responsive, dark mode, PWA)
@@ -29,6 +29,11 @@
 - v8.3.1: МК Футболки (розміри XS-XL в extra_data, 2 автоматизації) + афіша-блоки row layout
 - v8.3.2: Фікс історії (афіша/автоматизація рендеринг) + extra_data в linked bookings
 - v8.3.3: Bugfixes (undo_edit/undo_shift в історії, share/copy invite crash fix)
+- v8.4.0: Сертифікати (реєстр CERT-YYYY-NNNNN, Telegram-сповіщення, scheduler)
+- v8.5.0: Панель сертифікатів (slide-in, статистика, градієнтні картки)
+- v8.5.1: Графічні сертифікати (Canvas PNG, Містер Зак)
+- v8.5.2: Сезонний маскот (4 seasonal ілюстрації)
+- v8.6.0: Розумний розподіл (birthday pill-redesign + авто-distribute перед дайджестами)
 
 ## Що далі (план)
 - Clawd Bot команди для задач (/tasks, /done)

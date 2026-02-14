@@ -143,8 +143,19 @@ body.dark-mode #certDisplayValue {
 body.dark-mode .cert-date-display {
     color: #E2E8F0;
 }
-body.dark-mode .cert-gear-btn {
+body.dark-mode .cert-season-btn {
+    background: var(--dark-card, #1E293B);
+    border-color: #334155;
     color: #94A3B8;
+}
+body.dark-mode .cert-season-btn:hover {
+    border-color: #60A5FA;
+    background: rgba(96,165,250,0.1);
+}
+body.dark-mode .cert-season-btn.active {
+    border-color: #60A5FA;
+    background: rgba(96,165,250,0.15);
+    color: #60A5FA;
 }
 body.dark-mode .cert-detail-row-name {
     background: rgba(59,130,246,0.1);

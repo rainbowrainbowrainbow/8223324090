@@ -529,8 +529,11 @@
     .cert-type-row input {
         min-height: 44px;
     }
-    .cert-date-row {
+    .cert-season-row {
         flex-wrap: wrap;
+    }
+    .cert-season-btn {
+        min-height: 44px;
     }
     .cert-detail-row-name {
         margin: 0 -8px;

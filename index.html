@@ -14,17 +14,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=8.6.0">
-    <link rel="stylesheet" href="css/auth.css?v=8.6.0">
-    <link rel="stylesheet" href="css/layout.css?v=8.6.0">
-    <link rel="stylesheet" href="css/timeline.css?v=8.6.0">
-    <link rel="stylesheet" href="css/panel.css?v=8.6.0">
-    <link rel="stylesheet" href="css/modals.css?v=8.6.0">
-    <link rel="stylesheet" href="css/controls.css?v=8.6.0">
-    <link rel="stylesheet" href="css/features.css?v=8.6.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=8.6.0">
-    <link rel="stylesheet" href="css/responsive.css?v=8.6.0">
-    <link rel="stylesheet" href="css/pages.css?v=8.6.0">
+    <link rel="stylesheet" href="css/base.css?v=8.6.1">
+    <link rel="stylesheet" href="css/auth.css?v=8.6.1">
+    <link rel="stylesheet" href="css/layout.css?v=8.6.1">
+    <link rel="stylesheet" href="css/timeline.css?v=8.6.1">
+    <link rel="stylesheet" href="css/panel.css?v=8.6.1">
+    <link rel="stylesheet" href="css/modals.css?v=8.6.1">
+    <link rel="stylesheet" href="css/controls.css?v=8.6.1">
+    <link rel="stylesheet" href="css/features.css?v=8.6.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=8.6.1">
+    <link rel="stylesheet" href="css/responsive.css?v=8.6.1">
+    <link rel="stylesheet" href="css/pages.css?v=8.6.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -35,9 +35,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v8.6.0 — Розумний розподіл</p>
+                <p class="tagline">Система бронювання v8.6.1 — Розумний розподіл</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.6.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.6.1</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -689,13 +689,20 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="certValidUntil">Дійсний до</label>
-                    <div class="cert-date-row">
-                        <span id="certValidUntilDisplay" class="cert-date-display"></span>
-                        <button type="button" id="certDateGearBtn" class="cert-gear-btn" onclick="toggleCertDateEdit()" title="Змінити дату">&#9881;</button>
+                    <label>Сезон (візуал сертифіката)</label>
+                    <div class="cert-season-row" id="certSeasonRow">
+                        <button type="button" class="cert-season-btn" data-season="winter">&#10052; Зима</button>
+                        <button type="button" class="cert-season-btn" data-season="spring">&#127800; Весна</button>
+                        <button type="button" class="cert-season-btn" data-season="summer">&#9728; Літо</button>
+                        <button type="button" class="cert-season-btn" data-season="autumn">&#127810; Осінь</button>
                     </div>
-                    <input type="date" id="certValidUntil" class="hidden">
-                    <small class="form-hint">За замовчуванням: +45 днів</small>
+                    <input type="hidden" id="certSeason" value="winter">
+                </div>
+                <div class="form-group">
+                    <label>Дійсний до</label>
+                    <span id="certValidUntilDisplay" class="cert-date-display"></span>
+                    <input type="hidden" id="certValidUntil">
+                    <small class="form-hint">Автоматично: сьогодні + 45 днів</small>
                 </div>
                 <div class="form-group">
                     <label for="certNotes">Примітка</label>
@@ -746,9 +753,20 @@
                     <small class="form-hint">Друкується на сертифікаті замість типу</small>
                 </div>
                 <div class="form-group">
-                    <label for="batchCertValidUntil">Дійсний до</label>
-                    <input type="date" id="batchCertValidUntil">
-                    <small class="form-hint">За замовчуванням: +45 днів</small>
+                    <label>Сезон (візуал сертифіката)</label>
+                    <div class="cert-season-row" id="batchCertSeasonRow">
+                        <button type="button" class="cert-season-btn" data-season="winter">&#10052; Зима</button>
+                        <button type="button" class="cert-season-btn" data-season="spring">&#127800; Весна</button>
+                        <button type="button" class="cert-season-btn" data-season="summer">&#9728; Літо</button>
+                        <button type="button" class="cert-season-btn" data-season="autumn">&#127810; Осінь</button>
+                    </div>
+                    <input type="hidden" id="batchCertSeason" value="winter">
+                </div>
+                <div class="form-group">
+                    <label>Дійсний до</label>
+                    <span id="batchCertValidUntilDisplay" class="cert-date-display"></span>
+                    <input type="hidden" id="batchCertValidUntil">
+                    <small class="form-hint">Автоматично: сьогодні + 45 днів</small>
                 </div>
                 <button type="submit" class="btn-submit btn-full" id="batchCertSubmitBtn">📦 Згенерувати</button>
             </form>
@@ -872,6 +890,14 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v8.6.1 — Оновлений дизайн сертифікатів</h4>
+                    <ul>
+                        <li>🎨 Новий фон сертифіката з оновленим розташуванням логотипу</li>
+                        <li>📐 QR-код перенесено в нижній лівий кут (не перекриває персонажа)</li>
+                        <li>📝 Інфо-блок (дата, умови, телефон) поруч з QR-кодом</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v8.6.0 — Розумний розподіл</h4>
                     <ul>
@@ -2069,13 +2095,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=8.6.0"></script>
-    <script src="js/api.js?v=8.6.0"></script>
-    <script src="js/ui.js?v=8.6.0"></script>
-    <script src="js/auth.js?v=8.6.0"></script>
-    <script src="js/timeline.js?v=8.6.0"></script>
-    <script src="js/booking.js?v=8.6.0"></script>
-    <script src="js/settings.js?v=8.6.1"></script>
-    <script src="js/app.js?v=8.6.0"></script>
+    <script src="js/config.js?v=8.6.1"></script>
+    <script src="js/api.js?v=8.6.1"></script>
+    <script src="js/ui.js?v=8.6.1"></script>
+    <script src="js/auth.js?v=8.6.1"></script>
+    <script src="js/timeline.js?v=8.6.1"></script>
+    <script src="js/booking.js?v=8.6.1"></script>
+    <script src="js/settings.js?v=8.6.2"></script>
+    <script src="js/app.js?v=8.6.1"></script>
 </body>
 </html>

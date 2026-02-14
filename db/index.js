@@ -408,6 +408,9 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_certificates_cert_code ON certificates(cert_code)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_certificates_valid_until ON certificates(valid_until)');
 
+        // v8.7: Season column for seasonal certificate backgrounds
+        await pool.query(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS season VARCHAR(10) DEFAULT 'winter'`);
+
         await pool.query(`
             CREATE TABLE IF NOT EXISTS certificate_counter (
                 year INTEGER PRIMARY KEY,

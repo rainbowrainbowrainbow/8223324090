@@ -662,15 +662,26 @@
                 </div>
                 <div class="form-group">
                     <label for="certDisplayValue" id="certDisplayValueLabel">ПІБ або ідентифікатор</label>
-                    <input type="text" id="certDisplayValue" placeholder="Іваненко Марія" maxlength="200">
+                    <input type="text" id="certDisplayValue" maxlength="200">
                 </div>
                 <div class="form-group">
                     <label for="certTypeText">Тип сертифіката</label>
-                    <input type="text" id="certTypeText" value="на одноразовий вхід" placeholder="на одноразовий вхід" maxlength="200">
+                    <div class="cert-type-row">
+                        <select id="certTypePreset" onchange="onCertTypePresetChange()">
+                            <option value="на одноразовий вхід">На одноразовий вхід</option>
+                            <option value="абонемент">Абонемент</option>
+                            <option value="custom">Інше (вписати)</option>
+                        </select>
+                        <input type="text" id="certTypeText" value="на одноразовий вхід" maxlength="200" class="hidden">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="certValidUntil">Дійсний до</label>
-                    <input type="date" id="certValidUntil">
+                    <div class="cert-date-row">
+                        <span id="certValidUntilDisplay" class="cert-date-display"></span>
+                        <button type="button" id="certDateGearBtn" class="cert-gear-btn" onclick="toggleCertDateEdit()" title="Змінити дату">&#9881;</button>
+                    </div>
+                    <input type="date" id="certValidUntil" class="hidden">
                     <small class="form-hint">За замовчуванням: +45 днів</small>
                 </div>
                 <div class="form-group">

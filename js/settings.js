@@ -2087,12 +2087,54 @@ function showCreateCertificateModal() {
     if (!modal) return;
     document.getElementById('certModalTitle').textContent = '📄 Видати сертифікат';
     document.getElementById('certificateForm').reset();
+    // Reset type preset
+    const presetSel = document.getElementById('certTypePreset');
+    if (presetSel) presetSel.value = 'на одноразовий вхід';
     document.getElementById('certTypeText').value = 'на одноразовий вхід';
+    document.getElementById('certTypeText').classList.add('hidden');
     // Default valid_until = +45 days
     const d = new Date();
     d.setDate(d.getDate() + 45);
-    document.getElementById('certValidUntil').value = d.toISOString().split('T')[0];
+    const dateInput = document.getElementById('certValidUntil');
+    dateInput.value = d.toISOString().split('T')[0];
+    dateInput.classList.add('hidden');
+    // Show human-readable date, hide raw input
+    updateCertDateDisplay();
     modal.classList.remove('hidden');
+}
+
+function onCertTypePresetChange() {
+    const preset = document.getElementById('certTypePreset').value;
+    const textInput = document.getElementById('certTypeText');
+    if (preset === 'custom') {
+        textInput.value = '';
+        textInput.classList.remove('hidden');
+        textInput.focus();
+    } else {
+        textInput.value = preset;
+        textInput.classList.add('hidden');
+    }
+}
+
+function toggleCertDateEdit() {
+    const dateInput = document.getElementById('certValidUntil');
+    dateInput.classList.toggle('hidden');
+    if (!dateInput.classList.contains('hidden')) {
+        dateInput.focus();
+        dateInput.addEventListener('change', updateCertDateDisplay, { once: true });
+    }
+}
+
+function updateCertDateDisplay() {
+    const dateInput = document.getElementById('certValidUntil');
+    const display = document.getElementById('certValidUntilDisplay');
+    if (!display || !dateInput) return;
+    if (dateInput.value) {
+        const d = new Date(dateInput.value + 'T00:00:00');
+        display.textContent = d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
+    } else {
+        display.textContent = 'не вказано';
+    }
 }
 
 async function handleCertificateSubmit(event) {
@@ -2293,64 +2335,72 @@ async function generateCertificateCanvas(cert) {
 
 function drawCertDynamicContent(ctx, cert, W, H) {
     const titleX = 45;
+    // Max text width — do not overlap superhero (right ~55% of image)
+    const maxTextW = 500;
 
-    // === "СЕРТИФІКАТ" title — golden like stars, with dark outline ===
+    // === "СЕРТИФІКАТ" title — solid dark blue, flat, no outline ===
     ctx.save();
-    ctx.font = '900 82px Nunito, sans-serif';
+    ctx.font = '900 78px Nunito, sans-serif';
     ctx.textAlign = 'left';
-    ctx.lineJoin = 'round';
-    ctx.miterLimit = 2;
-    // Dark blue outline
-    ctx.strokeStyle = '#0D47A1';
-    ctx.lineWidth = 6;
-    ctx.strokeText('СЕРТИФІКАТ', titleX, 135);
-    // Golden fill (matching stars)
-    ctx.fillStyle = '#F5B731';
+    ctx.fillStyle = '#19468B';
     ctx.fillText('СЕРТИФІКАТ', titleX, 135);
     ctx.restore();
 
     // === RECIPIENT NAME — large dark bold ===
     const nameText = cert.displayValue || '';
-    const nameLen = nameText.length;
-    const nameFontSize = nameLen > 35 ? 30 : nameLen > 25 ? 36 : nameLen > 18 ? 42 : 46;
-    ctx.fillStyle = '#0D47A1';
-    ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
-    ctx.textAlign = 'left';
+    if (nameText) {
+        const nameLen = nameText.length;
+        const nameFontSize = nameLen > 35 ? 28 : nameLen > 25 ? 34 : nameLen > 18 ? 40 : 44;
+        ctx.fillStyle = '#0D47A1';
+        ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
+        ctx.textAlign = 'left';
 
-    // Word wrap for long names
-    const maxNameW = W - 550;
-    const words = nameText.split(' ');
-    const lines = [];
-    let currentLine = '';
-    for (const word of words) {
-        const testLine = currentLine ? currentLine + ' ' + word : word;
-        if (ctx.measureText(testLine).width > maxNameW && currentLine) {
-            lines.push(currentLine);
-            currentLine = word;
-        } else {
-            currentLine = testLine;
+        // Word wrap for long names
+        const words = nameText.split(' ');
+        const lines = [];
+        let currentLine = '';
+        for (const word of words) {
+            const testLine = currentLine ? currentLine + ' ' + word : word;
+            if (ctx.measureText(testLine).width > maxTextW && currentLine) {
+                lines.push(currentLine);
+                currentLine = word;
+            } else {
+                currentLine = testLine;
+            }
         }
+        if (currentLine) lines.push(currentLine);
+
+        const nameStartY = 235;
+        const nameLineH = nameFontSize * 1.15;
+        // Max 3 lines to prevent overflow
+        const visibleLines = lines.slice(0, 3);
+        visibleLines.forEach((line, i) => {
+            ctx.fillText(line, titleX, nameStartY + i * nameLineH);
+        });
+
+        // === CERTIFICATE TYPE — below name ===
+        const typeY = nameStartY + visibleLines.length * nameLineH + 14;
+        ctx.fillStyle = '#1A237E';
+        ctx.font = '800 24px Nunito, sans-serif';
+        ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), titleX, typeY);
+
+        // === CERT CODE ===
+        ctx.fillStyle = 'rgba(13,71,161,0.6)';
+        ctx.font = '600 14px Nunito, sans-serif';
+        ctx.fillText(cert.certCode || '', titleX, typeY + 28);
+    } else {
+        // No name — show type and code higher
+        ctx.fillStyle = '#1A237E';
+        ctx.font = '800 28px Nunito, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), titleX, 235);
+
+        ctx.fillStyle = 'rgba(13,71,161,0.6)';
+        ctx.font = '600 14px Nunito, sans-serif';
+        ctx.fillText(cert.certCode || '', titleX, 268);
     }
-    if (currentLine) lines.push(currentLine);
 
-    const nameStartY = 240;
-    const nameLineH = nameFontSize * 1.15;
-    lines.forEach((line, i) => {
-        ctx.fillText(line, titleX, nameStartY + i * nameLineH);
-    });
-
-    // === CERTIFICATE TYPE — below name ===
-    const typeY = nameStartY + lines.length * nameLineH + 14;
-    ctx.fillStyle = '#1A237E';
-    ctx.font = '800 26px Nunito, sans-serif';
-    ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), titleX, typeY);
-
-    // === CERT CODE ===
-    ctx.fillStyle = 'rgba(13,71,161,0.6)';
-    ctx.font = '600 15px Nunito, sans-serif';
-    ctx.fillText(cert.certCode || '', titleX, typeY + 30);
-
-    // === VALID UNTIL — snow area (y=545-585) ===
+    // === VALID UNTIL — snow area ===
     const validDate = cert.validUntil
         ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '—';
@@ -2369,13 +2419,13 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     ctx.font = '700 16px Nunito, sans-serif';
     ctx.fillText('+38(0800)-75-35-53', titleX, H - 90);
 
-    // === PARK BRANDING (aligned with logo, above dashed border) ===
+    // === PARK BRANDING (moved up to avoid logo/dashed line overlap) ===
     ctx.fillStyle = '#fff';
     ctx.font = '800 13px Nunito, sans-serif';
-    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 95, H - 62);
+    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 95, H - 68);
     ctx.font = '600 10px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 95, H - 48);
+    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 95, H - 54);
 }
 
 async function drawCertQRCode(ctx, cert, W, H) {
@@ -2390,10 +2440,10 @@ async function drawCertQRCode(ctx, cert, W, H) {
                     img.onerror = reject;
                     img.src = qrData.dataUrl;
                 });
-                // QR on the clean blue sky area (left of superhero glow)
-                const qrSize = 110;
-                const qrCenterX = 440;
-                const qrCenterY = 290;
+                // QR — smaller, positioned right of text block (between text and superhero)
+                const qrSize = 80;
+                const qrCenterX = 530;
+                const qrCenterY = 260;
                 const qrX = qrCenterX - qrSize / 2;
                 const qrY = qrCenterY - qrSize / 2;
                 const qrR = 16;
@@ -2417,11 +2467,11 @@ async function drawCertQRCode(ctx, cert, W, H) {
                 ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
                 ctx.restore();
 
-                // "Сканувати для перевірки" below QR placeholder
-                ctx.fillStyle = 'rgba(255,255,255,0.75)';
-                ctx.font = '600 12px Nunito, sans-serif';
+                // "Сканувати" below QR
+                ctx.fillStyle = 'rgba(255,255,255,0.65)';
+                ctx.font = '600 10px Nunito, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText('Сканувати для перевірки', qrCenterX, qrCenterY + qrSize / 2 + 22);
+                ctx.fillText('Сканувати для перевірки', qrCenterX, qrCenterY + qrSize / 2 + 16);
                 ctx.textAlign = 'left';
             }
         }

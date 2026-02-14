@@ -134,14 +134,20 @@ body.dark-mode #certificateForm .form-group input,
 body.dark-mode #certificateForm .form-group select,
 body.dark-mode #certificateForm .form-group textarea {
     background: var(--gray-100);
-    border-color: transparent;
+    border-color: var(--gray-300);
 }
 body.dark-mode #certDisplayValue {
-    background: rgba(16,185,129,0.12) !important;
-    border-color: var(--primary) !important;
+    background: rgba(59,130,246,0.12) !important;
+    border-color: #3B82F6 !important;
+}
+body.dark-mode .cert-date-display {
+    color: #E2E8F0;
+}
+body.dark-mode .cert-gear-btn {
+    color: #94A3B8;
 }
 body.dark-mode .cert-detail-row-name {
-    background: rgba(16,185,129,0.1);
+    background: rgba(59,130,246,0.1);
 }
 body.dark-mode .cert-detail-row-name .cert-detail-val {
     color: #93C5FD;

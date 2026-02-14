@@ -1,0 +1,1261 @@
+/**
+ * dark-mode.css - Complete dark theme — v4.0 redesign
+ */
+
+body.dark-mode {
+    /* Override design tokens for dark mode */
+    --white: #1a1a2e;
+    --dark: #E2E8F0;
+    --light: #242442;
+    --gray: #9CA3AF;
+    --gray-light: #6B7280;
+    --gray-50: #1e1e32;
+    --gray-100: #252540;
+    --gray-200: #333350;
+    --gray-300: #444466;
+    --gray-400: #6B7280;
+    --gray-500: #9CA3AF;
+    --gray-600: #D1D5DB;
+    --gray-700: #E5E7EB;
+    --gray-800: #F3F4F6;
+    --gray-900: #F9FAFB;
+
+    /* Adjusted shadows for dark */
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.2);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    --shadow: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
+    --shadow-md: 0 10px 15px -3px rgba(0,0,0,0.4), 0 4px 6px -4px rgba(0,0,0,0.3);
+    --shadow-lg: 0 20px 25px -5px rgba(0,0,0,0.4), 0 8px 10px -6px rgba(0,0,0,0.3);
+    --shadow-xl: 0 25px 50px -12px rgba(0,0,0,0.5);
+    --shadow-primary: 0 8px 24px rgba(16,185,129,0.15);
+
+    /* Glass for dark */
+    --glass-bg: rgba(26,26,46,0.85);
+    --glass-border: rgba(255,255,255,0.05);
+
+    background-color: #0f0f1a;
+    background-image:
+        radial-gradient(ellipse at 20% 50%, rgba(16,185,129,0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(59,130,246,0.05) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 100%, rgba(139,92,246,0.03) 0%, transparent 50%),
+        radial-gradient(circle at 25% 25%, rgba(255,255,255,0.008) 1px, transparent 1px),
+        radial-gradient(circle at 75% 75%, rgba(255,255,255,0.008) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+    color: #E2E8F0;
+}
+
+/* Header */
+body.dark-mode .header {
+    background: linear-gradient(135deg, #0a1628 0%, #0f1f3a 40%, #0a2540 100%);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+}
+
+/* Timeline */
+body.dark-mode .timeline-container {
+    background: var(--white);
+    border-color: var(--gray-200);
+}
+
+body.dark-mode .line-header {
+    background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, transparent 100%);
+}
+
+body.dark-mode .timeline-line:nth-child(even) .line-header {
+    background: linear-gradient(135deg, rgba(16,185,129,0.04) 0%, transparent 100%);
+}
+
+body.dark-mode .line-header:hover {
+    background: linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.05) 100%);
+}
+
+body.dark-mode .line-grid {
+    background: #222240;
+    border-color: #3a3a5c;
+}
+
+body.dark-mode .grid-cell {
+    border-right-color: #333355;
+}
+
+body.dark-mode .grid-cell.hour {
+    border-right-color: #444468;
+}
+
+body.dark-mode .grid-cell:hover {
+    background: rgba(16,185,129,0.15);
+}
+
+body.dark-mode .grid-cell.selected {
+    background: rgba(16,185,129,0.25);
+}
+
+body.dark-mode .timeline-line:nth-child(even) {
+    background: rgba(255,255,255,0.02);
+}
+
+/* Time scale */
+body.dark-mode .time-scale {
+    background: var(--white);
+}
+
+/* Legend */
+body.dark-mode .legend {
+    background: var(--white);
+    border-color: var(--gray-200);
+}
+
+body.dark-mode .legend-item:has(.dot.quest) { background: rgba(139,92,246,0.15); color: #C4B5FD; }
+body.dark-mode .legend-item:has(.dot.animation) { background: rgba(59,130,246,0.15); color: #93C5FD; }
+body.dark-mode .legend-item:has(.dot.show) { background: rgba(249,115,22,0.15); color: #FDBA74; }
+body.dark-mode .legend-item:has(.dot.masterclass) { background: rgba(132,204,22,0.15); color: #BEF264; }
+body.dark-mode .legend-item:has(.dot.pinata) { background: rgba(236,72,153,0.15); color: #F9A8D4; }
+body.dark-mode .legend-item:has(.dot.photo) { background: rgba(6,182,212,0.15); color: #67E8F9; }
+body.dark-mode .legend-item:has(.dot.custom) { background: rgba(100,116,139,0.15); color: #CBD5E1; }
+body.dark-mode .legend-item:has(.preliminary-dot) { background: rgba(245,158,11,0.15); color: #FCD34D; }
+
+/* Modals */
+body.dark-mode .modal {
+    background: rgba(0,0,0,0.7);
+}
+
+body.dark-mode .modal-content {
+    background: #1e1e32;
+    color: #E2E8F0;
+    border-color: var(--gray-200);
+}
+
+/* Panel */
+body.dark-mode .booking-panel,
+body.dark-mode .certificates-panel {
+    background: #1e1e32;
+    border-left-color: var(--gray-200);
+}
+body.dark-mode #certificateForm .form-group input,
+body.dark-mode #certificateForm .form-group select,
+body.dark-mode #certificateForm .form-group textarea {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+body.dark-mode #certDisplayValue {
+    background: rgba(59,130,246,0.12) !important;
+    border-color: #3B82F6 !important;
+}
+body.dark-mode .cert-date-display {
+    color: #E2E8F0;
+}
+body.dark-mode .cert-gear-btn {
+    color: #94A3B8;
+}
+body.dark-mode .cert-detail-row-name {
+    background: rgba(59,130,246,0.1);
+}
+body.dark-mode .cert-detail-row-name .cert-detail-val {
+    color: #93C5FD;
+}
+
+body.dark-mode .panel-header {
+    background: #1e1e32;
+    border-bottom-color: var(--gray-200);
+}
+
+body.dark-mode .selected-info {
+    background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.05) 100%);
+    border-color: rgba(16,185,129,0.2);
+}
+
+/* Form elements */
+body.dark-mode .form-section select,
+body.dark-mode .form-section input,
+body.dark-mode .form-group input {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+body.dark-mode .form-section select:focus,
+body.dark-mode .form-section input:focus,
+body.dark-mode .form-group input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.15);
+}
+
+/* v5.49: Program search in dark */
+body.dark-mode .program-search-input {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+body.dark-mode .program-search-input::placeholder { color: #6B7280; }
+
+/* Program icons — base */
+body.dark-mode .program-icon {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .program-icon .name {
+    color: #E2E8F0;
+}
+
+body.dark-mode .program-icon.selected {
+    background: rgba(16,185,129,0.15);
+    border-color: var(--primary);
+}
+
+/* v5.37: Category program icons in dark — subtle tints */
+body.dark-mode .program-icon.quest { background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.25); }
+body.dark-mode .program-icon.quest:hover { background: rgba(139,92,246,0.2); border-color: rgba(139,92,246,0.4); }
+
+body.dark-mode .program-icon.animation { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.25); }
+body.dark-mode .program-icon.animation:hover { background: rgba(59,130,246,0.2); border-color: rgba(59,130,246,0.4); }
+
+body.dark-mode .program-icon.show { background: rgba(249,115,22,0.1); border-color: rgba(249,115,22,0.25); }
+body.dark-mode .program-icon.show:hover { background: rgba(249,115,22,0.2); border-color: rgba(249,115,22,0.4); }
+
+body.dark-mode .program-icon.masterclass { background: rgba(132,204,22,0.1); border-color: rgba(132,204,22,0.25); }
+body.dark-mode .program-icon.masterclass:hover { background: rgba(132,204,22,0.2); border-color: rgba(132,204,22,0.4); }
+
+body.dark-mode .program-icon.pinata { background: rgba(236,72,153,0.1); border-color: rgba(236,72,153,0.25); }
+body.dark-mode .program-icon.pinata:hover { background: rgba(236,72,153,0.2); border-color: rgba(236,72,153,0.4); }
+
+body.dark-mode .program-icon.photo { background: rgba(6,182,212,0.1); border-color: rgba(6,182,212,0.25); }
+body.dark-mode .program-icon.photo:hover { background: rgba(6,182,212,0.2); border-color: rgba(6,182,212,0.4); }
+
+body.dark-mode .program-icon.custom { background: rgba(100,116,139,0.15); border-color: rgba(100,116,139,0.3); }
+body.dark-mode .program-icon.custom:hover { background: rgba(100,116,139,0.25); border-color: rgba(100,116,139,0.4); }
+
+/* Dark mode icon circles */
+body.dark-mode .program-icon .icon-circle { background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04)); box-shadow: 0 2px 6px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.1); }
+body.dark-mode .program-icon.quest .icon-circle { background: linear-gradient(135deg, rgba(156,39,176,0.25), rgba(156,39,176,0.1)); }
+body.dark-mode .program-icon.animation .icon-circle { background: linear-gradient(135deg, rgba(3,155,229,0.25), rgba(3,155,229,0.1)); }
+body.dark-mode .program-icon.show .icon-circle { background: linear-gradient(135deg, rgba(244,81,30,0.25), rgba(244,81,30,0.1)); }
+body.dark-mode .program-icon.photo .icon-circle { background: linear-gradient(135deg, rgba(0,172,193,0.25), rgba(0,172,193,0.1)); }
+body.dark-mode .program-icon.masterclass .icon-circle { background: linear-gradient(135deg, rgba(124,179,66,0.25), rgba(124,179,66,0.1)); }
+body.dark-mode .program-icon.pinata .icon-circle { background: linear-gradient(135deg, rgba(236,64,122,0.25), rgba(236,64,122,0.1)); }
+body.dark-mode .program-icon.custom .icon-circle { background: linear-gradient(135deg, rgba(84,110,122,0.25), rgba(84,110,122,0.1)); }
+
+/* v5.32: Duration badge dark mode */
+body.dark-mode .program-duration.short {
+    background: rgba(59,130,246,0.2);
+    color: #93C5FD;
+}
+
+body.dark-mode .program-duration.long {
+    background: rgba(245,158,11,0.2);
+    color: #FCD34D;
+}
+
+body.dark-mode .program-details {
+    background: var(--gray-100);
+    border-color: var(--gray-200);
+}
+
+/* Control elements */
+body.dark-mode .zoom-controls {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .zoom-btn {
+    color: #9CA3AF;
+    border-right-color: var(--gray-300);
+}
+
+body.dark-mode .toggle-mini {
+    background: #252548;
+    border-color: #444468;
+}
+
+body.dark-mode .toggle-mini:hover {
+    background: #2d2d52;
+    border-color: #5a5a7c;
+}
+
+body.dark-mode .toggle-mini-label {
+    color: #D1D5DB;
+}
+
+body.dark-mode .btn-undo {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+/* Tooltip */
+body.dark-mode .booking-tooltip {
+    background: #252540;
+    border-color: var(--gray-300);
+}
+
+/* Booking detail rows */
+body.dark-mode .booking-detail-row {
+    border-bottom-color: var(--gray-200);
+}
+
+/* Warning banner */
+body.dark-mode .warning-banner {
+    background: linear-gradient(135deg, #3d3000 0%, #4d4000 100%);
+    border-color: #665200;
+    color: #FCD34D;
+}
+
+/* Custom program section */
+body.dark-mode .custom-program-section {
+    background: #2d2400;
+    border-color: #4d3e00;
+}
+
+/* Second animator */
+body.dark-mode .second-animator-section {
+    background: #1a2536;
+    border-color: #2a3d56;
+}
+
+/* Extra host */
+body.dark-mode .extra-host-section {
+    background: rgba(16,185,129,0.08);
+    border-color: rgba(16,185,129,0.15);
+}
+
+body.dark-mode .extra-host-section .toggle-label {
+    color: #6EE7B7;
+}
+
+/* Kids count */
+body.dark-mode .kids-count-section {
+    background: rgba(16,185,129,0.08);
+    border-color: rgba(16,185,129,0.15);
+}
+
+/* Status radio (v5.31 segmented control) */
+body.dark-mode .status-radio-group {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .status-radio-label {
+    color: #9CA3AF;
+}
+
+body.dark-mode .status-radio input:checked + .status-radio-label.confirmed {
+    background: var(--primary);
+    color: #FFFFFF;
+}
+
+body.dark-mode .status-radio input:checked + .status-radio-label.preliminary {
+    background: var(--warning);
+    color: #FFFFFF;
+}
+
+/* Minimap */
+body.dark-mode .minimap-container {
+    background: var(--white);
+    border-color: var(--gray-200);
+}
+
+/* Telegram */
+body.dark-mode .telegram-chat-item {
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .telegram-chat-item:hover {
+    background: rgba(16,185,129,0.1);
+}
+
+body.dark-mode .no-chats {
+    background: var(--gray-100);
+}
+
+/* Settings */
+body.dark-mode .settings-section {
+    border-bottom-color: var(--gray-200);
+}
+
+/* Dashboard */
+body.dark-mode .dash-list-item {
+    background: var(--gray-100);
+}
+
+body.dark-mode .dashboard-section h4 {
+    color: #E2E8F0;
+}
+
+body.dark-mode .dash-bar-track {
+    background: var(--gray-200);
+}
+
+body.dark-mode .dash-bar-label {
+    color: #D1D5DB;
+}
+
+/* Multi-day */
+body.dark-mode .day-section {
+    border-color: var(--gray-300);
+    background: #1e1e35;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+
+body.dark-mode .day-section-header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #FFFFFF;
+}
+
+body.dark-mode .day-section-header .date-label {
+    color: rgba(255,255,255,0.85);
+}
+
+body.dark-mode .day-section-content {
+    background: #1e1e35;
+}
+
+body.dark-mode .mini-time-mark {
+    color: #9CA3AF;
+}
+
+body.dark-mode .mini-line-header {
+    background: #252548;
+    color: #D1D5DB;
+    border-left-color: var(--primary);
+}
+
+body.dark-mode .mini-line-grid {
+    background: #222240;
+    border-color: #3a3a5c;
+    background-image: repeating-linear-gradient(
+        to right,
+        #3a3a5c 0px,
+        #3a3a5c 1px,
+        transparent 1px,
+        transparent 120px
+    );
+}
+
+body.dark-mode .mini-booking-block {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+body.dark-mode .mini-booking-block .mini-title {
+    color: #F3F4F6;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+
+body.dark-mode .no-bookings {
+    color: #6B7280;
+}
+
+/* Changelog */
+body.dark-mode .changelog-section {
+    border-bottom-color: var(--gray-200);
+}
+
+/* History items */
+body.dark-mode .history-item {
+    background: var(--gray-100);
+}
+
+body.dark-mode .history-item.action-create {
+    background: rgba(16,185,129,0.1);
+}
+
+body.dark-mode .history-item.action-edit {
+    background: rgba(59,130,246,0.1);
+}
+
+body.dark-mode .history-item.action-delete {
+    background: rgba(239,68,68,0.1);
+}
+
+body.dark-mode .history-item.action-undo {
+    background: rgba(245,158,11,0.1);
+}
+
+/* Catalog */
+body.dark-mode .catalog-program-card {
+    background: var(--gray-100);
+}
+
+body.dark-mode .catalog-tag {
+    background: rgba(59,130,246,0.15);
+}
+
+body.dark-mode .catalog-tag.kids {
+    background: rgba(139,92,246,0.15);
+}
+
+/* v7.1: Product form & manage buttons in dark mode */
+body.dark-mode .btn-catalog-edit,
+body.dark-mode .btn-catalog-delete {
+    background: var(--gray-200);
+    color: var(--gray-500);
+}
+
+body.dark-mode .btn-catalog-edit:hover {
+    background: rgba(37,99,235,0.2);
+    color: #60A5FA;
+}
+
+body.dark-mode .btn-catalog-delete:hover {
+    background: rgba(220,38,38,0.2);
+    color: #F87171;
+}
+
+body.dark-mode .catalog-badge-inactive {
+    background: rgba(220,38,38,0.2);
+    color: #F87171;
+}
+
+body.dark-mode #productForm input,
+body.dark-mode #productForm select,
+body.dark-mode #productForm textarea {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: var(--dark);
+}
+
+body.dark-mode .pf-check {
+    color: var(--gray-400);
+}
+
+/* Buttons in dark mode */
+body.dark-mode .btn-nav {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+/* v7.8.5: Glass buttons in dark mode */
+body.dark-mode .btn-export,
+body.dark-mode .btn-history {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.85);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+body.dark-mode .btn-export:hover,
+body.dark-mode .btn-history:hover {
+    background: rgba(255,255,255,0.14);
+    border-color: rgba(255,255,255,0.2);
+    color: #FFFFFF;
+}
+
+body.dark-mode .btn-invite {
+    opacity: 0.9;
+}
+
+body.dark-mode .btn-logout {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.7);
+}
+
+/* v7.8.5: Admin dropdown liquid glass in dark */
+body.dark-mode .dropdown-content {
+    background: rgba(20,20,35,0.5);
+    border-color: rgba(255,255,255,0.1);
+    box-shadow:
+        0 8px 40px rgba(0,0,0,0.3),
+        0 2px 12px rgba(0,0,0,0.2),
+        inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+body.dark-mode .dropdown-item {
+    color: rgba(255,255,255,0.85);
+}
+
+body.dark-mode .dropdown-item:hover {
+    background: rgba(255,255,255,0.1);
+    color: #FFFFFF;
+}
+
+body.dark-mode .btn-menu-toggle {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.85);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+body.dark-mode .btn-menu-toggle:hover {
+    background: rgba(255,255,255,0.14);
+    border-color: rgba(255,255,255,0.2);
+    color: #FFFFFF;
+}
+
+/* Status badges in dark */
+body.dark-mode .status-badge--confirmed {
+    background: rgba(16,185,129,0.15);
+    color: #6EE7B7;
+    border-color: rgba(16,185,129,0.3);
+}
+
+body.dark-mode .status-badge--preliminary {
+    background: rgba(245,158,11,0.15);
+    color: #FCD34D;
+    border-color: rgba(245,158,11,0.3);
+}
+
+body.dark-mode .status-badge--cancelled {
+    background: rgba(239,68,68,0.15);
+    color: #FCA5A5;
+    border-color: rgba(239,68,68,0.3);
+}
+
+/* Category chips in dark */
+body.dark-mode .category-chip--quest { background: rgba(139,92,246,0.15); color: #C4B5FD; }
+body.dark-mode .category-chip--animation { background: rgba(59,130,246,0.15); color: #93C5FD; }
+body.dark-mode .category-chip--show { background: rgba(249,115,22,0.15); color: #FDBA74; }
+body.dark-mode .category-chip--masterclass { background: rgba(132,204,22,0.15); color: #BEF264; }
+body.dark-mode .category-chip--pinata { background: rgba(236,72,153,0.15); color: #F9A8D4; }
+body.dark-mode .category-chip--photo { background: rgba(6,182,212,0.15); color: #67E8F9; }
+body.dark-mode .category-chip--custom { background: rgba(100,116,139,0.15); color: #CBD5E1; }
+
+/* Quick stats bar in dark */
+body.dark-mode .quick-stats-bar {
+    background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.05) 100%);
+    border-color: rgba(16,185,129,0.2);
+    color: #6EE7B7;
+}
+
+/* Control panel card in dark */
+body.dark-mode .control-panel {
+    background: var(--white);
+    border-color: var(--gray-200);
+}
+
+body.dark-mode .btn-close {
+    background: var(--gray-100);
+}
+
+body.dark-mode .btn-cancel {
+    background: var(--gray-100);
+    color: #D1D5DB;
+}
+
+body.dark-mode .btn-status-toggle {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+/* Day info */
+body.dark-mode .day-label {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: #FFFFFF;
+}
+
+/* Toggle slider */
+body.dark-mode .toggle-slider {
+    background: var(--gray-300);
+}
+
+/* Date input */
+body.dark-mode input[type="date"] {
+    background: var(--gray-100);
+    border-color: var(--primary);
+    color: #E2E8F0;
+}
+
+/* Days select */
+body.dark-mode .days-select {
+    background: var(--gray-100);
+    border-color: var(--primary);
+    color: #E2E8F0;
+}
+
+/* Scrollbar */
+body.dark-mode ::-webkit-scrollbar-thumb {
+    background: var(--gray-300);
+}
+
+body.dark-mode ::-webkit-scrollbar-thumb:hover {
+    background: var(--gray-400);
+}
+
+/* Hosts warning in dark */
+body.dark-mode .hosts-warning {
+    background: linear-gradient(135deg, #2d2400 0%, #3d3000 100%);
+    border-color: #665200;
+    color: #FCD34D;
+}
+
+/* Pending line in dark */
+body.dark-mode .pending-header {
+    background: rgba(245,158,11,0.1);
+}
+
+body.dark-mode .pending-text {
+    color: #FCD34D;
+}
+
+/* Note modal */
+body.dark-mode .note-modal-overlay {
+    background: rgba(0,0,0,0.7);
+}
+
+body.dark-mode .note-modal-box {
+    background: #1e1e32;
+    border-color: var(--gray-200);
+}
+
+body.dark-mode .note-modal-box input,
+body.dark-mode .note-modal-box textarea {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+/* v5.9: Add line button dark override */
+body.dark-mode .btn-add-line-big {
+    background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.15) 100%);
+    color: #6EE7B7;
+    border-color: rgba(16,185,129,0.4);
+}
+
+body.dark-mode .btn-add-line-big:hover {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #FFFFFF;
+}
+
+/* v5.9: Zoom button active state in dark */
+body.dark-mode .zoom-btn.active {
+    background: var(--primary);
+    color: #FFFFFF;
+}
+
+body.dark-mode .zoom-btn:hover:not(.active) {
+    background: rgba(16,185,129,0.15);
+    color: #6EE7B7;
+}
+
+/* v5.9: Change program button in dark */
+body.dark-mode .btn-change-program {
+    background: rgba(16,185,129,0.1);
+    border-color: rgba(16,185,129,0.3);
+    color: #6EE7B7;
+}
+
+/* v5.10: Dashboard tabs in dark */
+body.dark-mode .dash-tab {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #9CA3AF;
+}
+
+body.dark-mode .dash-tab.active {
+    background: var(--primary);
+    color: #FFFFFF;
+    border-color: var(--primary);
+}
+
+body.dark-mode .dash-custom-range input[type="date"] {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+/* v5.10: Afisha auto-time in dark */
+body.dark-mode .btn-auto-time {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+/* Afisha textarea dark — consolidated in v5.36 block below */
+
+body.dark-mode .btn-refresh-chats {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #9CA3AF;
+}
+
+body.dark-mode .digest-section h4 { color: #E2E8F0; }
+body.dark-mode .digest-hint { color: #9CA3AF; }
+body.dark-mode .toggle-slider { background: #4B5563; }
+body.dark-mode #settingsAutoDeleteHours,
+body.dark-mode .input-hours {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+/* v5.47: Telegram settings subsection borders in dark */
+body.dark-mode .tg-subsection,
+body.dark-mode .tg-subsection-lg {
+    border-top-color: var(--gray-300);
+}
+
+body.dark-mode .btn-submit.btn-purple { box-shadow: 0 4px 14px rgba(139,92,246,0.15); }
+body.dark-mode .btn-submit.btn-blue { box-shadow: 0 4px 14px rgba(59,130,246,0.15); }
+
+/* v5.16: History filters in dark */
+body.dark-mode .history-filter-select,
+body.dark-mode .history-filter-input {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+body.dark-mode .btn-history-reset {
+    background: var(--gray-200);
+    color: #9CA3AF;
+}
+
+body.dark-mode .btn-history-page {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #D1D5DB;
+}
+
+body.dark-mode .history-pagination {
+    border-top-color: var(--gray-200);
+}
+
+/* v5.36: Afisha buttons in dark */
+body.dark-mode .btn-afisha-add,
+body.dark-mode .btn-afisha-import {
+    box-shadow: 0 2px 8px rgba(139,92,246,0.2);
+}
+
+body.dark-mode .afisha-import-section textarea {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+/* v5.31: Status filter in dark (segmented) */
+body.dark-mode .status-filter-controls {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .status-filter-btn {
+    color: #9CA3AF;
+}
+
+body.dark-mode .status-filter-btn.active {
+    background: var(--primary);
+    color: #FFFFFF;
+}
+
+body.dark-mode .status-filter-btn:hover:not(.active) {
+    background: rgba(16,185,129,0.15);
+    color: #6EE7B7;
+}
+
+/* v5.15: Today button in dark */
+body.dark-mode .btn-today.is-today {
+    background: var(--gray-300);
+    color: var(--gray-500);
+}
+
+/* ==========================================
+   v5.18: DARK MODE OVERHAUL — ENHANCED CONTRAST & NEW ELEMENTS
+   ========================================== */
+
+/* Better booking block readability in dark */
+body.dark-mode .booking-block {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+body.dark-mode .booking-block .title {
+    color: #F3F4F6;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+body.dark-mode .booking-block .subtitle {
+    color: rgba(255,255,255,0.75);
+}
+
+body.dark-mode .booking-block .user-letter {
+    background: rgba(0,0,0,0.3);
+    color: rgba(255,255,255,0.8);
+}
+
+/* Duration badges in dark */
+body.dark-mode .duration-badge.short {
+    background: rgba(59,130,246,0.25);
+    color: #93C5FD;
+}
+
+body.dark-mode .duration-badge.long {
+    background: rgba(245,158,11,0.25);
+    color: #FCD34D;
+}
+
+/* Free rooms in dark */
+body.dark-mode .btn-free-rooms {
+    background: rgba(59,130,246,0.15);
+    border-color: rgba(59,130,246,0.3);
+    color: #93C5FD;
+}
+
+body.dark-mode .free-room-chip {
+    background: rgba(16,185,129,0.15);
+    border-color: rgba(16,185,129,0.3);
+    color: #6EE7B7;
+}
+
+body.dark-mode .free-room-chip:hover {
+    background: rgba(16,185,129,0.25);
+    border-color: var(--primary);
+}
+
+body.dark-mode .occupied-rooms {
+    color: #6B7280;
+}
+
+/* v7.9.3: Afisha timeline line dark mode */
+body.dark-mode .afisha-timeline-line {
+    background: linear-gradient(135deg, rgba(139,92,246,0.06) 0%, rgba(109,40,217,0.04) 100%);
+    border-bottom-color: rgba(139,92,246,0.2);
+}
+
+body.dark-mode .afisha-line-header {
+    background: linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(109,40,217,0.1) 100%) !important;
+}
+
+body.dark-mode .afisha-line-header .line-name {
+    color: #C4B5FD;
+}
+
+body.dark-mode .afisha-line-header .line-sub {
+    color: #A78BFA;
+}
+
+body.dark-mode .afisha-line-grid .grid-cell:hover {
+    background: rgba(139,92,246,0.12);
+}
+
+body.dark-mode .afisha-type-event:hover {
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.6), 0 0 24px rgba(139, 92, 246, 0.3);
+}
+body.dark-mode .afisha-type-regular:hover {
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.6), 0 0 24px rgba(59, 130, 246, 0.3);
+}
+body.dark-mode .afisha-type-birthday {
+    border-color: rgba(255,255,255,0.3) !important;
+}
+body.dark-mode .afisha-type-birthday:hover {
+    box-shadow: 0 6px 20px rgba(249, 115, 22, 0.6), 0 0 30px rgba(245, 158, 11, 0.3) !important;
+}
+
+/* Afisha blocking layer in dark */
+body.dark-mode .afisha-marker.afisha-blocking {
+    background: repeating-linear-gradient(
+        -45deg,
+        rgba(139,92,246,0.08),
+        rgba(139,92,246,0.08) 4px,
+        rgba(139,92,246,0.16) 4px,
+        rgba(139,92,246,0.16) 8px
+    );
+    border-color: rgba(139,92,246,0.4);
+}
+
+body.dark-mode .afisha-blocking .afisha-marker-text {
+    background: rgba(30,30,50,0.95);
+    color: #C4B5FD;
+}
+
+/* Better input contrast in dark */
+body.dark-mode .form-section textarea {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+/* Improved header contrast */
+body.dark-mode .header .brand-row .version {
+    color: rgba(255,255,255,0.5);
+}
+
+/* Better modal headers — sticky header dark bg */
+body.dark-mode .modal-content h3 {
+    color: #F3F4F6;
+    background: var(--white);
+    border-bottom-color: var(--gray-200);
+}
+
+/* Sticky footer in dark */
+body.dark-mode .modal-footer-sticky {
+    background: var(--white);
+    border-top-color: var(--gray-200);
+}
+
+/* Unified buttons in dark */
+body.dark-mode .btn-secondary {
+    background: var(--gray-200);
+    color: #E2E8F0;
+    border-color: var(--gray-300);
+}
+
+/* Empty state in dark */
+body.dark-mode .empty-state-icon {
+    background: linear-gradient(135deg, var(--gray-100) 0%, var(--gray-200) 100%);
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .empty-state-title {
+    color: #D1D5DB;
+}
+
+body.dark-mode .empty-state-text {
+    color: #9CA3AF;
+}
+
+/* Improved notification toast in dark */
+body.dark-mode .notification.success {
+    background: linear-gradient(135deg, #065F46 0%, #047857 100%);
+    border-color: #10B981;
+}
+
+body.dark-mode .notification.error {
+    background: linear-gradient(135deg, #7F1D1D 0%, #991B1B 100%);
+    border-color: #EF4444;
+}
+
+/* Confirm modal in dark */
+body.dark-mode .confirm-modal-content {
+    background: #1e1e32;
+}
+
+/* Better separator lines */
+body.dark-mode hr,
+body.dark-mode .form-section {
+    border-color: var(--gray-200);
+}
+
+/* v5.19: Period selector in dark */
+body.dark-mode .period-selector {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .period-btn {
+    color: #9CA3AF;
+}
+
+body.dark-mode .period-btn.active {
+    background: var(--primary);
+    color: #FFFFFF;
+}
+
+body.dark-mode .period-btn:hover:not(.active) {
+    background: rgba(16,185,129,0.15);
+    color: #6EE7B7;
+}
+
+/* v5.19: Linked ghost in dark */
+body.dark-mode .booking-block.linked-ghost {
+    opacity: 0.45;
+}
+
+/* v5.19: Afisha shift/edit buttons in dark */
+body.dark-mode .btn-shift {
+    background: rgba(139,92,246,0.2);
+    border-color: rgba(139,92,246,0.4);
+    color: #C4B5FD;
+}
+
+body.dark-mode .btn-edit {
+    background: rgba(59,130,246,0.2);
+    border-color: rgba(59,130,246,0.4);
+    color: #93C5FD;
+}
+
+/* v5.18.1: Now-line global in dark */
+body.dark-mode .now-line-global {
+    background: rgba(239, 68, 68, 0.35);
+}
+
+/* v5.18.1: Tooltip contrast in dark */
+body.dark-mode .booking-tooltip {
+    background: #2d2d4e;
+    border-color: #444466;
+    color: #F3F4F6;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+
+/* v5.18.1: Afisha blocking text in dark */
+body.dark-mode .afisha-blocking .afisha-marker-text {
+    color: rgba(196,181,253,0.5);
+}
+
+/* v5.18.1: Fix white bottom bar in dark — ensure full background coverage */
+body.dark-mode,
+body.dark-mode html {
+    min-height: 100vh;
+}
+
+/* v5.18.1: Main content bottom padding to prevent white gap */
+body.dark-mode .main-content {
+    padding-bottom: 40px;
+}
+
+/* v5.37: Login screen in dark */
+body.dark-mode .login-screen {
+    background: linear-gradient(160deg, #0a1628 0%, #0f1f3a 30%, #0a2540 60%, #112240 100%);
+}
+
+body.dark-mode .login-screen::before {
+    background: radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 70%);
+}
+
+body.dark-mode .login-screen::after {
+    background: radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%);
+}
+
+body.dark-mode .login-container {
+    background: #1e1e32;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+}
+
+body.dark-mode .login-logo h1 {
+    color: #6EE7B7;
+}
+
+body.dark-mode .btn-changelog {
+    background: rgba(16,185,129,0.1);
+    border-color: rgba(16,185,129,0.25);
+    color: #6EE7B7;
+}
+
+body.dark-mode .btn-changelog:hover {
+    background: rgba(16,185,129,0.2);
+    border-color: rgba(16,185,129,0.4);
+}
+
+body.dark-mode .login-form input {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+
+body.dark-mode .login-form input:focus {
+    background: var(--gray-100);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.15);
+}
+
+body.dark-mode .login-form label {
+    color: #D1D5DB;
+}
+
+/* v5.37: Panel backdrop darker in dark mode */
+body.dark-mode .panel-backdrop:not(.hidden) {
+    background: rgba(0,0,0,0.6);
+}
+
+/* v5.37: Afisha items in dark */
+body.dark-mode .afisha-item {
+    background: var(--gray-100);
+    border-left-color: #7C3AED;
+}
+body.dark-mode .task-item {
+    background: var(--gray-100);
+    border-color: var(--gray-200);
+}
+body.dark-mode .task-item-info strong { color: var(--gray-800); }
+
+/* v5.37: Category header in dark */
+body.dark-mode .category-header {
+    color: #9CA3AF;
+    border-bottom-color: var(--gray-300);
+}
+
+/* v5.37: Confirm modal buttons in dark */
+body.dark-mode .btn-cancel {
+    background: var(--gray-200);
+    color: #D1D5DB;
+    border-color: var(--gray-300);
+}
+
+body.dark-mode .btn-danger {
+    opacity: 0.95;
+}
+
+/* v5.37: Empty states in dark */
+body.dark-mode .no-data,
+body.dark-mode .no-history {
+    color: #6B7280;
+}
+
+/* v5.48: Invite section in dark */
+body.dark-mode .invite-section {
+    background: linear-gradient(135deg, rgba(245,158,11,0.1) 0%, rgba(217,119,6,0.08) 100%);
+    border-color: rgba(245,158,11,0.2);
+}
+
+body.dark-mode .invite-section-header { color: #FCD34D; }
+body.dark-mode .invite-preview { color: #FBBF24; }
+
+body.dark-mode .btn-invite-copy {
+    background: var(--gray-100);
+    color: #E2E8F0;
+    border-color: var(--gray-300);
+}
+
+/* v7.9.2: Kanban board dark mode */
+body.dark-mode .kanban-col {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+}
+body.dark-mode .kanban-col-header {
+    border-bottom-color: var(--gray-300);
+    color: #E2E8F0;
+}
+body.dark-mode .kanban-col-count {
+    background: var(--gray-200);
+    color: #D1D5DB;
+}
+body.dark-mode .task-card {
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(20px);
+    border-left-color: var(--gray-300);
+}
+body.dark-mode .task-card:hover {
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+body.dark-mode .task-card-title { color: #E2E8F0; }
+body.dark-mode .task-card-meta { color: #9CA3AF; }
+body.dark-mode .task-card-actions button {
+    background: var(--gray-200);
+    color: #D1D5DB;
+}
+body.dark-mode .task-card-actions .btn-done {
+    background: rgba(46,125,50,0.2);
+    color: #81C784;
+}
+body.dark-mode .task-card-actions .btn-progress {
+    background: rgba(21,101,192,0.2);
+    color: #64B5F6;
+}
+body.dark-mode .task-card-actions .btn-delete {
+    background: rgba(198,40,40,0.2);
+    color: #EF9A9A;
+}
+body.dark-mode .quick-add {
+    background: rgba(255,255,255,0.05);
+}
+body.dark-mode .quick-add input,
+body.dark-mode .quick-add select {
+    background: rgba(255,255,255,0.08);
+    border-color: var(--gray-300);
+    color: #E2E8F0;
+}
+body.dark-mode .group-header {
+    color: #D1D5DB;
+    border-bottom-color: var(--gray-300);
+}
+body.dark-mode .cat-chip {
+    background: rgba(255,255,255,0.08);
+}
+body.dark-mode .board-tab {
+    background: rgba(255,255,255,0.05);
+    color: #9CA3AF;
+}
+body.dark-mode .board-tab.active {
+    background: rgba(255,255,255,0.12);
+    color: #E2E8F0;
+}
+
+/* Scrollbar improvement */
+body.dark-mode ::-webkit-scrollbar-track {
+    background: #0f0f1a;
+}

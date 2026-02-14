@@ -1,0 +1,547 @@
+/**
+ * pages.css — Shared styles for standalone pages (tasks, programs) — v7.8
+ */
+
+/* ==========================================
+   PAGE LAYOUT
+   ========================================== */
+
+.page-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+}
+
+/* ==========================================
+   HEADER NAV LINKS (shared across pages)
+   ========================================== */
+
+.header-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.nav-link {
+    padding: 8px 14px;
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    font-size: var(--font-sm);
+    font-weight: 700;
+    border-radius: var(--radius-xs);
+    transition: all var(--speed-fast) var(--ease-smooth);
+    white-space: nowrap;
+}
+
+.nav-link:hover {
+    color: #FFFFFF;
+    background: rgba(255,255,255,0.1);
+}
+
+.nav-link.active {
+    color: #FFFFFF;
+    background: rgba(255,255,255,0.15);
+}
+
+/* ==========================================
+   FILTER BAR
+   ========================================== */
+
+.filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    padding: 16px 20px;
+    background: var(--white);
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-100);
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-xs);
+}
+
+.filter-bar select,
+.filter-bar input {
+    padding: 10px 14px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+    font-family: inherit;
+    background: var(--white);
+    color: var(--gray-800);
+    min-height: 44px;
+}
+
+.filter-bar select:focus,
+.filter-bar input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+}
+
+/* ==========================================
+   PAGE SECTION HEADER
+   ========================================== */
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.page-header h2 {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--gray-800);
+}
+
+/* ==========================================
+   CARDS GRID
+   ========================================== */
+
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+}
+
+.card {
+    background: var(--white);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius);
+    padding: 20px;
+    transition: box-shadow var(--speed-fast) var(--ease-smooth);
+    box-shadow: var(--shadow-xs);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+    gap: 8px;
+}
+
+.card-title {
+    font-size: var(--font-base);
+    font-weight: 700;
+    color: var(--gray-800);
+}
+
+.card-meta {
+    font-size: var(--font-xs);
+    color: var(--gray-500);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.card-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+/* ==========================================
+   BADGES
+   ========================================== */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.badge-manual { background: var(--gray-100); color: var(--gray-600); }
+.badge-recurring { background: #DBEAFE; color: #1D4ED8; }
+.badge-afisha { background: #FDE68A; color: #92400E; }
+.badge-auto { background: #D1FAE5; color: #065F46; }
+
+.badge-todo { background: var(--gray-100); color: var(--gray-600); }
+.badge-in-progress { background: #FEF3C7; color: #92400E; }
+.badge-done { background: #D1FAE5; color: #065F46; }
+
+.badge-high { background: #FEE2E2; color: #991B1B; }
+.badge-normal { background: var(--gray-100); color: var(--gray-600); }
+.badge-low { background: #DBEAFE; color: #1D4ED8; }
+
+/* ==========================================
+   INLINE FORM
+   ========================================== */
+
+.inline-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    padding: 20px;
+    background: var(--white);
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-100);
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-xs);
+}
+
+.inline-form .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.inline-form label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.inline-form input,
+.inline-form select,
+.inline-form textarea {
+    padding: 10px 14px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+    font-family: inherit;
+    background: var(--white);
+    color: var(--gray-800);
+    min-height: 44px;
+}
+
+.inline-form input:focus,
+.inline-form select:focus,
+.inline-form textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+}
+
+.btn-page-primary {
+    padding: 10px 20px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: var(--font-sm);
+    cursor: pointer;
+    min-height: 44px;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    font-family: inherit;
+}
+
+.btn-page-primary:hover {
+    background: var(--primary-dark);
+    transform: translateY(-1px);
+}
+
+.btn-page-secondary {
+    padding: 10px 16px;
+    background: var(--white);
+    color: var(--gray-700);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: var(--font-sm);
+    cursor: pointer;
+    min-height: 44px;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    font-family: inherit;
+}
+
+.btn-page-secondary:hover {
+    background: var(--gray-50);
+    border-color: var(--gray-300);
+}
+
+.btn-page-danger {
+    padding: 8px 12px;
+    background: transparent;
+    color: var(--gray-400);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+    cursor: pointer;
+    min-height: 44px;
+    transition: all var(--speed-fast);
+    font-family: inherit;
+}
+
+.btn-page-danger:hover {
+    color: #EF4444;
+    background: #FEE2E2;
+}
+
+/* ==========================================
+   TASK-SPECIFIC STYLES
+   ========================================== */
+
+.task-card {
+    cursor: pointer;
+    border-left: 4px solid var(--gray-200);
+}
+
+.task-card[data-status="in_progress"] {
+    border-left-color: #F59E0B;
+}
+
+.task-card[data-status="done"] {
+    border-left-color: var(--primary);
+    opacity: 0.7;
+}
+
+.task-card[data-status="done"] .card-title {
+    text-decoration: line-through;
+    color: var(--gray-400);
+}
+
+.task-card[data-priority="high"] {
+    border-left-color: #EF4444;
+}
+
+/* ==========================================
+   PROGRAM-SPECIFIC STYLES
+   ========================================== */
+
+.program-card .program-icon {
+    font-size: 28px;
+    line-height: 1;
+}
+
+.program-card .program-price {
+    font-size: var(--font-lg);
+    font-weight: 800;
+    color: var(--primary-dark);
+}
+
+.program-card .program-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.program-card .program-details span {
+    font-size: var(--font-xs);
+    color: var(--gray-500);
+    background: var(--gray-50);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.program-card.inactive {
+    opacity: 0.5;
+}
+
+.category-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.category-tab {
+    padding: 10px 16px;
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+    font-weight: 600;
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: all var(--speed-fast);
+    font-family: inherit;
+    min-height: 44px;
+}
+
+.category-tab:hover {
+    border-color: var(--primary);
+    color: var(--primary-dark);
+}
+
+.category-tab.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+/* ==========================================
+   TABS (tasks view vs templates view)
+   ========================================== */
+
+.page-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--gray-200);
+}
+
+.page-tab {
+    padding: 12px 24px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    font-size: var(--font-base);
+    font-weight: 700;
+    color: var(--gray-500);
+    cursor: pointer;
+    transition: all var(--speed-fast);
+    font-family: inherit;
+}
+
+.page-tab:hover {
+    color: var(--gray-700);
+}
+
+.page-tab.active {
+    color: var(--primary-dark);
+    border-bottom-color: var(--primary);
+}
+
+/* ==========================================
+   EDIT FORM (inline expand in card)
+   ========================================== */
+
+.card-edit-form {
+    display: none;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.card-edit-form.visible {
+    display: block;
+}
+
+.card-edit-form .form-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.card-edit-form input,
+.card-edit-form select,
+.card-edit-form textarea {
+    padding: 10px 14px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+    font-family: inherit;
+    background: var(--white);
+    color: var(--gray-800);
+    min-height: 44px;
+    flex: 1;
+}
+
+.card-edit-form input:focus,
+.card-edit-form select:focus,
+.card-edit-form textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+}
+
+/* ==========================================
+   EMPTY STATE
+   ========================================== */
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--gray-400);
+}
+
+.empty-state-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.empty-state-text {
+    font-size: var(--font-base);
+    font-weight: 600;
+}
+
+/* ==========================================
+   LOGIN OVERLAY (shared auth check)
+   ========================================== */
+
+.page-login-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--gray-50);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.page-login-overlay a {
+    padding: 16px 32px;
+    background: var(--primary);
+    color: white;
+    text-decoration: none;
+    border-radius: var(--radius);
+    font-weight: 700;
+    font-size: var(--font-lg);
+}
+
+/* ==========================================
+   RESPONSIVE
+   ========================================== */
+
+@media (max-width: 768px) {
+    .page-container {
+        padding: 16px;
+    }
+
+    .cards-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    /* .nav-link styles moved to responsive.css (v7.8.6) */
+
+    .inline-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .category-tabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 4px;
+    }
+}
+
+@media (max-width: 480px) {
+    .nav-link span.nav-text {
+        display: none;
+    }
+}

@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Парк Закревського Періоду | Запрошення</title>
+    <meta name="description" content="Запрошуємо на свято до Парку Закревського Періоду! Квести, анімації, шоу, майстер-класи.">
+    <meta name="theme-color" content="#10B981">
+    <link rel="icon" href="favicon.ico" sizes="32x32">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            min-height: 100vh;
+            background: #064E3B;
+            background-image:
+                radial-gradient(ellipse at 30% 0%, rgba(16,185,129,0.4) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 100%, rgba(59,130,246,0.15) 0%, transparent 60%),
+                radial-gradient(circle at 10% 80%, rgba(139,92,246,0.1) 0%, transparent 40%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .invite-card {
+            background: #FFFFFF;
+            border-radius: 20px;
+            max-width: 480px;
+            width: 100%;
+            overflow: hidden;
+            box-shadow:
+                0 30px 80px rgba(0, 0, 0, 0.25),
+                0 12px 30px rgba(0, 0, 0, 0.12);
+        }
+
+        /* Hero section with overlay */
+        .invite-header {
+            position: relative;
+            text-align: center;
+            color: white;
+        }
+
+        .invite-hero-wrap {
+            position: relative;
+            width: 100%;
+            height: 200px;
+            overflow: hidden;
+        }
+
+        .invite-hero {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .invite-hero-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(
+                180deg,
+                rgba(6,78,59,0.3) 0%,
+                rgba(6,78,59,0.1) 50%,
+                rgba(6,78,59,0.6) 100%
+            );
+        }
+
+        .invite-header-content {
+            padding: 20px 30px 28px;
+            background: linear-gradient(135deg, #065F46 0%, #047857 60%, #059669 100%);
+            position: relative;
+        }
+
+        .invite-header-content::before {
+            content: '';
+            position: absolute;
+            top: -40px;
+            right: -20px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .logo-img {
+            width: 88px;
+            height: 88px;
+            border-radius: 50%;
+            margin-top: -44px;
+            border: 4px solid #FFFFFF;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
+            position: relative;
+            z-index: 1;
+        }
+
+        .invite-header h1 {
+            font-size: 22px;
+            font-weight: 900;
+            margin: 8px 0 4px;
+            letter-spacing: -0.3px;
+        }
+
+        .invite-header .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+            font-weight: 600;
+        }
+
+        /* Event details card (when URL has params) */
+        .event-details {
+            background: rgba(255,255,255,0.12);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 12px;
+            padding: 14px 18px;
+            margin-top: 14px;
+            text-align: left;
+        }
+
+        .event-detail-row {
+            font-size: 14px;
+            padding: 3px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .event-detail-row strong {
+            font-weight: 800;
+        }
+
+        /* Body */
+        .invite-body {
+            padding: 28px 30px;
+        }
+
+        .invite-section {
+            margin-bottom: 24px;
+        }
+
+        .invite-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .invite-section h2 {
+            font-size: 16px;
+            font-weight: 800;
+            color: #1E293B;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .invite-section p {
+            font-size: 14px;
+            color: #64748B;
+            line-height: 1.7;
+        }
+
+        /* Info rows */
+        .invite-info-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            background: #F8FAFC;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .invite-info-row:hover {
+            background: #ECFDF5;
+            border-color: #D1FAE5;
+        }
+
+        .invite-info-row .icon {
+            font-size: 22px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ECFDF5;
+            border-radius: 10px;
+            flex-shrink: 0;
+        }
+
+        .invite-info-row .info {
+            flex: 1;
+        }
+
+        .invite-info-row .info .label {
+            font-size: 11px;
+            color: #94A3B8;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .invite-info-row .info .value {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1E293B;
+        }
+
+        .invite-info-row .info .value a {
+            color: #059669;
+            text-decoration: none;
+            font-weight: 800;
+        }
+
+        .invite-info-row .info .value a:hover {
+            text-decoration: underline;
+        }
+
+        /* Map button */
+        .map-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 16px;
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 14px;
+            font-weight: 800;
+            font-size: 15px;
+            transition: all 0.2s ease;
+            box-shadow: 0 6px 18px rgba(16, 185, 129, 0.3);
+        }
+
+        .map-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 28px rgba(16, 185, 129, 0.4);
+        }
+
+        /* Features grid with category colors */
+        .features-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .feature-item:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+
+        .feature-item .icon-img {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+        }
+
+        /* Category-specific colors */
+        .feature-quest { background: #F5F3FF; color: #6D28D9; border-color: #EDE9FE; }
+        .feature-animation { background: #EFF6FF; color: #1D4ED8; border-color: #DBEAFE; }
+        .feature-show { background: #FFF7ED; color: #C2410C; border-color: #FFEDD5; }
+        .feature-masterclass { background: #F7FEE7; color: #4D7C0F; border-color: #ECFCCB; }
+        .feature-photo { background: #ECFEFF; color: #0E7490; border-color: #CFFAFE; }
+        .feature-pinata { background: #FDF2F8; color: #BE185D; border-color: #FCE7F3; }
+
+        /* Footer */
+        .invite-footer {
+            text-align: center;
+            padding: 20px 30px 24px;
+            border-top: 1px solid #F1F5F9;
+            background: #F8FAFC;
+        }
+
+        .invite-footer p {
+            font-size: 12px;
+            color: #94A3B8;
+            font-weight: 600;
+        }
+
+        .share-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 14px;
+        }
+
+        .share-btn {
+            padding: 10px 22px;
+            border: 2px solid #E2E8F0;
+            background: #FFFFFF;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            color: #334155;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .share-btn:hover {
+            border-color: #10B981;
+            color: #059669;
+            background: #ECFDF5;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16,185,129,0.15);
+        }
+
+        @media (max-width: 480px) {
+            body { padding: 12px; }
+            .invite-body { padding: 24px 20px; }
+            .invite-header-content { padding: 16px 20px 24px; }
+            .features-list { grid-template-columns: 1fr; }
+            .invite-hero-wrap { height: 160px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="invite-card">
+        <div class="invite-header">
+            <div class="invite-hero-wrap">
+                <img src="images/hero.png" alt="Парк Закревського Періоду — дитячий розважальний центр" class="invite-hero">
+                <div class="invite-hero-overlay"></div>
+            </div>
+            <div class="invite-header-content">
+                <img src="images/logo-new.png" alt="Логотип Парку Закревського Періоду" class="logo-img">
+                <h1>Парк Закревського Періоду</h1>
+                <p class="subtitle">Запрошуємо на свято!</p>
+                <div id="eventDetails"></div>
+            </div>
+        </div>
+
+        <div class="invite-body">
+            <div class="invite-section">
+                <div class="invite-info-row">
+                    <span class="icon">📍</span>
+                    <div class="info">
+                        <div class="label">Адреса</div>
+                        <div class="value">вул. Закревського 31/2, 3 поверх</div>
+                    </div>
+                </div>
+                <div class="invite-info-row">
+                    <span class="icon">🕐</span>
+                    <div class="info">
+                        <div class="label">Графік роботи</div>
+                        <div class="value">Пн-Пт: 12:00-20:00 | Сб-Нд: 10:00-20:00</div>
+                    </div>
+                </div>
+                <div class="invite-info-row">
+                    <span class="icon">🚇</span>
+                    <div class="info">
+                        <div class="label">Як дістатися</div>
+                        <div class="value">м. Лісова / м. Чернігівська</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="invite-section">
+                <a href="https://maps.google.com/?q=вул.+Закревського+31/2+Київ" target="_blank" rel="noopener" class="map-link">
+                    🗺 Відкрити на карті
+                </a>
+            </div>
+
+            <div class="invite-section">
+                <h2>🎉 Що вас чекає</h2>
+                <div class="features-list">
+                    <div class="feature-item feature-quest"><img src="images/icon-quest.png" class="icon-img" alt="Квести"> Квести</div>
+                    <div class="feature-item feature-animation"><img src="images/icon-animation.png" class="icon-img" alt="Анімація"> Анімація</div>
+                    <div class="feature-item feature-show"><img src="images/icon-show.png" class="icon-img" alt="Wow-Шоу"> Wow-Шоу</div>
+                    <div class="feature-item feature-masterclass"><img src="images/icon-masterclass.png" class="icon-img" alt="Майстер-класи"> Майстер-класи</div>
+                    <div class="feature-item feature-photo"><img src="images/icon-photo.png" class="icon-img" alt="Фотосесії"> Фотосесії</div>
+                    <div class="feature-item feature-pinata"><img src="images/icon-pinata.png" class="icon-img" alt="Піньяти"> Піньяти</div>
+                </div>
+            </div>
+
+            <div class="invite-section">
+                <h2>📞 Контакти</h2>
+                <div class="invite-info-row">
+                    <span class="icon">📱</span>
+                    <div class="info">
+                        <div class="label">Телефон</div>
+                        <div class="value"><a href="tel:+380XXXXXXXXX">Зв'яжіться з нами</a></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="invite-footer">
+            <p>Поділитися запрошенням</p>
+            <div class="share-buttons">
+                <a class="share-btn" onclick="shareInvite()">📤 Поділитись</a>
+                <a class="share-btn" onclick="copyLink()">📋 Копіювати</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Show per-event details from URL params
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            const date = params.get('date');
+            const time = params.get('time');
+            const program = params.get('program');
+            const room = params.get('room');
+
+            if (date || time || program) {
+                const container = document.getElementById('eventDetails');
+                if (!container) return;
+                const div = document.createElement('div');
+                div.className = 'event-details';
+                let html = '';
+                if (date) html += '<div class="event-detail-row">📅 <strong>' + escapeHtml(date) + '</strong></div>';
+                if (time) html += '<div class="event-detail-row">🕐 <strong>' + escapeHtml(time) + '</strong></div>';
+                if (program) html += '<div class="event-detail-row">🎉 <strong>' + escapeHtml(program) + '</strong></div>';
+                if (room) html += '<div class="event-detail-row">📍 <strong>' + escapeHtml(room) + '</strong></div>';
+                div.innerHTML = html;
+                container.appendChild(div);
+            }
+        })();
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function shareInvite() {
+            const params = new URLSearchParams(window.location.search);
+            const program = params.get('program') || '';
+            const date = params.get('date') || '';
+            const text = program && date
+                ? 'Запрошуємо на ' + program + ' ' + date + '! Парк Закревського Періоду — вул. Закревського 31/2, 3 поверх'
+                : 'Запрошуємо на свято! Парк Закревського Періоду — вул. Закревського 31/2, 3 поверх';
+            if (navigator.share) {
+                navigator.share({ title: 'Парк Закревського Періоду', text: text, url: window.location.href });
+            } else {
+                copyLink();
+            }
+        }
+
+        function copyLink() {
+            navigator.clipboard.writeText(window.location.href).then(function() {
+                const btn = event.target.closest('.share-btn');
+                if (btn) {
+                    const original = btn.innerHTML;
+                    btn.innerHTML = '✅ Скопійовано!';
+                    setTimeout(function() { btn.innerHTML = original; }, 2000);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

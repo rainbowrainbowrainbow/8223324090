@@ -71,6 +71,16 @@ function showMainApp() {
     document.getElementById('mainApp').classList.remove('hidden');
     document.getElementById('currentUser').textContent = AppState.currentUser.name;
 
+    // v8.6: Close all panels/modals on page load to prevent stale empty views
+    document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+    ['certificatesPanel', 'bookingPanel'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
+    document.body.classList.remove('panel-open');
+    const backdrop = document.getElementById('panelBackdrop');
+    if (backdrop) backdrop.classList.add('hidden');
+
     // Settings (gear) — тільки для адмінів
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) {

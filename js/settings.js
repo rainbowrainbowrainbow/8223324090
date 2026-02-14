@@ -2013,13 +2013,7 @@ function openCertificatesPanel() {
     panel.classList.remove('hidden');
     document.body.classList.add('panel-open');
 
-    // Show/hide admin-only elements
-    const isAdmin = AppState.currentUser && AppState.currentUser.role === 'admin';
-    panel.querySelectorAll('.cert-admin-only').forEach(el => {
-        el.classList.toggle('hidden', !isAdmin);
-    });
-
-    // Show/hide non-viewer elements (cert create buttons available to admin + user roles)
+    // Show/hide non-viewer elements (cert create/manage buttons available to admin + user roles)
     const isViewerRole = AppState.currentUser && AppState.currentUser.role === 'viewer';
     panel.querySelectorAll('.cert-non-viewer').forEach(el => {
         el.classList.toggle('hidden', isViewerRole);
@@ -2328,13 +2322,13 @@ async function showCertDetail(id) {
             </div>
         `;
 
-        // Download + copy — available to everyone; action buttons — admin only
+        // Download + copy — available to everyone; action buttons — admin and user roles
         const copyText = `Сертифікат: ${cert.certCode}\n${modeLabel}: ${cert.displayValue || ''}\nТип: ${cert.typeText || ''}\nДійсний до: ${validDate}`;
         let btns = `<button class="btn-download-cert btn-sm" onclick="downloadCertificateImage(${cert.id})">🖼️ Скачати</button>`;
         window._certCopyText = copyText;
         btns += `<button class="btn-copy-all btn-sm" onclick="copyCertText(window._certCopyText)">📋 Скопіювати інфо</button>`;
-        const isAdmin = AppState.currentUser && AppState.currentUser.role === 'admin';
-        if (isAdmin) {
+        const canManageCerts = AppState.currentUser && AppState.currentUser.role !== 'viewer';
+        if (canManageCerts) {
             if (cert.status === 'active') {
                 btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${cert.id}, 'used')">✅ Використано</button>`;
                 btns += `<button class="btn-danger btn-sm" onclick="changeCertStatus(${cert.id}, 'revoked')">❌ Анулювати</button>`;

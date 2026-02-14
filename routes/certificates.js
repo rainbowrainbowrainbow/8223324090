@@ -244,7 +244,7 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
 });
 
 // PATCH /api/certificates/:id/status — Change status
-router.patch('/:id/status', requireRole('admin'), async (req, res) => {
+router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { id } = req.params;
@@ -336,7 +336,7 @@ router.patch('/:id/status', requireRole('admin'), async (req, res) => {
 });
 
 // PUT /api/certificates/:id — Update certificate details
-router.put('/:id', requireRole('admin'), async (req, res) => {
+router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
     try {
         const { id } = req.params;
         const { displayValue, typeText, validUntil, notes } = req.body;
@@ -373,7 +373,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
 });
 
 // DELETE /api/certificates/:id — Delete certificate
-router.delete('/:id', requireRole('admin'), async (req, res) => {
+router.delete('/:id', requireRole('admin', 'user'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { id } = req.params;
@@ -405,7 +405,7 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
 });
 
 // POST /api/certificates/:id/send-image — Send certificate image to Telegram
-router.post('/:id/send-image', requireRole('admin'), async (req, res) => {
+router.post('/:id/send-image', requireRole('admin', 'user'), async (req, res) => {
     try {
         const { id } = req.params;
         const { imageBase64 } = req.body;

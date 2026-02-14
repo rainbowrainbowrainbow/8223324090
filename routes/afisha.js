@@ -3,7 +3,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { validateDate, validateTime, timeToMinutes, getKyivDateStr, getKyivDate } = require('../services/booking');
+const { validateDate, validateTime, timeToMinutes, minutesToTime, getKyivDateStr, getKyivDate } = require('../services/booking');
 const { generateTasksForEvent } = require('../services/taskTemplates');
 const { ensureRecurringAfishaForDate } = require('../services/scheduler');
 const { createLogger } = require('../utils/logger');
@@ -197,6 +197,149 @@ router.get('/distribute/:date', async (req, res) => {
         res.json({ distribution, animators, events: events.rows });
     } catch (err) {
         log.error('Distribution error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// v8.6: Auto-distribute afisha events to animator lines (persist assignments)
+router.post('/distribute/:date', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { date } = req.params;
+        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
+
+        await client.query('BEGIN');
+
+        const events = (await client.query(
+            "SELECT * FROM afisha WHERE date = $1 AND type != 'birthday' ORDER BY time", [date]
+        )).rows;
+        const animators = (await client.query(
+            'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id', [date]
+        )).rows.map(l => ({ id: l.line_id, name: l.name }));
+        const bookings = (await client.query(
+            "SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled'", [date]
+        )).rows;
+
+        if (animators.length === 0) {
+            await client.query('ROLLBACK');
+            return res.json({ distribution: [], reason: 'no_animators' });
+        }
+        if (events.length === 0) {
+            await client.query('ROLLBACK');
+            return res.json({ distribution: [], reason: 'no_events' });
+        }
+
+        // Build occupied slots per animator: bookings + already-assigned afisha
+        const loadMap = {};
+        const occupiedSlots = {};
+        animators.forEach(a => { loadMap[a.id] = 0; occupiedSlots[a.id] = []; });
+
+        bookings.forEach(bk => {
+            if (occupiedSlots[bk.line_id]) {
+                occupiedSlots[bk.line_id].push({ start: timeToMinutes(bk.time), end: timeToMinutes(bk.time) + (bk.duration || 0) });
+                loadMap[bk.line_id]++;
+            }
+        });
+
+        // Determine working hours from date
+        const dateObj = new Date(date + 'T12:00:00');
+        const dow = dateObj.getDay();
+        const isWeekend = dow === 0 || dow === 6;
+        const dayStartMin = isWeekend ? 10 * 60 : 12 * 60;
+        const dayEndMin = 20 * 60;
+
+        // Find nearest free slot for an animator
+        function findFreeSlot(animId, baseMin, duration) {
+            const slots = occupiedSlots[animId] || [];
+            function isFree(startMin) {
+                if (startMin < dayStartMin || startMin + duration > dayEndMin) return false;
+                const endMin = startMin + duration;
+                return !slots.some(s => startMin < s.end && endMin > s.start);
+            }
+            // Try base time first
+            if (isFree(baseMin)) return baseMin;
+            // Expand search ±90 min in 15-min steps
+            for (let delta = 15; delta <= 90; delta += 15) {
+                if (isFree(baseMin - delta)) return baseMin - delta;
+                if (isFree(baseMin + delta)) return baseMin + delta;
+            }
+            return null; // no free slot
+        }
+
+        const distribution = [];
+        for (const ev of events) {
+            const baseMin = timeToMinutes(ev.original_time || ev.time);
+            const dur = ev.duration || 60;
+
+            // Sort animators by load (least loaded first)
+            const sorted = [...animators].sort((a, b) => (loadMap[a.id] || 0) - (loadMap[b.id] || 0));
+
+            let assignedAnim = null;
+            let assignedMin = null;
+
+            for (const anim of sorted) {
+                const freeMin = findFreeSlot(anim.id, baseMin, dur);
+                if (freeMin !== null) {
+                    assignedAnim = anim;
+                    assignedMin = freeMin;
+                    break;
+                }
+            }
+
+            if (!assignedAnim) {
+                // Fallback: least loaded, original time
+                assignedAnim = sorted[0];
+                assignedMin = baseMin;
+            }
+
+            // Persist assignment
+            const newTime = minutesToTime(assignedMin);
+            await client.query(
+                'UPDATE afisha SET line_id = $1, time = $2 WHERE id = $3',
+                [assignedAnim.id, newTime, ev.id]
+            );
+
+            // Mark slot as occupied for next iterations
+            occupiedSlots[assignedAnim.id].push({ start: assignedMin, end: assignedMin + dur });
+            loadMap[assignedAnim.id]++;
+
+            distribution.push({
+                eventId: ev.id,
+                title: ev.title,
+                originalTime: ev.original_time || ev.time,
+                assignedTime: newTime,
+                animatorId: assignedAnim.id,
+                animatorName: assignedAnim.name,
+                shifted: newTime !== (ev.original_time || ev.time)
+            });
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, distribution });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        log.error('Auto-distribute error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// v8.6: Reset distribution — clear line_id, restore original times
+router.post('/undistribute/:date', async (req, res) => {
+    try {
+        const { date } = req.params;
+        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
+
+        const result = await pool.query(
+            `UPDATE afisha SET line_id = NULL, time = COALESCE(original_time, time)
+             WHERE date = $1 AND line_id IS NOT NULL RETURNING id`,
+            [date]
+        );
+
+        res.json({ success: true, reset: result.rowCount });
+    } catch (err) {
+        log.error('Undistribute error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

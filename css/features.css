@@ -977,6 +977,48 @@
     border-radius: 4px;
 }
 
+/* v8.6: Afisha events distributed onto animator lines */
+.afisha-on-line {
+    border: 2px dashed rgba(139, 92, 246, 0.7) !important;
+    opacity: 0.88;
+}
+.afisha-on-line .title::before {
+    content: '🎪 ';
+    font-size: 10px;
+}
+
+/* v8.6: Distribute button in afisha header */
+.afisha-dist-btn {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 8px;
+    font-size: 12px;
+    border: 1px solid rgba(139, 92, 246, 0.5);
+    border-radius: 10px;
+    background: rgba(139, 92, 246, 0.15);
+    color: #8B5CF6;
+    cursor: pointer;
+    vertical-align: middle;
+    line-height: 18px;
+    transition: background 0.2s, transform 0.15s;
+}
+.afisha-dist-btn:hover {
+    background: rgba(139, 92, 246, 0.3);
+    transform: scale(1.1);
+}
+.afisha-dist-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+.afisha-undist-btn {
+    border-color: rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.1);
+    color: #EF4444;
+}
+.afisha-undist-btn:hover {
+    background: rgba(239, 68, 68, 0.25);
+}
+
 .afisha-type-event {
     background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%) !important;
     border: none !important;

@@ -108,6 +108,8 @@ async function initDatabase() {
         await pool.query(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS template_id INTEGER`);
         // v8.3: Original time anchor for drag constraints
         await pool.query(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS original_time VARCHAR(10)`);
+        // v8.6: Assigned animator line for auto-distribution
+        await pool.query(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS line_id VARCHAR(100)`);
 
         // v8.0: Recurring afisha templates
         await pool.query(`

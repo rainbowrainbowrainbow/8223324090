@@ -164,8 +164,18 @@ async function renderTimeline() {
 
     container.innerHTML = '';
 
-    // v7.9.3: Render afisha line at the top (replaces overlay markers)
-    renderAfishaLine(container, afishaEvents || [], start, selectedDate);
+    // v8.6: Split afisha into unassigned (afisha line) and assigned (animator lines)
+    const allAfisha = afishaEvents || [];
+    const unassignedAfisha = allAfisha.filter(ev => !ev.line_id);
+    const assignedAfishaMap = {};
+    allAfisha.filter(ev => ev.line_id).forEach(ev => {
+        if (!assignedAfishaMap[ev.line_id]) assignedAfishaMap[ev.line_id] = [];
+        assignedAfishaMap[ev.line_id].push(ev);
+    });
+
+    // v7.9.3: Render afisha line at the top (only unassigned events)
+    const hasAssigned = allAfisha.some(ev => ev.line_id);
+    renderAfishaLine(container, unassignedAfisha, start, selectedDate, hasAssigned);
 
     lines.forEach(line => {
         const lineEl = document.createElement('div');
@@ -184,6 +194,16 @@ async function renderTimeline() {
         const lineGrid = lineEl.querySelector('.line-grid');
         const lineBookings = bookings.filter(b => b.lineId === line.id);
         lineBookings.forEach(b => lineGrid.appendChild(createBookingBlock(b, start)));
+
+        // v8.6: Render assigned afisha events on this animator's line
+        const lineAfisha = assignedAfishaMap[line.id] || [];
+        lineAfisha.forEach(ev => {
+            const block = createAfishaBlock(ev, start);
+            if (block) {
+                block.classList.add('afisha-on-line');
+                lineGrid.appendChild(block);
+            }
+        });
 
         container.appendChild(lineEl);
 
@@ -315,7 +335,7 @@ function createBookingBlock(booking, startHour) {
 // ЛІНІЯ АФІШІ (v7.9.3)
 // ==========================================
 
-function renderAfishaLine(container, events, startHour, date) {
+function renderAfishaLine(container, events, startHour, date, hasAssigned) {
     const lineEl = document.createElement('div');
     lineEl.className = 'timeline-line afisha-timeline-line';
 
@@ -325,13 +345,18 @@ function renderAfishaLine(container, events, startHour, date) {
         : '';
 
     const nonBirthdayCount = events.filter(ev => ev.type !== 'birthday').length;
-    const birthdayBlockCount = birthdays.length * 2; // each birthday = 2 blocks (14:00 + 18:00)
+    const birthdayBlockCount = birthdays.length * 2;
     const totalBlocks = nonBirthdayCount + birthdayBlockCount;
+
+    // v8.6: Distribute/undistribute buttons
+    const distBtnHtml = isViewer() ? '' : (hasAssigned
+        ? `<button class="afisha-dist-btn afisha-undist-btn" title="Скинути розподіл">↩</button>`
+        : `<button class="afisha-dist-btn" title="Розподілити по ведучих">🎪</button>`);
 
     lineEl.innerHTML = `
         <div class="line-header afisha-line-header" style="border-left-color: #8B5CF6">
             <span class="line-name">🎪 Афіша${birthdayLabel}</span>
-            <span class="line-sub">${totalBlocks > 0 ? totalBlocks + ' подій' : ''}</span>
+            <span class="line-sub">${totalBlocks > 0 ? totalBlocks + ' подій' : ''}${distBtnHtml}</span>
         </div>
         <div class="line-grid afisha-line-grid" data-line-id="afisha">
             ${renderGridCells('afisha', date)}
@@ -355,8 +380,44 @@ function renderAfishaLine(container, events, startHour, date) {
 
     container.appendChild(lineEl);
 
+    // v8.6: Distribute/undistribute button handler
+    const distBtn = lineEl.querySelector('.afisha-dist-btn');
+    if (distBtn) {
+        distBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const dateStr = formatDate(date);
+            const isUndo = distBtn.classList.contains('afisha-undist-btn');
+            const endpoint = isUndo ? 'undistribute' : 'distribute';
+            distBtn.disabled = true;
+            distBtn.textContent = '...';
+            try {
+                const resp = await fetch(`${API_BASE}/afisha/${endpoint}/${dateStr}`, {
+                    method: 'POST', headers: getAuthHeaders()
+                });
+                if (!resp.ok) throw new Error('API error');
+                const data = await resp.json();
+                if (data.reason === 'no_animators') {
+                    showNotification('Немає аніматорів на цю дату', 'error');
+                } else if (data.reason === 'no_events') {
+                    showNotification('Немає подій для розподілу', 'error');
+                } else {
+                    showNotification(isUndo
+                        ? `Розподіл скинуто (${data.reset} подій)`
+                        : `Розподілено ${data.distribution?.length || 0} подій по ведучих`
+                    );
+                    delete AppState.cachedBookings[dateStr];
+                    delete AppState.cachedLines[dateStr];
+                    await renderTimeline();
+                }
+            } catch (err) {
+                showNotification('Помилка розподілу', 'error');
+            }
+        });
+    }
+
     // Click on header → open afisha modal
-    lineEl.querySelector('.line-header').addEventListener('click', () => {
+    lineEl.querySelector('.line-header').addEventListener('click', (e) => {
+        if (e.target.closest('.afisha-dist-btn')) return;
         openAfishaModalAt(formatDate(date), null);
     });
 

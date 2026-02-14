@@ -2299,11 +2299,20 @@ async function generateCertificateCanvas(cert) {
 function drawCertDynamicContent(ctx, cert, W, H) {
     const titleX = 45;
 
-    // === "СЕРТИФІКАТ" title — flat dark blue, no italic ===
-    ctx.fillStyle = '#0D47A1';
+    // === "СЕРТИФІКАТ" title — golden like stars, with dark outline ===
+    ctx.save();
     ctx.font = '900 82px Nunito, sans-serif';
     ctx.textAlign = 'left';
+    ctx.lineJoin = 'round';
+    ctx.miterLimit = 2;
+    // Dark blue outline
+    ctx.strokeStyle = '#0D47A1';
+    ctx.lineWidth = 6;
+    ctx.strokeText('СЕРТИФІКАТ', titleX, 135);
+    // Golden fill (matching stars)
+    ctx.fillStyle = '#F5B731';
     ctx.fillText('СЕРТИФІКАТ', titleX, 135);
+    ctx.restore();
 
     // === RECIPIENT NAME — large dark bold ===
     const nameText = cert.displayValue || '';
@@ -2368,10 +2377,10 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     // === PARK BRANDING (aligned with logo, above dashed border) ===
     ctx.fillStyle = '#fff';
     ctx.font = '800 13px Nunito, sans-serif';
-    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 80, H - 62);
+    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 95, H - 62);
     ctx.font = '600 10px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 80, H - 48);
+    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 95, H - 48);
 }
 
 async function drawCertQRCode(ctx, cert, W, H) {

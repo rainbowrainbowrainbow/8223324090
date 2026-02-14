@@ -2119,14 +2119,14 @@ function showCreateCertificateModal() {
     if (presetSel) presetSel.value = 'на одноразовий вхід';
     document.getElementById('certTypeText').value = 'на одноразовий вхід';
     document.getElementById('certTypeText').classList.add('hidden');
-    // Default valid_until = +45 days
+    // Auto valid_until = today + 45 days (no editing)
     const d = new Date();
     d.setDate(d.getDate() + 45);
-    const dateInput = document.getElementById('certValidUntil');
-    dateInput.value = d.toISOString().split('T')[0];
-    dateInput.classList.add('hidden');
-    // Show human-readable date (called after dateInput.value is set)
-    updateCertDateDisplay();
+    document.getElementById('certValidUntil').value = d.toISOString().split('T')[0];
+    const display = document.getElementById('certValidUntilDisplay');
+    if (display) display.textContent = d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
+    // Auto-select season
+    initCertSeasonButtons('certSeasonRow', 'certSeason');
     modal.classList.remove('hidden');
 }
 
@@ -2137,13 +2137,17 @@ function showBatchCertificateModal() {
     document.getElementById('batchCertResult').classList.add('hidden');
     document.getElementById('batchCertSubmitBtn').disabled = false;
     document.getElementById('batchCertSubmitBtn').textContent = '📦 Згенерувати';
-    // Default valid_until = +45 days
+    // Auto valid_until = today + 45 days (no editing)
     const d = new Date();
     d.setDate(d.getDate() + 45);
     document.getElementById('batchCertValidUntil').value = d.toISOString().split('T')[0];
+    const display = document.getElementById('batchCertValidUntilDisplay');
+    if (display) display.textContent = d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
     // Default selection
     const radio10 = modal.querySelector('input[value="10"]');
     if (radio10) radio10.checked = true;
+    // Auto-select season
+    initCertSeasonButtons('batchCertSeasonRow', 'batchCertSeason');
     modal.classList.remove('hidden');
 }
 
@@ -2157,11 +2161,12 @@ async function handleBatchCertSubmit(event) {
     const baseType = document.getElementById('batchCertType').value;
     const typeText = eventName || baseType;
     const validUntil = document.getElementById('batchCertValidUntil').value || undefined;
+    const season = document.getElementById('batchCertSeason').value || getCertCurrentSeason();
 
     btn.disabled = true;
     btn.textContent = `⏳ Генерація ${quantity} шт...`;
 
-    const result = await apiBatchCreateCertificates({ quantity, typeText, validUntil });
+    const result = await apiBatchCreateCertificates({ quantity, typeText, validUntil, season });
     if (!result.success) {
         showNotification(result.error || 'Помилка генерації', 'error');
         btn.disabled = false;
@@ -2210,25 +2215,21 @@ function onCertTypePresetChange() {
     }
 }
 
-function toggleCertDateEdit() {
-    const dateInput = document.getElementById('certValidUntil');
-    dateInput.classList.toggle('hidden');
-    if (!dateInput.classList.contains('hidden')) {
-        dateInput.focus();
-        dateInput.addEventListener('change', updateCertDateDisplay, { once: true });
-    }
-}
-
-function updateCertDateDisplay() {
-    const dateInput = document.getElementById('certValidUntil');
-    const display = document.getElementById('certValidUntilDisplay');
-    if (!display || !dateInput) return;
-    if (dateInput.value) {
-        const d = new Date(dateInput.value + 'T00:00:00');
-        display.textContent = d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
-    } else {
-        display.textContent = 'не вказано';
-    }
+function initCertSeasonButtons(rowId, hiddenId) {
+    const row = document.getElementById(rowId);
+    const hidden = document.getElementById(hiddenId);
+    if (!row || !hidden) return;
+    const season = getCertCurrentSeason();
+    hidden.value = season;
+    const btns = row.querySelectorAll('.cert-season-btn');
+    btns.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.season === season);
+        btn.onclick = () => {
+            btns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            hidden.value = btn.dataset.season;
+        };
+    });
 }
 
 async function handleCertificateSubmit(event) {
@@ -2238,7 +2239,8 @@ async function handleCertificateSubmit(event) {
         displayValue: document.getElementById('certDisplayValue').value.trim(),
         typeText: document.getElementById('certTypeText').value.trim() || 'на одноразовий вхід',
         validUntil: document.getElementById('certValidUntil').value || undefined,
-        notes: document.getElementById('certNotes').value.trim() || undefined
+        notes: document.getElementById('certNotes').value.trim() || undefined,
+        season: document.getElementById('certSeason').value || getCertCurrentSeason()
     };
 
     const result = await apiCreateCertificate(data);
@@ -2407,17 +2409,33 @@ function copyCertText(text) {
 // Certificate Image Generator
 // ==========================================
 
-const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=8.6.2';
-let _certBgImage = null;
+// Seasonal certificate backgrounds
+const CERT_SEASON_BG = {
+    winter: 'images/certificate/cert-bg-full.png',
+    spring: 'images/certificate/Spring_sert.png',
+    summer: 'images/certificate/summer_sert.png',
+    autumn: 'images/certificate/Autumn_sert.png'
+};
+const _certBgCache = {};
 
-function loadCertBg(forceReload) {
-    if (_certBgImage && !forceReload) return Promise.resolve(_certBgImage);
+function getCertCurrentSeason() {
+    const m = new Date().getMonth();
+    if (m >= 2 && m <= 4) return 'spring';
+    if (m >= 5 && m <= 7) return 'summer';
+    if (m >= 8 && m <= 10) return 'autumn';
+    return 'winter';
+}
+
+function loadCertBg(season) {
+    const key = season || 'winter';
+    if (_certBgCache[key]) return Promise.resolve(_certBgCache[key]);
+    const src = CERT_SEASON_BG[key] || CERT_SEASON_BG.winter;
     return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        img.onload = () => { _certBgImage = img; resolve(img); };
+        img.onload = () => { _certBgCache[key] = img; resolve(img); };
         img.onerror = () => resolve(null);
-        img.src = CERT_BG_SRC;
+        img.src = src + '?v=8.7';
     });
 }
 
@@ -2443,8 +2461,8 @@ async function generateCertificateCanvas(cert) {
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // === DRAW BACKGROUND (full image, no crop — ratios nearly identical) ===
-    const bgImg = await loadCertBg();
+    // === DRAW BACKGROUND (seasonal, full image, no crop) ===
+    const bgImg = await loadCertBg(cert.season || 'winter');
     if (bgImg) {
         ctx.drawImage(bgImg, 0, 0, W, H);
     } else {

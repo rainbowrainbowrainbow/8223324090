@@ -5,7 +5,7 @@
 const router = require('express').Router();
 const { pool, generateCertCode } = require('../db');
 const { requireRole } = require('../middleware/auth');
-const { mapCertificateRow, calculateValidUntil, validateCertificateInput, VALID_STATUSES } = require('../services/certificates');
+const { mapCertificateRow, calculateValidUntil, validateCertificateInput, getCurrentSeason, VALID_STATUSES, VALID_SEASONS } = require('../services/certificates');
 const { sendTelegramMessage, sendTelegramPhoto, getConfiguredChatId, getBotUsername } = require('../services/telegram');
 const { formatCertificateNotification } = require('../services/templates');
 const { createLogger } = require('../utils/logger');
@@ -118,7 +118,10 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             return res.status(400).json({ error: errors.join(', ') });
         }
 
-        const { displayMode, displayValue, typeText, validUntil, notes } = req.body;
+        const { displayMode, displayValue, typeText, validUntil, notes, season } = req.body;
+
+        // Validate season
+        const finalSeason = VALID_SEASONS.includes(season) ? season : getCurrentSeason();
 
         await client.query('BEGIN');
 
@@ -136,8 +139,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const finalValidUntil = validUntil || calculateValidUntil(new Date(), defaultDays);
 
         const result = await client.query(
-            `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+            `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, season, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
              RETURNING *`,
             [
                 certCode,
@@ -147,7 +150,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
                 finalValidUntil,
                 req.user.id || null,
                 req.user.name || req.user.username,
-                notes || null
+                notes || null,
+                finalSeason
             ]
         );
 
@@ -190,6 +194,7 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
 
         const typeText = req.body.typeText || 'на одноразовий вхід';
         const validUntil = req.body.validUntil;
+        const season = VALID_SEASONS.includes(req.body.season) ? req.body.season : getCurrentSeason();
 
         let defaultDays = 45;
         try {
@@ -207,8 +212,8 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
         for (let i = 0; i < quantity; i++) {
             const certCode = await generateCertCode(client);
             const result = await client.query(
-                `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, status)
-                 VALUES ($1, 'fio', '', $2, $3, $4, $5, $6, 'active')
+                `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, season, status)
+                 VALUES ($1, 'fio', '', $2, $3, $4, $5, $6, $7, 'active')
                  RETURNING *`,
                 [
                     certCode,
@@ -216,7 +221,8 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
                     finalValidUntil,
                     req.user.id || null,
                     req.user.name || req.user.username,
-                    `Пакетна генерація (${quantity} шт.)`
+                    `Пакетна генерація (${quantity} шт.)`,
+                    season
                 ]
             );
             created.push(mapCertificateRow(result.rows[0]));

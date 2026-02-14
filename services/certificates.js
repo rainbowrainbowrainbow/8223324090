@@ -1,7 +1,18 @@
 /**
  * services/certificates.js — Certificates business logic
  * v8.4: Certificate registry with Telegram alerts
+ * v8.7: Seasonal certificate backgrounds
  */
+
+const VALID_SEASONS = ['winter', 'spring', 'summer', 'autumn'];
+
+function getCurrentSeason() {
+    const m = new Date().getMonth(); // 0-11
+    if (m >= 2 && m <= 4) return 'spring';
+    if (m >= 5 && m <= 7) return 'summer';
+    if (m >= 8 && m <= 10) return 'autumn';
+    return 'winter';
+}
 
 function mapCertificateRow(row) {
     return {
@@ -19,6 +30,7 @@ function mapCertificateRow(row) {
         invalidatedAt: row.invalidated_at,
         invalidReason: row.invalid_reason,
         notes: row.notes,
+        season: row.season || 'winter',
         telegramAlertSent: row.telegram_alert_sent,
         createdAt: row.created_at,
         updatedAt: row.updated_at
@@ -55,6 +67,8 @@ module.exports = {
     mapCertificateRow,
     calculateValidUntil,
     validateCertificateInput,
+    getCurrentSeason,
     VALID_STATUSES,
-    VALID_DISPLAY_MODES
+    VALID_DISPLAY_MODES,
+    VALID_SEASONS
 };

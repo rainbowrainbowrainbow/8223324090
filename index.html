@@ -14,17 +14,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=8.6.1">
-    <link rel="stylesheet" href="css/auth.css?v=8.6.1">
-    <link rel="stylesheet" href="css/layout.css?v=8.6.1">
-    <link rel="stylesheet" href="css/timeline.css?v=8.6.1">
-    <link rel="stylesheet" href="css/panel.css?v=8.6.1">
-    <link rel="stylesheet" href="css/modals.css?v=8.6.1">
-    <link rel="stylesheet" href="css/controls.css?v=8.6.1">
-    <link rel="stylesheet" href="css/features.css?v=8.6.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=8.6.1">
-    <link rel="stylesheet" href="css/responsive.css?v=8.6.1">
-    <link rel="stylesheet" href="css/pages.css?v=8.6.1">
+    <link rel="stylesheet" href="css/base.css?v=8.6.2">
+    <link rel="stylesheet" href="css/auth.css?v=8.6.2">
+    <link rel="stylesheet" href="css/layout.css?v=8.6.2">
+    <link rel="stylesheet" href="css/timeline.css?v=8.6.2">
+    <link rel="stylesheet" href="css/panel.css?v=8.6.2">
+    <link rel="stylesheet" href="css/modals.css?v=8.6.2">
+    <link rel="stylesheet" href="css/controls.css?v=8.6.2">
+    <link rel="stylesheet" href="css/features.css?v=8.6.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=8.6.2">
+    <link rel="stylesheet" href="css/responsive.css?v=8.6.2">
+    <link rel="stylesheet" href="css/pages.css?v=8.6.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -35,9 +35,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v8.6.1 — Сертифікати та безпека</p>
+                <p class="tagline">Система бронювання v8.6.2 — Безпека та стабільність</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.6.1</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.6.2</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -873,13 +873,19 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v8.6.1 — Сертифікати та безпека</h4>
+                    <h4>v8.6.2 — Безпека та стабільність</h4>
+                    <ul>
+                        <li>🔒 Очищення таймерів при виході — запобігання витокам подій</li>
+                        <li>🔒 Санітизація XSS для захисту від ін'єкцій</li>
+                        <li>🔒 Покращення контрасту та focus trap (WCAG)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v8.6.1 — Сертифікати</h4>
                     <ul>
                         <li>📄 Сертифікати доступні для всіх ролей (перегляд, редагування, видалення, відправка)</li>
                         <li>📄 Реорганізація макету сертифіката — QR-код внизу зліва, логотип внизу справа</li>
                         <li>📄 Видалення дублювання брендингу на сертифікаті</li>
-                        <li>🔒 Очищення таймерів при виході, запобігання витокам подій</li>
-                        <li>🔒 Санітизація XSS, покращення контрасту та focus trap</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -2079,13 +2085,13 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=8.6.1"></script>
-    <script src="js/api.js?v=8.6.1"></script>
-    <script src="js/ui.js?v=8.6.1"></script>
-    <script src="js/auth.js?v=8.6.1"></script>
-    <script src="js/timeline.js?v=8.6.1"></script>
-    <script src="js/booking.js?v=8.6.1"></script>
-    <script src="js/settings.js?v=8.6.1"></script>
-    <script src="js/app.js?v=8.6.1"></script>
+    <script src="js/config.js?v=8.6.2"></script>
+    <script src="js/api.js?v=8.6.2"></script>
+    <script src="js/ui.js?v=8.6.2"></script>
+    <script src="js/auth.js?v=8.6.2"></script>
+    <script src="js/timeline.js?v=8.6.2"></script>
+    <script src="js/booking.js?v=8.6.2"></script>
+    <script src="js/settings.js?v=8.6.2"></script>
+    <script src="js/app.js?v=8.6.2"></script>
 </body>
 </html>

@@ -33,10 +33,122 @@ function addMinutesToTime(time, minutes) {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+// ==========================================
+// FOCUS TRAP FOR MODALS (#21)
+// ==========================================
+
+const FOCUSABLE_SELECTOR = [
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled]):not([type="hidden"])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])'
+].join(', ');
+
+// Stack for nested modals (e.g. confirmModal on top of bookingModal)
+const _focusTrapStack = [];
+
+function openModal(modalEl, triggerEl) {
+    if (!modalEl) return;
+
+    // Save trigger element for focus restoration
+    const trapState = {
+        modal: modalEl,
+        trigger: triggerEl || document.activeElement,
+        previousTrap: _focusTrapStack[_focusTrapStack.length - 1] || null
+    };
+    _focusTrapStack.push(trapState);
+
+    // Show modal
+    modalEl.classList.remove('hidden');
+
+    // Focus first focusable element after DOM renders
+    requestAnimationFrame(() => {
+        const focusableEls = modalEl.querySelectorAll(FOCUSABLE_SELECTOR);
+        const visible = Array.from(focusableEls).filter(el => el.offsetParent !== null);
+        if (visible.length > 0) {
+            visible[0].focus();
+        } else {
+            // If no focusable elements, make modal-content focusable
+            const content = modalEl.querySelector('.modal-content');
+            if (content) {
+                content.setAttribute('tabindex', '-1');
+                content.focus();
+            }
+        }
+    });
+
+    // Attach keydown listener for Tab trap + Escape
+    modalEl._focusTrapHandler = (e) => {
+        if (e.key === 'Tab') {
+            // Re-query focusable elements (content may change dynamically)
+            const focusable = Array.from(
+                modalEl.querySelectorAll(FOCUSABLE_SELECTOR)
+            ).filter(el => el.offsetParent !== null);
+
+            if (focusable.length === 0) return;
+
+            const firstEl = focusable[0];
+            const lastEl = focusable[focusable.length - 1];
+
+            if (e.shiftKey) {
+                if (document.activeElement === firstEl) {
+                    e.preventDefault();
+                    lastEl.focus();
+                }
+            } else {
+                if (document.activeElement === lastEl) {
+                    e.preventDefault();
+                    firstEl.focus();
+                }
+            }
+        }
+
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeModal(modalEl);
+        }
+    };
+
+    modalEl.addEventListener('keydown', modalEl._focusTrapHandler);
+}
+
+function closeModal(modalEl) {
+    if (!modalEl) return;
+
+    // Find this modal in the stack
+    const idx = _focusTrapStack.findIndex(s => s.modal === modalEl);
+    if (idx === -1) {
+        // Not in stack — just hide (fallback)
+        modalEl.classList.add('hidden');
+        return;
+    }
+
+    const trapState = _focusTrapStack.splice(idx, 1)[0];
+
+    // Remove keydown handler
+    if (modalEl._focusTrapHandler) {
+        modalEl.removeEventListener('keydown', modalEl._focusTrapHandler);
+        delete modalEl._focusTrapHandler;
+    }
+
+    // Hide modal
+    modalEl.classList.add('hidden');
+
+    // Restore focus to trigger element
+    if (trapState.trigger && typeof trapState.trigger.focus === 'function') {
+        try { trapState.trigger.focus(); } catch (_) { /* element may no longer exist */ }
+    }
+}
+
 function closeAllModals() {
     document.querySelectorAll('.modal').forEach(m => {
         if (m.id === 'confirmModal') return;
-        m.classList.add('hidden');
+        if (!m.classList.contains('hidden')) {
+            closeModal(m);
+        }
     });
 }
 
@@ -50,11 +162,13 @@ function customConfirm(message, title = 'Підтвердження') {
 
         titleEl.textContent = title;
         messageEl.textContent = message;
-        modal.classList.remove('hidden');
+
+        // Use openModal for focus trap (pushes onto stack for nested modal support)
+        openModal(modal);
 
         let resolved = false;
         const cleanup = () => {
-            modal.classList.add('hidden');
+            closeModal(modal);
             yesBtn.removeEventListener('click', onYes);
             yesBtn.removeEventListener('touchend', onYes);
             noBtn.removeEventListener('click', onNo);
@@ -89,6 +203,11 @@ function showNotification(message, type = '') {
     const el = document.getElementById('notification');
     document.getElementById('notificationText').textContent = message;
     el.className = 'notification' + (type ? ` ${type}` : '');
+
+    // ARIA live region: assertive for errors (interrupts screen reader), polite for rest
+    el.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
     el.classList.remove('hidden');
     if (_notificationTimer) clearTimeout(_notificationTimer);
     _notificationTimer = setTimeout(() => el.classList.add('hidden'), 3000);

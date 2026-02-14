@@ -689,13 +689,20 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="certValidUntil">Дійсний до</label>
-                    <div class="cert-date-row">
-                        <span id="certValidUntilDisplay" class="cert-date-display"></span>
-                        <button type="button" id="certDateGearBtn" class="cert-gear-btn" onclick="toggleCertDateEdit()" title="Змінити дату">&#9881;</button>
+                    <label>Сезон (візуал сертифіката)</label>
+                    <div class="cert-season-row" id="certSeasonRow">
+                        <button type="button" class="cert-season-btn" data-season="winter">&#10052; Зима</button>
+                        <button type="button" class="cert-season-btn" data-season="spring">&#127800; Весна</button>
+                        <button type="button" class="cert-season-btn" data-season="summer">&#9728; Літо</button>
+                        <button type="button" class="cert-season-btn" data-season="autumn">&#127810; Осінь</button>
                     </div>
-                    <input type="date" id="certValidUntil" class="hidden">
-                    <small class="form-hint">За замовчуванням: +45 днів</small>
+                    <input type="hidden" id="certSeason" value="winter">
+                </div>
+                <div class="form-group">
+                    <label>Дійсний до</label>
+                    <span id="certValidUntilDisplay" class="cert-date-display"></span>
+                    <input type="hidden" id="certValidUntil">
+                    <small class="form-hint">Автоматично: сьогодні + 45 днів</small>
                 </div>
                 <div class="form-group">
                     <label for="certNotes">Примітка</label>
@@ -746,9 +753,20 @@
                     <small class="form-hint">Друкується на сертифікаті замість типу</small>
                 </div>
                 <div class="form-group">
-                    <label for="batchCertValidUntil">Дійсний до</label>
-                    <input type="date" id="batchCertValidUntil">
-                    <small class="form-hint">За замовчуванням: +45 днів</small>
+                    <label>Сезон (візуал сертифіката)</label>
+                    <div class="cert-season-row" id="batchCertSeasonRow">
+                        <button type="button" class="cert-season-btn" data-season="winter">&#10052; Зима</button>
+                        <button type="button" class="cert-season-btn" data-season="spring">&#127800; Весна</button>
+                        <button type="button" class="cert-season-btn" data-season="summer">&#9728; Літо</button>
+                        <button type="button" class="cert-season-btn" data-season="autumn">&#127810; Осінь</button>
+                    </div>
+                    <input type="hidden" id="batchCertSeason" value="winter">
+                </div>
+                <div class="form-group">
+                    <label>Дійсний до</label>
+                    <span id="batchCertValidUntilDisplay" class="cert-date-display"></span>
+                    <input type="hidden" id="batchCertValidUntil">
+                    <small class="form-hint">Автоматично: сьогодні + 45 днів</small>
                 </div>
                 <button type="submit" class="btn-submit btn-full" id="batchCertSubmitBtn">📦 Згенерувати</button>
             </form>

@@ -2395,14 +2395,35 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     ctx.fillText('СЕРТИФІКАТ', titleX, 135);
     ctx.restore();
 
-    // === RECIPIENT NAME — large dark bold ===
+    // === RECIPIENT NAME — adaptive font size based on real width ===
     const nameText = cert.displayValue || '';
     if (nameText) {
+        // Start with size based on length
         const nameLen = nameText.length;
-        const nameFontSize = nameLen > 35 ? 28 : nameLen > 25 ? 34 : nameLen > 18 ? 40 : 44;
+        let nameFontSize = nameLen > 35 ? 26 : nameLen > 25 ? 32 : nameLen > 18 ? 38 : 42;
+
         ctx.fillStyle = '#0D47A1';
-        ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
         ctx.textAlign = 'left';
+
+        // Test and adjust font size to fit maxTextW
+        let testSize = nameFontSize;
+        let fitsInWidth = false;
+        while (testSize >= 20 && !fitsInWidth) {
+            ctx.font = `900 ${testSize}px Nunito, sans-serif`;
+            const fullWidth = ctx.measureText(nameText).width;
+            const words = nameText.split(' ');
+            const maxWordWidth = Math.max(...words.map(w => ctx.measureText(w).width));
+
+            // Check if either full text or longest word fits
+            if (fullWidth <= maxTextW || maxWordWidth <= maxTextW) {
+                fitsInWidth = true;
+                nameFontSize = testSize;
+            } else {
+                testSize -= 2;
+            }
+        }
+
+        ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
 
         // Word wrap for long names
         const words = nameText.split(' ');

@@ -103,6 +103,16 @@ async function apiUpdateBooking(id, booking) {
             body: JSON.stringify(booking)
         });
         if (handleAuthError(response)) return { success: false };
+        // Optimistic locking: 409 with conflict field
+        if (response.status === 409) {
+            const body = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                conflict: body.conflict || false,
+                error: body.error || 'Конфлікт даних',
+                currentData: body.currentData || null
+            };
+        }
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             return { success: false, error: body.error || 'API error' };

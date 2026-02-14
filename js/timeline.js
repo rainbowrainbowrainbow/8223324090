@@ -351,16 +351,45 @@ function createBookingBlock(booking, startHour) {
 
     // v5.19: Linked bookings click → navigate to parent booking details
     if (isLinked) {
-        block.addEventListener('click', () => showBookingDetails(booking.linkedTo));
+        block.addEventListener('click', (e) => {
+            // Feature #14: Don't trigger click if drag just ended
+            if (block._dragJustEnded) { block._dragJustEnded = false; return; }
+            showBookingDetails(booking.linkedTo);
+        });
     } else {
-        block.addEventListener('click', () => showBookingDetails(booking.id));
+        block.addEventListener('click', (e) => {
+            // Feature #14: Don't trigger click if drag just ended
+            if (block._dragJustEnded) { block._dragJustEnded = false; return; }
+            showBookingDetails(booking.id);
+        });
     }
-    block.addEventListener('mouseenter', (e) => showTooltip(e, booking));
-    block.addEventListener('mousemove', (e) => moveTooltip(e));
+    block.addEventListener('mouseenter', (e) => {
+        // Feature #14: Suppress tooltip during drag
+        if (_bookingDragState || _resizeState) return;
+        showTooltip(e, booking);
+    });
+    block.addEventListener('mousemove', (e) => {
+        if (_bookingDragState || _resizeState) return;
+        moveTooltip(e);
+    });
     block.addEventListener('mouseleave', hideTooltip);
     // v3.9: Touch events for mobile tooltip
-    block.addEventListener('touchstart', (e) => showTooltip(e.touches[0], booking), { passive: true });
+    block.addEventListener('touchstart', (e) => {
+        if (_bookingDragState || _resizeState) return;
+        showTooltip(e.touches[0], booking);
+    }, { passive: true });
     block.addEventListener('touchend', hideTooltip, { passive: true });
+
+    // Feature #14: Initialize drag-and-drop + resize handle
+    if (!isViewer() && !isLinked) {
+        initBookingDrag(block, booking, startHour);
+
+        const resizeHandle = document.createElement('div');
+        resizeHandle.className = 'resize-handle';
+        block.appendChild(resizeHandle);
+        initBookingResize(resizeHandle, block, booking, startHour);
+    }
+
     return block;
 }
 

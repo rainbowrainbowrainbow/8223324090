@@ -46,6 +46,9 @@ async function createBooking(overrides = {}) {
 }
 
 // Helper to create an automation rule with sensible defaults
+// Note: trigger_condition and actions must be sent as JSON strings because the
+// pg library's parameterized queries call toString() on values, and JSONB columns
+// need valid JSON strings — not "[object Object]".
 async function createRule(overrides = {}) {
     const defaults = {
         name: 'Test Auto Rule',
@@ -54,7 +57,27 @@ async function createRule(overrides = {}) {
         actions: [{ type: 'create_task', title: 'Auto task for {date}', priority: 'normal', category: 'purchase' }],
         days_before: 0
     };
-    return authRequest('POST', '/api/automation-rules', { ...defaults, ...overrides });
+    const body = { ...defaults, ...overrides };
+    // Stringify JSONB fields if they are objects (the route passes them directly to pg)
+    if (body.trigger_condition && typeof body.trigger_condition === 'object') {
+        body.trigger_condition = JSON.stringify(body.trigger_condition);
+    }
+    if (body.actions && typeof body.actions === 'object') {
+        body.actions = JSON.stringify(body.actions);
+    }
+    return authRequest('POST', '/api/automation-rules', body);
+}
+
+// Helper to update an automation rule (stringifies JSONB fields)
+async function updateRule(id, body) {
+    const data = { ...body };
+    if (data.trigger_condition && typeof data.trigger_condition === 'object') {
+        data.trigger_condition = JSON.stringify(data.trigger_condition);
+    }
+    if (data.actions && typeof data.actions === 'object') {
+        data.actions = JSON.stringify(data.actions);
+    }
+    return authRequest('PUT', `/api/automation-rules/${id}`, data);
 }
 
 // Helper to find auto-tasks by title substring
@@ -150,7 +173,7 @@ describe('Automation Rules CRUD (v8.3)', () => {
 
     it('PUT /api/automation-rules/:id — update rule name and days_before', async () => {
         assert.ok(ruleId, 'Need rule ID from create step');
-        const res = await authRequest('PUT', `/api/automation-rules/${ruleId}`, {
+        const res = await updateRule(ruleId, {
             name: 'Updated Test Rule',
             trigger_type: 'booking_create',
             trigger_condition: { product_ids: ['kv1', 'kv4'] },
@@ -172,7 +195,7 @@ describe('Automation Rules CRUD (v8.3)', () => {
 
     it('PUT /api/automation-rules/:id — disable rule (is_active=false)', async () => {
         assert.ok(ruleId, 'Need rule ID from create step');
-        const res = await authRequest('PUT', `/api/automation-rules/${ruleId}`, {
+        const res = await updateRule(ruleId, {
             name: 'Updated Test Rule',
             trigger_type: 'booking_create',
             trigger_condition: { product_ids: ['kv1', 'kv4'] },
@@ -189,7 +212,7 @@ describe('Automation Rules CRUD (v8.3)', () => {
 
     it('PUT /api/automation-rules/:id — re-enable rule (is_active=true)', async () => {
         assert.ok(ruleId, 'Need rule ID from create step');
-        const res = await authRequest('PUT', `/api/automation-rules/${ruleId}`, {
+        const res = await updateRule(ruleId, {
             name: 'Updated Test Rule',
             trigger_type: 'booking_create',
             trigger_condition: { product_ids: ['kv1', 'kv4'] },
@@ -1156,7 +1179,7 @@ describe('Integration (E2E) — Automation Flows', () => {
         cleanupRuleIds.push(ruleId);
 
         // Disable the rule
-        await authRequest('PUT', `/api/automation-rules/${ruleId}`, {
+        await updateRule(ruleId, {
             name: `Test ${marker}`,
             trigger_type: 'booking_create',
             trigger_condition: { product_ids: ['pinata'] },

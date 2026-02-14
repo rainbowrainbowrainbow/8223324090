@@ -2454,10 +2454,10 @@ async function generateCertificateCanvas(cert) {
     }
 
     // === DRAW ALL TEXT CONTENT ===
-    drawCertDynamicContent(ctx, cert, W, H);
+    const contentBottomY = drawCertDynamicContent(ctx, cert, W, H);
 
-    // === DRAW QR CODE (inside white placeholder on background) ===
-    await drawCertQRCode(ctx, cert, W, H);
+    // === DRAW QR CODE (right after text content) ===
+    await drawCertQRCode(ctx, cert, W, H, contentBottomY);
 
     return canvas;
 }
@@ -2561,6 +2561,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
         ctx.fillStyle = 'rgba(46,80,144,0.5)';
         ctx.font = '600 14px Nunito, sans-serif';
         ctx.fillText(cert.certCode || '', titleX, nextY);
+        nextY += 20;
     } else {
         ctx.fillStyle = '#2E5090';
         ctx.font = '800 26px Nunito, sans-serif';
@@ -2571,24 +2572,16 @@ function drawCertDynamicContent(ctx, cert, W, H) {
         ctx.fillStyle = 'rgba(46,80,144,0.5)';
         ctx.font = '600 14px Nunito, sans-serif';
         ctx.fillText(cert.certCode || '', titleX, nextY);
+        nextY += 20;
     }
 
-    // === BOTTOM INFO — valid until, conditions, phone ===
-    const infoY = H - 50;
-
-    ctx.fillStyle = '#2E5090';
-    ctx.font = '700 15px Nunito, sans-serif';
-    ctx.textAlign = 'left';
-
-    const validDate = cert.validUntil
-        ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
-        : '—';
-
-    const infoLine = `Дійсний до ${validDate}  •  Будні та вихідні  •  +38(0800)-75-35-53`;
-    ctx.fillText(infoLine, titleX, infoY);
+    return nextY;
 }
 
-async function drawCertQRCode(ctx, cert, W, H) {
+async function drawCertQRCode(ctx, cert, W, H, contentBottomY) {
+    const panelPad = 40;
+    let qrBottomY = contentBottomY || 280;
+
     try {
         const qrResp = await fetch(`${API_BASE}/certificates/qr/${encodeURIComponent(cert.certCode)}`, { headers: getAuthHeaders(false) });
         if (qrResp.ok) {
@@ -2600,10 +2593,10 @@ async function drawCertQRCode(ctx, cert, W, H) {
                     img.onerror = reject;
                     img.src = qrData.dataUrl;
                 });
-                // QR — bottom-left corner, compact
+                // QR — right after text content
                 const qrSize = 110;
-                const qrX = 40;
-                const qrY = H - 170;
+                const qrX = panelPad;
+                const qrY = contentBottomY + 15;
                 const qrR = 12;
 
                 // White rounded-rect background
@@ -2632,11 +2625,24 @@ async function drawCertQRCode(ctx, cert, W, H) {
                 ctx.textAlign = 'center';
                 ctx.fillText('Сканувати для перевірки', qrX + qrSize / 2, qrY + qrSize + 16);
                 ctx.textAlign = 'left';
+
+                qrBottomY = qrY + qrSize + 30;
             }
         }
     } catch (e) {
         // QR failed — continue without it
     }
+
+    // === BOTTOM INFO — valid until, conditions, phone ===
+    const validDate = cert.validUntil
+        ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '—';
+    const infoLine = `Дійсний до ${validDate}  •  Будні та вихідні  •  +38(0800)-75-35-53`;
+
+    ctx.fillStyle = '#2E5090';
+    ctx.font = '700 14px Nunito, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(infoLine, panelPad, qrBottomY + 10);
 }
 
 async function downloadCertificateImage(certId) {

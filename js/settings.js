@@ -2287,6 +2287,9 @@ async function generateCertificateCanvas(cert) {
         ctx.fillRect(0, 0, W, H);
     }
 
+    // === FIX BACKGROUND ARTIFACTS (cover white QR box, redraw stars flat) ===
+    drawCertBackgroundFixes(ctx, W, H);
+
     // === DRAW ALL TEXT CONTENT ===
     drawCertDynamicContent(ctx, cert, W, H);
 
@@ -2294,6 +2297,65 @@ async function generateCertificateCanvas(cert) {
     await drawCertQRCode(ctx, cert, W, H);
 
     return canvas;
+}
+
+function drawCertBackgroundFixes(ctx, W, H) {
+    // === Cover white QR placeholder with background-matching blue ===
+    // White rounded square on bg maps to canvas: ~(438,244) size ~104×94
+    ctx.save();
+    const px = 434, py = 240, pw = 112, ph = 100, pr = 16;
+    const gx = px + pw / 2, gy = py + ph / 2;
+    const qrGrad = ctx.createRadialGradient(gx, gy, 10, gx, gy, 75);
+    qrGrad.addColorStop(0, '#8DC9EC');
+    qrGrad.addColorStop(1, '#6FB6DF');
+    ctx.fillStyle = qrGrad;
+    ctx.beginPath();
+    ctx.moveTo(px + pr, py);
+    ctx.lineTo(px + pw - pr, py);
+    ctx.quadraticCurveTo(px + pw, py, px + pw, py + pr);
+    ctx.lineTo(px + pw, py + ph - pr);
+    ctx.quadraticCurveTo(px + pw, py + ph, px + pw - pr, py + ph);
+    ctx.lineTo(px + pr, py + ph);
+    ctx.quadraticCurveTo(px, py + ph, px, py + ph - pr);
+    ctx.lineTo(px, py + pr);
+    ctx.quadraticCurveTo(px, py, px + pr, py);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // === Replace 3D stars with flat 2D vector stars ===
+    // Positions mapped from background (2528×1696) → canvas (1200×675)
+    const stars = [
+        { x: 265, y: 86, r: 24 },
+        { x: 338, y: 72, r: 20 },
+        { x: 300, y: 108, r: 14 },
+        { x: 388, y: 96, r: 11 },
+        { x: 232, y: 114, r: 8 },
+    ];
+    for (const s of stars) {
+        // Cover 3D star with sky-blue circle
+        ctx.fillStyle = '#72B8E2';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r + 8, 0, Math.PI * 2);
+        ctx.fill();
+        // Draw clean flat 5-pointed star
+        drawFlatStar5(ctx, s.x, s.y, s.r, '#F5B731');
+    }
+}
+
+function drawFlatStar5(ctx, cx, cy, outerR, color) {
+    const innerR = outerR * 0.38;
+    const spikes = 5;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    for (let i = 0; i < spikes * 2; i++) {
+        const r = i % 2 === 0 ? outerR : innerR;
+        const angle = -Math.PI / 2 + (Math.PI / spikes) * i;
+        if (i === 0) ctx.moveTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+        else ctx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
 }
 
 function drawCertDynamicContent(ctx, cert, W, H) {
@@ -2342,7 +2404,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), titleX, typeY);
 
     // === CERT CODE ===
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillStyle = 'rgba(13,71,161,0.6)';
     ctx.font = '600 15px Nunito, sans-serif';
     ctx.fillText(cert.certCode || '', titleX, typeY + 30);
 

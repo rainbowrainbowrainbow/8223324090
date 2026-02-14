@@ -17,8 +17,12 @@ const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID } = require('./services/telegram');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry } = require('./services/scheduler');
 const { createLogger } = require('./utils/logger');
+const { validateEnv } = require('./utils/validateEnv');
 
 const log = createLogger('Server');
+
+// Validate environment variables before anything else
+validateEnv();
 
 // --- Express app setup ---
 const app = express();
@@ -40,6 +44,16 @@ app.use(requestIdMiddleware);
 app.use(securityHeaders);
 app.use(cacheControl);
 app.use(express.static(path.join(__dirname)));
+
+// Graceful shutdown: reject new requests while shutting down
+let isShuttingDown = false;
+app.use((req, res, next) => {
+    if (isShuttingDown) {
+        res.set('Connection', 'close');
+        return res.status(503).json({ error: 'Server is shutting down' });
+    }
+    next();
+});
 
 // Rate limiter for all API routes
 app.use('/api', rateLimiter);
@@ -110,11 +124,14 @@ process.on('uncaughtException', (err) => {
 });
 
 // --- Start server ---
+let server;
+const schedulerIntervals = [];
+
 initDatabase().catch(err => {
     log.error('Failed to initialize database, exiting', err);
     process.exit(1);
 }).then(() => {
-    app.listen(PORT, async () => {
+    server = app.listen(PORT, async () => {
         log.info(`Server running on port ${PORT}`);
         log.info(`Telegram bot token: ${TELEGRAM_BOT_TOKEN ? 'SET' : 'NOT SET'}`);
         log.info(`Telegram default chat ID: ${TELEGRAM_DEFAULT_CHAT_ID || 'NOT SET'}`);
@@ -132,13 +149,54 @@ initDatabase().catch(err => {
         }
 
         // Schedulers: digest + reminder + backup + recurring + auto-delete (check every 60s)
-        setInterval(checkAutoDigest, 60000);
-        setInterval(checkAutoReminder, 60000);
-        setInterval(checkAutoBackup, 60000);
-        setInterval(checkRecurringTasks, 60000);
-        setInterval(checkRecurringAfisha, 60000);
-        setInterval(checkScheduledDeletions, 60000);
-        setInterval(checkCertificateExpiry, 60000);
+        schedulerIntervals.push(setInterval(checkAutoDigest, 60000));
+        schedulerIntervals.push(setInterval(checkAutoReminder, 60000));
+        schedulerIntervals.push(setInterval(checkAutoBackup, 60000));
+        schedulerIntervals.push(setInterval(checkRecurringTasks, 60000));
+        schedulerIntervals.push(setInterval(checkRecurringAfisha, 60000));
+        schedulerIntervals.push(setInterval(checkScheduledDeletions, 60000));
+        schedulerIntervals.push(setInterval(checkCertificateExpiry, 60000));
         log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry (every 60s)');
     });
 });
+
+// --- Graceful Shutdown ---
+async function gracefulShutdown(signal) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    log.info(`${signal} received. Starting graceful shutdown...`);
+
+    // Force exit after 30s if graceful shutdown hangs
+    const forceExitTimeout = setTimeout(() => {
+        log.error('Graceful shutdown timed out after 30s, forcing exit');
+        process.exit(1);
+    }, 30000);
+    forceExitTimeout.unref(); // Don't keep process alive just for this timer
+
+    // 1. Stop accepting new connections
+    if (server) {
+        server.close(() => {
+            log.info('HTTP server closed');
+        });
+    }
+
+    // 2. Clear all scheduler intervals
+    for (const id of schedulerIntervals) {
+        clearInterval(id);
+    }
+    log.info(`${schedulerIntervals.length} scheduler interval(s) cleared`);
+
+    // 3. Close DB pool (waits for active queries to finish)
+    try {
+        await pool.end();
+        log.info('Database pool closed');
+    } catch (e) {
+        log.error('Error closing database pool', e);
+    }
+
+    log.info('Graceful shutdown complete');
+    process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

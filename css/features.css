@@ -1342,7 +1342,7 @@
     cursor: pointer;
     transition: all 0.2s ease;
     position: relative;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .cert-card::before {
@@ -1391,13 +1391,12 @@
 }
 
 .cert-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    padding: 3px 10px;
+    display: inline-block;
+    padding: 4px 12px;
     border-radius: 20px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
+    white-space: nowrap;
 }
 
 .cert-badge-active { background: #ECFDF5; color: #065F46; }
@@ -1405,6 +1404,11 @@
 .cert-badge-expired { background: #FFFBEB; color: #92400E; }
 .cert-badge-revoked { background: #FEF2F2; color: #991B1B; }
 .cert-badge-blocked { background: #F3F4F6; color: #111827; }
+
+.cert-panel-add-btn {
+    line-height: 1.6;
+    overflow: visible;
+}
 
 .cert-card-body {
     margin-bottom: 8px;

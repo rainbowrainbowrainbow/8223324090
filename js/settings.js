@@ -2471,7 +2471,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     }
 
     // === FOOTER BLOCK — all text above the logo circle (logo ~y590-645) ===
-    const footerTopY = H - 170;
+    const footerTopY = H - 185;
 
     // Valid until
     const validDate = cert.validUntil

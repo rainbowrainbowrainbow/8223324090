@@ -179,6 +179,70 @@ router.post('/', requireRole('admin'), async (req, res) => {
     }
 });
 
+// POST /api/certificates/batch — Generate N blank certificates at once
+router.post('/batch', requireRole('admin'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const quantity = parseInt(req.body.quantity);
+        if (![5, 10, 15, 20].includes(quantity)) {
+            return res.status(400).json({ error: 'Кількість має бути 5, 10, 15 або 20' });
+        }
+
+        const typeText = req.body.typeText || 'на одноразовий вхід';
+        const validUntil = req.body.validUntil;
+
+        let defaultDays = 45;
+        try {
+            const settingResult = await client.query("SELECT value FROM settings WHERE key = 'cert_default_days'");
+            if (settingResult.rows.length > 0 && settingResult.rows[0].value) {
+                defaultDays = parseInt(settingResult.rows[0].value) || 45;
+            }
+        } catch (e) { /* use default */ }
+
+        const finalValidUntil = validUntil || calculateValidUntil(new Date(), defaultDays);
+
+        await client.query('BEGIN');
+
+        const created = [];
+        for (let i = 0; i < quantity; i++) {
+            const certCode = await generateCertCode(client);
+            const result = await client.query(
+                `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, status)
+                 VALUES ($1, 'fio', '', $2, $3, $4, $5, $6, 'active')
+                 RETURNING *`,
+                [
+                    certCode,
+                    typeText,
+                    finalValidUntil,
+                    req.user.id || null,
+                    req.user.name || req.user.username,
+                    `Пакетна генерація (${quantity} шт.)`
+                ]
+            );
+            created.push(mapCertificateRow(result.rows[0]));
+        }
+
+        await client.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['certificate_batch', req.user.username, JSON.stringify({
+                quantity,
+                typeText,
+                codes: created.map(c => c.certCode)
+            })]
+        );
+
+        await client.query('COMMIT');
+        log.info(`Batch certificates created: ${quantity} by ${req.user.username}`);
+        res.status(201).json({ success: true, certificates: created });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Batch create error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
 // PATCH /api/certificates/:id/status — Change status
 router.patch('/:id/status', requireRole('admin'), async (req, res) => {
     const client = await pool.connect();

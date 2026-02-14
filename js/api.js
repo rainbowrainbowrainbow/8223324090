@@ -417,6 +417,25 @@ async function apiCreateCertificate(data) {
     }
 }
 
+async function apiBatchCreateCertificates(data) {
+    try {
+        const response = await fetch(`${API_BASE}/certificates/batch`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API batchCreateCertificates error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
 async function apiGetCertificateByCode(code) {
     try {
         const response = await fetch(`${API_BASE}/certificates/code/${encodeURIComponent(code)}`, { headers: getAuthHeaders(false) });

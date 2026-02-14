@@ -438,14 +438,21 @@ async function generateBookingNumber(client) {
 async function generateCertCode(client) {
     const db = client || pool;
     const year = new Date().getFullYear();
+    // Generate random 5-digit code (10000-99999) — non-sequential for security
+    for (let attempt = 0; attempt < 20; attempt++) {
+        const num = 10000 + Math.floor(Math.random() * 90000);
+        const code = `CERT-${year}-${num}`;
+        const exists = await db.query('SELECT 1 FROM certificates WHERE cert_code = $1', [code]);
+        if (exists.rows.length === 0) return code;
+    }
+    // Fallback: sequential counter if all random attempts collide (very unlikely)
     const result = await db.query(
         `INSERT INTO certificate_counter (year, counter) VALUES ($1, 1)
          ON CONFLICT (year) DO UPDATE SET counter = certificate_counter.counter + 1
          RETURNING counter`,
         [year]
     );
-    const num = result.rows[0].counter;
-    return `CERT-${year}-${String(num).padStart(5, '0')}`;
+    return `CERT-${year}-${String(result.rows[0].counter).padStart(5, '0')}`;
 }
 
 // v7.0: Seed products catalog from hardcoded PROGRAMS data

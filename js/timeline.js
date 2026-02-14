@@ -443,10 +443,11 @@ function createAfishaBlock(event, startHour) {
     const width = (duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
 
     const typeClass = event.type || 'event';
+    const isBirthday = event.type === 'birthday';
 
     block.className = `booking-block afisha-block afisha-type-${typeClass}`;
     block.style.left = `${left}px`;
-    block.style.width = `${Math.max(width, 40)}px`;
+    block.style.width = `${Math.max(width, isBirthday ? 100 : 40)}px`;
     block.dataset.afishaId = event.id;
 
     // Store drag data
@@ -456,11 +457,24 @@ function createAfishaBlock(event, startHour) {
     block.dataset.eventType = event.type || 'event';
     block.dataset.templateId = event.template_id || '';
 
-    if (event.type === 'birthday') {
+    if (isBirthday) {
+        // Inline styles to guarantee birthday pill look regardless of CSS cache
+        Object.assign(block.style, {
+            background: 'linear-gradient(135deg, #F59E0B 0%, #F97316 50%, #EF4444 100%)',
+            border: '2px solid rgba(255,255,255,0.5)',
+            height: '36px',
+            marginTop: '-18px',
+            borderRadius: '18px',
+            padding: '2px 14px 2px 8px',
+            gap: '4px',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(249,115,22,0.4)',
+            zIndex: '15'
+        });
         block.innerHTML = `
-            <span class="birthday-icon">🎂</span>
-            <div class="title">${escapeHtml(event.title)}</div>
-            <div class="subtitle">${event.time}</div>
+            <span style="font-size:18px;line-height:1;flex-shrink:0">🎂</span>
+            <div class="title" style="color:#fff;font-size:12px;font-weight:800;line-height:36px;text-shadow:0 1px 3px rgba(0,0,0,0.25)">${escapeHtml(event.title)}</div>
+            <div class="subtitle" style="color:rgba(255,255,255,0.95);font-size:10px;font-weight:700;line-height:24px;background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:8px">${event.time}</div>
         `;
     } else {
         block.innerHTML = `

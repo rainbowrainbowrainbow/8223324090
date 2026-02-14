@@ -2113,6 +2113,63 @@ function showCreateCertificateModal() {
     modal.classList.remove('hidden');
 }
 
+function showBatchCertificateModal() {
+    const modal = document.getElementById('batchCertModal');
+    if (!modal) return;
+    document.getElementById('batchCertForm').reset();
+    document.getElementById('batchCertResult').classList.add('hidden');
+    document.getElementById('batchCertSubmitBtn').disabled = false;
+    document.getElementById('batchCertSubmitBtn').textContent = '📦 Згенерувати';
+    // Default valid_until = +45 days
+    const d = new Date();
+    d.setDate(d.getDate() + 45);
+    document.getElementById('batchCertValidUntil').value = d.toISOString().split('T')[0];
+    // Default selection
+    const radio10 = modal.querySelector('input[value="10"]');
+    if (radio10) radio10.checked = true;
+    modal.classList.remove('hidden');
+}
+
+async function handleBatchCertSubmit(event) {
+    event.preventDefault();
+    const btn = document.getElementById('batchCertSubmitBtn');
+    const qtyInput = document.querySelector('input[name="batchQty"]:checked');
+    if (!qtyInput) return showNotification('Оберіть кількість', 'error');
+    const quantity = parseInt(qtyInput.value);
+    const typeText = document.getElementById('batchCertType').value;
+    const validUntil = document.getElementById('batchCertValidUntil').value || undefined;
+
+    btn.disabled = true;
+    btn.textContent = `⏳ Генерація ${quantity} шт...`;
+
+    const result = await apiBatchCreateCertificates({ quantity, typeText, validUntil });
+    if (!result.success) {
+        showNotification(result.error || 'Помилка генерації', 'error');
+        btn.disabled = false;
+        btn.textContent = '📦 Згенерувати';
+        return;
+    }
+
+    const codes = result.certificates.map(c => c.certCode);
+    const codesDiv = document.getElementById('batchCertCodes');
+    codesDiv.innerHTML = codes.map((code, i) => `<div style="padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.06)">${i + 1}. <b>${code}</b></div>`).join('');
+    document.getElementById('batchCertResult').classList.remove('hidden');
+    btn.textContent = `✅ Згенеровано ${quantity} сертифікатів`;
+
+    showNotification(`Згенеровано ${quantity} сертифікатів`, 'success');
+    loadCertificates();
+}
+
+function copyBatchCodes() {
+    const codesDiv = document.getElementById('batchCertCodes');
+    const codes = Array.from(codesDiv.querySelectorAll('b')).map(b => b.textContent).join('\n');
+    navigator.clipboard.writeText(codes).then(() => {
+        showNotification('Коди скопійовано', 'success');
+    }).catch(() => {
+        showNotification('Не вдалось скопіювати', 'error');
+    });
+}
+
 function onCertDisplayModeChange() {
     const mode = document.getElementById('certDisplayMode').value;
     const label = document.getElementById('certDisplayValueLabel');

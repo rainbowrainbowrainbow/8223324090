@@ -451,6 +451,7 @@
                     <p class="empty-state">Натисніть кнопку, щоб завантажити</p>
                 </div>
                 <button type="button" class="btn-submit cert-panel-add-btn cert-admin-only" onclick="showCreateCertificateModal()">➕ Видати сертифікат</button>
+                <button type="button" class="btn-submit cert-panel-add-btn cert-admin-only" style="background:linear-gradient(135deg,#8B5CF6,#6D28D9);margin-top:6px" onclick="showBatchCertificateModal()">📦 Пакет сертифікатів</button>
             </div>
         </aside>
     </div>
@@ -701,6 +702,44 @@
             <div id="certImagePreview" class="cert-image-preview"></div>
             <div id="certDetailContent"></div>
             <div class="cert-detail-actions" id="certDetailActions"></div>
+        </div>
+    </div>
+
+    <!-- v8.6: Модалка пакетної генерації сертифікатів -->
+    <div id="batchCertModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Пакет сертифікатів">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3>📦 Пакетна генерація сертифікатів</h3>
+            <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px">Генерує порожні сертифікати з випадковими кодами. ПІБ вписується ручкою.</p>
+            <form id="batchCertForm" onsubmit="handleBatchCertSubmit(event)">
+                <div class="form-group">
+                    <label>Кількість</label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <label class="batch-qty-option"><input type="radio" name="batchQty" value="5"> 5 шт.</label>
+                        <label class="batch-qty-option"><input type="radio" name="batchQty" value="10" checked> 10 шт.</label>
+                        <label class="batch-qty-option"><input type="radio" name="batchQty" value="15"> 15 шт.</label>
+                        <label class="batch-qty-option"><input type="radio" name="batchQty" value="20"> 20 шт.</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="batchCertType">Тип сертифіката</label>
+                    <select id="batchCertType">
+                        <option value="на одноразовий вхід">На одноразовий вхід</option>
+                        <option value="абонемент">Абонемент</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="batchCertValidUntil">Дійсний до</label>
+                    <input type="date" id="batchCertValidUntil">
+                    <small class="form-hint">За замовчуванням: +45 днів</small>
+                </div>
+                <button type="submit" class="btn-submit btn-full" id="batchCertSubmitBtn">📦 Згенерувати</button>
+            </form>
+            <div id="batchCertResult" class="hidden" style="margin-top:16px">
+                <h4 style="margin-bottom:8px">Згенеровані коди:</h4>
+                <div id="batchCertCodes" style="font-family:monospace;font-size:14px;background:var(--bg-secondary);padding:12px;border-radius:8px;max-height:200px;overflow-y:auto"></div>
+                <button type="button" class="btn-submit btn-full" style="margin-top:8px" onclick="copyBatchCodes()">📋 Копіювати всі коди</button>
+            </div>
         </div>
     </div>
 

@@ -490,10 +490,31 @@ async function scheduleAutoDelete(chatId, messageId) {
     }
 }
 
+/**
+ * Wait for all in-flight Telegram requests to complete.
+ * Used by graceful shutdown in server.js.
+ * @param {number} timeoutMs - Max time to wait (default 5000ms)
+ * @returns {Promise<void>}
+ */
+function drainTelegramRequests(timeoutMs = 5000) {
+    if (inFlightCount === 0) return Promise.resolve();
+    log.info(`Draining ${inFlightCount} in-flight Telegram request(s)...`);
+    return new Promise((resolve, reject) => {
+        drainResolvers.push(resolve);
+        setTimeout(() => reject(new Error(`Telegram drain timeout (${timeoutMs}ms), ${inFlightCount} request(s) still in-flight`)), timeoutMs);
+    });
+}
+
+/** Get current number of in-flight Telegram HTTPS requests. */
+function getInFlightCount() {
+    return inFlightCount;
+}
+
 module.exports = {
     TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, WEBHOOK_SECRET,
     telegramRequest, sendTelegramMessage, sendTelegramPhoto, editTelegramMessage, deleteTelegramMessage,
     getConfiguredChatId, getConfiguredThreadId,
     notifyTelegram, ensureWebhook, getTelegramChatId, scheduleAutoDelete,
-    setWebhookFlag, getWebhookFlag, getBotUsername
+    setWebhookFlag, getWebhookFlag, getBotUsername,
+    drainTelegramRequests, getInFlightCount
 };

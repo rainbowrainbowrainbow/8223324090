@@ -2299,41 +2299,22 @@ async function generateCertificateCanvas(cert) {
 function drawCertDynamicContent(ctx, cert, W, H) {
     const titleX = 45;
 
-    // === "СЕРТИФІКАТ" title — decorative outlined text ===
-    ctx.save();
-    ctx.font = 'italic 900 82px Nunito, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.lineJoin = 'round';
-    ctx.miterLimit = 2;
-    // Shadow layer
-    ctx.shadowColor = 'rgba(0,0,0,0.18)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetX = 3;
-    ctx.shadowOffsetY = 3;
-    // White outline (stroke first, then fill on top)
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 7;
-    ctx.strokeText('СЕРТИФІКАТ', titleX, 135);
-    // Reset shadow before fill
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-    // Dark blue fill
+    // === "СЕРТИФІКАТ" title — flat dark blue, no italic ===
     ctx.fillStyle = '#0D47A1';
+    ctx.font = '900 82px Nunito, sans-serif';
+    ctx.textAlign = 'left';
     ctx.fillText('СЕРТИФІКАТ', titleX, 135);
-    ctx.restore();
 
     // === RECIPIENT NAME — large dark bold ===
     const nameText = cert.displayValue || '';
     const nameLen = nameText.length;
-    const nameFontSize = nameLen > 35 ? 34 : nameLen > 25 ? 40 : nameLen > 18 ? 46 : 52;
+    const nameFontSize = nameLen > 35 ? 30 : nameLen > 25 ? 36 : nameLen > 18 ? 42 : 46;
     ctx.fillStyle = '#0D47A1';
     ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
     ctx.textAlign = 'left';
 
     // Word wrap for long names
-    const maxNameW = W - 500;
+    const maxNameW = W - 550;
     const words = nameText.split(' ');
     const lines = [];
     let currentLine = '';
@@ -2387,10 +2368,10 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     // === PARK BRANDING (next to logo at bottom-left) ===
     ctx.fillStyle = '#fff';
     ctx.font = '800 14px Nunito, sans-serif';
-    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 85, H - 30);
+    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 85, H - 45);
     ctx.font = '600 11px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 85, H - 15);
+    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 85, H - 30);
 }
 
 async function drawCertQRCode(ctx, cert, W, H) {
@@ -2407,7 +2388,7 @@ async function drawCertQRCode(ctx, cert, W, H) {
                 });
                 // QR fits inside the white placeholder on the background
                 const qrSize = 75;
-                const qrCenterX = 490;
+                const qrCenterX = 505;
                 const qrCenterY = 300;
                 const qrX = qrCenterX - qrSize / 2;
                 const qrY = qrCenterY - qrSize / 2;

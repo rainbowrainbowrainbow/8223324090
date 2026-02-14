@@ -2407,7 +2407,7 @@ function copyCertText(text) {
 // Certificate Image Generator (Single Background + Dynamic Text)
 // ==========================================
 
-const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=4';
+const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=8.6.1';
 let _certBgImage = null;
 
 function loadCertBg() {

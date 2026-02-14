@@ -29,6 +29,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
+    <script>
+    // Dark mode flash prevention — runs synchronously before any content renders
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <!-- Екран авторизації -->
     <div id="loginScreen" class="login-screen">
         <div class="login-container">
@@ -152,9 +156,9 @@
             </div>
 
             <!-- Попередження -->
-            <div id="warningBanner" class="warning-banner hidden">
+            <div id="warningBanner" class="warning-banner hidden" role="alert" aria-live="assertive">
                 <span id="warningText"></span>
-                <button id="closeWarning" class="btn-close-warning">✕</button>
+                <button id="closeWarning" class="btn-close-warning" aria-label="Закрити попередження">✕</button>
             </div>
 
             <!-- v8.6: Banner for preliminary filter mode -->
@@ -506,7 +510,7 @@
     </div>
 
     <!-- Модальне вікно управління аніматорами (тільки для Сергія) -->
-    <div id="animatorsModal" class="modal hidden">
+    <div id="animatorsModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Список аніматорів">
         <div class="modal-content modal-large">
             <span class="modal-close">&times;</span>
             <h3>👥 Управління аніматорами</h3>
@@ -837,7 +841,7 @@
     </div>
 
     <!-- v3.9: Модальне вікно примітки (замість prompt) -->
-    <div id="noteModal" class="modal hidden">
+    <div id="noteModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Введіть примітку">
         <div class="modal-content modal-confirm">
             <h3>Додати аніматора</h3>
             <p>Примітка (опціонально):</p>
@@ -1800,7 +1804,7 @@
     </div>
 
     <!-- Модальне вікно каталогу програм -->
-    <div id="programsCatalogModal" class="modal hidden">
+    <div id="programsCatalogModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Каталог програм">
         <div class="modal-content modal-catalog">
             <span class="modal-close">&times;</span>
             <h3>🎭 Розважальні програми</h3>
@@ -2090,7 +2094,7 @@
         </div>
     </div>
 
-    <div id="notification" class="notification hidden">
+    <div id="notification" class="notification hidden" role="status" aria-live="polite" aria-atomic="true">
         <span id="notificationText"></span>
     </div>
 

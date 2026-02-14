@@ -655,7 +655,7 @@
             <form id="certificateForm" onsubmit="handleCertificateSubmit(event)">
                 <div class="form-group">
                     <label for="certDisplayMode">Режим відображення</label>
-                    <select id="certDisplayMode">
+                    <select id="certDisplayMode" onchange="onCertDisplayModeChange()">
                         <option value="fio">ПІБ (прізвище та ім'я)</option>
                         <option value="number">Номер (довільний)</option>
                     </select>

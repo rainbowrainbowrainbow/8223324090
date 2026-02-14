@@ -2093,6 +2093,10 @@ function showCreateCertificateModal() {
     if (!modal) return;
     document.getElementById('certModalTitle').textContent = '📄 Видати сертифікат';
     document.getElementById('certificateForm').reset();
+    // Reset display mode label
+    const modeSelect = document.getElementById('certDisplayMode');
+    if (modeSelect) modeSelect.value = 'fio';
+    onCertDisplayModeChange();
     // Reset type preset
     const presetSel = document.getElementById('certTypePreset');
     if (presetSel) presetSel.value = 'на одноразовий вхід';
@@ -2104,9 +2108,17 @@ function showCreateCertificateModal() {
     const dateInput = document.getElementById('certValidUntil');
     dateInput.value = d.toISOString().split('T')[0];
     dateInput.classList.add('hidden');
-    // Show human-readable date, hide raw input
+    // Show human-readable date (called after dateInput.value is set)
     updateCertDateDisplay();
     modal.classList.remove('hidden');
+}
+
+function onCertDisplayModeChange() {
+    const mode = document.getElementById('certDisplayMode').value;
+    const label = document.getElementById('certDisplayValueLabel');
+    if (label) {
+        label.textContent = mode === 'fio' ? 'ПІБ (прізвище та ім\'я)' : 'Номер або ідентифікатор';
+    }
 }
 
 function onCertTypePresetChange() {
@@ -2224,7 +2236,7 @@ async function showCertDetail(id) {
                 <div class="cert-detail-row"><span class="cert-detail-label">Статус:</span><span class="cert-detail-val">${getCertStatusBadge(cert.status)}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Режим:</span><span class="cert-detail-val">${modeLabel}</span></div>
                 <div class="cert-detail-row cert-detail-row-name"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${escapeHtml(cert.displayValue || '—')}</span></div>
-                <div class="cert-detail-row"><span class="cert-detail-label">Тип:</span><span class="cert-detail-val">${escapeHtml(cert.typeText)}</span></div>
+                <div class="cert-detail-row"><span class="cert-detail-label">Тип:</span><span class="cert-detail-val">${escapeHtml(cert.typeText || '')}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Видано:</span><span class="cert-detail-val">${issuedDate}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Дійсний до:</span><span class="cert-detail-val">${validDate}</span></div>
                 ${cert.status === 'used' ? `<div class="cert-detail-row"><span class="cert-detail-label">Використано:</span><span class="cert-detail-val">${usedDate}</span></div>` : ''}
@@ -2235,9 +2247,10 @@ async function showCertDetail(id) {
         `;
 
         // Download + copy — available to everyone; action buttons — admin only
-        const copyText = `Сертифікат: ${cert.certCode}\n${modeLabel}: ${cert.displayValue || ''}\nТип: ${cert.typeText}\nДійсний до: ${validDate}`;
+        const copyText = `Сертифікат: ${cert.certCode}\n${modeLabel}: ${cert.displayValue || ''}\nТип: ${cert.typeText || ''}\nДійсний до: ${validDate}`;
         let btns = `<button class="btn-download-cert btn-sm" onclick="downloadCertificateImage(${cert.id})">🖼️ Скачати</button>`;
-        btns += `<button class="btn-copy-all btn-sm" onclick="copyCertText(\`${copyText.replace(/`/g, '\\`')}\`)">📋 Скопіювати інфо</button>`;
+        window._certCopyText = copyText;
+        btns += `<button class="btn-copy-all btn-sm" onclick="copyCertText(window._certCopyText)">📋 Скопіювати інфо</button>`;
         const isAdmin = AppState.currentUser && AppState.currentUser.role === 'admin';
         if (isAdmin) {
             if (cert.status === 'active') {

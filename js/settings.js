@@ -2407,11 +2407,11 @@ function copyCertText(text) {
 // Certificate Image Generator (Single Background + Dynamic Text)
 // ==========================================
 
-const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=8.6.1';
+const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=8.6.1b';
 let _certBgImage = null;
 
-function loadCertBg() {
-    if (_certBgImage) return Promise.resolve(_certBgImage);
+function loadCertBg(forceReload) {
+    if (_certBgImage && !forceReload) return Promise.resolve(_certBgImage);
     return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -2428,10 +2428,22 @@ async function generateCertificateCanvas(cert) {
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // === DRAW BACKGROUND (single pre-rendered image) ===
+    // === DRAW BACKGROUND (cover-crop to preserve aspect ratio, trim dashed border) ===
     const bgImg = await loadCertBg();
     if (bgImg) {
-        ctx.drawImage(bgImg, 0, 0, W, H);
+        const imgRatio = bgImg.width / bgImg.height;
+        const canvasRatio = W / H;
+        let sx = 0, sy = 0, sw = bgImg.width, sh = bgImg.height;
+        if (imgRatio < canvasRatio) {
+            // Image taller than canvas — crop top/bottom
+            sh = bgImg.width / canvasRatio;
+            sy = (bgImg.height - sh) / 2;
+        } else {
+            // Image wider than canvas — crop left/right
+            sw = bgImg.height * canvasRatio;
+            sx = (bgImg.width - sw) / 2;
+        }
+        ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, W, H);
     } else {
         // Fallback: solid blue gradient
         const grad = ctx.createLinearGradient(0, 0, 0, H);

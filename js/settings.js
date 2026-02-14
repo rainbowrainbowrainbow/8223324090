@@ -2253,7 +2253,7 @@ function copyCertText(text) {
 // Certificate Image Generator (Single Background + Dynamic Text)
 // ==========================================
 
-const CERT_BG_SRC = 'images/certificate/cert-bg-full.png';
+const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=2';
 let _certBgImage = null;
 
 function loadCertBg() {
@@ -2346,32 +2346,32 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     ctx.font = '600 15px Nunito, sans-serif';
     ctx.fillText(cert.certCode || '', titleX, typeY + 30);
 
-    // === VALID UNTIL — bottom area ===
+    // === VALID UNTIL — snow area (y=545-585) ===
     const validDate = cert.validUntil
         ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '—';
     ctx.fillStyle = '#fff';
     ctx.font = '700 18px Nunito, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`Сертифікат дійсний до ${validDate}`, titleX, H - 155);
+    ctx.fillText(`Сертифікат дійсний до ${validDate}`, titleX, H - 130);
 
     // === WEEKDAY NOTE ===
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.font = '600 14px Nunito, sans-serif';
-    ctx.fillText('Діє у будні дні та вихідні', titleX, H - 132);
+    ctx.fillText('Діє у будні дні та вихідні', titleX, H - 110);
 
     // === PHONE ===
     ctx.fillStyle = '#fff';
     ctx.font = '700 16px Nunito, sans-serif';
-    ctx.fillText('+38(0800)-75-35-53', titleX, H - 108);
+    ctx.fillText('+38(0800)-75-35-53', titleX, H - 90);
 
-    // === PARK BRANDING (next to logo at bottom-left) ===
+    // === PARK BRANDING (aligned with logo, above dashed border) ===
     ctx.fillStyle = '#fff';
-    ctx.font = '800 14px Nunito, sans-serif';
-    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 85, H - 45);
-    ctx.font = '600 11px Nunito, sans-serif';
+    ctx.font = '800 13px Nunito, sans-serif';
+    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 80, H - 62);
+    ctx.font = '600 10px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 85, H - 30);
+    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 80, H - 48);
 }
 
 async function drawCertQRCode(ctx, cert, W, H) {
@@ -2386,10 +2386,10 @@ async function drawCertQRCode(ctx, cert, W, H) {
                     img.onerror = reject;
                     img.src = qrData.dataUrl;
                 });
-                // QR on the blue background — larger with rounded corners
+                // QR on the clean blue sky area (left of superhero glow)
                 const qrSize = 110;
-                const qrCenterX = 500;
-                const qrCenterY = 295;
+                const qrCenterX = 440;
+                const qrCenterY = 290;
                 const qrX = qrCenterX - qrSize / 2;
                 const qrY = qrCenterY - qrSize / 2;
                 const qrR = 16;

@@ -2463,59 +2463,56 @@ async function generateCertificateCanvas(cert) {
 }
 
 function drawCertDynamicContent(ctx, cert, W, H) {
-    // === LEFT PANEL — frosted glass effect for text readability ===
-    const panelW = 440;
-    const panelPad = 40;
-    const panelR = 0; // no rounding, full-height strip
+    // === LEFT PANEL — frosted glass, wider for centered QR ===
+    const panelW = 540;
 
-    // Semi-transparent white gradient overlay on left side
     ctx.save();
     const panelGrad = ctx.createLinearGradient(0, 0, panelW + 40, 0);
-    panelGrad.addColorStop(0, 'rgba(255,255,255,0.82)');
+    panelGrad.addColorStop(0, 'rgba(255,255,255,0.85)');
     panelGrad.addColorStop(0.85, 'rgba(255,255,255,0.55)');
     panelGrad.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = panelGrad;
     ctx.fillRect(0, 0, panelW + 40, H);
     ctx.restore();
 
-    const titleX = panelPad;
-    const maxTextW = panelW - panelPad * 2;
+    const rightEdge = panelW - 50; // 490 — right alignment anchor with padding
+    const maxTextW = panelW - 100;
 
-    // === "СЕРТИФІКАТ" title ===
+    // === LINE 1: "СЕРТИФІКАТ" ===
     ctx.save();
-    ctx.font = '900 52px Nunito, sans-serif';
-    ctx.textAlign = 'left';
+    ctx.font = '900 48px Nunito, sans-serif';
+    ctx.textAlign = 'right';
     ctx.fillStyle = '#19468B';
-    ctx.fillText('СЕРТИФІКАТ', titleX, 80);
+    ctx.fillText('СЕРТИФІКАТ', rightEdge, 85);
     ctx.restore();
 
-    // Decorative line under title
+    // Decorative line under title (right-aligned)
     ctx.save();
-    const lineGrad = ctx.createLinearGradient(titleX, 0, titleX + 200, 0);
-    lineGrad.addColorStop(0, '#FF6B35');
-    lineGrad.addColorStop(1, '#FFB347');
+    const lineGrad = ctx.createLinearGradient(rightEdge - 200, 0, rightEdge, 0);
+    lineGrad.addColorStop(0, '#FFB347');
+    lineGrad.addColorStop(1, '#FF6B35');
     ctx.strokeStyle = lineGrad;
     ctx.lineWidth = 4;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(titleX, 95);
-    ctx.lineTo(titleX + 180, 95);
+    ctx.moveTo(rightEdge - 200, 100);
+    ctx.lineTo(rightEdge, 100);
     ctx.stroke();
     ctx.restore();
 
-    // === RECIPIENT NAME ===
-    let nextY = 150;
+    // === LINE 2: RECIPIENT NAME ===
+    let nextY = 155;
     const nameText = cert.displayValue || '';
     if (nameText) {
         const nameLen = nameText.length;
-        let nameFontSize = nameLen > 35 ? 28 : nameLen > 25 ? 34 : nameLen > 18 ? 40 : 46;
+        let nameFontSize = nameLen > 35 ? 26 : nameLen > 25 ? 32 : nameLen > 18 ? 38 : 44;
 
         ctx.fillStyle = '#0D2E5C';
-        ctx.textAlign = 'left';
+        ctx.textAlign = 'right';
 
         // Adaptive size to fit width
         let testSize = nameFontSize;
-        while (testSize >= 22) {
+        while (testSize >= 20) {
             ctx.font = `900 ${testSize}px Nunito, sans-serif`;
             const words = nameText.split(' ');
             const maxWordWidth = Math.max(...words.map(w => ctx.measureText(w).width));
@@ -2544,34 +2541,37 @@ function drawCertDynamicContent(ctx, cert, W, H) {
         if (currentLine) lines.push(currentLine);
 
         const nameLineH = nameFontSize * 1.15;
-        const visibleLines = lines.slice(0, 3);
+        const visibleLines = lines.slice(0, 2);
         visibleLines.forEach((line, i) => {
-            ctx.fillText(line, titleX, nextY + i * nameLineH);
+            ctx.fillText(line, rightEdge, nextY + i * nameLineH);
         });
 
-        nextY += visibleLines.length * nameLineH + 10;
+        nextY += visibleLines.length * nameLineH + 8;
 
-        // === CERTIFICATE TYPE ===
+        // === LINE 3: CERTIFICATE TYPE ===
         ctx.fillStyle = '#2E5090';
-        ctx.font = '700 22px Nunito, sans-serif';
-        ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), titleX, nextY);
-        nextY += 30;
+        ctx.font = '700 20px Nunito, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), rightEdge, nextY);
+        nextY += 28;
 
-        // === CERT CODE ===
+        // === LINE 4: CERT CODE ===
         ctx.fillStyle = 'rgba(46,80,144,0.5)';
         ctx.font = '600 14px Nunito, sans-serif';
-        ctx.fillText(cert.certCode || '', titleX, nextY);
+        ctx.textAlign = 'right';
+        ctx.fillText(cert.certCode || '', rightEdge, nextY);
         nextY += 20;
     } else {
         ctx.fillStyle = '#2E5090';
-        ctx.font = '800 26px Nunito, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), titleX, nextY);
-        nextY += 34;
+        ctx.font = '800 24px Nunito, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), rightEdge, nextY);
+        nextY += 32;
 
         ctx.fillStyle = 'rgba(46,80,144,0.5)';
         ctx.font = '600 14px Nunito, sans-serif';
-        ctx.fillText(cert.certCode || '', titleX, nextY);
+        ctx.textAlign = 'right';
+        ctx.fillText(cert.certCode || '', rightEdge, nextY);
         nextY += 20;
     }
 
@@ -2579,8 +2579,9 @@ function drawCertDynamicContent(ctx, cert, W, H) {
 }
 
 async function drawCertQRCode(ctx, cert, W, H, contentBottomY) {
-    const panelPad = 40;
-    let qrBottomY = contentBottomY || 280;
+    const panelW = 540;
+    const panelCenterX = panelW / 2; // 270
+    let bottomY = contentBottomY || 280;
 
     try {
         const qrResp = await fetch(`${API_BASE}/certificates/qr/${encodeURIComponent(cert.certCode)}`, { headers: getAuthHeaders(false) });
@@ -2593,14 +2594,17 @@ async function drawCertQRCode(ctx, cert, W, H, contentBottomY) {
                     img.onerror = reject;
                     img.src = qrData.dataUrl;
                 });
-                // QR — right after text content
-                const qrSize = 110;
-                const qrX = panelPad;
-                const qrY = contentBottomY + 15;
-                const qrR = 12;
+                // QR — 220px, centered in panel
+                const qrSize = 220;
+                const qrX = panelCenterX - qrSize / 2; // 160
+                const qrY = contentBottomY + 20;
+                const qrR = 16;
 
-                // White rounded-rect background
+                // White rounded-rect background with subtle shadow
                 ctx.save();
+                ctx.shadowColor = 'rgba(0,0,0,0.1)';
+                ctx.shadowBlur = 12;
+                ctx.shadowOffsetY = 4;
                 ctx.fillStyle = '#fff';
                 ctx.beginPath();
                 ctx.moveTo(qrX + qrR, qrY);
@@ -2614,19 +2618,33 @@ async function drawCertQRCode(ctx, cert, W, H, contentBottomY) {
                 ctx.quadraticCurveTo(qrX, qrY, qrX + qrR, qrY);
                 ctx.closePath();
                 ctx.fill();
-                // Clip QR to rounded rect
+                ctx.restore();
+
+                // Draw QR image clipped to rounded rect
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(qrX + qrR, qrY);
+                ctx.lineTo(qrX + qrSize - qrR, qrY);
+                ctx.quadraticCurveTo(qrX + qrSize, qrY, qrX + qrSize, qrY + qrR);
+                ctx.lineTo(qrX + qrSize, qrY + qrSize - qrR);
+                ctx.quadraticCurveTo(qrX + qrSize, qrY + qrSize, qrX + qrSize - qrR, qrY + qrSize);
+                ctx.lineTo(qrX + qrR, qrY + qrSize);
+                ctx.quadraticCurveTo(qrX, qrY + qrSize, qrX, qrY + qrSize - qrR);
+                ctx.lineTo(qrX, qrY + qrR);
+                ctx.quadraticCurveTo(qrX, qrY, qrX + qrR, qrY);
+                ctx.closePath();
                 ctx.clip();
                 ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
                 ctx.restore();
 
-                // Small label under QR
+                // Label under QR
                 ctx.fillStyle = '#2E5090';
-                ctx.font = '600 11px Nunito, sans-serif';
+                ctx.font = '600 13px Nunito, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText('Сканувати для перевірки', qrX + qrSize / 2, qrY + qrSize + 16);
+                ctx.fillText('Сканувати для перевірки', panelCenterX, qrY + qrSize + 20);
                 ctx.textAlign = 'left';
 
-                qrBottomY = qrY + qrSize + 30;
+                bottomY = qrY + qrSize + 40;
             }
         }
     } catch (e) {
@@ -2640,9 +2658,10 @@ async function drawCertQRCode(ctx, cert, W, H, contentBottomY) {
     const infoLine = `Дійсний до ${validDate}  •  Будні та вихідні  •  +38(0800)-75-35-53`;
 
     ctx.fillStyle = '#2E5090';
-    ctx.font = '700 14px Nunito, sans-serif';
+    ctx.font = '700 13px Nunito, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(infoLine, panelCenterX, bottomY);
     ctx.textAlign = 'left';
-    ctx.fillText(infoLine, panelPad, qrBottomY + 10);
 }
 
 async function downloadCertificateImage(certId) {

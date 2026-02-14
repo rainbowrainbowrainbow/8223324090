@@ -2256,51 +2256,56 @@ function copyCertText(text) {
 const _certImageCache = {};
 
 // Asset configuration: all 15 image layers + positions on 1200×675 canvas
+// Actual image sizes: bg 1344×768, clouds/snow/scan 1536×672, trampoline/zipline 1344×768,
+// mascot 896×1152, gamepad/star/heart/snowflakes/sparkle 1024×1024,
+// title 2800×1200, branding 2100×900
 const CERT_ASSETS = {
-    // Layer 01 — Background gradient (fills entire canvas)
+    // Layer 01 — Background gradient (stretch to fill canvas)
     bgGradient: {
         src: 'images/certificate/bg-gradient.png',
         x: 0, y: 0, w: 1200, h: 675,
         required: true
     },
-    // Layer 02 — Clouds top border (21:9 image, cropped to top strip)
+    // Layer 02 — Clouds top (clouds concentrated at top of image, transparent below)
     cloudsTop: {
         src: 'images/certificate/clouds-top.png',
-        x: 0, y: -20, w: 1200, h: 160
+        x: 0, y: -5, w: 1200, h: 140
     },
-    // Layer 03 — Snow bottom border (21:9 image, cropped to bottom strip)
+    // Layer 03 — Snow bottom (snow shapes at bottom of image, transparent above)
     snowBottom: {
         src: 'images/certificate/snow-bottom.png',
-        x: 0, y: 545, w: 1200, h: 130
+        x: 0, y: 565, w: 1200, h: 110
     },
-    // Layer 04 — Trampoline park (main visual, center-bottom area)
+    // Layer 04 — Trampoline park (subtle decoration, bottom-left; ratio 1.75:1)
     trampolinePark: {
         src: 'images/certificate/trampoline-park.png',
-        x: 180, y: 280, w: 650, h: 365
+        x: 30, y: 390, w: 260, h: 149,
+        alpha: 0.15
     },
-    // Layer 05 — Mascot hero (right side, overlaps trampoline)
+    // Layer 05 — Mascot hero (right side; ratio 0.778:1 portrait)
     mascotHero: {
         src: 'images/certificate/mascot-hero.png',
-        x: 830, y: 80, w: 340, h: 425
+        x: 920, y: 110, w: 255, h: 328
     },
-    // Layer 06 — Zipline silhouette (atmospheric, top-right area)
+    // Layer 06 — Zipline silhouette (has white bg → use multiply blend; ratio 1.75:1)
     ziplineSilhouette: {
         src: 'images/certificate/zipline-silhouette.png',
-        x: 600, y: 30, w: 560, h: 315,
-        alpha: 0.15
+        x: 580, y: 25, w: 360, h: 206,
+        alpha: 0.10,
+        blend: 'multiply'
     },
     // Layer 07 — Gamepad (small decoration, left area)
     gamepad: {
         src: 'images/certificate/gamepad.png',
-        x: 40, y: 380, w: 65, h: 65,
+        x: 35, y: 395, w: 55, h: 55,
         alpha: 0.25
     },
-    // Layer 08 — Title "СЕРТИФІКАТ" (3D styled text image)
+    // Layer 08 — Title "СЕРТИФІКАТ" (text ~55% width, ~25% height of image; ratio 2.33:1)
     titleSertifikat: {
         src: 'images/certificate/title-sertifikat.png',
-        x: 35, y: 85, w: 520, h: 90
+        x: 25, y: 15, w: 550, h: 236
     },
-    // Layer 09 — Star gold (scattered decorations, drawn multiple times)
+    // Layer 09 — Star gold (scattered decorations)
     starGold: {
         src: 'images/certificate/star-gold.png',
         instances: [
@@ -2352,15 +2357,15 @@ const CERT_ASSETS = {
             { x: 750, y: 60, w: 8, h: 8, alpha: 0.3 }
         ]
     },
-    // Layer 14 — Scan label (below QR code)
+    // Layer 14 — Scan label (below QR code; ratio 2.29:1)
     scanLabel: {
         src: 'images/certificate/scan-label.png',
-        x: 500, y: 618, w: 200, h: 25
+        x: 530, y: 635, w: 140, h: 28
     },
-    // Layer 15 — Branding strip (bottom of certificate)
+    // Layer 15 — Branding strip (bottom-right; circle logo left, white text right)
     brandingStrip: {
         src: 'images/certificate/branding-strip.png',
-        x: 650, y: 630, w: 500, h: 50
+        x: 800, y: 600, w: 380, h: 60
     }
 };
 
@@ -2411,6 +2416,7 @@ function drawCertLayer(ctx, key, img) {
         for (const inst of asset.instances) {
             ctx.save();
             ctx.globalAlpha = inst.alpha != null ? inst.alpha : 1;
+            if (inst.blend) ctx.globalCompositeOperation = inst.blend;
             ctx.drawImage(img, inst.x, inst.y, inst.w, inst.h);
             ctx.restore();
         }
@@ -2418,6 +2424,7 @@ function drawCertLayer(ctx, key, img) {
         // Single-instance asset
         ctx.save();
         ctx.globalAlpha = asset.alpha != null ? asset.alpha : 1;
+        if (asset.blend) ctx.globalCompositeOperation = asset.blend;
         ctx.drawImage(img, asset.x, asset.y, asset.w, asset.h);
         ctx.restore();
     }

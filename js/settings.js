@@ -2470,8 +2470,8 @@ function drawCertDynamicContent(ctx, cert, W, H) {
         ctx.fillText(cert.certCode || '', titleX, 268);
     }
 
-    // === FOOTER BLOCK — all text above the logo circle (logo ~y590-645) ===
-    const footerTopY = H - 185;
+    // === INFO BLOCK — date, conditions, phone (pushed up towards gamepad) ===
+    const infoBlockY = H - 225;
 
     // Valid until
     const validDate = cert.validUntil
@@ -2480,25 +2480,26 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     ctx.fillStyle = '#fff';
     ctx.font = '700 18px Nunito, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`Сертифікат дійсний до ${validDate}`, titleX, footerTopY);
+    ctx.fillText(`Сертифікат дійсний до ${validDate}`, titleX, infoBlockY);
 
     // Weekday note
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.font = '600 14px Nunito, sans-serif';
-    ctx.fillText('Діє у будні дні та вихідні', titleX, footerTopY + 20);
+    ctx.fillText('Діє у будні дні та вихідні', titleX, infoBlockY + 22);
 
     // Phone
     ctx.fillStyle = '#fff';
     ctx.font = '700 16px Nunito, sans-serif';
-    ctx.fillText('+38(0800)-75-35-53', titleX, footerTopY + 40);
+    ctx.fillText('+38(0800)-75-35-53', titleX, infoBlockY + 44);
 
-    // Park branding — right of logo circle
+    // === BOTTOM BRANDING — logo (in bg) is ~y605-645, text aligned to its center ===
+    const brandY = H - 48;
     ctx.fillStyle = '#fff';
     ctx.font = '800 13px Nunito, sans-serif';
-    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 95, footerTopY + 60);
+    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 95, brandY);
     ctx.font = '600 10px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 95, footerTopY + 74);
+    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 95, brandY + 14);
 }
 
 async function drawCertQRCode(ctx, cert, W, H) {

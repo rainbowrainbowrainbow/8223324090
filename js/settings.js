@@ -2313,7 +2313,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     // White outline (stroke first, then fill on top)
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 7;
-    ctx.strokeText('СЕРТИФІКАТ', titleX, 120);
+    ctx.strokeText('СЕРТИФІКАТ', titleX, 135);
     // Reset shadow before fill
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
@@ -2321,7 +2321,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     ctx.shadowOffsetY = 0;
     // Dark blue fill
     ctx.fillStyle = '#0D47A1';
-    ctx.fillText('СЕРТИФІКАТ', titleX, 120);
+    ctx.fillText('СЕРТИФІКАТ', titleX, 135);
     ctx.restore();
 
     // === RECIPIENT NAME — large dark bold ===
@@ -2348,7 +2348,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     }
     if (currentLine) lines.push(currentLine);
 
-    const nameStartY = 225;
+    const nameStartY = 240;
     const nameLineH = nameFontSize * 1.15;
     lines.forEach((line, i) => {
         ctx.fillText(line, titleX, nameStartY + i * nameLineH);
@@ -2387,10 +2387,10 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     // === PARK BRANDING (next to logo at bottom-left) ===
     ctx.fillStyle = '#fff';
     ctx.font = '800 14px Nunito, sans-serif';
-    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 105, H - 30);
+    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 85, H - 30);
     ctx.font = '600 11px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 105, H - 15);
+    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 85, H - 15);
 }
 
 async function drawCertQRCode(ctx, cert, W, H) {
@@ -2406,9 +2406,9 @@ async function drawCertQRCode(ctx, cert, W, H) {
                     img.src = qrData.dataUrl;
                 });
                 // QR fits inside the white placeholder on the background
-                const qrSize = 80;
+                const qrSize = 75;
                 const qrCenterX = 490;
-                const qrCenterY = 285;
+                const qrCenterY = 300;
                 const qrX = qrCenterX - qrSize / 2;
                 const qrY = qrCenterY - qrSize / 2;
                 ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
@@ -2417,7 +2417,7 @@ async function drawCertQRCode(ctx, cert, W, H) {
                 ctx.fillStyle = 'rgba(255,255,255,0.75)';
                 ctx.font = '600 12px Nunito, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText('Сканувати для перевірки', qrCenterX, qrCenterY + qrSize / 2 + 50);
+                ctx.fillText('Сканувати для перевірки', qrCenterX, qrCenterY + qrSize / 2 + 22);
                 ctx.textAlign = 'left';
             }
         }

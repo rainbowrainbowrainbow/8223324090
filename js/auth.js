@@ -41,6 +41,15 @@ async function login(username, password) {
 }
 
 function logout() {
+    // Clear intervals to prevent background timers after logout
+    if (AppState.nowLineInterval) {
+        clearInterval(AppState.nowLineInterval);
+        AppState.nowLineInterval = null;
+    }
+    if (AppState.pendingPollInterval) {
+        clearInterval(AppState.pendingPollInterval);
+        AppState.pendingPollInterval = null;
+    }
     AppState.currentUser = null;
     localStorage.removeItem('pzp_token');
     localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);

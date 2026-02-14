@@ -414,8 +414,8 @@ function renderTaskCard(t) {
             ${t.type === 'afisha' ? '<span>🎭</span>' : ''}
         </div>
         <div class="task-card-actions">
-            <button class="${btnClass}" onclick="cycleStatus(${t.id}, '${nextStatus}')">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
-            <button class="btn-delete" onclick="deleteTask(${t.id})">✕</button>
+            <button class="${btnClass}" onclick="cycleStatus(${Number(t.id)}, '${escapeHtml(nextStatus)}')">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
+            <button class="btn-delete" onclick="deleteTask(${Number(t.id)})">✕</button>
         </div>
     </div>`;
 }
@@ -503,7 +503,7 @@ function renderTemplates(templates) {
                 <span class="badge ${t.isActive ? 'badge-done' : 'badge-normal'}">${t.isActive ? 'Активний' : 'Пауза'}</span>
             </div>
             <div class="task-card-actions">
-                <button class="btn-delete" onclick="deleteTemplate(${t.id})">✕ Видалити</button>
+                <button class="btn-delete" onclick="deleteTemplate(${Number(t.id)})">✕ Видалити</button>
             </div>
         </div>`;
     }).join('');

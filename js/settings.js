@@ -181,8 +181,8 @@ async function showProgramsCatalog() {
                             <span class="catalog-program-meta">${priceText}${infoItems ? ' · ' + infoItems : ''}</span>
                         </div>
                         ${manage ? `<div class="catalog-card-actions">
-                            <button class="btn-catalog-edit" onclick="openProductForm('${p.id}')" title="Редагувати">&#9998;</button>
-                            ${isAdmin() && p.isActive !== false ? `<button class="btn-catalog-delete" onclick="deleteProduct('${p.id}')" title="Деактивувати">&#10005;</button>` : ''}
+                            <button class="btn-catalog-edit" onclick="openProductForm('${escapeHtml(p.id)}')" title="Редагувати">&#9998;</button>
+                            ${isAdmin() && p.isActive !== false ? `<button class="btn-catalog-delete" onclick="deleteProduct('${escapeHtml(p.id)}')" title="Деактивувати">&#10005;</button>` : ''}
                         </div>` : ''}
                     </div>
                     ${p.age || p.kids ? `<div class="catalog-program-tags">
@@ -634,8 +634,8 @@ async function fetchAndRenderThreads() {
         const data = await response.json();
         if (data.threads && data.threads.length > 0) {
             container.innerHTML = data.threads.map(t =>
-                `<div class="telegram-chat-item" onclick="document.getElementById('settingsTelegramThreadId').value='${t.thread_id}'">
-                    <strong>${escapeHtml(t.title || 'Тема #' + t.thread_id)}</strong> <span class="chat-id">ID: ${t.thread_id}</span>
+                `<div class="telegram-chat-item" onclick="document.getElementById('settingsTelegramThreadId').value='${escapeHtml(String(t.thread_id))}'">
+                    <strong>${escapeHtml(t.title || 'Тема #' + t.thread_id)}</strong> <span class="chat-id">ID: ${escapeHtml(String(t.thread_id))}</span>
                 </div>`
             ).join('');
         } else {
@@ -1238,13 +1238,13 @@ async function renderAfishaList() {
                 ${descText}
             </div>
             <div class="afisha-item-actions">
-                <button class="btn-shift btn-sm" onclick="generateTasksForAfisha(${item.id})" title="Створити задачі">📝</button>
-                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, -60)" title="−1 год">⏪</button>
-                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, -15)" title="−15 хв">◀</button>
-                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, +15)" title="+15 хв">▶</button>
-                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${item.id}, +60)" title="+1 год">⏩</button>
-                <button class="btn-edit btn-sm" onclick="editAfishaItem(${item.id})" title="Редагувати">✏️</button>
-                <button class="btn-danger btn-sm" onclick="deleteAfishaItem(${item.id})" title="Видалити">✕</button>
+                <button class="btn-shift btn-sm" onclick="generateTasksForAfisha(${Number(item.id)})" title="Створити задачі">📝</button>
+                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${Number(item.id)}, -60)" title="−1 год">⏪</button>
+                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${Number(item.id)}, -15)" title="−15 хв">◀</button>
+                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${Number(item.id)}, +15)" title="+15 хв">▶</button>
+                <button class="btn-shift btn-sm" onclick="shiftAfishaItem(${Number(item.id)}, +60)" title="+1 год">⏩</button>
+                <button class="btn-edit btn-sm" onclick="editAfishaItem(${Number(item.id)})" title="Редагувати">✏️</button>
+                <button class="btn-danger btn-sm" onclick="deleteAfishaItem(${Number(item.id)})" title="Видалити">✕</button>
             </div>
         </div>`;
     }).join('');
@@ -2063,9 +2063,9 @@ async function loadCertificates() {
         const statusBadge = getCertStatusBadge(cert.status);
         const validDate = cert.validUntil ? new Date(cert.validUntil).toLocaleDateString('uk-UA') : '—';
         const issuedDate = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('uk-UA') : '—';
-        return `<div class="cert-card cert-status-${cert.status}" onclick="showCertDetail(${cert.id})" data-cert-id="${cert.id}">
+        return `<div class="cert-card cert-status-${escapeHtml(cert.status)}" onclick="showCertDetail(${Number(cert.id)})" data-cert-id="${escapeHtml(String(cert.id))}">
             <div class="cert-card-header">
-                <span class="cert-code">${cert.certCode}</span>
+                <span class="cert-code">${escapeHtml(cert.certCode)}</span>
                 ${statusBadge}
             </div>
             <div class="cert-card-body">
@@ -2308,7 +2308,7 @@ async function showCertDetail(id) {
 
         content.innerHTML = `
             <div class="cert-detail-grid">
-                <div class="cert-detail-row"><span class="cert-detail-label">Код:</span><span class="cert-detail-val"><code>${cert.certCode}</code> <button class="btn-copy-cert" onclick="copyCertCode('${cert.certCode}')" title="Скопіювати код">📋</button></span></div>
+                <div class="cert-detail-row"><span class="cert-detail-label">Код:</span><span class="cert-detail-val"><code>${escapeHtml(cert.certCode)}</code> <button class="btn-copy-cert" onclick="copyCertCode('${escapeHtml(cert.certCode)}')" title="Скопіювати код">📋</button></span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Статус:</span><span class="cert-detail-val">${getCertStatusBadge(cert.status)}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Режим:</span><span class="cert-detail-val">${modeLabel}</span></div>
                 <div class="cert-detail-row cert-detail-row-name"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${escapeHtml(cert.displayValue || '—')}</span></div>
@@ -2324,20 +2324,21 @@ async function showCertDetail(id) {
 
         // Download + copy — available to everyone; action buttons — admin and user roles
         const copyText = `Сертифікат: ${cert.certCode}\n${modeLabel}: ${cert.displayValue || ''}\nТип: ${cert.typeText || ''}\nДійсний до: ${validDate}`;
-        let btns = `<button class="btn-download-cert btn-sm" onclick="downloadCertificateImage(${cert.id})">🖼️ Скачати</button>`;
+        const safeId = Number(cert.id);
+        let btns = `<button class="btn-download-cert btn-sm" onclick="downloadCertificateImage(${safeId})">🖼️ Скачати</button>`;
         window._certCopyText = copyText;
         btns += `<button class="btn-copy-all btn-sm" onclick="copyCertText(window._certCopyText)">📋 Скопіювати інфо</button>`;
         const canManageCerts = AppState.currentUser && AppState.currentUser.role !== 'viewer';
         if (canManageCerts) {
             if (cert.status === 'active') {
-                btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${cert.id}, 'used')">✅ Використано</button>`;
-                btns += `<button class="btn-danger btn-sm" onclick="changeCertStatus(${cert.id}, 'revoked')">❌ Анулювати</button>`;
-                btns += `<button class="btn-cancel btn-sm" onclick="changeCertStatus(${cert.id}, 'blocked')">🚫 Заблокувати</button>`;
+                btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${safeId}, 'used')">✅ Використано</button>`;
+                btns += `<button class="btn-danger btn-sm" onclick="changeCertStatus(${safeId}, 'revoked')">❌ Анулювати</button>`;
+                btns += `<button class="btn-cancel btn-sm" onclick="changeCertStatus(${safeId}, 'blocked')">🚫 Заблокувати</button>`;
             }
             if (cert.status === 'blocked' || cert.status === 'revoked') {
-                btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${cert.id}, 'active')">🔄 Відновити</button>`;
+                btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${safeId}, 'active')">🔄 Відновити</button>`;
             }
-            btns += `<button class="btn-danger btn-sm" onclick="deleteCertificate(${cert.id})">🗑 Видалити</button>`;
+            btns += `<button class="btn-danger btn-sm" onclick="deleteCertificate(${safeId})">🗑 Видалити</button>`;
         }
         actions.innerHTML = btns;
     } catch (err) {

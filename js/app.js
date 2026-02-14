@@ -409,4 +409,19 @@ function initModalListeners() {
     window.addEventListener('click', (e) => {
         if (e.target.classList.contains('modal')) closeAllModals();
     });
+
+    // Auto-activate focus trap when any modal becomes visible
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                const modal = mutation.target;
+                if (modal.classList.contains('modal') && !modal.classList.contains('hidden')) {
+                    activateFocusTrap(modal);
+                }
+            }
+        }
+    });
+    document.querySelectorAll('.modal').forEach(modal => {
+        observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+    });
 }

@@ -33,11 +33,74 @@ function addMinutesToTime(time, minutes) {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+// ==========================================
+// FOCUS TRAP
+// ==========================================
+
+let _focusTrapPreviousElement = null;
+
+function _getFocusableElements(modal) {
+    return modal.querySelectorAll(
+        'button:not([disabled]):not([tabindex="-1"]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+}
+
+function _handleFocusTrap(e) {
+    if (e.key === 'Escape') {
+        closeAllModals();
+        return;
+    }
+    if (e.key !== 'Tab') return;
+
+    const openModal = document.querySelector('.modal:not(.hidden)');
+    if (!openModal) return;
+
+    const focusable = _getFocusableElements(openModal);
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (e.shiftKey) {
+        if (document.activeElement === first || !openModal.contains(document.activeElement)) {
+            e.preventDefault();
+            last.focus();
+        }
+    } else {
+        if (document.activeElement === last || !openModal.contains(document.activeElement)) {
+            e.preventDefault();
+            first.focus();
+        }
+    }
+}
+
+function activateFocusTrap(modal) {
+    _focusTrapPreviousElement = document.activeElement;
+    const focusable = _getFocusableElements(modal);
+    if (focusable.length > 0) {
+        setTimeout(() => focusable[0].focus(), 50);
+    }
+}
+
+function deactivateFocusTrap() {
+    if (_focusTrapPreviousElement && _focusTrapPreviousElement.focus) {
+        _focusTrapPreviousElement.focus();
+        _focusTrapPreviousElement = null;
+    }
+}
+
+// Attach global keydown handler once
+if (!document._focusTrapAttached) {
+    document._focusTrapAttached = true;
+    document.addEventListener('keydown', _handleFocusTrap);
+}
+
 function closeAllModals() {
     document.querySelectorAll('.modal').forEach(m => {
         if (m.id === 'confirmModal') return;
         m.classList.add('hidden');
     });
+    deactivateFocusTrap();
 }
 
 function customConfirm(message, title = 'Підтвердження') {

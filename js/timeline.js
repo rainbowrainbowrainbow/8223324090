@@ -672,14 +672,18 @@ async function _endAfishaDrag() {
     _afishaDragState = null;
 }
 
-document.addEventListener('mousemove', (e) => _moveAfishaDrag(e.clientX));
-document.addEventListener('mouseup', () => _endAfishaDrag());
-document.addEventListener('touchmove', (e) => {
-    if (!_afishaDragState) return;
-    e.preventDefault();
-    _moveAfishaDrag(e.touches[0].clientX);
-}, { passive: false });
-document.addEventListener('touchend', () => _endAfishaDrag());
+// Afisha drag handlers — attach once to document using named refs
+if (!document._afishaDragAttached) {
+    document._afishaDragAttached = true;
+    document.addEventListener('mousemove', (e) => _moveAfishaDrag(e.clientX));
+    document.addEventListener('mouseup', () => _endAfishaDrag());
+    document.addEventListener('touchmove', (e) => {
+        if (!_afishaDragState) return;
+        e.preventDefault();
+        _moveAfishaDrag(e.touches[0].clientX);
+    }, { passive: false });
+    document.addEventListener('touchend', () => _endAfishaDrag());
+}
 
 // ==========================================
 // РЕЖИМ ДЕКІЛЬКОХ ДНІВ

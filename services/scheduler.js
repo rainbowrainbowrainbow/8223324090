@@ -15,6 +15,11 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Scheduler');
 
+// Lazy require to avoid circular dependency (routes/afisha → services/scheduler → routes/afisha)
+function getDistributeAfisha() {
+    return require('../routes/afisha').distributeAfishaForDate;
+}
+
 // In-memory cache (fallback — DB is source of truth via getLastSent/setLastSent)
 let digestSentToday = null;
 let reminderSentToday = null;
@@ -46,6 +51,9 @@ async function buildAndSendDigest(date) {
 
     // v8.1: Ensure recurring afisha templates applied before building digest
     try { await ensureRecurringAfishaForDate(date); } catch (e) { /* non-blocking */ }
+
+    // Auto-distribute afisha events to animators before building digest
+    try { await getDistributeAfisha()(date); } catch (e) { log.warn('Auto-distribute before digest skipped', e.message); }
 
     const bookingsResult = await pool.query("SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time", [date]);
     const bookings = bookingsResult.rows;
@@ -172,7 +180,9 @@ async function sendTomorrowReminder(todayStr) {
 
         // v8.1: Ensure recurring afisha for tomorrow
         try { await ensureRecurringAfishaForDate(tomorrowStr); } catch (e) { /* non-blocking */ }
-        // Re-fetch after ensuring recurring
+        // Auto-distribute afisha events to animators before reminder
+        try { await getDistributeAfisha()(tomorrowStr); } catch (e) { log.warn('Auto-distribute before reminder skipped', e.message); }
+        // Re-fetch after ensuring recurring + distribution
         const afishaResult2 = await pool.query('SELECT * FROM afisha WHERE date = $1 ORDER BY time', [tomorrowStr]);
         const afishaFinal = afishaResult2.rows;
 

@@ -201,13 +201,10 @@ router.get('/distribute/:date', async (req, res) => {
     }
 });
 
-// v8.6: Auto-distribute afisha events to animator lines (persist assignments)
-router.post('/distribute/:date', async (req, res) => {
+// Core distribute logic — callable from scheduler and HTTP handler
+async function distributeAfishaForDate(date) {
     const client = await pool.connect();
     try {
-        const { date } = req.params;
-        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
-
         await client.query('BEGIN');
 
         const events = (await client.query(
@@ -222,11 +219,11 @@ router.post('/distribute/:date', async (req, res) => {
 
         if (animators.length === 0) {
             await client.query('ROLLBACK');
-            return res.json({ distribution: [], reason: 'no_animators' });
+            return { distribution: [], reason: 'no_animators' };
         }
         if (events.length === 0) {
             await client.query('ROLLBACK');
-            return res.json({ distribution: [], reason: 'no_events' });
+            return { distribution: [], reason: 'no_events' };
         }
 
         // Build occupied slots per animator: bookings + already-assigned afisha
@@ -256,14 +253,12 @@ router.post('/distribute/:date', async (req, res) => {
                 const endMin = startMin + duration;
                 return !slots.some(s => startMin < s.end && endMin > s.start);
             }
-            // Try base time first
             if (isFree(baseMin)) return baseMin;
-            // Expand search ±90 min in 15-min steps
             for (let delta = 15; delta <= 90; delta += 15) {
                 if (isFree(baseMin - delta)) return baseMin - delta;
                 if (isFree(baseMin + delta)) return baseMin + delta;
             }
-            return null; // no free slot
+            return null;
         }
 
         const distribution = [];
@@ -271,7 +266,6 @@ router.post('/distribute/:date', async (req, res) => {
             const baseMin = timeToMinutes(ev.original_time || ev.time);
             const dur = ev.duration || 60;
 
-            // Sort animators by load (least loaded first)
             const sorted = [...animators].sort((a, b) => (loadMap[a.id] || 0) - (loadMap[b.id] || 0));
 
             let assignedAnim = null;
@@ -287,19 +281,16 @@ router.post('/distribute/:date', async (req, res) => {
             }
 
             if (!assignedAnim) {
-                // Fallback: least loaded, original time
                 assignedAnim = sorted[0];
                 assignedMin = baseMin;
             }
 
-            // Persist assignment
             const newTime = minutesToTime(assignedMin);
             await client.query(
                 'UPDATE afisha SET line_id = $1, time = $2 WHERE id = $3',
                 [assignedAnim.id, newTime, ev.id]
             );
 
-            // Mark slot as occupied for next iterations
             occupiedSlots[assignedAnim.id].push({ start: assignedMin, end: assignedMin + dur });
             loadMap[assignedAnim.id]++;
 
@@ -315,13 +306,25 @@ router.post('/distribute/:date', async (req, res) => {
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, distribution });
+        return { success: true, distribution };
     } catch (err) {
         await client.query('ROLLBACK');
-        log.error('Auto-distribute error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        throw err;
     } finally {
         client.release();
+    }
+}
+
+// v8.6: Auto-distribute afisha events to animator lines (persist assignments)
+router.post('/distribute/:date', async (req, res) => {
+    try {
+        const { date } = req.params;
+        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
+        const result = await distributeAfishaForDate(date);
+        res.json(result);
+    } catch (err) {
+        log.error('Auto-distribute error', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -519,4 +522,5 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+router.distributeAfishaForDate = distributeAfishaForDate;
 module.exports = router;

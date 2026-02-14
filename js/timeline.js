@@ -456,10 +456,18 @@ function createAfishaBlock(event, startHour) {
     block.dataset.eventType = event.type || 'event';
     block.dataset.templateId = event.template_id || '';
 
-    block.innerHTML = `
-        <div class="title">${escapeHtml(event.title)}</div>
-        <div class="subtitle">${event.time}</div>
-    `;
+    if (event.type === 'birthday') {
+        block.innerHTML = `
+            <span class="birthday-icon">🎂</span>
+            <div class="title">${escapeHtml(event.title)}</div>
+            <div class="subtitle">${event.time}</div>
+        `;
+    } else {
+        block.innerHTML = `
+            <div class="title">${escapeHtml(event.title)}</div>
+            <div class="subtitle">${event.time}</div>
+        `;
+    }
 
     // Drag-to-move for non-birthday blocks (birthday has synthetic 14:00/18:00 blocks)
     if (!isViewer() && event.type !== 'birthday') {

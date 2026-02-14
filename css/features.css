@@ -1044,23 +1044,57 @@
 .afisha-type-regular .subtitle { color: #fff !important; }
 
 .afisha-type-birthday {
-    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%) !important;
-    border: none !important;
+    background: linear-gradient(135deg, #F59E0B 0%, #F97316 50%, #EF4444 100%) !important;
+    border: 2px solid rgba(255,255,255,0.5) !important;
     color: #fff !important;
-    animation: birthday-glow 2s ease-in-out infinite;
+    height: 36px !important;
+    margin-top: -18px !important;
+    border-radius: 18px !important;
+    padding: 2px 14px 2px 6px !important;
+    gap: 4px !important;
+    animation: birthday-pulse 2.5s ease-in-out infinite;
+    cursor: pointer !important;
 }
+
+.afisha-type-birthday .birthday-icon {
+    font-size: 18px;
+    line-height: 1;
+    flex-shrink: 0;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+}
+
+.afisha-type-birthday .title {
+    color: #fff !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    line-height: 36px !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+
+.afisha-type-birthday .subtitle {
+    color: rgba(255,255,255,0.9) !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    line-height: 36px !important;
+    background: rgba(255,255,255,0.2);
+    padding: 2px 6px;
+    border-radius: 8px;
+}
+
 .afisha-type-birthday:hover {
-    box-shadow: 0 4px 16px rgba(245, 158, 11, 0.5), 0 0 24px rgba(245, 158, 11, 0.3);
+    transform: scale(1.08) translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(249, 115, 22, 0.5), 0 0 30px rgba(245, 158, 11, 0.3) !important;
     animation: none;
 }
 
-@keyframes birthday-glow {
-    0%, 100% { box-shadow: 0 1px 4px rgba(245, 158, 11, 0.2); }
-    50% { box-shadow: 0 2px 12px rgba(245, 158, 11, 0.4), 0 0 16px rgba(245, 158, 11, 0.15); }
+@keyframes birthday-pulse {
+    0%, 100% {
+        box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3), 0 0 0 0 rgba(245, 158, 11, 0.3);
+    }
+    50% {
+        box-shadow: 0 4px 16px rgba(249, 115, 22, 0.5), 0 0 0 6px rgba(245, 158, 11, 0);
+    }
 }
-
-.afisha-type-birthday .title,
-.afisha-type-birthday .subtitle { color: #fff !important; }
 
 /* Afisha line header shimmer on hover */
 .afisha-line-header { position: relative; overflow: hidden; }

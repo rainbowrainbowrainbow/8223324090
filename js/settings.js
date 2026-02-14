@@ -2407,7 +2407,7 @@ function copyCertText(text) {
 // Certificate Image Generator (Single Background + Dynamic Text)
 // ==========================================
 
-const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=3';
+const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=4';
 let _certBgImage = null;
 
 function loadCertBg() {
@@ -2546,27 +2546,28 @@ function drawCertDynamicContent(ctx, cert, W, H) {
         ctx.fillText(cert.certCode || '', titleX, 268);
     }
 
-    // === INFO BLOCK — date, conditions, phone (pushed up towards gamepad) ===
-    const infoBlockY = H - 225;
+    // === INFO BLOCK — to the right of QR code area at bottom-left ===
+    const infoX = 215;
+    const infoBlockY = 470;
 
     // Valid until
     const validDate = cert.validUntil
         ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '—';
     ctx.fillStyle = '#fff';
-    ctx.font = '700 18px Nunito, sans-serif';
+    ctx.font = '700 16px Nunito, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`Сертифікат дійсний до ${validDate}`, titleX, infoBlockY);
+    ctx.fillText(`Дійсний до ${validDate}`, infoX, infoBlockY);
 
     // Weekday note
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.font = '600 14px Nunito, sans-serif';
-    ctx.fillText('Діє у будні дні та вихідні', titleX, infoBlockY + 22);
+    ctx.font = '600 13px Nunito, sans-serif';
+    ctx.fillText('Діє у будні дні та вихідні', infoX, infoBlockY + 24);
 
     // Phone
     ctx.fillStyle = '#fff';
-    ctx.font = '700 16px Nunito, sans-serif';
-    ctx.fillText('+38(0800)-75-35-53', titleX, infoBlockY + 44);
+    ctx.font = '700 15px Nunito, sans-serif';
+    ctx.fillText('+38(0800)-75-35-53', infoX, infoBlockY + 48);
 
 }
 
@@ -2582,10 +2583,10 @@ async function drawCertQRCode(ctx, cert, W, H) {
                     img.onerror = reject;
                     img.src = qrData.dataUrl;
                 });
-                // QR — right of text block, between text and superhero
-                const qrSize = 216;
-                const qrCenterX = 520;
-                const qrCenterY = 290;
+                // QR — bottom-left area, below text content
+                const qrSize = 150;
+                const qrCenterX = 120;
+                const qrCenterY = 510;
                 const qrX = qrCenterX - qrSize / 2;
                 const qrY = qrCenterY - qrSize / 2;
                 const qrR = 16;
@@ -2611,9 +2612,9 @@ async function drawCertQRCode(ctx, cert, W, H) {
 
                 // "Сканувати для перевірки" below QR — visible white
                 ctx.fillStyle = '#fff';
-                ctx.font = '700 15px Nunito, sans-serif';
+                ctx.font = '700 13px Nunito, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText('Сканувати для перевірки', qrCenterX, qrCenterY + qrSize / 2 + 22);
+                ctx.fillText('Сканувати для перевірки', qrCenterX, qrCenterY + qrSize / 2 + 18);
                 ctx.textAlign = 'left';
             }
         }

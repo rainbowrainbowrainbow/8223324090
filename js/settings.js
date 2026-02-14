@@ -2407,7 +2407,7 @@ function copyCertText(text) {
 // Certificate Image Generator (Single Background + Dynamic Text)
 // ==========================================
 
-const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=2';
+const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=3';
 let _certBgImage = null;
 
 function loadCertBg() {
@@ -2568,14 +2568,6 @@ function drawCertDynamicContent(ctx, cert, W, H) {
     ctx.font = '700 16px Nunito, sans-serif';
     ctx.fillText('+38(0800)-75-35-53', titleX, infoBlockY + 44);
 
-    // === BOTTOM BRANDING — logo (in bg) is ~y605-645, text aligned to its center ===
-    const brandY = H - 48;
-    ctx.fillStyle = '#fff';
-    ctx.font = '800 13px Nunito, sans-serif';
-    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 95, brandY);
-    ctx.font = '600 10px Nunito, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 95, brandY + 14);
 }
 
 async function drawCertQRCode(ctx, cert, W, H) {

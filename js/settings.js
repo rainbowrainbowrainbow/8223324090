@@ -2443,17 +2443,19 @@ async function generateCertificateCanvas(cert) {
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // === DRAW BACKGROUND (cover-crop) ===
+    // === DRAW BACKGROUND (top-aligned crop, trim bottom wave border) ===
     const bgImg = await loadCertBg();
     if (bgImg) {
-        const imgRatio = bgImg.width / bgImg.height;
+        const trimBottom = 50;
+        const effH = bgImg.height - trimBottom;
+        const imgRatio = bgImg.width / effH;
         const canvasRatio = W / H;
-        let sx = 0, sy = 0, sw = bgImg.width, sh = bgImg.height;
+        let sx = 0, sy = 0, sw = bgImg.width, sh = effH;
         if (imgRatio < canvasRatio) {
             sh = bgImg.width / canvasRatio;
-            sy = (bgImg.height - sh) / 2;
+            // sy stays 0 — top-aligned, bottom wave gets cropped
         } else {
-            sw = bgImg.height * canvasRatio;
+            sw = effH * canvasRatio;
             sx = (bgImg.width - sw) / 2;
         }
         ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, W, H);

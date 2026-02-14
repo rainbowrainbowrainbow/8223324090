@@ -2404,10 +2404,10 @@ function copyCertText(text) {
 }
 
 // ==========================================
-// Certificate Image Generator (Single Background + Dynamic Text)
+// Certificate Image Generator
 // ==========================================
 
-const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=8.6.1b';
+const CERT_BG_SRC = 'images/certificate/cert-bg-full.png?v=8.6.2';
 let _certBgImage = null;
 
 function loadCertBg(forceReload) {
@@ -2421,6 +2421,21 @@ function loadCertBg(forceReload) {
     });
 }
 
+// Helper: draw rounded rectangle path
+function certRoundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
 async function generateCertificateCanvas(cert) {
     const W = 1200, H = 800;
     const canvas = document.createElement('canvas');
@@ -2428,24 +2443,21 @@ async function generateCertificateCanvas(cert) {
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // === DRAW BACKGROUND (cover-crop to preserve aspect ratio, trim dashed border) ===
+    // === DRAW BACKGROUND (cover-crop) ===
     const bgImg = await loadCertBg();
     if (bgImg) {
         const imgRatio = bgImg.width / bgImg.height;
         const canvasRatio = W / H;
         let sx = 0, sy = 0, sw = bgImg.width, sh = bgImg.height;
         if (imgRatio < canvasRatio) {
-            // Image taller than canvas — crop top/bottom
             sh = bgImg.width / canvasRatio;
             sy = (bgImg.height - sh) / 2;
         } else {
-            // Image wider than canvas — crop left/right
             sw = bgImg.height * canvasRatio;
             sx = (bgImg.width - sw) / 2;
         }
         ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, W, H);
     } else {
-        // Fallback: solid blue gradient
         const grad = ctx.createLinearGradient(0, 0, 0, H);
         grad.addColorStop(0, '#8BBDE0');
         grad.addColorStop(1, '#6AA1CF');
@@ -2453,137 +2465,143 @@ async function generateCertificateCanvas(cert) {
         ctx.fillRect(0, 0, W, H);
     }
 
-    // === DRAW ALL TEXT CONTENT ===
-    const contentBottomY = drawCertDynamicContent(ctx, cert, W, H);
+    // === DRAW CONTENT CARD + TEXT ===
+    const layout = drawCertDynamicContent(ctx, cert, W, H);
 
-    // === DRAW QR CODE (right after text content) ===
-    await drawCertQRCode(ctx, cert, W, H, contentBottomY);
+    // === DRAW QR CODE ===
+    await drawCertQRCode(ctx, cert, W, H, layout);
 
     return canvas;
 }
 
 function drawCertDynamicContent(ctx, cert, W, H) {
-    // === LEFT PANEL — frosted glass ===
-    const panelW = 540;
+    // === FLOATING CARD on left side ===
+    const cardX = 32, cardY = 36, cardW = 460, cardH = H - 72, cardR = 24;
+    const centerX = cardX + cardW / 2;
+    const leftPad = cardX + 40;
+    const maxTextW = cardW - 80;
 
+    // Card background with shadow
     ctx.save();
-    const panelGrad = ctx.createLinearGradient(0, 0, panelW + 40, 0);
-    panelGrad.addColorStop(0, 'rgba(255,255,255,0.85)');
-    panelGrad.addColorStop(0.85, 'rgba(255,255,255,0.55)');
-    panelGrad.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = panelGrad;
-    ctx.fillRect(0, 0, panelW + 40, H);
+    ctx.shadowColor = 'rgba(0,0,0,0.18)';
+    ctx.shadowBlur = 28;
+    ctx.shadowOffsetY = 8;
+    ctx.fillStyle = 'rgba(255,255,255,0.93)';
+    certRoundRect(ctx, cardX, cardY, cardW, cardH, cardR);
+    ctx.fill();
     ctx.restore();
 
-    const leftPad = 40;
-    const maxTextW = panelW - 80;
-
-    // === TITLE "СЕРТИФІКАТ" + NAME on one line ===
-    ctx.font = '900 44px Nunito, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#19468B';
-    const titleText = 'СЕРТИФІКАТ';
-    ctx.fillText(titleText, leftPad, 75);
-    const titleW = ctx.measureText(titleText).width;
-
-    const nameText = cert.displayValue || '';
-    let nextY = 108;
-    let lineEndX = leftPad + titleW;
-
-    if (nameText) {
-        const nameX = leftPad + titleW + 14;
-        const maxNameW = panelW - nameX - 30;
-        let nameFontSize = 38;
-        let nameOnSameLine = false;
-
-        ctx.fillStyle = '#0D2E5C';
-        ctx.textAlign = 'left';
-
-        while (nameFontSize >= 24) {
-            ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
-            if (ctx.measureText(nameText).width <= maxNameW) {
-                nameOnSameLine = true;
-                break;
-            }
-            nameFontSize -= 2;
-        }
-
-        if (nameOnSameLine) {
-            ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
-            ctx.fillText(nameText, nameX, 75);
-            lineEndX = nameX + ctx.measureText(nameText).width;
-        } else {
-            // Fallback: name below title
-            nameFontSize = 36;
-            while (nameFontSize >= 22) {
-                ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
-                if (ctx.measureText(nameText).width <= maxTextW) break;
-                nameFontSize -= 2;
-            }
-            ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
-            ctx.fillText(nameText, leftPad, 125);
-            nextY = 152;
-        }
-    }
-
-    // Decorative line spanning title + name
+    // Subtle inner border
     ctx.save();
-    const lineGrad = ctx.createLinearGradient(leftPad, 0, lineEndX, 0);
-    lineGrad.addColorStop(0, '#FF6B35');
-    lineGrad.addColorStop(1, '#FFB347');
-    ctx.strokeStyle = lineGrad;
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(leftPad, 90);
-    ctx.lineTo(lineEndX, 90);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1;
+    certRoundRect(ctx, cardX + 1, cardY + 1, cardW - 2, cardH - 2, cardR - 1);
     ctx.stroke();
     ctx.restore();
 
-    // === 3 INFO LINES ===
+    // Gold accent line at top of card
+    ctx.save();
+    const accentGrad = ctx.createLinearGradient(cardX + 80, 0, cardX + cardW - 80, 0);
+    accentGrad.addColorStop(0, 'rgba(255,179,71,0)');
+    accentGrad.addColorStop(0.2, '#FFB347');
+    accentGrad.addColorStop(0.5, '#FF8C00');
+    accentGrad.addColorStop(0.8, '#FFB347');
+    accentGrad.addColorStop(1, 'rgba(255,179,71,0)');
+    ctx.strokeStyle = accentGrad;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cardX + 70, cardY + 1);
+    ctx.lineTo(cardX + cardW - 70, cardY + 1);
+    ctx.stroke();
+    ctx.restore();
 
-    // Line 1: Certificate type
+    let y = cardY + 60;
+
+    // Park name
+    ctx.fillStyle = '#5A9ECF';
+    ctx.font = '700 14px Nunito, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Парк Закревського Періоду', centerX, y);
+    y += 52;
+
+    // СЕРТИФІКАТ title
+    ctx.fillStyle = '#19468B';
+    ctx.font = '900 46px Nunito, sans-serif';
+    ctx.fillText('СЕРТИФІКАТ', centerX, y);
+    y += 22;
+
+    // Gold decorative line under title
+    ctx.save();
+    const lineGrad = ctx.createLinearGradient(centerX - 90, 0, centerX + 90, 0);
+    lineGrad.addColorStop(0, 'rgba(255,140,0,0)');
+    lineGrad.addColorStop(0.15, '#FFB347');
+    lineGrad.addColorStop(0.5, '#FF8C00');
+    lineGrad.addColorStop(0.85, '#FFB347');
+    lineGrad.addColorStop(1, 'rgba(255,140,0,0)');
+    ctx.strokeStyle = lineGrad;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(centerX - 90, y);
+    ctx.lineTo(centerX + 90, y);
+    ctx.stroke();
+    ctx.restore();
+    y += 46;
+
+    // Name
+    const nameText = cert.displayValue || '';
+    if (nameText) {
+        let nameFontSize = 34;
+        ctx.fillStyle = '#0D2E5C';
+        while (nameFontSize >= 20) {
+            ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
+            if (ctx.measureText(nameText).width <= maxTextW) break;
+            nameFontSize -= 2;
+        }
+        ctx.fillText(nameText, centerX, y);
+        y += 40;
+    }
+
+    // Certificate type
     ctx.fillStyle = '#2E5090';
-    ctx.font = '700 20px Nunito, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), leftPad, nextY);
-    nextY += 28;
+    ctx.font = '700 16px Nunito, sans-serif';
+    ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), centerX, y);
+    y += 34;
 
-    // Line 2: Cert code
-    ctx.fillStyle = 'rgba(46,80,144,0.55)';
-    ctx.font = '600 15px Nunito, sans-serif';
-    ctx.fillText(cert.certCode || '', leftPad, nextY);
-    nextY += 26;
+    // Info block with subtle bg
+    const infoH = 60;
+    ctx.save();
+    ctx.fillStyle = 'rgba(25,70,139,0.05)';
+    certRoundRect(ctx, leftPad - 8, y - 4, maxTextW + 16, infoH, 12);
+    ctx.fill();
+    ctx.restore();
 
-    // Line 3: Valid date + conditions + phone
+    // Cert code
+    ctx.fillStyle = '#2E5090';
+    ctx.font = '700 15px Nunito, sans-serif';
+    ctx.fillText(cert.certCode || '', centerX, y + 22);
+
+    // Valid date
     const validDate = cert.validUntil
         ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '—';
-    ctx.fillStyle = '#2E5090';
+    ctx.fillStyle = '#6A8FBF';
+    ctx.font = '600 12px Nunito, sans-serif';
+    ctx.fillText(`Дійсний до ${validDate}  •  Будні та вихідні`, centerX, y + 44);
+    y += infoH + 20;
+
+    // Phone at bottom of card
+    ctx.fillStyle = '#6A8FBF';
     ctx.font = '600 13px Nunito, sans-serif';
-    ctx.fillText(`Дійсний до ${validDate}  •  Будні та вихідні  •  +38(0800)-75-35-53`, leftPad, nextY);
-    nextY += 30;
+    ctx.fillText('+38 (0800) 75-35-53', centerX, cardY + cardH - 24);
 
-    // === VISUAL SEPARATOR before QR ===
-    ctx.save();
-    const sepGrad = ctx.createLinearGradient(leftPad, 0, leftPad + 180, 0);
-    sepGrad.addColorStop(0, 'rgba(46,80,144,0.3)');
-    sepGrad.addColorStop(1, 'rgba(46,80,144,0)');
-    ctx.strokeStyle = sepGrad;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(leftPad, nextY);
-    ctx.lineTo(leftPad + 180, nextY);
-    ctx.stroke();
-    ctx.restore();
-    nextY += 20;
+    ctx.textAlign = 'left';
 
-    return nextY;
+    return { y, centerX };
 }
 
-async function drawCertQRCode(ctx, cert, W, H, contentBottomY) {
-    const panelW = 540;
-    const panelCenterX = panelW / 2;
+async function drawCertQRCode(ctx, cert, W, H, layout) {
+    const { y: startY, centerX } = layout;
 
     try {
         const qrResp = await fetch(`${API_BASE}/certificates/qr/${encodeURIComponent(cert.certCode)}`, { headers: getAuthHeaders(false) });
@@ -2596,54 +2614,34 @@ async function drawCertQRCode(ctx, cert, W, H, contentBottomY) {
                     img.onerror = reject;
                     img.src = qrData.dataUrl;
                 });
-                // QR — 220px, centered in panel, after separator
-                const qrSize = 220;
-                const qrX = panelCenterX - qrSize / 2;
-                const qrY = contentBottomY + 15;
+
+                const qrSize = 200;
+                const qrX = centerX - qrSize / 2;
+                const qrY = startY + 10;
                 const qrR = 16;
 
-                // White rounded-rect background with subtle shadow
+                // White rounded bg with shadow
                 ctx.save();
                 ctx.shadowColor = 'rgba(0,0,0,0.1)';
-                ctx.shadowBlur = 12;
+                ctx.shadowBlur = 14;
                 ctx.shadowOffsetY = 4;
                 ctx.fillStyle = '#fff';
-                ctx.beginPath();
-                ctx.moveTo(qrX + qrR, qrY);
-                ctx.lineTo(qrX + qrSize - qrR, qrY);
-                ctx.quadraticCurveTo(qrX + qrSize, qrY, qrX + qrSize, qrY + qrR);
-                ctx.lineTo(qrX + qrSize, qrY + qrSize - qrR);
-                ctx.quadraticCurveTo(qrX + qrSize, qrY + qrSize, qrX + qrSize - qrR, qrY + qrSize);
-                ctx.lineTo(qrX + qrR, qrY + qrSize);
-                ctx.quadraticCurveTo(qrX, qrY + qrSize, qrX, qrY + qrSize - qrR);
-                ctx.lineTo(qrX, qrY + qrR);
-                ctx.quadraticCurveTo(qrX, qrY, qrX + qrR, qrY);
-                ctx.closePath();
+                certRoundRect(ctx, qrX, qrY, qrSize, qrSize, qrR);
                 ctx.fill();
                 ctx.restore();
 
-                // Draw QR image clipped to rounded rect
+                // QR image clipped to rounded rect
                 ctx.save();
-                ctx.beginPath();
-                ctx.moveTo(qrX + qrR, qrY);
-                ctx.lineTo(qrX + qrSize - qrR, qrY);
-                ctx.quadraticCurveTo(qrX + qrSize, qrY, qrX + qrSize, qrY + qrR);
-                ctx.lineTo(qrX + qrSize, qrY + qrSize - qrR);
-                ctx.quadraticCurveTo(qrX + qrSize, qrY + qrSize, qrX + qrSize - qrR, qrY + qrSize);
-                ctx.lineTo(qrX + qrR, qrY + qrSize);
-                ctx.quadraticCurveTo(qrX, qrY + qrSize, qrX, qrY + qrSize - qrR);
-                ctx.lineTo(qrX, qrY + qrR);
-                ctx.quadraticCurveTo(qrX, qrY, qrX + qrR, qrY);
-                ctx.closePath();
+                certRoundRect(ctx, qrX, qrY, qrSize, qrSize, qrR);
                 ctx.clip();
                 ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
                 ctx.restore();
 
                 // Label under QR
-                ctx.fillStyle = '#2E5090';
-                ctx.font = '600 12px Nunito, sans-serif';
+                ctx.fillStyle = '#5A7FAA';
+                ctx.font = '600 11px Nunito, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText('Сканувати для перевірки', panelCenterX, qrY + qrSize + 18);
+                ctx.fillText('Сканувати для перевірки', centerX, qrY + qrSize + 18);
                 ctx.textAlign = 'left';
             }
         }

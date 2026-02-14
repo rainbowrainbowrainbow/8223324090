@@ -2364,12 +2364,20 @@ async function generateCertificateCanvas(cert) {
 function drawCertDynamicContent(ctx, cert, W, H) {
     const titleX = 45;
     // Max text width — do not overlap superhero (right ~55% of image)
-    const maxTextW = 500;
+    // Max text width — stop before QR code area (QR left edge ~412px)
+    const maxTextW = 360;
 
-    // === "СЕРТИФІКАТ" title — solid dark blue, flat, no outline ===
+    // === "СЕРТИФІКАТ" title — dark blue with white outline for contrast ===
     ctx.save();
     ctx.font = '900 78px Nunito, sans-serif';
     ctx.textAlign = 'left';
+    ctx.lineJoin = 'round';
+    ctx.miterLimit = 2;
+    // White outer stroke for contrast on any background
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 8;
+    ctx.strokeText('СЕРТИФІКАТ', titleX, 135);
+    // Solid dark blue fill
     ctx.fillStyle = '#19468B';
     ctx.fillText('СЕРТИФІКАТ', titleX, 135);
     ctx.restore();
@@ -2428,32 +2436,35 @@ function drawCertDynamicContent(ctx, cert, W, H) {
         ctx.fillText(cert.certCode || '', titleX, 268);
     }
 
-    // === VALID UNTIL — snow area ===
+    // === FOOTER BLOCK — all text above the logo circle (logo ~y590-645) ===
+    const footerTopY = H - 170;
+
+    // Valid until
     const validDate = cert.validUntil
         ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '—';
     ctx.fillStyle = '#fff';
     ctx.font = '700 18px Nunito, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`Сертифікат дійсний до ${validDate}`, titleX, H - 130);
+    ctx.fillText(`Сертифікат дійсний до ${validDate}`, titleX, footerTopY);
 
-    // === WEEKDAY NOTE ===
+    // Weekday note
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.font = '600 14px Nunito, sans-serif';
-    ctx.fillText('Діє у будні дні та вихідні', titleX, H - 110);
+    ctx.fillText('Діє у будні дні та вихідні', titleX, footerTopY + 20);
 
-    // === PHONE ===
+    // Phone
     ctx.fillStyle = '#fff';
     ctx.font = '700 16px Nunito, sans-serif';
-    ctx.fillText('+38(0800)-75-35-53', titleX, H - 90);
+    ctx.fillText('+38(0800)-75-35-53', titleX, footerTopY + 40);
 
-    // === PARK BRANDING (right of logo circle, above dashed border) ===
+    // Park branding — right of logo circle
     ctx.fillStyle = '#fff';
     ctx.font = '800 13px Nunito, sans-serif';
-    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 95, H - 78);
+    ctx.fillText('ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ', 95, footerTopY + 60);
     ctx.font = '600 10px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 95, H - 64);
+    ctx.fillText('РОЗВАЖАЛЬНИЙ ЦЕНТР ДЛЯ ДІТЕЙ', 95, footerTopY + 74);
 }
 
 async function drawCertQRCode(ctx, cert, W, H) {
@@ -2469,9 +2480,9 @@ async function drawCertQRCode(ctx, cert, W, H) {
                     img.src = qrData.dataUrl;
                 });
                 // QR — right of text block, between text and superhero
-                const qrSize = 160;
-                const qrCenterX = 530;
-                const qrCenterY = 280;
+                const qrSize = 216;
+                const qrCenterX = 520;
+                const qrCenterY = 290;
                 const qrX = qrCenterX - qrSize / 2;
                 const qrY = qrCenterY - qrSize / 2;
                 const qrR = 16;
@@ -2495,11 +2506,11 @@ async function drawCertQRCode(ctx, cert, W, H) {
                 ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
                 ctx.restore();
 
-                // "Сканувати" below QR
-                ctx.fillStyle = 'rgba(255,255,255,0.65)';
-                ctx.font = '600 10px Nunito, sans-serif';
+                // "Сканувати для перевірки" below QR — visible white
+                ctx.fillStyle = '#fff';
+                ctx.font = '700 15px Nunito, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText('Сканувати для перевірки', qrCenterX, qrCenterY + qrSize / 2 + 16);
+                ctx.fillText('Сканувати для перевірки', qrCenterX, qrCenterY + qrSize / 2 + 22);
                 ctx.textAlign = 'left';
             }
         }

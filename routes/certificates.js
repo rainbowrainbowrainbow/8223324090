@@ -142,7 +142,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
             [
                 certCode,
                 displayMode || 'fio',
-                displayValue.trim(),
+                (displayValue || '').trim(),
                 typeText || 'на одноразовий вхід',
                 finalValidUntil,
                 req.user.id || null,
@@ -156,7 +156,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
             ['certificate_create', req.user.username, JSON.stringify({
                 certCode,
                 displayMode: displayMode || 'fio',
-                displayValue: displayValue.trim(),
+                displayValue: (displayValue || '').trim(),
                 typeText: typeText || 'на одноразовий вхід'
             })]
         );

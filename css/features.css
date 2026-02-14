@@ -1540,3 +1540,40 @@
     background: var(--gray-100, #f3f4f6);
     border-color: var(--gray-300, #D1D5DB);
 }
+
+/* Certificate form: remove grey borders, highlight ПІБ input */
+#certificateForm .form-group input,
+#certificateForm .form-group select,
+#certificateForm .form-group textarea {
+    border: 1px solid transparent;
+    background: var(--gray-50, #f9fafb);
+}
+#certificateForm .form-group input:focus,
+#certificateForm .form-group select:focus,
+#certificateForm .form-group textarea:focus {
+    border-color: var(--primary, #10B981);
+    background: #fff;
+}
+#certDisplayValue {
+    border: 2px solid var(--primary, #10B981) !important;
+    background: #ECFDF5 !important;
+    font-weight: 700;
+    font-size: 18px;
+}
+#certDisplayValue:focus {
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.15);
+}
+
+/* Certificate detail: highlight ПІБ row */
+.cert-detail-row-name {
+    background: #EEF2FF;
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin: 0 -12px;
+    border-left: 3px solid var(--primary, #10B981);
+}
+.cert-detail-row-name .cert-detail-val {
+    font-weight: 800;
+    font-size: 16px;
+    color: #0D47A1;
+}

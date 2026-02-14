@@ -36,9 +36,6 @@ const VALID_DISPLAY_MODES = ['number', 'fio'];
 
 function validateCertificateInput(body) {
     const errors = [];
-    if (!body.displayValue || typeof body.displayValue !== 'string' || body.displayValue.trim().length === 0) {
-        errors.push('displayValue is required');
-    }
     if (body.displayValue && body.displayValue.length > 200) {
         errors.push('displayValue max 200 chars');
     }

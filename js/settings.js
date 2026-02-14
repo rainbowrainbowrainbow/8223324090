@@ -2105,11 +2105,6 @@ async function handleCertificateSubmit(event) {
         notes: document.getElementById('certNotes').value.trim() || undefined
     };
 
-    if (!data.displayValue) {
-        showNotification('Вкажіть ПІБ або номер', 'error');
-        return;
-    }
-
     const result = await apiCreateCertificate(data);
     if (result.success) {
         document.getElementById('certificateModal').classList.add('hidden');
@@ -2161,7 +2156,7 @@ async function showCertDetail(id) {
                 <div class="cert-detail-row"><span class="cert-detail-label">Код:</span><span class="cert-detail-val"><code>${cert.certCode}</code> <button class="btn-copy-cert" onclick="copyCertCode('${cert.certCode}')" title="Скопіювати код">📋</button></span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Статус:</span><span class="cert-detail-val">${getCertStatusBadge(cert.status)}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Режим:</span><span class="cert-detail-val">${modeLabel}</span></div>
-                <div class="cert-detail-row"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${escapeHtml(cert.displayValue)}</span></div>
+                <div class="cert-detail-row cert-detail-row-name"><span class="cert-detail-label">${modeLabel}:</span><span class="cert-detail-val">${escapeHtml(cert.displayValue || '—')}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Тип:</span><span class="cert-detail-val">${escapeHtml(cert.typeText)}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Видано:</span><span class="cert-detail-val">${issuedDate}</span></div>
                 <div class="cert-detail-row"><span class="cert-detail-label">Дійсний до:</span><span class="cert-detail-val">${validDate}</span></div>

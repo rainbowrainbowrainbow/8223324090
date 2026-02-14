@@ -157,6 +157,18 @@
                 <button id="closeWarning" class="btn-close-warning">✕</button>
             </div>
 
+            <!-- v8.6: Banner for preliminary filter mode -->
+            <div id="filterModeBanner" class="filter-mode-banner hidden">
+                <div class="filter-mode-banner-content">
+                    <span class="filter-mode-banner-icon">⚠️</span>
+                    <div class="filter-mode-banner-text">
+                        <strong>Увага! Режим перегляду попередніх бронювань</strong>
+                        <p>Ви бачите лише попередні (непідтверджені) бронювання. Підтверджені бронювання приховані.</p>
+                    </div>
+                    <button class="filter-mode-banner-close" onclick="resetStatusFilter()" title="Показати всі">Показати всі ✕</button>
+                </div>
+            </div>
+
             <!-- Таймлайн -->
             <div class="timeline-container">
                 <div class="timeline-scroll" id="timelineScroll">
@@ -729,6 +741,11 @@
                     </select>
                 </div>
                 <div class="form-group">
+                    <label for="batchCertEventName">Назва події (опціонально)</label>
+                    <input type="text" id="batchCertEventName" maxlength="200" placeholder="напр. Вітання Іменинників">
+                    <small class="form-hint">Друкується на сертифікаті замість типу</small>
+                </div>
+                <div class="form-group">
                     <label for="batchCertValidUntil">Дійсний до</label>
                     <input type="date" id="batchCertValidUntil">
                     <small class="form-hint">За замовчуванням: +45 днів</small>
@@ -766,6 +783,8 @@
                         <option value="afisha_move">🎪 Афіша перенесена</option>
                         <option value="afisha_delete">🎪 Афіша видалена</option>
                         <option value="automation_triggered">🤖 Автоматизація</option>
+                        <option value="certificate_create">📄 Сертифікат видано</option>
+                        <option value="certificate_batch">📦 Пакет сертифікатів</option>
                     </select>
                     <input type="text" id="historyFilterUser" class="history-filter-input" placeholder="Користувач...">
                     <div class="history-date-range">

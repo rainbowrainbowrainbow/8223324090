@@ -240,6 +240,38 @@ async function renderTimeline() {
 
 }
 
+// v8.6: Show/hide filter mode warning banner
+function updateFilterBanner() {
+    const banner = document.getElementById('filterModeBanner');
+    if (!banner) return;
+    const filter = AppState.statusFilter || 'all';
+    if (filter === 'preliminary') {
+        banner.classList.remove('hidden');
+        const textEl = banner.querySelector('.filter-mode-banner-text');
+        if (textEl) {
+            textEl.innerHTML = '<strong>Увага! Режим перегляду попередніх бронювань</strong><p>Ви бачите лише попередні (непідтверджені) бронювання. Підтверджені бронювання приховані.</p>';
+        }
+    } else if (filter === 'confirmed') {
+        banner.classList.remove('hidden');
+        const textEl = banner.querySelector('.filter-mode-banner-text');
+        if (textEl) {
+            textEl.innerHTML = '<strong>Фільтр: тільки підтверджені</strong><p>Попередні бронювання приховані. Натисніть «Показати всі» щоб побачити повний розклад.</p>';
+        }
+    } else {
+        banner.classList.add('hidden');
+    }
+}
+
+function resetStatusFilter() {
+    AppState.statusFilter = 'all';
+    localStorage.setItem('pzp_status_filter', 'all');
+    document.querySelectorAll('.status-filter-btn').forEach(b => b.classList.remove('active'));
+    const allBtn = document.querySelector('.status-filter-btn[data-filter="all"]');
+    if (allBtn) allBtn.classList.add('active');
+    applyStatusFilter();
+    updateFilterBanner();
+}
+
 // v5.15: Filter booking blocks by status (CSS-only, no re-render)
 function applyStatusFilter() {
     const filter = AppState.statusFilter || 'all';
@@ -252,6 +284,7 @@ function applyStatusFilter() {
             block.classList.toggle('status-hidden', !block.classList.contains('preliminary'));
         }
     });
+    updateFilterBanner();
 }
 
 // v5.15: Dim "Today" button when already on today

@@ -56,14 +56,31 @@ async function loadHistoryPage() {
                 afisha_create: '🎪 Афіша створена', afisha_edit: '🎪 Афіша змінена',
                 afisha_move: '🎪 Афіша перенесена', afisha_delete: '🎪 Афіша видалена',
                 tasks_generated: '📋 Завдання створені',
-                automation_triggered: '🤖 Автоматизація'
+                automation_triggered: '🤖 Автоматизація',
+                certificate_create: '📄 Видано сертифікат',
+                certificate_batch: '📦 Пакет сертифікатів',
+                certificate_used: '✅ Сертифікат використано',
+                certificate_revoked: '❌ Сертифікат анульовано',
+                certificate_blocked: '🔒 Сертифікат заблоковано',
+                certificate_deleted: '🗑️ Сертифікат видалено',
+                certificate_delete: '🗑️ Сертифікат видалено',
+                certificate_edit: '✏️ Сертифікат змінено',
+                certificate_expired: '⏰ Сертифікат прострочено'
             };
             const actionText = actionMap[item.action] || item.action;
             const isAfisha = item.action.startsWith('afisha_');
-            const actionClass = item.action.includes('undo') ? 'action-undo' : (item.action === 'automation_triggered' || item.action === 'tasks_generated') ? 'action-edit' : (item.action.includes('edit') || item.action === 'afisha_move' || item.action === 'shift' ? 'action-edit' : (item.action.includes('create') ? 'action-create' : 'action-delete'));
+            const isCert = item.action.startsWith('certificate_');
+            const actionClass = item.action.includes('undo') ? 'action-undo' : isCert ? 'action-edit' : (item.action === 'automation_triggered' || item.action === 'tasks_generated') ? 'action-edit' : (item.action.includes('edit') || item.action === 'afisha_move' || item.action === 'shift' ? 'action-edit' : (item.action.includes('create') ? 'action-create' : 'action-delete'));
 
             let details;
-            if (item.action === 'afisha_move') {
+            if (isCert) {
+                const d = item.data || {};
+                if (item.action === 'certificate_batch') {
+                    details = `${d.quantity || 0} шт. — коди: ${(d.codes || []).join(', ')}`;
+                } else {
+                    details = `${escapeHtml(d.certCode || '')}${d.displayValue ? ' — ' + escapeHtml(d.displayValue) : ''}${d.typeText ? ' (' + escapeHtml(d.typeText) + ')' : ''}`;
+                }
+            } else if (item.action === 'afisha_move') {
                 details = `${escapeHtml(item.data?.title || '')}: ${escapeHtml(item.data?.from || '')} → ${escapeHtml(item.data?.to || '')}`;
             } else if (isAfisha) {
                 details = `${escapeHtml(item.data?.title || '')} (${escapeHtml(item.data?.type || 'event')}, ${item.data?.duration || 60}хв): ${escapeHtml(item.data?.date || '')} ${escapeHtml(item.data?.time || '')}`;
@@ -2056,7 +2073,7 @@ async function loadCertificates() {
                 <div class="cert-type">${escapeHtml(cert.typeText)}</div>
             </div>
             <div class="cert-card-footer">
-                <span>Видано: ${issuedDate}</span>
+                <span>Видано: ${issuedDate}${cert.issuedByName ? ' · ' + escapeHtml(cert.issuedByName) : ''}</span>
                 <span>До: ${validDate}</span>
             </div>
         </div>`;
@@ -2136,7 +2153,9 @@ async function handleBatchCertSubmit(event) {
     const qtyInput = document.querySelector('input[name="batchQty"]:checked');
     if (!qtyInput) return showNotification('Оберіть кількість', 'error');
     const quantity = parseInt(qtyInput.value);
-    const typeText = document.getElementById('batchCertType').value;
+    const eventName = (document.getElementById('batchCertEventName')?.value || '').trim();
+    const baseType = document.getElementById('batchCertType').value;
+    const typeText = eventName || baseType;
     const validUntil = document.getElementById('batchCertValidUntil').value || undefined;
 
     btn.disabled = true;

@@ -139,6 +139,7 @@ function initTimelineListeners() {
             AppState.statusFilter = btn.dataset.filter;
             localStorage.setItem('pzp_status_filter', AppState.statusFilter);
             applyStatusFilter();
+            updateFilterBanner();
         });
     });
 

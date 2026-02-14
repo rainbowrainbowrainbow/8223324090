@@ -2287,9 +2287,6 @@ async function generateCertificateCanvas(cert) {
         ctx.fillRect(0, 0, W, H);
     }
 
-    // === FIX BACKGROUND ARTIFACTS (cover white QR box, redraw stars flat) ===
-    drawCertBackgroundFixes(ctx, W, H);
-
     // === DRAW ALL TEXT CONTENT ===
     drawCertDynamicContent(ctx, cert, W, H);
 
@@ -2297,65 +2294,6 @@ async function generateCertificateCanvas(cert) {
     await drawCertQRCode(ctx, cert, W, H);
 
     return canvas;
-}
-
-function drawCertBackgroundFixes(ctx, W, H) {
-    // === Cover white QR placeholder with background-matching blue ===
-    // White rounded square on bg maps to canvas: ~(438,244) size ~104×94
-    ctx.save();
-    const px = 434, py = 240, pw = 112, ph = 100, pr = 16;
-    const gx = px + pw / 2, gy = py + ph / 2;
-    const qrGrad = ctx.createRadialGradient(gx, gy, 10, gx, gy, 75);
-    qrGrad.addColorStop(0, '#8DC9EC');
-    qrGrad.addColorStop(1, '#6FB6DF');
-    ctx.fillStyle = qrGrad;
-    ctx.beginPath();
-    ctx.moveTo(px + pr, py);
-    ctx.lineTo(px + pw - pr, py);
-    ctx.quadraticCurveTo(px + pw, py, px + pw, py + pr);
-    ctx.lineTo(px + pw, py + ph - pr);
-    ctx.quadraticCurveTo(px + pw, py + ph, px + pw - pr, py + ph);
-    ctx.lineTo(px + pr, py + ph);
-    ctx.quadraticCurveTo(px, py + ph, px, py + ph - pr);
-    ctx.lineTo(px, py + pr);
-    ctx.quadraticCurveTo(px, py, px + pr, py);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    // === Replace 3D stars with flat 2D vector stars ===
-    // Positions mapped from background (2528×1696) → canvas (1200×675)
-    const stars = [
-        { x: 265, y: 86, r: 24 },
-        { x: 338, y: 72, r: 20 },
-        { x: 300, y: 108, r: 14 },
-        { x: 388, y: 96, r: 11 },
-        { x: 232, y: 114, r: 8 },
-    ];
-    for (const s of stars) {
-        // Cover 3D star with sky-blue circle
-        ctx.fillStyle = '#72B8E2';
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r + 8, 0, Math.PI * 2);
-        ctx.fill();
-        // Draw clean flat 5-pointed star
-        drawFlatStar5(ctx, s.x, s.y, s.r, '#F5B731');
-    }
-}
-
-function drawFlatStar5(ctx, cx, cy, outerR, color) {
-    const innerR = outerR * 0.38;
-    const spikes = 5;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    for (let i = 0; i < spikes * 2; i++) {
-        const r = i % 2 === 0 ? outerR : innerR;
-        const angle = -Math.PI / 2 + (Math.PI / spikes) * i;
-        if (i === 0) ctx.moveTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
-        else ctx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
-    }
-    ctx.closePath();
-    ctx.fill();
 }
 
 function drawCertDynamicContent(ctx, cert, W, H) {
@@ -2448,13 +2386,32 @@ async function drawCertQRCode(ctx, cert, W, H) {
                     img.onerror = reject;
                     img.src = qrData.dataUrl;
                 });
-                // QR fits inside the white placeholder on the background
-                const qrSize = 75;
-                const qrCenterX = 505;
-                const qrCenterY = 300;
+                // QR on the blue background — larger with rounded corners
+                const qrSize = 110;
+                const qrCenterX = 500;
+                const qrCenterY = 295;
                 const qrX = qrCenterX - qrSize / 2;
                 const qrY = qrCenterY - qrSize / 2;
+                const qrR = 16;
+                // White rounded-rect background behind QR
+                ctx.save();
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.moveTo(qrX + qrR, qrY);
+                ctx.lineTo(qrX + qrSize - qrR, qrY);
+                ctx.quadraticCurveTo(qrX + qrSize, qrY, qrX + qrSize, qrY + qrR);
+                ctx.lineTo(qrX + qrSize, qrY + qrSize - qrR);
+                ctx.quadraticCurveTo(qrX + qrSize, qrY + qrSize, qrX + qrSize - qrR, qrY + qrSize);
+                ctx.lineTo(qrX + qrR, qrY + qrSize);
+                ctx.quadraticCurveTo(qrX, qrY + qrSize, qrX, qrY + qrSize - qrR);
+                ctx.lineTo(qrX, qrY + qrR);
+                ctx.quadraticCurveTo(qrX, qrY, qrX + qrR, qrY);
+                ctx.closePath();
+                ctx.fill();
+                // Clip QR image to same rounded rect
+                ctx.clip();
                 ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+                ctx.restore();
 
                 // "Сканувати для перевірки" below QR placeholder
                 ctx.fillStyle = 'rgba(255,255,255,0.75)';

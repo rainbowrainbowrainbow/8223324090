@@ -6,7 +6,7 @@ const router = require('express').Router();
 const { pool, generateCertCode } = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { mapCertificateRow, calculateValidUntil, validateCertificateInput, VALID_STATUSES } = require('../services/certificates');
-const { sendTelegramMessage, getConfiguredChatId, getBotUsername } = require('../services/telegram');
+const { sendTelegramMessage, sendTelegramPhoto, getConfiguredChatId, getBotUsername } = require('../services/telegram');
 const { formatCertificateNotification } = require('../services/templates');
 const { createLogger } = require('../utils/logger');
 const QRCode = require('qrcode');
@@ -166,31 +166,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
         const cert = result.rows[0];
         const mapped = mapCertificateRow(cert);
 
-        // Fire-and-forget Telegram alert
-        (async () => {
-            try {
-                const text = formatCertificateNotification('certificate_issued', cert, { username: req.user.name || req.user.username });
-                if (!text) return;
-
-                // Try director chat_id first, fallback to general
-                let chatId;
-                try {
-                    const dirResult = await pool.query("SELECT value FROM settings WHERE key = 'cert_director_chat_id'");
-                    if (dirResult.rows.length > 0 && dirResult.rows[0].value) {
-                        chatId = dirResult.rows[0].value;
-                    }
-                } catch (e) { /* fallback */ }
-                if (!chatId) chatId = await getConfiguredChatId();
-                if (!chatId) return;
-
-                const sendResult = await sendTelegramMessage(chatId, text);
-                if (sendResult && sendResult.ok) {
-                    await pool.query('UPDATE certificates SET telegram_alert_sent = TRUE WHERE id = $1', [cert.id]);
-                }
-            } catch (err) {
-                log.error(`Telegram certificate alert failed: ${err.message}`);
-            }
-        })();
+        // Telegram alert is now sent from frontend via POST /:id/send-image (with certificate image)
 
         log.info(`Certificate created: ${certCode} by ${req.user.username}`);
         res.status(201).json(mapped);
@@ -361,6 +337,61 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     } finally {
         client.release();
+    }
+});
+
+// POST /api/certificates/:id/send-image — Send certificate image to Telegram
+router.post('/:id/send-image', requireRole('admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { imageBase64 } = req.body;
+
+        if (!imageBase64) {
+            return res.status(400).json({ error: 'imageBase64 is required' });
+        }
+
+        const existing = await pool.query('SELECT * FROM certificates WHERE id = $1', [id]);
+        if (existing.rows.length === 0) {
+            return res.status(404).json({ error: 'Certificate not found' });
+        }
+
+        const cert = existing.rows[0];
+        const photoBuffer = Buffer.from(imageBase64, 'base64');
+
+        // Build caption
+        const mode = cert.display_mode === 'fio' ? 'ПІБ' : 'Номер';
+        const validDate = cert.valid_until ? new Date(cert.valid_until).toLocaleDateString('uk-UA') : '—';
+        const caption = `📄 <b>Видано сертифікат</b>\n\n` +
+            `🔑 <code>${cert.cert_code}</code>\n` +
+            (cert.display_value ? `${mode}: ${cert.display_value}\n` : '') +
+            `🏷 ${cert.type_text || 'на одноразовий вхід'}\n` +
+            `⏰ Дійсний до: ${validDate}\n` +
+            `👤 Видав: ${req.user.name || req.user.username}`;
+
+        // Determine chat_id
+        let chatId;
+        try {
+            const dirResult = await pool.query("SELECT value FROM settings WHERE key = 'cert_director_chat_id'");
+            if (dirResult.rows.length > 0 && dirResult.rows[0].value) {
+                chatId = dirResult.rows[0].value;
+            }
+        } catch (e) { /* fallback */ }
+        if (!chatId) chatId = await getConfiguredChatId();
+        if (!chatId) {
+            return res.status(400).json({ error: 'Telegram chat not configured' });
+        }
+
+        const result = await sendTelegramPhoto(chatId, photoBuffer, caption);
+        if (result && result.ok) {
+            await pool.query('UPDATE certificates SET telegram_alert_sent = TRUE WHERE id = $1', [cert.id]);
+            log.info(`Certificate ${cert.cert_code} image sent to Telegram by ${req.user.username}`);
+            res.json({ success: true });
+        } else {
+            res.status(500).json({ error: 'Telegram send failed' });
+        }
+    } catch (err) {
+        log.error('Send image error', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

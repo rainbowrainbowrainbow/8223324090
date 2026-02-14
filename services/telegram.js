@@ -259,6 +259,57 @@ async function getTelegramChatId() {
  * Actual deletion is handled by checkScheduledDeletions() in scheduler.js (every 60s).
  * Settings: auto_delete_enabled (true/false), auto_delete_hours (default 10).
  */
+/**
+ * Send a photo (Buffer) to Telegram chat via multipart/form-data.
+ * Used for certificate image notifications.
+ */
+async function sendTelegramPhoto(chatId, photoBuffer, caption, options = {}) {
+    const threadId = await getConfiguredThreadId();
+    const boundary = '----TgBoundary' + Date.now().toString(16);
+
+    const parts = [];
+    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${chatId}`);
+    if (caption) {
+        parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${caption}`);
+        parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="parse_mode"\r\n\r\nHTML`);
+    }
+    if (threadId) {
+        parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="message_thread_id"\r\n\r\n${threadId}`);
+    }
+    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="disable_notification"\r\n\r\n${options.silent !== false}`);
+
+    const head = Buffer.from(parts.join('\r\n') + '\r\n');
+    const fileHeader = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="certificate.png"\r\nContent-Type: image/png\r\n\r\n`);
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+    const body = Buffer.concat([head, fileHeader, photoBuffer, tail]);
+
+    return new Promise((resolve, reject) => {
+        const req = https.request({
+            hostname: 'api.telegram.org',
+            path: `/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
+            method: 'POST',
+            headers: {
+                'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                'Content-Length': body.length
+            }
+        }, (res) => {
+            let result = '';
+            res.on('data', (chunk) => result += chunk);
+            res.on('end', () => {
+                try {
+                    const parsed = JSON.parse(result);
+                    if (parsed.ok) log.info(`Photo sent to ${chatId}`);
+                    else log.warn('sendPhoto API error', parsed);
+                    resolve(parsed);
+                } catch (e) { reject(e); }
+            });
+        });
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+    });
+}
+
 async function scheduleAutoDelete(chatId, messageId) {
     try {
         const result = await pool.query("SELECT key, value FROM settings WHERE key IN ('auto_delete_enabled', 'auto_delete_hours')");
@@ -281,7 +332,7 @@ async function scheduleAutoDelete(chatId, messageId) {
 
 module.exports = {
     TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, WEBHOOK_SECRET,
-    telegramRequest, sendTelegramMessage, editTelegramMessage, deleteTelegramMessage,
+    telegramRequest, sendTelegramMessage, sendTelegramPhoto, editTelegramMessage, deleteTelegramMessage,
     getConfiguredChatId, getConfiguredThreadId,
     notifyTelegram, ensureWebhook, getTelegramChatId, scheduleAutoDelete,
     setWebhookFlag, getWebhookFlag, getBotUsername

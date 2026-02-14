@@ -1996,6 +1996,12 @@ function openCertificatesPanel() {
     panel.classList.remove('hidden');
     document.body.classList.add('panel-open');
 
+    // Show/hide admin-only elements
+    const isAdmin = AppState.currentUser && AppState.currentUser.role === 'admin';
+    panel.querySelectorAll('.cert-admin-only').forEach(el => {
+        el.classList.toggle('hidden', !isAdmin);
+    });
+
     // Show backdrop on mobile
     const backdrop = document.getElementById('panelBackdrop');
     if (backdrop) {
@@ -2154,8 +2160,27 @@ async function handleCertificateSubmit(event) {
         loadCertificates();
         // Одразу показати деталі нового сертифіката
         showCertDetail(result.certificate.id);
+
+        // Fire-and-forget: generate image and send to Telegram
+        sendCertImageToTelegram(result.certificate);
     } else {
         showNotification(result.error || 'Помилка видачі', 'error');
+    }
+}
+
+async function sendCertImageToTelegram(cert) {
+    try {
+        const canvas = await generateCertificateCanvas(cert);
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64 = dataUrl.split(',')[1];
+        await fetch(`${API_BASE}/certificates/${cert.id}/send-image`, {
+            method: 'POST',
+            headers: { ...getAuthHeaders(true) },
+            body: JSON.stringify({ imageBase64: base64 })
+        });
+    } catch (err) {
+        // Silent fail — Telegram image is optional
+        console.warn('Cert image send failed:', err.message);
     }
 }
 
@@ -2209,19 +2234,22 @@ async function showCertDetail(id) {
             </div>
         `;
 
-        // Download + copy + action buttons
-        const copyText = `Сертифікат: ${cert.certCode}\n${modeLabel}: ${cert.displayValue}\nТип: ${cert.typeText}\nДійсний до: ${validDate}`;
+        // Download + copy — available to everyone; action buttons — admin only
+        const copyText = `Сертифікат: ${cert.certCode}\n${modeLabel}: ${cert.displayValue || ''}\nТип: ${cert.typeText}\nДійсний до: ${validDate}`;
         let btns = `<button class="btn-download-cert btn-sm" onclick="downloadCertificateImage(${cert.id})">🖼️ Скачати</button>`;
         btns += `<button class="btn-copy-all btn-sm" onclick="copyCertText(\`${copyText.replace(/`/g, '\\`')}\`)">📋 Скопіювати інфо</button>`;
-        if (cert.status === 'active') {
-            btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${cert.id}, 'used')">✅ Використано</button>`;
-            btns += `<button class="btn-danger btn-sm" onclick="changeCertStatus(${cert.id}, 'revoked')">❌ Анулювати</button>`;
-            btns += `<button class="btn-cancel btn-sm" onclick="changeCertStatus(${cert.id}, 'blocked')">🚫 Заблокувати</button>`;
+        const isAdmin = AppState.currentUser && AppState.currentUser.role === 'admin';
+        if (isAdmin) {
+            if (cert.status === 'active') {
+                btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${cert.id}, 'used')">✅ Використано</button>`;
+                btns += `<button class="btn-danger btn-sm" onclick="changeCertStatus(${cert.id}, 'revoked')">❌ Анулювати</button>`;
+                btns += `<button class="btn-cancel btn-sm" onclick="changeCertStatus(${cert.id}, 'blocked')">🚫 Заблокувати</button>`;
+            }
+            if (cert.status === 'blocked' || cert.status === 'revoked') {
+                btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${cert.id}, 'active')">🔄 Відновити</button>`;
+            }
+            btns += `<button class="btn-danger btn-sm" onclick="deleteCertificate(${cert.id})">🗑 Видалити</button>`;
         }
-        if (cert.status === 'blocked' || cert.status === 'revoked') {
-            btns += `<button class="btn-submit btn-sm" onclick="changeCertStatus(${cert.id}, 'active')">🔄 Відновити</button>`;
-        }
-        btns += `<button class="btn-danger btn-sm" onclick="deleteCertificate(${cert.id})">🗑 Видалити</button>`;
         actions.innerHTML = btns;
     } catch (err) {
         content.innerHTML = '<p class="empty-state">Помилка завантаження</p>';

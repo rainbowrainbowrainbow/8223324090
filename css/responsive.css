@@ -524,6 +524,19 @@
         gap: 6px;
     }
 
+    /* Certificate form mobile */
+    .cert-type-row select,
+    .cert-type-row input {
+        min-height: 44px;
+    }
+    .cert-date-row {
+        flex-wrap: wrap;
+    }
+    .cert-detail-row-name {
+        margin: 0 -8px;
+        padding: 8px;
+    }
+
     /* Category grid */
     .category-grid { grid-template-columns: repeat(3, 1fr); }
     .btn-programs { padding: 8px 12px; font-size: 12px; }

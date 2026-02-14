@@ -1,0 +1,947 @@
+/**
+ * modals.css - Modal dialogs, confirmations, history, catalog — v4.0 redesign
+ */
+
+/* ==========================================
+   MODALS
+   ========================================== */
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15,23,42,0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: var(--z-modal);
+    padding: 20px;
+    animation: modalFadeIn var(--speed-fast) var(--ease-smooth);
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-content {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 28px;
+    max-width: 440px;
+    width: 100%;
+    position: relative;
+    box-shadow:
+        0 25px 60px rgba(0,0,0,0.15),
+        0 10px 24px rgba(0,0,0,0.08);
+    animation: modalSlideUp var(--speed-normal) var(--ease-bounce);
+    border: 1px solid var(--gray-100);
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+}
+
+@keyframes modalSlideUp {
+    from { transform: translateY(16px) scale(0.98); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* Sticky modal header — title + close button stay on top when scrolling */
+.modal-content h3 {
+    position: sticky;
+    top: -28px;
+    margin: -28px -28px 24px;
+    padding: 24px 28px 16px;
+    background: var(--white);
+    font-size: var(--font-xl);
+    font-weight: 800;
+    color: var(--gray-800);
+    z-index: 2;
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--speed-fast);
+}
+
+.modal-content:not(:has(.booking-detail-header)) h3 {
+    border-bottom-color: var(--gray-100);
+}
+
+.modal-close {
+    position: sticky;
+    top: -4px;
+    float: right;
+    font-size: 28px;
+    color: var(--gray-400);
+    cursor: pointer;
+    transition: all var(--speed-fast);
+    z-index: 3;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-xs);
+}
+
+.modal-close:hover {
+    color: var(--danger);
+    background: rgba(239,68,68,0.08);
+}
+
+/* Form inside modal */
+.form-group { margin-bottom: 18px; }
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 700;
+    font-size: var(--font-sm);
+    color: var(--gray-700);
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.1);
+}
+
+.form-group input:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.form-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.form-buttons button { flex: 1; }
+
+.btn-danger {
+    padding: 14px;
+    background: linear-gradient(135deg, var(--danger) 0%, #DC2626 100%);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.btn-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(239,68,68,0.3);
+}
+
+/* ==========================================
+   BOOKING DETAILS MODAL
+   ========================================== */
+
+.booking-detail-header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    margin: -28px -28px 24px;
+    padding: 24px 28px;
+    border-radius: var(--radius) var(--radius) 0 0;
+    color: var(--white);
+}
+
+.booking-detail-header h3 {
+    color: var(--white);
+    margin-bottom: 6px;
+    font-size: 18px;
+}
+
+.booking-detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: var(--font-sm);
+}
+
+.booking-detail-row:last-child { border-bottom: none; }
+.booking-detail-row .label { color: var(--gray-500); }
+.booking-detail-row .value { font-weight: 700; color: var(--gray-800); }
+
+.booking-actions { margin-top: 24px; }
+
+/* v5.31: Edit button — primary/emerald (non-destructive action) */
+.booking-actions .btn-edit-booking {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: var(--white);
+}
+
+.booking-actions .btn-edit-booking:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(16,185,129,0.3);
+}
+
+/* v5.31: Delete button — danger/red (destructive action) */
+.booking-actions .btn-delete-booking {
+    background: linear-gradient(135deg, var(--danger) 0%, #DC2626 100%);
+    color: var(--white);
+}
+
+.booking-actions .btn-delete-booking:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(239,68,68,0.3);
+}
+
+/* v5.50: Duplicate button — blue/info */
+.booking-actions .btn-duplicate-booking {
+    background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%);
+    color: var(--white);
+}
+
+.booking-actions .btn-duplicate-booking:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(59,130,246,0.3);
+}
+
+/* Time shift buttons */
+.booking-time-shift {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.booking-time-shift .label {
+    display: block;
+    color: var(--gray-500);
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+.time-shift-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+/* v5.31: Time shift — neutral outline (secondary actions) */
+.time-shift-buttons button {
+    flex: 1;
+    min-width: 45px;
+    min-height: 44px;
+    padding: 10px 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-xs);
+    background: var(--gray-50);
+    font-weight: 700;
+    font-size: var(--font-sm);
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.time-shift-buttons button:hover {
+    background: var(--primary-50);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+    transform: translateY(-1px);
+}
+
+/* v7.6.1: Line switch buttons */
+.booking-line-switch {
+    margin-top: 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.booking-line-switch .label {
+    display: block;
+    color: var(--gray-500);
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+.line-switch-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.line-switch-buttons button {
+    flex: 1;
+    min-width: 80px;
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 2px solid var(--gray-300);
+    border-radius: var(--radius-sm);
+    background: var(--white);
+    font-weight: 600;
+    font-size: var(--font-sm);
+    cursor: pointer;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.line-switch-buttons button:hover {
+    background: var(--gray-50);
+    transform: translateY(-1px);
+}
+
+/* ==========================================
+   CONFIRM MODAL
+   ========================================== */
+
+/* Confirm & note modals must always appear above other modals */
+#confirmModal,
+#noteModal {
+    z-index: var(--z-modal-confirm);
+}
+
+.modal-confirm {
+    max-width: 340px;
+    text-align: center;
+    padding: 24px;
+}
+
+.modal-confirm h3 {
+    margin-bottom: 12px;
+    font-size: 18px;
+}
+
+.modal-confirm p {
+    color: var(--gray-500);
+    margin-bottom: 24px;
+    font-size: var(--font-base);
+}
+
+.confirm-buttons {
+    display: flex;
+    gap: 12px;
+}
+
+.confirm-buttons button {
+    flex: 1;
+    padding: 14px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: var(--font-base);
+    cursor: pointer;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.btn-cancel {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.btn-cancel:hover, .btn-cancel:active {
+    background: var(--gray-200);
+}
+
+/* ==========================================
+   HISTORY MODAL
+   ========================================== */
+
+.modal-large {
+    max-width: 600px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.history-list {
+    overflow-y: auto;
+    max-height: 500px;
+}
+
+.history-item {
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    border-radius: var(--radius-sm);
+    background: var(--gray-50);
+    border-left: 4px solid var(--gray-400);
+    transition: box-shadow var(--speed-fast);
+}
+
+.history-item:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.history-item.action-create {
+    border-left-color: var(--success);
+    background: var(--primary-50);
+}
+
+.history-item.action-delete {
+    border-left-color: var(--danger);
+    background: #FEF2F2;
+}
+
+.history-item.action-edit {
+    border-left-color: #3B82F6;
+    background: #EFF6FF;
+}
+
+.history-item.action-undo {
+    border-left-color: var(--warning);
+    background: #FFFBEB;
+}
+
+.history-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.history-action {
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.action-create .history-action { color: var(--success); }
+.action-edit .history-action { color: #3B82F6; }
+.action-delete .history-action { color: var(--danger); }
+.action-undo .history-action { color: var(--warning); }
+
+.history-user {
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.history-date {
+    color: var(--gray-400);
+    margin-left: auto;
+}
+
+.history-details {
+    font-size: var(--font-sm);
+    color: var(--gray-800);
+    font-weight: 600;
+}
+
+/* v5.36: Empty state — styled consistently */
+.no-history {
+    text-align: center;
+    color: var(--gray-400);
+    padding: 48px 24px;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    line-height: 1.6;
+}
+
+.no-history::before {
+    content: '📋';
+    display: block;
+    font-size: 32px;
+    margin-bottom: 8px;
+}
+
+/* v5.16: History filters */
+.history-filters {
+    margin-bottom: 12px;
+}
+
+.history-filter-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.history-filter-select,
+.history-filter-input {
+    padding: 8px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-xs);
+    font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
+    font-family: inherit;
+    font-weight: 600;
+    background: var(--white);
+    color: var(--gray-800);
+}
+
+.history-filter-select { width: 130px; }
+.history-filter-input[type="text"] { width: 120px; }
+.history-filter-input[type="date"] { width: 130px; }
+
+.history-date-range {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.history-date-sep {
+    color: var(--gray-400);
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.btn-history-filter,
+.btn-history-reset {
+    padding: 10px 14px;
+    min-height: 44px;
+    border: none;
+    border-radius: var(--radius-xs);
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast);
+}
+
+.btn-history-filter {
+    background: var(--primary);
+    color: #FFFFFF;
+}
+
+.btn-history-filter:hover {
+    background: var(--primary-dark);
+}
+
+.btn-history-reset {
+    background: var(--gray-100);
+    color: var(--gray-500);
+}
+
+.btn-history-reset:hover {
+    background: var(--gray-200);
+}
+
+.history-stats {
+    font-size: 12px;
+    color: var(--gray-400);
+    font-weight: 600;
+    margin-top: 6px;
+}
+
+/* v5.16: History pagination */
+.history-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--gray-100);
+    margin-top: 8px;
+}
+
+.btn-history-page {
+    padding: 10px 14px;
+    min-height: 44px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-xs);
+    background: var(--white);
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast);
+}
+
+.btn-history-page:hover:not(:disabled) {
+    background: var(--primary-50);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+}
+
+.btn-history-page:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.history-page-info {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gray-500);
+}
+
+/* ==========================================
+   PROGRAM CATALOG MODAL
+   ========================================== */
+
+.modal-catalog {
+    max-width: 650px;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.catalog-list { margin-top: 16px; }
+
+.catalog-category { margin-bottom: 24px; }
+
+.catalog-category-title {
+    font-size: var(--font-md);
+    font-weight: 800;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 12px;
+    color: var(--white);
+}
+
+.catalog-category-title.animation { background: linear-gradient(135deg, var(--animation) 0%, #2563EB 100%); }
+.catalog-category-title.show { background: linear-gradient(135deg, var(--show) 0%, #EA580C 100%); }
+.catalog-category-title.quest { background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%); }
+.catalog-category-title.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }
+.catalog-category-title.masterclass { background: linear-gradient(135deg, var(--masterclass) 0%, #65A30D 100%); }
+.catalog-category-title.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #DB2777 100%); }
+
+.catalog-programs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.catalog-program-card {
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    border-left: 4px solid var(--gray-400);
+    transition: box-shadow var(--speed-fast);
+}
+
+.catalog-program-card:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.catalog-program-card.animation { border-left-color: var(--animation); }
+.catalog-program-card.show { border-left-color: var(--show); }
+.catalog-program-card.quest { border-left-color: var(--quest); }
+.catalog-program-card.photo { border-left-color: var(--photo); }
+.catalog-program-card.masterclass { border-left-color: var(--masterclass); }
+.catalog-program-card.pinata { border-left-color: var(--pinata); }
+
+.catalog-program-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.catalog-icon { font-size: 24px; }
+
+.catalog-program-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.catalog-program-name {
+    font-size: var(--font-base);
+    font-weight: 800;
+    color: var(--gray-800);
+}
+
+.catalog-program-meta {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.catalog-program-tags {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.catalog-tag {
+    font-size: var(--font-xs);
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: #EFF6FF;
+    color: #1D4ED8;
+}
+
+.catalog-tag.kids {
+    background: #F5F3FF;
+    color: #6D28D9;
+}
+
+.catalog-program-desc {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--gray-500);
+    margin-top: 6px;
+}
+
+/* v7.1: Product catalog management */
+.catalog-manage-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+    padding: 0 4px;
+}
+
+.btn-catalog-add {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: #fff;
+    padding: 10px 20px;
+    font-size: 14px;
+}
+
+.catalog-card-actions {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.btn-catalog-edit,
+.btn-catalog-delete {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    background: var(--gray-100);
+    color: var(--gray-600);
+}
+
+.btn-catalog-edit:hover {
+    background: #DBEAFE;
+    color: #2563EB;
+}
+
+.btn-catalog-delete:hover {
+    background: #FEE2E2;
+    color: #DC2626;
+}
+
+.catalog-inactive {
+    opacity: 0.5;
+}
+
+.catalog-badge-inactive {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #FEE2E2;
+    color: #DC2626;
+    font-weight: 700;
+    vertical-align: middle;
+    margin-left: 6px;
+}
+
+/* v7.1: Product form modal */
+.modal-medium {
+    max-width: 560px;
+}
+
+.pf-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+
+@media (max-width: 480px) {
+    .pf-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+#productForm .form-group {
+    margin-bottom: 10px;
+}
+
+#productForm label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gray-600);
+    margin-bottom: 4px;
+}
+
+#productForm input,
+#productForm select,
+#productForm textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1.5px solid var(--gray-200);
+    border-radius: var(--radius-xs);
+    font-size: 14px;
+    font-family: inherit;
+    box-sizing: border-box;
+    transition: border-color var(--speed-fast);
+}
+
+#productForm input:focus,
+#productForm select:focus,
+#productForm textarea:focus {
+    outline: none;
+    border-color: var(--emerald-500);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.pf-checkboxes {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 12px 0;
+}
+
+.pf-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--gray-700);
+    cursor: pointer;
+}
+
+.pf-check input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--emerald-500);
+}
+
+.pf-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.pf-actions .btn-submit {
+    flex: 1;
+}
+
+/* ==========================================
+   UNIFIED BUTTON SYSTEM
+   ========================================== */
+
+.btn-unified {
+    padding: 12px 20px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: var(--font-sm);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 44px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.btn-unified:active { transform: scale(0.97); }
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: var(--white);
+    box-shadow: 0 4px 14px rgba(16,185,129,0.25);
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(16,185,129,0.35);
+}
+
+.btn-secondary {
+    background: var(--gray-100);
+    color: var(--gray-700);
+    border: 1px solid var(--gray-200);
+}
+
+.btn-secondary:hover {
+    background: var(--gray-200);
+    border-color: var(--gray-300);
+}
+
+.btn-danger-unified {
+    background: linear-gradient(135deg, var(--danger) 0%, #DC2626 100%);
+    color: var(--white);
+    box-shadow: 0 4px 14px rgba(239,68,68,0.25);
+}
+
+.btn-danger-unified:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(239,68,68,0.35);
+}
+
+.btn-accent {
+    background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%);
+    color: var(--white);
+    box-shadow: 0 4px 14px rgba(139,92,246,0.25);
+}
+
+.btn-accent:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(139,92,246,0.35);
+}
+
+/* ==========================================
+   ENHANCED EMPTY STATES
+   ========================================== */
+
+.empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--gray-400);
+}
+
+.empty-state-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 16px;
+    background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    border: 2px dashed var(--gray-200);
+}
+
+.empty-state-title {
+    font-size: var(--font-md);
+    font-weight: 800;
+    color: var(--gray-500);
+    margin-bottom: 6px;
+}
+
+.empty-state-text {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    color: var(--gray-400);
+    line-height: 1.6;
+}
+
+/* ==========================================
+   MODAL STICKY FOOTER
+   ========================================== */
+
+.modal-footer-sticky {
+    position: sticky;
+    bottom: -28px;
+    margin: 24px -28px -28px;
+    padding: 16px 28px;
+    background: var(--white);
+    border-top: 1px solid var(--gray-100);
+    display: flex;
+    gap: 12px;
+    z-index: 2;
+    border-radius: 0 0 var(--radius) var(--radius);
+}

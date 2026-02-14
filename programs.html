@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Програми — Парк Закревського Періоду</title>
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=7.9.2">
+    <link rel="stylesheet" href="css/layout.css?v=7.9.2">
+    <link rel="stylesheet" href="css/pages.css?v=7.9.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=7.9.2">
+    <link rel="stylesheet" href="css/responsive.css?v=7.9.2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Login overlay (hidden if authorized) -->
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/favicon-512.png" alt="Логотип" class="logo-img-small">
+                    <div class="logo-text">
+                        <h1>Парк Закревського Періоду</h1>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/programs" class="nav-link active">📚 <span class="nav-text">Програми</span></a>
+                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="page-container">
+            <div class="page-header">
+                <h2>📚 Каталог програм</h2>
+                <button id="addProductBtn" class="btn-page-primary">+ Додати програму</button>
+            </div>
+
+            <!-- Category tabs -->
+            <div id="categoryTabs" class="category-tabs"></div>
+
+            <!-- Add/edit form (hidden by default) -->
+            <div id="productForm" class="inline-form" style="display:none;">
+                <div class="form-field">
+                    <label>Код</label>
+                    <input type="text" id="pf-code" placeholder="КВ1" maxlength="20" style="width:80px">
+                </div>
+                <div class="form-field">
+                    <label>Назва</label>
+                    <input type="text" id="pf-name" placeholder="Квест «Загадки Фараона»" style="min-width:200px">
+                </div>
+                <div class="form-field">
+                    <label>Мітка</label>
+                    <input type="text" id="pf-label" placeholder="КВ1(60)" style="width:120px">
+                </div>
+                <div class="form-field">
+                    <label>Іконка</label>
+                    <input type="text" id="pf-icon" placeholder="🏛" style="width:60px">
+                </div>
+                <div class="form-field">
+                    <label>Категорія</label>
+                    <select id="pf-category">
+                        <option value="quest">Квести</option>
+                        <option value="animation">Анімація</option>
+                        <option value="show">Шоу</option>
+                        <option value="photo">Фото</option>
+                        <option value="masterclass">Майстер-класи</option>
+                        <option value="pinata">Піньяти</option>
+                        <option value="custom">Кастом</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>Хвилин</label>
+                    <input type="number" id="pf-duration" value="60" min="0" step="15" style="width:80px">
+                </div>
+                <div class="form-field">
+                    <label>Ціна (₴)</label>
+                    <input type="number" id="pf-price" value="0" min="0" style="width:100px">
+                </div>
+                <div class="form-field">
+                    <label>Ведучих</label>
+                    <input type="number" id="pf-hosts" value="1" min="0" style="width:70px">
+                </div>
+                <div class="form-field">
+                    <label>Вік</label>
+                    <input type="text" id="pf-age" placeholder="6-12" style="width:80px">
+                </div>
+                <div class="form-field">
+                    <label>Дітей</label>
+                    <input type="text" id="pf-kids" placeholder="до 15" style="width:80px">
+                </div>
+                <div class="form-field">
+                    <label>Опис</label>
+                    <input type="text" id="pf-description" placeholder="Короткий опис" style="min-width:200px">
+                </div>
+                <div class="form-field" style="flex-direction:row; align-items:center; gap:8px; margin-top:20px;">
+                    <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-perchild"> За дитину</label>
+                    <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-filler"> Наповнювач</label>
+                    <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-active" checked> Активна</label>
+                </div>
+                <input type="hidden" id="pf-id" value="">
+                <input type="hidden" id="pf-sort" value="0">
+                <div style="display:flex; gap:8px; margin-top:20px;">
+                    <button id="saveProductBtn" class="btn-page-primary">Зберегти</button>
+                    <button id="cancelProductBtn" class="btn-page-secondary">Скасувати</button>
+                </div>
+            </div>
+
+            <!-- Products grid -->
+            <div id="productsGrid" class="cards-grid"></div>
+        </main>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=7.9.2"></script>
+    <script src="js/api.js?v=7.9.2"></script>
+    <script src="js/auth.js?v=7.9.2"></script>
+    <script src="js/programs-page.js?v=7.9.2"></script>
+</body>
+</html>

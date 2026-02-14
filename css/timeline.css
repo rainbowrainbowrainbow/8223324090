@@ -1,0 +1,638 @@
+/**
+ * timeline.css - Timeline grid, bookings, multi-day, minimap — v4.0 redesign
+ */
+
+/* ==========================================
+   MULTI-DAY TIMELINE
+   ========================================== */
+
+.multi-day-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.day-section {
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    border: 1px solid var(--gray-100);
+}
+
+.day-section-header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: var(--white);
+    padding: 12px 20px;
+    font-weight: 800;
+    font-size: var(--font-md);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.day-section-header .date-label {
+    font-size: var(--font-sm);
+    opacity: 0.9;
+}
+
+.day-section-content {
+    padding: 12px 16px;
+    overflow-x: auto;
+}
+
+.no-bookings {
+    color: var(--gray-400);
+    font-size: var(--font-sm);
+    text-align: center;
+    padding: 16px;
+    font-style: italic;
+}
+
+/* Mini timeline (multi-day mode) */
+.mini-time-scale {
+    display: flex;
+    margin-left: 80px;
+    margin-bottom: 6px;
+}
+
+.mini-time-mark {
+    width: 120px;
+    min-width: 120px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--gray-400);
+    text-align: left;
+}
+
+.mini-time-mark.end {
+    width: auto;
+    min-width: auto;
+}
+
+.mini-timeline-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mini-timeline-line {
+    display: flex;
+    align-items: stretch;
+    min-height: 36px;
+}
+
+.mini-line-header {
+    width: 80px;
+    min-width: 80px;
+    padding: 6px 8px;
+    background: var(--gray-50);
+    border-radius: var(--radius-xs) 0 0 var(--radius-xs);
+    font-size: var(--font-xs);
+    font-weight: 700;
+    color: var(--gray-700);
+    display: flex;
+    align-items: center;
+    border-left: 4px solid var(--primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mini-line-grid {
+    flex: 1;
+    position: relative;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-left: none;
+    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+    min-height: 36px;
+    background-image: repeating-linear-gradient(
+        to right,
+        var(--gray-200) 0px,
+        var(--gray-200) 1px,
+        transparent 1px,
+        transparent 120px
+    );
+}
+
+.mini-booking-block {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    border-radius: 5px;
+    padding: 2px 6px;
+    color: var(--white);
+    font-size: 10px;
+    font-weight: 700;
+    overflow: hidden;
+    cursor: pointer;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.mini-booking-block:hover {
+    transform: scale(1.05);
+    z-index: 20;
+    box-shadow: var(--shadow-md);
+}
+
+.mini-booking-block.quest { background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%); }
+.mini-booking-block.animation { background: linear-gradient(135deg, var(--animation) 0%, #2563EB 100%); }
+.mini-booking-block.show { background: linear-gradient(135deg, var(--show) 0%, #EA580C 100%); }
+.mini-booking-block.masterclass { background: linear-gradient(135deg, var(--masterclass) 0%, #65A30D 100%); }
+.mini-booking-block.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #DB2777 100%); }
+.mini-booking-block.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }
+.mini-booking-block.custom { background: linear-gradient(135deg, var(--custom) 0%, #475569 100%); }
+
+.mini-booking-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ==========================================
+   TIMELINE CONTAINER
+   ========================================== */
+
+.timeline-container {
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+}
+
+.timeline-scroll {
+    overflow-x: auto;
+    padding: 20px;
+    -webkit-overflow-scrolling: touch;
+    position: relative;
+}
+
+/* Time scale */
+.time-scale {
+    display: flex;
+    margin-bottom: 12px;
+    margin-left: 110px;
+    position: sticky;
+    top: 0;
+    background: var(--white);
+    z-index: 5;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+.time-mark {
+    width: 50px;
+    min-width: 50px;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--gray-400);
+}
+
+.time-mark.hour {
+    color: var(--gray-700);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.time-mark.half {
+    color: var(--gray-400);
+    font-size: 10px;
+}
+
+/* ==========================================
+   TIMELINE LINES
+   ========================================== */
+
+.timeline-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.timeline-line {
+    display: flex;
+    align-items: stretch;
+    min-height: 64px;
+    border-radius: var(--radius-xs);
+    transition: background var(--speed-fast);
+}
+
+.timeline-line:nth-child(even) {
+    background: var(--gray-50);
+}
+
+.line-header {
+    width: 130px;
+    min-width: 130px;
+    padding: 10px 12px;
+    background: linear-gradient(135deg, var(--primary-50) 0%, transparent 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    cursor: pointer;
+    border-left: 4px solid var(--primary);
+    transition: all var(--speed-fast) var(--ease-smooth);
+    border-radius: var(--radius-xs) 0 0 var(--radius-xs);
+}
+
+.timeline-line:nth-child(even) .line-header {
+    background: linear-gradient(135deg, rgba(16,185,129,0.04) 0%, transparent 100%);
+}
+
+.line-header:hover {
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary-50) 100%);
+    border-left-color: var(--primary-dark);
+}
+
+.line-name {
+    font-weight: 800;
+    font-size: var(--font-base);
+    color: var(--gray-800);
+}
+
+.line-sub {
+    font-size: 10px;
+    color: var(--gray-400);
+    margin-top: 2px;
+}
+
+/* Grid */
+.line-grid {
+    flex: 1;
+    display: flex;
+    position: relative;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-left: none;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.grid-cell {
+    width: 50px;
+    min-width: 50px;
+    border-right: 1px solid var(--gray-100);
+    cursor: pointer;
+    transition: background var(--speed-fast);
+}
+
+.grid-cell:hover {
+    background: rgba(16,185,129,0.1);
+}
+
+.grid-cell.selected {
+    background: rgba(16,185,129,0.2);
+}
+
+.grid-cell.hour {
+    border-right: 2px solid var(--gray-200);
+}
+
+.grid-cell.half {
+    border-right: 1px dashed var(--gray-200);
+}
+
+/* ==========================================
+   BOOKING BLOCKS
+   ========================================== */
+
+.booking-block {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    border-radius: 8px;
+    padding: 4px 10px;
+    color: var(--white);
+    font-size: var(--font-xs);
+    font-weight: 700;
+    overflow: hidden;
+    cursor: pointer;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--speed-fast) var(--ease-smooth);
+    border-left: 3px solid rgba(0,0,0,0.12);
+}
+
+.booking-block:hover {
+    transform: translateY(-2px);
+    z-index: 20;
+    box-shadow: var(--shadow-md);
+}
+
+.booking-block.quest { background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%); }
+.booking-block.animation { background: linear-gradient(135deg, var(--animation) 0%, #2563EB 100%); }
+.booking-block.show { background: linear-gradient(135deg, var(--show) 0%, #EA580C 100%); }
+.booking-block.masterclass { background: linear-gradient(135deg, var(--masterclass) 0%, #65A30D 100%); }
+.booking-block.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #DB2777 100%); }
+.booking-block.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }
+.booking-block.custom { background: linear-gradient(135deg, var(--custom) 0%, #475569 100%); }
+
+.booking-block .title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+}
+
+.booking-block .subtitle {
+    font-size: 10px;
+    opacity: 0.85;
+    margin-top: 2px;
+}
+
+/* v5.19: Linked booking ghost/locked style */
+.booking-block.linked-ghost {
+    opacity: 0.55;
+    border-left: 3px dashed rgba(255,255,255,0.4);
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.booking-block.linked-ghost:hover {
+    opacity: 0.75;
+    transform: none;
+}
+
+/* User letter badge */
+.booking-block .user-letter {
+    position: absolute;
+    top: 3px;
+    right: 5px;
+    font-size: 9px;
+    font-weight: 800;
+    opacity: 0.8;
+    background: rgba(255,255,255,0.25);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Notes on block */
+.booking-block .note-text {
+    font-size: 9px;
+    font-weight: 600;
+    opacity: 0.9;
+    margin-top: 1px;
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+    flex-shrink: 0;
+}
+
+/* ==========================================
+   ADD LINE BUTTON
+   ========================================== */
+
+.btn-add-line-big {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 16px;
+    margin-top: 12px;
+    background: linear-gradient(135deg, var(--primary-50) 0%, var(--primary-light) 100%);
+    border: 2px dashed var(--primary);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+    font-weight: 700;
+    color: var(--primary-dark);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.btn-add-line-big:hover {
+    border-style: solid;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #FFFFFF;
+    box-shadow: var(--shadow-primary);
+    transform: translateY(-1px);
+}
+
+.btn-add-line-big span:first-child {
+    font-size: 28px;
+    font-weight: 900;
+}
+
+/* ==========================================
+   LEGEND
+   ========================================== */
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 20px;
+    padding: 14px 18px;
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-100);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 12px 5px 8px;
+    border-radius: var(--radius-full);
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.legend-item:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.legend .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    box-shadow: var(--shadow-xs);
+    flex-shrink: 0;
+}
+
+/* Legend pill backgrounds */
+.legend-item:has(.dot.quest) { background: #F5F3FF; color: #6D28D9; }
+.legend-item:has(.dot.animation) { background: #EFF6FF; color: #1D4ED8; }
+.legend-item:has(.dot.show) { background: #FFF7ED; color: #C2410C; }
+.legend-item:has(.dot.masterclass) { background: #F7FEE7; color: #4D7C0F; }
+.legend-item:has(.dot.pinata) { background: #FDF2F8; color: #BE185D; }
+.legend-item:has(.dot.photo) { background: #ECFEFF; color: #0E7490; }
+.legend-item:has(.dot.custom) { background: var(--gray-100); color: var(--gray-600); }
+.legend-item:has(.preliminary-dot) { background: #FFFBEB; color: #92400E; }
+
+.dot.quest { background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%); }
+.dot.animation { background: linear-gradient(135deg, var(--animation) 0%, #2563EB 100%); }
+.dot.show { background: linear-gradient(135deg, var(--show) 0%, #EA580C 100%); }
+.dot.masterclass { background: linear-gradient(135deg, var(--masterclass) 0%, #65A30D 100%); }
+.dot.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #DB2777 100%); }
+.dot.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }
+.dot.custom { background: linear-gradient(135deg, var(--custom) 0%, #475569 100%); }
+
+/* ==========================================
+   PENDING LINE (Telegram waiting)
+   ========================================== */
+
+.pending-line {
+    opacity: 0.85;
+    animation: pendingPulse 2s ease-in-out infinite;
+}
+
+.pending-header {
+    border-left-color: var(--warning) !important;
+    background: rgba(245,158,11,0.06);
+}
+
+.pending-header .line-name {
+    color: #92400E;
+    font-size: var(--font-sm);
+}
+
+.pending-header .pending-timer {
+    color: var(--warning);
+    font-weight: 800;
+    font-size: 12px;
+}
+
+.pending-grid {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: repeating-linear-gradient(
+        -45deg,
+        rgba(245,158,11,0.04),
+        rgba(245,158,11,0.04) 10px,
+        rgba(245,158,11,0.08) 10px,
+        rgba(245,158,11,0.08) 20px
+    ) !important;
+    border: 2px dashed var(--warning) !important;
+    border-left: none !important;
+    border-radius: 0 8px 8px 0 !important;
+    min-height: 64px;
+}
+
+.pending-overlay {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+}
+
+.pending-pulse {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--warning);
+    animation: pendingDot 1.5s ease-in-out infinite;
+}
+
+.pending-text {
+    font-size: var(--font-sm);
+    font-weight: 700;
+    color: #92400E;
+}
+
+@keyframes pendingPulse {
+    0%, 100% { opacity: 0.75; }
+    50% { opacity: 1; }
+}
+
+@keyframes pendingDot {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.4); opacity: 1; }
+}
+
+/* ==========================================
+   NOW LINE (v5.18.1: single continuous semi-transparent line)
+   ========================================== */
+
+/* v5.18.1: Global now-line — one continuous semi-transparent line */
+.now-line-global {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1.5px;
+    background: rgba(239, 68, 68, 0.45);
+    z-index: 15;
+    pointer-events: none;
+}
+
+/* Legacy per-grid now-line (kept for backward compat but no longer generated) */
+.now-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1.5px;
+    background: rgba(239, 68, 68, 0.45);
+    z-index: 15;
+    pointer-events: none;
+}
+
+.now-line-top {
+    position: absolute;
+    bottom: -6px;
+    width: 1.5px;
+    height: 20px;
+    background: rgba(239, 68, 68, 0.45);
+    z-index: 15;
+    pointer-events: none;
+}
+
+/* ==========================================
+   TOOLTIP
+   ========================================== */
+
+.booking-tooltip {
+    position: absolute;
+    z-index: var(--z-tooltip);
+    background: var(--gray-800);
+    color: var(--white);
+    padding: 10px 14px;
+    border-radius: var(--radius-xs);
+    font-size: 12px;
+    line-height: 1.6;
+    max-width: 280px;
+    box-shadow: var(--shadow-lg);
+    pointer-events: none;
+    white-space: normal;
+    border: 1px solid var(--gray-700);
+}
+
+/* ==========================================
+   MINIMAP
+   ========================================== */
+
+.minimap-container {
+    margin-top: 12px;
+    background: var(--white);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-xs);
+    padding: 8px 12px;
+    overflow: hidden;
+    border: 1px solid var(--gray-100);
+}
+
+.minimap-container canvas {
+    width: 100%;
+    height: 50px;
+    border-radius: 4px;
+    cursor: pointer;
+}

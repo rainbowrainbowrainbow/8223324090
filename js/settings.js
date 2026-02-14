@@ -2422,7 +2422,7 @@ function loadCertBg(forceReload) {
 }
 
 async function generateCertificateCanvas(cert) {
-    const W = 1200, H = 675;
+    const W = 1200, H = 800;
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;

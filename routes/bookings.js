@@ -266,6 +266,7 @@ router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const b = req.body;
+        const clientUpdatedAt = b.updatedAt || null; // optimistic locking
         if (!validateId(id)) { return res.status(400).json({ error: 'Invalid booking ID' }); }
         if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
@@ -301,17 +302,57 @@ router.put('/:id', async (req, res) => {
 
         const newStatus = b.status || 'confirmed';
 
-        await client.query(
-            `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
-             label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
-             second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-             linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, updated_at=NOW()
-             WHERE id=$23`,
-            [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
-             b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
-             b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
-             b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id]
-        );
+        let updateResult;
+        if (clientUpdatedAt) {
+            // Optimistic locking: check updated_at matches client's version
+            updateResult = await client.query(
+                `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
+                 label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
+                 second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22
+                 WHERE id=$23 AND updated_at = $24
+                 RETURNING *`,
+                [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
+                 b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
+                 b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
+                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null,
+                 id, clientUpdatedAt]
+            );
+        } else {
+            // Legacy: no optimistic locking (backward compatibility)
+            updateResult = await client.query(
+                `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
+                 label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
+                 second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22
+                 WHERE id=$23
+                 RETURNING *`,
+                [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
+                 b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
+                 b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
+                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id]
+            );
+        }
+
+        // Optimistic locking: conflict detected (0 rows updated)
+        if (updateResult.rowCount === 0) {
+            const currentResult = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
+            await client.query('ROLLBACK');
+
+            if (currentResult.rows.length === 0) {
+                return res.status(404).json({ error: 'Бронювання не знайдено' });
+            }
+
+            const currentBooking = mapBookingRow(currentResult.rows[0]);
+            return res.status(409).json({
+                success: false,
+                error: 'Бронювання було змінено іншим користувачем',
+                conflict: true,
+                currentData: currentBooking
+            });
+        }
+
+        const savedBooking = mapBookingRow(updateResult.rows[0]);
 
         // v8.7: Sync linked bookings when secondAnimator changes
         if (!b.linkedTo) {
@@ -395,7 +436,7 @@ router.put('/:id', async (req, res) => {
             notifyTelegram('edit', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
         }
 
-        res.json({ success: true });
+        res.json({ success: true, booking: savedBooking });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (update)', rbErr));
         log.error('Error updating booking', err);

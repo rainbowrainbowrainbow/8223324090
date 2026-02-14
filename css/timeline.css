@@ -636,3 +636,200 @@
     border-radius: 4px;
     cursor: pointer;
 }
+
+/* ==========================================
+   DRAG & DROP (Feature #14)
+   ========================================== */
+
+/* Active drag state on body — prevent scroll and selection */
+body.dragging-active {
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    overflow: hidden;
+}
+
+/* Grab cursor for draggable booking blocks */
+.booking-block:not(.linked-ghost) {
+    cursor: grab;
+    touch-action: none;
+}
+
+.booking-block:not(.linked-ghost):active {
+    cursor: grabbing;
+}
+
+/* The block being dragged */
+.booking-block.dragging {
+    opacity: 0.85;
+    z-index: 100 !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
+    transform: scale(1.03);
+    transition: box-shadow 0.15s, opacity 0.15s, transform 0.15s;
+    cursor: grabbing;
+}
+
+/* Disable hover transform during drag */
+.booking-block.dragging:hover {
+    transform: scale(1.03);
+}
+
+/* Related blocks (second animator, linked) highlighted during drag */
+.booking-block.dragging-related {
+    opacity: 0.5;
+    z-index: 90 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    border: 2px dashed rgba(255, 255, 255, 0.5);
+    transition: opacity 0.15s;
+}
+
+/* Long-press visual feedback (mobile) */
+.booking-block.long-press-pending {
+    transform: scale(1.02);
+    transition: transform 0.2s var(--ease-smooth);
+}
+
+/* Floating time label during drag */
+.drag-time-label {
+    position: absolute;
+    top: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--gray-800);
+    color: var(--white);
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+    z-index: 110;
+    pointer-events: none;
+    box-shadow: var(--shadow-md);
+}
+
+/* Count label for multi-booking drag */
+.drag-count-label {
+    position: absolute;
+    top: -28px;
+    right: 0;
+    background: var(--primary);
+    color: var(--white);
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-size: 10px;
+    font-weight: 800;
+    white-space: nowrap;
+    z-index: 110;
+    pointer-events: none;
+}
+
+/* Target line highlight when dragging across lines */
+.line-grid.drag-target {
+    background: rgba(16, 185, 129, 0.08) !important;
+    outline: 2px dashed var(--primary);
+    outline-offset: -2px;
+    transition: background 0.15s, outline 0.15s;
+}
+
+/* Invalid drop zone */
+.line-grid.drag-invalid {
+    background: rgba(239, 68, 68, 0.08) !important;
+    outline: 2px dashed var(--danger);
+    outline-offset: -2px;
+}
+
+/* Ghost "landing position" preview */
+.drag-ghost {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    border-radius: 8px;
+    background: var(--primary);
+    opacity: 0.15;
+    z-index: 5;
+    pointer-events: none;
+    border: 2px dashed var(--primary);
+}
+
+/* Conflict indicator on ghost */
+.drag-ghost.conflict {
+    background: var(--danger);
+    border-color: var(--danger);
+    opacity: 0.2;
+}
+
+/* Resize handle on right edge of booking block */
+.booking-block .resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    bottom: 0;
+    cursor: col-resize;
+    border-radius: 0 8px 8px 0;
+    transition: background 0.15s;
+    z-index: 11;
+}
+
+.booking-block .resize-handle:hover,
+.booking-block .resize-handle:active {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Resizing state */
+.booking-block.resizing {
+    z-index: 100 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* Undo toast for drag operations */
+.drag-undo-toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--gray-800);
+    color: var(--white);
+    padding: 12px 20px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-sm);
+    font-weight: 700;
+    z-index: 9000;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    animation: dragToastSlideUp 0.3s var(--ease-smooth);
+    max-width: 90vw;
+}
+
+.drag-undo-toast button {
+    background: var(--primary);
+    color: var(--white);
+    border: none;
+    padding: 6px 14px;
+    border-radius: var(--radius-full);
+    font-weight: 800;
+    cursor: pointer;
+    font-size: var(--font-sm);
+    font-family: inherit;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+
+.drag-undo-toast button:hover {
+    background: var(--primary-dark);
+}
+
+@keyframes dragToastSlideUp {
+    from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+    to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* Mobile: wider touch zone for resize handle */
+@media (pointer: coarse) {
+    .booking-block .resize-handle {
+        width: 20px;
+        right: -6px;
+    }
+}

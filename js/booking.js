@@ -123,6 +123,7 @@ function closeBookingPanel() {
     // v5.5: Скинути режим редагування
     if (AppState.editingBookingId) {
         AppState.editingBookingId = null;
+        AppState.editingBookingUpdatedAt = null; // Clear optimistic lock
         document.querySelector('#bookingPanel .panel-header h3').textContent = 'Нове бронювання';
         document.querySelector('#bookingForm .btn-submit').textContent = 'Додати бронювання';
     }
@@ -457,7 +458,7 @@ function buildBookingObject(formData, program) {
     const kidsCount = (program.perChild && kidsCountInput) ? (parseInt(kidsCountInput.value) || 0) : 0;
     const finalPrice = program.perChild && kidsCount > 0 ? program.price * kidsCount : program.price;
 
-    return {
+    const obj = {
         date: formatDate(AppState.selectedDate),
         time: formData.time,
         lineId: formData.lineId,
@@ -481,6 +482,13 @@ function buildBookingObject(formData, program) {
         groupName: document.getElementById('bookingGroupName')?.value.trim() || null,
         extraData: buildExtraData(formData.programId)
     };
+
+    // Optimistic locking: include updatedAt from the booking being edited
+    if (AppState.editingBookingId) {
+        obj.updatedAt = AppState.editingBookingUpdatedAt || null;
+    }
+
+    return obj;
 }
 
 function buildExtraData(programId) {
@@ -655,8 +663,18 @@ async function handleBookingSubmit(e) {
 
             const updateResult = await apiUpdateBooking(booking.id, booking);
             if (updateResult && updateResult.success === false) {
+                // Optimistic locking: check if it's a version conflict
+                if (updateResult.conflict) {
+                    await handleOptimisticLockConflict(updateResult, booking);
+                    unlockSubmitBtn();
+                    return;
+                }
                 showNotification(updateResult.error || 'Помилка оновлення бронювання', 'error');
                 unlockSubmitBtn(); return;
+            }
+            // Update stored updatedAt from server response
+            if (updateResult && updateResult.booking) {
+                AppState.editingBookingUpdatedAt = updateResult.booking.updatedAt;
             }
             await apiAddHistory('edit', AppState.currentUser?.username, booking);
 
@@ -907,6 +925,8 @@ async function editBooking(bookingId) {
 
     // Встановити режим редагування
     AppState.editingBookingId = bookingId;
+    // Store updatedAt for optimistic locking
+    AppState.editingBookingUpdatedAt = booking.updatedAt || null;
 
     // Відкрити панель з даними бронювання
     await openBookingPanel(booking.time, booking.lineId);

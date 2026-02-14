@@ -613,6 +613,10 @@ async function handleBookingSubmit(e) {
     if (formData.program.hasFiller && !formData.pinataFiller) {
         showNotification('Оберіть наповнювач для піньяти', 'error'); unlockSubmitBtn(); return;
     }
+    // v8.7: Require second animator for multi-host programs
+    if (formData.program.hosts > 1 && !formData.secondAnimator) {
+        showNotification('Оберіть другого аніматора — ця програма потребує 2 ведучих', 'error'); unlockSubmitBtn(); return;
+    }
 
     // v7.10: Check if animator is off duty on this date
     await checkAnimatorAvailability(formData.lineId, formData.secondAnimator);

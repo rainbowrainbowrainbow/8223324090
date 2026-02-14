@@ -313,14 +313,57 @@ router.put('/:id', async (req, res) => {
              b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id]
         );
 
+        // v8.7: Sync linked bookings when secondAnimator changes
         if (!b.linkedTo) {
-            const linkedResult = await client.query('SELECT id FROM bookings WHERE linked_to = $1', [id]);
-            for (const linked of linkedResult.rows) {
-                // v7.9.3: Also cascade room (was missing — linked kept old room on edit)
-                await client.query(
-                    `UPDATE bookings SET date=$1, time=$2, duration=$3, status=$4, room=$5, updated_at=NOW() WHERE id=$6`,
-                    [b.date, b.time, b.duration, newStatus, b.room, linked.id]
-                );
+            const linkedResult = await client.query('SELECT id, line_id FROM bookings WHERE linked_to = $1', [id]);
+            const oldSecond = oldBooking.second_animator;
+            const newSecond = b.secondAnimator;
+            const secondChanged = (oldSecond || '') !== (newSecond || '');
+
+            if (secondChanged && linkedResult.rows.length > 0) {
+                // Delete old linked bookings — secondAnimator changed or was cleared
+                for (const linked of linkedResult.rows) {
+                    await client.query('DELETE FROM bookings WHERE id = $1', [linked.id]);
+                }
+                // Create new linked booking if secondAnimator is set
+                if (newSecond) {
+                    const lineRes = await client.query('SELECT id FROM lines WHERE name = $1 AND date = $2', [newSecond, b.date]);
+                    if (lineRes.rows.length > 0) {
+                        const newLinkedId = await generateBookingNumber();
+                        await client.query(
+                            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+                             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+                            [newLinkedId, b.date, b.time, lineRes.rows[0].id, b.programId, b.programCode,
+                             b.label, b.programName, b.category, b.duration, b.price, b.hosts,
+                             b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes,
+                             b.createdBy, id, newStatus, b.kidsCount || null, b.groupName || null,
+                             b.extraData ? JSON.stringify(b.extraData) : null]
+                        );
+                    }
+                }
+            } else if (!secondChanged) {
+                // No change in secondAnimator — cascade basic fields to existing linked
+                for (const linked of linkedResult.rows) {
+                    await client.query(
+                        `UPDATE bookings SET date=$1, time=$2, duration=$3, status=$4, room=$5, updated_at=NOW() WHERE id=$6`,
+                        [b.date, b.time, b.duration, newStatus, b.room, linked.id]
+                    );
+                }
+            } else if (secondChanged && newSecond && linkedResult.rows.length === 0) {
+                // Was missing linked booking (old bug) — create it now
+                const lineRes = await client.query('SELECT id FROM lines WHERE name = $1 AND date = $2', [newSecond, b.date]);
+                if (lineRes.rows.length > 0) {
+                    const newLinkedId = await generateBookingNumber();
+                    await client.query(
+                        `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+                        [newLinkedId, b.date, b.time, lineRes.rows[0].id, b.programId, b.programCode,
+                         b.label, b.programName, b.category, b.duration, b.price, b.hosts,
+                         b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes,
+                         b.createdBy, id, newStatus, b.kidsCount || null, b.groupName || null,
+                         b.extraData ? JSON.stringify(b.extraData) : null]
+                    );
+                }
             }
         }
 

@@ -752,10 +752,94 @@ async function checkMonthlyPointsReset() {
     }
 }
 
+// v11.1: Auto-update user streaks — runs at 23:55 Kyiv time
+// Checks which users were active today (logged in / performed actions) and updates their streak
+let streaksUpdatedToday = null;
+
+async function checkStreakUpdates() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (streaksUpdatedToday === todayStr) return;
+
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '23:55') return;
+
+        const dbLast = await getLastSent('streak_update');
+        if (dbLast === todayStr) { streaksUpdatedToday = todayStr; return; }
+
+        streaksUpdatedToday = todayStr;
+        await setLastSent('streak_update', todayStr);
+
+        // Find users active today: completed tasks, created bookings, or logged in (settings activity)
+        const activeUsers = await pool.query(`
+            SELECT DISTINCT username FROM (
+                SELECT actor AS username FROM task_logs WHERE DATE(created_at) = $1 AND actor NOT IN ('system', 'kleshnya', 'telegram')
+                UNION
+                SELECT created_by AS username FROM bookings WHERE DATE(created_at) = $1 AND created_by IS NOT NULL
+                UNION
+                SELECT username FROM kleshnya_chat WHERE DATE(created_at) = $1
+            ) AS active WHERE username IS NOT NULL
+        `, [todayStr]);
+
+        let updated = 0;
+        for (const row of activeUsers.rows) {
+            const username = row.username;
+
+            // Get current streak
+            const streakRes = await pool.query(
+                'SELECT current_streak, longest_streak, last_active_date FROM user_streaks WHERE username = $1',
+                [username]
+            );
+
+            if (streakRes.rows.length === 0) {
+                // First activity ever
+                await pool.query(
+                    `INSERT INTO user_streaks (username, current_streak, longest_streak, last_active_date, updated_at)
+                     VALUES ($1, 1, 1, $2, NOW())
+                     ON CONFLICT (username) DO UPDATE SET current_streak = 1, longest_streak = GREATEST(user_streaks.longest_streak, 1), last_active_date = $2, updated_at = NOW()`,
+                    [username, todayStr]
+                );
+                updated++;
+            } else {
+                const s = streakRes.rows[0];
+                if (s.last_active_date === todayStr) continue; // Already updated today
+
+                // Check if yesterday was the last active date (streak continues)
+                const yesterday = new Date(todayStr + 'T12:00:00');
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+                let newStreak;
+                if (s.last_active_date === yesterdayStr) {
+                    newStreak = (s.current_streak || 0) + 1;
+                } else {
+                    newStreak = 1; // Streak broken
+                }
+
+                const newLongest = Math.max(newStreak, s.longest_streak || 0);
+                await pool.query(
+                    'UPDATE user_streaks SET current_streak = $1, longest_streak = $2, last_active_date = $3, updated_at = NOW() WHERE username = $4',
+                    [newStreak, newLongest, todayStr, username]
+                );
+                updated++;
+            }
+        }
+
+        if (updated > 0) {
+            log.info(`Streaks updated: ${updated} users for ${todayStr}`);
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('StreakUpdates error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
     checkScheduledDeletions, checkRecurringAfisha, ensureRecurringAfishaForDate,
     checkRecurringBookings, checkCertificateExpiry,
-    checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset
+    checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset,
+    checkStreakUpdates
 };

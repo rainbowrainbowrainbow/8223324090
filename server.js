@@ -15,7 +15,7 @@ const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates } = require('./services/scheduler');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
 const { createLogger } = require('./utils/logger');
 const { validateEnv } = require('./utils/validateEnv');
@@ -155,13 +155,19 @@ initDatabase().catch(err => {
             log.info('Greeting cache cleared on startup');
         } catch (e) { log.error('Failed to clear greeting cache', e); }
 
-        // Setup Telegram webhook on start
+        // Setup Telegram webhook + bot menu on start
         const appUrl = process.env.RAILWAY_PUBLIC_DOMAIN
             ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
             : null;
         if (appUrl) {
             ensureWebhook(appUrl).catch(err => log.error('Webhook auto-setup error', err));
         }
+
+        // v11.1: Register bot commands (Telegram menu button)
+        try {
+            const { registerBotCommands } = require('./services/bot');
+            registerBotCommands().catch(err => log.error('Bot commands registration error', err));
+        } catch (e) { log.error('Failed to register bot commands', e); }
 
         // Schedulers: digest + reminder + backup + recurring + auto-delete (check every 60s)
         schedulerIntervals.push(setInterval(checkAutoDigest, 60000));
@@ -177,7 +183,9 @@ initDatabase().catch(err => {
         schedulerIntervals.push(setInterval(checkMonthlyPointsReset, 60000));
         // v11.0: Kleshnya greeting cache cleanup (every 30min)
         schedulerIntervals.push(setInterval(cleanupKleshnyaMessages, 30 * 60 * 1000));
-        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup');
+        // v11.1: Streak auto-update (daily at 23:55)
+        schedulerIntervals.push(setInterval(checkStreakUpdates, 60000));
+        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

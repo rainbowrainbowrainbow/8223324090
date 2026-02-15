@@ -315,13 +315,13 @@ async function logTaskAction(taskId, action, oldValue, newValue, actor = 'system
 // --- Telegram notification helpers ---
 
 /**
- * Send task notification to configured chat (with @mention if possible)
+ * Send task notification to configured chat (with @mention and inline buttons)
  */
 async function sendTaskNotification(text, task) {
     const chatId = await getConfiguredChatId();
     if (!chatId) return;
 
-    // Try personal notification first
+    // Try personal notification first (with inline buttons)
     const personalSent = await sendPersonalNotification(text, task);
 
     // Always send to group as well (with @mention if no personal chat)
@@ -333,11 +333,26 @@ async function sendTaskNotification(text, task) {
         }
     }
 
-    await sendTelegramMessage(chatId, groupText);
+    // v11.1: Add inline action buttons for actionable tasks
+    const buttons = getTaskInlineButtons(task);
+    if (buttons) {
+        const threadId = await getConfiguredThreadId();
+        const payload = {
+            chat_id: chatId,
+            text: groupText,
+            parse_mode: 'HTML',
+            disable_notification: true,
+            reply_markup: { inline_keyboard: buttons }
+        };
+        if (threadId) payload.message_thread_id = threadId;
+        await telegramRequest('sendMessage', payload);
+    } else {
+        await sendTelegramMessage(chatId, groupText);
+    }
 }
 
 /**
- * Try to send personal notification to user's Telegram
+ * Try to send personal notification to user's Telegram (with inline buttons)
  */
 async function sendPersonalNotification(text, task) {
     const assignee = task.assigned_to;
@@ -349,13 +364,48 @@ async function sendPersonalNotification(text, task) {
             [assignee]
         );
         if (result.rows.length > 0 && result.rows[0].telegram_chat_id) {
-            await sendTelegramMessage(String(result.rows[0].telegram_chat_id), text);
+            const personalChatId = String(result.rows[0].telegram_chat_id);
+            const buttons = getTaskInlineButtons(task);
+            if (buttons) {
+                await telegramRequest('sendMessage', {
+                    chat_id: personalChatId,
+                    text,
+                    parse_mode: 'HTML',
+                    reply_markup: { inline_keyboard: buttons }
+                });
+            } else {
+                await sendTelegramMessage(personalChatId, text);
+            }
             return true;
         }
     } catch (err) {
         log.error(`Personal notification error: ${err.message}`);
     }
     return false;
+}
+
+/**
+ * v11.1: Build inline keyboard buttons for task actions
+ * Returns inline_keyboard array or null if no buttons needed
+ */
+function getTaskInlineButtons(task) {
+    if (!task || !task.id) return null;
+    // Only show buttons for open human tasks
+    if (task.task_type === 'bot') return null;
+    if (task.status === 'done' || task.status === 'cancelled') return null;
+
+    const buttons = [];
+    if (task.status === 'todo') {
+        buttons.push([
+            { text: '🔄 В роботу', callback_data: `task_confirm:${task.id}` },
+            { text: '✅ Виконано', callback_data: `task_done:${task.id}` }
+        ]);
+    } else if (task.status === 'in_progress') {
+        buttons.push([
+            { text: '✅ Виконано', callback_data: `task_done:${task.id}` }
+        ]);
+    }
+    return buttons.length > 0 ? buttons : null;
 }
 
 /**

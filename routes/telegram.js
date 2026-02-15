@@ -301,12 +301,49 @@ router.post('/webhook', async (req, res) => {
                     });
                 }
 
+            } else if (data.startsWith('task_done:')) {
+                // v11.1: Kleshnya task completion via inline button
+                const taskId = safeParseInt(data.split(':')[1]);
+                if (!taskId) { await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' }); return res.sendStatus(200); }
+                const { updateTaskStatus } = require('../services/kleshnya');
+                try {
+                    // Determine actor from callback sender
+                    const cbFromUsername = update.callback_query.from?.username || null;
+                    const cbFromChatId = update.callback_query.from?.id || null;
+                    let actor = 'telegram';
+                    if (cbFromUsername) {
+                        const userRes = await pool.query(
+                            'SELECT username FROM users WHERE telegram_username = $1 OR telegram_chat_id = $2 LIMIT 1',
+                            [cbFromUsername, cbFromChatId]
+                        );
+                        if (userRes.rows.length > 0) actor = userRes.rows[0].username;
+                    }
+                    await updateTaskStatus(taskId, 'done', actor);
+                    await telegramRequest('answerCallbackQuery', {
+                        callback_query_id: id,
+                        text: 'Задачу завершено!'
+                    });
+                    await telegramRequest('editMessageText', {
+                        chat_id: chatId,
+                        message_id: message.message_id,
+                        text: message.text + `\n\n✅ <b>Виконано</b> (${actor})`,
+                        parse_mode: 'HTML'
+                    });
+                } catch (err) {
+                    log.error('task_done error', err);
+                    await telegramRequest('answerCallbackQuery', {
+                        callback_query_id: id,
+                        text: err.message === 'Task not found' ? 'Задачу не знайдено' : 'Помилка завершення',
+                        show_alert: true
+                    });
+                }
+
             } else if (data.startsWith('task_reject:')) {
-                // v10.0: Kleshnya task rejection
+                // v10.0: Kleshnya task rejection (fixed: cancelled instead of done)
                 const taskId = safeParseInt(data.split(':')[1]);
                 if (!taskId) { await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' }); return res.sendStatus(200); }
                 try {
-                    await pool.query("UPDATE tasks SET status = 'done', completed_at = NOW(), updated_at = NOW() WHERE id = $1", [taskId]);
+                    await pool.query("UPDATE tasks SET status = 'cancelled', updated_at = NOW() WHERE id = $1", [taskId]);
                     await telegramRequest('answerCallbackQuery', {
                         callback_query_id: id,
                         text: 'Задачу скасовано'
@@ -314,7 +351,7 @@ router.post('/webhook', async (req, res) => {
                     await telegramRequest('editMessageText', {
                         chat_id: chatId,
                         message_id: message.message_id,
-                        text: message.text + '\n\n❌ <b>Відхилено</b>',
+                        text: message.text + '\n\n❌ <b>Скасовано</b>',
                         parse_mode: 'HTML'
                     });
                 } catch (err) {

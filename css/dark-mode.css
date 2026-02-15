@@ -619,11 +619,26 @@ body.dark-mode .category-chip--pinata { background: rgba(236,72,153,0.15); color
 body.dark-mode .category-chip--photo { background: rgba(6,182,212,0.15); color: #67E8F9; }
 body.dark-mode .category-chip--custom { background: rgba(100,116,139,0.15); color: #CBD5E1; }
 
-/* Quick stats bar in dark */
+/* Quick stats + Kleshnya bar in dark */
 body.dark-mode .quick-stats-bar {
-    background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.05) 100%);
     border-color: rgba(16,185,129,0.2);
+}
+body.dark-mode .stats-bar-left {
+    background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.05) 100%);
     color: #6EE7B7;
+}
+body.dark-mode .stats-bar-right {
+    background: linear-gradient(135deg, rgba(234,88,12,0.1) 0%, rgba(234,88,12,0.05) 100%);
+    border-left-color: rgba(234,88,12,0.2);
+}
+body.dark-mode .kleshnya-message {
+    color: #FDBA74;
+}
+body.dark-mode .kleshnya-chat-link {
+    background: rgba(234,88,12,0.15);
+}
+body.dark-mode .kleshnya-chat-link:hover {
+    background: rgba(234,88,12,0.25);
 }
 
 /* Control panel card in dark */

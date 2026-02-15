@@ -761,3 +761,24 @@
     .control-panel { padding: 8px 12px; gap: 8px; }
     .modal-content { max-height: 90vh; }
 }
+
+/* ==========================================
+   KLESHNYA STATS BAR — RESPONSIVE (v11.0)
+   ========================================== */
+
+@media (max-width: 768px) {
+    .quick-stats-bar {
+        flex-direction: column;
+    }
+    .stats-bar-right {
+        max-width: 100%;
+        border-left: none;
+        border-top: 1px solid #FED7AA;
+    }
+}
+
+@media (max-width: 480px) {
+    .stats-bar-left { padding: 8px 12px; font-size: 12px; }
+    .stats-bar-right { padding: 6px 10px; }
+    .kleshnya-message { font-size: 11px; -webkit-line-clamp: 1; }
+}

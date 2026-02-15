@@ -542,6 +542,35 @@ async function initDatabase() {
             )
         `);
 
+        // v11.0: Kleshnya messages cache (rate-limit AI generation)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS kleshnya_messages (
+                id SERIAL PRIMARY KEY,
+                scope VARCHAR(30) NOT NULL DEFAULT 'daily_greeting',
+                target_date VARCHAR(20),
+                target_user VARCHAR(50),
+                message TEXT NOT NULL,
+                context JSONB,
+                source VARCHAR(20) DEFAULT 'template',
+                created_at TIMESTAMP DEFAULT NOW(),
+                expires_at TIMESTAMP NOT NULL
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kleshnya_messages_scope ON kleshnya_messages(scope, target_date)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kleshnya_messages_expires ON kleshnya_messages(expires_at)');
+
+        // v11.0: Kleshnya chat history
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS kleshnya_chat (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                role VARCHAR(10) NOT NULL DEFAULT 'assistant',
+                message TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kleshnya_chat_username ON kleshnya_chat(username, created_at)');
+
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);

@@ -695,3 +695,44 @@ async function apiDeleteCertificate(id) {
         return { success: false, error: err.message };
     }
 }
+
+// v11.0: Kleshnya API
+async function apiGetKleshnyaGreeting(date) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/greeting?date=${date}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya greeting error:', err);
+        return null;
+    }
+}
+
+async function apiGetKleshnyaChat() {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/chat`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya chat error:', err);
+        return [];
+    }
+}
+
+async function apiSendKleshnyaMessage(message) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/chat`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ message })
+        });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya chat error:', err);
+        return null;
+    }
+}

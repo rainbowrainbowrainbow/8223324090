@@ -48,6 +48,7 @@ function canViewHistory() {
 
 // v5.8: Quick Stats Bar — show summary for selected date
 // v5.11: Filter by existing lines + exclude linked bookings
+// v11.0: Two-column layout with Kleshnya banner
 function updateQuickStats(bookings, lineIds) {
     const bar = document.getElementById('quickStatsBar');
     if (!bar || isViewer()) return;
@@ -57,10 +58,43 @@ function updateQuickStats(bookings, lineIds) {
     // Filter: only bookings on existing lines, exclude linked (extra hosts)
     const mainBookings = bookings.filter(b => !b.linkedTo && (!lineIds || lineIds.includes(b.lineId)));
     const preliminary = mainBookings.filter(b => b.status === 'preliminary');
+    const confirmed = mainBookings.filter(b => b.status === 'confirmed');
     const total = mainBookings.reduce((sum, b) => sum + (b.price || 0), 0);
 
-    content.textContent = `📊 ${mainBookings.length} бронювань • ${formatPrice(total)} • ⏳ ${preliminary.length} попередніх`;
+    // v11.0: Extended stats with more detail
+    const parts = [`📊 ${mainBookings.length} бронювань`, formatPrice(total)];
+    if (confirmed.length > 0) parts.push(`✅ ${confirmed.length}`);
+    if (preliminary.length > 0) parts.push(`⏳ ${preliminary.length}`);
+    if (lineIds && lineIds.length > 0) parts.push(`👥 ${lineIds.length}`);
+    content.textContent = parts.join(' • ');
+
     bar.classList.remove('hidden');
+
+    // v11.0: Load Kleshnya greeting (non-blocking)
+    loadKleshnyaGreeting();
+}
+
+// v11.0: Fetch and display Kleshnya greeting in the stats bar banner
+let _kleshnyaLoaded = false;
+async function loadKleshnyaGreeting() {
+    if (_kleshnyaLoaded) return;
+    _kleshnyaLoaded = true;
+
+    const el = document.getElementById('kleshnyaMessage');
+    if (!el) return;
+
+    try {
+        const dateStr = formatDate(AppState.selectedDate);
+        const result = await apiGetKleshnyaGreeting(dateStr);
+        if (result && result.message) {
+            el.textContent = result.message;
+            el.title = result.message;
+        } else {
+            el.textContent = '🦀 Клешня на зв\'язку!';
+        }
+    } catch (err) {
+        el.textContent = '🦀 Клешня на зв\'язку!';
+    }
 }
 
 // ==========================================

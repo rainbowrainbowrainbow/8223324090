@@ -75,6 +75,7 @@
                     <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
                     <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
                     <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
                 </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name user-name-clickable" role="button" tabindex="0" title="Особистий кабінет"></span>
@@ -152,9 +153,18 @@
                 </div>
             </div>
 
-            <!-- Quick Stats Bar -->
+            <!-- Quick Stats + Kleshnya Bar -->
             <div id="quickStatsBar" class="quick-stats-bar hidden">
-                <span id="quickStatsContent"></span>
+                <div class="stats-bar-left">
+                    <span id="quickStatsContent"></span>
+                </div>
+                <div class="stats-bar-right" id="kleshnyaBanner">
+                    <div class="kleshnya-banner-content">
+                        <span class="kleshnya-avatar">🦀</span>
+                        <span class="kleshnya-message" id="kleshnyaMessage">Клешня думає...</span>
+                    </div>
+                    <a href="/kleshnya" class="kleshnya-chat-link" title="Відкрити чат з Клешнею">💬</a>
+                </div>
             </div>
 
             <!-- Попередження -->

@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Графік — Парк Закревського Періоду</title>
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=8.3.3">
-    <link rel="stylesheet" href="css/layout.css?v=8.3.3">
-    <link rel="stylesheet" href="css/pages.css?v=8.3.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=8.3.3">
-    <link rel="stylesheet" href="css/responsive.css?v=8.3.3">
+    <link rel="stylesheet" href="css/base.css?v=9.0.1">
+    <link rel="stylesheet" href="css/layout.css?v=9.0.1">
+    <link rel="stylesheet" href="css/pages.css?v=9.0.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=9.0.1">
+    <link rel="stylesheet" href="css/responsive.css?v=9.0.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -57,6 +57,20 @@
             color: var(--gray-800);
             min-width: 200px;
             text-align: center;
+        }
+
+        .schedule-toolbar {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .schedule-toolbar .btn-page-secondary {
+            font-size: 12px;
+            padding: 6px 14px;
+            min-height: 36px;
+            white-space: nowrap;
+            border-radius: var(--radius-sm);
         }
 
         .dept-filter {
@@ -534,6 +548,9 @@
             .schedule-controls .week-nav {
                 justify-content: center;
             }
+            .schedule-toolbar {
+                justify-content: center;
+            }
             .dept-filter {
                 justify-content: center;
             }
@@ -588,10 +605,12 @@
                     <span id="weekLabel" class="week-label"></span>
                     <button id="nextWeekBtn" title="Наступний тиждень">›</button>
                     <button id="todayWeekBtn" title="Поточний тиждень" style="font-size:13px;width:auto;padding:0 12px;font-weight:700">Сьогодні</button>
-                    <button id="copyWeekBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px;display:none" title="Скопіювати цей тиждень на наступний">Копія тижня →</button>
-                    <button id="fillWeekBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px;display:none" title="Масове заповнення тижня">Заповнити тиждень</button>
-                    <button id="toggleHoursBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px" title="Показати/сховати години">Години</button>
-                    <button id="toggleLoadViewBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px" title="Навантаження по дням">📊 Навантаження</button>
+                </div>
+                <div class="schedule-toolbar">
+                    <button id="copyWeekBtn" class="btn-page-secondary" style="display:none" title="Скопіювати цей тиждень на наступний">📋 Копія тижня →</button>
+                    <button id="fillWeekBtn" class="btn-page-secondary" style="display:none" title="Масове заповнення тижня">📝 Заповнити тиждень</button>
+                    <button id="toggleHoursBtn" class="btn-page-secondary" title="Показати/сховати години">⏱ Години</button>
+                    <button id="toggleLoadViewBtn" class="btn-page-secondary" title="Навантаження по дням">📊 Навантаження</button>
                 </div>
                 <div id="deptFilter" class="dept-filter"></div>
             </div>
@@ -707,9 +726,9 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=8.3.3"></script>
-    <script src="js/api.js?v=8.3.3"></script>
-    <script src="js/auth.js?v=8.3.3"></script>
-    <script src="js/staff-page.js?v=8.3.3"></script>
+    <script src="js/config.js?v=9.0.1"></script>
+    <script src="js/api.js?v=9.0.1"></script>
+    <script src="js/auth.js?v=9.0.1"></script>
+    <script src="js/staff-page.js?v=9.0.1"></script>
 </body>
 </html>

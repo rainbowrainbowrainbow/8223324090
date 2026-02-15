@@ -43,24 +43,24 @@ function isWeekend() {
 
 const GREETINGS = {
     morning: [
-        'Доброго ранку! Ось що маємо на сьогодні:',
-        'Ранок! Клешня зібрала інфу — тримай:',
-        'Привіт! Новий день — нові бронювання:',
+        (name) => `Доброго ранку, ${name}! Ось що маємо:`,
+        (name) => `Ранок, ${name}! Клешня зібрала інфу — тримай:`,
+        (name) => `Привіт, ${name}! Новий день — нові бронювання:`,
     ],
     afternoon: [
-        'Привіт! Ось що відбувається зараз:',
-        'День у розпалі! Тримай оновлення:',
-        'На зв\'язку! Ось поточна картина:',
+        (name) => `Привіт, ${name}! Ось що відбувається:`,
+        (name) => `${name}, день у розпалі! Тримай оновлення:`,
+        (name) => `На зв'язку, ${name}! Ось поточна картина:`,
     ],
     evening: [
-        'Добрий вечір! Підсумки дня:',
-        'Вечір! Ось як пройшов день:',
-        'Клешня на зв\'язку. Що маємо по підсумках:',
+        (name) => `Добрий вечір, ${name}! Підсумки дня:`,
+        (name) => `Вечір, ${name}! Ось як пройшов день:`,
+        (name) => `${name}, Клешня на зв'язку. Що маємо по підсумках:`,
     ],
     night: [
-        'Нічна зміна? Ось що відбувається:',
-        'О, хтось не спить! Тримай статус:',
-        'Пізно працюєш! Ось коротко:',
+        (name) => `Нічна зміна, ${name}? Ось що відбувається:`,
+        (name) => `О, ${name} не спить! Тримай статус:`,
+        (name) => `${name}, пізно працюєш! Ось коротко:`,
     ]
 };
 
@@ -72,9 +72,11 @@ function formatPrice(amount) {
     return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₴';
 }
 
-function generateTemplateMessage(ctx) {
+function generateTemplateMessage(ctx, displayName) {
     const time = getTimeOfDay();
-    const greeting = pick(GREETINGS[time]);
+    const greetingFn = pick(GREETINGS[time]);
+    const name = displayName || 'друже';
+    const greeting = greetingFn(name);
     const dayName = getDayName();
     const weekend = isWeekend();
 
@@ -190,7 +192,7 @@ async function gatherContext(username, dateStr) {
 
 // --- Main: get or generate greeting ---
 
-async function getGreeting(username, dateStr) {
+async function getGreeting(username, dateStr, displayName) {
     try {
         // 1. Check cache
         const cached = await pool.query(
@@ -216,7 +218,7 @@ async function getGreeting(username, dateStr) {
         const ctx = await gatherContext(username, dateStr);
 
         // 3. Generate (template for now, agent hook later)
-        const message = generateTemplateMessage(ctx);
+        const message = generateTemplateMessage(ctx, displayName);
 
         // 4. Cache it
         const expiresAt = new Date(Date.now() + CACHE_HOURS * 60 * 60 * 1000);
@@ -231,7 +233,7 @@ async function getGreeting(username, dateStr) {
     } catch (err) {
         log.error('Error getting greeting', err);
         return {
-            message: '🦀 Привіт! Клешня на зв\'язку — готова допомогти!',
+            message: `🦀 Привіт${displayName ? ', ' + displayName : ''}! Клешня на зв'язку — готова допомогти!`,
             context: {},
             source: 'fallback',
             cached: false

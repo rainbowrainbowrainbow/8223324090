@@ -15,8 +15,9 @@ const log = createLogger('KleshnyaRoute');
 router.get('/greeting', async (req, res) => {
     try {
         const username = req.user?.username;
+        const displayName = req.user?.name || username;
         const dateStr = req.query.date || new Date().toISOString().split('T')[0];
-        const result = await getGreeting(username, dateStr);
+        const result = await getGreeting(username, dateStr, displayName);
         res.json(result);
     } catch (err) {
         log.error('Error fetching greeting', err);

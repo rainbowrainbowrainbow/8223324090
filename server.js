@@ -148,6 +148,13 @@ initDatabase().catch(err => {
             log.info(`Telegram effective chat ID: ${dbChatId || 'NONE'}`);
         } catch (e) { /* ignore */ }
 
+        // v11.0.5: Clear greeting cache on startup (ensures fresh templates after deploy)
+        try {
+            const { pool: dbPool } = require('./db');
+            await dbPool.query("DELETE FROM kleshnya_messages WHERE scope = 'daily_greeting'");
+            log.info('Greeting cache cleared on startup');
+        } catch (e) { log.error('Failed to clear greeting cache', e); }
+
         // Setup Telegram webhook on start
         const appUrl = process.env.RAILWAY_PUBLIC_DOMAIN
             ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`

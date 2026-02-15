@@ -505,6 +505,43 @@ async function initDatabase() {
             )
         `);
 
+        // v10.6: User action log (who clicked what where)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS user_action_log (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                action VARCHAR(50) NOT NULL,
+                target VARCHAR(100),
+                meta JSONB,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_action_log_username ON user_action_log(username)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_action_log_created_at ON user_action_log(created_at)');
+
+        // v10.6: Achievements system
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS user_achievements (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                achievement_key VARCHAR(50) NOT NULL,
+                unlocked_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(username, achievement_key)
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_achievements_username ON user_achievements(username)');
+
+        // v10.6: User streaks
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS user_streaks (
+                username VARCHAR(50) PRIMARY KEY,
+                current_streak INTEGER DEFAULT 0,
+                longest_streak INTEGER DEFAULT 0,
+                last_active_date VARCHAR(20),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);

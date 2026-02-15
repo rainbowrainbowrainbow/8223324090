@@ -187,7 +187,7 @@ function _authenticateClient(ws, token, authTimeout) {
         clearTimeout(authTimeout);
 
         ws._pzp.authenticated = true;
-        ws._pzp.userId = decoded.id || decoded.userId || decoded.sub;
+        ws._pzp.userId = String(decoded.id || decoded.userId || decoded.sub);
         ws._pzp.username = decoded.username || decoded.name || 'unknown';
         ws._pzp.role = decoded.role || 'viewer';
 

@@ -6,6 +6,7 @@ const { pool, generateBookingNumber } = require('../db');
 const { validateDate, validateTime, validateId, mapBookingRow, checkServerConflicts, checkServerDuplicate, checkRoomConflict } = require('../services/booking');
 const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
+const { broadcast } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Bookings');
@@ -99,6 +100,9 @@ router.post('/', async (req, res) => {
         }
 
         const booking = insertResult.rows[0] ? mapBookingRow(insertResult.rows[0]) : { id: b.id };
+
+        // WebSocket: notify other clients
+        broadcast('booking:created', booking, req.user?.id?.toString(), b.date);
 
         res.json({ success: true, booking });
     } catch (err) {
@@ -203,6 +207,9 @@ router.post('/full', async (req, res) => {
         const mainBooking = mainInsert.rows[0] ? mapBookingRow(mainInsert.rows[0]) : { id: main.id };
         const linkedBookings = linkedRows.map(mapBookingRow);
 
+        // WebSocket: notify other clients
+        broadcast('booking:created', mainBooking, req.user?.id?.toString(), main.date);
+
         res.json({ success: true, mainBooking, linkedBookings });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create/full)', rbErr));
@@ -249,6 +256,9 @@ router.delete('/:id', async (req, res) => {
 
         notifyTelegram('delete', booking, { username: req.user?.username })
             .catch(err => log.error(`Telegram notify failed (delete): ${err.message}`));
+
+        // WebSocket: notify other clients
+        broadcast('booking:deleted', { id, date: booking.date, permanent }, req.user?.id?.toString(), booking.date);
 
         res.json({ success: true, permanent });
     } catch (err) {
@@ -436,6 +446,9 @@ router.put('/:id', async (req, res) => {
         } else if (!b.linkedTo && newStatus !== 'preliminary') {
             notifyTelegram('edit', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
         }
+
+        // WebSocket: notify other clients
+        broadcast('booking:updated', savedBooking, req.user?.id?.toString(), b.date);
 
         res.json({ success: true, booking: savedBooking });
     } catch (err) {

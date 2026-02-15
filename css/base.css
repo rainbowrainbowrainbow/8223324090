@@ -302,3 +302,43 @@ body {
 .category-chip--pinata { background: var(--pinata-bg); color: #BE185D; }
 .category-chip--photo { background: var(--photo-bg); color: #0E7490; }
 .category-chip--custom { background: var(--custom-bg); color: var(--gray-600); }
+
+/* ==========================================
+   SKIP LINK (Accessibility)
+   ========================================== */
+
+.skip-link {
+    position: absolute;
+    top: -100%;
+    left: 16px;
+    z-index: 9999;
+    padding: 12px 24px;
+    background: var(--primary);
+    color: #fff;
+    font-weight: 800;
+    font-size: var(--font-sm);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    text-decoration: none;
+    box-shadow: var(--shadow-md);
+    transition: top var(--speed-fast) var(--ease-smooth);
+}
+
+.skip-link:focus {
+    top: 0;
+    outline: none;
+}
+
+/* ==========================================
+   REDUCED MOTION (Accessibility)
+   ========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

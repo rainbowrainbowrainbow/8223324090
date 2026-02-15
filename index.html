@@ -14,21 +14,23 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=9.0.1">
-    <link rel="stylesheet" href="css/auth.css?v=9.0.1">
-    <link rel="stylesheet" href="css/layout.css?v=9.0.1">
-    <link rel="stylesheet" href="css/timeline.css?v=9.0.1">
-    <link rel="stylesheet" href="css/panel.css?v=9.0.1">
-    <link rel="stylesheet" href="css/modals.css?v=9.0.1">
-    <link rel="stylesheet" href="css/controls.css?v=9.0.1">
-    <link rel="stylesheet" href="css/features.css?v=9.0.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=9.0.1">
-    <link rel="stylesheet" href="css/responsive.css?v=9.0.1">
-    <link rel="stylesheet" href="css/pages.css?v=9.0.1">
+    <link rel="stylesheet" href="css/base.css?v=9.0.2">
+    <link rel="stylesheet" href="css/auth.css?v=9.0.2">
+    <link rel="stylesheet" href="css/layout.css?v=9.0.2">
+    <link rel="stylesheet" href="css/timeline.css?v=9.0.2">
+    <link rel="stylesheet" href="css/panel.css?v=9.0.2">
+    <link rel="stylesheet" href="css/modals.css?v=9.0.2">
+    <link rel="stylesheet" href="css/controls.css?v=9.0.2">
+    <link rel="stylesheet" href="css/features.css?v=9.0.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=9.0.2">
+    <link rel="stylesheet" href="css/responsive.css?v=9.0.2">
+    <link rel="stylesheet" href="css/pages.css?v=9.0.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <script>
     // Dark mode flash prevention — runs synchronously before any content renders
     (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
@@ -39,9 +41,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v9.0.1 — Розумна платформа</p>
+                <p class="tagline">Система бронювання v9.0.2 — Розумна платформа</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v9.0.1</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v9.0.2</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -82,7 +84,7 @@
         </header>
 
         <!-- Основний контент - Таймлайн -->
-        <main class="main-content">
+        <main id="main-content" class="main-content">
             <!-- Панель керування -->
             <div class="control-panel">
                 <div class="date-controls">
@@ -894,6 +896,14 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v9.0.2 — Доступність</h4>
+                    <ul>
+                        <li>♿ Skip-links на всіх 5 сторінках: швидкий перехід до контенту для screen readers</li>
+                        <li>🎯 prefers-reduced-motion: вимкнення анімацій для користувачів з чутливістю до руху</li>
+                        <li>🔍 Focus indicators: :focus-visible з emerald кольором на всіх інтерактивних елементах</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v9.0.1 — Стабілізація</h4>
                     <ul>
@@ -2123,21 +2133,21 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=9.0.1"></script>
-    <script src="js/api.js?v=9.0.1"></script>
-    <script src="js/ui.js?v=9.0.1"></script>
-    <script src="js/auth.js?v=9.0.1"></script>
-    <script src="js/timeline.js?v=9.0.1"></script>
-    <script src="js/booking.js?v=9.0.1"></script>
-    <script src="js/settings.js?v=9.0.1"></script>
-    <script src="js/booking-form.js?v=9.0.1"></script>
-    <script src="js/booking-linked.js?v=9.0.1"></script>
-    <script src="js/settings-dashboard.js?v=9.0.1"></script>
-    <script src="js/settings-history.js?v=9.0.1"></script>
-    <script src="js/settings-afisha.js?v=9.0.1"></script>
-    <script src="js/settings-certificates.js?v=9.0.1"></script>
-    <script src="js/offline.js?v=9.0.1"></script>
-    <script src="js/ws.js?v=9.0.1"></script>
-    <script src="js/app.js?v=9.0.1"></script>
+    <script src="js/config.js?v=9.0.2"></script>
+    <script src="js/api.js?v=9.0.2"></script>
+    <script src="js/ui.js?v=9.0.2"></script>
+    <script src="js/auth.js?v=9.0.2"></script>
+    <script src="js/timeline.js?v=9.0.2"></script>
+    <script src="js/booking.js?v=9.0.2"></script>
+    <script src="js/settings.js?v=9.0.2"></script>
+    <script src="js/booking-form.js?v=9.0.2"></script>
+    <script src="js/booking-linked.js?v=9.0.2"></script>
+    <script src="js/settings-dashboard.js?v=9.0.2"></script>
+    <script src="js/settings-history.js?v=9.0.2"></script>
+    <script src="js/settings-afisha.js?v=9.0.2"></script>
+    <script src="js/settings-certificates.js?v=9.0.2"></script>
+    <script src="js/offline.js?v=9.0.2"></script>
+    <script src="js/ws.js?v=9.0.2"></script>
+    <script src="js/app.js?v=9.0.2"></script>
 </body>
 </html>

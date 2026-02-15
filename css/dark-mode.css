@@ -626,46 +626,59 @@ body.dark-mode .quick-stats-bar {
     color: #6EE7B7;
 }
 
-/* Kleshnya floating widget in dark */
+/* Kleshnya futuristic terminal in dark — enhanced glow */
 body.dark-mode .kleshnya-fab {
-    background: linear-gradient(135deg, #EA580C 0%, #9A3412 100%);
-    box-shadow: 0 4px 16px rgba(234,88,12,0.3), 0 2px 4px rgba(0,0,0,0.3);
+    background: radial-gradient(circle at 35% 35%, #FF6B2B 0%, #EA580C 40%, #7C2D12 100%);
+    border-color: rgba(234, 88, 12, 0.8);
+    box-shadow:
+        0 0 25px rgba(234,88,12,0.5),
+        0 0 50px rgba(234,88,12,0.2),
+        inset 0 -2px 6px rgba(0,0,0,0.4),
+        inset 0 2px 6px rgba(255,255,255,0.1);
+}
+body.dark-mode .kleshnya-fab:hover {
+    box-shadow:
+        0 0 35px rgba(234,88,12,0.7),
+        0 0 70px rgba(234,88,12,0.25),
+        inset 0 -2px 6px rgba(0,0,0,0.4),
+        inset 0 2px 6px rgba(255,255,255,0.1);
+}
+body.dark-mode .kleshnya-fab-ring {
+    border-color: rgba(234,88,12,0.5);
+}
+body.dark-mode .kleshnya-fab-sonar {
+    border-color: rgba(234,88,12,0.6);
 }
 body.dark-mode .kleshnya-popup {
-    background: var(--bg-primary);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+    background: linear-gradient(180deg, #0d0a12 0%, #08060e 100%);
+    border-color: rgba(234,88,12,0.35);
+    box-shadow:
+        0 12px 48px rgba(0,0,0,0.7),
+        0 0 40px rgba(234,88,12,0.12),
+        inset 0 1px 0 rgba(255,255,255,0.04);
 }
 body.dark-mode .kleshnya-popup-header {
-    background: linear-gradient(135deg, rgba(234,88,12,0.15) 0%, rgba(234,88,12,0.08) 100%);
+    background: linear-gradient(135deg, rgba(234,88,12,0.1) 0%, rgba(234,88,12,0.03) 100%);
     border-bottom-color: rgba(234,88,12,0.2);
 }
-body.dark-mode .kleshnya-popup-title { color: #FDBA74; }
-body.dark-mode .kleshnya-popup-close { color: #FDBA74; }
-body.dark-mode .kleshnya-popup-close:hover { background: rgba(234,88,12,0.15); }
-body.dark-mode .kleshnya-greeting { color: #D6D3D1; }
-body.dark-mode .kleshnya-answer {
-    background: linear-gradient(135deg, rgba(234,88,12,0.1) 0%, rgba(234,88,12,0.05) 100%);
-    border-color: rgba(234,88,12,0.2);
-    color: #FDBA74;
+body.dark-mode .kleshnya-status-dot {
+    box-shadow: 0 0 8px #22C55E, 0 0 16px rgba(34,197,94,0.4);
 }
-body.dark-mode .kleshnya-q-btn {
-    background: rgba(255,255,255,0.05);
-    border-color: rgba(255,255,255,0.08);
-    color: #D6D3D1;
+body.dark-mode .kleshnya-scanline {
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(234,88,12,0.02) 2px,
+        rgba(234,88,12,0.02) 4px
+    );
 }
 body.dark-mode .kleshnya-q-btn:hover {
-    background: rgba(234,88,12,0.12);
-    border-color: rgba(234,88,12,0.3);
-    color: #FDBA74;
+    box-shadow: 0 0 16px rgba(234,88,12,0.2);
 }
 body.dark-mode .kleshnya-q-btn.active {
-    background: rgba(234,88,12,0.15);
-    border-color: #EA580C;
-    color: #FDBA74;
+    box-shadow: 0 0 20px rgba(234,88,12,0.3), inset 0 0 16px rgba(234,88,12,0.08);
 }
-body.dark-mode .kleshnya-popup-footer { border-top-color: rgba(255,255,255,0.06); }
-body.dark-mode .kleshnya-goto-chat { color: #FDBA74; }
-body.dark-mode .kleshnya-goto-chat:hover { background: rgba(234,88,12,0.1); color: #FB923C; }
 
 /* Control panel card in dark */
 body.dark-mode .control-panel {

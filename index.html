@@ -153,17 +153,35 @@
                 </div>
             </div>
 
-            <!-- Quick Stats + Kleshnya Bar -->
+            <!-- Quick Stats Bar -->
             <div id="quickStatsBar" class="quick-stats-bar hidden">
-                <div class="stats-bar-left">
-                    <span id="quickStatsContent"></span>
-                </div>
-                <div class="stats-bar-right" id="kleshnyaBanner">
-                    <div class="kleshnya-banner-content">
-                        <span class="kleshnya-avatar">🦀</span>
-                        <span class="kleshnya-message" id="kleshnyaMessage">Клешня думає...</span>
+                <span id="quickStatsContent"></span>
+            </div>
+
+            <!-- Kleshnya Floating Widget -->
+            <div id="kleshnyaWidget" class="kleshnya-widget hidden">
+                <button type="button" id="kleshnyaFab" class="kleshnya-fab" title="Клешня — помічник парку" aria-label="Відкрити Клешню">
+                    <span class="kleshnya-fab-icon">🦀</span>
+                    <span class="kleshnya-fab-pulse"></span>
+                </button>
+                <div id="kleshnyaPopup" class="kleshnya-popup hidden" role="dialog" aria-label="Клешня">
+                    <div class="kleshnya-popup-header">
+                        <span class="kleshnya-popup-title">🦀 Клешня</span>
+                        <button type="button" id="kleshnyaClose" class="kleshnya-popup-close" aria-label="Закрити">✕</button>
                     </div>
-                    <a href="/kleshnya" class="kleshnya-chat-link" title="Відкрити чат з Клешнею">💬</a>
+                    <div class="kleshnya-popup-body">
+                        <div id="kleshnyaGreeting" class="kleshnya-greeting">Клешня думає...</div>
+                        <div id="kleshnyaAnswer" class="kleshnya-answer hidden"></div>
+                        <div id="kleshnyaQuestions" class="kleshnya-questions">
+                            <button type="button" class="kleshnya-q-btn" data-topic="bookings">📊 Бронювання</button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="tasks">📋 Задачі</button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="streak">🔥 Стрік</button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="animators">👥 Аніматори</button>
+                        </div>
+                    </div>
+                    <div class="kleshnya-popup-footer">
+                        <a href="/kleshnya" class="kleshnya-goto-chat">💬 Перейти до чату →</a>
+                    </div>
                 </div>
             </div>
 

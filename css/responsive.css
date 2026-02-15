@@ -763,22 +763,14 @@
 }
 
 /* ==========================================
-   KLESHNYA STATS BAR — RESPONSIVE (v11.0)
+   KLESHNYA WIDGET — RESPONSIVE (v11.1)
    ========================================== */
 
-@media (max-width: 768px) {
-    .quick-stats-bar {
-        flex-direction: column;
-    }
-    .stats-bar-right {
-        max-width: 100%;
-        border-left: none;
-        border-top: 1px solid #FED7AA;
-    }
-}
-
 @media (max-width: 480px) {
-    .stats-bar-left { padding: 8px 12px; font-size: 12px; }
-    .stats-bar-right { padding: 6px 10px; }
-    .kleshnya-message { font-size: 11px; -webkit-line-clamp: 1; }
+    .quick-stats-bar { padding: 8px 12px; font-size: 12px; }
+
+    .kleshnya-widget { bottom: 16px; right: 16px; }
+    .kleshnya-fab { width: 48px; height: 48px; }
+    .kleshnya-fab-icon { font-size: 24px; }
+    .kleshnya-popup { width: calc(100vw - 32px); right: -8px; bottom: 60px; }
 }

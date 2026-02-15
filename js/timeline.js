@@ -48,7 +48,7 @@ function canViewHistory() {
 
 // v5.8: Quick Stats Bar — show summary for selected date
 // v5.11: Filter by existing lines + exclude linked bookings
-// v11.0: Two-column layout with Kleshnya banner
+// v11.1: Stats-only bar + separate floating widget
 function updateQuickStats(bookings, lineIds) {
     const bar = document.getElementById('quickStatsBar');
     if (!bar || isViewer()) return;
@@ -61,7 +61,6 @@ function updateQuickStats(bookings, lineIds) {
     const confirmed = mainBookings.filter(b => b.status === 'confirmed');
     const total = mainBookings.reduce((sum, b) => sum + (b.price || 0), 0);
 
-    // v11.0: Extended stats with more detail
     const parts = [`📊 ${mainBookings.length} бронювань`, formatPrice(total)];
     if (confirmed.length > 0) parts.push(`✅ ${confirmed.length}`);
     if (preliminary.length > 0) parts.push(`⏳ ${preliminary.length}`);
@@ -70,17 +69,69 @@ function updateQuickStats(bookings, lineIds) {
 
     bar.classList.remove('hidden');
 
-    // v11.0: Load Kleshnya greeting (non-blocking)
-    loadKleshnyaGreeting();
+    // v11.1: Init floating Kleshnya widget (non-blocking)
+    initKleshnyaWidget();
 }
 
-// v11.0: Fetch and display Kleshnya greeting in the stats bar banner
-let _kleshnyaLoaded = false;
-async function loadKleshnyaGreeting() {
-    if (_kleshnyaLoaded) return;
-    _kleshnyaLoaded = true;
+// ==========================================
+// KLESHNYA FLOATING WIDGET (v11.1)
+// ==========================================
 
-    const el = document.getElementById('kleshnyaMessage');
+let _kleshnyaWidgetReady = false;
+let _kleshnyaContext = null;
+
+function initKleshnyaWidget() {
+    if (_kleshnyaWidgetReady) return;
+    _kleshnyaWidgetReady = true;
+
+    const widget = document.getElementById('kleshnyaWidget');
+    const fab = document.getElementById('kleshnyaFab');
+    const popup = document.getElementById('kleshnyaPopup');
+    const closeBtn = document.getElementById('kleshnyaClose');
+    if (!widget || !fab || !popup) return;
+
+    // Show widget
+    widget.classList.remove('hidden');
+
+    // Toggle popup
+    fab.addEventListener('click', () => {
+        const isOpen = !popup.classList.contains('hidden');
+        if (isOpen) {
+            popup.classList.add('hidden');
+        } else {
+            popup.classList.remove('hidden');
+            loadKleshnyaGreeting();
+        }
+    });
+
+    // Close button
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => popup.classList.add('hidden'));
+    }
+
+    // Close on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !popup.classList.contains('hidden')) {
+            popup.classList.add('hidden');
+        }
+    });
+
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+        if (!popup.classList.contains('hidden') && !widget.contains(e.target)) {
+            popup.classList.add('hidden');
+        }
+    });
+
+    // Interactive question buttons
+    const qBtns = document.querySelectorAll('.kleshnya-q-btn');
+    qBtns.forEach(btn => {
+        btn.addEventListener('click', () => handleKleshnyaQuestion(btn.dataset.topic, qBtns));
+    });
+}
+
+async function loadKleshnyaGreeting() {
+    const el = document.getElementById('kleshnyaGreeting');
     if (!el) return;
 
     try {
@@ -88,12 +139,47 @@ async function loadKleshnyaGreeting() {
         const result = await apiGetKleshnyaGreeting(dateStr);
         if (result && result.message) {
             el.textContent = result.message;
-            el.title = result.message;
+            _kleshnyaContext = result.context || null;
         } else {
-            el.textContent = '🦀 Клешня на зв\'язку!';
+            el.textContent = '🦀 Привіт! Я Клешня — твій помічник у парку. Обери тему нижче!';
         }
     } catch (err) {
-        el.textContent = '🦀 Клешня на зв\'язку!';
+        el.textContent = '🦀 Привіт! Обери тему нижче — розкажу що відбувається!';
+    }
+}
+
+async function handleKleshnyaQuestion(topic, allBtns) {
+    const answerEl = document.getElementById('kleshnyaAnswer');
+    if (!answerEl) return;
+
+    // Mark active button
+    allBtns.forEach(b => b.classList.remove('active'));
+    const activeBtn = document.querySelector(`.kleshnya-q-btn[data-topic="${topic}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    // Show loading
+    answerEl.textContent = '🦀 Думаю...';
+    answerEl.classList.remove('hidden');
+
+    try {
+        // Send the question via chat API and get response
+        const topicMessages = {
+            bookings: 'Розкажи про бронювання на сьогодні',
+            tasks: 'Які у мене задачі?',
+            streak: 'Який мій стрік?',
+            animators: 'Скільки аніматорів сьогодні на зміні?'
+        };
+
+        const message = topicMessages[topic] || 'Що нового?';
+        const result = await apiSendKleshnyaMessage(message);
+
+        if (result && result.message) {
+            answerEl.textContent = result.message;
+        } else {
+            answerEl.textContent = '🦀 Не вдалося отримати відповідь. Спробуй ще раз!';
+        }
+    } catch (err) {
+        answerEl.textContent = '🦀 Щось пішло не так. Спробуй пізніше!';
     }
 }
 

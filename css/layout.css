@@ -407,23 +407,110 @@ input[type="date"] {
 }
 
 /* ==========================================
-   QUICK STATS BAR (v5.8)
+   QUICK STATS + KLESHNYA BAR (v11.0)
    ========================================== */
 
 .quick-stats-bar {
-    background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
-    border: 1px solid #BBF7D0;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
     border-radius: var(--radius-sm);
-    padding: 8px 16px;
     margin-bottom: 12px;
     font-size: var(--font-sm);
     font-weight: 600;
-    color: #166534;
-    text-align: center;
+    overflow: hidden;
+    border: 1px solid #BBF7D0;
 }
 
 .quick-stats-bar.hidden {
     display: none;
+}
+
+/* Left: stats */
+.stats-bar-left {
+    flex: 1;
+    background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
+    color: #166534;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+/* Right: Kleshnya banner */
+.stats-bar-right {
+    flex: 0 0 auto;
+    max-width: 45%;
+    background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%);
+    border-left: 1px solid #FED7AA;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.kleshnya-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.kleshnya-avatar {
+    font-size: 20px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.kleshnya-message {
+    color: #9A3412;
+    font-weight: 500;
+    font-size: 12px;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    min-width: 0;
+}
+
+.kleshnya-chat-link {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(234, 88, 12, 0.1);
+    border-radius: 50%;
+    text-decoration: none;
+    font-size: 16px;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.kleshnya-chat-link:hover {
+    background: rgba(234, 88, 12, 0.2);
+    transform: scale(1.1);
+}
+
+/* Kleshnya nav link accent */
+.nav-link-kleshnya {
+    position: relative;
+}
+
+.nav-link-kleshnya::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    background: #EA580C;
+    border-radius: 50%;
+    opacity: 0.8;
 }
 
 /* ==========================================

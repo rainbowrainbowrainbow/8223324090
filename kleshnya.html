@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Клешня — Парк Закревського Періоду</title>
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=11.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=11.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=11.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=11.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=11.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=11.0.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        .kleshnya-page { max-width: 800px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; height: calc(100vh - 70px); }
+        .kleshnya-header { text-align: center; padding: 16px 0 8px; }
+        .kleshnya-header h2 { font-size: 20px; color: var(--gray-800); display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .kleshnya-header p { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
+        .kleshnya-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; background: rgba(16,185,129,0.1); color: #059669; margin-top: 8px; }
+        .kleshnya-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #10B981; animation: pulse-dot 2s infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .chat-messages { flex: 1; overflow-y: auto; padding: 12px 0; display: flex; flex-direction: column; gap: 12px; }
+        .chat-msg { display: flex; gap: 10px; max-width: 85%; animation: msg-in 0.3s ease-out; }
+        .chat-msg--assistant { align-self: flex-start; }
+        .chat-msg--user { align-self: flex-end; flex-direction: row-reverse; }
+        @keyframes msg-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        .chat-msg-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+        .chat-msg--assistant .chat-msg-avatar { background: linear-gradient(135deg, #FFEDD5, #FED7AA); }
+        .chat-msg--user .chat-msg-avatar { background: linear-gradient(135deg, #ECFDF5, #BBF7D0); }
+
+        .chat-msg-bubble { padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5; white-space: pre-line; }
+        .chat-msg--assistant .chat-msg-bubble { background: #F9FAFB; border: 1px solid #E5E7EB; border-bottom-left-radius: 4px; color: var(--gray-800); }
+        .chat-msg--user .chat-msg-bubble { background: linear-gradient(135deg, #10B981, #059669); color: #fff; border-bottom-right-radius: 4px; }
+
+        .chat-msg-time { font-size: 10px; color: var(--gray-400); margin-top: 4px; padding: 0 4px; }
+        .chat-msg--user .chat-msg-time { text-align: right; }
+
+        .chat-input-area { display: flex; gap: 8px; padding: 12px 0 8px; border-top: 1px solid var(--gray-200); }
+        .chat-input { flex: 1; padding: 12px 16px; border: 1px solid var(--gray-300); border-radius: 24px; font-family: inherit; font-size: 14px; outline: none; transition: border-color 0.2s; min-height: 44px; resize: none; }
+        .chat-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
+        .chat-send-btn { width: 44px; height: 44px; border: none; border-radius: 50%; background: linear-gradient(135deg, #EA580C, #C2410C); color: #fff; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.2s, opacity 0.2s; flex-shrink: 0; }
+        .chat-send-btn:hover { transform: scale(1.05); }
+        .chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .chat-typing { display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 12px; color: var(--gray-500); }
+        .chat-typing-dots { display: flex; gap: 4px; }
+        .chat-typing-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--gray-400); animation: typing-bounce 1.4s infinite; }
+        .chat-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .chat-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing-bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+
+        .chat-hint { text-align: center; padding: 8px; font-size: 11px; color: var(--gray-400); }
+
+        /* Dark mode */
+        body.dark-mode .kleshnya-header h2 { color: var(--gray-100); }
+        body.dark-mode .kleshnya-status { background: rgba(16,185,129,0.15); color: #6EE7B7; }
+        body.dark-mode .chat-msg--assistant .chat-msg-bubble { background: var(--gray-100); border-color: var(--gray-200); color: var(--gray-800); }
+        body.dark-mode .chat-msg--assistant .chat-msg-avatar { background: linear-gradient(135deg, rgba(234,88,12,0.2), rgba(234,88,12,0.1)); }
+        body.dark-mode .chat-msg--user .chat-msg-avatar { background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.1)); }
+        body.dark-mode .chat-input { background: var(--gray-100); border-color: var(--gray-200); color: var(--gray-800); }
+        body.dark-mode .chat-input-area { border-top-color: var(--gray-200); }
+    </style>
+</head>
+<body>
+    <script>
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+
+    <div id="loginScreen" class="login-screen hidden"></div>
+
+    <div id="mainApp" class="main-app hidden">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/favicon-512.png" alt="Логотип" class="logo-img-small">
+                    <div class="logo-text"><h1>Парк Закревського Періоду</h1></div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/kleshnya" class="nav-link active nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name" role="button" tabindex="0"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="kleshnya-page">
+                <div class="kleshnya-header">
+                    <h2>🦀 Клешня</h2>
+                    <p>Центральний інтелект Парку Закревського Періоду</p>
+                    <div class="kleshnya-status">
+                        <span class="kleshnya-status-dot"></span>
+                        <span>Онлайн • Template Mode</span>
+                    </div>
+                </div>
+
+                <div class="chat-messages" id="chatMessages">
+                    <!-- Messages will be loaded here -->
+                </div>
+
+                <div class="chat-hint">
+                    Питай про бронювання, задачі, стріки — Клешня допоможе! 🦀
+                </div>
+
+                <div class="chat-input-area">
+                    <input type="text" class="chat-input" id="chatInput" placeholder="Написати Клешні..." maxlength="500" autocomplete="off">
+                    <button class="chat-send-btn" id="chatSendBtn" title="Надіслати">➤</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/config.js?v=11.0.0"></script>
+    <script src="js/api.js?v=11.0.0"></script>
+    <script src="js/auth.js?v=11.0.0"></script>
+    <script>
+    // Kleshnya Chat Page Logic
+    (function() {
+        const API_BASE = '/api';
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const chatSendBtn = document.getElementById('chatSendBtn');
+
+        function getToken() {
+            return localStorage.getItem('pzp_token');
+        }
+
+        function formatTime(dateStr) {
+            const d = new Date(dateStr);
+            return d.toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function addMessage(role, text, time) {
+            const msg = document.createElement('div');
+            msg.className = `chat-msg chat-msg--${role}`;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'chat-msg-avatar';
+            avatar.textContent = role === 'assistant' ? '🦀' : '👤';
+
+            const wrapper = document.createElement('div');
+
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-msg-bubble';
+            bubble.textContent = text;
+
+            wrapper.appendChild(bubble);
+
+            if (time) {
+                const timeEl = document.createElement('div');
+                timeEl.className = 'chat-msg-time';
+                timeEl.textContent = formatTime(time);
+                wrapper.appendChild(timeEl);
+            }
+
+            msg.appendChild(avatar);
+            msg.appendChild(wrapper);
+            chatMessages.appendChild(msg);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showTyping() {
+            const typing = document.createElement('div');
+            typing.className = 'chat-typing';
+            typing.id = 'typingIndicator';
+            typing.innerHTML = '<span>🦀 Клешня друкує</span><div class="chat-typing-dots"><span></span><span></span><span></span></div>';
+            chatMessages.appendChild(typing);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function hideTyping() {
+            const t = document.getElementById('typingIndicator');
+            if (t) t.remove();
+        }
+
+        async function loadChat() {
+            try {
+                // Load greeting first
+                const dateStr = new Date().toISOString().split('T')[0];
+                const greeting = await apiGetKleshnyaGreeting(dateStr);
+
+                // Load chat history
+                const history = await apiGetKleshnyaChat();
+
+                if (history.length === 0 && greeting) {
+                    // First visit: show greeting as first message
+                    addMessage('assistant', greeting.message, new Date().toISOString());
+                } else if (history.length === 0) {
+                    addMessage('assistant', '🦀 Привіт! Я Клешня — центральний інтелект парку. Питай що завгодно!', new Date().toISOString());
+                } else {
+                    // Show greeting + history
+                    if (greeting) {
+                        addMessage('assistant', greeting.message, new Date().toISOString());
+                    }
+                    for (const msg of history) {
+                        addMessage(msg.role, msg.message, msg.created_at);
+                    }
+                }
+            } catch (err) {
+                console.error('Error loading chat:', err);
+                addMessage('assistant', '🦀 Привіт! Я Клешня. Виникла помилка при завантаженні — але я на зв\'язку!', new Date().toISOString());
+            }
+        }
+
+        async function sendMessage() {
+            const text = chatInput.value.trim();
+            if (!text) return;
+
+            chatInput.value = '';
+            chatSendBtn.disabled = true;
+            addMessage('user', text, new Date().toISOString());
+            showTyping();
+
+            try {
+                const response = await apiSendKleshnyaMessage(text);
+                hideTyping();
+
+                if (response && response.message) {
+                    addMessage('assistant', response.message, response.created_at || new Date().toISOString());
+                } else {
+                    addMessage('assistant', '🦀 Упс, щось пішло не так. Спробуй ще раз!', new Date().toISOString());
+                }
+            } catch (err) {
+                hideTyping();
+                addMessage('assistant', '🦀 Помилка з\'єднання. Перевір інтернет!', new Date().toISOString());
+            }
+
+            chatSendBtn.disabled = false;
+            chatInput.focus();
+        }
+
+        // Event listeners
+        chatSendBtn.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Auth check + load
+        function checkAuth() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+
+            const user = localStorage.getItem('pzp_current_user');
+            if (user) {
+                try {
+                    const parsed = JSON.parse(user);
+                    document.getElementById('currentUser').textContent = parsed.name || parsed.username || '';
+                } catch {}
+            }
+
+            document.getElementById('mainApp').classList.remove('hidden');
+            loadChat();
+        }
+
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            localStorage.removeItem('pzp_token');
+            localStorage.removeItem('pzp_current_user');
+            localStorage.removeItem('pzp_session');
+            window.location.href = '/';
+        });
+
+        checkAuth();
+    })();
+    </script>
+</body>
+</html>

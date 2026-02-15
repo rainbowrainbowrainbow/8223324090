@@ -16,6 +16,7 @@ const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount } = require('./services/telegram');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset } = require('./services/scheduler');
+const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
 const { createLogger } = require('./utils/logger');
 const { validateEnv } = require('./utils/validateEnv');
 const { initWebSocket, getWSS } = require('./services/websocket');
@@ -85,6 +86,7 @@ app.use('/api/task-templates', require('./routes/task-templates'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/certificates', require('./routes/certificates'));
 app.use('/api/points', require('./routes/points'));
+app.use('/api/kleshnya', require('./routes/kleshnya'));
 
 // Settings router handles /api/stats, /api/settings, /api/rooms, /api/health
 const settingsRouter = require('./routes/settings');
@@ -104,6 +106,9 @@ app.get('/programs', (req, res) => {
 });
 app.get('/staff', (req, res) => {
     res.sendFile(path.join(__dirname, 'staff.html'));
+});
+app.get('/kleshnya', (req, res) => {
+    res.sendFile(path.join(__dirname, 'kleshnya.html'));
 });
 
 // SPA fallback (must be last)
@@ -163,7 +168,9 @@ initDatabase().catch(err => {
         schedulerIntervals.push(setInterval(checkTaskReminders, 60000));
         schedulerIntervals.push(setInterval(checkWorkDayTriggers, 60000));
         schedulerIntervals.push(setInterval(checkMonthlyPointsReset, 60000));
-        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya (every 60s)');
+        // v11.0: Kleshnya greeting cache cleanup (every 30min)
+        schedulerIntervals.push(setInterval(cleanupKleshnyaMessages, 30 * 60 * 1000));
+        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

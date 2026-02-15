@@ -14,17 +14,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=11.0.2">
-    <link rel="stylesheet" href="css/auth.css?v=11.0.2">
-    <link rel="stylesheet" href="css/layout.css?v=11.0.2">
-    <link rel="stylesheet" href="css/timeline.css?v=11.0.2">
-    <link rel="stylesheet" href="css/panel.css?v=11.0.2">
-    <link rel="stylesheet" href="css/modals.css?v=11.0.2">
-    <link rel="stylesheet" href="css/controls.css?v=11.0.2">
-    <link rel="stylesheet" href="css/features.css?v=11.0.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=11.0.2">
-    <link rel="stylesheet" href="css/responsive.css?v=11.0.2">
-    <link rel="stylesheet" href="css/pages.css?v=11.0.2">
+    <link rel="stylesheet" href="css/base.css?v=11.0.3">
+    <link rel="stylesheet" href="css/auth.css?v=11.0.3">
+    <link rel="stylesheet" href="css/layout.css?v=11.0.3">
+    <link rel="stylesheet" href="css/timeline.css?v=11.0.3">
+    <link rel="stylesheet" href="css/panel.css?v=11.0.3">
+    <link rel="stylesheet" href="css/modals.css?v=11.0.3">
+    <link rel="stylesheet" href="css/controls.css?v=11.0.3">
+    <link rel="stylesheet" href="css/features.css?v=11.0.3">
+    <link rel="stylesheet" href="css/dark-mode.css?v=11.0.3">
+    <link rel="stylesheet" href="css/responsive.css?v=11.0.3">
+    <link rel="stylesheet" href="css/pages.css?v=11.0.3">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -41,9 +41,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v11.0.2 — Футуристична Клешня</p>
+                <p class="tagline">Система бронювання v11.0.3 — Голографічний Термінал</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v11.0.2</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v11.0.3</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -158,29 +158,60 @@
                 <span id="quickStatsContent"></span>
             </div>
 
-            <!-- Kleshnya Floating Widget -->
+            <!-- Kleshnya Floating Widget — Futuristic Terminal v11.0.3 -->
             <div id="kleshnyaWidget" class="kleshnya-widget hidden">
-                <button type="button" id="kleshnyaFab" class="kleshnya-fab" title="Клешня — помічник парку" aria-label="Відкрити Клешню">
+                <button type="button" id="kleshnyaFab" class="kleshnya-fab" title="Клешня — командний центр" aria-label="Відкрити Клешню">
                     <span class="kleshnya-fab-icon">🦀</span>
-                    <span class="kleshnya-fab-pulse"></span>
+                    <span class="kleshnya-fab-ring"></span>
+                    <span class="kleshnya-fab-sonar"></span>
                 </button>
-                <div id="kleshnyaPopup" class="kleshnya-popup hidden" role="dialog" aria-label="Клешня">
+                <div id="kleshnyaPopup" class="kleshnya-popup hidden" role="dialog" aria-label="Клешня — Командний Центр">
+                    <div class="kleshnya-scanline"></div>
                     <div class="kleshnya-popup-header">
-                        <span class="kleshnya-popup-title">🦀 Клешня</span>
-                        <button type="button" id="kleshnyaClose" class="kleshnya-popup-close" aria-label="Закрити">✕</button>
+                        <div class="kleshnya-header-left">
+                            <span class="kleshnya-status-dot"></span>
+                            <span class="kleshnya-popup-title">KLESHNYA <span class="kleshnya-version">v3.0</span></span>
+                        </div>
+                        <div class="kleshnya-header-right">
+                            <span class="kleshnya-status-text">ONLINE</span>
+                            <button type="button" id="kleshnyaClose" class="kleshnya-popup-close" aria-label="Закрити">✕</button>
+                        </div>
                     </div>
                     <div class="kleshnya-popup-body">
-                        <div id="kleshnyaGreeting" class="kleshnya-greeting">Клешня думає...</div>
-                        <div id="kleshnyaAnswer" class="kleshnya-answer hidden"></div>
+                        <div class="kleshnya-terminal-line">
+                            <span class="kleshnya-prompt">&gt;</span>
+                            <div id="kleshnyaGreeting" class="kleshnya-greeting">Ініціалізація систем...</div>
+                        </div>
+                        <div id="kleshnyaAnswer" class="kleshnya-answer hidden">
+                            <span class="kleshnya-answer-prompt">&gt;&gt;</span>
+                            <span id="kleshnyaAnswerText" class="kleshnya-answer-text"></span>
+                        </div>
+                        <div class="kleshnya-divider">
+                            <span class="kleshnya-divider-text">МОДУЛІ ЗАПИТІВ</span>
+                        </div>
                         <div id="kleshnyaQuestions" class="kleshnya-questions">
-                            <button type="button" class="kleshnya-q-btn" data-topic="bookings">📊 Бронювання</button>
-                            <button type="button" class="kleshnya-q-btn" data-topic="tasks">📋 Задачі</button>
-                            <button type="button" class="kleshnya-q-btn" data-topic="streak">🔥 Стрік</button>
-                            <button type="button" class="kleshnya-q-btn" data-topic="animators">👥 Аніматори</button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="bookings">
+                                <span class="kleshnya-q-icon">◈</span>
+                                <span class="kleshnya-q-label">Бронювання</span>
+                            </button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="tasks">
+                                <span class="kleshnya-q-icon">◈</span>
+                                <span class="kleshnya-q-label">Місії</span>
+                            </button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="streak">
+                                <span class="kleshnya-q-icon">◈</span>
+                                <span class="kleshnya-q-label">Стрік</span>
+                            </button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="animators">
+                                <span class="kleshnya-q-icon">◈</span>
+                                <span class="kleshnya-q-label">Оперативники</span>
+                            </button>
                         </div>
                     </div>
                     <div class="kleshnya-popup-footer">
-                        <a href="/kleshnya" class="kleshnya-goto-chat">💬 Перейти до чату →</a>
+                        <a href="/kleshnya" class="kleshnya-goto-chat">
+                            <span class="kleshnya-chat-icon">⬡</span> Повний термінал →
+                        </a>
                     </div>
                 </div>
             </div>
@@ -935,6 +966,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v11.0.3 — Голографічний Термінал</h4>
+                    <ul>
+                        <li>🖥️ Повний редизайн Клешні — темний термінал з голографічним ефектом</li>
+                        <li>🔮 FAB з обертовим кільцем, сонарним імпульсом та neon-glow</li>
+                        <li>📡 Сканлайн-оверлей, блимаючий статус-дот, monospace шрифт</li>
+                        <li>⌨️ Typing-анімація — текст друкується як в терміналі</li>
+                        <li>◈ Кнопки з sweep-ефектом та обертовими іконками</li>
+                        <li>🌙 Повна підтримка dark mode з посиленим glow</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v11.0.2 — Футуристична Клешня</h4>
                     <ul>
@@ -2252,21 +2294,21 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=11.0.2"></script>
-    <script src="js/api.js?v=11.0.2"></script>
-    <script src="js/ui.js?v=11.0.2"></script>
-    <script src="js/auth.js?v=11.0.2"></script>
-    <script src="js/timeline.js?v=11.0.2"></script>
-    <script src="js/booking.js?v=11.0.2"></script>
-    <script src="js/settings.js?v=11.0.2"></script>
-    <script src="js/booking-form.js?v=11.0.2"></script>
-    <script src="js/booking-linked.js?v=11.0.2"></script>
-    <script src="js/settings-dashboard.js?v=11.0.2"></script>
-    <script src="js/settings-history.js?v=11.0.2"></script>
-    <script src="js/settings-afisha.js?v=11.0.2"></script>
-    <script src="js/settings-certificates.js?v=11.0.2"></script>
-    <script src="js/offline.js?v=11.0.2"></script>
-    <script src="js/ws.js?v=11.0.2"></script>
-    <script src="js/app.js?v=11.0.2"></script>
+    <script src="js/config.js?v=11.0.3"></script>
+    <script src="js/api.js?v=11.0.3"></script>
+    <script src="js/ui.js?v=11.0.3"></script>
+    <script src="js/auth.js?v=11.0.3"></script>
+    <script src="js/timeline.js?v=11.0.3"></script>
+    <script src="js/booking.js?v=11.0.3"></script>
+    <script src="js/settings.js?v=11.0.3"></script>
+    <script src="js/booking-form.js?v=11.0.3"></script>
+    <script src="js/booking-linked.js?v=11.0.3"></script>
+    <script src="js/settings-dashboard.js?v=11.0.3"></script>
+    <script src="js/settings-history.js?v=11.0.3"></script>
+    <script src="js/settings-afisha.js?v=11.0.3"></script>
+    <script src="js/settings-certificates.js?v=11.0.3"></script>
+    <script src="js/offline.js?v=11.0.3"></script>
+    <script src="js/ws.js?v=11.0.3"></script>
+    <script src="js/app.js?v=11.0.3"></script>
 </body>
 </html>

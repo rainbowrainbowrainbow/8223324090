@@ -426,7 +426,7 @@ input[type="date"] {
 }
 
 /* ==========================================
-   KLESHNYA FLOATING WIDGET (v11.1)
+   KLESHNYA FLOATING WIDGET — Futuristic Terminal v11.0.3
    ========================================== */
 
 .kleshnya-widget {
@@ -436,209 +436,421 @@ input[type="date"] {
     z-index: 9000;
 }
 
-.kleshnya-widget.hidden {
-    display: none;
-}
+.kleshnya-widget.hidden { display: none; }
 
-/* FAB button */
+/* --- FAB Button — Glowing Sci-Fi --- */
 .kleshnya-fab {
-    width: 56px;
-    height: 56px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
-    border: none;
-    background: linear-gradient(135deg, #EA580C 0%, #C2410C 100%);
-    box-shadow: 0 4px 16px rgba(234, 88, 12, 0.35), 0 2px 4px rgba(0,0,0,0.1);
+    border: 2px solid rgba(234, 88, 12, 0.6);
+    background: radial-gradient(circle at 35% 35%, #FF6B2B 0%, #EA580C 40%, #9A3412 100%);
+    box-shadow:
+        0 0 20px rgba(234, 88, 12, 0.4),
+        0 0 40px rgba(234, 88, 12, 0.15),
+        inset 0 -2px 6px rgba(0,0,0,0.3),
+        inset 0 2px 6px rgba(255,255,255,0.15);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: transform 0.2s var(--ease-bounce), box-shadow 0.3s;
 }
 
 .kleshnya-fab:hover {
-    transform: scale(1.08);
-    box-shadow: 0 6px 24px rgba(234, 88, 12, 0.45), 0 3px 8px rgba(0,0,0,0.15);
+    transform: scale(1.1);
+    box-shadow:
+        0 0 30px rgba(234, 88, 12, 0.6),
+        0 0 60px rgba(234, 88, 12, 0.2),
+        inset 0 -2px 6px rgba(0,0,0,0.3),
+        inset 0 2px 6px rgba(255,255,255,0.15);
 }
 
-.kleshnya-fab:active {
-    transform: scale(0.95);
-}
+.kleshnya-fab:active { transform: scale(0.93); }
 
 .kleshnya-fab-icon {
     font-size: 28px;
     line-height: 1;
-    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+    z-index: 2;
 }
 
-/* Pulse animation */
-.kleshnya-fab-pulse {
+/* Rotating ring */
+.kleshnya-fab-ring {
     position: absolute;
-    inset: -4px;
+    inset: -5px;
     border-radius: 50%;
-    border: 2px solid rgba(234, 88, 12, 0.4);
-    animation: kleshnya-pulse 2s ease-out infinite;
+    border: 2px dashed rgba(234, 88, 12, 0.35);
+    animation: kleshnya-ring-spin 8s linear infinite;
     pointer-events: none;
 }
 
-@keyframes kleshnya-pulse {
-    0% { transform: scale(1); opacity: 1; }
-    70% { transform: scale(1.3); opacity: 0; }
-    100% { transform: scale(1.3); opacity: 0; }
+@keyframes kleshnya-ring-spin {
+    to { transform: rotate(360deg); }
 }
 
-/* Popup */
+/* Sonar pulse */
+.kleshnya-fab-sonar {
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(234, 88, 12, 0.5);
+    animation: kleshnya-sonar 3s ease-out infinite;
+    pointer-events: none;
+}
+
+@keyframes kleshnya-sonar {
+    0% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.4); opacity: 0; }
+    100% { transform: scale(1.4); opacity: 0; }
+}
+
+/* --- Popup — Holographic Terminal --- */
 .kleshnya-popup {
     position: absolute;
-    bottom: 68px;
+    bottom: 74px;
     right: 0;
-    width: 320px;
-    background: #fff;
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.08);
+    width: 340px;
+    background: linear-gradient(180deg, #1a1520 0%, #12101a 100%);
+    border-radius: 14px;
+    border: 1px solid rgba(234, 88, 12, 0.3);
+    box-shadow:
+        0 8px 40px rgba(0,0,0,0.5),
+        0 0 30px rgba(234, 88, 12, 0.1),
+        inset 0 1px 0 rgba(255,255,255,0.05);
     overflow: hidden;
-    animation: kleshnya-popup-in 0.25s ease-out;
+    animation: kleshnya-popup-in 0.3s var(--ease-bounce);
 }
 
-.kleshnya-popup.hidden {
-    display: none;
-}
+.kleshnya-popup.hidden { display: none; }
 
 @keyframes kleshnya-popup-in {
-    from { opacity: 0; transform: translateY(12px) scale(0.95); }
+    from { opacity: 0; transform: translateY(16px) scale(0.92); }
     to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Header */
+/* Scan line overlay */
+.kleshnya-scanline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(234, 88, 12, 0.015) 2px,
+        rgba(234, 88, 12, 0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* --- Header — Command Bar --- */
 .kleshnya-popup-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
-    background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%);
-    border-bottom: 1px solid #FED7AA;
+    padding: 10px 14px;
+    background: linear-gradient(135deg, rgba(234, 88, 12, 0.12) 0%, rgba(234, 88, 12, 0.04) 100%);
+    border-bottom: 1px solid rgba(234, 88, 12, 0.2);
+    position: relative;
+    z-index: 11;
+}
+
+.kleshnya-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.kleshnya-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.kleshnya-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22C55E;
+    box-shadow: 0 0 6px #22C55E, 0 0 12px rgba(34, 197, 94, 0.3);
+    animation: kleshnya-blink 2s ease-in-out infinite;
+}
+
+@keyframes kleshnya-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
 }
 
 .kleshnya-popup-title {
+    font-weight: 800;
+    font-size: 13px;
+    color: #FDBA74;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-family: 'Courier New', monospace;
+}
+
+.kleshnya-version {
+    font-size: 10px;
+    color: rgba(253, 186, 116, 0.5);
+    font-weight: 400;
+}
+
+.kleshnya-status-text {
+    font-size: 10px;
     font-weight: 700;
-    font-size: 15px;
-    color: #9A3412;
+    color: #22C55E;
+    letter-spacing: 1px;
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
 }
 
 .kleshnya-popup-close {
     background: none;
-    border: none;
-    font-size: 18px;
-    color: #9A3412;
+    border: 1px solid rgba(255,255,255,0.1);
+    font-size: 14px;
+    color: rgba(253, 186, 116, 0.7);
     cursor: pointer;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.15s;
+    transition: all 0.15s;
+    font-family: 'Courier New', monospace;
 }
 
 .kleshnya-popup-close:hover {
-    background: rgba(154, 52, 18, 0.1);
+    background: rgba(234, 88, 12, 0.2);
+    border-color: rgba(234, 88, 12, 0.4);
+    color: #FDBA74;
 }
 
-/* Body */
+/* --- Body --- */
 .kleshnya-popup-body {
-    padding: 16px;
+    padding: 14px;
+    position: relative;
+    z-index: 11;
+}
+
+/* Terminal line with prompt */
+.kleshnya-terminal-line {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.kleshnya-prompt {
+    color: #EA580C;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1.5;
+    flex-shrink: 0;
+    text-shadow: 0 0 8px rgba(234, 88, 12, 0.5);
 }
 
 .kleshnya-greeting {
-    font-size: 14px;
-    line-height: 1.5;
-    color: #44403C;
-    margin-bottom: 14px;
-}
-
-/* Answer bubble */
-.kleshnya-answer {
-    background: linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 100%);
-    border: 1px solid #FED7AA;
-    border-radius: 12px;
-    padding: 12px 14px;
-    margin-bottom: 14px;
     font-size: 13px;
-    line-height: 1.5;
-    color: #78350F;
-    animation: kleshnya-answer-in 0.2s ease-out;
+    line-height: 1.6;
+    color: rgba(253, 186, 116, 0.9);
+    font-family: 'Courier New', monospace;
 }
 
-.kleshnya-answer.hidden {
-    display: none;
+/* Typing cursor */
+.kleshnya-greeting.typing::after {
+    content: '█';
+    animation: kleshnya-cursor 0.6s step-end infinite;
+    color: #EA580C;
+    margin-left: 1px;
 }
+
+@keyframes kleshnya-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* --- Answer block --- */
+.kleshnya-answer {
+    background: rgba(234, 88, 12, 0.06);
+    border: 1px solid rgba(234, 88, 12, 0.15);
+    border-left: 3px solid #EA580C;
+    border-radius: 0 8px 8px 0;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 8px;
+    animation: kleshnya-answer-in 0.25s ease-out;
+}
+
+.kleshnya-answer.hidden { display: none; }
 
 @keyframes kleshnya-answer-in {
-    from { opacity: 0; transform: translateY(-4px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
 }
 
-/* Question buttons grid */
+.kleshnya-answer-prompt {
+    color: #22C55E;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    font-size: 12px;
+    line-height: 1.6;
+    flex-shrink: 0;
+    text-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+}
+
+.kleshnya-answer-text {
+    font-size: 12px;
+    line-height: 1.6;
+    color: rgba(209, 213, 219, 0.9);
+    font-family: 'Courier New', monospace;
+}
+
+/* --- Divider --- */
+.kleshnya-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.kleshnya-divider::before,
+.kleshnya-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(234, 88, 12, 0.2), transparent);
+}
+
+.kleshnya-divider-text {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: rgba(234, 88, 12, 0.4);
+    font-family: 'Courier New', monospace;
+    white-space: nowrap;
+}
+
+/* --- Question Buttons — Neon Control Panel --- */
 .kleshnya-questions {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 6px;
 }
 
 .kleshnya-q-btn {
-    background: #F5F5F4;
-    border: 1px solid #E7E5E4;
-    border-radius: 10px;
-    padding: 10px 12px;
-    font-size: 13px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(234, 88, 12, 0.15);
+    border-radius: 8px;
+    padding: 9px 10px;
+    font-size: 12px;
     font-weight: 600;
-    color: #44403C;
+    color: rgba(253, 186, 116, 0.8);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.2s;
     text-align: left;
-    font-family: inherit;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+    overflow: hidden;
+}
+
+.kleshnya-q-icon {
+    font-size: 10px;
+    color: #EA580C;
+    text-shadow: 0 0 4px rgba(234, 88, 12, 0.6);
+    transition: transform 0.2s;
+}
+
+.kleshnya-q-label {
+    font-size: 11px;
+    letter-spacing: 0.3px;
 }
 
 .kleshnya-q-btn:hover {
-    background: #FFEDD5;
-    border-color: #FDBA74;
-    color: #9A3412;
+    background: rgba(234, 88, 12, 0.1);
+    border-color: rgba(234, 88, 12, 0.4);
+    color: #FDBA74;
+    box-shadow: 0 0 12px rgba(234, 88, 12, 0.15);
 }
 
-.kleshnya-q-btn:active {
-    transform: scale(0.97);
+.kleshnya-q-btn:hover .kleshnya-q-icon {
+    transform: rotate(90deg);
 }
+
+.kleshnya-q-btn:active { transform: scale(0.96); }
 
 .kleshnya-q-btn.active {
-    background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%);
+    background: rgba(234, 88, 12, 0.15);
     border-color: #EA580C;
-    color: #9A3412;
-    box-shadow: 0 0 0 1px #EA580C;
+    color: #FDBA74;
+    box-shadow: 0 0 16px rgba(234, 88, 12, 0.25), inset 0 0 12px rgba(234, 88, 12, 0.05);
 }
 
-/* Footer */
+.kleshnya-q-btn.active .kleshnya-q-icon {
+    transform: rotate(90deg);
+}
+
+/* Hover sweep effect */
+.kleshnya-q-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(234, 88, 12, 0.08), transparent);
+    transition: left 0.4s;
+}
+
+.kleshnya-q-btn:hover::before {
+    left: 100%;
+}
+
+/* --- Footer --- */
 .kleshnya-popup-footer {
-    padding: 12px 16px;
-    border-top: 1px solid #F5F5F4;
+    padding: 10px 14px;
+    border-top: 1px solid rgba(234, 88, 12, 0.12);
     text-align: center;
+    position: relative;
+    z-index: 11;
 }
 
 .kleshnya-goto-chat {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    color: #EA580C;
+    gap: 6px;
+    color: rgba(253, 186, 116, 0.7);
     text-decoration: none;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
-    padding: 8px 20px;
-    border-radius: 10px;
-    transition: all 0.15s;
+    padding: 6px 16px;
+    border-radius: 8px;
+    transition: all 0.2s;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.5px;
+    border: 1px solid transparent;
+}
+
+.kleshnya-chat-icon {
+    font-size: 14px;
+    color: #EA580C;
+    text-shadow: 0 0 4px rgba(234, 88, 12, 0.4);
 }
 
 .kleshnya-goto-chat:hover {
-    background: #FFF7ED;
-    color: #C2410C;
+    background: rgba(234, 88, 12, 0.1);
+    border-color: rgba(234, 88, 12, 0.2);
+    color: #FDBA74;
 }
 
 /* Kleshnya nav link accent */
@@ -655,6 +867,7 @@ input[type="date"] {
     height: 6px;
     background: #EA580C;
     border-radius: 50%;
+    box-shadow: 0 0 4px #EA580C;
     opacity: 0.8;
 }
 

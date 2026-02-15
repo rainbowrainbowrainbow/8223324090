@@ -770,7 +770,11 @@
     .quick-stats-bar { padding: 8px 12px; font-size: 12px; }
 
     .kleshnya-widget { bottom: 16px; right: 16px; }
-    .kleshnya-fab { width: 48px; height: 48px; }
+    .kleshnya-fab { width: 52px; height: 52px; }
     .kleshnya-fab-icon { font-size: 24px; }
-    .kleshnya-popup { width: calc(100vw - 32px); right: -8px; bottom: 60px; }
+    .kleshnya-fab-ring { inset: -4px; }
+    .kleshnya-fab-sonar { inset: -5px; }
+    .kleshnya-popup { width: calc(100vw - 32px); right: -8px; bottom: 66px; }
+    .kleshnya-q-label { font-size: 10px; }
+    .kleshnya-popup-title { font-size: 11px; letter-spacing: 1px; }
 }

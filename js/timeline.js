@@ -74,11 +74,12 @@ function updateQuickStats(bookings, lineIds) {
 }
 
 // ==========================================
-// KLESHNYA FLOATING WIDGET (v11.1)
+// KLESHNYA FLOATING WIDGET — Futuristic Terminal v11.0.3
 // ==========================================
 
 let _kleshnyaWidgetReady = false;
 let _kleshnyaContext = null;
+let _kleshnyaTypingTimer = null;
 
 function initKleshnyaWidget() {
     if (_kleshnyaWidgetReady) return;
@@ -130,27 +131,48 @@ function initKleshnyaWidget() {
     });
 }
 
+// Typing animation for terminal feel
+function typeText(el, text, speed) {
+    if (_kleshnyaTypingTimer) clearInterval(_kleshnyaTypingTimer);
+    const charSpeed = speed || 18;
+    el.textContent = '';
+    el.classList.add('typing');
+    let i = 0;
+    _kleshnyaTypingTimer = setInterval(() => {
+        if (i < text.length) {
+            el.textContent += text[i];
+            i++;
+        } else {
+            clearInterval(_kleshnyaTypingTimer);
+            _kleshnyaTypingTimer = null;
+            el.classList.remove('typing');
+        }
+    }, charSpeed);
+}
+
 async function loadKleshnyaGreeting() {
     const el = document.getElementById('kleshnyaGreeting');
     if (!el) return;
 
+    // Show boot sequence
+    el.classList.add('typing');
+    el.textContent = 'Ініціалізація систем...';
+
     try {
         const dateStr = formatDate(AppState.selectedDate);
         const result = await apiGetKleshnyaGreeting(dateStr);
-        if (result && result.message) {
-            el.textContent = result.message;
-            _kleshnyaContext = result.context || null;
-        } else {
-            el.textContent = '🦀 Привіт! Я Клешня — твій помічник у парку. Обери тему нижче!';
-        }
+        const msg = (result && result.message) || 'Системи онлайн. Обери модуль запиту нижче.';
+        _kleshnyaContext = (result && result.context) || null;
+        typeText(el, msg, 15);
     } catch (err) {
-        el.textContent = '🦀 Привіт! Обери тему нижче — розкажу що відбувається!';
+        typeText(el, 'З\'єднання встановлено. Обери модуль — доповім обстановку.', 15);
     }
 }
 
 async function handleKleshnyaQuestion(topic, allBtns) {
     const answerEl = document.getElementById('kleshnyaAnswer');
-    if (!answerEl) return;
+    const answerText = document.getElementById('kleshnyaAnswerText');
+    if (!answerEl || !answerText) return;
 
     // Mark active button
     allBtns.forEach(b => b.classList.remove('active'));
@@ -158,11 +180,10 @@ async function handleKleshnyaQuestion(topic, allBtns) {
     if (activeBtn) activeBtn.classList.add('active');
 
     // Show loading
-    answerEl.textContent = '🦀 Думаю...';
+    answerText.textContent = 'Сканування...';
     answerEl.classList.remove('hidden');
 
     try {
-        // Send the question via chat API and get response
         const topicMessages = {
             bookings: 'Розкажи про бронювання на сьогодні',
             tasks: 'Які у мене задачі?',
@@ -174,12 +195,12 @@ async function handleKleshnyaQuestion(topic, allBtns) {
         const result = await apiSendKleshnyaMessage(message);
 
         if (result && result.message) {
-            answerEl.textContent = result.message;
+            typeText(answerText, result.message, 12);
         } else {
-            answerEl.textContent = '🦀 Не вдалося отримати відповідь. Спробуй ще раз!';
+            typeText(answerText, 'Модуль не відповідає. Повторіть запит.', 12);
         }
     } catch (err) {
-        answerEl.textContent = '🦀 Щось пішло не так. Спробуй пізніше!';
+        typeText(answerText, 'Помилка зв\'язку. Перевірте підключення.', 12);
     }
 }
 

@@ -2,7 +2,7 @@
 
 > Ультра-детальний паспорт для передачі в новий чат. Усе що потрібно для продовження роботи.
 >
-> Оновлено: 2026-02-12, v7.8.0
+> Оновлено: 2026-02-15, v9.1.0
 
 ---
 
@@ -18,8 +18,8 @@
 |---|---|
 | Хостинг | Railway |
 | Гілка на Railway | `claude/review-project-docs-1y3qH` (потребує оновлення) |
-| Актуальна гілка | `claude/project-passport-docs-XKYIn` |
-| Поточна версія | v7.8.0 |
+| Актуальна гілка | `claude/review-project-updates-R2CbJ` |
+| Поточна версія | v9.1.0 |
 | Remote | `origin` → `rainbowrainbowrainbow/8223324090` |
 | Домен | через `RAILWAY_PUBLIC_DOMAIN` env |
 | Порт | `PORT` (default 3000) |
@@ -64,7 +64,7 @@ node --test tests/api.test.js
 | Frontend | Vanilla HTML + CSS + JS, multi-page (**NO React, NO Next.js, NO Astro**) |
 | CSS | 11-file modular architecture + Design System v4.0 |
 | Font | Nunito (Google Fonts) |
-| Testing | Node.js built-in `node --test` (192 тести, 54 suites) |
+| Testing | Node.js built-in `node --test` (364 тести, 78 suites) |
 | PWA | `manifest.json` (standalone, theme emerald) |
 
 ### Dependencies (package.json)
@@ -74,90 +74,117 @@ node --test tests/api.test.js
 "cors": "^2.8.5",
 "express": "^4.18.2",
 "jsonwebtoken": "^9.0.3",
-"pg": "^8.11.3"
+"pg": "^8.11.3",
+"qrcode": "^1.5.4",
+"ws": "^8.19.0"
 ```
 
 ---
 
-## 4. Структура файлів (20 238 рядків)
+## 4. Структура файлів (~40 000 рядків)
 
 ```
-server.js              (109)  — Entry point, middleware, routes mount, 4 schedulers
+server.js              — Entry point, middleware, routes mount, 8 schedulers, WebSocket init
 
 db/
-  index.js             (325)  — Pool, schema (13 таблиць), seed users+products, 14 indexes
+  index.js             — Pool, schema (20 таблиць), seed users+products, 23 indexes
+  migrate.js           — Migration runner with version tracking
+  migrations/          — 001_initial_schema, 002_add_updated_at, 003_recurring_bookings
 
-routes/
-  auth.js               (39)  — Login (JWT), verify
-  bookings.js          (349)  — CRUD, linked bookings, conflict checks, transactions
-  lines.js              (62)  — Animator lines per date
-  history.js            (77)  — Audit log with JSONB search, filters, pagination
-  settings.js          (102)  — Settings CRUD, stats, free rooms, health
-  afisha.js            (137)  — Events CRUD + generate-tasks
-  telegram.js          (285)  — Webhook, notifications, digest, reminder, animator requests
-  backup.js             (72)  — SQL backup create/restore/download
-  products.js          (198)  — Product catalog CRUD (v7.1)
-  tasks.js             (153)  — Tasks CRUD + type/template_id support (v7.8)
-  task-templates.js    (114)  — Recurring task templates CRUD (v7.8)
+routes/ (15 файлів):
+  auth.js              — Login (JWT), verify
+  bookings.js          — CRUD, linked bookings, conflict checks, optimistic locking, WS broadcast
+  lines.js             — Animator lines per date, WS broadcast
+  history.js           — Audit log with JSONB search, filters, pagination
+  settings.js          — Settings CRUD, free rooms, health
+  stats.js             — Analytics dashboard (revenue, top programs, load)
+  afisha.js            — Events CRUD + generate-tasks + distribute
+  telegram.js          — Webhook, notifications, digest, reminder, animator requests
+  backup.js            — SQL backup create/restore/download
+  products.js          — Product catalog CRUD
+  tasks.js             — Tasks CRUD + type/template_id support
+  task-templates.js    — Recurring task templates CRUD
+  staff.js             — Staff management CRUD
+  certificates.js      — Certificate registry CRUD
+  recurring.js         — Recurring bookings CRUD + series operations
 
-services/
-  booking.js           (195)  — Validators, time helpers, conflict checks, row mapper
-  telegram.js          (265)  — Bot API wrapper, retry 3x, webhook setup, auto-delete
-  templates.js          (95)  — Ukrainian notification templates, afisha formatting
-  scheduler.js         (271)  — Auto-digest, auto-reminder, auto-backup, recurring tasks
-  backup.js            (114)  — SQL dump generator, Telegram file upload
+services/ (11 файлів):
+  booking.js           — Validators, time helpers, conflict checks, row mapper
+  bookingAutomation.js — Automation rules engine
+  bot.js               — Telegram bot command handler
+  certificates.js      — Certificate generation (Canvas PNG)
+  recurring.js         — Recurring booking template generation
+  telegram.js          — Bot API wrapper, retry 3x, webhook setup
+  templates.js         — Ukrainian notification templates, afisha formatting
+  taskTemplates.js     — Recurring task template logic
+  scheduler.js         — 8 schedulers (digest, reminder, backup, recurring, etc.)
+  backup.js            — SQL dump generator, Telegram file upload
+  websocket.js         — WebSocket server (JWT auth, heartbeat, broadcast)
 
 middleware/
-  auth.js               (39)  — JWT verification
-  rateLimit.js          (54)  — In-memory rate limiter (120/15min + 5/min login)
-  security.js           (24)  — Security headers (X-Content-Type, X-Frame, HSTS)
-  requestId.js          (41)  — AsyncLocalStorage request IDs
+  auth.js              — JWT verification + role-based access
+  rateLimit.js         — In-memory rate limiter (120/15min + 5/min login)
+  security.js          — Security headers (X-Content-Type, X-Frame, HSTS)
+  requestId.js         — AsyncLocalStorage request IDs
 
 utils/
-  logger.js             (83)  — Structured logging, JSON/pretty formats
+  logger.js            — Structured logging, JSON/pretty formats
+  validateEnv.js       — Environment variable validation
 
-js/
-  config.js            (234)  — 40 programs, 28 costumes, 14 rooms, category config, products cache
-  api.js               (375)  — Fetch wrapper with JWT auth, all API calls
-  auth.js              (126)  — Login/logout, session management, role checks
-  app.js               (368)  — Event listeners, escapeHtml, preferences, navigation
-  ui.js                (528)  — Notifications, tooltip, dark/compact mode, undo, export PNG
-  booking.js          (1096)  — Booking panel, program search, form, invite, duplicate
-  timeline.js          (545)  — Timeline render, multi-day, pending lines, status filter
-  settings.js         (1565)  — History, catalogs, telegram config, dashboard, afisha, tasks modal
-  programs-page.js     (257)  — Standalone programs page controller (v7.8)
-  tasks-page.js        (422)  — Standalone tasks page controller (v7.8)
+js/ (19 модулів):
+  config.js            — Programs, costumes, rooms, category config, products cache
+  api.js               — Fetch wrapper with JWT auth, all API calls
+  auth.js              — Login/logout, session management, role checks, WS connect/disconnect
+  app.js               — Event listeners, escapeHtml, preferences, navigation
+  ui.js                — Notifications, tooltip, dark/compact mode, undo, export PNG
+  booking.js           — Booking panel, program search, invite, duplicate
+  booking-form.js      — Booking form logic
+  booking-linked.js    — Linked bookings logic
+  timeline.js          — Timeline render, drag-and-drop, resize, multi-day
+  settings.js          — Settings modal controller
+  settings-afisha.js   — Afisha settings
+  settings-certificates.js — Certificates panel
+  settings-dashboard.js — Analytics dashboard
+  settings-history.js  — History viewer
+  programs-page.js     — Standalone programs page controller
+  tasks-page.js        — Standalone tasks page controller
+  staff-page.js        — Standalone staff schedule page controller
+  offline.js           — Service Worker + IndexedDB mutation queue
+  ws.js                — WebSocket client (auto-reconnect, exponential backoff)
 
 css/ (11 файлів):
-  base.css             (304)  — Design tokens, typography, status badges, category chips
-  auth.css             (240)  — Login screen, test-mode-hint
-  layout.css           (505)  — Header, nav, emerald dark dropdown
-  timeline.css         (638)  — Grid, booking blocks, time scale
-  panel.css            (585)  — Sidebar, programs, search input
-  modals.css           (947)  — All modals, unified buttons, empty states
-  controls.css         (433)  — Status filter, zoom, segmented controls
-  features.css         (972)  — Telegram settings, dashboard, invite, afisha
-  dark-mode.css       (1110)  — Complete dark theme
-  responsive.css       (381)  — 4 breakpoints + landscape
-  pages.css            (550)  — Standalone pages: nav, cards, filters, badges (v7.8)
+  base.css             — Design tokens, typography, badges, skip-link, reduced-motion
+  auth.css             — Login screen
+  layout.css           — Header, nav, emerald dark dropdown
+  timeline.css         — Grid, booking blocks, time scale, drag-and-drop
+  panel.css            — Sidebar, programs, search input
+  modals.css           — All modals, unified buttons, empty states
+  controls.css         — Status filter, zoom, segmented controls
+  features.css         — Telegram settings, dashboard, invite, afisha
+  dark-mode.css        — Complete dark theme
+  responsive.css       — 4 breakpoints + landscape
+  pages.css            — Standalone pages: nav, cards, filters, badges
 
-HTML pages:
-  index.html          (1536)  — Main SPA (timeline, modals, booking panel)
-  tasks.html           (159)  — Standalone tasks page (v7.8)
-  programs.html        (132)  — Standalone programs catalog (v7.8)
-  invite.html          (475)  — Standalone invitation page
+HTML pages (5):
+  index.html           — Main SPA (timeline, modals, booking panel)
+  tasks.html           — Standalone tasks page
+  programs.html        — Standalone programs catalog
+  staff.html           — Staff schedule (weekly view)
+  invite.html          — Standalone invitation page
 
-tests/
-  api.test.js         (2498)  — 192 tests, 54 suites
-  helpers.js             (54)  — Test utilities, cached token, testDate=2099-01-15
+tests/ (3 файли):
+  api.test.js          — 221 tests, 61 suites
+  certificates.test.js — 82 tests
+  automation.test.js   — 51 tests
+  helpers.js           — Test utilities, cached token
 
-images/ (15 files, ~3.5MB):
-  favicon.svg, favicon-16/32/180/192/512.png, favicon.ico
-  logo-new.png, hero.png
-  quest.png, animation.png, show.png, masterclass.png, photo.png, pinata.png
-  empty-state.png
+sw.js                  — Service Worker (app shell caching, offline mutations)
+swagger.js             — OpenAPI 3.0 specification (not yet served)
+manifest.json          — PWA manifest (standalone, uk, emerald theme)
 
-manifest.json — PWA manifest (standalone, uk, emerald theme)
+.claude/
+  hooks/session-start.sh — SessionStart hook (PG + npm + env)
+  settings.json        — Permissions + hooks config
 ```
 
 ---
@@ -177,7 +204,7 @@ manifest.json — PWA manifest (standalone, uk, emerald theme)
 
 ---
 
-## 6. База даних (13 таблиць)
+## 6. База даних (20 таблиць)
 
 ### bookings (головна)
 
@@ -332,7 +359,7 @@ created_by VARCHAR(50)
 created_at TIMESTAMP DEFAULT NOW()
 ```
 
-### Indexes (14)
+### Indexes (23)
 
 ```
 idx_bookings_date (date)
@@ -401,7 +428,7 @@ idx_tasks_template_id (template_id)
 
 ---
 
-## 8. Schedulers (4 штуки, кожні 60с)
+## 8. Schedulers (8 штук, кожні 60с)
 
 | Scheduler | Час (Kyiv) | Опис |
 |---|---|---|
@@ -409,6 +436,10 @@ idx_tasks_template_id (template_id)
 | `checkAutoReminder` | Налаштовується | Нагадування про завтра |
 | `checkAutoBackup` | 03:00 (default) | SQL backup в Telegram |
 | `checkRecurringTasks` | 00:05 | Авто-створення recurring задач за шаблонами |
+| `checkScheduledDeletions` | Кожні 60с | Авто-видалення за розкладом |
+| `checkRecurringAfisha` | Кожні 60с | Авто-створення recurring афіші |
+| `checkRecurringBookings` | Кожні 60с | Авто-генерація recurring бронювань |
+| `checkCertificateExpiry` | Кожні 60с | Перевірка терміну дії сертифікатів |
 
 ---
 
@@ -648,20 +679,16 @@ Marvel, Ninja, Minecraft, Monster High, Elsa, Растішка, Rock, Minion, Fo
 
 ---
 
-## 15. Поточний стан (v7.8.0)
+## 15. Поточний стан (v9.1.0)
 
-### v7.8 — Standalone Tasks & Programs Pages + Recurring Templates
+### v9.1.0 — Live-Sync
 
-- Задачі — окрема повна сторінка `/tasks` з фільтрами (статус, тип, дата, відповідальний)
-- Програми — окрема повна сторінка `/programs` з категоріями та inline-редагуванням
-- Типи задач: `manual`, `recurring`, `afisha`, `auto_complete`
-- Шаблони recurring задач з розкладом (daily, weekdays, weekly, custom)
-- Авто-створення recurring задач scheduler'ом (00:05 Kyiv)
-- Навігація: header з посиланнями між сторінками
-- `task_templates` — нова таблиця для шаблонів
-- `routes/task-templates.js` — CRUD API
-- `css/pages.css` — спільні стилі для standalone сторінок
-- 192/192 тестів проходять
+- WebSocket підключено до server.js (services/websocket.js + js/ws.js)
+- Broadcast: booking:created/updated/deleted, line:updated
+- JWT auth, heartbeat 30s, auto-reconnect з exponential backoff
+- Accessibility: skip-links на 5 сторінках, prefers-reduced-motion
+- SessionStart hook для Claude Code на вебі
+- 364/364 тестів проходять (3 test files)
 
 ---
 
@@ -701,19 +728,27 @@ Marvel, Ninja, Minecraft, Monster High, Elsa, Растішка, Rock, Minion, Fo
 | v7.6 | Афіша -> Задачі (auto-generation, cascade) |
 | v7.6.1 | Переключення ліній аніматорів + bugfix |
 | v7.8 | Standalone Tasks & Programs pages + recurring task templates |
+| v8.3.0 | Автоматизація (правила, задачі, Telegram) + Drag-to-Move афіша |
+| v8.4.0 | Сертифікати (реєстр, Telegram-сповіщення, scheduler) |
+| v8.5.0 | Панель сертифікатів (slide-in, статистика, градієнтні картки) |
+| v8.5.1 | Графічні сертифікати (Canvas PNG, Містер Зак) |
+| v8.6.0 | Розумний розподіл (birthday redesign + авто-distribute) |
+| v9.0.0 | Розумна платформа (DnD, recurring, analytics, locking, offline, migrations) |
+| v9.0.1 | Стабілізація (staff toolbar, cache bust) |
+| v9.0.2 | Доступність (skip-links, reduced motion) |
+| v9.1.0 | Live-Sync (WebSocket підключено, broadcast) |
 
 ---
 
 ## 17. Git
 
-- **Branch (Railway):** `claude/review-project-docs-1y3qH` <-- потребує оновлення
-- **Branch (актуальна):** `claude/project-passport-docs-XKYIn` <-- v7.8
-- **Last commit:** `982e2a4` feat: v7.8 — standalone Tasks & Programs pages + recurring task templates
+- **Branch (актуальна):** `claude/review-project-updates-R2CbJ` <-- v9.1.0
 
 ---
 
 ## 18. Що далі
 
+- Swagger /api-docs (код є в swagger.js, треба підключити swagger-ui-express)
 - Clawd Bot команди для задач (/tasks, /done)
 - Авто-задачі (контент для соцмереж, нагадування)
 - Drag-n-drop сортування програм
@@ -721,4 +756,4 @@ Marvel, Ninja, Minecraft, Monster High, Elsa, Растішка, Rock, Minion, Fo
 
 ---
 
-> Це все. Актуальна гілка: `claude/project-passport-docs-XKYIn`. Копіюй цей паспорт у новий чат — там є все для продовження.
+> Це все. Актуальна гілка: `claude/review-project-updates-R2CbJ`. Копіюй цей паспорт у новий чат — там є все для продовження.

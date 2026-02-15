@@ -453,7 +453,7 @@ async function apiVerifyToken() {
     }
 }
 
-// v10.3: Personal cabinet profile
+// v10.4: Personal cabinet profile
 async function apiGetProfile() {
     try {
         const response = await fetch(`${API_BASE}/auth/profile`, { headers: getAuthHeaders(false) });
@@ -463,6 +463,47 @@ async function apiGetProfile() {
     } catch (err) {
         console.error('API getProfile error:', err);
         return null;
+    }
+}
+
+// v10.4: Change password
+async function apiChangePassword(currentPassword, newPassword) {
+    try {
+        const response = await fetch(`${API_BASE}/auth/password`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ currentPassword, newPassword })
+        });
+        if (handleAuthError(response)) return { success: false };
+        const data = await response.json();
+        if (!response.ok) return { success: false, error: data.error || 'API error' };
+        return { success: true };
+    } catch (err) {
+        console.error('API changePassword error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+// v10.4: Profile activity with pagination
+async function apiGetProfileActivity(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        params.set('user', AppState.currentUser.username);
+        if (filters.action) params.set('action', filters.action);
+        if (filters.from) params.set('from', filters.from);
+        if (filters.to) params.set('to', filters.to);
+        if (filters.limit) params.set('limit', filters.limit);
+        if (filters.offset) params.set('offset', filters.offset);
+        const url = `${API_BASE}/history?${params.toString()}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { items: [], total: 0 };
+        if (!response.ok) throw new Error('API error');
+        const data = await response.json();
+        if (Array.isArray(data)) return { items: data, total: data.length };
+        return data;
+    } catch (err) {
+        console.error('API getProfileActivity error:', err);
+        return { items: [], total: 0 };
     }
 }
 

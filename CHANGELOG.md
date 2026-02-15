@@ -4,6 +4,17 @@
 
 ---
 
+## v10.0.1 — Security Hotfix (2026-02-15)
+
+- **RBAC:** tasks write-операції (POST/PUT/PATCH/DELETE) обмежені ролями admin/user, viewer = read-only
+- **RBAC:** points leaderboard = admin/user, individual points = own + admin, history = own + admin
+- **Security:** parseInt валідація в Telegram callback handlers (NaN guard з early return)
+- **Security:** приховані DB error messages у backup endpoints (no schema leakage)
+- **Security:** валідація `type` параметра в tasks GET query filter
+- **Security:** обмежений offset в points history (max 10000, DoS prevention)
+
+---
+
 ## v10.0.0 — Tasker & Kleshnya (2026-02-15)
 
 **Tasker — операційний центр:**

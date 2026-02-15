@@ -14,7 +14,8 @@ router.post('/create', async (req, res) => {
         const result = await sendBackupToTelegram();
         res.json(result);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        log.error('Backup create error', err);
+        res.status(500).json({ error: 'Backup creation failed' });
     }
 });
 
@@ -26,7 +27,8 @@ router.get('/download', async (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename="backup_${dateStr}.sql"`);
         res.send(sql);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        log.error('Backup download error', err);
+        res.status(500).json({ error: 'Backup download failed' });
     }
 });
 
@@ -47,7 +49,7 @@ router.post('/restore', async (req, res) => {
             !s.toUpperCase().startsWith('DELETE')
         );
         if (forbidden) {
-            return res.status(400).json({ error: 'Only INSERT and DELETE statements allowed', statement: forbidden.substring(0, 100) });
+            return res.status(400).json({ error: 'Only INSERT and DELETE statements allowed' });
         }
 
         await client.query('BEGIN');
@@ -63,7 +65,7 @@ router.post('/restore', async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error(`Restore error: ${err.message}`);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Restore failed' });
     } finally {
         client.release();
     }

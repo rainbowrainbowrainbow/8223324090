@@ -8,13 +8,14 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
+const { requireRole } = require('../middleware/auth');
 const { getUserPoints, getAllPoints } = require('../services/kleshnya');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Points');
 
-// GET /api/points — leaderboard
-router.get('/', async (req, res) => {
+// GET /api/points — leaderboard (admin/user only)
+router.get('/', requireRole('admin', 'user'), async (req, res) => {
     try {
         const points = await getAllPoints();
         res.json(points);
@@ -24,10 +25,14 @@ router.get('/', async (req, res) => {
     }
 });
 
-// GET /api/points/:username — user's current points
+// GET /api/points/:username — user's current points (own or admin)
 router.get('/:username', async (req, res) => {
     try {
         const { username } = req.params;
+        // Users can only see their own points, admins can see anyone's
+        if (req.user.role !== 'admin' && req.user.username !== username) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
         const points = await getUserPoints(username);
         res.json(points);
     } catch (err) {
@@ -36,10 +41,13 @@ router.get('/:username', async (req, res) => {
     }
 });
 
-// GET /api/points/:username/history — transaction history
+// GET /api/points/:username/history — transaction history (own or admin)
 router.get('/:username/history', async (req, res) => {
     try {
         const { username } = req.params;
+        if (req.user.role !== 'admin' && req.user.username !== username) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
         const { limit = 50, offset = 0 } = req.query;
 
         const result = await pool.query(
@@ -49,7 +57,7 @@ router.get('/:username/history', async (req, res) => {
              WHERE pt.username = $1
              ORDER BY pt.created_at DESC
              LIMIT $2 OFFSET $3`,
-            [username, Math.min(parseInt(limit) || 50, 100), parseInt(offset) || 0]
+            [username, Math.min(parseInt(limit) || 50, 100), Math.min(parseInt(offset) || 0, 10000)]
         );
 
         const countResult = await pool.query(

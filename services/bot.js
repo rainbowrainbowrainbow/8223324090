@@ -1,5 +1,5 @@
 /**
- * services/bot.js — Clawd Bot command handlers (v7.2)
+ * services/bot.js — Clawd Bot command handlers (v10.0)
  *
  * Telegram bot commands for park management:
  *   /menu     — show command menu
@@ -8,6 +8,11 @@
  *   /programs — list active programs by category
  *   /price <code> <new_price> — update product price
  *   /find <query> — search products by name/code
+ *   /stats    — monthly statistics
+ *   /cert <code> — verify certificate
+ *   /tasks    — my tasks for today
+ *   /done <id> — complete a task
+ *   /alltasks — all team tasks for today
  */
 const { pool } = require('../db');
 const { sendTelegramMessage, telegramRequest } = require('./telegram');
@@ -29,11 +34,18 @@ function fmtPrice(amount) {
 async function handleMenu(chatId, threadId) {
     const text = `🐾 <b>Clawd Bot — Парк Закревського Періоду</b>\n\n`
         + `Доступні команди:\n\n`
+        + `📅 <b>Бронювання</b>\n`
         + `/today — бронювання на сьогодні\n`
-        + `/tomorrow — бронювання на завтра\n`
+        + `/tomorrow — бронювання на завтра\n\n`
+        + `📋 <b>Каталог</b>\n`
         + `/programs — каталог програм\n`
         + `/find <запит> — пошук програми\n`
-        + `/price <код> <ціна> — змінити ціну\n`
+        + `/price <код> <ціна> — змінити ціну\n\n`
+        + `🦀 <b>Tasker (Клешня)</b>\n`
+        + `/tasks — мої задачі на сьогодні\n`
+        + `/done <id> — завершити задачу\n`
+        + `/alltasks — всі задачі команди\n\n`
+        + `📊 <b>Інше</b>\n`
         + `/stats — статистика за місяць\n`
         + `/cert <код> — перевірити сертифікат\n`
         + `/menu — це меню`;
@@ -333,6 +345,158 @@ async function handleStats(chatId, threadId) {
     }
 }
 
+// v10.0: /tasks — show my tasks for today
+async function handleTasks(chatId, threadId, fromUsername) {
+    try {
+        const today = formatDate(getKyivNow());
+
+        // Try to find user by telegram username or chat_id
+        const userResult = await pool.query(
+            'SELECT username FROM users WHERE telegram_username = $1 OR telegram_chat_id = $2 LIMIT 1',
+            [fromUsername, chatId]
+        );
+
+        let tasks;
+        if (userResult.rows.length > 0) {
+            const username = userResult.rows[0].username;
+            tasks = await pool.query(
+                `SELECT * FROM tasks WHERE assigned_to = $1 AND (date = $2 OR (date IS NULL AND status != 'done'))
+                 AND status != 'done'
+                 ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END, created_at`,
+                [username, today]
+            );
+        } else {
+            // Fallback: show all undone tasks for today
+            tasks = await pool.query(
+                `SELECT * FROM tasks WHERE date = $1 AND status != 'done'
+                 ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END, created_at`,
+                [today]
+            );
+        }
+
+        if (tasks.rows.length === 0) {
+            return sendBotMessage(chatId, threadId, `🦀 <b>Задачі на сьогодні</b>\n\n✅ Немає відкритих задач. Все чисто!`);
+        }
+
+        let text = `🦀 <b>Задачі на сьогодні (${today})</b>\n`;
+        text += `📋 Відкритих: ${tasks.rows.length}\n\n`;
+
+        const priorityIcon = { high: '🔴', normal: '', low: '🔵' };
+        const statusIcon = { todo: '⬜', in_progress: '🔄' };
+        const typeIcon = { human: '👤', bot: '🤖' };
+
+        for (let i = 0; i < tasks.rows.length; i++) {
+            const t = tasks.rows[i];
+            const isLast = i === tasks.rows.length - 1;
+            const prefix = isLast ? '└' : '├';
+            const pIcon = priorityIcon[t.priority] || '';
+            const sIcon = statusIcon[t.status] || '?';
+            const tIcon = typeIcon[t.task_type] || '';
+
+            text += `${prefix} ${sIcon}${pIcon}${tIcon} <b>#${t.id}</b> ${escapeHtml(t.title)}`;
+            if (t.deadline) {
+                const dl = new Date(t.deadline);
+                text += ` ⏰${dl.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}`;
+            }
+            text += '\n';
+        }
+
+        text += `\n💡 /done <id> — завершити задачу`;
+        return sendBotMessage(chatId, threadId, text);
+    } catch (err) {
+        log.error('handleTasks error', err);
+        return sendBotMessage(chatId, threadId, '❌ Помилка завантаження задач');
+    }
+}
+
+// v10.0: /done <id> — complete a task
+async function handleDone(chatId, threadId, args, fromUsername) {
+    const taskId = parseInt((args || '').trim());
+    if (!taskId || isNaN(taskId)) {
+        return sendBotMessage(chatId, threadId, '📋 Використання: /done <номер задачі>\nПриклад: /done 42');
+    }
+
+    try {
+        const { updateTaskStatus } = require('./kleshnya');
+
+        // Determine actor
+        let actor = 'telegram';
+        const userResult = await pool.query(
+            'SELECT username FROM users WHERE telegram_username = $1 OR telegram_chat_id = $2 LIMIT 1',
+            [fromUsername, chatId]
+        );
+        if (userResult.rows.length > 0) {
+            actor = userResult.rows[0].username;
+        }
+
+        const task = await updateTaskStatus(taskId, 'done', actor);
+
+        const text = `✅ <b>Задачу завершено</b>\n\n`
+            + `📋 #${task.id} ${escapeHtml(task.title)}\n`
+            + `👤 Виконав: ${actor}\n`
+            + `\n🦀 Клешня зафіксувала`;
+
+        return sendBotMessage(chatId, threadId, text);
+    } catch (err) {
+        if (err.message === 'Task not found') {
+            return sendBotMessage(chatId, threadId, `❌ Задачу #${taskId} не знайдено`);
+        }
+        log.error('handleDone error', err);
+        return sendBotMessage(chatId, threadId, '❌ Помилка завершення задачі');
+    }
+}
+
+// v10.0: /alltasks — all team tasks for today
+async function handleAllTasks(chatId, threadId) {
+    try {
+        const today = formatDate(getKyivNow());
+        const tasks = await pool.query(
+            `SELECT * FROM tasks WHERE (date = $1 OR (date IS NULL AND status != 'done'))
+             AND status != 'done'
+             ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
+                      assigned_to NULLS LAST, created_at`,
+            [today]
+        );
+
+        if (tasks.rows.length === 0) {
+            return sendBotMessage(chatId, threadId, `🦀 <b>Задачі команди (${today})</b>\n\n✅ Усі задачі виконані!`);
+        }
+
+        let text = `🦀 <b>Задачі команди (${today})</b>\n`;
+        text += `📋 Відкритих: ${tasks.rows.length}\n\n`;
+
+        const priorityIcon = { high: '🔴', normal: '', low: '🔵' };
+        const statusIcon = { todo: '⬜', in_progress: '🔄' };
+
+        // Group by assignee
+        const groups = {};
+        for (const t of tasks.rows) {
+            const key = t.assigned_to || 'Не призначено';
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(t);
+        }
+
+        for (const [assignee, assigneeTasks] of Object.entries(groups)) {
+            text += `👤 <b>${escapeHtml(assignee)}</b> (${assigneeTasks.length})\n`;
+            for (let i = 0; i < assigneeTasks.length; i++) {
+                const t = assigneeTasks[i];
+                const isLast = i === assigneeTasks.length - 1;
+                const prefix = isLast ? '  └' : '  ├';
+                const pIcon = priorityIcon[t.priority] || '';
+                const sIcon = statusIcon[t.status] || '?';
+                text += `${prefix} ${sIcon}${pIcon} <b>#${t.id}</b> ${escapeHtml(t.title)}\n`;
+            }
+            text += '\n';
+        }
+
+        text += `💡 /done <id> — завершити задачу`;
+        return sendBotMessage(chatId, threadId, text);
+    } catch (err) {
+        log.error('handleAllTasks error', err);
+        return sendBotMessage(chatId, threadId, '❌ Помилка завантаження задач');
+    }
+}
+
 // Helper: send message respecting thread
 async function sendBotMessage(chatId, threadId, text) {
     const payload = {
@@ -365,13 +529,14 @@ function formatDate(date) {
 
 /**
  * Main command router — called from webhook handler
+ * @param {string|number} fromUsername — Telegram username of sender (for /tasks)
  */
-async function handleBotCommand(chatId, threadId, text) {
+async function handleBotCommand(chatId, threadId, text, fromUsername) {
     const trimmed = text.trim();
     const command = trimmed.split(/\s+/)[0].toLowerCase().replace(/@.*$/, ''); // remove @botname
     const args = trimmed.slice(command.length).trim();
 
-    log.info(`Bot command: ${command} from chat ${chatId}`);
+    log.info(`Bot command: ${command} from chat ${chatId} (user: ${fromUsername || '?'})`);
 
     switch (command) {
         case '/menu':
@@ -408,6 +573,15 @@ async function handleBotCommand(chatId, threadId, text) {
 
         case '/cert':
             return handleCertVerify(chatId, threadId, args);
+
+        case '/tasks':
+            return handleTasks(chatId, threadId, fromUsername);
+
+        case '/done':
+            return handleDone(chatId, threadId, args, fromUsername);
+
+        case '/alltasks':
+            return handleAllTasks(chatId, threadId);
 
         default:
             return null; // Not a known command — ignore

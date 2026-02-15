@@ -15,7 +15,7 @@ const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset } = require('./services/scheduler');
 const { createLogger } = require('./utils/logger');
 const { validateEnv } = require('./utils/validateEnv');
 const { initWebSocket, getWSS } = require('./services/websocket');
@@ -83,6 +83,7 @@ app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/task-templates', require('./routes/task-templates'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/certificates', require('./routes/certificates'));
+app.use('/api/points', require('./routes/points'));
 
 // Settings router handles /api/stats, /api/settings, /api/rooms, /api/health
 const settingsRouter = require('./routes/settings');
@@ -157,7 +158,11 @@ initDatabase().catch(err => {
         schedulerIntervals.push(setInterval(checkRecurringAfisha, 60000));
         schedulerIntervals.push(setInterval(checkScheduledDeletions, 60000));
         schedulerIntervals.push(setInterval(checkCertificateExpiry, 60000));
-        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry (every 60s)');
+        // v10.0: Kleshnya schedulers
+        schedulerIntervals.push(setInterval(checkTaskReminders, 60000));
+        schedulerIntervals.push(setInterval(checkWorkDayTriggers, 60000));
+        schedulerIntervals.push(setInterval(checkMonthlyPointsReset, 60000));
+        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya (every 60s)');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

@@ -197,7 +197,19 @@ router.post('/webhook', async (req, res) => {
         if (update.message && update.message.text && update.message.text.startsWith('/')) {
             const botChatId = update.message.chat.id;
             const botThreadId = update.message.message_thread_id || null;
-            await handleBotCommand(botChatId, botThreadId, update.message.text);
+            const fromUsername = update.message.from?.username || null;
+
+            // v10.0: Auto-register telegram chat_id for personal notifications (/start link)
+            if (update.message.chat.type === 'private' && fromUsername) {
+                const { registerTelegramChatId } = require('../services/kleshnya');
+                // Try to link by telegram_username
+                pool.query(
+                    'UPDATE users SET telegram_chat_id = $1 WHERE telegram_username = $2 AND telegram_chat_id IS NULL',
+                    [botChatId, fromUsername]
+                ).catch(() => {});
+            }
+
+            await handleBotCommand(botChatId, botThreadId, update.message.text, fromUsername);
         }
 
         if (update.callback_query) {
@@ -254,6 +266,55 @@ router.post('/webhook', async (req, res) => {
                 const threadId = message.message_thread_id || null;
                 await handleCertUse(certId, id, chatId, threadId);
                 return res.sendStatus(200);
+
+            } else if (data.startsWith('task_confirm:')) {
+                // v10.0: Kleshnya task confirmation
+                const taskId = parseInt(data.split(':')[1]);
+                const { updateTaskStatus } = require('../services/kleshnya');
+                try {
+                    await updateTaskStatus(taskId, 'in_progress', 'telegram');
+                    await telegramRequest('answerCallbackQuery', {
+                        callback_query_id: id,
+                        text: 'Задачу підтверджено!'
+                    });
+                    await telegramRequest('editMessageText', {
+                        chat_id: chatId,
+                        message_id: message.message_id,
+                        text: message.text + '\n\n✅ <b>Підтверджено</b>',
+                        parse_mode: 'HTML'
+                    });
+                } catch (err) {
+                    log.error('task_confirm error', err);
+                    await telegramRequest('answerCallbackQuery', {
+                        callback_query_id: id,
+                        text: 'Помилка підтвердження',
+                        show_alert: true
+                    });
+                }
+
+            } else if (data.startsWith('task_reject:')) {
+                // v10.0: Kleshnya task rejection
+                const taskId = parseInt(data.split(':')[1]);
+                try {
+                    await pool.query("UPDATE tasks SET status = 'done', completed_at = NOW(), updated_at = NOW() WHERE id = $1", [taskId]);
+                    await telegramRequest('answerCallbackQuery', {
+                        callback_query_id: id,
+                        text: 'Задачу скасовано'
+                    });
+                    await telegramRequest('editMessageText', {
+                        chat_id: chatId,
+                        message_id: message.message_id,
+                        text: message.text + '\n\n❌ <b>Відхилено</b>',
+                        parse_mode: 'HTML'
+                    });
+                } catch (err) {
+                    log.error('task_reject error', err);
+                    await telegramRequest('answerCallbackQuery', {
+                        callback_query_id: id,
+                        text: 'Помилка',
+                        show_alert: true
+                    });
+                }
 
             } else if (data.startsWith('no_anim:')) {
                 const requestId = parseInt(data.split(':')[1]);

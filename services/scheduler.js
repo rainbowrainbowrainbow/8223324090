@@ -596,9 +596,172 @@ async function checkCertificateExpiry() {
     }
 }
 
+// v10.0: Kleshnya task reminders — runs every minute
+async function checkTaskReminders() {
+    try {
+        const { processReminders } = require('./kleshnya');
+        await processReminders();
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('TaskReminders error', err);
+        }
+    }
+}
+
+// v10.0: Work day triggers — checks at configured start time (10:00 weekdays, 12:00 weekends)
+let workDayTriggeredToday = null;
+
+async function checkWorkDayTriggers() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (workDayTriggeredToday === todayStr) return;
+
+        const kyiv = getKyivDate();
+        const isWeekend = kyiv.getDay() === 0 || kyiv.getDay() === 6;
+        const triggerTime = isWeekend ? '10:00' : '12:00';
+
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== triggerTime) return;
+
+        const dbLast = await getLastSent('workday_trigger');
+        if (dbLast === todayStr) { workDayTriggeredToday = todayStr; return; }
+
+        workDayTriggeredToday = todayStr;
+        await setLastSent('workday_trigger', todayStr);
+        log.info(`Work day triggers fired for ${todayStr} at ${triggerTime} (${isWeekend ? 'weekend' : 'weekday'})`);
+
+        // Check pinata bookings for today that need print confirmation
+        const pinataBookings = await pool.query(
+            `SELECT b.*, p.has_filler FROM bookings b
+             JOIN products p ON b.program_id = p.id
+             WHERE b.date = $1 AND p.has_filler = true AND b.status != 'cancelled'`,
+            [todayStr]
+        );
+
+        const { createTask } = require('./kleshnya');
+
+        for (const booking of pinataBookings.rows) {
+            // Check if task already exists for this booking
+            const existingTask = await pool.query(
+                "SELECT id FROM tasks WHERE source_type = 'booking' AND source_id = $1 AND date = $2 AND title LIKE '%піньят%'",
+                [booking.id, todayStr]
+            );
+            if (existingTask.rows.length > 0) continue;
+
+            // Create pinata confirmation task
+            const deadline = new Date(`${todayStr}T${isWeekend ? '12:00' : '14:00'}:00`);
+            await createTask({
+                title: `🪅 Підтвердити друк піньяти №${booking.pinata_filler || '?'} на ${booking.time}`,
+                description: `Бронювання: ${booking.label || booking.program_code}, кімната: ${booking.room}`,
+                date: todayStr,
+                priority: 'high',
+                task_type: 'human',
+                deadline: deadline.toISOString(),
+                source_type: 'booking',
+                source_id: booking.id,
+                category: 'purchase',
+                created_by: 'kleshnya'
+            });
+        }
+
+        // Check for bookings with unclarified data (t-shirt sizes etc)
+        const tshirtBookings = await pool.query(
+            `SELECT b.* FROM bookings b
+             WHERE b.date = $1 AND b.program_id = 'mk_tshirt' AND b.status != 'cancelled'
+             AND (b.extra_data IS NULL OR b.extra_data->>'tshirtSizes' IS NULL)`,
+            [todayStr]
+        );
+
+        for (const booking of tshirtBookings.rows) {
+            const existingTask = await pool.query(
+                "SELECT id FROM tasks WHERE source_type = 'booking' AND source_id = $1 AND date = $2 AND title LIKE '%футболок%'",
+                [booking.id, todayStr]
+            );
+            if (existingTask.rows.length > 0) continue;
+
+            await createTask({
+                title: `👕 Уточнити розміри футболок для ${booking.group_name || booking.label || 'бронювання'} на ${booking.time}`,
+                date: todayStr,
+                priority: 'high',
+                task_type: 'human',
+                source_type: 'booking',
+                source_id: booking.id,
+                category: 'admin',
+                created_by: 'kleshnya'
+            });
+        }
+
+        // Send task digest for today
+        const todayTasks = await pool.query(
+            "SELECT * FROM tasks WHERE date = $1 AND status != 'done' ORDER BY priority DESC, created_at",
+            [todayStr]
+        );
+
+        if (todayTasks.rows.length > 0) {
+            const chatId = await getConfiguredChatId();
+            if (chatId) {
+                let text = `🦀 <b>Клешня — Задачі на сьогодні</b>\n`;
+                text += `📅 ${todayStr} | Задач: <b>${todayTasks.rows.length}</b>\n\n`;
+
+                const priorityIcon = { high: '🔴', normal: '⚪', low: '🔵' };
+                const statusIcon = { todo: '⬜', in_progress: '🔄', done: '✅' };
+
+                for (let i = 0; i < todayTasks.rows.length; i++) {
+                    const t = todayTasks.rows[i];
+                    const isLast = i === todayTasks.rows.length - 1;
+                    const prefix = isLast ? '└' : '├';
+                    const pIcon = priorityIcon[t.priority] || '';
+                    const sIcon = statusIcon[t.status] || '?';
+                    text += `${prefix} ${sIcon}${pIcon} #${t.id} ${t.title}`;
+                    if (t.assigned_to) text += ` → ${t.assigned_to}`;
+                    text += '\n';
+                }
+
+                text += `\n🦀 Клешня тримає все під контролем`;
+                await sendTelegramMessage(chatId, text, { silent: false });
+            }
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('WorkDayTriggers error', err);
+        }
+    }
+}
+
+// v10.0: Monthly points reset — runs on 1st of each month at 00:15
+let monthlyResetDone = null;
+
+async function checkMonthlyPointsReset() {
+    try {
+        const kyiv = getKyivDate();
+        if (kyiv.getDate() !== 1) return;
+
+        const todayStr = getKyivDateStr();
+        if (monthlyResetDone === todayStr) return;
+
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '00:15') return;
+
+        const dbLast = await getLastSent('monthly_reset');
+        if (dbLast === todayStr) { monthlyResetDone = todayStr; return; }
+
+        monthlyResetDone = todayStr;
+        await setLastSent('monthly_reset', todayStr);
+
+        const { resetMonthlyPoints } = require('./kleshnya');
+        await resetMonthlyPoints();
+        log.info('Monthly points reset completed');
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('MonthlyPointsReset error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
     checkScheduledDeletions, checkRecurringAfisha, ensureRecurringAfishaForDate,
-    checkRecurringBookings, checkCertificateExpiry
+    checkRecurringBookings, checkCertificateExpiry,
+    checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset
 };

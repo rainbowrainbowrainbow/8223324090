@@ -296,6 +296,69 @@ async function initDatabase() {
         // Also add category to templates
         await pool.query(`ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'admin'`);
 
+        // v10.0: Tasker — extended task fields
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_type VARCHAR(10) DEFAULT 'human'`); // 'human' or 'bot'
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS owner VARCHAR(50)`); // manager/responsible (escalation target)
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS time_window_start VARCHAR(10)`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS time_window_end VARCHAR(10)`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS dependency_ids INTEGER[] DEFAULT '{}'`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS control_policy JSONB DEFAULT '{"reminder_minutes":[60,30,10],"escalation_after_minutes":120}'`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS escalation_level INTEGER DEFAULT 0`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_type VARCHAR(30) DEFAULT 'manual'`); // 'booking','trigger','manual','recurring','kleshnya'
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_id VARCHAR(50)`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMP`);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_task_type ON tasks(task_type)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_escalation ON tasks(escalation_level)');
+
+        // v10.0: Task change log
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS task_logs (
+                id SERIAL PRIMARY KEY,
+                task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                action VARCHAR(30) NOT NULL,
+                old_value TEXT,
+                new_value TEXT,
+                actor VARCHAR(50) DEFAULT 'system',
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_task_logs_created_at ON task_logs(created_at)');
+
+        // v10.0: Points system
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS user_points (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                permanent_points INTEGER DEFAULT 0,
+                monthly_points INTEGER DEFAULT 0,
+                month VARCHAR(7) NOT NULL,
+                updated_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(username, month)
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_points_username ON user_points(username)');
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS point_transactions (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                points INTEGER NOT NULL,
+                type VARCHAR(10) NOT NULL DEFAULT 'monthly',
+                reason VARCHAR(200),
+                task_id INTEGER,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_point_transactions_username ON point_transactions(username)');
+
+        // v10.0: Telegram chat_id mapping for personal notifications
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT`);
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100)`);
+
         // v7.10: Scheduled Telegram message deletions (replaces setTimeout)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS scheduled_deletions (

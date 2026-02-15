@@ -455,3 +455,43 @@ async function profileLoadMoreActivity() {
     window._profileActivityOffset = offset + data.items.length;
     if (data.items.length < 20 && btn) btn.remove();
 }
+
+// v10.4: Auto-init profile handler on any page (sub-pages don't call showMainApp)
+function initProfileHandler() {
+    const el = document.getElementById('currentUser');
+    if (!el || el.dataset.profileInit) return;
+    el.dataset.profileInit = '1';
+    el.classList.add('user-name-clickable');
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('title', 'Особистий кабінет');
+    el.addEventListener('click', openProfileModal);
+    el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProfileModal(); }
+    });
+
+    // Init modal close for sub-pages that don't include app.js
+    const profileModal = document.getElementById('profileModal');
+    if (profileModal) {
+        const closeBtn = profileModal.querySelector('.modal-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                profileModal.classList.add('hidden');
+            });
+        }
+        profileModal.addEventListener('click', (e) => {
+            if (e.target === profileModal) profileModal.classList.add('hidden');
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !profileModal.classList.contains('hidden')) {
+                profileModal.classList.add('hidden');
+            }
+        });
+    }
+}
+
+// Run on DOMContentLoaded + MutationObserver for sub-pages that set currentUser later
+document.addEventListener('DOMContentLoaded', () => {
+    // Delay slightly to let page-specific JS set username first
+    setTimeout(initProfileHandler, 100);
+});

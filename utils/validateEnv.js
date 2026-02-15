@@ -23,16 +23,11 @@ function validateEnv() {
     // --- JWT_SECRET ---
     // Used in: middleware/auth.js
     // Falls back to crypto.randomBytes(64) which changes on every restart
-    if (isProduction && !process.env.JWT_SECRET) {
-        errors.push(
-            'JWT_SECRET is not set. In production, a stable JWT secret is required. ' +
-            'Without it, all user sessions are invalidated on every restart. ' +
-            'Set JWT_SECRET to a random string (64+ characters).'
-        );
-    } else if (!process.env.JWT_SECRET) {
+    if (!process.env.JWT_SECRET) {
         warnings.push(
             'JWT_SECRET not set. Auto-generating random secret. ' +
-            'User sessions will be lost on restart.'
+            'User sessions will be lost on restart. ' +
+            'Set JWT_SECRET to a random string (64+ characters) for stable sessions.'
         );
     }
 

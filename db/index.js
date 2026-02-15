@@ -308,6 +308,8 @@ async function initDatabase() {
         await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_type VARCHAR(30) DEFAULT 'manual'`); // 'booking','trigger','manual','recurring','kleshnya'
         await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_id VARCHAR(50)`);
         await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMP`);
+        // v10.1: Optimistic locking version column
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1`);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_task_type ON tasks(task_type)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline)');

@@ -111,10 +111,15 @@ async function updateTaskStatus(taskId, newStatus, actor = 'system') {
     if (oldStatus === newStatus) return task;
 
     const completedAt = newStatus === 'done' ? 'NOW()' : 'NULL';
-    await pool.query(
-        `UPDATE tasks SET status=$1, updated_at=NOW(), completed_at=${completedAt}, escalation_level=0 WHERE id=$2`,
-        [newStatus, taskId]
+    const currentVersion = task.version || 1;
+    const updateResult = await pool.query(
+        `UPDATE tasks SET status=$1, updated_at=NOW(), completed_at=${completedAt}, escalation_level=0, version=version+1 WHERE id=$2 AND version=$3`,
+        [newStatus, taskId, currentVersion]
     );
+
+    if (updateResult.rowCount === 0) {
+        throw new Error('Conflict: task was modified by another user');
+    }
 
     // Log status change
     await logTaskAction(taskId, 'status_changed', oldStatus, newStatus, actor);

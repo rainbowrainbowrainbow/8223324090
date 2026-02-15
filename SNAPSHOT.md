@@ -29,7 +29,7 @@
 - **Frontend:** 19 JS + 11 CSS модулів
 - **БД:** ~29 таблиць, 40+ індексів, 4 міграції
 - **11 schedulers**, WebSocket broadcast
-- **221 тестів** (3 файли + helpers)
+- **364 тести** (3 файли + helpers)
 - ~43 000 рядків коду
 
 ## Kleshnya Ecosystem (v10.0–v11.0)

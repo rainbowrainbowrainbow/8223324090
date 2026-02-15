@@ -3,6 +3,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
+const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Tasks');
@@ -54,7 +55,7 @@ router.get('/', async (req, res) => {
             conditions.push(`afisha_id = $${idx++}`);
             params.push(parseInt(afisha_id));
         }
-        if (type) {
+        if (type && ['recurring', 'afisha', 'manual', 'template'].includes(type)) {
             conditions.push(`type = $${idx++}`);
             params.push(type);
         }
@@ -112,8 +113,8 @@ router.get('/:id/logs', async (req, res) => {
     }
 });
 
-// POST /api/tasks — create (via Kleshnya)
-router.post('/', async (req, res) => {
+// POST /api/tasks — create (via Kleshnya) — admin/user only
+router.post('/', requireRole('admin', 'user'), async (req, res) => {
     try {
         const { title, description, date, priority, assigned_to, owner, type, template_id,
                 afisha_id, category, task_type, deadline, time_window_start, time_window_end,
@@ -150,8 +151,8 @@ router.post('/', async (req, res) => {
     }
 });
 
-// PUT /api/tasks/:id — full update
-router.put('/:id', async (req, res) => {
+// PUT /api/tasks/:id — full update — admin/user only
+router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
     try {
         const { id } = req.params;
         const { title, description, date, status, priority, assigned_to, owner, category,
@@ -211,8 +212,8 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// PATCH /api/tasks/:id/status — quick status change (via Kleshnya)
-router.patch('/:id/status', async (req, res) => {
+// PATCH /api/tasks/:id/status — quick status change (via Kleshnya) — admin/user only
+router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
@@ -232,8 +233,8 @@ router.patch('/:id/status', async (req, res) => {
     }
 });
 
-// DELETE /api/tasks/:id
-router.delete('/:id', async (req, res) => {
+// DELETE /api/tasks/:id — admin only
+router.delete('/:id', requireRole('admin'), async (req, res) => {
     try {
         const { id } = req.params;
         const result = await pool.query('DELETE FROM tasks WHERE id = $1 RETURNING id', [id]);

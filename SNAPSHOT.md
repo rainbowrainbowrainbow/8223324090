@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v11.0.0**. Дофамінові покращення: Kleshnya greeting/chat + перебудований особистий кабінет.
+Версія **v11.0.1**. Документація та Swagger: повна актуалізація docs + swagger.js до v11.0.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance

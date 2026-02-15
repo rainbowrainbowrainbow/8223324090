@@ -14,17 +14,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=10.5.0">
-    <link rel="stylesheet" href="css/auth.css?v=10.5.0">
-    <link rel="stylesheet" href="css/layout.css?v=10.5.0">
-    <link rel="stylesheet" href="css/timeline.css?v=10.5.0">
-    <link rel="stylesheet" href="css/panel.css?v=10.5.0">
-    <link rel="stylesheet" href="css/modals.css?v=10.5.0">
-    <link rel="stylesheet" href="css/controls.css?v=10.5.0">
-    <link rel="stylesheet" href="css/features.css?v=10.5.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=10.5.0">
-    <link rel="stylesheet" href="css/responsive.css?v=10.5.0">
-    <link rel="stylesheet" href="css/pages.css?v=10.5.0">
+    <link rel="stylesheet" href="css/base.css?v=11.0.0">
+    <link rel="stylesheet" href="css/auth.css?v=11.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=11.0.0">
+    <link rel="stylesheet" href="css/timeline.css?v=11.0.0">
+    <link rel="stylesheet" href="css/panel.css?v=11.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=11.0.0">
+    <link rel="stylesheet" href="css/controls.css?v=11.0.0">
+    <link rel="stylesheet" href="css/features.css?v=11.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=11.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=11.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=11.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -41,9 +41,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v10.5.0 — Verification Bump</p>
+                <p class="tagline">Система бронювання v11.0.0 — Дофамінові покращення</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v10.5.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v11.0.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -907,6 +907,19 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v11.0.0 — Дофамінові покращення</h4>
+                    <ul>
+                        <li>🧠 Повна перебудова Особистого кабінету: 4 таби (Сьогодні / Задачі / Стати / Налашт.)</li>
+                        <li>🎯 Таб "Сьогодні": блок зміни, SVG прогрес-ринг, inbox з простроченими та найближчими задачами</li>
+                        <li>✅ Таб "Задачі": inline дії (старт/готово), індикатори блокувань, залежності між задачами</li>
+                        <li>🏆 Система досягнень: 12 ачівок (перша задача, стріки 3/7/30, booking pro та ін.)</li>
+                        <li>🔥 Стріки: автоматичне відслідковування послідовних робочих днів</li>
+                        <li>📊 Статистика: дельти тиждень-до-тижня, командний огляд (admin)</li>
+                        <li>📨 Inbox: actionable картки з кнопками done/start прямо з кабінету</li>
+                        <li>📈 Трекінг дій користувача: таблиця user_action_log + API</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v10.5.0 — Verification Bump</h4>
                     <ul>
@@ -2192,21 +2205,21 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=10.5.0"></script>
-    <script src="js/api.js?v=10.5.0"></script>
-    <script src="js/ui.js?v=10.5.0"></script>
-    <script src="js/auth.js?v=10.5.0"></script>
-    <script src="js/timeline.js?v=10.5.0"></script>
-    <script src="js/booking.js?v=10.5.0"></script>
-    <script src="js/settings.js?v=10.5.0"></script>
-    <script src="js/booking-form.js?v=10.5.0"></script>
-    <script src="js/booking-linked.js?v=10.5.0"></script>
-    <script src="js/settings-dashboard.js?v=10.5.0"></script>
-    <script src="js/settings-history.js?v=10.5.0"></script>
-    <script src="js/settings-afisha.js?v=10.5.0"></script>
-    <script src="js/settings-certificates.js?v=10.5.0"></script>
-    <script src="js/offline.js?v=10.5.0"></script>
-    <script src="js/ws.js?v=10.5.0"></script>
-    <script src="js/app.js?v=10.5.0"></script>
+    <script src="js/config.js?v=11.0.0"></script>
+    <script src="js/api.js?v=11.0.0"></script>
+    <script src="js/ui.js?v=11.0.0"></script>
+    <script src="js/auth.js?v=11.0.0"></script>
+    <script src="js/timeline.js?v=11.0.0"></script>
+    <script src="js/booking.js?v=11.0.0"></script>
+    <script src="js/settings.js?v=11.0.0"></script>
+    <script src="js/booking-form.js?v=11.0.0"></script>
+    <script src="js/booking-linked.js?v=11.0.0"></script>
+    <script src="js/settings-dashboard.js?v=11.0.0"></script>
+    <script src="js/settings-history.js?v=11.0.0"></script>
+    <script src="js/settings-afisha.js?v=11.0.0"></script>
+    <script src="js/settings-certificates.js?v=11.0.0"></script>
+    <script src="js/offline.js?v=11.0.0"></script>
+    <script src="js/ws.js?v=11.0.0"></script>
+    <script src="js/app.js?v=11.0.0"></script>
 </body>
 </html>

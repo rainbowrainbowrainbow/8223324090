@@ -148,4 +148,114 @@ function showMainApp() {
 
     // v8.0: Show improvement suggestion FAB
     if (typeof showImprovementFab === 'function') showImprovementFab();
+
+    // v10.3: Personal cabinet — click on username
+    const userNameEl = document.getElementById('currentUser');
+    if (userNameEl) {
+        userNameEl.addEventListener('click', openProfileModal);
+        userNameEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProfileModal(); }
+        });
+    }
+}
+
+// v10.3: Personal cabinet
+async function openProfileModal() {
+    const modal = document.getElementById('profileModal');
+    const content = document.getElementById('profileContent');
+    if (!modal || !content) return;
+
+    modal.classList.remove('hidden');
+    content.innerHTML = '<div class="profile-loading">Завантаження...</div>';
+
+    const data = await apiGetProfile();
+    if (!data) {
+        content.innerHTML = '<div class="profile-error">Не вдалося завантажити дані</div>';
+        return;
+    }
+
+    const roleNames = { admin: 'Адміністратор', user: 'Користувач', viewer: 'Глядач' };
+    const roleName = roleNames[data.user.role] || data.user.role;
+    const createdAt = new Date(data.user.createdAt).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const actionNames = {
+        create: 'Створення', edit: 'Редагування', delete: 'Видалення', confirm: 'Підтвердження',
+        cancel: 'Скасування', afisha_create: 'Афіша +', afisha_edit: 'Афіша ред.',
+        afisha_delete: 'Афіша —', tasks_generated: 'Задачі згенер.', recurring_create: 'Recurring',
+        afisha_move: 'Переміщення', duplicate: 'Дублювання'
+    };
+
+    let activityHTML = '';
+    if (data.recentActivity.length > 0) {
+        activityHTML = data.recentActivity.map(a => {
+            const actionLabel = actionNames[a.action] || a.action;
+            const time = new Date(a.created_at).toLocaleString('uk-UA', {
+                timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+            });
+            let detail = '';
+            try {
+                const d = typeof a.data === 'string' ? JSON.parse(a.data) : a.data;
+                detail = d.label || d.title || d.program || d.bookingId || '';
+            } catch { /* ignore */ }
+            return `<div class="profile-activity-item"><span class="profile-activity-action">${actionLabel}</span><span class="profile-activity-detail">${detail}</span><span class="profile-activity-time">${time}</span></div>`;
+        }).join('');
+    } else {
+        activityHTML = '<div class="profile-empty">Немає активності</div>';
+    }
+
+    content.innerHTML = `
+        <div class="profile-header">
+            <div class="profile-avatar">${data.user.name.charAt(0).toUpperCase()}</div>
+            <div class="profile-info">
+                <div class="profile-name">${data.user.name}</div>
+                <div class="profile-role">${roleName}</div>
+                <div class="profile-since">З ${createdAt}</div>
+            </div>
+        </div>
+
+        <div class="profile-stats">
+            <div class="profile-stat">
+                <div class="profile-stat-value">${data.bookingsCreated}</div>
+                <div class="profile-stat-label">Бронювань</div>
+            </div>
+            <div class="profile-stat">
+                <div class="profile-stat-value">${data.tasks.total || 0}</div>
+                <div class="profile-stat-label">Задач</div>
+            </div>
+            <div class="profile-stat">
+                <div class="profile-stat-value">${data.tasks.done || 0}</div>
+                <div class="profile-stat-label">Виконано</div>
+            </div>
+            <div class="profile-stat">
+                <div class="profile-stat-value">${data.points.permanentTotal}</div>
+                <div class="profile-stat-label">Балів</div>
+            </div>
+        </div>
+
+        <div class="profile-section">
+            <h4>Бали за ${data.points.month}</h4>
+            <div class="profile-points-row">
+                <span>Місячні</span>
+                <span class="profile-points-val ${data.points.monthly >= 0 ? 'positive' : 'negative'}">${data.points.monthly > 0 ? '+' : ''}${data.points.monthly}</span>
+            </div>
+            <div class="profile-points-row">
+                <span>Постійні (всього)</span>
+                <span class="profile-points-val positive">+${data.points.permanentTotal}</span>
+            </div>
+        </div>
+
+        <div class="profile-section">
+            <h4>Задачі</h4>
+            <div class="profile-tasks-grid">
+                <div class="profile-task-chip todo">${data.tasks.assigned || 0} очікує</div>
+                <div class="profile-task-chip progress">${data.tasks.in_progress || 0} в роботі</div>
+                <div class="profile-task-chip done">${data.tasks.done || 0} завершено</div>
+            </div>
+        </div>
+
+        <div class="profile-section">
+            <h4>Остання активність</h4>
+            <div class="profile-activity">${activityHTML}</div>
+        </div>
+    `;
 }

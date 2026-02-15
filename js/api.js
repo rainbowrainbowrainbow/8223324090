@@ -453,6 +453,19 @@ async function apiVerifyToken() {
     }
 }
 
+// v10.3: Personal cabinet profile
+async function apiGetProfile() {
+    try {
+        const response = await fetch(`${API_BASE}/auth/profile`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getProfile error:', err);
+        return null;
+    }
+}
+
 // v8.4: Certificates API
 async function apiGetCertificates(filters = {}) {
     try {

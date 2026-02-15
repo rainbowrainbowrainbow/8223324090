@@ -4,6 +4,15 @@
 
 ---
 
+## v10.3.0 — Особистий кабінет (2026-02-15)
+
+- **Особистий кабінет:** клік по імені користувача відкриває модальне вікно з персональною інформацією
+- **API:** GET /api/auth/profile — консолідований профіль (user info + points + tasks + bookings + activity)
+- **Профіль:** аватар, роль, дата реєстрації, статистика (бронювання, задачі, бали), остання активність
+- **UX:** username кликабельний з underline hint, повна keyboard accessibility
+
+---
+
 ## v10.2.0 — Reliability (2026-02-15)
 
 - **Logging:** замінені всі `/* non-blocking */` catch блоки на log.warn з context (scheduler, afisha)

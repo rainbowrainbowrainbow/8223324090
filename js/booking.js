@@ -725,6 +725,65 @@ async function handleBookingSubmit(e) {
     }
 }
 
+// ==========================================
+// OPTIMISTIC LOCKING CONFLICT HANDLER
+// ==========================================
+
+async function handleOptimisticLockConflict(result, localBooking) {
+    const serverData = result.currentData;
+    if (!serverData) {
+        showNotification('Бронювання було змінено іншим користувачем. Оновіть сторінку.', 'error');
+        return;
+    }
+
+    // Build a summary of what changed
+    const changes = [];
+    if (serverData.time !== localBooking.time) changes.push(`Час: ${serverData.time}`);
+    if (serverData.room !== localBooking.room) changes.push(`Кімната: ${serverData.room}`);
+    if (serverData.status !== localBooking.status) changes.push(`Статус: ${serverData.status}`);
+    if (serverData.lineId !== localBooking.lineId) changes.push('Лінія змінена');
+    if (serverData.notes !== localBooking.notes) changes.push('Примітки змінені');
+    if (serverData.kidsCount !== localBooking.kidsCount) changes.push(`К-сть дітей: ${serverData.kidsCount}`);
+
+    const changesText = changes.length > 0
+        ? `\n\nЗміни на сервері:\n${changes.map(c => `  - ${c}`).join('\n')}`
+        : '';
+
+    const message = `Бронювання було змінено іншим користувачем.${changesText}\n\nЩо зробити?`;
+
+    // Show custom conflict dialog with two options
+    const overwrite = await customConfirm(
+        message,
+        'Конфлікт редагування',
+        'Перезаписати',
+        'Оновити дані'
+    );
+
+    if (overwrite) {
+        // Force overwrite: re-send with current server's updatedAt
+        localBooking.updatedAt = serverData.updatedAt;
+        const retryResult = await apiUpdateBooking(localBooking.id, localBooking);
+        if (retryResult && retryResult.success) {
+            delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+            closeBookingPanel();
+            await renderTimeline();
+            showNotification('Бронювання перезаписано!', 'success');
+        } else if (retryResult && retryResult.conflict) {
+            // Another conflict happened -- extremely unlikely
+            showNotification('Повторний конфлікт. Оновіть сторінку.', 'error');
+        } else {
+            showNotification(retryResult?.error || 'Помилка збереження', 'error');
+        }
+    } else {
+        // Refresh data: reload bookings and re-open edit form
+        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        await renderTimeline();
+        // Re-open editing with fresh data
+        await editBooking(localBooking.id);
+        showNotification('Дані оновлено з сервера', 'info');
+    }
+}
+
 async function checkConflicts(lineId, time, duration, excludeId = null) {
     const allBookings = await getBookingsForDate(AppState.selectedDate);
     const bookings = allBookings.filter(b => b.lineId === lineId && b.id !== excludeId);
@@ -1209,6 +1268,13 @@ async function shiftBookingTime(bookingId, minutes) {
         const newBooking = { ...booking, time: newTime };
         const shiftResult = await apiUpdateBooking(bookingId, newBooking);
         if (shiftResult && shiftResult.success === false) {
+            if (shiftResult.conflict) {
+                delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+                closeAllModals();
+                await renderTimeline();
+                showNotification('Бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
+                return;
+            }
             showNotification(shiftResult.error || 'Помилка переносу бронювання', 'error');
             return;
         }
@@ -1219,6 +1285,13 @@ async function shiftBookingTime(bookingId, minutes) {
             const updatedLinked = { ...linked, time: linkedNewTime, linkedTo: newBooking.id };
             const linkedResult = await apiUpdateBooking(linked.id, updatedLinked);
             if (linkedResult && linkedResult.success === false) {
+                if (linkedResult.conflict) {
+                    delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+                    closeAllModals();
+                    await renderTimeline();
+                    showNotification('Пов\'язане бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
+                    return;
+                }
                 console.warn(`Failed to shift linked booking ${linked.id}`);
             }
         }
@@ -1267,6 +1340,13 @@ async function switchBookingLine(bookingId, targetLineId) {
         const updated = { ...booking, lineId: targetLineId };
         const result = await apiUpdateBooking(bookingId, updated);
         if (result && result.success === false) {
+            if (result.conflict) {
+                delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+                closeAllModals();
+                await renderTimeline();
+                showNotification('Бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
+                return;
+            }
             showNotification(result.error || 'Помилка переключення лінії', 'error');
             return;
         }

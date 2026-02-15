@@ -657,9 +657,20 @@
     .line-name { font-size: 11px; }
 
     /* Dashboard */
-    .dashboard-grid { grid-template-columns: 1fr; }
+    .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
     .dash-card-value { font-size: 18px; }
     .modal-wide { max-width: 100%; }
+
+    /* v9.0: Dashboard enhanced — mobile */
+    .dash-weekday-chart { height: 80px; gap: 4px; }
+    .dash-weekday-label { font-size: 10px; }
+    .dash-weekday-count { font-size: 9px; }
+    .dash-daily-chart { height: 100px; }
+    .dash-daily-label { font-size: 8px; }
+    .dash-period-tabs { flex-wrap: wrap; }
+    .dash-toggle-group { flex-wrap: wrap; }
+    .dash-bar-label { width: 60px; font-size: 11px; }
+    .dash-bar-value { width: 60px; font-size: 11px; }
 }
 
 /* ==========================================

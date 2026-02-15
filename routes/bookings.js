@@ -305,12 +305,13 @@ router.put('/:id', async (req, res) => {
         let updateResult;
         if (clientUpdatedAt) {
             // Optimistic locking: check updated_at matches client's version
+            // Use date_trunc('milliseconds', ...) because JS Date has only ms precision
             updateResult = await client.query(
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
                  linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22
-                 WHERE id=$23 AND updated_at = $24
+                 WHERE id=$23 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,

@@ -858,8 +858,73 @@ async function saveThreadIdFromSettings() {
 }
 
 // ==========================================
-// ДАШБОРД (Фінанси + Статистика + Навантаження)
+// ДАШБОРД (Фінанси + Статистика + Навантаження) — v9.0 Enhanced
 // ==========================================
+
+// Dashboard state
+let dashboardPeriod = 'month';
+let dashboardData = {};
+
+// Kept for backward compat (old client-side fallback)
+function calcRevenue(bookings) {
+    return bookings.filter(b => b.status === 'confirmed').reduce((s, b) => s + (b.price || 0), 0);
+}
+
+async function showDashboard() {
+    if (isViewer()) return;
+
+    const modal = document.getElementById('dashboardModal');
+    const container = document.getElementById('dashboardContent');
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
+    modal.classList.remove('hidden');
+
+    dashboardPeriod = 'month';
+    await loadDashboardData('month');
+}
+
+async function loadDashboardData(period, customFrom, customTo) {
+    const container = document.getElementById('dashboardContent');
+    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
+
+    const params = {};
+    if (period === 'custom' && customFrom && customTo) {
+        params.from = customFrom;
+        params.to = customTo;
+    } else {
+        params.period = period;
+    }
+
+    // Load all 3 API endpoints in parallel
+    const [revenueData, programsData, loadData] = await Promise.all([
+        apiGetStatsRevenue(params),
+        apiGetStatsPrograms(params),
+        apiGetStatsLoad(params)
+    ]);
+
+    dashboardData = { revenueData, programsData, loadData, period, customFrom, customTo };
+
+    // Fallback: if new API fails, use old client-side approach
+    if (!revenueData) {
+        await showDashboardFallback();
+        return;
+    }
+
+    renderEnhancedDashboard();
+}
+
+// Fallback to old client-side dashboard if new API is not mounted
+async function showDashboardFallback() {
+    const container = document.getElementById('dashboardContent');
+    const ranges = getDashboardDateRanges();
+    const [todayBookings, weekBookings, monthBookings, yearBookings] = await Promise.all([
+        apiGetStats(formatDate(ranges.today), formatDate(ranges.today)),
+        apiGetStats(formatDate(ranges.weekStart), formatDate(ranges.weekEnd)),
+        apiGetStats(formatDate(ranges.monthStart), formatDate(ranges.monthEnd)),
+        apiGetStats(formatDate(ranges.yearStart), formatDate(ranges.yearEnd))
+    ]);
+
+    container.innerHTML = renderFallbackRevenueCards(todayBookings, weekBookings, monthBookings, yearBookings);
+}
 
 function getDashboardDateRanges() {
     const today = new Date();
@@ -870,155 +935,295 @@ function getDashboardDateRanges() {
     weekEnd.setDate(weekStart.getDate() + 6);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    // v5.10: Year range
     const yearStart = new Date(today.getFullYear(), 0, 1);
     const yearEnd = new Date(today.getFullYear(), 11, 31);
     return { today, weekStart, weekEnd, monthStart, monthEnd, yearStart, yearEnd };
 }
 
-function calcRevenue(bookings) {
-    return bookings.filter(b => b.status === 'confirmed').reduce((s, b) => s + (b.price || 0), 0);
+function renderFallbackRevenueCards(todayBookings, weekBookings, monthBookings, yearBookings) {
+    return `<div class="dashboard-grid">
+        <div class="dash-card revenue"><div class="dash-card-title">Сьогодні</div><div class="dash-card-value">${formatPrice(calcRevenue(todayBookings))}</div><div class="dash-card-sub">${todayBookings.length} бронювань</div></div>
+        <div class="dash-card revenue"><div class="dash-card-title">Тиждень</div><div class="dash-card-value">${formatPrice(calcRevenue(weekBookings))}</div><div class="dash-card-sub">${weekBookings.length} бронювань</div></div>
+        <div class="dash-card revenue"><div class="dash-card-title">Місяць</div><div class="dash-card-value">${formatPrice(calcRevenue(monthBookings))}</div><div class="dash-card-sub">${monthBookings.length} бронювань</div></div>
+        <div class="dash-card revenue"><div class="dash-card-title">Рік ${new Date().getFullYear()}</div><div class="dash-card-value">${formatPrice(calcRevenue(yearBookings))}</div><div class="dash-card-sub">${yearBookings.length} бронювань</div></div>
+    </div>`;
 }
 
-function renderRevenueCards(todayBookings, weekBookings, monthBookings, yearBookings) {
+// ==========================================
+// ENHANCED DASHBOARD RENDERING (v9.0)
+// ==========================================
+
+function renderEnhancedDashboard() {
+    const container = document.getElementById('dashboardContent');
+    const { revenueData, programsData, loadData, period, customFrom, customTo } = dashboardData;
+
+    let html = '';
+
+    // 1. Revenue metric cards (4 cards with growth indicators)
+    html += renderEnhancedRevenueCards(revenueData);
+
+    // 2. Period selector tabs
+    html += renderDashPeriodTabs(period);
+
+    // 3. Custom range picker (if custom)
+    if (period === 'custom') {
+        html += `<div class="dash-custom-range">
+            <input type="date" id="dashCustomFrom" value="${customFrom || ''}">
+            <span>—</span>
+            <input type="date" id="dashCustomTo" value="${customTo || ''}">
+            <button class="dash-tab active" onclick="loadDashboardCustomRange()">Показати</button>
+        </div>`;
+    }
+
+    // 4. Daily revenue chart (CSS bars)
+    if (revenueData && revenueData.daily && revenueData.daily.length > 0) {
+        html += renderDailyRevenueChart(revenueData.daily);
+    }
+
+    // 5. Top programs (toggle: by count / by revenue)
+    if (programsData) {
+        html += renderEnhancedTopPrograms(programsData);
+    }
+
+    // 6. Category breakdown
+    if (programsData && programsData.byCategory && programsData.byCategory.length > 0) {
+        html += renderEnhancedCategoryBars(programsData.byCategory);
+    }
+
+    // 7. Day-of-week chart
+    if (loadData && loadData.byDayOfWeek && loadData.byDayOfWeek.length > 0) {
+        html += renderWeekdayChart(loadData.byDayOfWeek);
+    }
+
+    // 8. Time-of-day distribution
+    if (loadData && loadData.byHour && loadData.byHour.length > 0) {
+        html += renderHourlyChart(loadData.byHour);
+    }
+
+    // 9. Room utilization
+    if (loadData && loadData.roomUtilization && loadData.roomUtilization.length > 0) {
+        html += renderRoomUtilization(loadData.roomUtilization);
+    }
+
+    // 10. Animator workload
+    if (loadData && loadData.animatorWorkload && loadData.animatorWorkload.length > 0) {
+        html += renderAnimatorWorkload(loadData.animatorWorkload);
+    }
+
+    container.innerHTML = html;
+}
+
+function renderEnhancedRevenueCards(data) {
+    if (!data || !data.totals) return '';
+    const t = data.totals;
+    const c = data.comparison || {};
+
+    const confirmedPct = t.count > 0 ? Math.round(t.confirmedCount / t.count * 100) : 0;
+
+    function trendHtml(growth) {
+        if (growth === undefined || growth === null || growth === 0) return '';
+        const cls = growth > 0 ? 'dash-trend-up' : 'dash-trend-down';
+        const arrow = growth > 0 ? '+' : '';
+        return `<span class="dash-trend ${cls}">${arrow}${growth}%</span>`;
+    }
+
     return `<div class="dashboard-grid">
         <div class="dash-card revenue">
-            <div class="dash-card-title">Сьогодні</div>
-            <div class="dash-card-value">${formatPrice(calcRevenue(todayBookings))}</div>
-            <div class="dash-card-sub">${todayBookings.length} бронювань</div>
+            <div class="dash-card-title">Виручка</div>
+            <div class="dash-card-value">${formatPrice(t.confirmedRevenue)}</div>
+            <div class="dash-card-sub">${trendHtml(c.revenueGrowth)} vs мин. період</div>
         </div>
         <div class="dash-card revenue">
-            <div class="dash-card-title">Тиждень</div>
-            <div class="dash-card-value">${formatPrice(calcRevenue(weekBookings))}</div>
-            <div class="dash-card-sub">${weekBookings.length} бронювань</div>
+            <div class="dash-card-title">Бронювань</div>
+            <div class="dash-card-value">${t.count}</div>
+            <div class="dash-card-sub">${t.confirmedCount} підтв. / ${t.preliminaryCount} попер.</div>
         </div>
         <div class="dash-card revenue">
-            <div class="dash-card-title">Місяць</div>
-            <div class="dash-card-value">${formatPrice(calcRevenue(monthBookings))}</div>
-            <div class="dash-card-sub">${monthBookings.length} бронювань</div>
+            <div class="dash-card-title">Середній чек</div>
+            <div class="dash-card-value">${formatPrice(t.average)}</div>
+            <div class="dash-card-sub">${trendHtml(c.averageGrowth)} vs мин. період</div>
         </div>
         <div class="dash-card revenue">
-            <div class="dash-card-title">Рік ${new Date().getFullYear()}</div>
-            <div class="dash-card-value">${formatPrice(calcRevenue(yearBookings))}</div>
-            <div class="dash-card-sub">${yearBookings.length} бронювань</div>
+            <div class="dash-card-title">Підтверджено</div>
+            <div class="dash-card-value">${confirmedPct}%</div>
+            <div class="dash-card-sub">${t.confirmedCount} з ${t.count}</div>
         </div>
     </div>`;
 }
 
-function renderTopProgramsSection(bookingsData, periodLabel) {
-    const counts = {};
-    bookingsData.forEach(b => {
-        const key = b.programName || b.label;
-        if (!counts[key]) counts[key] = { count: 0, revenue: 0 };
-        counts[key].count++;
-        counts[key].revenue += b.price || 0;
-    });
-    const top = Object.entries(counts).sort((a, b) => b[1].count - a[1].count).slice(0, 8);
-
-    return `<div class="dashboard-section">
-        <h4>🏆 Топ програм (${periodLabel || 'Місяць'})</h4>
-        <div class="dash-list">
-            ${top.map(([name, data], i) =>
-                `<div class="dash-list-item">
-                    <span class="dash-rank">${i + 1}</span>
-                    <span class="dash-name">${escapeHtml(name)}</span>
-                    <span class="dash-count">${data.count}x</span>
-                    <span class="dash-revenue">${formatPrice(data.revenue)}</span>
-                </div>`
-            ).join('') || '<p class="no-data">Немає даних</p>'}
-        </div>
-    </div>`;
-}
-
-function renderCategoryBarsSection(bookingsData, periodLabel) {
-    const catCounts = {};
-    bookingsData.forEach(b => {
-        const cat = CATEGORY_NAMES_SHORT[b.category] || b.category;
-        if (!catCounts[cat]) catCounts[cat] = 0;
-        catCounts[cat]++;
-    });
-    const total = bookingsData.length;
-
-    return `<div class="dashboard-section">
-        <h4>📊 Категорії (${periodLabel || 'Місяць'})</h4>
-        <div class="dash-bars">
-            ${Object.entries(catCounts).sort((a, b) => b[1] - a[1]).map(([cat, count]) => {
-                const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-                return `<div class="dash-bar-row">
-                    <span class="dash-bar-label">${escapeHtml(cat)}</span>
-                    <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%"></div></div>
-                    <span class="dash-bar-value">${count} (${pct}%)</span>
-                </div>`;
-            }).join('') || '<p class="no-data">Немає даних</p>'}
-        </div>
-    </div>`;
-}
-
-// v5.10: Dashboard state for period selection
-let dashboardPeriod = 'month';
-let dashboardAllData = {};
-
-async function showDashboard() {
-    if (isViewer()) return;
-
-    const modal = document.getElementById('dashboardModal');
-    const container = document.getElementById('dashboardContent');
-    container.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
-    modal.classList.remove('hidden');
-
-    const ranges = getDashboardDateRanges();
-    const [todayBookings, weekBookings, monthBookings, yearBookings] = await Promise.all([
-        apiGetStats(formatDate(ranges.today), formatDate(ranges.today)),
-        apiGetStats(formatDate(ranges.weekStart), formatDate(ranges.weekEnd)),
-        apiGetStats(formatDate(ranges.monthStart), formatDate(ranges.monthEnd)),
-        apiGetStats(formatDate(ranges.yearStart), formatDate(ranges.yearEnd))
-    ]);
-
-    dashboardAllData = { todayBookings, weekBookings, monthBookings, yearBookings };
-    dashboardPeriod = 'month';
-
-    renderDashboardContent();
-}
-
-function renderDashboardContent() {
-    const container = document.getElementById('dashboardContent');
-    const { todayBookings, weekBookings, monthBookings, yearBookings } = dashboardAllData;
-
-    const periodNames = { today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік', custom: 'Довільний' };
-    const periodData = {
-        today: todayBookings,
-        week: weekBookings,
-        month: monthBookings,
-        year: yearBookings
-    };
-
-    // Period tabs for "Top programs" and "Categories" sections
-    const tabsHtml = `<div class="dash-period-tabs">
-        ${['month', 'year', 'custom'].map(p =>
-            `<button class="dash-tab ${dashboardPeriod === p ? 'active' : ''}" onclick="switchDashboardPeriod('${p}')">${periodNames[p]}</button>`
+function renderDashPeriodTabs(activePeriod) {
+    const periods = [
+        { key: 'day', label: 'Сьогодні' },
+        { key: 'week', label: 'Тиждень' },
+        { key: 'month', label: 'Місяць' },
+        { key: 'quarter', label: 'Квартал' },
+        { key: 'year', label: 'Рік' },
+        { key: 'custom', label: 'Довільний' }
+    ];
+    return `<div class="dash-period-tabs">
+        ${periods.map(p =>
+            `<button class="dash-tab ${activePeriod === p.key ? 'active' : ''}" onclick="switchDashboardPeriod('${p.key}')">${p.label}</button>`
         ).join('')}
     </div>`;
+}
 
-    const customRangeHtml = dashboardPeriod === 'custom' ? `<div class="dash-custom-range">
-        <input type="date" id="dashCustomFrom" value="">
-        <span>—</span>
-        <input type="date" id="dashCustomTo" value="">
-        <button class="dash-tab active" onclick="loadDashboardCustomRange()">Показати</button>
-    </div>` : '';
+function renderDailyRevenueChart(daily) {
+    const maxRevenue = Math.max(...daily.map(d => d.revenue), 1);
 
-    const dataForSections = periodData[dashboardPeriod] || monthBookings;
-    const periodLabel = periodNames[dashboardPeriod] || 'Місяць';
+    return `<div class="dashboard-section">
+        <h4>Виручка по днях</h4>
+        <div class="dash-daily-chart">
+            ${daily.map(d => {
+                const pct = Math.round(d.revenue / maxRevenue * 100);
+                const dateShort = d.date.substring(5); // MM-DD
+                return `<div class="dash-daily-bar" title="${d.date}: ${formatPrice(d.revenue)} (${d.count} бр.)">
+                    <div class="dash-daily-fill" style="height:${Math.max(pct, 2)}%"></div>
+                    <span class="dash-daily-label">${dateShort}</span>
+                </div>`;
+            }).join('')}
+        </div>
+    </div>`;
+}
 
-    container.innerHTML =
-        renderRevenueCards(todayBookings, weekBookings, monthBookings, yearBookings) +
-        tabsHtml + customRangeHtml +
-        renderTopProgramsSection(dataForSections, periodLabel) +
-        renderCategoryBarsSection(dataForSections, periodLabel);
+// State for programs toggle
+let dashProgramsSort = 'count';
+
+function renderEnhancedTopPrograms(data) {
+    const items = dashProgramsSort === 'revenue' ? data.byRevenue : data.byCount;
+    if (!items || items.length === 0) return '';
+
+    return `<div class="dashboard-section">
+        <h4>Топ програм</h4>
+        <div class="dash-toggle-group">
+            <button class="dash-toggle-btn ${dashProgramsSort === 'count' ? 'active' : ''}" onclick="toggleDashProgramsSort('count')">За кількістю</button>
+            <button class="dash-toggle-btn ${dashProgramsSort === 'revenue' ? 'active' : ''}" onclick="toggleDashProgramsSort('revenue')">За виручкою</button>
+        </div>
+        <div class="dash-list">
+            ${items.map((item, i) =>
+                `<div class="dash-list-item">
+                    <span class="dash-rank">${i + 1}</span>
+                    <span class="dash-name">${escapeHtml(item.programName || '')}</span>
+                    <span class="dash-count">${item.count}x</span>
+                    <span class="dash-revenue">${formatPrice(item.revenue)}</span>
+                </div>`
+            ).join('')}
+        </div>
+    </div>`;
+}
+
+function toggleDashProgramsSort(sort) {
+    dashProgramsSort = sort;
+    renderEnhancedDashboard();
+}
+
+function renderEnhancedCategoryBars(categories) {
+    return `<div class="dashboard-section">
+        <h4>Категорії</h4>
+        <div class="dash-bars">
+            ${categories.map(cat => {
+                return `<div class="dash-bar-row">
+                    <span class="dash-bar-label">${escapeHtml(cat.categoryName)}</span>
+                    <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${cat.pct}%"></div></div>
+                    <span class="dash-bar-value">${cat.count} (${cat.pct}%)</span>
+                </div>`;
+            }).join('')}
+        </div>
+    </div>`;
+}
+
+function renderWeekdayChart(byDayOfWeek) {
+    const maxCount = Math.max(...byDayOfWeek.map(d => d.count), 1);
+    const shortNames = { 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб', 7: 'Нд' };
+
+    // Fill all 7 days even if some have no data
+    const allDays = [];
+    for (let i = 1; i <= 7; i++) {
+        const found = byDayOfWeek.find(d => d.day === i);
+        allDays.push({
+            day: i,
+            name: shortNames[i],
+            count: found ? found.count : 0,
+            revenue: found ? found.revenue : 0
+        });
+    }
+
+    return `<div class="dashboard-section">
+        <h4>По днях тижня</h4>
+        <div class="dash-weekday-chart">
+            ${allDays.map(d => {
+                const pct = Math.round(d.count / maxCount * 100);
+                return `<div class="dash-weekday-bar" title="${d.name}: ${d.count} бронювань, ${formatPrice(d.revenue)}">
+                    <span class="dash-weekday-count">${d.count}</span>
+                    <div class="dash-weekday-fill" style="height:${Math.max(pct, 3)}%"></div>
+                    <span class="dash-weekday-label">${d.name}</span>
+                </div>`;
+            }).join('')}
+        </div>
+    </div>`;
+}
+
+function renderHourlyChart(byHour) {
+    const maxCount = Math.max(...byHour.map(h => h.count), 1);
+
+    return `<div class="dashboard-section">
+        <h4>По годинах</h4>
+        <div class="dash-bars">
+            ${byHour.map(h => {
+                const pct = Math.round(h.count / maxCount * 100);
+                const label = `${String(h.hour).padStart(2, '0')}:00`;
+                return `<div class="dash-bar-row">
+                    <span class="dash-bar-label">${label}</span>
+                    <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%"></div></div>
+                    <span class="dash-bar-value">${h.count}</span>
+                </div>`;
+            }).join('')}
+        </div>
+    </div>`;
+}
+
+function renderRoomUtilization(rooms) {
+    return `<div class="dashboard-section">
+        <h4>Завантаженість кімнат</h4>
+        <div class="dash-bars">
+            ${rooms.map(r => {
+                const pct = Math.min(r.utilizationPct, 100);
+                return `<div class="dash-bar-row">
+                    <span class="dash-bar-label">${escapeHtml(r.room)}</span>
+                    <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%"></div></div>
+                    <span class="dash-bar-value">${r.bookingCount} бр. (${r.utilizationPct}%)</span>
+                </div>`;
+            }).join('')}
+        </div>
+    </div>`;
+}
+
+function renderAnimatorWorkload(animators) {
+    const maxBookings = Math.max(...animators.map(a => a.bookingCount), 1);
+
+    return `<div class="dashboard-section">
+        <h4>Навантаження аніматорів</h4>
+        <div class="dash-bars">
+            ${animators.map(a => {
+                const pct = Math.round(a.bookingCount / maxBookings * 100);
+                const hours = Math.round(a.totalMinutes / 60 * 10) / 10;
+                return `<div class="dash-bar-row">
+                    <span class="dash-bar-label">${escapeHtml(a.animatorName)}</span>
+                    <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%"></div></div>
+                    <span class="dash-bar-value">${a.bookingCount} бр. (${hours}г)</span>
+                </div>`;
+            }).join('')}
+        </div>
+    </div>`;
 }
 
 function switchDashboardPeriod(period) {
     dashboardPeriod = period;
-    renderDashboardContent();
+    if (period === 'custom') {
+        // Just re-render to show the date pickers
+        renderEnhancedDashboard();
+    } else {
+        loadDashboardData(period);
+    }
 }
 
 async function loadDashboardCustomRange() {
@@ -1028,30 +1233,8 @@ async function loadDashboardCustomRange() {
         showNotification('Оберіть обидві дати', 'error');
         return;
     }
-    const customBookings = await apiGetStats(from, to);
-    dashboardAllData.customBookings = customBookings;
-    const container = document.getElementById('dashboardContent');
-    // Re-render with custom data
-    const { todayBookings, weekBookings, monthBookings, yearBookings } = dashboardAllData;
-
-    const periodLabel = `${from} — ${to}`;
-    const tabsHtml = `<div class="dash-period-tabs">
-        ${['month', 'year', 'custom'].map(p =>
-            `<button class="dash-tab ${p === 'custom' ? 'active' : ''}" onclick="switchDashboardPeriod('${p}')">${p === 'custom' ? 'Довільний' : p === 'month' ? 'Місяць' : 'Рік'}</button>`
-        ).join('')}
-    </div>`;
-    const customRangeHtml = `<div class="dash-custom-range">
-        <input type="date" id="dashCustomFrom" value="${from}">
-        <span>—</span>
-        <input type="date" id="dashCustomTo" value="${to}">
-        <button class="dash-tab active" onclick="loadDashboardCustomRange()">Показати</button>
-    </div>`;
-
-    container.innerHTML =
-        renderRevenueCards(todayBookings, weekBookings, monthBookings, yearBookings) +
-        tabsHtml + customRangeHtml +
-        renderTopProgramsSection(customBookings, periodLabel) +
-        renderCategoryBarsSection(customBookings, periodLabel);
+    dashboardPeriod = 'custom';
+    await loadDashboardData('custom', from, to);
 }
 
 // ==========================================

@@ -1,6 +1,6 @@
 {
   "name": "park-booking-system",
-  "version": "11.0.4",
+  "version": "11.0.5",
   "description": "Система бронювання для Парку Закревського Періоду",
   "main": "server.js",
   "scripts": {

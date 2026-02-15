@@ -4,6 +4,15 @@
 
 ---
 
+## v11.0.1 — Документація та Swagger (2026-02-15)
+
+- **PROJECT_PASSPORT.md:** повна актуалізація до v11.0 (30 таблиць, 17 routes, 13 services, Kleshnya greeting/chat, особистий кабінет, schedulers)
+- **CLAUDE.md:** виправлені невідповідності (19 JS, 11 CSS, 364 тести, повна файлова структура)
+- **swagger.js:** v8.6.1 → v11.0.0 (+25 endpoints, +10 schemas: points, kleshnya, recurring, stats, auth profile/achievements/password, task logs)
+- **SNAPSHOT.md:** коректна кількість тестів (364)
+
+---
+
 ## v11.0.0 — Дофамінові покращення (2026-02-15)
 
 **Kleshnya Greeting & Chat:**

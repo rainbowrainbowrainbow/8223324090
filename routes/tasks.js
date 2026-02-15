@@ -1,5 +1,5 @@
 /**
- * routes/tasks.js — Tasks CRUD (v7.5)
+ * routes/tasks.js — Tasks CRUD + Kleshnya integration (v10.0)
  */
 const router = require('express').Router();
 const { pool } = require('../db');
@@ -7,14 +7,20 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Tasks');
 
+// Lazy require to avoid circular dependency
+function getKleshnya() {
+    return require('../services/kleshnya');
+}
+
 const VALID_STATUSES = ['todo', 'in_progress', 'done'];
 const VALID_PRIORITIES = ['low', 'normal', 'high'];
 const VALID_CATEGORIES = ['event', 'purchase', 'admin', 'trampoline', 'personal', 'improvement'];
+const VALID_TASK_TYPES = ['human', 'bot'];
 
 // GET /api/tasks — list with optional filters
 router.get('/', async (req, res) => {
     try {
-        const { status, date, assigned_to, afisha_id, type, category, date_from, date_to } = req.query;
+        const { status, date, assigned_to, owner, afisha_id, type, task_type, category, date_from, date_to } = req.query;
         const conditions = [];
         const params = [];
         let idx = 1;
@@ -27,7 +33,6 @@ router.get('/', async (req, res) => {
             conditions.push(`date = $${idx++}`);
             params.push(date);
         }
-        // v7.9: Date range filter for week view
         if (date_from && /^\d{4}-\d{2}-\d{2}$/.test(date_from)) {
             conditions.push(`date >= $${idx++}`);
             params.push(date_from);
@@ -40,6 +45,11 @@ router.get('/', async (req, res) => {
             conditions.push(`assigned_to = $${idx++}`);
             params.push(assigned_to);
         }
+        // v10.0: Owner filter
+        if (owner) {
+            conditions.push(`owner = $${idx++}`);
+            params.push(owner);
+        }
         if (afisha_id && /^\d+$/.test(afisha_id)) {
             conditions.push(`afisha_id = $${idx++}`);
             params.push(parseInt(afisha_id));
@@ -48,7 +58,11 @@ router.get('/', async (req, res) => {
             conditions.push(`type = $${idx++}`);
             params.push(type);
         }
-        // v7.9: Category filter
+        // v10.0: Task type filter (human/bot)
+        if (task_type && VALID_TASK_TYPES.includes(task_type)) {
+            conditions.push(`task_type = $${idx++}`);
+            params.push(task_type);
+        }
         if (category && VALID_CATEGORIES.includes(category)) {
             conditions.push(`category = $${idx++}`);
             params.push(category);
@@ -73,6 +87,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        if (id === 'logs') return res.status(400).json({ error: 'Use /api/tasks/:id/logs' });
         const result = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
         res.json(result.rows[0]);
@@ -82,25 +97,53 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// POST /api/tasks — create
+// v10.0: GET /api/tasks/:id/logs — task change history
+router.get('/:id/logs', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            'SELECT * FROM task_logs WHERE task_id = $1 ORDER BY created_at DESC LIMIT 100',
+            [id]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        log.error('Get task logs error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/tasks — create (via Kleshnya)
 router.post('/', async (req, res) => {
     try {
-        const { title, description, date, priority, assigned_to, type, template_id, afisha_id, category } = req.body;
+        const { title, description, date, priority, assigned_to, owner, type, template_id,
+                afisha_id, category, task_type, deadline, time_window_start, time_window_end,
+                dependency_ids, control_policy, source_type } = req.body;
+
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date' });
 
-        const taskPriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
-        const taskType = ['manual', 'recurring', 'afisha', 'auto_complete'].includes(type) ? type : 'manual';
-        const taskCategory = VALID_CATEGORIES.includes(category) ? category : 'admin';
         const username = req.user?.username || 'system';
+        const kleshnya = getKleshnya();
 
-        const result = await pool.query(
-            `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, template_id, afisha_id, category)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-            [title.trim(), description || null, date || null, taskPriority, assigned_to || null, username,
-             taskType, template_id || null, afisha_id || null, taskCategory]
-        );
-        res.json({ success: true, task: result.rows[0] });
+        const task = await kleshnya.createTask({
+            title, description, date,
+            priority: VALID_PRIORITIES.includes(priority) ? priority : 'normal',
+            assigned_to: assigned_to || null,
+            owner: owner || null,
+            task_type: VALID_TASK_TYPES.includes(task_type) ? task_type : 'human',
+            deadline: deadline || null,
+            time_window_start: time_window_start || null,
+            time_window_end: time_window_end || null,
+            dependency_ids: dependency_ids || [],
+            control_policy: control_policy || undefined,
+            source_type: source_type || 'manual',
+            category: VALID_CATEGORIES.includes(category) ? category : 'admin',
+            template_id: template_id || null,
+            afisha_id: afisha_id || null,
+            created_by: username
+        });
+
+        res.json({ success: true, task });
     } catch (err) {
         log.error('Create error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -111,7 +154,8 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, date, status, priority, assigned_to, category } = req.body;
+        const { title, description, date, status, priority, assigned_to, owner, category,
+                task_type, deadline, time_window_start, time_window_end } = req.body;
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
 
         const taskStatus = VALID_STATUSES.includes(status) ? status : 'todo';
@@ -120,20 +164,46 @@ router.put('/:id', async (req, res) => {
         const completedAt = taskStatus === 'done' ? 'NOW()' : 'NULL';
 
         const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
-            'assigned_to=$6', `updated_at=NOW()`, `completed_at=${completedAt}`];
-        const values = [title.trim(), description || null, date || null, taskStatus, taskPriority, assigned_to || null];
-        let paramIdx = 7;
+            'assigned_to=$6', 'owner=$7', `updated_at=NOW()`, `completed_at=${completedAt}`];
+        const values = [title.trim(), description || null, date || null, taskStatus, taskPriority,
+                        assigned_to || null, owner || null];
+        let paramIdx = 8;
+
         if (taskCategory) {
             setClauses.push(`category=$${paramIdx++}`);
             values.push(taskCategory);
         }
+        if (task_type && VALID_TASK_TYPES.includes(task_type)) {
+            setClauses.push(`task_type=$${paramIdx++}`);
+            values.push(task_type);
+        }
+        if (deadline !== undefined) {
+            setClauses.push(`deadline=$${paramIdx++}`);
+            values.push(deadline || null);
+        }
+        if (time_window_start !== undefined) {
+            setClauses.push(`time_window_start=$${paramIdx++}`);
+            values.push(time_window_start || null);
+        }
+        if (time_window_end !== undefined) {
+            setClauses.push(`time_window_end=$${paramIdx++}`);
+            values.push(time_window_end || null);
+        }
+
         values.push(id);
         await pool.query(
             `UPDATE tasks SET ${setClauses.join(', ')} WHERE id=$${paramIdx}`,
             values
         );
+
         const updated = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
         if (updated.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
+
+        // Log update via Kleshnya
+        const kleshnya = getKleshnya();
+        const actor = req.user?.username || 'system';
+        await kleshnya.logTaskAction(parseInt(id), 'updated', null, title, actor);
+
         res.json({ success: true, task: updated.rows[0] });
     } catch (err) {
         log.error('Update error', err);
@@ -141,22 +211,22 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// PATCH /api/tasks/:id/status — quick status change
+// PATCH /api/tasks/:id/status — quick status change (via Kleshnya)
 router.patch('/:id/status', async (req, res) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
         if (!VALID_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
 
-        const completedAt = status === 'done' ? 'NOW()' : 'NULL';
-        await pool.query(
-            `UPDATE tasks SET status=$1, updated_at=NOW(), completed_at=${completedAt} WHERE id=$2`,
-            [status, id]
-        );
-        const updated = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
-        if (updated.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
-        res.json({ success: true, task: updated.rows[0] });
+        const actor = req.user?.username || 'system';
+        const kleshnya = getKleshnya();
+        const task = await kleshnya.updateTaskStatus(parseInt(id), status, actor);
+
+        res.json({ success: true, task });
     } catch (err) {
+        if (err.message === 'Task not found') {
+            return res.status(404).json({ error: 'Task not found' });
+        }
         log.error('Status change error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -168,6 +238,12 @@ router.delete('/:id', async (req, res) => {
         const { id } = req.params;
         const result = await pool.query('DELETE FROM tasks WHERE id = $1 RETURNING id', [id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
+
+        // Log deletion
+        const kleshnya = getKleshnya();
+        const actor = req.user?.username || 'system';
+        await kleshnya.logTaskAction(parseInt(id), 'deleted', null, null, actor);
+
         res.json({ success: true });
     } catch (err) {
         log.error('Delete error', err);

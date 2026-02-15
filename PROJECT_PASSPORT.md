@@ -1,12 +1,12 @@
 # PROJECT PASSPORT — Парк Закревського Періоду
 
-> Паспорт проекту для передачі в новий чат. Оновлено: 2026-02-15, v9.1.0
+> Паспорт проекту для передачі в новий чат. Оновлено: 2026-02-15, v10.0.0
 
 ---
 
 ## 1. Що це
 
-Система бронювання для дитячого парку **"Закревського Періоду"** (Київ, вул. Закревського 31/2, 3 поверх). Таймлайн аніматорів, кімнати, програми, Telegram-бот, задачник, каталог, сертифікати, дашборд, бекапи.
+Система бронювання для дитячого парку **"Закревського Періоду"** (Київ, вул. Закревського 31/2, 3 поверх). Таймлайн аніматорів, кімнати, програми, Telegram-бот, **Tasker + Клешня**, каталог, сертифікати, дашборд, бекапи.
 
 ---
 
@@ -16,7 +16,7 @@
 |---|---|
 | Хостинг | Railway |
 | Актуальна гілка | `claude/review-project-updates-R2CbJ` |
-| Версія | v9.1.0 |
+| Версія | v10.0.0 |
 | Порт | `PORT` (default 3000) |
 
 ### Env змінні
@@ -59,18 +59,18 @@ node --test tests/api.test.js
 ## 4. Структура файлів
 
 ```
-server.js              — Entry point, middleware, routes, 8 schedulers, WS init
+server.js              — Entry point, middleware, routes, 11 schedulers, WS init
 
-db/index.js            — Pool, schema (20 таблиць), seed, 23 indexes
+db/index.js            — Pool, schema (24 таблиці), seed, 30+ indexes
 db/migrate.js          — Migration runner
 db/migrations/         — 001-003
 
-routes/ (15):          auth, bookings, lines, history, settings, stats,
+routes/ (16):          auth, bookings, lines, history, settings, stats,
                        afisha, telegram, backup, products, tasks,
-                       task-templates, staff, certificates, recurring
+                       task-templates, staff, certificates, recurring, points
 
-services/ (11):        booking, bookingAutomation, bot, certificates,
-                       recurring, telegram, templates, taskTemplates,
+services/ (12):        booking, bookingAutomation, bot, certificates,
+                       kleshnya, recurring, telegram, templates, taskTemplates,
                        scheduler, backup, websocket
 
 middleware/ (4):       auth, rateLimit, security, requestId
@@ -99,18 +99,18 @@ tests/ (3+1):          api.test.js (221), certificates.test.js (82),
 | Шлях | Сторінка | Опис |
 |---|---|---|
 | `/` | Таймлайн | SPA: бронювання, модалки, панелі |
-| `/tasks` | Задачник | 5 вкладок, канбан, категорії |
+| `/tasks` | Задачник | 5 вкладок, канбан, категорії, Tasker |
 | `/programs` | Каталог | Програми, CRUD, іконки |
 | `/staff` | Графік | Тижневий розклад аніматорів |
 | `/invite` | Запрошення | Standalone link для клієнтів |
 
 ---
 
-## 6. БД (20 таблиць, 23 індекси)
+## 6. БД (24 таблиці, 30+ індексів)
 
 **Основні:** bookings, lines_by_date, history, settings, users, booking_counter, pending_animators
 
-**Афіша/Задачі:** afisha, afisha_templates, tasks, task_templates
+**Афіша/Задачі:** afisha, afisha_templates, tasks, task_templates, **task_logs**
 
 **Telegram:** telegram_known_chats, telegram_known_threads
 
@@ -118,9 +118,15 @@ tests/ (3+1):          api.test.js (221), certificates.test.js (82),
 
 **Персонал/Сертифікати:** staff, staff_schedule, certificates, certificate_counter
 
+**Бали (v10.0):** user_points, point_transactions
+
 ### bookings (головна таблиця)
 
 Ключові поля: `id` (BK-YYYY-NNNN), `date`, `time`, `line_id`, `program_id`, `program_code`, `program_name`, `category`, `duration`, `price`, `hosts`, `second_animator`, `room`, `status` (confirmed/preliminary/cancelled), `linked_to`, `kids_count`, `extra_data` (JSONB), `updated_at`
+
+### tasks (v10.0 — Tasker)
+
+Нові поля: `task_type` (human/bot), `owner` (менеджер, ескалація), `deadline`, `time_window_start/end`, `dependency_ids` (INTEGER[]), `control_policy` (JSONB), `escalation_level` (0-3), `source_type` (booking/trigger/manual/recurring/kleshnya), `source_id`, `last_reminded_at`
 
 ### Seed users
 
@@ -148,16 +154,61 @@ tests/ (3+1):          api.test.js (221), certificates.test.js (82),
 | Stats | GET /:from/:to |
 | Settings | GET/POST /:key, GET /rooms/free/:date/:time/:dur |
 | Products | CRUD (GET ?active=true) |
-| Tasks | CRUD + PATCH /:id/status (filters: status, date, type, assigned_to, afisha_id) |
+| Tasks | CRUD + PATCH /:id/status + GET /:id/logs (filters: status, date, type, task_type, assigned_to, owner) |
 | Task Templates | CRUD (?active=true) |
 | Staff | CRUD |
 | Certificates | CRUD |
 | Recurring | CRUD + series ops |
+| **Points** | GET / (leaderboard), GET /:username, GET /:username/history |
 | Health | GET /api/health |
 
 ---
 
-## 8. Schedulers (8, кожні 60с)
+## 8. Tasker & Клешня (v10.0)
+
+### Що таке Tasker
+Tasker — централізований задачник та диспетчер операцій бізнесу. Приймає події, створює задачі, контролює виконання, забезпечує комунікацію через Telegram, нараховує бали.
+
+### Клешня (services/kleshnya.js)
+Центральний інтелект системи. Має доступ до всіх даних CRM, задач, Telegram, фінансових логів.
+
+**Типи задач:**
+- `human` — 100% відповідальність людини
+- `bot` — 100% системне виконання
+
+**Ролі в задачі:**
+- `assigned_to` — виконавець
+- `owner` — менеджер/відповідальний (ескалація йде на owner)
+
+**Ескалація (4 рівні):**
+0. Нагадування (м'яке)
+1. Повторне (жорсткіше)
+2. Увага: прострочена
+3. Ескалація на директора
+
+**Бали:**
+- Постійні (permanent) — накопичувальні, показник надійності
+- Місячні (monthly) — обнуляються 1-го числа, впливають на премії
+
+**Правила нарахування:**
+- Вчасно: +5 monthly, +2 permanent
+- З запасом: +7 monthly, +3 permanent
+- High priority вчасно: +10 monthly, +5 permanent
+- Прострочено < 1 год: -2 monthly
+- Прострочено > 1 год: -5 monthly, -1 permanent
+
+**Telegram бот (Клешня):**
+- `/tasks` — мої задачі на сьогодні
+- `/done <id>` — завершити задачу
+- `/alltasks` — всі задачі команди
+
+**Telegram нотифікації:**
+- Персональні (якщо user зареєстрував chat_id через /start)
+- Групові (з @mention через telegram_username)
+
+---
+
+## 9. Schedulers (11, кожні 60с)
 
 | Scheduler | Час | Опис |
 |---|---|---|
@@ -165,14 +216,17 @@ tests/ (3+1):          api.test.js (221), certificates.test.js (82),
 | checkAutoReminder | Налаштовується | Нагадування про завтра |
 | checkAutoBackup | 03:00 | SQL backup в Telegram |
 | checkRecurringTasks | 00:05 | Recurring задачі за шаблонами |
-| checkScheduledDeletions | 60с | Авто-видалення |
-| checkRecurringAfisha | 60с | Recurring афіша |
-| checkRecurringBookings | 60с | Recurring бронювання |
-| checkCertificateExpiry | 60с | Термін сертифікатів |
+| checkScheduledDeletions | 60с | Авто-видалення повідомлень |
+| checkRecurringAfisha | 00:06 | Recurring афіша |
+| checkRecurringBookings | 00:07 | Recurring бронювання |
+| checkCertificateExpiry | 00:10 | Термін сертифікатів |
+| **checkTaskReminders** | 60с | **Клешня: нагадування/ескалація** |
+| **checkWorkDayTriggers** | 10:00/12:00 | **Клешня: тригери початку дня** |
+| **checkMonthlyPointsReset** | 00:15 (1-ше) | **Клешня: обнулення місячних балів** |
 
 ---
 
-## 9. WebSocket (v9.1.0)
+## 10. WebSocket (v9.1.0)
 
 - `services/websocket.js` — JWT auth, heartbeat 30s, date subscriptions
 - `js/ws.js` — auto-reconnect, exponential backoff 1s–30s
@@ -180,7 +234,7 @@ tests/ (3+1):          api.test.js (221), certificates.test.js (82),
 
 ---
 
-## 10. Design System v4.0
+## 11. Design System v4.0
 
 **Тема:** Emerald (`--primary: #10B981`)
 **Шрифт:** Nunito
@@ -190,7 +244,7 @@ tests/ (3+1):          api.test.js (221), certificates.test.js (82),
 
 ---
 
-## 11. Ключові конвенції
+## 12. Ключові конвенції
 
 - **Дати:** UTC → `Europe/Kyiv` для відображення
 - **Валюта:** UAH (₴), `"1 000 ₴"`
@@ -198,6 +252,7 @@ tests/ (3+1):          api.test.js (221), certificates.test.js (82),
 - **DB→API:** snake_case → camelCase через `mapBookingRow()`
 - **Транзакції:** BEGIN → COMMIT → catch ROLLBACK → finally release()
 - **Telegram:** fire-and-forget ПІСЛЯ commit
+- **Клешня:** створює/оновлює задачі → логує → нараховує бали → нотифікує
 - **Touch targets:** min 44px, inputs min 16px font
 - **Мова коду:** English, **Мова UI:** Ukrainian
 
@@ -211,13 +266,13 @@ tests/ (3+1):          api.test.js (221), certificates.test.js (82),
 
 ---
 
-## 12. Що далі
+## 13. Що далі
 
-- Swagger /api-docs (swagger.js є, треба swagger-ui-express)
-- Clawd Bot: /tasks, /done
-- Авто-задачі (контент, нагадування)
+- Frontend: відображення балів, owner/deadline в задачах
+- Swagger /api-docs
 - Drag-n-drop сортування програм
 - Export PDF/Excel
+- Розширення тригерів Клешні
 
 ---
 

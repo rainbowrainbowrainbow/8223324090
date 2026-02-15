@@ -4,6 +4,56 @@
 
 ---
 
+## v10.0.0 — Tasker & Kleshnya (2026-02-15)
+
+**Tasker — операційний центр:**
+- Централізований задачник з двома типами: `human` (людина) / `bot` (система)
+- Дві ролі: `owner` (менеджер, ескалація) + `assigned_to` (виконавець)
+- Дедлайни, вікна виконання, залежності між задачами
+- `control_policy` (JSONB) — правила нагадувань та ескалації на рівні задачі
+- `source_type` — відстеження джерела задачі (booking, trigger, recurring, kleshnya)
+
+**Клешня (services/kleshnya.js) — центральний інтелект:**
+- Створення задач з логуванням + нотифікацією
+- 4-рівнева ескалація: м'яке → жорсткіше → увага → директор
+- Автоматичне нарахування балів при завершенні задач
+- Персональні Telegram-повідомлення (chat_id) + групові (@mention)
+- Журнал змін (task_logs) з повною історією
+
+**Система балів:**
+- `user_points` — постійні (накопичувальні) + місячні (обнуляються 1-го)
+- `point_transactions` — повна історія нарахувань
+- Правила: вчасно +5/+2, з запасом +7/+3, high priority +10/+5, прострочено -2..-5
+- API: GET /api/points (leaderboard), GET /api/points/:username/history
+
+**Scheduler (3 нові, всього 11):**
+- `checkTaskReminders` — щохвилинна перевірка дедлайнів + ескалація
+- `checkWorkDayTriggers` — тригери початку дня (10:00/12:00), автозадачі піньят/футболок
+- `checkMonthlyPointsReset` — обнулення місячних балів 1-го числа
+
+**Telegram бот (+3 команди, всього 10):**
+- `/tasks` — мої задачі на сьогодні (з визначенням юзера через telegram_username)
+- `/done <id>` — завершити задачу з нарахуванням балів
+- `/alltasks` — всі задачі команди, згруповані по виконавцях
+- Inline-кнопки: `task_confirm`/`task_reject` для підтвердження
+
+**БД (+4 таблиці, +15 колонок):**
+- tasks: +task_type, +owner, +deadline, +time_window_start/end, +dependency_ids, +control_policy, +escalation_level, +source_type, +source_id, +last_reminded_at
+- users: +telegram_chat_id, +telegram_username
+- Нові: task_logs, user_points, point_transactions
+
+**Файли:**
+- `services/kleshnya.js` — новий (центральний процесор)
+- `routes/points.js` — новий (API балів)
+- `services/bot.js` — +3 команди (/tasks, /done, /alltasks)
+- `services/scheduler.js` — +3 scheduler функції
+- `routes/tasks.js` — інтеграція з Клешнею (logs, owner, task_type)
+- `routes/telegram.js` — +task_confirm/reject callbacks, auto-register chat_id
+- `server.js` — +points route, +3 schedulers
+- `db/index.js` — +4 таблиці, +15 колонок, +12 індексів
+
+---
+
 ## v9.1.0 — Live-Sync (2026-02-15)
 
 **WebSocket підключено:**

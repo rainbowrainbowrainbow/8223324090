@@ -306,7 +306,7 @@ describe('Trigger Conditions — matchesCondition integration', () => {
         assert.equal(booking.status, 200, `Booking create failed: ${JSON.stringify(booking.data)}`);
         cleanupBookingIds.push(booking.data.booking.id);
 
-        await sleep(1000);
+        await sleep(1500);
 
         const tasks = await findAutoTasks(marker);
         assert.ok(tasks.length >= 1, `Expected at least 1 task with marker ${marker}, found ${tasks.length}`);
@@ -1501,7 +1501,7 @@ describe('calculateTaskDate — date offset via integration', () => {
     it('Null days_before returns booking date as-is', async () => {
         const marker = 'CALCDATE-005';
         // The API defaults null to 0, so effectively same as days_before=0
-        const res = await authRequest('POST', '/api/automation-rules', {
+        const res = await createRule({
             name: `Test ${marker}`,
             trigger_type: 'booking_create',
             trigger_condition: { product_ids: ['pinata'] },

@@ -13,6 +13,11 @@ const { sendBackupToTelegram } = require('./backup');
 const { formatAfishaBlock } = require('./templates');
 const { createLogger } = require('../utils/logger');
 
+// Lazy require to avoid circular dependency at load time
+function getRecurringService() {
+    return require('./recurring');
+}
+
 const log = createLogger('Scheduler');
 
 // Lazy require to avoid circular dependency (routes/afisha → services/scheduler → routes/afisha)
@@ -25,6 +30,7 @@ let digestSentToday = null;
 let reminderSentToday = null;
 let backupSentToday = null;
 let recurringCreatedToday = null;
+let recurringBookingsCreatedToday = null;
 
 // DB-persistent sent-today helpers (survive restarts)
 async function getLastSent(key) {
@@ -531,6 +537,35 @@ async function checkRecurringAfisha() {
     }
 }
 
+// v11: Auto-generate recurring bookings from templates
+// Runs at 00:07 Kyiv time (after recurring tasks at 00:05, recurring afisha at 00:06)
+async function checkRecurringBookings() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (recurringBookingsCreatedToday === todayStr) return;
+
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '00:07') return;
+
+        const dbLast = await getLastSent('recurring_bookings');
+        if (dbLast === todayStr) { recurringBookingsCreatedToday = todayStr; return; }
+
+        recurringBookingsCreatedToday = todayStr;
+        await setLastSent('recurring_bookings', todayStr);
+
+        const { generateAllRecurringBookings } = getRecurringService();
+        const result = await generateAllRecurringBookings();
+
+        if (result.totalCreated > 0 || result.totalSkipped > 0) {
+            log.info(`Recurring bookings: created=${result.totalCreated}, skipped=${result.totalSkipped}`);
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('RecurringBookings error', err);
+        }
+    }
+}
+
 // v8.4: Auto-expire certificates past valid_until
 let certExpireCheckedToday = '';
 async function checkCertificateExpiry() {
@@ -565,5 +600,5 @@ module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
     checkScheduledDeletions, checkRecurringAfisha, ensureRecurringAfishaForDate,
-    checkCertificateExpiry
+    checkRecurringBookings, checkCertificateExpiry
 };

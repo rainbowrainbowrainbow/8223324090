@@ -210,6 +210,72 @@ async function apiGetStats(dateFrom, dateTo) {
     }
 }
 
+// v9.0: Enhanced stats API (server-side aggregation)
+async function apiGetStatsRevenue(params = {}) {
+    try {
+        const qs = new URLSearchParams();
+        if (params.period) qs.set('period', params.period);
+        if (params.from) qs.set('from', params.from);
+        if (params.to) qs.set('to', params.to);
+        const url = `${API_BASE}/stats/revenue${qs.toString() ? '?' + qs.toString() : ''}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsRevenue error:', err);
+        return null;
+    }
+}
+
+async function apiGetStatsPrograms(params = {}) {
+    try {
+        const qs = new URLSearchParams();
+        if (params.period) qs.set('period', params.period);
+        if (params.from) qs.set('from', params.from);
+        if (params.to) qs.set('to', params.to);
+        if (params.limit) qs.set('limit', params.limit);
+        const url = `${API_BASE}/stats/programs${qs.toString() ? '?' + qs.toString() : ''}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsPrograms error:', err);
+        return null;
+    }
+}
+
+async function apiGetStatsLoad(params = {}) {
+    try {
+        const qs = new URLSearchParams();
+        if (params.period) qs.set('period', params.period);
+        if (params.from) qs.set('from', params.from);
+        if (params.to) qs.set('to', params.to);
+        const url = `${API_BASE}/stats/load${qs.toString() ? '?' + qs.toString() : ''}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsLoad error:', err);
+        return null;
+    }
+}
+
+async function apiGetStatsTrends(period = 'month') {
+    try {
+        const url = `${API_BASE}/stats/trends?period=${encodeURIComponent(period)}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsTrends error:', err);
+        return null;
+    }
+}
+
 async function apiTelegramNotify(text) {
     try {
         const response = await fetch(`${API_BASE}/telegram/notify`, {

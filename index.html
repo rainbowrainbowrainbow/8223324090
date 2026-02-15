@@ -14,17 +14,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=11.0.3">
-    <link rel="stylesheet" href="css/auth.css?v=11.0.3">
-    <link rel="stylesheet" href="css/layout.css?v=11.0.3">
-    <link rel="stylesheet" href="css/timeline.css?v=11.0.3">
-    <link rel="stylesheet" href="css/panel.css?v=11.0.3">
-    <link rel="stylesheet" href="css/modals.css?v=11.0.3">
-    <link rel="stylesheet" href="css/controls.css?v=11.0.3">
-    <link rel="stylesheet" href="css/features.css?v=11.0.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=11.0.3">
-    <link rel="stylesheet" href="css/responsive.css?v=11.0.3">
-    <link rel="stylesheet" href="css/pages.css?v=11.0.3">
+    <link rel="stylesheet" href="css/base.css?v=11.0.4">
+    <link rel="stylesheet" href="css/auth.css?v=11.0.4">
+    <link rel="stylesheet" href="css/layout.css?v=11.0.4">
+    <link rel="stylesheet" href="css/timeline.css?v=11.0.4">
+    <link rel="stylesheet" href="css/panel.css?v=11.0.4">
+    <link rel="stylesheet" href="css/modals.css?v=11.0.4">
+    <link rel="stylesheet" href="css/controls.css?v=11.0.4">
+    <link rel="stylesheet" href="css/features.css?v=11.0.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=11.0.4">
+    <link rel="stylesheet" href="css/responsive.css?v=11.0.4">
+    <link rel="stylesheet" href="css/pages.css?v=11.0.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -41,9 +41,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v11.0.3 — Голографічний Термінал</p>
+                <p class="tagline">Система бронювання v11.0.4 — Клешня без пафосу</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v11.0.3</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v11.0.4</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -187,7 +187,7 @@
                             <span id="kleshnyaAnswerText" class="kleshnya-answer-text"></span>
                         </div>
                         <div class="kleshnya-divider">
-                            <span class="kleshnya-divider-text">МОДУЛІ ЗАПИТІВ</span>
+                            <span class="kleshnya-divider-text">ШВИДКІ ЗАПИТИ</span>
                         </div>
                         <div id="kleshnyaQuestions" class="kleshnya-questions">
                             <button type="button" class="kleshnya-q-btn" data-topic="bookings">
@@ -196,7 +196,7 @@
                             </button>
                             <button type="button" class="kleshnya-q-btn" data-topic="tasks">
                                 <span class="kleshnya-q-icon">◈</span>
-                                <span class="kleshnya-q-label">Місії</span>
+                                <span class="kleshnya-q-label">Задачі</span>
                             </button>
                             <button type="button" class="kleshnya-q-btn" data-topic="streak">
                                 <span class="kleshnya-q-icon">◈</span>
@@ -204,13 +204,13 @@
                             </button>
                             <button type="button" class="kleshnya-q-btn" data-topic="animators">
                                 <span class="kleshnya-q-icon">◈</span>
-                                <span class="kleshnya-q-label">Оперативники</span>
+                                <span class="kleshnya-q-label">Аніматори</span>
                             </button>
                         </div>
                     </div>
                     <div class="kleshnya-popup-footer">
                         <a href="/kleshnya" class="kleshnya-goto-chat">
-                            <span class="kleshnya-chat-icon">⬡</span> Повний термінал →
+                            <span class="kleshnya-chat-icon">⬡</span> Відкрити чат →
                         </a>
                     </div>
                 </div>
@@ -966,6 +966,15 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v11.0.4 — Клешня без пафосу</h4>
+                    <ul>
+                        <li>💬 Привітання переписані — жива українська замість "сканування завершено"</li>
+                        <li>🦀 Відповіді на питання — просто та корисно, без "місій" та "оперативників"</li>
+                        <li>🏷️ Кнопки: Задачі (замість Місії), Аніматори (замість Оперативники)</li>
+                        <li>📌 Футуристичний візуал залишився, але тексти тепер дружні</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v11.0.3 — Голографічний Термінал</h4>
                     <ul>
@@ -2294,21 +2303,21 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=11.0.3"></script>
-    <script src="js/api.js?v=11.0.3"></script>
-    <script src="js/ui.js?v=11.0.3"></script>
-    <script src="js/auth.js?v=11.0.3"></script>
-    <script src="js/timeline.js?v=11.0.3"></script>
-    <script src="js/booking.js?v=11.0.3"></script>
-    <script src="js/settings.js?v=11.0.3"></script>
-    <script src="js/booking-form.js?v=11.0.3"></script>
-    <script src="js/booking-linked.js?v=11.0.3"></script>
-    <script src="js/settings-dashboard.js?v=11.0.3"></script>
-    <script src="js/settings-history.js?v=11.0.3"></script>
-    <script src="js/settings-afisha.js?v=11.0.3"></script>
-    <script src="js/settings-certificates.js?v=11.0.3"></script>
-    <script src="js/offline.js?v=11.0.3"></script>
-    <script src="js/ws.js?v=11.0.3"></script>
-    <script src="js/app.js?v=11.0.3"></script>
+    <script src="js/config.js?v=11.0.4"></script>
+    <script src="js/api.js?v=11.0.4"></script>
+    <script src="js/ui.js?v=11.0.4"></script>
+    <script src="js/auth.js?v=11.0.4"></script>
+    <script src="js/timeline.js?v=11.0.4"></script>
+    <script src="js/booking.js?v=11.0.4"></script>
+    <script src="js/settings.js?v=11.0.4"></script>
+    <script src="js/booking-form.js?v=11.0.4"></script>
+    <script src="js/booking-linked.js?v=11.0.4"></script>
+    <script src="js/settings-dashboard.js?v=11.0.4"></script>
+    <script src="js/settings-history.js?v=11.0.4"></script>
+    <script src="js/settings-afisha.js?v=11.0.4"></script>
+    <script src="js/settings-certificates.js?v=11.0.4"></script>
+    <script src="js/offline.js?v=11.0.4"></script>
+    <script src="js/ws.js?v=11.0.4"></script>
+    <script src="js/app.js?v=11.0.4"></script>
 </body>
 </html>

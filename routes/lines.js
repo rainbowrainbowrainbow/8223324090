@@ -4,6 +4,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { validateDate, ensureDefaultLines } = require('../services/booking');
+const { broadcast } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Lines');
@@ -49,6 +50,10 @@ router.post('/:date', async (req, res) => {
         }
 
         await client.query('COMMIT');
+
+        // WebSocket: notify other clients about line changes
+        broadcast('line:updated', { date, lines }, req.user?.id?.toString(), date);
+
         res.json({ success: true });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});

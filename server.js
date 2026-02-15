@@ -18,6 +18,7 @@ const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry } = require('./services/scheduler');
 const { createLogger } = require('./utils/logger');
 const { validateEnv } = require('./utils/validateEnv');
+const { initWebSocket, getWSS } = require('./services/websocket');
 
 const log = createLogger('Server');
 
@@ -157,6 +158,9 @@ initDatabase().catch(err => {
         schedulerIntervals.push(setInterval(checkScheduledDeletions, 60000));
         schedulerIntervals.push(setInterval(checkCertificateExpiry, 60000));
         log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry (every 60s)');
+
+        // WebSocket: attach to HTTP server for live-sync
+        initWebSocket(server);
     });
 });
 
@@ -186,7 +190,14 @@ async function gracefulShutdown(signal) {
     }
     log.info(`${schedulerIntervals.length} scheduler interval(s) cleared`);
 
-    // 3. Close DB pool (waits for active queries to finish)
+    // 3. Close WebSocket server
+    const wss = getWSS();
+    if (wss) {
+        wss.close();
+        log.info('WebSocket server closed');
+    }
+
+    // 4. Close DB pool (waits for active queries to finish)
     try {
         await pool.end();
         log.info('Database pool closed');

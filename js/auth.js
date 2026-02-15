@@ -41,6 +41,9 @@ async function login(username, password) {
 }
 
 function logout() {
+    // v9.1: Disconnect WebSocket on logout
+    if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
+
     AppState.currentUser = null;
     localStorage.removeItem('pzp_token');
     localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
@@ -139,6 +142,9 @@ function showMainApp() {
     initializeTimeline();
     renderProgramIcons();
     setupSwipe();
+
+    // v9.1: Connect WebSocket for live-sync
+    if (typeof ParkWS !== 'undefined') ParkWS.connect();
 
     // v8.0: Show improvement suggestion FAB
     if (typeof showImprovementFab === 'function') showImprovementFab();

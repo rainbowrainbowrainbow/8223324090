@@ -14,17 +14,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=10.2.0">
-    <link rel="stylesheet" href="css/auth.css?v=10.2.0">
-    <link rel="stylesheet" href="css/layout.css?v=10.2.0">
-    <link rel="stylesheet" href="css/timeline.css?v=10.2.0">
-    <link rel="stylesheet" href="css/panel.css?v=10.2.0">
-    <link rel="stylesheet" href="css/modals.css?v=10.2.0">
-    <link rel="stylesheet" href="css/controls.css?v=10.2.0">
-    <link rel="stylesheet" href="css/features.css?v=10.2.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=10.2.0">
-    <link rel="stylesheet" href="css/responsive.css?v=10.2.0">
-    <link rel="stylesheet" href="css/pages.css?v=10.2.0">
+    <link rel="stylesheet" href="css/base.css?v=10.3.0">
+    <link rel="stylesheet" href="css/auth.css?v=10.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=10.3.0">
+    <link rel="stylesheet" href="css/timeline.css?v=10.3.0">
+    <link rel="stylesheet" href="css/panel.css?v=10.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=10.3.0">
+    <link rel="stylesheet" href="css/controls.css?v=10.3.0">
+    <link rel="stylesheet" href="css/features.css?v=10.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=10.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=10.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=10.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -41,9 +41,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v10.2.0 — Hardened</p>
+                <p class="tagline">Система бронювання v10.3.0 — Особистий кабінет</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v10.2.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v10.3.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -77,7 +77,7 @@
                     <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
                 </nav>
                 <div class="user-panel">
-                    <span id="currentUser" class="user-name"></span>
+                    <span id="currentUser" class="user-name user-name-clickable" role="button" tabindex="0" title="Особистий кабінет"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
@@ -889,6 +889,17 @@
         </div>
     </div>
 
+    <!-- v10.3: Особистий кабінет -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Сповіщення -->
     <!-- Модальне вікно Changelog -->
     <div id="changelogModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Що нового">
@@ -897,14 +908,11 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v10.2.0 — Hardened</h4>
+                    <h4>v10.3.0 — Особистий кабінет</h4>
                     <ul>
-                        <li>🔒 RBAC: задачі та бали обмежені ролями (admin/user/viewer)</li>
-                        <li>🛡️ Безпека: parseInt валідація, приховані DB помилки, type whitelist</li>
-                        <li>🗄️ Цілісність: unique indexes для recurring дедуплікації, optimistic locking</li>
-                        <li>⚡ Atomic dedup: INSERT ON CONFLICT замість SELECT→INSERT (race condition fix)</li>
-                        <li>📡 Graceful shutdown: drain Telegram запитів перед закриттям</li>
-                        <li>📝 Logging: всі silent catch блоки тепер логують помилки</li>
+                        <li>👤 Клік по імені — персональний кабінет з усією інформацією</li>
+                        <li>📊 Статистика: бронювання, задачі, бали, остання активність</li>
+                        <li>🔒 v10.0.1–10.2.0: RBAC, atomic dedup, optimistic locking, graceful shutdown</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -2164,21 +2172,21 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=10.2.0"></script>
-    <script src="js/api.js?v=10.2.0"></script>
-    <script src="js/ui.js?v=10.2.0"></script>
-    <script src="js/auth.js?v=10.2.0"></script>
-    <script src="js/timeline.js?v=10.2.0"></script>
-    <script src="js/booking.js?v=10.2.0"></script>
-    <script src="js/settings.js?v=10.2.0"></script>
-    <script src="js/booking-form.js?v=10.2.0"></script>
-    <script src="js/booking-linked.js?v=10.2.0"></script>
-    <script src="js/settings-dashboard.js?v=10.2.0"></script>
-    <script src="js/settings-history.js?v=10.2.0"></script>
-    <script src="js/settings-afisha.js?v=10.2.0"></script>
-    <script src="js/settings-certificates.js?v=10.2.0"></script>
-    <script src="js/offline.js?v=10.2.0"></script>
-    <script src="js/ws.js?v=10.2.0"></script>
-    <script src="js/app.js?v=10.2.0"></script>
+    <script src="js/config.js?v=10.3.0"></script>
+    <script src="js/api.js?v=10.3.0"></script>
+    <script src="js/ui.js?v=10.3.0"></script>
+    <script src="js/auth.js?v=10.3.0"></script>
+    <script src="js/timeline.js?v=10.3.0"></script>
+    <script src="js/booking.js?v=10.3.0"></script>
+    <script src="js/settings.js?v=10.3.0"></script>
+    <script src="js/booking-form.js?v=10.3.0"></script>
+    <script src="js/booking-linked.js?v=10.3.0"></script>
+    <script src="js/settings-dashboard.js?v=10.3.0"></script>
+    <script src="js/settings-history.js?v=10.3.0"></script>
+    <script src="js/settings-afisha.js?v=10.3.0"></script>
+    <script src="js/settings-certificates.js?v=10.3.0"></script>
+    <script src="js/offline.js?v=10.3.0"></script>
+    <script src="js/ws.js?v=10.3.0"></script>
+    <script src="js/app.js?v=10.3.0"></script>
 </body>
 </html>

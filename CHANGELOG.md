@@ -4,6 +4,15 @@
 
 ---
 
+## v10.2.0 — Reliability (2026-02-15)
+
+- **Logging:** замінені всі `/* non-blocking */` catch блоки на log.warn з context (scheduler, afisha)
+- **ROLLBACK safety:** distributeAfishaForDate — ROLLBACK з .catch() і логуванням помилки
+- **Graceful shutdown:** drain in-flight Telegram запитів перед закриттям DB pool (drainTelegramRequests)
+- **Body limit:** /api/backup/restore збільшений до 50mb (великі SQL дампи)
+
+---
+
 ## v10.1.0 — Data Integrity (2026-02-15)
 
 - **Migration 004:** unique partial indexes для дедуплікації recurring bookings, tasks, afisha (template_id + date)

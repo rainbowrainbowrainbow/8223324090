@@ -56,7 +56,7 @@ async function buildAndSendDigest(date) {
     }
 
     // v8.1: Ensure recurring afisha templates applied before building digest
-    try { await ensureRecurringAfishaForDate(date); } catch (e) { /* non-blocking */ }
+    try { await ensureRecurringAfishaForDate(date); } catch (e) { log.warn(`Recurring afisha setup failed for ${date}`, e.message); }
 
     // Auto-distribute afisha events to animators before building digest
     try { await getDistributeAfisha()(date); } catch (e) { log.warn('Auto-distribute before digest skipped', e.message); }
@@ -185,7 +185,7 @@ async function sendTomorrowReminder(todayStr) {
         if (!chatId) return { success: false, reason: 'no_chat_id' };
 
         // v8.1: Ensure recurring afisha for tomorrow
-        try { await ensureRecurringAfishaForDate(tomorrowStr); } catch (e) { /* non-blocking */ }
+        try { await ensureRecurringAfishaForDate(tomorrowStr); } catch (e) { log.warn(`Recurring afisha setup failed for ${tomorrowStr}`, e.message); }
         // Auto-distribute afisha events to animators before reminder
         try { await getDistributeAfisha()(tomorrowStr); } catch (e) { log.warn('Auto-distribute before reminder skipped', e.message); }
         // Re-fetch after ensuring recurring + distribution

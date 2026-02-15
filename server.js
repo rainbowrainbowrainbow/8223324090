@@ -14,7 +14,7 @@ const { authenticateToken } = require('./middleware/auth');
 const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
-const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID } = require('./services/telegram');
+const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount } = require('./services/telegram');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset } = require('./services/scheduler');
 const { createLogger } = require('./utils/logger');
 const { validateEnv } = require('./utils/validateEnv');
@@ -77,6 +77,7 @@ app.use('/api/lines', require('./routes/lines'));
 app.use('/api/history', require('./routes/history'));
 app.use('/api/afisha', require('./routes/afisha'));
 app.use('/api/telegram', require('./routes/telegram'));
+app.use('/api/backup/restore', express.json({ limit: '50mb' }));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/tasks', require('./routes/tasks'));
@@ -202,7 +203,19 @@ async function gracefulShutdown(signal) {
         log.info('WebSocket server closed');
     }
 
-    // 4. Close DB pool (waits for active queries to finish)
+    // 4. Drain in-flight Telegram requests before closing DB
+    const inFlight = getInFlightCount();
+    if (inFlight > 0) {
+        try {
+            log.info(`Draining ${inFlight} in-flight Telegram request(s)...`);
+            await drainTelegramRequests(5000);
+            log.info('Telegram requests drained');
+        } catch (e) {
+            log.warn(`Telegram drain timeout: ${e.message}`);
+        }
+    }
+
+    // 5. Close DB pool (waits for active queries to finish)
     try {
         await pool.end();
         log.info('Database pool closed');

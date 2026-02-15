@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Задачі — Парк Закревського Періоду</title>
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=9.1.0">
-    <link rel="stylesheet" href="css/layout.css?v=9.1.0">
-    <link rel="stylesheet" href="css/pages.css?v=9.1.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=9.1.0">
-    <link rel="stylesheet" href="css/responsive.css?v=9.1.0">
+    <link rel="stylesheet" href="css/base.css?v=10.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=10.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=10.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=10.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=10.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -130,6 +130,47 @@
         /* Empty state */
         .empty-state { text-align: center; padding: 40px 20px; color: var(--gray-400); font-size: 14px; }
         .empty-state span { font-size: 40px; display: block; margin-bottom: 12px; }
+
+        /* v10.0: Task type badges */
+        .badge-type {
+            display: inline-block; padding: 1px 6px; border-radius: 4px;
+            font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .badge-human { background: #E3F2FD; color: #1565C0; }
+        .badge-bot { background: #F3E5F5; color: #7B1FA2; }
+        .task-card-deadline {
+            font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px;
+        }
+        .deadline-ok { background: #E8F5E9; color: #2E7D32; }
+        .deadline-soon { background: #FFF3E0; color: #E65100; }
+        .deadline-overdue { background: #FFEBEE; color: #C62828; }
+        .task-card-owner { font-size: 10px; color: var(--gray-400); }
+
+        /* v10.0: Points bar */
+        .points-bar {
+            display: flex; gap: 12px; align-items: center; margin-bottom: 16px;
+            background: rgba(255,255,255,0.3); backdrop-filter: blur(10px);
+            padding: 8px 14px; border-radius: 12px; font-size: 13px;
+        }
+        .points-bar .points-label { font-weight: 800; color: var(--gray-600); }
+        .points-bar .points-value {
+            font-weight: 900; font-size: 16px; padding: 2px 10px;
+            border-radius: 8px; min-width: 32px; text-align: center;
+        }
+        .points-permanent { background: #FFF8E1; color: #F57F17; }
+        .points-monthly { background: #E8F5E9; color: #2E7D32; }
+        .points-bar .points-sep { color: var(--gray-300); }
+
+        /* Escalation indicator */
+        .escalation-dot {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+            margin-right: 2px; vertical-align: middle;
+        }
+        .escalation-0 { background: transparent; }
+        .escalation-1 { background: #FFC107; }
+        .escalation-2 { background: #FF9800; }
+        .escalation-3 { background: #F44336; animation: pulse 1s infinite; }
+        @keyframes pulse { 50% { opacity: 0.4; } }
     </style>
 </head>
 <body>
@@ -161,6 +202,14 @@
         </header>
 
         <main id="main-content" class="page-container">
+            <!-- v10.0: Points bar -->
+            <div class="points-bar" id="pointsBar" style="display:none">
+                <span class="points-label">🦀 Бали:</span>
+                <span class="points-value points-permanent" id="pointsPermanent" title="Постійні (накопичувальні)">0</span>
+                <span class="points-sep">/</span>
+                <span class="points-value points-monthly" id="pointsMonthly" title="Місячні (обнуляються 1-го)">0</span>
+            </div>
+
             <!-- Board view tabs -->
             <div class="board-tabs" id="boardTabs">
                 <button class="board-tab active" data-view="today">📅 Сьогодні <span class="tab-count" id="countToday">0</span></button>
@@ -197,6 +246,11 @@
                     <option value="high">🔴 Високий</option>
                     <option value="low">🔵 Низький</option>
                 </select>
+                <select id="taskType" title="Тип задачі">
+                    <option value="human">👤 Human</option>
+                    <option value="bot">🤖 Bot</option>
+                </select>
+                <input type="time" id="taskDeadlineTime" title="Дедлайн (час)" style="width:100px">
                 <button id="addTaskBtn">+ Додати</button>
             </div>
 
@@ -237,9 +291,9 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=9.1.0"></script>
-    <script src="js/api.js?v=9.1.0"></script>
-    <script src="js/auth.js?v=9.1.0"></script>
-    <script src="js/tasks-page.js?v=9.1.0"></script>
+    <script src="js/config.js?v=10.0.0"></script>
+    <script src="js/api.js?v=10.0.0"></script>
+    <script src="js/auth.js?v=10.0.0"></script>
+    <script src="js/tasks-page.js?v=10.0.0"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 /**
- * tasks-page.js — Task Board v7.9
+ * tasks-page.js — Task Board v10.0 (Tasker + Kleshnya)
  * Views: Today, Week, My Tasks, Kanban, Templates
- * Categories: event, purchase, admin, trampoline, personal
+ * Features: task_type (human/bot), owner, deadline, points, escalation
  */
 
 // ==========================================
@@ -152,6 +152,7 @@ async function initPage() {
     });
 
     await loadAllTasks();
+    await loadMyPoints();
 }
 
 // ==========================================
@@ -221,6 +222,16 @@ async function apiCreateTemplate(data) {
     } catch (err) { console.error('API createTemplate error:', err); return null; }
 }
 
+// v10.0: Points API
+async function apiGetMyPoints(username) {
+    try {
+        const response = await fetch(`${API_BASE}/points/${encodeURIComponent(username)}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) { console.error('API getMyPoints error:', err); return null; }
+}
+
 async function apiDeleteTemplate(id) {
     try {
         const response = await fetch(`${API_BASE}/task-templates/${id}`, {
@@ -239,6 +250,19 @@ async function loadAllTasks() {
     allTasks = await apiGetTasks();
     updateCounts();
     renderBoard();
+}
+
+// v10.0: Load user points
+async function loadMyPoints() {
+    const username = AppState.currentUser?.username;
+    if (!username) return;
+    const points = await apiGetMyPoints(username);
+    const bar = document.getElementById('pointsBar');
+    if (points && bar) {
+        document.getElementById('pointsPermanent').textContent = points.permanent_points || 0;
+        document.getElementById('pointsMonthly').textContent = points.monthly_points || 0;
+        bar.style.display = '';
+    }
 }
 
 function filterByCategory(tasks) {
@@ -403,13 +427,41 @@ function renderTaskCard(t) {
     const btnClass = nextStatus === 'done' ? 'btn-done' :
                      nextStatus === 'in_progress' ? 'btn-progress' : '';
 
+    // v10.0: Task type badge
+    const taskType = t.task_type || 'human';
+    const typeBadge = `<span class="badge-type badge-${taskType}">${taskType === 'bot' ? '🤖 BOT' : '👤 HUMAN'}</span>`;
+
+    // v10.0: Deadline display
+    let deadlineHtml = '';
+    if (t.deadline) {
+        const dl = new Date(t.deadline);
+        const now = new Date();
+        const diffMin = (dl - now) / (1000 * 60);
+        let dlClass = 'deadline-ok';
+        if (diffMin < 0) dlClass = 'deadline-overdue';
+        else if (diffMin < 60) dlClass = 'deadline-soon';
+        const dlTime = dl.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
+        const dlDate = dl.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit' });
+        deadlineHtml = `<span class="task-card-deadline ${dlClass}">⏰ ${dlDate} ${dlTime}</span>`;
+    }
+
+    // v10.0: Escalation indicator
+    const escLevel = t.escalation_level || 0;
+    const escHtml = escLevel > 0 ? `<span class="escalation-dot escalation-${escLevel}" title="Ескалація: рівень ${escLevel}"></span>` : '';
+
+    // v10.0: Owner line
+    const ownerHtml = (t.owner && t.owner !== t.assigned_to) ? `<span class="task-card-owner">👔 ${escapeHtml(t.owner)}</span>` : '';
+
     return `
     <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''}">
-        <div class="task-card-title">${priorityIcon ? priorityIcon + ' ' : ''}${escapeHtml(t.title)}</div>
+        <div class="task-card-title">${escHtml}${priorityIcon ? priorityIcon + ' ' : ''}${escapeHtml(t.title)}</div>
         <div class="task-card-meta">
+            ${typeBadge}
             <span>${catInfo.icon} ${catInfo.label}</span>
             ${t.date ? `<span>📅 ${formatDateShort(t.date)}</span>` : ''}
+            ${deadlineHtml}
             ${t.assigned_to ? `<span>👤 ${escapeHtml(t.assigned_to)}</span>` : ''}
+            ${ownerHtml}
             ${t.type === 'recurring' ? '<span>🔄</span>' : ''}
             ${t.type === 'afisha' ? '<span>🎭</span>' : ''}
         </div>
@@ -433,11 +485,21 @@ async function addTask() {
 
     const category = document.getElementById('taskCategory').value;
     const priority = document.getElementById('taskPriority').value;
+    const taskType = document.getElementById('taskType')?.value || 'human';
+    const deadlineTime = document.getElementById('taskDeadlineTime')?.value || '';
     const today = getTodayStr();
 
-    const result = await apiCreateTask({ title, date: today, priority, category, type: 'manual' });
+    const data = { title, date: today, priority, category, task_type: taskType, source_type: 'manual' };
+
+    // Build deadline if time specified
+    if (deadlineTime) {
+        data.deadline = `${today}T${deadlineTime}:00`;
+    }
+
+    const result = await apiCreateTask(data);
     if (result && result.success) {
         document.getElementById('taskTitle').value = '';
+        if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime').value = '';
         showNotification('Задачу додано', 'success');
         await loadAllTasks();
     } else {
@@ -453,6 +515,8 @@ async function cycleStatus(taskId, newStatus) {
         if (task) task.status = newStatus;
         updateCounts();
         renderBoard();
+        // v10.0: Reload points if task completed (Kleshnya awards points)
+        if (newStatus === 'done') loadMyPoints();
     } else {
         showNotification('Помилка зміни статусу', 'error');
     }

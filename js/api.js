@@ -484,6 +484,66 @@ async function apiChangePassword(currentPassword, newPassword) {
     }
 }
 
+// v10.6: Quick task status from profile
+async function apiQuickTaskStatus(taskId, status) {
+    try {
+        const response = await fetch(`${API_BASE}/auth/tasks/${taskId}/quick-status`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ status })
+        });
+        if (handleAuthError(response)) return { success: false };
+        const data = await response.json();
+        if (!response.ok) return { success: false, error: data.error || 'API error' };
+        return { success: true, ...data };
+    } catch (err) {
+        console.error('API quickTaskStatus error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+// v10.6: Log user UI action
+async function apiLogAction(action, target, meta) {
+    try {
+        fetch(`${API_BASE}/auth/log-action`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ action, target, meta })
+        }); // fire-and-forget
+    } catch { /* ignore */ }
+}
+
+// v10.6: Get achievements definitions
+async function apiGetAchievements() {
+    try {
+        const response = await fetch(`${API_BASE}/auth/achievements`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return {};
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getAchievements error:', err);
+        return {};
+    }
+}
+
+// v10.6: Get user action log
+async function apiGetActionLog(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.user) params.set('user', filters.user);
+        if (filters.limit) params.set('limit', filters.limit);
+        if (filters.offset) params.set('offset', filters.offset);
+        const qs = params.toString();
+        const response = await fetch(`${API_BASE}/auth/action-log${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { items: [], total: 0 };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getActionLog error:', err);
+        return { items: [], total: 0 };
+    }
+}
+
 // v10.4: Profile activity with pagination
 async function apiGetProfileActivity(filters = {}) {
     try {

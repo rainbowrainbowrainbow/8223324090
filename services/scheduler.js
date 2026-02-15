@@ -402,18 +402,15 @@ async function checkRecurringTasks() {
 
             if (!shouldCreate) continue;
 
-            // Dedup: skip if task with this template_id already exists for today
-            const existing = await pool.query(
-                'SELECT id FROM tasks WHERE template_id = $1 AND date = $2',
-                [tpl.id, todayStr]
-            );
-            if (existing.rows.length > 0) continue;
-
-            await pool.query(
+            // Atomic dedup: INSERT ON CONFLICT prevents race conditions
+            const insertResult = await pool.query(
                 `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, template_id, category)
-                 VALUES ($1, $2, $3, $4, $5, 'system', 'recurring', $6, $7)`,
+                 VALUES ($1, $2, $3, $4, $5, 'system', 'recurring', $6, $7)
+                 ON CONFLICT (template_id, date) WHERE template_id IS NOT NULL DO NOTHING
+                 RETURNING id`,
                 [tpl.title, tpl.description, todayStr, tpl.priority, tpl.assigned_to, tpl.id, tpl.category || 'admin']
             );
+            if (insertResult.rows.length === 0) continue;
             created++;
         }
 
@@ -495,18 +492,15 @@ async function ensureRecurringAfishaForDate(dateStr) {
         }
         if (!shouldCreate) continue;
 
-        const existing = await pool.query(
-            'SELECT id FROM afisha WHERE template_id = $1 AND date = $2',
-            [tpl.id, dateStr]
-        );
-        if (existing.rows.length > 0) continue;
-
-        await pool.query(
+        // Atomic dedup: INSERT ON CONFLICT prevents race conditions
+        const insertResult = await pool.query(
             `INSERT INTO afisha (date, time, title, duration, type, description, template_id, original_time)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (template_id, date) WHERE template_id IS NOT NULL DO NOTHING
+             RETURNING id`,
             [dateStr, tpl.time, tpl.title, tpl.duration, tpl.type, tpl.description, tpl.id, tpl.time]
         );
-        created++;
+        if (insertResult.rows.length > 0) created++;
     }
     return created;
 }

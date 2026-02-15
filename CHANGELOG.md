@@ -4,6 +4,16 @@
 
 ---
 
+## v10.1.0 — Data Integrity (2026-02-15)
+
+- **Migration 004:** unique partial indexes для дедуплікації recurring bookings, tasks, afisha (template_id + date)
+- **Migration 004:** додані відсутні індекси: bookings(status), tasks(assigned_to), tasks(assigned_to, date)
+- **Atomic dedup:** scheduler recurring tasks і afisha використовують INSERT ON CONFLICT замість SELECT → INSERT (race condition fix)
+- **Optimistic locking:** updateTaskStatus перевіряє version column перед UPDATE (захист від конкурентних змін)
+- **DB:** додана колонка `tasks.version` (INTEGER DEFAULT 1) для optimistic locking
+
+---
+
 ## v10.0.1 — Security Hotfix (2026-02-15)
 
 - **RBAC:** tasks write-операції (POST/PUT/PATCH/DELETE) обмежені ролями admin/user, viewer = read-only

@@ -228,6 +228,9 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
         if (err.message === 'Task not found') {
             return res.status(404).json({ error: 'Task not found' });
         }
+        if (err.message.startsWith('Conflict:')) {
+            return res.status(409).json({ error: err.message });
+        }
         log.error('Status change error', err);
         res.status(500).json({ error: 'Internal server error' });
     }

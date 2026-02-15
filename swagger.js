@@ -15,7 +15,7 @@ const swaggerSpec = {
   openapi: '3.0.0',
   info: {
     title: 'Парк Закревського Періоду — Booking API',
-    version: '8.6.1',
+    version: '11.0.0',
     description: 'REST API для системи бронювання дитячого розважального парку. Усі дати зберігаються в UTC, відображаються у Europe/Kyiv (UTC+2/+3). Валюта: UAH (₴). Номери бронювань: BK-YYYY-NNNN.'
   },
   servers: [
@@ -479,6 +479,159 @@ const swaggerSpec = {
         }
       },
 
+      // --- Points (v10.0) ---
+      UserPoints: {
+        type: 'object',
+        properties: {
+          username: { type: 'string' },
+          permanentPoints: { type: 'integer', description: 'Cumulative permanent points' },
+          monthlyPoints: { type: 'integer', description: 'Monthly points (reset 1st of month)' },
+          month: { type: 'string', example: '2026-02' }
+        }
+      },
+      PointTransaction: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          username: { type: 'string' },
+          points: { type: 'integer' },
+          type: { type: 'string', enum: ['permanent', 'monthly'] },
+          reason: { type: 'string', example: 'ON_TIME' },
+          taskId: { type: 'integer', nullable: true },
+          taskTitle: { type: 'string', nullable: true },
+          createdAt: { type: 'string', format: 'date-time' }
+        }
+      },
+
+      // --- Kleshnya (v11.0) ---
+      KleshnyaGreeting: {
+        type: 'object',
+        properties: {
+          greeting: { type: 'string', description: 'Personalized daily greeting text' },
+          cached: { type: 'boolean', description: 'Whether response was from cache' },
+          source: { type: 'string', enum: ['template', 'cache'] }
+        }
+      },
+      KleshnyaChatMessage: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          username: { type: 'string' },
+          role: { type: 'string', enum: ['user', 'assistant'] },
+          message: { type: 'string' },
+          createdAt: { type: 'string', format: 'date-time' }
+        }
+      },
+      KleshnyaChatResponse: {
+        type: 'object',
+        properties: {
+          role: { type: 'string', example: 'assistant' },
+          message: { type: 'string' },
+          id: { type: 'integer' },
+          created_at: { type: 'string', format: 'date-time' },
+          source: { type: 'string', example: 'template' }
+        }
+      },
+
+      // --- Recurring Bookings (v9.0) ---
+      RecurringTemplate: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          pattern: { type: 'string', enum: ['weekly', 'biweekly', 'monthly', 'custom', 'weekdays', 'weekends'] },
+          daysOfWeek: { type: 'array', items: { type: 'integer' }, nullable: true },
+          intervalWeeks: { type: 'integer', default: 1 },
+          startDate: { type: 'string', format: 'date' },
+          endDate: { type: 'string', format: 'date', nullable: true },
+          timeStart: { type: 'string', example: '12:00' },
+          timeEnd: { type: 'string', example: '13:00' },
+          productId: { type: 'string' },
+          productName: { type: 'string' },
+          category: { type: 'string' },
+          duration: { type: 'integer' },
+          price: { type: 'number', nullable: true },
+          room: { type: 'string', nullable: true },
+          status: { type: 'string', enum: ['confirmed', 'preliminary'] },
+          isActive: { type: 'boolean' },
+          instanceCount: { type: 'integer' },
+          skipCount: { type: 'integer' },
+          nextDate: { type: 'string', format: 'date', nullable: true }
+        }
+      },
+      RecurringTemplateCreate: {
+        type: 'object',
+        required: ['pattern', 'startDate', 'timeStart', 'productId'],
+        properties: {
+          pattern: { type: 'string', enum: ['weekly', 'biweekly', 'monthly', 'custom', 'weekdays', 'weekends'] },
+          daysOfWeek: { type: 'array', items: { type: 'integer' } },
+          startDate: { type: 'string', format: 'date' },
+          endDate: { type: 'string', format: 'date' },
+          timeStart: { type: 'string', example: '12:00' },
+          productId: { type: 'string' },
+          productCode: { type: 'string' },
+          productLabel: { type: 'string' },
+          productName: { type: 'string' },
+          category: { type: 'string' },
+          duration: { type: 'integer', default: 60 },
+          price: { type: 'number' },
+          hosts: { type: 'integer', default: 1 },
+          room: { type: 'string' },
+          status: { type: 'string', enum: ['confirmed', 'preliminary'], default: 'preliminary' },
+          notes: { type: 'string' },
+          extraData: { type: 'object' }
+        }
+      },
+      RecurringSkip: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          templateId: { type: 'integer' },
+          date: { type: 'string', format: 'date' },
+          reason: { type: 'string' },
+          note: { type: 'string', nullable: true }
+        }
+      },
+
+      // --- Stats (v10.4) ---
+      StatsRevenue: {
+        type: 'object',
+        properties: {
+          period: { type: 'object', properties: { from: { type: 'string', format: 'date' }, to: { type: 'string', format: 'date' } } },
+          totals: {
+            type: 'object',
+            properties: {
+              revenue: { type: 'integer' },
+              confirmedRevenue: { type: 'integer' },
+              count: { type: 'integer' },
+              average: { type: 'integer' },
+              confirmedCount: { type: 'integer' },
+              preliminaryCount: { type: 'integer' }
+            }
+          },
+          comparison: {
+            type: 'object',
+            properties: {
+              prevRevenue: { type: 'integer' },
+              revenueGrowth: { type: 'number', description: 'Growth % vs previous period' }
+            }
+          },
+          daily: { type: 'array', items: { type: 'object', properties: { date: { type: 'string' }, revenue: { type: 'integer' }, count: { type: 'integer' } } } }
+        }
+      },
+
+      // --- Profile (v10.3–v11.0) ---
+      UserProfile: {
+        type: 'object',
+        properties: {
+          user: { type: 'object', properties: { username: { type: 'string' }, role: { type: 'string' }, name: { type: 'string' } } },
+          points: { $ref: '#/components/schemas/UserPoints' },
+          bookings: { type: 'object', description: 'Booking statistics for user' },
+          tasks: { type: 'object', description: 'Task statistics for user' },
+          achievements: { type: 'array', items: { type: 'object' } },
+          streak: { type: 'object', properties: { currentStreak: { type: 'integer' }, longestStreak: { type: 'integer' } } }
+        }
+      },
+
       // --- Common ---
       ErrorResponse: {
         type: 'object',
@@ -525,6 +678,87 @@ const swaggerSpec = {
         responses: {
           200: { description: 'Token valid', content: { 'application/json': { schema: { $ref: '#/components/schemas/UserInfo' } } } },
           401: { description: 'Invalid or expired token' }
+        }
+      }
+    },
+    '/auth/profile': {
+      get: {
+        tags: ['Auth'],
+        summary: 'Get user profile with full analytics',
+        description: 'Consolidated profile: user info, points, tasks, bookings, achievements, streaks. 23 parallel SQL queries via Promise.allSettled.',
+        responses: {
+          200: { description: 'User profile', content: { 'application/json': { schema: { $ref: '#/components/schemas/UserProfile' } } } },
+          401: { description: 'Not authenticated' }
+        }
+      }
+    },
+    '/auth/achievements': {
+      get: {
+        tags: ['Auth'],
+        summary: 'Get available achievements list',
+        description: 'Returns all 12 achievements with their unlock criteria.',
+        responses: {
+          200: { description: 'Achievements list', content: { 'application/json': { schema: { type: 'array', items: { type: 'object' } } } } }
+        }
+      }
+    },
+    '/auth/log-action': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Log user UI action',
+        description: 'Track user clicks/actions for analytics (user_action_log table).',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['action'], properties: { action: { type: 'string', example: 'click_booking' }, target: { type: 'string' }, meta: { type: 'object' } } } } }
+        },
+        responses: {
+          200: { description: 'Action logged', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+    '/auth/action-log': {
+      get: {
+        tags: ['Auth'],
+        summary: 'Get user action audit trail (admin)',
+        parameters: [
+          { name: 'username', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } },
+          { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 } }
+        ],
+        responses: {
+          200: { description: 'Action log entries' }
+        }
+      }
+    },
+    '/auth/tasks/{id}/quick-status': {
+      patch: {
+        tags: ['Auth'],
+        summary: 'Quick task status toggle from profile',
+        description: 'Inline task actions (start/done) from personal cabinet.',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['in_progress', 'done'] } } } } }
+        },
+        responses: {
+          200: { description: 'Task status updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } },
+          404: { description: 'Task not found' }
+        }
+      }
+    },
+    '/auth/password': {
+      put: {
+        tags: ['Auth'],
+        summary: 'Change password',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['currentPassword', 'newPassword'], properties: { currentPassword: { type: 'string' }, newPassword: { type: 'string', minLength: 6 } } } } }
+        },
+        responses: {
+          200: { description: 'Password changed', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } },
+          400: { description: 'Invalid current password or new password too short' }
         }
       }
     },
@@ -1022,6 +1256,20 @@ const swaggerSpec = {
           200: { description: 'Status updated', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, task: { $ref: '#/components/schemas/Task' } } } } } },
           400: { description: 'Invalid status' },
           404: { description: 'Task not found' }
+        }
+      }
+    },
+
+    '/tasks/{id}/logs': {
+      get: {
+        tags: ['Tasks'],
+        summary: 'Get task change logs',
+        description: 'Returns full history of task changes (status, assignment, escalation).',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Task logs', content: { 'application/json': { schema: { type: 'array', items: { type: 'object', properties: { id: { type: 'integer' }, taskId: { type: 'integer' }, action: { type: 'string' }, oldValue: { type: 'string', nullable: true }, newValue: { type: 'string', nullable: true }, actor: { type: 'string' }, createdAt: { type: 'string', format: 'date-time' } } } } } } }
         }
       }
     },
@@ -1622,6 +1870,321 @@ const swaggerSpec = {
         ],
         responses: {
           200: { description: 'Rule deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+
+    // ==========================================
+    // POINTS (v10.0)
+    // ==========================================
+    '/points': {
+      get: {
+        tags: ['Points'],
+        summary: 'Leaderboard — all users points',
+        description: 'Returns all users sorted by permanent points. Requires admin or user role.',
+        responses: {
+          200: { description: 'Leaderboard', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/UserPoints' } } } } },
+          403: { description: 'Insufficient permissions (viewer role)' }
+        }
+      }
+    },
+    '/points/{username}': {
+      get: {
+        tags: ['Points'],
+        summary: 'Get user current points',
+        description: 'Users can see own points, admins can see any user.',
+        parameters: [
+          { name: 'username', in: 'path', required: true, schema: { type: 'string' } }
+        ],
+        responses: {
+          200: { description: 'User points', content: { 'application/json': { schema: { $ref: '#/components/schemas/UserPoints' } } } },
+          403: { description: 'Can only view own points (non-admin)' }
+        }
+      }
+    },
+    '/points/{username}/history': {
+      get: {
+        tags: ['Points'],
+        summary: 'Point transaction history',
+        description: 'Full history of point earnings/deductions. Own + admin access.',
+        parameters: [
+          { name: 'username', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100 } },
+          { name: 'offset', in: 'query', schema: { type: 'integer', default: 0, maximum: 10000 } }
+        ],
+        responses: {
+          200: { description: 'Transactions list', content: { 'application/json': { schema: { type: 'object', properties: { transactions: { type: 'array', items: { $ref: '#/components/schemas/PointTransaction' } }, total: { type: 'integer' }, limit: { type: 'integer' }, offset: { type: 'integer' } } } } } },
+          403: { description: 'Insufficient permissions' }
+        }
+      }
+    },
+
+    // ==========================================
+    // KLESHNYA (v11.0)
+    // ==========================================
+    '/kleshnya/greeting': {
+      get: {
+        tags: ['Kleshnya'],
+        summary: 'Get personalized daily greeting',
+        description: 'Returns greeting based on bookings, tasks, streaks, time of day. Cached in DB with 4h TTL.',
+        parameters: [
+          { name: 'date', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Date for greeting context (default: today)' }
+        ],
+        responses: {
+          200: { description: 'Greeting', content: { 'application/json': { schema: { $ref: '#/components/schemas/KleshnyaGreeting' } } } }
+        }
+      }
+    },
+    '/kleshnya/chat': {
+      get: {
+        tags: ['Kleshnya'],
+        summary: 'Get chat history',
+        description: 'Returns full chat history for current user.',
+        responses: {
+          200: { description: 'Chat messages', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/KleshnyaChatMessage' } } } } },
+          401: { description: 'Not authenticated' }
+        }
+      },
+      post: {
+        tags: ['Kleshnya'],
+        summary: 'Send message to Kleshnya chat',
+        description: 'Saves user message, generates template-based response (AI agent hook ready).',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['message'], properties: { message: { type: 'string', example: 'Скільки бронювань сьогодні?' } } } } }
+        },
+        responses: {
+          200: { description: 'Chat response', content: { 'application/json': { schema: { $ref: '#/components/schemas/KleshnyaChatResponse' } } } },
+          400: { description: 'Message is required' },
+          401: { description: 'Not authenticated' }
+        }
+      }
+    },
+
+    // ==========================================
+    // RECURRING BOOKINGS (v9.0)
+    // ==========================================
+    '/recurring': {
+      get: {
+        tags: ['Recurring'],
+        summary: 'List all recurring templates',
+        description: 'Returns templates with instance counts, skip counts, and next upcoming date.',
+        responses: {
+          200: { description: 'Templates list', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/RecurringTemplate' } } } } }
+        }
+      },
+      post: {
+        tags: ['Recurring'],
+        summary: 'Create recurring template + eager-generate',
+        description: 'Creates template and immediately generates bookings for the horizon period (default 14 days).',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/RecurringTemplateCreate' } } }
+        },
+        responses: {
+          200: { description: 'Template created with generation result', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, template: { $ref: '#/components/schemas/RecurringTemplate' }, generation: { type: 'object', properties: { created: { type: 'integer' }, skipped: { type: 'integer' } } } } } } } },
+          400: { description: 'Validation error' }
+        }
+      }
+    },
+    '/recurring/{id}': {
+      put: {
+        tags: ['Recurring'],
+        summary: 'Update recurring template',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/RecurringTemplateCreate' } } }
+        },
+        responses: {
+          200: { description: 'Template updated', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, template: { $ref: '#/components/schemas/RecurringTemplate' } } } } } },
+          404: { description: 'Template not found' }
+        }
+      },
+      delete: {
+        tags: ['Recurring'],
+        summary: 'Delete (deactivate) recurring template',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'deleteFuture', in: 'query', schema: { type: 'boolean', default: false }, description: 'Cancel all future booking instances' }
+        ],
+        responses: {
+          200: { description: 'Template deactivated', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, cancelledBookings: { type: 'integer' } } } } } },
+          404: { description: 'Template not found' }
+        }
+      }
+    },
+    '/recurring/{id}/pause': {
+      post: {
+        tags: ['Recurring'],
+        summary: 'Toggle template active/paused',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Toggled', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, isActive: { type: 'boolean' } } } } } },
+          404: { description: 'Template not found' }
+        }
+      }
+    },
+    '/recurring/{id}/generate': {
+      post: {
+        tags: ['Recurring'],
+        summary: 'Manually generate bookings for N days',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', properties: { horizonDays: { type: 'integer', default: 14 } } } } }
+        },
+        responses: {
+          200: { description: 'Generation result', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, created: { type: 'integer' }, skipped: { type: 'integer' } } } } } },
+          404: { description: 'Template not found' }
+        }
+      }
+    },
+    '/recurring/{id}/series': {
+      get: {
+        tags: ['Recurring'],
+        summary: 'List all booking instances of a template',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } }
+        ],
+        responses: {
+          200: { description: 'Booking instances', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Booking' } } } } }
+        }
+      }
+    },
+    '/recurring/{id}/series/future': {
+      delete: {
+        tags: ['Recurring'],
+        summary: 'Cancel all future instances from a date',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Date from which to cancel (default: today)' }
+        ],
+        responses: {
+          200: { description: 'Cancelled count', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, cancelledCount: { type: 'integer' } } } } } }
+        }
+      }
+    },
+    '/recurring/{id}/skips': {
+      get: {
+        tags: ['Recurring'],
+        summary: 'List skips for a template',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Skips list', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/RecurringSkip' } } } } }
+        }
+      },
+      post: {
+        tags: ['Recurring'],
+        summary: 'Manually skip a date',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['date'], properties: { date: { type: 'string', format: 'date' } } } } }
+        },
+        responses: {
+          200: { description: 'Skipped', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, cancelledBookings: { type: 'integer' } } } } } },
+          404: { description: 'Template not found' }
+        }
+      }
+    },
+    '/recurring/skips/{skipId}': {
+      delete: {
+        tags: ['Recurring'],
+        summary: 'Remove skip (allow retry generation)',
+        parameters: [
+          { name: 'skipId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Skip removed', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } },
+          404: { description: 'Skip not found' }
+        }
+      }
+    },
+
+    // ==========================================
+    // STATS — Revenue Dashboard (v10.4)
+    // ==========================================
+    '/stats/revenue': {
+      get: {
+        tags: ['Stats'],
+        summary: 'Revenue analytics with period comparison',
+        description: 'Aggregated revenue, booking counts, daily breakdown. Compares with previous period. 5-min cache.',
+        parameters: [
+          { name: 'period', in: 'query', schema: { type: 'string', enum: ['day', 'week', 'month', 'quarter', 'year'], default: 'month' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Custom date range start' },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Custom date range end' }
+        ],
+        responses: {
+          200: { description: 'Revenue data', content: { 'application/json': { schema: { $ref: '#/components/schemas/StatsRevenue' } } } },
+          403: { description: 'Viewer role blocked' }
+        }
+      }
+    },
+    '/stats/programs': {
+      get: {
+        tags: ['Stats'],
+        summary: 'Program popularity rankings',
+        description: 'Top programs by count and revenue, category breakdown with percentages.',
+        parameters: [
+          { name: 'period', in: 'query', schema: { type: 'string', default: 'month' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 10, maximum: 50 } }
+        ],
+        responses: {
+          200: { description: 'Program statistics with byCount, byRevenue, byCategory arrays' }
+        }
+      }
+    },
+    '/stats/load': {
+      get: {
+        tags: ['Stats'],
+        summary: 'Workload analytics',
+        description: 'Breakdown by day-of-week, hour, room utilization, and animator workload.',
+        parameters: [
+          { name: 'period', in: 'query', schema: { type: 'string', default: 'month' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } }
+        ],
+        responses: {
+          200: { description: 'Load data with byDayOfWeek, byHour, roomUtilization, animatorWorkload arrays' }
+        }
+      }
+    },
+    '/stats/trends': {
+      get: {
+        tags: ['Stats'],
+        summary: 'Period-over-period trends',
+        description: 'Current vs previous period comparison with growth percentages.',
+        parameters: [
+          { name: 'period', in: 'query', schema: { type: 'string', enum: ['day', 'week', 'month', 'quarter', 'year'], default: 'month' } }
+        ],
+        responses: {
+          200: { description: 'Trends with current, previous, and growth objects' }
+        }
+      }
+    },
+    '/recurring/generate-all': {
+      post: {
+        tags: ['Recurring'],
+        summary: 'Trigger generation for all active templates',
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', properties: { horizonDays: { type: 'integer' } } } } }
+        },
+        responses: {
+          200: { description: 'Generation results', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
         }
       }
     }

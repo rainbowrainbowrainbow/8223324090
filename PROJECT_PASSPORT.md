@@ -1,12 +1,12 @@
 # PROJECT PASSPORT — Парк Закревського Періоду
 
-> Паспорт проекту для передачі в новий чат. Оновлено: 2026-02-15, v10.0.0
+> Паспорт проекту для передачі в новий чат. Оновлено: 2026-02-15, v11.0.0
 
 ---
 
 ## 1. Що це
 
-Система бронювання для дитячого парку **"Закревського Періоду"** (Київ, вул. Закревського 31/2, 3 поверх). Таймлайн аніматорів, кімнати, програми, Telegram-бот, **Tasker + Клешня**, каталог, сертифікати, дашборд, бекапи.
+Система бронювання для дитячого парку **"Закревського Періоду"** (Київ, вул. Закревського 31/2, 3 поверх). Таймлайн аніматорів, кімнати, програми, Telegram-бот, **Tasker + Клешня** (greeting/chat), особистий кабінет з досягненнями, каталог, сертифікати, дашборд, бекапи.
 
 ---
 
@@ -15,8 +15,8 @@
 | Параметр | Значення |
 |---|---|
 | Хостинг | Railway |
-| Актуальна гілка | `claude/review-project-updates-R2CbJ` |
-| Версія | v10.0.0 |
+| Актуальна гілка | `claude/review-project-updates-YHNS2` |
+| Версія | v11.0.0 |
 | Порт | `PORT` (default 3000) |
 
 ### Env змінні
@@ -50,7 +50,7 @@ node --test tests/api.test.js
 | Bot | Custom Telegram Bot API (**NO grammY**) |
 | Frontend | Vanilla HTML+CSS+JS (**NO React/Next.js**) |
 | CSS | 11-file modular + Design System v4.0 |
-| Testing | `node --test` (364 тести, 78 suites) |
+| Testing | `node --test` (364 тести, 3 файли + helpers) |
 
 **Dependencies:** bcryptjs, cors, express, jsonwebtoken, pg, qrcode, ws
 
@@ -61,17 +61,18 @@ node --test tests/api.test.js
 ```
 server.js              — Entry point, middleware, routes, 11 schedulers, WS init
 
-db/index.js            — Pool, schema (24 таблиці), seed, 30+ indexes
+db/index.js            — Pool, schema (30 таблиць), seed, 40+ indexes
 db/migrate.js          — Migration runner
-db/migrations/         — 001-003
+db/migrations/         — 001-004
 
-routes/ (16):          auth, bookings, lines, history, settings, stats,
+routes/ (17):          auth, bookings, lines, history, settings, stats,
                        afisha, telegram, backup, products, tasks,
-                       task-templates, staff, certificates, recurring, points
+                       task-templates, staff, certificates, recurring,
+                       points, kleshnya
 
-services/ (12):        booking, bookingAutomation, bot, certificates,
-                       kleshnya, recurring, telegram, templates, taskTemplates,
-                       scheduler, backup, websocket
+services/ (13):        booking, bookingAutomation, bot, certificates,
+                       kleshnya, kleshnya-greeting, recurring, telegram,
+                       templates, taskTemplates, scheduler, backup, websocket
 
 middleware/ (4):       auth, rateLimit, security, requestId
 utils/ (2):            logger, validateEnv
@@ -85,11 +86,11 @@ js/ (19 модулів):      config, api, auth, app, ui, booking, booking-form,
 css/ (11):             base, auth, layout, timeline, panel, modals,
                        controls, features, dark-mode, responsive, pages
 
-HTML (5):              index.html, tasks.html, programs.html,
-                       staff.html, invite.html
+HTML (6):              index.html, tasks.html, programs.html,
+                       staff.html, invite.html, kleshnya.html
 
-tests/ (3+1):          api.test.js (221), certificates.test.js (82),
-                       automation.test.js (51), helpers.js
+tests/ (3+1):          api.test.js (223), certificates.test.js (82),
+                       automation.test.js (59), helpers.js
 ```
 
 ---
@@ -102,23 +103,30 @@ tests/ (3+1):          api.test.js (221), certificates.test.js (82),
 | `/tasks` | Задачник | 5 вкладок, канбан, категорії, Tasker |
 | `/programs` | Каталог | Програми, CRUD, іконки |
 | `/staff` | Графік | Тижневий розклад аніматорів |
+| `/kleshnya` | Клешня чат | AI-чат з історією повідомлень |
 | `/invite` | Запрошення | Standalone link для клієнтів |
 
 ---
 
-## 6. БД (24 таблиці, 30+ індексів)
+## 6. БД (30 таблиць, 40+ індексів)
 
 **Основні:** bookings, lines_by_date, history, settings, users, booking_counter, pending_animators
 
-**Афіша/Задачі:** afisha, afisha_templates, tasks, task_templates, **task_logs**
+**Афіша/Задачі:** afisha, afisha_templates, tasks, task_templates, task_logs
 
-**Telegram:** telegram_known_chats, telegram_known_threads
+**Telegram:** telegram_known_chats, telegram_known_threads, scheduled_deletions
 
-**Каталог/Автоматизація:** products (40 програм, 7 категорій), automation_rules, scheduled_deletions
+**Каталог/Автоматизація:** products (40 програм, 7 категорій), automation_rules
 
 **Персонал/Сертифікати:** staff, staff_schedule, certificates, certificate_counter
 
+**Recurring:** recurring_templates, recurring_booking_skips
+
 **Бали (v10.0):** user_points, point_transactions
+
+**Профіль/Досягнення (v11.0):** user_action_log, user_achievements, user_streaks
+
+**Клешня (v11.0):** kleshnya_messages (greeting cache, 4h TTL), kleshnya_chat (chat history)
 
 ### bookings (головна таблиця)
 
@@ -127,6 +135,10 @@ tests/ (3+1):          api.test.js (221), certificates.test.js (82),
 ### tasks (v10.0 — Tasker)
 
 Нові поля: `task_type` (human/bot), `owner` (менеджер, ескалація), `deadline`, `time_window_start/end`, `dependency_ids` (INTEGER[]), `control_policy` (JSONB), `escalation_level` (0-3), `source_type` (booking/trigger/manual/recurring/kleshnya), `source_id`, `last_reminded_at`
+
+### tasks (v10.0 — Tasker, розширено v11.0)
+
+Ключові поля: `id`, `title`, `date`, `status`, `priority`, `assigned_to`, `task_type` (human/bot), `owner`, `deadline`, `time_window_start/end`, `dependency_ids` (INTEGER[]), `control_policy` (JSONB), `escalation_level` (0-3), `source_type` (booking/trigger/manual/recurring/kleshnya), `source_id`, `last_reminded_at`, `version` (optimistic locking)
 
 ### Seed users
 
@@ -144,33 +156,41 @@ tests/ (3+1):          api.test.js (221), certificates.test.js (82),
 
 | Група | Endpoints |
 |---|---|
-| Auth | POST login, GET verify |
+| Auth | POST login, GET verify, GET profile, GET achievements, POST log-action, GET action-log, PUT password, PATCH tasks/:id/quick-status |
 | Bookings | GET /:date, POST /, POST /full, PUT /:id, DELETE /:id |
 | Lines | GET /:date, POST /:date |
 | History | GET (filters: action, user, dates, search), POST |
-| Afisha | CRUD + POST /:id/generate-tasks |
+| Afisha | CRUD + POST /:id/generate-tasks, PATCH /:id/time, distribute/undistribute |
 | Telegram | GET chats/threads, POST notify/digest/reminder/ask-animator/webhook |
 | Backup | POST create, GET download, POST restore |
-| Stats | GET /:from/:to |
+| Stats | GET /revenue, GET /programs, GET /load, GET /trends, GET /:from/:to |
 | Settings | GET/POST /:key, GET /rooms/free/:date/:time/:dur |
 | Products | CRUD (GET ?active=true) |
 | Tasks | CRUD + PATCH /:id/status + GET /:id/logs (filters: status, date, type, task_type, assigned_to, owner) |
 | Task Templates | CRUD (?active=true) |
-| Staff | CRUD |
-| Certificates | CRUD |
-| Recurring | CRUD + series ops |
-| **Points** | GET / (leaderboard), GET /:username, GET /:username/history |
+| Staff | CRUD + schedule (bulk, copy-week, hours, check) |
+| Certificates | CRUD + batch, QR, code lookup, send-image |
+| Recurring | CRUD + series ops + skips |
+| Points | GET / (leaderboard), GET /:username, GET /:username/history |
+| **Kleshnya** | GET /greeting, GET /chat, POST /chat |
 | Health | GET /api/health |
 
 ---
 
-## 8. Tasker & Клешня (v10.0)
+## 8. Tasker & Клешня (v10.0–v11.0)
 
 ### Що таке Tasker
 Tasker — централізований задачник та диспетчер операцій бізнесу. Приймає події, створює задачі, контролює виконання, забезпечує комунікацію через Telegram, нараховує бали.
 
 ### Клешня (services/kleshnya.js)
 Центральний інтелект системи. Має доступ до всіх даних CRM, задач, Telegram, фінансових логів.
+
+### Greeting & Chat (v11.0, services/kleshnya-greeting.js)
+- Персоналізовані привітання на основі бронювань, задач, стріків, часу доби
+- Greeting cache в БД (kleshnya_messages, 4h TTL) для rate-limit AI agent викликів
+- Чат-сторінка `/kleshnya` з історією повідомлень (kleshnya_chat)
+- Template-based responses (agent-ready hook для AI інтеграції)
+- API: GET/POST `/api/kleshnya/greeting`, GET/POST `/api/kleshnya/chat`
 
 **Типи задач:**
 - `human` — 100% відповідальність людини
@@ -208,7 +228,7 @@ Tasker — централізований задачник та диспетче
 
 ---
 
-## 9. Schedulers (11, кожні 60с)
+## 9. Schedulers (11 + 1 cleanup, кожні 60с)
 
 | Scheduler | Час | Опис |
 |---|---|---|
@@ -218,11 +238,11 @@ Tasker — централізований задачник та диспетче
 | checkRecurringTasks | 00:05 | Recurring задачі за шаблонами |
 | checkScheduledDeletions | 60с | Авто-видалення повідомлень |
 | checkRecurringAfisha | 00:06 | Recurring афіша |
-| checkRecurringBookings | 00:07 | Recurring бронювання |
 | checkCertificateExpiry | 00:10 | Термін сертифікатів |
-| **checkTaskReminders** | 60с | **Клешня: нагадування/ескалація** |
-| **checkWorkDayTriggers** | 10:00/12:00 | **Клешня: тригери початку дня** |
-| **checkMonthlyPointsReset** | 00:15 (1-ше) | **Клешня: обнулення місячних балів** |
+| checkTaskReminders | 60с | Клешня: нагадування/ескалація |
+| checkWorkDayTriggers | 10:00/12:00 | Клешня: тригери початку дня |
+| checkMonthlyPointsReset | 00:15 (1-ше) | Клешня: обнулення місячних балів |
+| **cleanupKleshnyaMessages** | **30хв** | **Клешня: очистка greeting cache (v11.0)** |
 
 ---
 
@@ -266,14 +286,26 @@ Tasker — централізований задачник та диспетче
 
 ---
 
-## 13. Що далі
+## 13. Особистий кабінет (v10.3–v11.0)
 
-- Frontend: відображення балів, owner/deadline в задачах
-- Swagger /api-docs
-- Drag-n-drop сортування програм
+- 4 таби: Сьогодні / Задачі / Стати / Налашт.
+- **Сьогодні:** shift block, SVG progress ring, actionable inbox, admin team overview
+- **Задачі:** inline status actions (start/done), blocked task indicators, dependency awareness
+- **Стати:** stat cards з week-over-week deltas, бали, 12 досягнень з auto-grant, стріки
+- **Налашт.:** зміна пароля, user details, logout
+- 23 паралельні SQL запити у `/profile` (Promise.allSettled)
+- `user_action_log` — UI click tracking
+- `user_achievements` + `user_streaks` — досягнення та серії
+
+---
+
+## 14. Що далі
+
+- AI agent інтеграція для Kleshnya chat
+- Swagger /api-docs (swagger.js існує, ~1600 рядків, треба підключити + оновити)
 - Export PDF/Excel
 - Розширення тригерів Клешні
 
 ---
 
-> Актуальна гілка: `claude/review-project-updates-R2CbJ`. Копіюй в новий чат — тут все для продовження.
+> Актуальна гілка: `claude/review-project-updates-YHNS2`. Копіюй в новий чат — тут все для продовження.

@@ -4,6 +4,56 @@
 
 ---
 
+## v11.0.0 — Дофамінові покращення (2026-02-15)
+
+**Kleshnya Greeting & Chat:**
+- Quick stats bar → two-column layout: статистика ліворуч, Kleshnya banner праворуч
+- Персоналізовані привітання на основі бронювань, задач, стріків, часу доби
+- Greeting cache в БД (4h TTL) для rate-limit майбутніх AI agent викликів
+- Повна чат-сторінка `/kleshnya` з історією повідомлень
+- Template-based responses (agent-ready hook для майбутньої AI інтеграції)
+- API: GET/POST `/api/kleshnya/greeting`, GET/POST `/api/kleshnya/chat`
+- Dark mode + responsive support
+
+**Особистий кабінет — повна перебудова:**
+- 4 таби: Сьогодні / Задачі / Стати / Налашт.
+- **Сьогодні:** shift block, SVG progress ring, actionable inbox (прострочені + майбутні задачі з done/start), admin team overview grid
+- **Задачі:** inline status actions (start/done), blocked task indicators, dependency awareness, priority highlighting, animated task completion
+- **Стати:** stat cards з week-over-week deltas, бали з task links, escalation history, certificate details, 12 achievements grid
+- **Налашт.:** зміна пароля, user details, logout
+- 12 досягнень (first_task, streak_3/7/30, booking_pro тощо) з auto-grant логікою
+- `user_action_log` таблиця + POST/GET endpoints для UI click tracking
+- `user_achievements` + `user_streaks` таблиці
+- PATCH `/tasks/:id/quick-status` для inline task actions з профілю
+- 23 паралельні SQL запити у `/profile` endpoint (Promise.allSettled)
+- ~500 рядків нових CSS стилів (tabs, progress ring, shift block, inbox, team grid, achievements)
+
+**БД (+3 таблиці):**
+- `kleshnya_messages` (greeting cache), `kleshnya_chat` (chat history)
+- `user_action_log`, `user_achievements`, `user_streaks`
+
+**Файли:**
+- `kleshnya.html` — нова сторінка чату
+- `services/kleshnya-greeting.js` — новий (greeting engine)
+- `routes/kleshnya.js` — новий (API greeting + chat)
+- `routes/auth.js` — розширений `/profile` з 23 queries
+- `js/auth.js` — перебудований profile modal з 4 табами
+- `js/api.js` — +kleshnya API methods
+- `js/timeline.js` — kleshnya banner на головній
+- `css/modals.css` — +500 рядків profile styles
+- `css/layout.css`, `css/dark-mode.css`, `css/responsive.css` — kleshnya layout
+
+---
+
+## v10.5.0 — Verification Bump (2026-02-15)
+
+- **Profile modal на суб-сторінках:** tasks.html, programs.html, staff.html — додані modals.css та profile modal HTML
+- **Modal UX:** close (×), backdrop click, Escape key в initProfileHandler
+- **Auto-init:** profile click handler через DOMContentLoaded на всіх сторінках
+- Всі 221 тестів пройдено
+
+---
+
 ## v10.4.0 — Особистий кабінет PRO (2026-02-15)
 
 - **Кабінет PRO:** повна переробка з 15+ SQL запитами через Promise.allSettled (паралельні)

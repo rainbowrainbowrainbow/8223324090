@@ -4,6 +4,74 @@
 
 ---
 
+## 2026-02-15 — v9.1.0 Live-Sync
+
+**WebSocket підключено:**
+- `services/websocket.js` підключено до `server.js` через `initWebSocket(server)`
+- Graceful shutdown: WSS закривається перед DB pool
+- `routes/bookings.js`: broadcast після create/create-full/update/delete COMMIT
+- `routes/lines.js`: broadcast після зміни ліній
+- `js/auth.js`: ParkWS.connect() при логіні, ParkWS.disconnect() при logout
+- `services/websocket.js`: userId coerced to String для коректного excludeUser
+- Додано `ws: ^8.19.0` в package.json
+
+**SessionStart hook:**
+- `.claude/hooks/session-start.sh`: автоматичний старт PostgreSQL + npm install + env vars
+- `.claude/settings.json`: зареєстрований як SessionStart хук
+- Працює тільки в remote (Claude Code на вебі)
+
+---
+
+## 2026-02-15 — v9.0.2 Доступність
+
+**Accessibility:**
+- Skip-links на всіх 5 сторінках (index, staff, tasks, programs, invite)
+- `@media (prefers-reduced-motion: reduce)` — вимкнення всіх анімацій/transitions
+- `.skip-link` CSS: emerald кольорова кнопка при Tab focus
+- `:focus-visible` з emerald outline (вже був, перевірено покриття)
+- programs.html: cache bust оновлено з v7.9.2 → v9.0.2
+
+---
+
+## 2026-02-15 — v9.0.1 Стабілізація
+
+**Staff toolbar:**
+- Кнопки "Копія тижня", "Заповнити тиждень", "Години", "Навантаження" винесені з `.week-nav` в окремий `.schedule-toolbar`
+- Додано CSS `.schedule-toolbar` з flex-wrap
+- Cache bust staff.html і tasks.html: v8.3.3 → v9.0.1
+
+---
+
+## 2026-02-15 — v9.0.0 Розумна платформа
+
+**Drag-and-drop на таймлайні:**
+- Перетягування бронювань мишкою/пальцем + resize + undo
+
+**Повторювані бронювання:**
+- Шаблони (щотижня/через тиждень/щомісяця), авто-генерація на 14 днів
+- `routes/recurring.js` + `services/recurring.js` + `recurring_templates` table
+
+**Аналітика:**
+- Дашборд виручки, топ програм, завантаженість по днях/кімнатах/аніматорах
+- `routes/stats.js` + `js/settings-dashboard.js`
+
+**Оптимістичне блокування:**
+- `updated_at` з PL/pgSQL тригером + HTTP 409 conflict response
+
+**Offline режим:**
+- `sw.js` (Service Worker) + `js/offline.js` (IndexedDB mutation queue)
+
+**Міграції БД:**
+- `db/migrate.js` + `db/migrations/` (001-003)
+
+**Безпека:**
+- Graceful shutdown (30s timeout), env validation, rate limiting
+
+**Тести:**
+- certificates.test.js (82 тести) + automation.test.js (51 тест)
+
+---
+
 ## 2026-02-14 — v8.6.1 Оновлений дизайн сертифікатів
 
 **Сертифікати — новий фон:**

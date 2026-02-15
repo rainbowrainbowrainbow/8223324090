@@ -3,7 +3,7 @@
 > Оновлюється кожні 10-15 повідомлень. Швидкий контекст для продовження роботи.
 
 ## Де ми
-Версія **v8.6.0**. Розумний розподіл: redesign birthday блоків + авто-distribute афіші перед дайджестами.
+Версія **v9.1.0**. Live-Sync: WebSocket підключено, accessibility, SessionStart hook.
 
 ## Що готово
 - v5.30-v5.38: UI/UX overhaul (design system, responsive, dark mode, PWA)
@@ -23,10 +23,9 @@
 - v7.8.1-v7.8.9: Мобільна адаптація (свайп, тулбар, glassmorphism, WCAG touch targets)
 - v7.8.10: Дайджест для 2го ведучого + афіша ±1год
 - v7.9.0: Дошка задач з категоріями (5 вкладок, канбан, авто-задачі з афіші)
-- v7.9.1: SVG іконки (відкинуто)
 - v7.9.2: Стилізовані емодзі іконки з градієнтними колами по категоріях
 - v8.3.0: Автоматизація (правила, задачі, Telegram) + Drag-to-Move афіша
-- v8.3.1: МК Футболки (розміри XS-XL в extra_data, 2 автоматизації) + афіша-блоки row layout
+- v8.3.1: МК Футболки (розміри XS-XL в extra_data, 2 автоматизації)
 - v8.3.2: Фікс історії (афіша/автоматизація рендеринг) + extra_data в linked bookings
 - v8.3.3: Bugfixes (undo_edit/undo_shift в історії, share/copy invite crash fix)
 - v8.4.0: Сертифікати (реєстр CERT-YYYY-NNNNN, Telegram-сповіщення, scheduler)
@@ -34,53 +33,59 @@
 - v8.5.1: Графічні сертифікати (Canvas PNG, Містер Зак)
 - v8.5.2: Сезонний маскот (4 seasonal ілюстрації)
 - v8.6.0: Розумний розподіл (birthday pill-redesign + авто-distribute перед дайджестами)
+- v8.6.1: Оновлений дизайн сертифікатів
+- v9.0.0: Розумна платформа (drag-and-drop, recurring bookings, analytics, optimistic locking, offline mode, migrations, tests)
+- v9.0.1: Стабілізація (staff toolbar fix, cache bust)
+- v9.0.2: Доступність (skip-links, reduced motion, focus indicators)
+- v9.1.0: Live-Sync (WebSocket підключено, broadcast bookings/lines, ParkWS connect/disconnect)
 
 ## Що далі (план)
+- Swagger /api-docs (код є, треба підключити)
 - Clawd Bot команди для задач (/tasks, /done)
 - Авто-задачі (контент для соцмереж, нагадування)
 - Drag-n-drop сортування програм
 - Export PDF/Excel
 
-## Архітектура (v7.9.2)
+## Архітектура (v9.1.0)
 
-### 4 HTML-сторінки
+### 5 HTML-сторінок
 | Шлях | Файли | Опис |
 |---|---|---|
-| `/` | index.html + 8 JS + 10 CSS | Таймлайн (SPA) |
+| `/` | index.html + 19 JS + 11 CSS | Таймлайн (SPA) |
 | `/tasks` | tasks.html + tasks-page.js | Задачник (5 вкладок, канбан, категорії) |
 | `/programs` | programs.html + programs-page.js | Каталог програм (категорії, CRUD, іконки) |
+| `/staff` | staff.html + staff-page.js | Графік роботи (тижневий розклад) |
 | `/invite` | invite.html | Запрошення (standalone) |
 
-CSS (10 модулів): base, auth, layout, timeline, panel, modals, controls, features, dark-mode, responsive + pages.css
-JS (10 модулів): config, api, ui, auth, timeline, booking, settings, app + programs-page, tasks-page
+CSS (11 модулів): base, auth, layout, timeline, panel, modals, controls, features, dark-mode, responsive, pages
+JS (19 модулів): config, api, ui, auth, timeline, booking, booking-form, booking-linked, settings, settings-afisha, settings-certificates, settings-dashboard, settings-history, app, programs-page, tasks-page, staff-page, offline, ws
 
-### 13 таблиць БД
-bookings, lines_by_date, history, settings, users, booking_counter, pending_animators, afisha, telegram_known_chats, telegram_known_threads, products, tasks, task_templates
+### 20 таблиць БД
+bookings, lines_by_date, history, settings, users, booking_counter, pending_animators, afisha, afisha_templates, telegram_known_chats, telegram_known_threads, products, tasks, task_templates, scheduled_deletions, staff, staff_schedule, automation_rules, certificates, certificate_counter
 
-### 4 Schedulers (60s interval)
+### 23 індекси
+
+### 8 Schedulers (60s interval)
 - checkAutoDigest (налаштовується)
 - checkAutoReminder (налаштовується)
 - checkAutoBackup (03:00)
-- checkRecurringTasks (00:05) — авто-створення recurring задач
+- checkRecurringTasks (00:05)
+- checkScheduledDeletions
+- checkRecurringAfisha
+- checkRecurringBookings
+- checkCertificateExpiry
+
+### WebSocket (v9.1.0)
+- services/websocket.js — сервер (JWT auth, heartbeat 30s, broadcast, date subscriptions)
+- js/ws.js — клієнт (auto-reconnect, exponential backoff 1s-30s)
+- Broadcast: booking:created/updated/deleted, line:updated
 
 ## Технічний стан
-- Branch: `claude/review-project-docs-mSGjR`
+- Branch: `claude/review-project-updates-R2CbJ`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
-- 190 тестів, 54 suites
-
-### Задачі (Tasks System)
-- routes/tasks.js — CRUD + PATCH status + filter by type/afisha_id/category
-- routes/task-templates.js — recurring templates CRUD
-- tasks.category: event | purchase | admin | trampoline | personal
-- tasks.status: todo | in_progress | done
-- tasks.priority: low | normal | high
-- tasks.afisha_id: зв'язок з подією
-- tasks.template_id: зв'язок з шаблоном
-- task_templates.recurrence_pattern: daily | weekdays | weekly | custom
-
-### Іконки програм (v7.9.2)
-- Унікальні емодзі обгорнуті в .icon-circle з градієнтним фоном по категорії
-- Кольори: фіолетовий (quest), блакитний (animation), помаранчевий (show), бірюзовий (photo), зелений (masterclass), рожевий (pinata), сірий (custom)
+- 364 тестів, 78 suites (api.test.js + certificates.test.js + automation.test.js)
+- ~40 000 рядків коду
+- SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-12, v8.3.3*
+*Оновлено: 2026-02-15, v9.1.0*

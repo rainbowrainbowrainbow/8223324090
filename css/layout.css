@@ -407,18 +407,17 @@ input[type="date"] {
 }
 
 /* ==========================================
-   QUICK STATS + KLESHNYA BAR (v11.0)
+   QUICK STATS BAR (v11.1)
    ========================================== */
 
 .quick-stats-bar {
-    display: flex;
-    align-items: stretch;
-    gap: 0;
+    background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
+    color: #166534;
+    padding: 10px 16px;
     border-radius: var(--radius-sm);
     margin-bottom: 12px;
     font-size: var(--font-sm);
     font-weight: 600;
-    overflow: hidden;
     border: 1px solid #BBF7D0;
 }
 
@@ -426,74 +425,220 @@ input[type="date"] {
     display: none;
 }
 
-/* Left: stats */
-.stats-bar-left {
-    flex: 1;
-    background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
-    color: #166534;
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    min-width: 0;
+/* ==========================================
+   KLESHNYA FLOATING WIDGET (v11.1)
+   ========================================== */
+
+.kleshnya-widget {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9000;
 }
 
-/* Right: Kleshnya banner */
-.stats-bar-right {
-    flex: 0 0 auto;
-    max-width: 45%;
-    background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%);
-    border-left: 1px solid #FED7AA;
-    padding: 8px 12px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
+.kleshnya-widget.hidden {
+    display: none;
 }
 
-.kleshnya-banner-content {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-    min-width: 0;
-}
-
-.kleshnya-avatar {
-    font-size: 20px;
-    flex-shrink: 0;
-    line-height: 1;
-}
-
-.kleshnya-message {
-    color: #9A3412;
-    font-weight: 500;
-    font-size: 12px;
-    line-height: 1.3;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    min-width: 0;
-}
-
-.kleshnya-chat-link {
-    flex-shrink: 0;
-    width: 32px;
-    height: 32px;
+/* FAB button */
+.kleshnya-fab {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, #EA580C 0%, #C2410C 100%);
+    box-shadow: 0 4px 16px rgba(234, 88, 12, 0.35), 0 2px 4px rgba(0,0,0,0.1);
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(234, 88, 12, 0.1);
-    border-radius: 50%;
-    text-decoration: none;
-    font-size: 16px;
-    transition: background 0.2s, transform 0.2s;
+    position: relative;
+    transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.kleshnya-chat-link:hover {
-    background: rgba(234, 88, 12, 0.2);
-    transform: scale(1.1);
+.kleshnya-fab:hover {
+    transform: scale(1.08);
+    box-shadow: 0 6px 24px rgba(234, 88, 12, 0.45), 0 3px 8px rgba(0,0,0,0.15);
+}
+
+.kleshnya-fab:active {
+    transform: scale(0.95);
+}
+
+.kleshnya-fab-icon {
+    font-size: 28px;
+    line-height: 1;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+}
+
+/* Pulse animation */
+.kleshnya-fab-pulse {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid rgba(234, 88, 12, 0.4);
+    animation: kleshnya-pulse 2s ease-out infinite;
+    pointer-events: none;
+}
+
+@keyframes kleshnya-pulse {
+    0% { transform: scale(1); opacity: 1; }
+    70% { transform: scale(1.3); opacity: 0; }
+    100% { transform: scale(1.3); opacity: 0; }
+}
+
+/* Popup */
+.kleshnya-popup {
+    position: absolute;
+    bottom: 68px;
+    right: 0;
+    width: 320px;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.08);
+    overflow: hidden;
+    animation: kleshnya-popup-in 0.25s ease-out;
+}
+
+.kleshnya-popup.hidden {
+    display: none;
+}
+
+@keyframes kleshnya-popup-in {
+    from { opacity: 0; transform: translateY(12px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Header */
+.kleshnya-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%);
+    border-bottom: 1px solid #FED7AA;
+}
+
+.kleshnya-popup-title {
+    font-weight: 700;
+    font-size: 15px;
+    color: #9A3412;
+}
+
+.kleshnya-popup-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: #9A3412;
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+
+.kleshnya-popup-close:hover {
+    background: rgba(154, 52, 18, 0.1);
+}
+
+/* Body */
+.kleshnya-popup-body {
+    padding: 16px;
+}
+
+.kleshnya-greeting {
+    font-size: 14px;
+    line-height: 1.5;
+    color: #44403C;
+    margin-bottom: 14px;
+}
+
+/* Answer bubble */
+.kleshnya-answer {
+    background: linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 100%);
+    border: 1px solid #FED7AA;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #78350F;
+    animation: kleshnya-answer-in 0.2s ease-out;
+}
+
+.kleshnya-answer.hidden {
+    display: none;
+}
+
+@keyframes kleshnya-answer-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Question buttons grid */
+.kleshnya-questions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.kleshnya-q-btn {
+    background: #F5F5F4;
+    border: 1px solid #E7E5E4;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #44403C;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    font-family: inherit;
+}
+
+.kleshnya-q-btn:hover {
+    background: #FFEDD5;
+    border-color: #FDBA74;
+    color: #9A3412;
+}
+
+.kleshnya-q-btn:active {
+    transform: scale(0.97);
+}
+
+.kleshnya-q-btn.active {
+    background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%);
+    border-color: #EA580C;
+    color: #9A3412;
+    box-shadow: 0 0 0 1px #EA580C;
+}
+
+/* Footer */
+.kleshnya-popup-footer {
+    padding: 12px 16px;
+    border-top: 1px solid #F5F5F4;
+    text-align: center;
+}
+
+.kleshnya-goto-chat {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #EA580C;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 8px 20px;
+    border-radius: 10px;
+    transition: all 0.15s;
+}
+
+.kleshnya-goto-chat:hover {
+    background: #FFF7ED;
+    color: #C2410C;
 }
 
 /* Kleshnya nav link accent */

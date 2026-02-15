@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="css/base.css?v=10.4.0">
     <link rel="stylesheet" href="css/layout.css?v=10.4.0">
     <link rel="stylesheet" href="css/pages.css?v=10.4.0">
+    <link rel="stylesheet" href="css/modals.css?v=10.4.0">
     <link rel="stylesheet" href="css/dark-mode.css?v=10.4.0">
     <link rel="stylesheet" href="css/responsive.css?v=10.4.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -720,6 +721,17 @@
             <div class="modal-actions">
                 <button id="fillSaveBtn" class="btn-page-primary" style="flex:1">Заповнити</button>
                 <button id="fillCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- v10.4: Особистий кабінет -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
             </div>
         </div>
     </div>

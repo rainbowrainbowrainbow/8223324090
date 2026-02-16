@@ -415,6 +415,19 @@ async function initDatabase() {
             )
         `);
 
+        // v8.7: Events log for external API webhook polling
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS events_log (
+                id SERIAL PRIMARY KEY,
+                event_type VARCHAR(50) NOT NULL,
+                payload JSONB,
+                created_at TIMESTAMP DEFAULT NOW(),
+                processed_at TIMESTAMP
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_events_log_processed ON events_log(processed_at)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_events_log_created ON events_log(created_at)');
+
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);

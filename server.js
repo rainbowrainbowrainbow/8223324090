@@ -11,6 +11,7 @@ const cors = require('cors');
 // --- Core modules ---
 const { pool, initDatabase } = require('./db');
 const { authenticateToken } = require('./middleware/auth');
+const { authenticateApiKey } = require('./middleware/apiKey');
 const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
@@ -44,9 +45,12 @@ app.use(express.static(path.join(__dirname)));
 // Rate limiter for all API routes
 app.use('/api', rateLimiter);
 
+// External API: protected by API key instead of JWT
+app.use('/api/external', authenticateApiKey);
+
 // Auth middleware: protect all API endpoints except public ones
 app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path.startsWith('/telegram/webhook')) {
+    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path.startsWith('/telegram/webhook') || req.path.startsWith('/external/')) {
         return next();
     }
     authenticateToken(req, res, next);
@@ -68,6 +72,7 @@ app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/task-templates', require('./routes/task-templates'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/certificates', require('./routes/certificates'));
+app.use('/api/external', require('./routes/external'));
 
 // Settings router handles /api/stats, /api/settings, /api/rooms, /api/health
 const settingsRouter = require('./routes/settings');

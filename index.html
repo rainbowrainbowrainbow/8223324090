@@ -500,6 +500,14 @@
                     </div>
                 </div>
 
+                <!-- v12.6: Silent booking (no notifications) -->
+                <div class="form-section">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="skipNotificationToggle">
+                        <span class="toggle-text">🔇 Без сповіщень (тихе бронювання)</span>
+                    </label>
+                </div>
+
                 <button type="submit" id="bookingSubmitBtn" class="btn-submit">Додати бронювання</button>
             </form>
         </aside>
@@ -678,10 +686,17 @@
                         <button type="button" id="saveDigestTimeBtn" class="btn-submit btn-full">💾 Зберегти налаштування сповіщень</button>
                     </div>
                 </div>
+                <!-- v12.6: Contractors Management -->
+                <div class="settings-section" id="settingsContractorsSection">
+                    <h4>🤝 Підрядники</h4>
+                    <p class="digest-hint">Зовнішні виконавці, яким автоматично надсилаються замовлення (друк піньят, футболки тощо).</p>
+                    <div id="contractorsList" class="contractors-list"></div>
+                    <button type="button" class="btn-submit btn-purple" onclick="showAddContractor()">➕ Додати підрядника</button>
+                </div>
                 <!-- v8.3: Automation Rules -->
                 <div class="settings-section" id="settingsAutomationSection">
                     <h4>🤖 Автоматизація бронювань</h4>
-                    <p class="digest-hint">Правила автоматично створюють задачі та надсилають повідомлення при бронюванні певних програм. Головний бот буде підключено пізніше.</p>
+                    <p class="digest-hint">Правила автоматично створюють задачі та надсилають повідомлення при бронюванні певних програм.</p>
                     <div id="automationRulesList" class="automation-rules-list"></div>
                     <button type="button" id="addAutomationRuleBtn" class="btn-submit btn-purple" onclick="showAddAutomationRule()">➕ Додати правило</button>
                 </div>
@@ -721,7 +736,56 @@
                 <div class="form-group">
                     <label><input type="checkbox" id="arSendTelegram"> Також надіслати в Telegram групу</label>
                 </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="arNotifyContractor" onchange="toggleContractorSelect()"> Надіслати підряднику</label>
+                    <div id="arContractorSelectWrap" class="hidden" style="margin-top:8px">
+                        <select id="arContractorId">
+                            <option value="">Оберіть підрядника</option>
+                        </select>
+                        <div class="form-group" style="margin-top:8px">
+                            <label for="arContractorTemplate">Шаблон для підрядника</label>
+                            <input type="text" id="arContractorTemplate" value="🔔 <b>Нове замовлення</b>\n\n📅 {date} о {time}\n🏠 {room}\n👶 Дітей: {kidsCount}" placeholder="Шаблон повідомлення для підрядника">
+                        </div>
+                    </div>
+                </div>
                 <button type="submit" class="btn-submit btn-full">✅ Створити правило</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- v12.6: Модалка додавання/редагування підрядника -->
+    <div id="contractorModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Підрядник">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3 id="contractorModalTitle">🤝 Новий підрядник</h3>
+            <form id="contractorForm" onsubmit="handleContractorSubmit(event)">
+                <input type="hidden" id="contractorEditId">
+                <div class="form-group">
+                    <label for="contractorName">Ім'я / Назва</label>
+                    <input type="text" id="contractorName" placeholder="напр: Євгенія" required>
+                </div>
+                <div class="form-group">
+                    <label for="contractorSpecialty">Спеціалізація (через кому)</label>
+                    <input type="text" id="contractorSpecialty" placeholder="напр: pinata_print, print">
+                    <p class="form-hint">Категорії: pinata_print, tshirt_order, print, supplies, banner</p>
+                </div>
+                <div class="form-group">
+                    <label for="contractorTelegramId">Telegram Chat ID</label>
+                    <input type="text" id="contractorTelegramId" placeholder="напр: 622480549">
+                </div>
+                <div class="form-group">
+                    <label for="contractorTelegramUser">Telegram username</label>
+                    <input type="text" id="contractorTelegramUser" placeholder="напр: armonia_del_mundo">
+                </div>
+                <div class="form-group">
+                    <label for="contractorPhone">Телефон</label>
+                    <input type="text" id="contractorPhone" placeholder="+380...">
+                </div>
+                <div class="form-group">
+                    <label for="contractorNotes">Примітки</label>
+                    <input type="text" id="contractorNotes" placeholder="Що робить, умови...">
+                </div>
+                <button type="submit" class="btn-submit btn-full">💾 Зберегти</button>
             </form>
         </div>
     </div>

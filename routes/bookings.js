@@ -84,10 +84,10 @@ router.post('/', async (req, res) => {
         }
 
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
              RETURNING *`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null]
+            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false]
         );
 
         await client.query(
@@ -97,7 +97,8 @@ router.post('/', async (req, res) => {
 
         await client.query('COMMIT');
 
-        if (!b.linkedTo && b.status !== 'preliminary') {
+        // v12.6: skip_notification flag — suppress all notifications
+        if (!b.linkedTo && b.status !== 'preliminary' && !b.skipNotification) {
             getLineName(b.lineId, b.date).then(lineName => notifyTelegram('create', {
                 ...b, label: b.label, program_code: b.programCode,
                 program_name: b.programName, kids_count: b.kidsCount,
@@ -169,10 +170,10 @@ router.post('/full', async (req, res) => {
         }
 
         const mainInsert = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
              RETURNING *`,
-            [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null]
+            [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false]
         );
 
         const linkedRows = [];
@@ -205,7 +206,8 @@ router.post('/full', async (req, res) => {
 
         await client.query('COMMIT');
 
-        if (main.status !== 'preliminary') {
+        // v12.6: skip_notification flag — suppress all notifications
+        if (main.status !== 'preliminary' && !main.skipNotification) {
             getLineName(main.lineId, main.date).then(lineName => notifyTelegram('create', {
                 ...main, program_code: main.programCode, program_name: main.programName,
                 kids_count: main.kidsCount, created_by: main.createdBy

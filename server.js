@@ -89,6 +89,7 @@ app.use('/api/certificates', require('./routes/certificates'));
 app.use('/api/points', require('./routes/points'));
 app.use('/api/kleshnya', require('./routes/kleshnya'));
 app.use('/api/designs', require('./routes/designs'));
+app.use('/api/contractors', require('./routes/contractors'));
 
 // Settings router handles /api/stats, /api/settings, /api/rooms, /api/health
 const settingsRouter = require('./routes/settings');

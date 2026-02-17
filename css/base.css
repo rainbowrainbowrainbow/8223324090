@@ -59,6 +59,8 @@
     --shadow-xl: 0 25px 50px -12px rgba(0,0,0,0.15);
     --shadow-glow: 0 0 20px rgba(16,185,129,0.15);
     --shadow-primary: 0 8px 24px rgba(16,185,129,0.25);
+    --shadow-focus-primary: 0 0 0 4px rgba(16,185,129,0.1);
+    --shadow-panel: -4px 0 24px rgba(0,0,0,0.08);
 
     /* Glass effect */
     --glass-bg: rgba(255,255,255,0.7);
@@ -84,6 +86,8 @@
     --radius-sm: 10px;
     --radius-xs: 6px;
     --radius-full: 9999px;
+    --radius-md: 8px;
+    --radius-2xs: 4px;
 
     /* Status backgrounds */
     --status-confirmed-bg: #ECFDF5;
@@ -105,6 +109,17 @@
     --photo-bg: #ECFEFF;
     --custom-bg: var(--gray-100);
 
+    /* Category dark variants (gradient endpoints) */
+    --quest-dark: #7C3AED;
+    --animation-dark: #2563EB;
+    --show-dark: #EA580C;
+    --masterclass-dark: #65A30D;
+    --pinata-dark: #DB2777;
+    --photo-dark: #0891B2;
+    --danger-dark: #DC2626;
+    --warning-dark: #D97706;
+    --info-dark: #1D4ED8;
+
     /* Transitions */
     --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
     --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -121,6 +136,9 @@
     --font-lg: 17px;
     --font-xl: 20px;
     --font-2xl: 24px;
+    --font-caption: 12px;
+    --font-2xs: 10px;
+    --font-input: 16px;
 
     /* Z-index scale */
     --z-base: 1;
@@ -281,29 +299,6 @@ body {
 }
 
 /* ==========================================
-   CATEGORY CHIPS
-   ========================================== */
-
-.category-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 10px;
-    border-radius: var(--radius-full);
-    font-size: var(--font-xs);
-    font-weight: 700;
-    white-space: nowrap;
-}
-
-.category-chip--quest { background: var(--quest-bg); color: #6D28D9; }
-.category-chip--animation { background: var(--animation-bg); color: #1D4ED8; }
-.category-chip--show { background: var(--show-bg); color: #C2410C; }
-.category-chip--masterclass { background: var(--masterclass-bg); color: #4D7C0F; }
-.category-chip--pinata { background: var(--pinata-bg); color: #BE185D; }
-.category-chip--photo { background: var(--photo-bg); color: #0E7490; }
-.category-chip--custom { background: var(--custom-bg); color: var(--gray-600); }
-
-/* ==========================================
    SKIP LINK (Accessibility)
    ========================================== */
 
@@ -314,7 +309,7 @@ body {
     z-index: 9999;
     padding: 12px 24px;
     background: var(--primary);
-    color: #fff;
+    color: var(--white);
     font-weight: 800;
     font-size: var(--font-sm);
     border-radius: 0 0 var(--radius-sm) var(--radius-sm);

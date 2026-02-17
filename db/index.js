@@ -662,6 +662,62 @@ async function initDatabase() {
         `);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_design_tags_tag ON design_tags(tag)');
 
+        // v12.6: Contractors table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS contractors (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                specialty JSONB DEFAULT '[]',
+                telegram_chat_id BIGINT,
+                telegram_username VARCHAR(100),
+                invite_token VARCHAR(50) UNIQUE,
+                phone VARCHAR(30),
+                notes TEXT,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_contractors_active ON contractors(is_active)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_contractors_invite ON contractors(invite_token)');
+
+        // v12.6: Contractor notification log
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS contractor_notifications (
+                id SERIAL PRIMARY KEY,
+                contractor_id INTEGER NOT NULL REFERENCES contractors(id) ON DELETE CASCADE,
+                booking_id VARCHAR(50),
+                rule_id INTEGER,
+                message_id INTEGER,
+                status VARCHAR(20) DEFAULT 'sent',
+                responded_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_contractor_notif_contractor ON contractor_notifications(contractor_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_contractor_notif_status ON contractor_notifications(status)');
+
+        // v12.6: skip_notification flag for bookings
+        await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS skip_notification BOOLEAN DEFAULT false`);
+
+        // v12.6: Seed test contractor (Женя / Євгенія)
+        const contractorSeedVersion = '008_seed_contractor_zhenya';
+        const contractorSeedCheck = await pool.query(
+            'SELECT 1 FROM schema_migrations WHERE version = $1', [contractorSeedVersion]
+        );
+        if (contractorSeedCheck.rows.length === 0) {
+            const crypto = require('crypto');
+            const inviteToken = 'ctr_' + crypto.randomBytes(8).toString('hex');
+            await pool.query(
+                `INSERT INTO contractors (name, specialty, telegram_chat_id, telegram_username, invite_token, phone, notes)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+                ['Євгенія', JSON.stringify(['pinata_print', 'print']), 622480549, 'armonia_del_mundo', inviteToken, null, 'Друк картинок на піньяти']
+            );
+            await pool.query(
+                'INSERT INTO schema_migrations (version) VALUES ($1)', [contractorSeedVersion]
+            );
+            log.info('Test contractor seeded: Євгенія (@armonia_del_mundo)');
+        }
+
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);

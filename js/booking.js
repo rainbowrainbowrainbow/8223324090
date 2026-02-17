@@ -480,7 +480,8 @@ function buildBookingObject(formData, program) {
         status: status,
         kidsCount: kidsCount || null,
         groupName: document.getElementById('bookingGroupName')?.value.trim() || null,
-        extraData: buildExtraData(formData.programId)
+        extraData: buildExtraData(formData.programId),
+        skipNotification: document.getElementById('skipNotificationToggle')?.checked || false
     };
 
     // Optimistic locking: include updatedAt from the booking being edited

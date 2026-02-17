@@ -12,6 +12,7 @@ const {
 const { ensureDefaultLines } = require('../services/booking');
 const { buildAndSendDigest, sendTomorrowReminder } = require('../services/scheduler');
 const { handleBotCommand, handleCertUse } = require('../services/bot');
+const { handleContractorCallback } = require('../services/bookingAutomation');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('TelegramRoute');
@@ -215,6 +216,32 @@ router.post('/webhook', async (req, res) => {
                 ).catch(() => {});
             }
 
+            // v12.6: Handle contractor deep link /start ctr_XXXXX
+            if (update.message.text.startsWith('/start ctr_') && update.message.chat.type === 'private') {
+                const token = update.message.text.slice(7).trim(); // "ctr_XXXXX"
+                try {
+                    const ctrResult = await pool.query(
+                        'UPDATE contractors SET telegram_chat_id = $1, telegram_username = $2 WHERE invite_token = $3 RETURNING name',
+                        [botChatId, fromUsername, token]
+                    );
+                    if (ctrResult.rows.length > 0) {
+                        const name = ctrResult.rows[0].name;
+                        await sendTelegramMessage(botChatId,
+                            `🤝 <b>Вітаємо, ${name}!</b>\n\n`
+                            + `Ви підключені як підрядник Парку Закревського Періоду.\n`
+                            + `Тепер ви будете отримувати замовлення напряму в цей чат.\n\n`
+                            + `✅ Telegram підключено`, { parse_mode: 'HTML' });
+                        log.info(`Contractor "${name}" linked via invite token ${token} (chat_id: ${botChatId})`);
+                    } else {
+                        await sendTelegramMessage(botChatId,
+                            '❌ Посилання недійсне або вже використане.', { parse_mode: 'HTML' });
+                    }
+                } catch (err) {
+                    log.error('Contractor invite link error', err);
+                }
+                return res.sendStatus(200);
+            }
+
             await handleBotCommand(botChatId, botThreadId, update.message.text, fromUsername);
         }
 
@@ -362,6 +389,19 @@ router.post('/webhook', async (req, res) => {
                         show_alert: true
                     });
                 }
+
+            } else if (data.startsWith('ctr_accept:') || data.startsWith('ctr_reject:')) {
+                // v12.6: Contractor accept/reject callback
+                const parts = data.split(':');
+                const action = parts[0]; // 'ctr_accept' or 'ctr_reject'
+                const bookingId = parts[1] || null;
+                const contractorId = safeParseInt(parts[2]);
+                if (!bookingId || !contractorId) {
+                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' });
+                    return res.sendStatus(200);
+                }
+                await handleContractorCallback(action, bookingId, contractorId, id, chatId, message.message_id);
+                return res.sendStatus(200);
 
             } else if (data.startsWith('no_anim:')) {
                 const requestId = safeParseInt(data.split(':')[1]);

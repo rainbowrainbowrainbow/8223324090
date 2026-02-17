@@ -723,6 +723,13 @@ async function showSettings() {
     const autoDelHours = document.getElementById('settingsAutoDeleteHours');
     if (autoDelHours) autoDelHours.value = autoDeleteHours || '10';
 
+    // v12.6: Load contractors
+    const contractorsSection = document.getElementById('settingsContractorsSection');
+    if (contractorsSection) {
+        contractorsSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
+        if (AppState.currentUser.role === 'admin') renderContractors();
+    }
+
     // v8.3: Load automation rules
     const automationSection = document.getElementById('settingsAutomationSection');
     if (automationSection) {
@@ -2046,6 +2053,7 @@ async function renderAutomationRules() {
             const actions = (rule.actions || []);
             const taskCount = actions.filter(a => a.type === 'create_task').length;
             const tgCount = actions.filter(a => a.type === 'telegram_group').length;
+            const ctrCount = actions.filter(a => a.type === 'notify_contractor').length;
             const activeClass = rule.is_active ? '' : ' rule-inactive';
             return `
             <div class="automation-rule${activeClass}" data-id="${rule.id}">
@@ -2060,6 +2068,7 @@ async function renderAutomationRules() {
                         <span class="automation-rule-actions-info">
                             ${taskCount > 0 ? `📝 ${taskCount} задач` : ''}
                             ${tgCount > 0 ? ` 📲 ${tgCount} повід.` : ''}
+                            ${ctrCount > 0 ? ` 🤝 ${ctrCount} підр.` : ''}
                         </span>
                     </div>
                     <div class="automation-rule-controls">
@@ -2115,6 +2124,10 @@ function showAddAutomationRule() {
     document.getElementById('automationRuleForm').reset();
     document.getElementById('arDaysBefore').value = '3';
     document.getElementById('arTaskTitle').value = '📋 Підготовка до {programName} на {date}';
+    document.getElementById('arContractorTemplate').value = '🔔 <b>Нове замовлення</b>\n\n📅 {date} о {time}\n🏠 {room}\n👶 Дітей: {kidsCount}';
+    const wrap = document.getElementById('arContractorSelectWrap');
+    if (wrap) wrap.classList.add('hidden');
+    populateContractorSelect();
     modal.classList.remove('hidden');
     document.getElementById('arName').focus();
 }
@@ -2127,9 +2140,17 @@ async function handleAutomationRuleSubmit(e) {
     const daysBefore = parseInt(document.getElementById('arDaysBefore').value) || 0;
     const taskTitle = document.getElementById('arTaskTitle').value.trim();
     const sendTelegram = document.getElementById('arSendTelegram').checked;
+    const notifyContractor = document.getElementById('arNotifyContractor').checked;
+    const contractorId = document.getElementById('arContractorId').value;
+    const contractorTemplate = document.getElementById('arContractorTemplate').value.trim();
 
     if (!name || !productIds || !taskTitle) {
         showNotification('Заповніть всі поля', 'error');
+        return;
+    }
+
+    if (notifyContractor && !contractorId) {
+        showNotification('Оберіть підрядника', 'error');
         return;
     }
 
@@ -2141,6 +2162,15 @@ async function handleAutomationRuleSubmit(e) {
         actions.push({
             type: 'telegram_group',
             template: `📋 <b>${escapeHtml(name)}</b>\n\n📅 Дата: {date} о {time}\n🏠 Кімната: {room}\n\n${escapeHtml(taskTitle)}`
+        });
+    }
+
+    if (notifyContractor && contractorId) {
+        const defaultTemplate = `🔔 <b>Нове замовлення — ${escapeHtml(name)}</b>\n\n📅 Дата: {date} о {time}\n🏠 Кімната: {room}\n👶 Дітей: {kidsCount}\n📝 {notes}`;
+        actions.push({
+            type: 'notify_contractor',
+            contractor_id: parseInt(contractorId),
+            template: contractorTemplate || defaultTemplate
         });
     }
 
@@ -2167,6 +2197,207 @@ async function handleAutomationRuleSubmit(e) {
     } catch (err) {
         showNotification('Помилка створення', 'error');
     }
+}
+
+// ==========================================
+// v12.6: CONTRACTORS UI
+// ==========================================
+
+let cachedContractors = [];
+
+async function loadContractors() {
+    try {
+        const response = await fetch(`${API_BASE}/contractors`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        cachedContractors = await response.json();
+        return cachedContractors;
+    } catch (err) {
+        cachedContractors = [];
+        return [];
+    }
+}
+
+async function renderContractors() {
+    const container = document.getElementById('contractorsList');
+    if (!container) return;
+    const contractors = await loadContractors();
+    if (!contractors || contractors.length === 0) {
+        container.innerHTML = '<p class="no-data">Немає підрядників.</p>';
+        return;
+    }
+    container.innerHTML = contractors.map(c => {
+        const specs = (c.specialty || []).join(', ') || '—';
+        const connected = c.telegram_chat_id ? '🟢' : '🔴';
+        const tgInfo = c.telegram_username ? `@${c.telegram_username}` : (c.telegram_chat_id ? `ID: ${c.telegram_chat_id}` : 'не підключено');
+        const activeClass = c.is_active ? '' : ' rule-inactive';
+        return `
+        <div class="automation-rule${activeClass}" data-id="${c.id}">
+            <div class="automation-rule-header">
+                <div class="automation-rule-info">
+                    <strong>${connected} ${escapeHtml(c.name)}</strong>
+                    <span class="automation-rule-meta">
+                        ${escapeHtml(specs)} · ${tgInfo}
+                        ${c.phone ? ' · ' + escapeHtml(c.phone) : ''}
+                    </span>
+                    ${c.notes ? `<span class="automation-rule-actions-info">${escapeHtml(c.notes)}</span>` : ''}
+                </div>
+                <div class="automation-rule-controls">
+                    <button class="btn-submit btn-sm btn-blue" onclick="testContractorMessage(${c.id})" title="Тест">📲</button>
+                    <button class="btn-submit btn-sm" onclick="showEditContractor(${c.id})" title="Редагувати">✏️</button>
+                    <button class="btn-submit btn-sm" onclick="copyContractorInvite(${c.id})" title="Invite посилання">🔗</button>
+                    <button class="btn-danger btn-sm" onclick="deleteContractor(${c.id})">✕</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function showAddContractor() {
+    const modal = document.getElementById('contractorModal');
+    if (!modal) return;
+    document.getElementById('contractorForm').reset();
+    document.getElementById('contractorEditId').value = '';
+    document.getElementById('contractorModalTitle').textContent = '🤝 Новий підрядник';
+    modal.classList.remove('hidden');
+    document.getElementById('contractorName').focus();
+}
+
+async function showEditContractor(id) {
+    const c = cachedContractors.find(x => x.id === id);
+    if (!c) return;
+    const modal = document.getElementById('contractorModal');
+    if (!modal) return;
+    document.getElementById('contractorEditId').value = id;
+    document.getElementById('contractorModalTitle').textContent = '✏️ Редагувати підрядника';
+    document.getElementById('contractorName').value = c.name || '';
+    document.getElementById('contractorSpecialty').value = (c.specialty || []).join(', ');
+    document.getElementById('contractorTelegramId').value = c.telegram_chat_id || '';
+    document.getElementById('contractorTelegramUser').value = c.telegram_username || '';
+    document.getElementById('contractorPhone').value = c.phone || '';
+    document.getElementById('contractorNotes').value = c.notes || '';
+    modal.classList.remove('hidden');
+}
+
+async function handleContractorSubmit(e) {
+    e.preventDefault();
+    const editId = document.getElementById('contractorEditId').value;
+    const name = document.getElementById('contractorName').value.trim();
+    const specialtyStr = document.getElementById('contractorSpecialty').value.trim();
+    const telegramChatId = document.getElementById('contractorTelegramId').value.trim();
+    const telegramUsername = document.getElementById('contractorTelegramUser').value.trim();
+    const phone = document.getElementById('contractorPhone').value.trim();
+    const notes = document.getElementById('contractorNotes').value.trim();
+
+    if (!name) {
+        showNotification("Вкажіть ім'я підрядника", 'error');
+        return;
+    }
+
+    const specialty = specialtyStr ? specialtyStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const body = {
+        name,
+        specialty,
+        telegram_chat_id: telegramChatId ? parseInt(telegramChatId) : null,
+        telegram_username: telegramUsername.replace('@', '') || null,
+        phone: phone || null,
+        notes: notes || null,
+        is_active: true
+    };
+
+    try {
+        const url = editId ? `${API_BASE}/contractors/${editId}` : `${API_BASE}/contractors`;
+        const method = editId ? 'PUT' : 'POST';
+        const response = await fetch(url, {
+            method,
+            headers: getAuthHeaders(),
+            body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        if (data.success) {
+            document.getElementById('contractorModal').classList.add('hidden');
+            showNotification(editId ? 'Підрядника оновлено!' : 'Підрядника додано!', 'success');
+            renderContractors();
+            populateContractorSelect(); // refresh dropdown in automation rules
+        } else {
+            showNotification(data.error || 'Помилка', 'error');
+        }
+    } catch (err) {
+        showNotification('Помилка збереження', 'error');
+    }
+}
+
+async function deleteContractor(id) {
+    const confirmed = await customConfirm('Видалити цього підрядника?', 'Видалення');
+    if (!confirmed) return;
+    try {
+        await fetch(`${API_BASE}/contractors/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        showNotification('Підрядника видалено', 'success');
+        renderContractors();
+    } catch (err) {
+        showNotification('Помилка видалення', 'error');
+    }
+}
+
+async function testContractorMessage(id) {
+    try {
+        const response = await fetch(`${API_BASE}/contractors/${id}/test-message`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Тестове повідомлення надіслано!', 'success');
+        } else {
+            showNotification(data.error || 'Помилка відправки', 'error');
+        }
+    } catch (err) {
+        showNotification('Помилка відправки', 'error');
+    }
+}
+
+async function copyContractorInvite(id) {
+    const c = cachedContractors.find(x => x.id === id);
+    if (!c || !c.invite_token) {
+        showNotification('Токен не знайдено', 'error');
+        return;
+    }
+    // Try to fetch bot username for full link
+    let botUsername = null;
+    try {
+        const res = await fetch(`${API_BASE}/settings/settings/bot_username`, { headers: getAuthHeaders(false) });
+        const data = await res.json();
+        botUsername = data.value;
+    } catch (e) { /* fallback */ }
+
+    const link = botUsername
+        ? `https://t.me/${botUsername}?start=${c.invite_token}`
+        : `Invite token: ${c.invite_token}`;
+
+    try {
+        await navigator.clipboard.writeText(link);
+        showNotification('Посилання скопійовано!', 'success');
+    } catch (e) {
+        prompt('Invite посилання:', link);
+    }
+}
+
+async function populateContractorSelect() {
+    const select = document.getElementById('arContractorId');
+    if (!select) return;
+    if (cachedContractors.length === 0) await loadContractors();
+    const activeContractors = cachedContractors.filter(c => c.is_active);
+    select.innerHTML = '<option value="">Оберіть підрядника</option>' +
+        activeContractors.map(c => `<option value="${c.id}">${escapeHtml(c.name)} (${(c.specialty || []).join(', ') || '—'})</option>`).join('');
+}
+
+function toggleContractorSelect() {
+    const checked = document.getElementById('arNotifyContractor').checked;
+    const wrap = document.getElementById('arContractorSelectWrap');
+    if (wrap) wrap.classList.toggle('hidden', !checked);
+    if (checked) populateContractorSelect();
 }
 
 // ==========================================

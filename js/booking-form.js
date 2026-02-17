@@ -84,6 +84,9 @@ window.BookingForm = {
         const statusRadio = document.querySelector('input[name="bookingStatus"][value="confirmed"]');
         if (statusRadio) statusRadio.checked = true;
 
+        const skipNotif = document.getElementById('skipNotificationToggle');
+        if (skipNotif) skipNotif.checked = false;
+
         const kidsCountSection = document.getElementById('kidsCountSection');
         if (kidsCountSection) kidsCountSection.classList.add('hidden');
         const kidsCountInput = document.getElementById('kidsCountInput');

@@ -163,7 +163,7 @@
     background: var(--white);
     border-radius: var(--radius);
     box-shadow: var(--shadow-md);
-    overflow: hidden;
+    overflow: clip;
     border: 1px solid var(--gray-200);
 }
 

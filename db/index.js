@@ -215,45 +215,42 @@ async function initDatabase() {
             )
         `);
 
-        // v12.4: Force password reset (runs every deploy until login works)
-        const resetVersion = '006_password_reset_v12_4';
+        // v12.5: UPSERT all default users (create if missing + reset passwords)
+        const resetVersion = '007_upsert_users_v12_5';
         const resetCheck = await pool.query(
             'SELECT 1 FROM schema_migrations WHERE version = $1', [resetVersion]
         );
         if (resetCheck.rows.length === 0) {
-            const defaultPasswords = [
-                { username: 'admin', password: 'admin123' },
-                { username: 'Vitalina', password: 'Vitalina109' },
-                { username: 'Dasha', password: 'Dasha743' },
-                { username: 'Natalia', password: 'Natalia875' },
-                { username: 'Sergey', password: 'Sergey232' },
-                { username: 'Animator', password: 'Animator612' },
-                { username: 'Anli', password: 'Anli384' },
-                { username: 'Zhenya', password: 'Zhenya527' },
-                { username: 'Lera', password: 'Lera691' }
+            const defaultUsers = [
+                { username: 'admin', password: 'admin123', role: 'admin', name: 'Адмін' },
+                { username: 'Vitalina', password: 'Vitalina109', role: 'admin', name: 'Віталіна' },
+                { username: 'Dasha', password: 'Dasha743', role: 'admin', name: 'Даша' },
+                { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
+                { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
+                { username: 'Animator', password: 'Animator612', role: 'admin', name: 'Аніматор' },
+                { username: 'Anli', password: 'Anli384', role: 'admin', name: 'Анлі' },
+                { username: 'Zhenya', password: 'Zhenya527', role: 'admin', name: 'Женя' },
+                { username: 'Lera', password: 'Lera691', role: 'admin', name: 'Лера' }
             ];
-            let resetCount = 0;
-            for (const u of defaultPasswords) {
+            let created = 0, updated = 0;
+            for (const u of defaultUsers) {
                 const hash = await bcrypt.hash(u.password, 10);
-                const upd = await pool.query(
-                    'UPDATE users SET password_hash = $1 WHERE LOWER(username) = LOWER($2)',
-                    [hash, u.username]
+                const res = await pool.query(
+                    `INSERT INTO users (username, password_hash, role, name)
+                     VALUES ($1, $2, $3, $4)
+                     ON CONFLICT (username) DO UPDATE SET password_hash = $2
+                     RETURNING (xmax = 0) AS inserted`,
+                    [u.username, hash, u.role, u.name]
                 );
-                resetCount += upd.rowCount;
-                log.info(`Password reset: ${u.username} → ${upd.rowCount} rows updated, hash: ${hash.substring(0, 15)}...`);
+                if (res.rows[0].inserted) { created++; } else { updated++; }
+                log.info(`User upsert: ${u.username} → ${res.rows[0].inserted ? 'CREATED' : 'password UPDATED'}`);
             }
-            // Verify immediately after reset
-            const verifyResult = await pool.query(
-                "SELECT username, substring(password_hash, 1, 15) as hash_prefix FROM users WHERE LOWER(username) = 'anli'"
-            );
-            log.info(`Post-reset verify Anli: ${JSON.stringify(verifyResult.rows)}`);
-
             await pool.query(
                 'INSERT INTO schema_migrations (version) VALUES ($1)', [resetVersion]
             );
-            log.info(`Passwords reset for ${resetCount} users (v12.4)`);
+            log.info(`Users upsert complete: ${created} created, ${updated} updated (v12.5)`);
         } else {
-            log.info('Password reset v12.4 already applied, skipping');
+            log.info('Users upsert v12.5 already applied, skipping');
         }
 
         await pool.query(`

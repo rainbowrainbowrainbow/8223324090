@@ -84,7 +84,7 @@
     padding: 14px;
     border: 2px solid var(--gray-200);
     border-radius: var(--radius-sm);
-    font-size: var(--font-base);
+    font-size: var(--font-input, 16px);
     font-family: inherit;
     resize: vertical;
     min-height: 200px;
@@ -210,58 +210,11 @@ input[type="date"] {
     gap: 12px;
 }
 
-.view-mode-toggle {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-    user-select: none;
-}
-
-.view-mode-toggle input { display: none; }
-
-.toggle-slider {
-    width: 44px;
-    height: 24px;
-    background: var(--gray-300);
-    border-radius: 12px;
-    position: relative;
-    transition: all var(--speed-normal) var(--ease-smooth);
-}
-
-.toggle-slider::before {
-    content: '';
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    background: var(--white);
-    border-radius: 50%;
-    top: 2px;
-    left: 2px;
-    transition: all var(--speed-normal) var(--ease-bounce);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-}
-
-.view-mode-toggle input:checked + .toggle-slider {
-    background: var(--primary);
-    box-shadow: 0 0 8px rgba(16,185,129,0.3);
-}
-
-.view-mode-toggle input:checked + .toggle-slider::before {
-    left: 22px;
-}
-
-.toggle-label {
-    font-size: var(--font-sm);
-    font-weight: 600;
-    color: var(--gray-700);
-}
-
 .days-select {
     padding: 8px 12px;
     border: 2px solid var(--primary);
     border-radius: var(--radius-sm);
-    font-size: var(--font-sm);
+    font-size: var(--font-input, 16px);
     font-weight: 600;
     font-family: inherit;
     background: var(--white);
@@ -407,23 +360,468 @@ input[type="date"] {
 }
 
 /* ==========================================
-   QUICK STATS BAR (v5.8)
+   QUICK STATS BAR (v11.1)
    ========================================== */
 
 .quick-stats-bar {
     background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
-    border: 1px solid #BBF7D0;
+    color: #166534;
+    padding: 10px 16px;
     border-radius: var(--radius-sm);
-    padding: 8px 16px;
     margin-bottom: 12px;
     font-size: var(--font-sm);
     font-weight: 600;
-    color: #166534;
-    text-align: center;
+    border: 1px solid #BBF7D0;
 }
 
 .quick-stats-bar.hidden {
     display: none;
+}
+
+/* ==========================================
+   KLESHNYA FLOATING WIDGET — Futuristic Terminal v11.0.3
+   ========================================== */
+
+.kleshnya-widget {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9000;
+}
+
+.kleshnya-widget.hidden { display: none; }
+
+/* --- FAB Button — Glowing Sci-Fi --- */
+.kleshnya-fab {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 2px solid rgba(234, 88, 12, 0.6);
+    background: radial-gradient(circle at 35% 35%, #FF6B2B 0%, #EA580C 40%, #9A3412 100%);
+    box-shadow:
+        0 0 20px rgba(234, 88, 12, 0.4),
+        0 0 40px rgba(234, 88, 12, 0.15),
+        inset 0 -2px 6px rgba(0,0,0,0.3),
+        inset 0 2px 6px rgba(255,255,255,0.15);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: transform 0.2s var(--ease-bounce), box-shadow 0.3s;
+}
+
+.kleshnya-fab:hover {
+    transform: scale(1.1);
+    box-shadow:
+        0 0 30px rgba(234, 88, 12, 0.6),
+        0 0 60px rgba(234, 88, 12, 0.2),
+        inset 0 -2px 6px rgba(0,0,0,0.3),
+        inset 0 2px 6px rgba(255,255,255,0.15);
+}
+
+.kleshnya-fab:active { transform: scale(0.93); }
+
+.kleshnya-fab-icon {
+    font-size: 28px;
+    line-height: 1;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+    z-index: 2;
+}
+
+/* Rotating ring */
+.kleshnya-fab-ring {
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    border: 2px dashed rgba(234, 88, 12, 0.35);
+    animation: kleshnya-ring-spin 8s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes kleshnya-ring-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Sonar pulse */
+.kleshnya-fab-sonar {
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(234, 88, 12, 0.5);
+    animation: kleshnya-sonar 3s ease-out infinite;
+    pointer-events: none;
+}
+
+@keyframes kleshnya-sonar {
+    0% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.4); opacity: 0; }
+    100% { transform: scale(1.4); opacity: 0; }
+}
+
+/* --- Popup — Holographic Terminal --- */
+.kleshnya-popup {
+    position: absolute;
+    bottom: 74px;
+    right: 0;
+    width: 340px;
+    background: linear-gradient(180deg, #1a1520 0%, #12101a 100%);
+    border-radius: 14px;
+    border: 1px solid rgba(234, 88, 12, 0.3);
+    box-shadow:
+        0 8px 40px rgba(0,0,0,0.5),
+        0 0 30px rgba(234, 88, 12, 0.1),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+    overflow: hidden;
+    animation: kleshnya-popup-in 0.3s var(--ease-bounce);
+}
+
+.kleshnya-popup.hidden { display: none; }
+
+@keyframes kleshnya-popup-in {
+    from { opacity: 0; transform: translateY(16px) scale(0.92); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Scan line overlay */
+.kleshnya-scanline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(234, 88, 12, 0.015) 2px,
+        rgba(234, 88, 12, 0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* --- Header — Command Bar --- */
+.kleshnya-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: linear-gradient(135deg, rgba(234, 88, 12, 0.12) 0%, rgba(234, 88, 12, 0.04) 100%);
+    border-bottom: 1px solid rgba(234, 88, 12, 0.2);
+    position: relative;
+    z-index: 11;
+}
+
+.kleshnya-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.kleshnya-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.kleshnya-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22C55E;
+    box-shadow: 0 0 6px #22C55E, 0 0 12px rgba(34, 197, 94, 0.3);
+    animation: kleshnya-blink 2s ease-in-out infinite;
+}
+
+@keyframes kleshnya-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.kleshnya-popup-title {
+    font-weight: 800;
+    font-size: 13px;
+    color: #FDBA74;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-family: 'Courier New', monospace;
+}
+
+.kleshnya-version {
+    font-size: 10px;
+    color: rgba(253, 186, 116, 0.5);
+    font-weight: 400;
+}
+
+.kleshnya-status-text {
+    font-size: 10px;
+    font-weight: 700;
+    color: #22C55E;
+    letter-spacing: 1px;
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+}
+
+.kleshnya-popup-close {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.1);
+    font-size: 14px;
+    color: rgba(253, 186, 116, 0.7);
+    cursor: pointer;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    font-family: 'Courier New', monospace;
+}
+
+.kleshnya-popup-close:hover {
+    background: rgba(234, 88, 12, 0.2);
+    border-color: rgba(234, 88, 12, 0.4);
+    color: #FDBA74;
+}
+
+/* --- Body --- */
+.kleshnya-popup-body {
+    padding: 14px;
+    position: relative;
+    z-index: 11;
+}
+
+/* Terminal line with prompt */
+.kleshnya-terminal-line {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.kleshnya-prompt {
+    color: #EA580C;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1.5;
+    flex-shrink: 0;
+    text-shadow: 0 0 8px rgba(234, 88, 12, 0.5);
+}
+
+.kleshnya-greeting {
+    font-size: 13px;
+    line-height: 1.6;
+    color: rgba(253, 186, 116, 0.9);
+    font-family: 'Courier New', monospace;
+}
+
+/* Typing cursor */
+.kleshnya-greeting.typing::after {
+    content: '█';
+    animation: kleshnya-cursor 0.6s step-end infinite;
+    color: #EA580C;
+    margin-left: 1px;
+}
+
+@keyframes kleshnya-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* --- Answer block --- */
+.kleshnya-answer {
+    background: rgba(234, 88, 12, 0.06);
+    border: 1px solid rgba(234, 88, 12, 0.15);
+    border-left: 3px solid #EA580C;
+    border-radius: 0 8px 8px 0;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 8px;
+    animation: kleshnya-answer-in 0.25s ease-out;
+}
+
+.kleshnya-answer.hidden { display: none; }
+
+@keyframes kleshnya-answer-in {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+.kleshnya-answer-prompt {
+    color: #22C55E;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    font-size: 12px;
+    line-height: 1.6;
+    flex-shrink: 0;
+    text-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+}
+
+.kleshnya-answer-text {
+    font-size: 12px;
+    line-height: 1.6;
+    color: rgba(209, 213, 219, 0.9);
+    font-family: 'Courier New', monospace;
+}
+
+/* --- Divider --- */
+.kleshnya-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.kleshnya-divider::before,
+.kleshnya-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(234, 88, 12, 0.2), transparent);
+}
+
+.kleshnya-divider-text {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: rgba(234, 88, 12, 0.4);
+    font-family: 'Courier New', monospace;
+    white-space: nowrap;
+}
+
+/* --- Question Buttons — Neon Control Panel --- */
+.kleshnya-questions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.kleshnya-q-btn {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(234, 88, 12, 0.15);
+    border-radius: 8px;
+    padding: 9px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(253, 186, 116, 0.8);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+    overflow: hidden;
+}
+
+.kleshnya-q-icon {
+    font-size: 10px;
+    color: #EA580C;
+    text-shadow: 0 0 4px rgba(234, 88, 12, 0.6);
+    transition: transform 0.2s;
+}
+
+.kleshnya-q-label {
+    font-size: 11px;
+    letter-spacing: 0.3px;
+}
+
+.kleshnya-q-btn:hover {
+    background: rgba(234, 88, 12, 0.1);
+    border-color: rgba(234, 88, 12, 0.4);
+    color: #FDBA74;
+    box-shadow: 0 0 12px rgba(234, 88, 12, 0.15);
+}
+
+.kleshnya-q-btn:hover .kleshnya-q-icon {
+    transform: rotate(90deg);
+}
+
+.kleshnya-q-btn:active { transform: scale(0.96); }
+
+.kleshnya-q-btn.active {
+    background: rgba(234, 88, 12, 0.15);
+    border-color: #EA580C;
+    color: #FDBA74;
+    box-shadow: 0 0 16px rgba(234, 88, 12, 0.25), inset 0 0 12px rgba(234, 88, 12, 0.05);
+}
+
+.kleshnya-q-btn.active .kleshnya-q-icon {
+    transform: rotate(90deg);
+}
+
+/* Hover sweep effect */
+.kleshnya-q-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(234, 88, 12, 0.08), transparent);
+    transition: left 0.4s;
+}
+
+.kleshnya-q-btn:hover::before {
+    left: 100%;
+}
+
+/* --- Footer --- */
+.kleshnya-popup-footer {
+    padding: 10px 14px;
+    border-top: 1px solid rgba(234, 88, 12, 0.12);
+    text-align: center;
+    position: relative;
+    z-index: 11;
+}
+
+.kleshnya-goto-chat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(253, 186, 116, 0.7);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 16px;
+    border-radius: 8px;
+    transition: all 0.2s;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.5px;
+    border: 1px solid transparent;
+}
+
+.kleshnya-chat-icon {
+    font-size: 14px;
+    color: #EA580C;
+    text-shadow: 0 0 4px rgba(234, 88, 12, 0.4);
+}
+
+.kleshnya-goto-chat:hover {
+    background: rgba(234, 88, 12, 0.1);
+    border-color: rgba(234, 88, 12, 0.2);
+    color: #FDBA74;
+}
+
+/* Kleshnya nav link accent */
+.nav-link-kleshnya {
+    position: relative;
+}
+
+.nav-link-kleshnya::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    background: #EA580C;
+    border-radius: 50%;
+    box-shadow: 0 0 4px #EA580C;
+    opacity: 0.8;
 }
 
 /* ==========================================

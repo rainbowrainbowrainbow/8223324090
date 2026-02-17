@@ -103,6 +103,16 @@ async function apiUpdateBooking(id, booking) {
             body: JSON.stringify(booking)
         });
         if (handleAuthError(response)) return { success: false };
+        // Optimistic locking: 409 with conflict field
+        if (response.status === 409) {
+            const body = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                conflict: body.conflict || false,
+                error: body.error || 'Конфлікт даних',
+                currentData: body.currentData || null
+            };
+        }
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             return { success: false, error: body.error || 'API error' };
@@ -197,6 +207,72 @@ async function apiGetStats(dateFrom, dateTo) {
     } catch (err) {
         console.error('apiGetStats error:', err);
         return [];
+    }
+}
+
+// v9.0: Enhanced stats API (server-side aggregation)
+async function apiGetStatsRevenue(params = {}) {
+    try {
+        const qs = new URLSearchParams();
+        if (params.period) qs.set('period', params.period);
+        if (params.from) qs.set('from', params.from);
+        if (params.to) qs.set('to', params.to);
+        const url = `${API_BASE}/stats/revenue${qs.toString() ? '?' + qs.toString() : ''}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsRevenue error:', err);
+        return null;
+    }
+}
+
+async function apiGetStatsPrograms(params = {}) {
+    try {
+        const qs = new URLSearchParams();
+        if (params.period) qs.set('period', params.period);
+        if (params.from) qs.set('from', params.from);
+        if (params.to) qs.set('to', params.to);
+        if (params.limit) qs.set('limit', params.limit);
+        const url = `${API_BASE}/stats/programs${qs.toString() ? '?' + qs.toString() : ''}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsPrograms error:', err);
+        return null;
+    }
+}
+
+async function apiGetStatsLoad(params = {}) {
+    try {
+        const qs = new URLSearchParams();
+        if (params.period) qs.set('period', params.period);
+        if (params.from) qs.set('from', params.from);
+        if (params.to) qs.set('to', params.to);
+        const url = `${API_BASE}/stats/load${qs.toString() ? '?' + qs.toString() : ''}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsLoad error:', err);
+        return null;
+    }
+}
+
+async function apiGetStatsTrends(period = 'month') {
+    try {
+        const url = `${API_BASE}/stats/trends?period=${encodeURIComponent(period)}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsTrends error:', err);
+        return null;
     }
 }
 
@@ -377,6 +453,120 @@ async function apiVerifyToken() {
     }
 }
 
+// v10.4: Personal cabinet profile
+async function apiGetProfile() {
+    try {
+        const response = await fetch(`${API_BASE}/auth/profile`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getProfile error:', err);
+        return null;
+    }
+}
+
+// v10.4: Change password
+async function apiChangePassword(currentPassword, newPassword) {
+    try {
+        const response = await fetch(`${API_BASE}/auth/password`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ currentPassword, newPassword })
+        });
+        if (handleAuthError(response)) return { success: false };
+        const data = await response.json();
+        if (!response.ok) return { success: false, error: data.error || 'API error' };
+        return { success: true };
+    } catch (err) {
+        console.error('API changePassword error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+// v10.6: Quick task status from profile
+async function apiQuickTaskStatus(taskId, status) {
+    try {
+        const response = await fetch(`${API_BASE}/auth/tasks/${taskId}/quick-status`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ status })
+        });
+        if (handleAuthError(response)) return { success: false };
+        const data = await response.json();
+        if (!response.ok) return { success: false, error: data.error || 'API error' };
+        return { success: true, ...data };
+    } catch (err) {
+        console.error('API quickTaskStatus error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+// v10.6: Log user UI action
+async function apiLogAction(action, target, meta) {
+    try {
+        fetch(`${API_BASE}/auth/log-action`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ action, target, meta })
+        }); // fire-and-forget
+    } catch { /* ignore */ }
+}
+
+// v10.6: Get achievements definitions
+async function apiGetAchievements() {
+    try {
+        const response = await fetch(`${API_BASE}/auth/achievements`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return {};
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getAchievements error:', err);
+        return {};
+    }
+}
+
+// v10.6: Get user action log
+async function apiGetActionLog(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.user) params.set('user', filters.user);
+        if (filters.limit) params.set('limit', filters.limit);
+        if (filters.offset) params.set('offset', filters.offset);
+        const qs = params.toString();
+        const response = await fetch(`${API_BASE}/auth/action-log${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { items: [], total: 0 };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getActionLog error:', err);
+        return { items: [], total: 0 };
+    }
+}
+
+// v10.4: Profile activity with pagination
+async function apiGetProfileActivity(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        params.set('user', AppState.currentUser.username);
+        if (filters.action) params.set('action', filters.action);
+        if (filters.from) params.set('from', filters.from);
+        if (filters.to) params.set('to', filters.to);
+        if (filters.limit) params.set('limit', filters.limit);
+        if (filters.offset) params.set('offset', filters.offset);
+        const url = `${API_BASE}/history?${params.toString()}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { items: [], total: 0 };
+        if (!response.ok) throw new Error('API error');
+        const data = await response.json();
+        if (Array.isArray(data)) return { items: data, total: data.length };
+        return data;
+    } catch (err) {
+        console.error('API getProfileActivity error:', err);
+        return { items: [], total: 0 };
+    }
+}
+
 // v8.4: Certificates API
 async function apiGetCertificates(filters = {}) {
     try {
@@ -503,5 +693,46 @@ async function apiDeleteCertificate(id) {
     } catch (err) {
         console.error('API deleteCertificate error:', err);
         return { success: false, error: err.message };
+    }
+}
+
+// v11.0: Kleshnya API
+async function apiGetKleshnyaGreeting(date) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/greeting?date=${date}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya greeting error:', err);
+        return null;
+    }
+}
+
+async function apiGetKleshnyaChat() {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/chat`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya chat error:', err);
+        return [];
+    }
+}
+
+async function apiSendKleshnyaMessage(message) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/chat`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ message })
+        });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya chat error:', err);
+        return null;
     }
 }

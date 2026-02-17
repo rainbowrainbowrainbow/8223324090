@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Графік — Парк Закревського Періоду</title>
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=8.3.3">
-    <link rel="stylesheet" href="css/layout.css?v=8.3.3">
-    <link rel="stylesheet" href="css/pages.css?v=8.3.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=8.3.3">
-    <link rel="stylesheet" href="css/responsive.css?v=8.3.3">
+    <link rel="stylesheet" href="css/base.css?v=12.1">
+    <link rel="stylesheet" href="css/layout.css?v=12.1">
+    <link rel="stylesheet" href="css/pages.css?v=12.1">
+    <link rel="stylesheet" href="css/modals.css?v=12.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=12.1">
+    <link rel="stylesheet" href="css/responsive.css?v=12.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -29,6 +30,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            flex-wrap: wrap;
         }
 
         .schedule-controls .week-nav button {
@@ -56,6 +58,20 @@
             color: var(--gray-800);
             min-width: 200px;
             text-align: center;
+        }
+
+        .schedule-toolbar {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .schedule-toolbar .btn-page-secondary {
+            font-size: 12px;
+            padding: 6px 14px;
+            min-height: 36px;
+            white-space: nowrap;
+            border-radius: var(--radius-sm);
         }
 
         .dept-filter {
@@ -135,6 +151,8 @@
         .schedule-wrapper {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
+            max-width: 100%;
             border-radius: var(--radius);
             box-shadow: var(--shadow-sm);
             border: 1px solid var(--gray-100);
@@ -533,6 +551,9 @@
             .schedule-controls .week-nav {
                 justify-content: center;
             }
+            .schedule-toolbar {
+                justify-content: center;
+            }
             .dept-filter {
                 justify-content: center;
             }
@@ -547,6 +568,8 @@
     </style>
 </head>
 <body>
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <!-- Login overlay -->
     <div id="loginOverlay" class="page-login-overlay hidden">
         <a href="/">Увійти в систему</a>
@@ -566,6 +589,7 @@
                     <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
                     <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
                     <a href="/staff" class="nav-link active">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
                 </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
@@ -574,7 +598,7 @@
             </div>
         </header>
 
-        <main class="page-container">
+        <main id="main-content" class="page-container">
             <div class="page-header">
                 <h2>👥 Графік роботи</h2>
                 <button id="addStaffBtn" class="btn-page-primary" style="display:none">+ Додати співробітника</button>
@@ -587,10 +611,12 @@
                     <span id="weekLabel" class="week-label"></span>
                     <button id="nextWeekBtn" title="Наступний тиждень">›</button>
                     <button id="todayWeekBtn" title="Поточний тиждень" style="font-size:13px;width:auto;padding:0 12px;font-weight:700">Сьогодні</button>
-                    <button id="copyWeekBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px;display:none" title="Скопіювати цей тиждень на наступний">Копія тижня →</button>
-                    <button id="fillWeekBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px;display:none" title="Масове заповнення тижня">Заповнити тиждень</button>
-                    <button id="toggleHoursBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px" title="Показати/сховати години">Години</button>
-                    <button id="toggleLoadViewBtn" class="btn-page-secondary" style="font-size:12px;padding:6px 12px;min-height:40px" title="Навантаження по дням">📊 Навантаження</button>
+                </div>
+                <div class="schedule-toolbar">
+                    <button id="copyWeekBtn" class="btn-page-secondary" style="display:none" title="Скопіювати цей тиждень на наступний">📋 Копія тижня →</button>
+                    <button id="fillWeekBtn" class="btn-page-secondary" style="display:none" title="Масове заповнення тижня">📝 Заповнити тиждень</button>
+                    <button id="toggleHoursBtn" class="btn-page-secondary" title="Показати/сховати години">⏱ Години</button>
+                    <button id="toggleLoadViewBtn" class="btn-page-secondary" title="Навантаження по дням">📊 Навантаження</button>
                 </div>
                 <div id="deptFilter" class="dept-filter"></div>
             </div>
@@ -702,13 +728,24 @@
         </div>
     </div>
 
+    <!-- v10.4: Особистий кабінет -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
     <div id="notification" class="notification hidden">
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=8.3.3"></script>
-    <script src="js/api.js?v=8.3.3"></script>
-    <script src="js/auth.js?v=8.3.3"></script>
-    <script src="js/staff-page.js?v=8.3.3"></script>
+    <script src="js/config.js?v=12.1"></script>
+    <script src="js/api.js?v=12.1"></script>
+    <script src="js/auth.js?v=12.1"></script>
+    <script src="js/staff-page.js?v=12.1"></script>
 </body>
 </html>

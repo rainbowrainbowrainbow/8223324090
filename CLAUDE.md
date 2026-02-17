@@ -19,7 +19,7 @@
 - **Database**: PostgreSQL 16 + raw `pg` pool (NO Prisma, NO ORM)
 - **Bot**: Custom Telegram Bot API calls (NO grammY)
 - **Frontend**: Vanilla HTML + CSS + JS SPA (NO React, NO Next.js, NO Astro)
-- **CSS**: 10-file modular architecture + Design System v4.0 (base, auth, layout, timeline, panel, modals, controls, features, dark-mode, responsive)
+- **CSS**: 11-file modular architecture + Design System v4.0 (base, auth, layout, timeline, panel, modals, controls, features, dark-mode, responsive, pages)
 - **Font**: Nunito (Google Fonts)
 - **Testing**: Node.js built-in test runner (`node --test`)
 - **CI/CD**: Manual deploy
@@ -45,17 +45,32 @@ Test user: admin / admin123
 
 ## File Structure
 ```
-server.js          — Entry point (89 lines, mounts routes)
-db/                — Pool, initDatabase, generateBookingNumber
-routes/            — auth, bookings, lines, history, settings, afisha, telegram, backup
-services/          — booking, telegram, templates, scheduler, backup
-middleware/        — auth (JWT), rateLimit, security, requestId
-utils/             — logger
-index.html         — SPA (single file, all modals)
-css/               — 10 CSS modules
-js/                — 8 JS modules (config, api, ui, auth, timeline, booking, settings, app)
+server.js          — Entry point (~240 lines, routes + schedulers + graceful shutdown)
+db/                — Pool, initDatabase (30 таблиць), migrate.js, migrations/
+routes/ (17)       — auth, bookings, lines, history, settings, stats, afisha,
+                     telegram, backup, products, tasks, task-templates, staff,
+                     certificates, recurring, points, kleshnya
+services/ (13)     — booking, bookingAutomation, bot, certificates, kleshnya,
+                     kleshnya-greeting, recurring, telegram, templates,
+                     taskTemplates, scheduler, backup, websocket
+middleware/ (4)    — auth (JWT), rateLimit, security, requestId
+utils/ (2)         — logger, validateEnv
+index.html         — Main SPA (all modals)
+kleshnya.html      — Kleshnya chat page
+tasks.html         — Standalone task board
+programs.html      — Standalone catalog
+staff.html         — Standalone schedule
+invite.html        — Public invite link
+css/ (11)          — base, auth, layout, timeline, panel, modals, controls,
+                     features, dark-mode, responsive, pages
+js/ (19)           — config, api, auth, app, ui, booking, booking-form,
+                     booking-linked, timeline, settings, settings-afisha,
+                     settings-certificates, settings-dashboard, settings-history,
+                     programs-page, tasks-page, staff-page, offline, ws
 images/            — Logo, program icons, favicon set
-tests/             — api.test.js (157 tests)
+tests/ (3+1)       — api.test.js (223), certificates.test.js (82),
+                     automation.test.js (59), helpers.js
+swagger.js         — OpenAPI 3.0 spec (not yet integrated)
 ```
 
 ## Versioning Workflow (5 steps)

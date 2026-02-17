@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Клешня — Парк Закревського Періоду</title>
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=12.2">
+    <link rel="stylesheet" href="css/layout.css?v=12.2">
+    <link rel="stylesheet" href="css/pages.css?v=12.2">
+    <link rel="stylesheet" href="css/modals.css?v=12.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=12.2">
+    <link rel="stylesheet" href="css/responsive.css?v=12.2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* ==========================================
+           KLESHNYA PAGE — Chat Layout
+           ========================================== */
+        .kleshnya-page {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px 16px 16px;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 70px);
+        }
+
+        /* ==========================================
+           HEADER CARD — Kleshnya identity
+           ========================================== */
+        .kleshnya-hero {
+            background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 50%, #FED7AA 100%);
+            border: 1px solid #FDBA74;
+            border-radius: 20px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            position: relative;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .kleshnya-hero::before {
+            content: '';
+            position: absolute;
+            top: -30px; right: -30px;
+            width: 120px; height: 120px;
+            background: radial-gradient(circle, rgba(234,88,12,0.08) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        .kleshnya-avatar {
+            width: 56px; height: 56px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #EA580C, #F97316);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px;
+            box-shadow: 0 4px 12px rgba(234,88,12,0.25);
+            flex-shrink: 0;
+        }
+
+        .kleshnya-info { flex: 1; min-width: 0; }
+        .kleshnya-info h2 {
+            font-size: 18px; font-weight: 900;
+            color: #9A3412;
+            margin: 0;
+        }
+        .kleshnya-info p {
+            font-size: 12px; color: #C2410C;
+            margin: 2px 0 0;
+            font-weight: 600;
+        }
+        .kleshnya-status {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 10px; border-radius: 20px;
+            font-size: 10px; font-weight: 800;
+            background: rgba(16,185,129,0.12); color: #059669;
+            margin-top: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .kleshnya-status-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #10B981;
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        .kleshnya-hero-actions {
+            display: flex; flex-direction: column; gap: 6px;
+            flex-shrink: 0;
+        }
+        .btn-report {
+            padding: 8px 14px;
+            border: 1px solid #FDBA74;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.7);
+            color: #9A3412;
+            font-family: inherit; font-size: 12px; font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            min-height: 36px;
+            display: flex; align-items: center; gap: 5px;
+        }
+        .btn-report:hover {
+            background: #fff;
+            border-color: #EA580C;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(234,88,12,0.15);
+        }
+
+        /* ==========================================
+           CHAT MESSAGES
+           ========================================== */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            scroll-behavior: smooth;
+        }
+        .chat-messages::-webkit-scrollbar { width: 4px; }
+        .chat-messages::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 4px; }
+
+        .chat-msg {
+            display: flex;
+            gap: 10px;
+            max-width: 82%;
+            animation: msg-in 0.3s ease-out;
+        }
+        .chat-msg--assistant { align-self: flex-start; }
+        .chat-msg--user { align-self: flex-end; flex-direction: row-reverse; }
+        @keyframes msg-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-msg-avatar {
+            width: 34px; height: 34px;
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .chat-msg--assistant .chat-msg-avatar {
+            background: linear-gradient(135deg, #FFEDD5, #FED7AA);
+            box-shadow: 0 2px 6px rgba(234,88,12,0.12);
+        }
+        .chat-msg--user .chat-msg-avatar {
+            background: linear-gradient(135deg, #D1FAE5, #A7F3D0);
+            box-shadow: 0 2px 6px rgba(16,185,129,0.12);
+        }
+
+        .chat-msg-content { min-width: 0; }
+
+        .chat-msg-bubble {
+            padding: 10px 14px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.55;
+            white-space: pre-line;
+            word-break: break-word;
+        }
+        .chat-msg--assistant .chat-msg-bubble {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-bottom-left-radius: 4px;
+            color: var(--gray-800);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .chat-msg--user .chat-msg-bubble {
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+            color: #fff;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 2px 8px rgba(16,185,129,0.2);
+        }
+
+        .chat-msg-time {
+            font-size: 10px;
+            color: var(--gray-400);
+            margin-top: 3px;
+            padding: 0 2px;
+            font-weight: 600;
+        }
+        .chat-msg--user .chat-msg-time { text-align: right; }
+
+        /* ==========================================
+           TYPING INDICATOR
+           ========================================== */
+        .chat-typing {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 14px;
+            font-size: 12px; color: var(--gray-500);
+            font-weight: 600;
+        }
+        .chat-typing-dots { display: flex; gap: 3px; }
+        .chat-typing-dots span {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #EA580C; opacity: 0.4;
+            animation: typing-bounce 1.4s infinite;
+        }
+        .chat-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .chat-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing-bounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-6px); opacity: 1; }
+        }
+
+        /* ==========================================
+           INPUT AREA
+           ========================================== */
+        .chat-input-area {
+            display: flex;
+            gap: 8px;
+            padding: 12px 0 4px;
+            align-items: flex-end;
+            flex-shrink: 0;
+        }
+        .chat-input-wrap {
+            flex: 1;
+            position: relative;
+        }
+        .chat-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid var(--gray-200);
+            border-radius: 16px;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            min-height: 46px;
+            resize: none;
+            background: var(--white);
+            color: var(--gray-800);
+            box-sizing: border-box;
+        }
+        .chat-input:focus {
+            border-color: #EA580C;
+            box-shadow: 0 0 0 3px rgba(234,88,12,0.1);
+        }
+        .chat-input::placeholder { color: var(--gray-400); }
+
+        .chat-send-btn {
+            width: 46px; height: 46px;
+            border: none; border-radius: 14px;
+            background: linear-gradient(135deg, #EA580C, #C2410C);
+            color: #fff; font-size: 18px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.15s, box-shadow 0.15s;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(234,88,12,0.25);
+        }
+        .chat-send-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(234,88,12,0.35);
+        }
+        .chat-send-btn:active { transform: translateY(0); }
+        .chat-send-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .chat-hint {
+            text-align: center;
+            padding: 4px 0;
+            font-size: 11px;
+            color: var(--gray-400);
+            font-weight: 600;
+        }
+
+        /* ==========================================
+           REPORT MODAL
+           ========================================== */
+        .report-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 1000;
+            align-items: center; justify-content: center;
+            backdrop-filter: blur(6px);
+        }
+        .report-overlay.visible { display: flex; }
+
+        .report-modal {
+            background: var(--white);
+            border-radius: 20px;
+            padding: 28px;
+            max-width: 440px; width: 90%;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.15);
+            animation: modal-in 0.25s ease-out;
+        }
+        @keyframes modal-in {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .report-modal h3 {
+            font-size: 18px; font-weight: 900;
+            margin-bottom: 20px;
+            display: flex; align-items: center; gap: 8px;
+            color: var(--gray-800);
+        }
+
+        .report-type-row { display: flex; gap: 8px; margin-bottom: 16px; }
+        .report-type-btn {
+            flex: 1; padding: 10px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            background: var(--gray-50);
+            cursor: pointer; text-align: center;
+            font-family: inherit; font-size: 13px; font-weight: 700;
+            transition: all 0.15s;
+            color: var(--gray-600);
+        }
+        .report-type-btn.active {
+            border-color: #EA580C;
+            background: rgba(234,88,12,0.06);
+            color: #EA580C;
+        }
+        .report-type-btn:hover { border-color: #EA580C; }
+
+        .report-modal label {
+            display: block;
+            font-size: 11px; font-weight: 800;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+        .report-modal input,
+        .report-modal textarea,
+        .report-modal select {
+            width: 100%; padding: 10px 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            font-family: inherit; font-size: 14px;
+            box-sizing: border-box;
+            min-height: 44px;
+            background: var(--white);
+            color: var(--gray-800);
+        }
+        .report-modal input:focus,
+        .report-modal textarea:focus,
+        .report-modal select:focus {
+            outline: none;
+            border-color: #EA580C;
+            box-shadow: 0 0 0 3px rgba(234,88,12,0.1);
+        }
+        .report-modal textarea { resize: vertical; min-height: 80px; }
+        .report-modal .form-group { margin-bottom: 14px; }
+
+        .report-actions { display: flex; gap: 8px; margin-top: 20px; }
+        .report-submit {
+            flex: 1; padding: 12px;
+            border: none; border-radius: 12px;
+            background: linear-gradient(135deg, #EA580C, #C2410C);
+            color: #fff;
+            font-family: inherit; font-size: 14px; font-weight: 700;
+            cursor: pointer; min-height: 44px;
+            transition: transform 0.15s, box-shadow 0.15s;
+            box-shadow: 0 2px 8px rgba(234,88,12,0.2);
+        }
+        .report-submit:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(234,88,12,0.3);
+        }
+        .report-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .report-cancel {
+            flex: 1; padding: 12px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            background: var(--white);
+            color: var(--gray-600);
+            font-family: inherit; font-size: 14px; font-weight: 700;
+            cursor: pointer; min-height: 44px;
+            transition: all 0.15s;
+        }
+        .report-cancel:hover {
+            border-color: var(--gray-300);
+            background: var(--gray-50);
+        }
+
+        /* ==========================================
+           DARK MODE
+           ========================================== */
+        body.dark-mode .kleshnya-hero {
+            background: linear-gradient(135deg, rgba(234,88,12,0.1) 0%, rgba(234,88,12,0.06) 50%, rgba(194,65,12,0.04) 100%);
+            border-color: rgba(234,88,12,0.25);
+        }
+        body.dark-mode .kleshnya-hero::before {
+            background: radial-gradient(circle, rgba(234,88,12,0.12) 0%, transparent 70%);
+        }
+        body.dark-mode .kleshnya-avatar {
+            box-shadow: 0 4px 16px rgba(234,88,12,0.3);
+        }
+        body.dark-mode .kleshnya-info h2 { color: #FDBA74; }
+        body.dark-mode .kleshnya-info p { color: #FB923C; }
+        body.dark-mode .kleshnya-status {
+            background: rgba(16,185,129,0.12);
+            color: #6EE7B7;
+        }
+        body.dark-mode .btn-report {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(234,88,12,0.3);
+            color: #FDBA74;
+        }
+        body.dark-mode .btn-report:hover {
+            background: rgba(234,88,12,0.12);
+            border-color: rgba(234,88,12,0.5);
+        }
+
+        body.dark-mode .chat-msg--assistant .chat-msg-bubble {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(255,255,255,0.08);
+            color: #E2E8F0;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        body.dark-mode .chat-msg--user .chat-msg-bubble {
+            box-shadow: 0 2px 10px rgba(16,185,129,0.15);
+        }
+        body.dark-mode .chat-msg--assistant .chat-msg-avatar {
+            background: linear-gradient(135deg, rgba(234,88,12,0.2), rgba(234,88,12,0.1));
+        }
+        body.dark-mode .chat-msg--user .chat-msg-avatar {
+            background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.1));
+        }
+        body.dark-mode .chat-msg-time { color: rgba(255,255,255,0.3); }
+
+        body.dark-mode .chat-typing { color: rgba(255,255,255,0.4); }
+
+        body.dark-mode .chat-input {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+            color: #E2E8F0;
+        }
+        body.dark-mode .chat-input:focus {
+            border-color: #EA580C;
+            box-shadow: 0 0 0 3px rgba(234,88,12,0.15);
+        }
+        body.dark-mode .chat-input::placeholder { color: rgba(255,255,255,0.25); }
+
+        body.dark-mode .chat-send-btn {
+            box-shadow: 0 2px 10px rgba(234,88,12,0.3);
+        }
+        body.dark-mode .chat-send-btn:hover {
+            box-shadow: 0 4px 16px rgba(234,88,12,0.4);
+        }
+
+        body.dark-mode .chat-hint { color: rgba(255,255,255,0.25); }
+
+        body.dark-mode .chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+
+        /* Report modal dark */
+        body.dark-mode .report-modal {
+            background: #1e1e2e;
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+        }
+        body.dark-mode .report-modal h3 { color: #E2E8F0; }
+        body.dark-mode .report-type-btn {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.5);
+        }
+        body.dark-mode .report-type-btn.active {
+            border-color: #EA580C;
+            background: rgba(234,88,12,0.1);
+            color: #FB923C;
+        }
+        body.dark-mode .report-type-btn:hover { border-color: rgba(234,88,12,0.5); }
+        body.dark-mode .report-modal input,
+        body.dark-mode .report-modal textarea,
+        body.dark-mode .report-modal select {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+            color: #E2E8F0;
+        }
+        body.dark-mode .report-modal input:focus,
+        body.dark-mode .report-modal textarea:focus,
+        body.dark-mode .report-modal select:focus {
+            border-color: #EA580C;
+            box-shadow: 0 0 0 3px rgba(234,88,12,0.15);
+        }
+        body.dark-mode .report-modal label { color: rgba(255,255,255,0.4); }
+        body.dark-mode .report-cancel {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.6);
+        }
+        body.dark-mode .report-cancel:hover {
+            background: rgba(255,255,255,0.08);
+        }
+        body.dark-mode .report-submit {
+            box-shadow: 0 2px 10px rgba(234,88,12,0.2);
+        }
+
+        /* ==========================================
+           RESPONSIVE
+           ========================================== */
+        @media (max-width: 768px) {
+            .kleshnya-page { padding: 12px 12px 8px; height: calc(100vh - 50px); }
+            .kleshnya-hero { padding: 14px; gap: 12px; border-radius: 16px; }
+            .kleshnya-avatar { width: 44px; height: 44px; font-size: 22px; border-radius: 12px; }
+            .kleshnya-info h2 { font-size: 16px; }
+            .kleshnya-info p { font-size: 11px; }
+            .chat-msg { max-width: 88%; gap: 8px; }
+            .chat-msg-avatar { width: 28px; height: 28px; font-size: 14px; border-radius: 10px; }
+            .chat-msg-bubble { font-size: 13px; padding: 9px 12px; }
+            .btn-report { padding: 6px 10px; font-size: 11px; }
+        }
+    </style>
+</head>
+<body>
+    <script>
+    // Early dark mode to prevent flash
+    (function(){var s=localStorage.getItem('pzp_dark_mode');var h=new Date().getHours();var isDark=s==='true'||(s!=='false'&&(h>=20||h<7));if(isDark){document.body.classList.add('dark-mode');document.documentElement.setAttribute('data-theme','dark')}})();
+    </script>
+
+    <div id="loginScreen" class="login-screen hidden"></div>
+
+    <div id="mainApp" class="main-app hidden">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/favicon-512.png" alt="Логотип" class="logo-img-small">
+                    <div class="logo-text"><h1>Парк Закревського Періоду</h1></div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
+                    <a href="/kleshnya" class="nav-link active nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name" role="button" tabindex="0"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="kleshnya-page">
+                <div class="kleshnya-hero">
+                    <div class="kleshnya-avatar">🦀</div>
+                    <div class="kleshnya-info">
+                        <h2>Клешня</h2>
+                        <p>Центральний інтелект парку</p>
+                        <div class="kleshnya-status">
+                            <span class="kleshnya-status-dot"></span>
+                            <span>Онлайн</span>
+                        </div>
+                    </div>
+                    <div class="kleshnya-hero-actions">
+                        <button class="btn-report" id="reportBtn" title="Повідомити про баг або покращення">
+                            🐛 Фідбек
+                        </button>
+                    </div>
+                </div>
+
+                <div class="chat-messages" id="chatMessages">
+                    <!-- Messages loaded dynamically -->
+                </div>
+
+                <div class="chat-hint">
+                    Питай про бронювання, задачі, стріки — Клешня допоможе!
+                </div>
+
+                <div class="chat-input-area">
+                    <div class="chat-input-wrap">
+                        <input type="text" class="chat-input" id="chatInput" placeholder="Написати Клешні..." maxlength="500" autocomplete="off">
+                    </div>
+                    <button class="chat-send-btn" id="chatSendBtn" title="Надіслати">➤</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Report Bug/Improvement Modal -->
+    <div class="report-overlay" id="reportOverlay">
+        <div class="report-modal">
+            <h3>🦀 Покращити систему</h3>
+            <div class="report-type-row">
+                <button class="report-type-btn active" data-type="bug" id="typeBug">🐛 Баг</button>
+                <button class="report-type-btn" data-type="improvement" id="typeImprove">💡 Покращення</button>
+            </div>
+            <div class="form-group">
+                <label>Що сталося / що покращити?</label>
+                <input type="text" id="reportTitle" placeholder="Коротко опишіть..." maxlength="200">
+            </div>
+            <div class="form-group">
+                <label>Деталі (необов'язково)</label>
+                <textarea id="reportDesc" placeholder="Кроки для відтворення, скріншоти, ідеї..." maxlength="1000" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Пріоритет</label>
+                <select id="reportPriority">
+                    <option value="normal" selected>Звичайний</option>
+                    <option value="high">Високий</option>
+                    <option value="low">Низький</option>
+                </select>
+            </div>
+            <div class="report-actions">
+                <button class="report-submit" id="reportSubmitBtn">Надіслати Сергію</button>
+                <button class="report-cancel" id="reportCancelBtn">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js?v=12.2"></script>
+    <script src="js/api.js?v=12.2"></script>
+    <script src="js/auth.js?v=12.2"></script>
+    <script>
+    // Kleshnya Chat Page Logic
+    (function() {
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const chatSendBtn = document.getElementById('chatSendBtn');
+
+        function getToken() {
+            return localStorage.getItem('pzp_token');
+        }
+
+        function formatTime(dateStr) {
+            const d = new Date(dateStr);
+            return d.toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function addMessage(role, text, time) {
+            const msg = document.createElement('div');
+            msg.className = `chat-msg chat-msg--${role}`;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'chat-msg-avatar';
+            avatar.textContent = role === 'assistant' ? '🦀' : '👤';
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'chat-msg-content';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-msg-bubble';
+            bubble.textContent = text;
+            wrapper.appendChild(bubble);
+
+            if (time) {
+                const timeEl = document.createElement('div');
+                timeEl.className = 'chat-msg-time';
+                timeEl.textContent = formatTime(time);
+                wrapper.appendChild(timeEl);
+            }
+
+            msg.appendChild(avatar);
+            msg.appendChild(wrapper);
+            chatMessages.appendChild(msg);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showTyping() {
+            const typing = document.createElement('div');
+            typing.className = 'chat-typing';
+            typing.id = 'typingIndicator';
+            typing.innerHTML = '<span>🦀 Клешня друкує</span><div class="chat-typing-dots"><span></span><span></span><span></span></div>';
+            chatMessages.appendChild(typing);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function hideTyping() {
+            const t = document.getElementById('typingIndicator');
+            if (t) t.remove();
+        }
+
+        async function loadChat() {
+            try {
+                const dateStr = new Date().toISOString().split('T')[0];
+                const greeting = await apiGetKleshnyaGreeting(dateStr);
+                const history = await apiGetKleshnyaChat();
+
+                if (history.length === 0 && greeting) {
+                    addMessage('assistant', greeting.message, new Date().toISOString());
+                } else if (history.length === 0) {
+                    addMessage('assistant', '🦀 Привіт! Я Клешня — центральний інтелект парку. Питай що завгодно!', new Date().toISOString());
+                } else {
+                    if (greeting) {
+                        addMessage('assistant', greeting.message, new Date().toISOString());
+                    }
+                    for (const msg of history) {
+                        addMessage(msg.role, msg.message, msg.created_at);
+                    }
+                }
+            } catch (err) {
+                console.error('Error loading chat:', err);
+                addMessage('assistant', '🦀 Привіт! Я Клешня. Виникла помилка при завантаженні — але я на зв\'язку!', new Date().toISOString());
+            }
+        }
+
+        async function sendMessage() {
+            const text = chatInput.value.trim();
+            if (!text) return;
+
+            chatInput.value = '';
+            chatSendBtn.disabled = true;
+            addMessage('user', text, new Date().toISOString());
+            showTyping();
+
+            try {
+                const response = await apiSendKleshnyaMessage(text);
+                hideTyping();
+
+                if (response && response.message) {
+                    addMessage('assistant', response.message, response.created_at || new Date().toISOString());
+                } else {
+                    addMessage('assistant', '🦀 Упс, щось пішло не так. Спробуй ще раз!', new Date().toISOString());
+                }
+            } catch (err) {
+                hideTyping();
+                addMessage('assistant', '🦀 Помилка з\'єднання. Перевір інтернет!', new Date().toISOString());
+            }
+
+            chatSendBtn.disabled = false;
+            chatInput.focus();
+        }
+
+        chatSendBtn.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        function checkAuth() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+
+            const user = localStorage.getItem('pzp_current_user');
+            if (user) {
+                try {
+                    const parsed = JSON.parse(user);
+                    document.getElementById('currentUser').textContent = parsed.name || parsed.username || '';
+                } catch {}
+            }
+
+            document.getElementById('mainApp').classList.remove('hidden');
+            if (typeof initDarkMode === 'function') initDarkMode();
+            loadChat();
+        }
+
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            localStorage.removeItem('pzp_token');
+            localStorage.removeItem('pzp_current_user');
+            localStorage.removeItem('pzp_session');
+            window.location.href = '/';
+        });
+
+        checkAuth();
+
+        // ==========================================
+        // REPORT BUG / IMPROVEMENT
+        // ==========================================
+        const reportOverlay = document.getElementById('reportOverlay');
+        const reportTitle = document.getElementById('reportTitle');
+        const reportDesc = document.getElementById('reportDesc');
+        const reportPriority = document.getElementById('reportPriority');
+        const reportSubmitBtn = document.getElementById('reportSubmitBtn');
+        let reportType = 'bug';
+
+        document.getElementById('reportBtn').addEventListener('click', () => {
+            reportOverlay.classList.add('visible');
+            reportTitle.value = '';
+            reportDesc.value = '';
+            reportPriority.value = 'normal';
+            reportTitle.focus();
+        });
+
+        document.getElementById('reportCancelBtn').addEventListener('click', () => {
+            reportOverlay.classList.remove('visible');
+        });
+        reportOverlay.addEventListener('click', (e) => {
+            if (e.target === reportOverlay) reportOverlay.classList.remove('visible');
+        });
+
+        document.querySelectorAll('.report-type-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.report-type-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                reportType = btn.dataset.type;
+            });
+        });
+
+        reportSubmitBtn.addEventListener('click', async () => {
+            const title = reportTitle.value.trim();
+            if (!title) { reportTitle.focus(); return; }
+
+            reportSubmitBtn.disabled = true;
+            reportSubmitBtn.textContent = 'Надсилаю...';
+
+            const emoji = reportType === 'bug' ? '🐛' : '💡';
+            const label = reportType === 'bug' ? 'Баг' : 'Покращення';
+            const user = localStorage.getItem('pzp_current_user');
+            let userName = 'Користувач';
+            try { userName = JSON.parse(user).name || JSON.parse(user).username; } catch {}
+
+            try {
+                const token = getToken();
+                const res = await fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        title: `${emoji} ${label}: ${title}`,
+                        description: (reportDesc.value.trim() ? reportDesc.value.trim() + '\n\n' : '') + `Від: ${userName}`,
+                        priority: reportPriority.value,
+                        category: 'improvement',
+                        assigned_to: 'Sergey',
+                        source_type: 'kleshnya',
+                        task_type: 'human'
+                    })
+                });
+
+                if (!res.ok) throw new Error('Не вдалося створити задачу');
+                reportOverlay.classList.remove('visible');
+                addMessage('assistant',
+                    `🦀 ${emoji} ${label} прийнято!\n\n📋 "${title}"\n👤 Призначено: Сергій\n⚡ Пріоритет: ${reportPriority.value === 'high' ? 'Високий' : reportPriority.value === 'low' ? 'Низький' : 'Звичайний'}\n\nСергій отримає сповіщення в Telegram. Дякую за фідбек!`,
+                    new Date().toISOString()
+                );
+            } catch (err) {
+                console.error('Report error:', err);
+                addMessage('assistant', '🦀 Упс, не вдалося створити задачу. Спробуй ще раз!', new Date().toISOString());
+                reportOverlay.classList.remove('visible');
+            }
+
+            reportSubmitBtn.disabled = false;
+            reportSubmitBtn.textContent = 'Надіслати Сергію';
+        });
+    })();
+    </script>
+</body>
+</html>

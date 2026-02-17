@@ -33,11 +33,10 @@ function initializeApp() {
 }
 
 function loadPreferences() {
-    AppState.darkMode = localStorage.getItem('pzp_dark_mode') === 'true';
+    AppState.darkMode = initDarkMode();
     AppState.compactMode = localStorage.getItem('pzp_compact_mode') === 'true';
     AppState.zoomLevel = parseInt(localStorage.getItem('pzp_zoom_level')) || 15;
     AppState.statusFilter = localStorage.getItem('pzp_status_filter') || 'all';
-    if (AppState.darkMode) document.body.classList.add('dark-mode');
     if (AppState.compactMode) {
         CONFIG.TIMELINE.CELL_WIDTH = 35;
         document.querySelector('.timeline-container')?.classList.add('compact');
@@ -92,8 +91,8 @@ function initAuthListeners() {
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const result = await login(document.getElementById('username').value, document.getElementById('password').value);
-        if (!result) {
-            document.getElementById('loginError').textContent = 'Невірний логін або пароль';
+        if (!result.success) {
+            document.getElementById('loginError').textContent = result.error || 'Невірний логін або пароль';
         }
     });
     document.getElementById('logoutBtn').addEventListener('click', logout);

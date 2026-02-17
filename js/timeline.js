@@ -864,6 +864,9 @@ function _beginBookingDrag(block, booking, startHour, e) {
 
     // Drop indicators
     s.dropIndicators = [];
+
+    // v12.6: Store original grid rect for cross-line Y offset
+    s.originalGridRect = s.grid ? s.grid.getBoundingClientRect() : null;
 }
 
 // --- Collect related bookings for the dragged main booking ---
@@ -980,6 +983,18 @@ function _updateBookingDragPosition(clientX, clientY) {
     if (targetLine && targetLine !== s.newLineId) {
         s.newLineId = targetLine;
         _highlightTargetLine(targetLine);
+    }
+
+    // v12.6: Visually move block to target line via translateY
+    if (s.newLineId !== s.startLineId && s.originalGridRect) {
+        const targetGrid = document.querySelector(`.line-grid[data-line-id="${s.newLineId}"]`);
+        if (targetGrid) {
+            const targetRect = targetGrid.getBoundingClientRect();
+            const yOffset = targetRect.top - s.originalGridRect.top;
+            s.block.style.transform = `translateY(${yOffset}px) scale(1.03)`;
+        }
+    } else {
+        s.block.style.transform = 'scale(1.03)';
     }
 
     // --- Move related bookings by same delta ---
@@ -1134,6 +1149,7 @@ async function _handleBookingDragEnd(e) {
 
     // Remove visual feedback
     s.block.classList.remove('dragging', 'long-press-pending');
+    s.block.style.transform = ''; // v12.6: Reset cross-line Y offset
     if (s.relatedBlocks) s.relatedBlocks.forEach(rb => rb.el.classList.remove('dragging-related'));
     _clearDropIndicators();
     document.body.classList.remove('dragging-active');
@@ -1201,6 +1217,7 @@ function _handleBookingDragCancel(e) {
     }
 
     s.block.classList.remove('dragging', 'long-press-pending');
+    s.block.style.transform = ''; // v12.6: Reset cross-line Y offset
     if (s.relatedBlocks) s.relatedBlocks.forEach(rb => rb.el.classList.remove('dragging-related'));
     _clearDropIndicators();
     document.body.classList.remove('dragging-active');
@@ -1355,6 +1372,8 @@ function _rollbackDragVisuals(state) {
     if (s.startLeft !== undefined) {
         s.block.style.left = `${s.startLeft}px`;
     }
+    // v12.6: Reset cross-line Y offset
+    s.block.style.transform = '';
     s.block.classList.remove('dragging', 'long-press-pending');
 
     // Restore related blocks
@@ -1385,9 +1404,15 @@ function _showDragUndoToast(booking, timeDelta, lineChanged) {
     const label = booking.label || booking.programCode;
     let message;
     if (lineChanged && timeDelta !== 0) {
-        message = `${label} переміщено на іншу лінію та ${timeDelta > 0 ? '+' : ''}${timeDelta} хв`;
+        // v12.6: Show target line name in undo toast
+        const targetHeader = document.querySelector(`.line-header[data-line-id="${_bookingDragState?.newLineId || ''}"] .line-name`) ||
+            document.querySelector(`.line-grid[data-line-id="${_bookingDragState?.newLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
+        const targetName = targetHeader ? targetHeader.textContent : 'іншу лінію';
+        message = `${label} → ${targetName} (${timeDelta > 0 ? '+' : ''}${timeDelta} хв)`;
     } else if (lineChanged) {
-        message = `${label} переміщено на іншу лінію`;
+        const targetHeader = document.querySelector(`.line-grid[data-line-id="${_bookingDragState?.newLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
+        const targetName = targetHeader ? targetHeader.textContent : 'іншу лінію';
+        message = `${label} → ${targetName}`;
     } else {
         message = `${label} перенесено на ${timeDelta > 0 ? '+' : ''}${timeDelta} хв`;
     }

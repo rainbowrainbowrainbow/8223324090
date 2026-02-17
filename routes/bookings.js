@@ -3,7 +3,7 @@
  */
 const router = require('express').Router();
 const { pool, generateBookingNumber } = require('../db');
-const { validateDate, validateTime, validateId, mapBookingRow, checkServerConflicts, checkServerDuplicate, checkRoomConflict } = require('../services/booking');
+const { validateDate, validateTime, validateId, mapBookingRow, checkServerConflicts, checkServerDuplicate, checkRoomConflict, timeToMinutes } = require('../services/booking');
 const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
 const { broadcast } = require('../services/websocket');
@@ -300,7 +300,27 @@ router.put('/:id', async (req, res) => {
                 });
             }
 
-            const roomConflict = await checkRoomConflict(client, b.date, b.room, b.time, b.duration || 0, id);
+            // v12.6: Exclude linked bookings of this booking from room conflict check
+            // (they will be deleted/recreated in the same transaction)
+            const linkedIds = await client.query('SELECT id FROM bookings WHERE linked_to = $1', [id]);
+            const excludeIds = [id, ...linkedIds.rows.map(r => r.id)];
+            let roomConflict = null;
+            const roomResult = await client.query(
+                "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND status != 'cancelled' AND id != ALL($3::text[])",
+                [b.date, b.room, excludeIds]
+            );
+            if (b.room && b.room !== 'Інше') {
+                const newStart = timeToMinutes(b.time);
+                const newEnd = newStart + (b.duration || 0);
+                for (const rc of roomResult.rows) {
+                    const rcStart = timeToMinutes(rc.time);
+                    const rcEnd = rcStart + (rc.duration || 0);
+                    if (newStart < rcEnd && newEnd > rcStart) {
+                        roomConflict = rc;
+                        break;
+                    }
+                }
+            }
             if (roomConflict) {
                 await client.query('ROLLBACK');
                 return res.status(409).json({
@@ -379,18 +399,23 @@ router.put('/:id', async (req, res) => {
                 }
                 // Create new linked booking if secondAnimator is set
                 if (newSecond) {
-                    const lineRes = await client.query('SELECT id FROM lines WHERE name = $1 AND date = $2', [newSecond, b.date]);
+                    const lineRes = await client.query(
+                        'SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2',
+                        [newSecond, b.date]
+                    );
                     if (lineRes.rows.length > 0) {
-                        const newLinkedId = await generateBookingNumber();
+                        const newLinkedId = await generateBookingNumber(client);
                         await client.query(
                             `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
                              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
-                            [newLinkedId, b.date, b.time, lineRes.rows[0].id, b.programId, b.programCode,
+                            [newLinkedId, b.date, b.time, lineRes.rows[0].line_id, b.programId, b.programCode,
                              b.label, b.programName, b.category, b.duration, b.price, b.hosts,
                              b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes,
                              b.createdBy, id, newStatus, b.kidsCount || null, b.groupName || null,
                              b.extraData ? JSON.stringify(b.extraData) : null]
                         );
+                    } else {
+                        log.warn(`Second animator line not found: "${newSecond}" on ${b.date}`);
                     }
                 }
             } else if (!secondChanged) {
@@ -403,18 +428,23 @@ router.put('/:id', async (req, res) => {
                 }
             } else if (secondChanged && newSecond && linkedResult.rows.length === 0) {
                 // Was missing linked booking (old bug) — create it now
-                const lineRes = await client.query('SELECT id FROM lines WHERE name = $1 AND date = $2', [newSecond, b.date]);
+                const lineRes = await client.query(
+                    'SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2',
+                    [newSecond, b.date]
+                );
                 if (lineRes.rows.length > 0) {
-                    const newLinkedId = await generateBookingNumber();
+                    const newLinkedId = await generateBookingNumber(client);
                     await client.query(
                         `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
                          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
-                        [newLinkedId, b.date, b.time, lineRes.rows[0].id, b.programId, b.programCode,
+                        [newLinkedId, b.date, b.time, lineRes.rows[0].line_id, b.programId, b.programCode,
                          b.label, b.programName, b.category, b.duration, b.price, b.hosts,
                          b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes,
                          b.createdBy, id, newStatus, b.kidsCount || null, b.groupName || null,
                          b.extraData ? JSON.stringify(b.extraData) : null]
                     );
+                } else {
+                    log.warn(`Second animator line not found: "${newSecond}" on ${b.date}`);
                 }
             }
         }

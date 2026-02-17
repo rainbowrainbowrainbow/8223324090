@@ -662,13 +662,15 @@ body.dragging-active {
 }
 
 /* The block being dragged */
+/* v12.6: Smooth cross-line transition + elevated drag state */
 .booking-block.dragging {
-    opacity: 0.85;
+    opacity: 0.9;
     z-index: 100 !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2);
     transform: scale(1.03);
-    transition: box-shadow 0.15s, opacity 0.15s, transform 0.15s;
+    transition: box-shadow 0.15s, opacity 0.15s, transform 0.2s ease-out;
     cursor: grabbing;
+    will-change: transform, left;
 }
 
 /* Disable hover transform during drag */
@@ -741,15 +743,18 @@ body.dragging-active {
 }
 
 /* Ghost "landing position" preview */
+/* v12.6: More visible ghost landing preview */
 .drag-ghost {
     position: absolute;
     top: 4px;
     bottom: 4px;
     border-radius: 8px;
     background: var(--primary);
-    opacity: 0.15;
+    opacity: 0.25;
     z-index: 5;
     pointer-events: none;
+    border: 2px dashed var(--primary);
+    animation: ghostPulse 1s ease-in-out infinite alternate;
     border: 2px dashed var(--primary);
 }
 
@@ -826,6 +831,12 @@ body.dragging-active {
 @keyframes dragToastSlideUp {
     from { transform: translateX(-50%) translateY(20px); opacity: 0; }
     to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* v12.6: Ghost landing pulse */
+@keyframes ghostPulse {
+    from { opacity: 0.15; }
+    to { opacity: 0.3; }
 }
 
 /* Mobile: wider touch zone for resize handle */

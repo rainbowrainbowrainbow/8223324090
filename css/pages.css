@@ -10,6 +10,7 @@
     max-width: 1200px;
     margin: 0 auto;
     padding: 24px;
+    overflow-x: hidden;
 }
 
 /* ==========================================
@@ -536,6 +537,7 @@
         overflow-x: auto;
         flex-wrap: nowrap;
         -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
         padding-bottom: 4px;
     }
 }

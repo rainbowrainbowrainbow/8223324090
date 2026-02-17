@@ -101,6 +101,27 @@ const certificateTemplates = {
     }
 };
 
+/**
+ * Format batch certificate notification for Telegram.
+ * @param {Array<string>} codes - Array of cert_code strings
+ * @param {object} extra - { username, quantity, typeText, validUntil, season }
+ * @returns {string} formatted HTML text
+ */
+function formatBatchCertificateNotification(codes, extra = {}) {
+    const validDate = extra.validUntil ? new Date(extra.validUntil).toLocaleDateString('uk-UA') : '—';
+    let text = `📦 <b>Пакетна видача сертифікатів</b>\n\n`;
+    text += `📊 Кількість: ${extra.quantity || codes.length} шт.\n`;
+    text += `🏷 Тип: ${extra.typeText || 'на одноразовий вхід'}\n`;
+    text += `⏰ Дійсні до: ${validDate}\n`;
+    text += `👤 Видав: ${extra.username || '?'}\n\n`;
+    text += `🔑 <b>Номери сертифікатів:</b>\n`;
+    codes.forEach((code, i) => {
+        const prefix = i === codes.length - 1 ? '└' : '├';
+        text += `${prefix} <code>${code}</code>\n`;
+    });
+    return text;
+}
+
 function formatCertificateNotification(type, cert, extra = {}) {
     const template = certificateTemplates[type];
     if (!template) return '';
@@ -150,4 +171,4 @@ function formatAfishaBlock(events) {
     return text;
 }
 
-module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock, certificateTemplates, formatCertificateNotification };
+module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock, certificateTemplates, formatCertificateNotification, formatBatchCertificateNotification };

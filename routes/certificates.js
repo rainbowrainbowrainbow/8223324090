@@ -7,7 +7,7 @@ const { pool, generateCertCode } = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { mapCertificateRow, calculateValidUntil, validateCertificateInput, getCurrentSeason, VALID_STATUSES, VALID_SEASONS } = require('../services/certificates');
 const { sendTelegramMessage, sendTelegramPhoto, getConfiguredChatId, getBotUsername } = require('../services/telegram');
-const { formatCertificateNotification } = require('../services/templates');
+const { formatCertificateNotification, formatBatchCertificateNotification } = require('../services/templates');
 const { createLogger } = require('../utils/logger');
 const QRCode = require('qrcode');
 
@@ -239,6 +239,30 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
 
         await client.query('COMMIT');
         log.info(`Batch certificates created: ${quantity} by ${req.user.username}`);
+
+        // Telegram notification — fire-and-forget after commit
+        const codes = created.map(c => c.certCode);
+        (async () => {
+            try {
+                const text = formatBatchCertificateNotification(codes, {
+                    username: req.user.name || req.user.username,
+                    quantity,
+                    typeText,
+                    validUntil: finalValidUntil,
+                    season
+                });
+                let chatId;
+                try {
+                    const dirResult = await pool.query("SELECT value FROM settings WHERE key = 'cert_director_chat_id'");
+                    if (dirResult.rows.length > 0 && dirResult.rows[0].value) chatId = dirResult.rows[0].value;
+                } catch (e) { /* fallback */ }
+                if (!chatId) chatId = await getConfiguredChatId();
+                if (chatId) await sendTelegramMessage(chatId, text);
+            } catch (err) {
+                log.error(`Telegram batch alert failed: ${err.message}`);
+            }
+        })();
+
         res.status(201).json({ success: true, certificates: created });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});

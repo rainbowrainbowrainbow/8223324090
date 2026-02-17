@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Клешня — Парк Закревського Періоду</title>
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=11.0.6">
-    <link rel="stylesheet" href="css/layout.css?v=11.0.6">
-    <link rel="stylesheet" href="css/pages.css?v=11.0.6">
-    <link rel="stylesheet" href="css/modals.css?v=11.0.6">
-    <link rel="stylesheet" href="css/dark-mode.css?v=11.0.6">
-    <link rel="stylesheet" href="css/responsive.css?v=11.0.6">
+    <link rel="stylesheet" href="css/base.css?v=12.1">
+    <link rel="stylesheet" href="css/layout.css?v=12.1">
+    <link rel="stylesheet" href="css/pages.css?v=12.1">
+    <link rel="stylesheet" href="css/modals.css?v=12.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=12.1">
+    <link rel="stylesheet" href="css/responsive.css?v=12.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -55,6 +55,73 @@
 
         .chat-hint { text-align: center; padding: 8px; font-size: 11px; color: var(--gray-400); }
 
+        /* Report button */
+        .chat-report-btn {
+            width: 44px; height: 44px; border: none; border-radius: 50%;
+            background: linear-gradient(135deg, #7C3AED, #6D28D9); color: #fff;
+            font-size: 18px; cursor: pointer; display: flex; align-items: center;
+            justify-content: center; transition: transform 0.2s; flex-shrink: 0;
+        }
+        .chat-report-btn:hover { transform: scale(1.05); }
+
+        /* Report modal */
+        .report-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+            z-index: 1000; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+        .report-overlay.visible { display: flex; }
+        .report-modal {
+            background: var(--white, #fff); border-radius: 16px; padding: 24px;
+            max-width: 420px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            animation: msg-in 0.3s ease-out;
+        }
+        .report-modal h3 { font-size: 18px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .report-type-row { display: flex; gap: 8px; margin-bottom: 12px; }
+        .report-type-btn {
+            flex: 1; padding: 10px; border: 2px solid var(--gray-200); border-radius: 10px;
+            background: var(--gray-50, #f9fafb); cursor: pointer; text-align: center;
+            font-family: inherit; font-size: 13px; font-weight: 700; transition: all 0.15s;
+        }
+        .report-type-btn.active { border-color: #7C3AED; background: rgba(124,58,237,0.08); color: #7C3AED; }
+        .report-type-btn:hover { border-color: #7C3AED; }
+        .report-modal label { display: block; font-size: 11px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .report-modal input, .report-modal textarea, .report-modal select {
+            width: 100%; padding: 10px 14px; border: 1px solid var(--gray-200); border-radius: 10px;
+            font-family: inherit; font-size: 14px; box-sizing: border-box; min-height: 44px;
+        }
+        .report-modal input:focus, .report-modal textarea:focus, .report-modal select:focus {
+            outline: none; border-color: #7C3AED; box-shadow: 0 0 0 3px rgba(124,58,237,0.1);
+        }
+        .report-modal textarea { resize: vertical; min-height: 80px; }
+        .report-modal .form-group { margin-bottom: 12px; }
+        .report-actions { display: flex; gap: 8px; margin-top: 16px; }
+        .report-submit {
+            flex: 1; padding: 12px; border: none; border-radius: 10px;
+            background: linear-gradient(135deg, #7C3AED, #6D28D9); color: #fff;
+            font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+            min-height: 44px; transition: transform 0.15s;
+        }
+        .report-submit:hover { transform: translateY(-1px); }
+        .report-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .report-cancel {
+            flex: 1; padding: 12px; border: 1px solid var(--gray-200); border-radius: 10px;
+            background: var(--white, #fff); color: var(--gray-600);
+            font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+            min-height: 44px;
+        }
+
+        /* Report modal dark mode */
+        body.dark-mode .report-modal { background: #1e1e2e; border: 1px solid rgba(255,255,255,0.1); }
+        body.dark-mode .report-modal h3 { color: var(--gray-200); }
+        body.dark-mode .report-type-btn { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); color: var(--gray-300); }
+        body.dark-mode .report-type-btn.active { border-color: #A78BFA; background: rgba(124,58,237,0.15); color: #A78BFA; }
+        body.dark-mode .report-modal input, body.dark-mode .report-modal textarea, body.dark-mode .report-modal select {
+            background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: var(--gray-200);
+        }
+        body.dark-mode .report-modal label { color: var(--gray-400); }
+        body.dark-mode .report-cancel { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: var(--gray-300); }
+
         /* Dark mode */
         body.dark-mode .kleshnya-header h2 { color: var(--gray-100); }
         body.dark-mode .kleshnya-status { background: rgba(16,185,129,0.15); color: #6EE7B7; }
@@ -67,7 +134,8 @@
 </head>
 <body>
     <script>
-    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    // Early dark mode to prevent flash (full init in initDarkMode after config.js loads)
+    (function(){var s=localStorage.getItem('pzp_dark_mode');var h=new Date().getHours();var isDark=s==='true'||(s!=='false'&&(h>=20||h<7));if(isDark){document.body.classList.add('dark-mode');document.documentElement.setAttribute('data-theme','dark')}})();
     </script>
 
     <div id="loginScreen" class="login-screen hidden"></div>
@@ -114,6 +182,7 @@
                 </div>
 
                 <div class="chat-input-area">
+                    <button class="chat-report-btn" id="reportBtn" title="Повідомити про баг або покращення">🐛</button>
                     <input type="text" class="chat-input" id="chatInput" placeholder="Написати Клешні..." maxlength="500" autocomplete="off">
                     <button class="chat-send-btn" id="chatSendBtn" title="Надіслати">➤</button>
                 </div>
@@ -121,9 +190,40 @@
         </main>
     </div>
 
-    <script src="js/config.js?v=11.0.6"></script>
-    <script src="js/api.js?v=11.0.6"></script>
-    <script src="js/auth.js?v=11.0.6"></script>
+    <!-- Report Bug/Improvement Modal -->
+    <div class="report-overlay" id="reportOverlay">
+        <div class="report-modal">
+            <h3>🐛 Покращити систему</h3>
+            <div class="report-type-row">
+                <button class="report-type-btn active" data-type="bug" id="typeBug">🐛 Баг</button>
+                <button class="report-type-btn" data-type="improvement" id="typeImprove">💡 Покращення</button>
+            </div>
+            <div class="form-group">
+                <label>Що сталося / що покращити?</label>
+                <input type="text" id="reportTitle" placeholder="Коротко опишіть..." maxlength="200">
+            </div>
+            <div class="form-group">
+                <label>Деталі (необов'язково)</label>
+                <textarea id="reportDesc" placeholder="Кроки для відтворення, скріншоти, ідеї..." maxlength="1000" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Пріоритет</label>
+                <select id="reportPriority">
+                    <option value="normal" selected>Звичайний</option>
+                    <option value="high">Високий</option>
+                    <option value="low">Низький</option>
+                </select>
+            </div>
+            <div class="report-actions">
+                <button class="report-submit" id="reportSubmitBtn">Надіслати Сергію</button>
+                <button class="report-cancel" id="reportCancelBtn">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js?v=12.1"></script>
+    <script src="js/api.js?v=12.1"></script>
+    <script src="js/auth.js?v=12.1"></script>
     <script>
     // Kleshnya Chat Page Logic
     (function() {
@@ -277,6 +377,86 @@
         });
 
         checkAuth();
+
+        // ==========================================
+        // REPORT BUG / IMPROVEMENT
+        // ==========================================
+        const reportOverlay = document.getElementById('reportOverlay');
+        const reportTitle = document.getElementById('reportTitle');
+        const reportDesc = document.getElementById('reportDesc');
+        const reportPriority = document.getElementById('reportPriority');
+        const reportSubmitBtn = document.getElementById('reportSubmitBtn');
+        let reportType = 'bug';
+
+        document.getElementById('reportBtn').addEventListener('click', () => {
+            reportOverlay.classList.add('visible');
+            reportTitle.value = '';
+            reportDesc.value = '';
+            reportPriority.value = 'normal';
+            reportTitle.focus();
+        });
+
+        document.getElementById('reportCancelBtn').addEventListener('click', () => {
+            reportOverlay.classList.remove('visible');
+        });
+        reportOverlay.addEventListener('click', (e) => {
+            if (e.target === reportOverlay) reportOverlay.classList.remove('visible');
+        });
+
+        // Type toggle
+        document.querySelectorAll('.report-type-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.report-type-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                reportType = btn.dataset.type;
+            });
+        });
+
+        reportSubmitBtn.addEventListener('click', async () => {
+            const title = reportTitle.value.trim();
+            if (!title) { reportTitle.focus(); return; }
+
+            reportSubmitBtn.disabled = true;
+            reportSubmitBtn.textContent = 'Надсилаю...';
+
+            const emoji = reportType === 'bug' ? '🐛' : '💡';
+            const label = reportType === 'bug' ? 'Баг' : 'Покращення';
+            const user = localStorage.getItem('pzp_current_user');
+            let userName = 'Користувач';
+            try { userName = JSON.parse(user).name || JSON.parse(user).username; } catch {}
+
+            try {
+                const token = getToken();
+                const res = await fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        title: `${emoji} ${label}: ${title}`,
+                        description: (reportDesc.value.trim() ? reportDesc.value.trim() + '\n\n' : '') + `Від: ${userName}`,
+                        priority: reportPriority.value,
+                        category: 'improvement',
+                        assigned_to: 'Sergey',
+                        source_type: 'kleshnya',
+                        task_type: 'human'
+                    })
+                });
+
+                if (!res.ok) throw new Error('Не вдалося створити задачу');
+                const data = await res.json();
+                reportOverlay.classList.remove('visible');
+                addMessage('assistant',
+                    `🦀 ${emoji} ${label} прийнято!\n\n📋 "${title}"\n👤 Призначено: Сергій\n⚡ Пріоритет: ${reportPriority.value === 'high' ? 'Високий' : reportPriority.value === 'low' ? 'Низький' : 'Звичайний'}\n\nСергій отримає сповіщення в Telegram. Дякую за фідбек! 💪`,
+                    new Date().toISOString()
+                );
+            } catch (err) {
+                console.error('Report error:', err);
+                addMessage('assistant', '🦀 Упс, не вдалося створити задачу. Спробуй ще раз!', new Date().toISOString());
+                reportOverlay.classList.remove('visible');
+            }
+
+            reportSubmitBtn.disabled = false;
+            reportSubmitBtn.textContent = 'Надіслати Сергію';
+        });
     })();
     </script>
 </body>

@@ -207,6 +207,41 @@ async function initDatabase() {
             log.info('Default users seeded');
         }
 
+        // v12.3: One-time password reset for all default users
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version VARCHAR(255) PRIMARY KEY,
+                applied_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        const resetCheck = await pool.query(
+            "SELECT 1 FROM schema_migrations WHERE version = '005_password_reset'"
+        );
+        if (resetCheck.rows.length === 0) {
+            const defaultPasswords = [
+                { username: 'admin', password: 'admin123' },
+                { username: 'Vitalina', password: 'Vitalina109' },
+                { username: 'Dasha', password: 'Dasha743' },
+                { username: 'Natalia', password: 'Natalia875' },
+                { username: 'Sergey', password: 'Sergey232' },
+                { username: 'Animator', password: 'Animator612' },
+                { username: 'Anli', password: 'Anli384' },
+                { username: 'Zhenya', password: 'Zhenya527' },
+                { username: 'Lera', password: 'Lera691' }
+            ];
+            for (const u of defaultPasswords) {
+                const hash = await bcrypt.hash(u.password, 10);
+                await pool.query(
+                    'UPDATE users SET password_hash = $1 WHERE LOWER(username) = LOWER($2)',
+                    [hash, u.username]
+                );
+            }
+            await pool.query(
+                "INSERT INTO schema_migrations (version) VALUES ('005_password_reset')"
+            );
+            log.info('Passwords reset for all default users (v12.3)');
+        }
+
         await pool.query(`
             CREATE TABLE IF NOT EXISTS booking_counter (
                 year INTEGER PRIMARY KEY,

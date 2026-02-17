@@ -5,136 +5,522 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Клешня — Парк Закревського Періоду</title>
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=12.1">
-    <link rel="stylesheet" href="css/layout.css?v=12.1">
-    <link rel="stylesheet" href="css/pages.css?v=12.1">
-    <link rel="stylesheet" href="css/modals.css?v=12.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=12.1">
-    <link rel="stylesheet" href="css/responsive.css?v=12.1">
+    <link rel="stylesheet" href="css/base.css?v=12.2">
+    <link rel="stylesheet" href="css/layout.css?v=12.2">
+    <link rel="stylesheet" href="css/pages.css?v=12.2">
+    <link rel="stylesheet" href="css/modals.css?v=12.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=12.2">
+    <link rel="stylesheet" href="css/responsive.css?v=12.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        .kleshnya-page { max-width: 800px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; height: calc(100vh - 70px); }
-        .kleshnya-header { text-align: center; padding: 16px 0 8px; }
-        .kleshnya-header h2 { font-size: 20px; color: var(--gray-800); display: flex; align-items: center; justify-content: center; gap: 8px; }
-        .kleshnya-header p { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
-        .kleshnya-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; background: rgba(16,185,129,0.1); color: #059669; margin-top: 8px; }
-        .kleshnya-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #10B981; animation: pulse-dot 2s infinite; }
-        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-
-        .chat-messages { flex: 1; overflow-y: auto; padding: 12px 0; display: flex; flex-direction: column; gap: 12px; }
-        .chat-msg { display: flex; gap: 10px; max-width: 85%; animation: msg-in 0.3s ease-out; }
-        .chat-msg--assistant { align-self: flex-start; }
-        .chat-msg--user { align-self: flex-end; flex-direction: row-reverse; }
-        @keyframes msg-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-
-        .chat-msg-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-        .chat-msg--assistant .chat-msg-avatar { background: linear-gradient(135deg, #FFEDD5, #FED7AA); }
-        .chat-msg--user .chat-msg-avatar { background: linear-gradient(135deg, #ECFDF5, #BBF7D0); }
-
-        .chat-msg-bubble { padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5; white-space: pre-line; }
-        .chat-msg--assistant .chat-msg-bubble { background: #F9FAFB; border: 1px solid #E5E7EB; border-bottom-left-radius: 4px; color: var(--gray-800); }
-        .chat-msg--user .chat-msg-bubble { background: linear-gradient(135deg, #10B981, #059669); color: #fff; border-bottom-right-radius: 4px; }
-
-        .chat-msg-time { font-size: 10px; color: var(--gray-400); margin-top: 4px; padding: 0 4px; }
-        .chat-msg--user .chat-msg-time { text-align: right; }
-
-        .chat-input-area { display: flex; gap: 8px; padding: 12px 0 8px; border-top: 1px solid var(--gray-200); }
-        .chat-input { flex: 1; padding: 12px 16px; border: 1px solid var(--gray-300); border-radius: 24px; font-family: inherit; font-size: 14px; outline: none; transition: border-color 0.2s; min-height: 44px; resize: none; }
-        .chat-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
-        .chat-send-btn { width: 44px; height: 44px; border: none; border-radius: 50%; background: linear-gradient(135deg, #EA580C, #C2410C); color: #fff; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.2s, opacity 0.2s; flex-shrink: 0; }
-        .chat-send-btn:hover { transform: scale(1.05); }
-        .chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-        .chat-typing { display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 12px; color: var(--gray-500); }
-        .chat-typing-dots { display: flex; gap: 4px; }
-        .chat-typing-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--gray-400); animation: typing-bounce 1.4s infinite; }
-        .chat-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-        .chat-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes typing-bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
-
-        .chat-hint { text-align: center; padding: 8px; font-size: 11px; color: var(--gray-400); }
-
-        /* Report button */
-        .chat-report-btn {
-            width: 44px; height: 44px; border: none; border-radius: 50%;
-            background: linear-gradient(135deg, #7C3AED, #6D28D9); color: #fff;
-            font-size: 18px; cursor: pointer; display: flex; align-items: center;
-            justify-content: center; transition: transform 0.2s; flex-shrink: 0;
+        /* ==========================================
+           KLESHNYA PAGE — Chat Layout
+           ========================================== */
+        .kleshnya-page {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px 16px 16px;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 70px);
         }
-        .chat-report-btn:hover { transform: scale(1.05); }
 
-        /* Report modal */
-        .report-overlay {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-            z-index: 1000; align-items: center; justify-content: center;
-            backdrop-filter: blur(4px);
+        /* ==========================================
+           HEADER CARD — Kleshnya identity
+           ========================================== */
+        .kleshnya-hero {
+            background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 50%, #FED7AA 100%);
+            border: 1px solid #FDBA74;
+            border-radius: 20px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            position: relative;
+            overflow: hidden;
+            flex-shrink: 0;
         }
-        .report-overlay.visible { display: flex; }
-        .report-modal {
-            background: var(--white, #fff); border-radius: 16px; padding: 24px;
-            max-width: 420px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        .kleshnya-hero::before {
+            content: '';
+            position: absolute;
+            top: -30px; right: -30px;
+            width: 120px; height: 120px;
+            background: radial-gradient(circle, rgba(234,88,12,0.08) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        .kleshnya-avatar {
+            width: 56px; height: 56px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #EA580C, #F97316);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px;
+            box-shadow: 0 4px 12px rgba(234,88,12,0.25);
+            flex-shrink: 0;
+        }
+
+        .kleshnya-info { flex: 1; min-width: 0; }
+        .kleshnya-info h2 {
+            font-size: 18px; font-weight: 900;
+            color: #9A3412;
+            margin: 0;
+        }
+        .kleshnya-info p {
+            font-size: 12px; color: #C2410C;
+            margin: 2px 0 0;
+            font-weight: 600;
+        }
+        .kleshnya-status {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 10px; border-radius: 20px;
+            font-size: 10px; font-weight: 800;
+            background: rgba(16,185,129,0.12); color: #059669;
+            margin-top: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .kleshnya-status-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #10B981;
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        .kleshnya-hero-actions {
+            display: flex; flex-direction: column; gap: 6px;
+            flex-shrink: 0;
+        }
+        .btn-report {
+            padding: 8px 14px;
+            border: 1px solid #FDBA74;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.7);
+            color: #9A3412;
+            font-family: inherit; font-size: 12px; font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            min-height: 36px;
+            display: flex; align-items: center; gap: 5px;
+        }
+        .btn-report:hover {
+            background: #fff;
+            border-color: #EA580C;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(234,88,12,0.15);
+        }
+
+        /* ==========================================
+           CHAT MESSAGES
+           ========================================== */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            scroll-behavior: smooth;
+        }
+        .chat-messages::-webkit-scrollbar { width: 4px; }
+        .chat-messages::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 4px; }
+
+        .chat-msg {
+            display: flex;
+            gap: 10px;
+            max-width: 82%;
             animation: msg-in 0.3s ease-out;
         }
-        .report-modal h3 { font-size: 18px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
-        .report-type-row { display: flex; gap: 8px; margin-bottom: 12px; }
+        .chat-msg--assistant { align-self: flex-start; }
+        .chat-msg--user { align-self: flex-end; flex-direction: row-reverse; }
+        @keyframes msg-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-msg-avatar {
+            width: 34px; height: 34px;
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .chat-msg--assistant .chat-msg-avatar {
+            background: linear-gradient(135deg, #FFEDD5, #FED7AA);
+            box-shadow: 0 2px 6px rgba(234,88,12,0.12);
+        }
+        .chat-msg--user .chat-msg-avatar {
+            background: linear-gradient(135deg, #D1FAE5, #A7F3D0);
+            box-shadow: 0 2px 6px rgba(16,185,129,0.12);
+        }
+
+        .chat-msg-content { min-width: 0; }
+
+        .chat-msg-bubble {
+            padding: 10px 14px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.55;
+            white-space: pre-line;
+            word-break: break-word;
+        }
+        .chat-msg--assistant .chat-msg-bubble {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-bottom-left-radius: 4px;
+            color: var(--gray-800);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .chat-msg--user .chat-msg-bubble {
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+            color: #fff;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 2px 8px rgba(16,185,129,0.2);
+        }
+
+        .chat-msg-time {
+            font-size: 10px;
+            color: var(--gray-400);
+            margin-top: 3px;
+            padding: 0 2px;
+            font-weight: 600;
+        }
+        .chat-msg--user .chat-msg-time { text-align: right; }
+
+        /* ==========================================
+           TYPING INDICATOR
+           ========================================== */
+        .chat-typing {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 14px;
+            font-size: 12px; color: var(--gray-500);
+            font-weight: 600;
+        }
+        .chat-typing-dots { display: flex; gap: 3px; }
+        .chat-typing-dots span {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #EA580C; opacity: 0.4;
+            animation: typing-bounce 1.4s infinite;
+        }
+        .chat-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .chat-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing-bounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-6px); opacity: 1; }
+        }
+
+        /* ==========================================
+           INPUT AREA
+           ========================================== */
+        .chat-input-area {
+            display: flex;
+            gap: 8px;
+            padding: 12px 0 4px;
+            align-items: flex-end;
+            flex-shrink: 0;
+        }
+        .chat-input-wrap {
+            flex: 1;
+            position: relative;
+        }
+        .chat-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid var(--gray-200);
+            border-radius: 16px;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            min-height: 46px;
+            resize: none;
+            background: var(--white);
+            color: var(--gray-800);
+            box-sizing: border-box;
+        }
+        .chat-input:focus {
+            border-color: #EA580C;
+            box-shadow: 0 0 0 3px rgba(234,88,12,0.1);
+        }
+        .chat-input::placeholder { color: var(--gray-400); }
+
+        .chat-send-btn {
+            width: 46px; height: 46px;
+            border: none; border-radius: 14px;
+            background: linear-gradient(135deg, #EA580C, #C2410C);
+            color: #fff; font-size: 18px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.15s, box-shadow 0.15s;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(234,88,12,0.25);
+        }
+        .chat-send-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(234,88,12,0.35);
+        }
+        .chat-send-btn:active { transform: translateY(0); }
+        .chat-send-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .chat-hint {
+            text-align: center;
+            padding: 4px 0;
+            font-size: 11px;
+            color: var(--gray-400);
+            font-weight: 600;
+        }
+
+        /* ==========================================
+           REPORT MODAL
+           ========================================== */
+        .report-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 1000;
+            align-items: center; justify-content: center;
+            backdrop-filter: blur(6px);
+        }
+        .report-overlay.visible { display: flex; }
+
+        .report-modal {
+            background: var(--white);
+            border-radius: 20px;
+            padding: 28px;
+            max-width: 440px; width: 90%;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.15);
+            animation: modal-in 0.25s ease-out;
+        }
+        @keyframes modal-in {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .report-modal h3 {
+            font-size: 18px; font-weight: 900;
+            margin-bottom: 20px;
+            display: flex; align-items: center; gap: 8px;
+            color: var(--gray-800);
+        }
+
+        .report-type-row { display: flex; gap: 8px; margin-bottom: 16px; }
         .report-type-btn {
-            flex: 1; padding: 10px; border: 2px solid var(--gray-200); border-radius: 10px;
-            background: var(--gray-50, #f9fafb); cursor: pointer; text-align: center;
-            font-family: inherit; font-size: 13px; font-weight: 700; transition: all 0.15s;
+            flex: 1; padding: 10px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            background: var(--gray-50);
+            cursor: pointer; text-align: center;
+            font-family: inherit; font-size: 13px; font-weight: 700;
+            transition: all 0.15s;
+            color: var(--gray-600);
         }
-        .report-type-btn.active { border-color: #7C3AED; background: rgba(124,58,237,0.08); color: #7C3AED; }
-        .report-type-btn:hover { border-color: #7C3AED; }
-        .report-modal label { display: block; font-size: 11px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-        .report-modal input, .report-modal textarea, .report-modal select {
-            width: 100%; padding: 10px 14px; border: 1px solid var(--gray-200); border-radius: 10px;
-            font-family: inherit; font-size: 14px; box-sizing: border-box; min-height: 44px;
+        .report-type-btn.active {
+            border-color: #EA580C;
+            background: rgba(234,88,12,0.06);
+            color: #EA580C;
         }
-        .report-modal input:focus, .report-modal textarea:focus, .report-modal select:focus {
-            outline: none; border-color: #7C3AED; box-shadow: 0 0 0 3px rgba(124,58,237,0.1);
+        .report-type-btn:hover { border-color: #EA580C; }
+
+        .report-modal label {
+            display: block;
+            font-size: 11px; font-weight: 800;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+        .report-modal input,
+        .report-modal textarea,
+        .report-modal select {
+            width: 100%; padding: 10px 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            font-family: inherit; font-size: 14px;
+            box-sizing: border-box;
+            min-height: 44px;
+            background: var(--white);
+            color: var(--gray-800);
+        }
+        .report-modal input:focus,
+        .report-modal textarea:focus,
+        .report-modal select:focus {
+            outline: none;
+            border-color: #EA580C;
+            box-shadow: 0 0 0 3px rgba(234,88,12,0.1);
         }
         .report-modal textarea { resize: vertical; min-height: 80px; }
-        .report-modal .form-group { margin-bottom: 12px; }
-        .report-actions { display: flex; gap: 8px; margin-top: 16px; }
+        .report-modal .form-group { margin-bottom: 14px; }
+
+        .report-actions { display: flex; gap: 8px; margin-top: 20px; }
         .report-submit {
-            flex: 1; padding: 12px; border: none; border-radius: 10px;
-            background: linear-gradient(135deg, #7C3AED, #6D28D9); color: #fff;
-            font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
-            min-height: 44px; transition: transform 0.15s;
+            flex: 1; padding: 12px;
+            border: none; border-radius: 12px;
+            background: linear-gradient(135deg, #EA580C, #C2410C);
+            color: #fff;
+            font-family: inherit; font-size: 14px; font-weight: 700;
+            cursor: pointer; min-height: 44px;
+            transition: transform 0.15s, box-shadow 0.15s;
+            box-shadow: 0 2px 8px rgba(234,88,12,0.2);
         }
-        .report-submit:hover { transform: translateY(-1px); }
-        .report-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .report-submit:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(234,88,12,0.3);
+        }
+        .report-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
         .report-cancel {
-            flex: 1; padding: 12px; border: 1px solid var(--gray-200); border-radius: 10px;
-            background: var(--white, #fff); color: var(--gray-600);
-            font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
-            min-height: 44px;
+            flex: 1; padding: 12px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            background: var(--white);
+            color: var(--gray-600);
+            font-family: inherit; font-size: 14px; font-weight: 700;
+            cursor: pointer; min-height: 44px;
+            transition: all 0.15s;
+        }
+        .report-cancel:hover {
+            border-color: var(--gray-300);
+            background: var(--gray-50);
         }
 
-        /* Report modal dark mode */
-        body.dark-mode .report-modal { background: #1e1e2e; border: 1px solid rgba(255,255,255,0.1); }
-        body.dark-mode .report-modal h3 { color: var(--gray-200); }
-        body.dark-mode .report-type-btn { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); color: var(--gray-300); }
-        body.dark-mode .report-type-btn.active { border-color: #A78BFA; background: rgba(124,58,237,0.15); color: #A78BFA; }
-        body.dark-mode .report-modal input, body.dark-mode .report-modal textarea, body.dark-mode .report-modal select {
-            background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: var(--gray-200);
+        /* ==========================================
+           DARK MODE
+           ========================================== */
+        body.dark-mode .kleshnya-hero {
+            background: linear-gradient(135deg, rgba(234,88,12,0.1) 0%, rgba(234,88,12,0.06) 50%, rgba(194,65,12,0.04) 100%);
+            border-color: rgba(234,88,12,0.25);
         }
-        body.dark-mode .report-modal label { color: var(--gray-400); }
-        body.dark-mode .report-cancel { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: var(--gray-300); }
+        body.dark-mode .kleshnya-hero::before {
+            background: radial-gradient(circle, rgba(234,88,12,0.12) 0%, transparent 70%);
+        }
+        body.dark-mode .kleshnya-avatar {
+            box-shadow: 0 4px 16px rgba(234,88,12,0.3);
+        }
+        body.dark-mode .kleshnya-info h2 { color: #FDBA74; }
+        body.dark-mode .kleshnya-info p { color: #FB923C; }
+        body.dark-mode .kleshnya-status {
+            background: rgba(16,185,129,0.12);
+            color: #6EE7B7;
+        }
+        body.dark-mode .btn-report {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(234,88,12,0.3);
+            color: #FDBA74;
+        }
+        body.dark-mode .btn-report:hover {
+            background: rgba(234,88,12,0.12);
+            border-color: rgba(234,88,12,0.5);
+        }
 
-        /* Dark mode */
-        body.dark-mode .kleshnya-header h2 { color: var(--gray-100); }
-        body.dark-mode .kleshnya-status { background: rgba(16,185,129,0.15); color: #6EE7B7; }
-        body.dark-mode .chat-msg--assistant .chat-msg-bubble { background: var(--gray-100); border-color: var(--gray-200); color: var(--gray-800); }
-        body.dark-mode .chat-msg--assistant .chat-msg-avatar { background: linear-gradient(135deg, rgba(234,88,12,0.2), rgba(234,88,12,0.1)); }
-        body.dark-mode .chat-msg--user .chat-msg-avatar { background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.1)); }
-        body.dark-mode .chat-input { background: var(--gray-100); border-color: var(--gray-200); color: var(--gray-800); }
-        body.dark-mode .chat-input-area { border-top-color: var(--gray-200); }
+        body.dark-mode .chat-msg--assistant .chat-msg-bubble {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(255,255,255,0.08);
+            color: #E2E8F0;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        body.dark-mode .chat-msg--user .chat-msg-bubble {
+            box-shadow: 0 2px 10px rgba(16,185,129,0.15);
+        }
+        body.dark-mode .chat-msg--assistant .chat-msg-avatar {
+            background: linear-gradient(135deg, rgba(234,88,12,0.2), rgba(234,88,12,0.1));
+        }
+        body.dark-mode .chat-msg--user .chat-msg-avatar {
+            background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.1));
+        }
+        body.dark-mode .chat-msg-time { color: rgba(255,255,255,0.3); }
+
+        body.dark-mode .chat-typing { color: rgba(255,255,255,0.4); }
+
+        body.dark-mode .chat-input {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+            color: #E2E8F0;
+        }
+        body.dark-mode .chat-input:focus {
+            border-color: #EA580C;
+            box-shadow: 0 0 0 3px rgba(234,88,12,0.15);
+        }
+        body.dark-mode .chat-input::placeholder { color: rgba(255,255,255,0.25); }
+
+        body.dark-mode .chat-send-btn {
+            box-shadow: 0 2px 10px rgba(234,88,12,0.3);
+        }
+        body.dark-mode .chat-send-btn:hover {
+            box-shadow: 0 4px 16px rgba(234,88,12,0.4);
+        }
+
+        body.dark-mode .chat-hint { color: rgba(255,255,255,0.25); }
+
+        body.dark-mode .chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+
+        /* Report modal dark */
+        body.dark-mode .report-modal {
+            background: #1e1e2e;
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+        }
+        body.dark-mode .report-modal h3 { color: #E2E8F0; }
+        body.dark-mode .report-type-btn {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.5);
+        }
+        body.dark-mode .report-type-btn.active {
+            border-color: #EA580C;
+            background: rgba(234,88,12,0.1);
+            color: #FB923C;
+        }
+        body.dark-mode .report-type-btn:hover { border-color: rgba(234,88,12,0.5); }
+        body.dark-mode .report-modal input,
+        body.dark-mode .report-modal textarea,
+        body.dark-mode .report-modal select {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+            color: #E2E8F0;
+        }
+        body.dark-mode .report-modal input:focus,
+        body.dark-mode .report-modal textarea:focus,
+        body.dark-mode .report-modal select:focus {
+            border-color: #EA580C;
+            box-shadow: 0 0 0 3px rgba(234,88,12,0.15);
+        }
+        body.dark-mode .report-modal label { color: rgba(255,255,255,0.4); }
+        body.dark-mode .report-cancel {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.6);
+        }
+        body.dark-mode .report-cancel:hover {
+            background: rgba(255,255,255,0.08);
+        }
+        body.dark-mode .report-submit {
+            box-shadow: 0 2px 10px rgba(234,88,12,0.2);
+        }
+
+        /* ==========================================
+           RESPONSIVE
+           ========================================== */
+        @media (max-width: 768px) {
+            .kleshnya-page { padding: 12px 12px 8px; height: calc(100vh - 50px); }
+            .kleshnya-hero { padding: 14px; gap: 12px; border-radius: 16px; }
+            .kleshnya-avatar { width: 44px; height: 44px; font-size: 22px; border-radius: 12px; }
+            .kleshnya-info h2 { font-size: 16px; }
+            .kleshnya-info p { font-size: 11px; }
+            .chat-msg { max-width: 88%; gap: 8px; }
+            .chat-msg-avatar { width: 28px; height: 28px; font-size: 14px; border-radius: 10px; }
+            .chat-msg-bubble { font-size: 13px; padding: 9px 12px; }
+            .btn-report { padding: 6px 10px; font-size: 11px; }
+        }
     </style>
 </head>
 <body>
     <script>
-    // Early dark mode to prevent flash (full init in initDarkMode after config.js loads)
+    // Early dark mode to prevent flash
     (function(){var s=localStorage.getItem('pzp_dark_mode');var h=new Date().getHours();var isDark=s==='true'||(s!=='false'&&(h>=20||h<7));if(isDark){document.body.classList.add('dark-mode');document.documentElement.setAttribute('data-theme','dark')}})();
     </script>
 
@@ -164,26 +550,35 @@
 
         <main class="main-content">
             <div class="kleshnya-page">
-                <div class="kleshnya-header">
-                    <h2>🦀 Клешня</h2>
-                    <p>Центральний інтелект Парку Закревського Періоду</p>
-                    <div class="kleshnya-status">
-                        <span class="kleshnya-status-dot"></span>
-                        <span>Онлайн • Template Mode</span>
+                <div class="kleshnya-hero">
+                    <div class="kleshnya-avatar">🦀</div>
+                    <div class="kleshnya-info">
+                        <h2>Клешня</h2>
+                        <p>Центральний інтелект парку</p>
+                        <div class="kleshnya-status">
+                            <span class="kleshnya-status-dot"></span>
+                            <span>Онлайн</span>
+                        </div>
+                    </div>
+                    <div class="kleshnya-hero-actions">
+                        <button class="btn-report" id="reportBtn" title="Повідомити про баг або покращення">
+                            🐛 Фідбек
+                        </button>
                     </div>
                 </div>
 
                 <div class="chat-messages" id="chatMessages">
-                    <!-- Messages will be loaded here -->
+                    <!-- Messages loaded dynamically -->
                 </div>
 
                 <div class="chat-hint">
-                    Питай про бронювання, задачі, стріки — Клешня допоможе! 🦀
+                    Питай про бронювання, задачі, стріки — Клешня допоможе!
                 </div>
 
                 <div class="chat-input-area">
-                    <button class="chat-report-btn" id="reportBtn" title="Повідомити про баг або покращення">🐛</button>
-                    <input type="text" class="chat-input" id="chatInput" placeholder="Написати Клешні..." maxlength="500" autocomplete="off">
+                    <div class="chat-input-wrap">
+                        <input type="text" class="chat-input" id="chatInput" placeholder="Написати Клешні..." maxlength="500" autocomplete="off">
+                    </div>
                     <button class="chat-send-btn" id="chatSendBtn" title="Надіслати">➤</button>
                 </div>
             </div>
@@ -193,7 +588,7 @@
     <!-- Report Bug/Improvement Modal -->
     <div class="report-overlay" id="reportOverlay">
         <div class="report-modal">
-            <h3>🐛 Покращити систему</h3>
+            <h3>🦀 Покращити систему</h3>
             <div class="report-type-row">
                 <button class="report-type-btn active" data-type="bug" id="typeBug">🐛 Баг</button>
                 <button class="report-type-btn" data-type="improvement" id="typeImprove">💡 Покращення</button>
@@ -221,13 +616,12 @@
         </div>
     </div>
 
-    <script src="js/config.js?v=12.1"></script>
-    <script src="js/api.js?v=12.1"></script>
-    <script src="js/auth.js?v=12.1"></script>
+    <script src="js/config.js?v=12.2"></script>
+    <script src="js/api.js?v=12.2"></script>
+    <script src="js/auth.js?v=12.2"></script>
     <script>
     // Kleshnya Chat Page Logic
     (function() {
-        const API_BASE = '/api';
         const chatMessages = document.getElementById('chatMessages');
         const chatInput = document.getElementById('chatInput');
         const chatSendBtn = document.getElementById('chatSendBtn');
@@ -250,11 +644,11 @@
             avatar.textContent = role === 'assistant' ? '🦀' : '👤';
 
             const wrapper = document.createElement('div');
+            wrapper.className = 'chat-msg-content';
 
             const bubble = document.createElement('div');
             bubble.className = 'chat-msg-bubble';
             bubble.textContent = text;
-
             wrapper.appendChild(bubble);
 
             if (time) {
@@ -286,20 +680,15 @@
 
         async function loadChat() {
             try {
-                // Load greeting first
                 const dateStr = new Date().toISOString().split('T')[0];
                 const greeting = await apiGetKleshnyaGreeting(dateStr);
-
-                // Load chat history
                 const history = await apiGetKleshnyaChat();
 
                 if (history.length === 0 && greeting) {
-                    // First visit: show greeting as first message
                     addMessage('assistant', greeting.message, new Date().toISOString());
                 } else if (history.length === 0) {
                     addMessage('assistant', '🦀 Привіт! Я Клешня — центральний інтелект парку. Питай що завгодно!', new Date().toISOString());
                 } else {
-                    // Show greeting + history
                     if (greeting) {
                         addMessage('assistant', greeting.message, new Date().toISOString());
                     }
@@ -340,7 +729,6 @@
             chatInput.focus();
         }
 
-        // Event listeners
         chatSendBtn.addEventListener('click', sendMessage);
         chatInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -349,7 +737,6 @@
             }
         });
 
-        // Auth check + load
         function checkAuth() {
             const token = getToken();
             if (!token) {
@@ -366,6 +753,7 @@
             }
 
             document.getElementById('mainApp').classList.remove('hidden');
+            if (typeof initDarkMode === 'function') initDarkMode();
             loadChat();
         }
 
@@ -403,7 +791,6 @@
             if (e.target === reportOverlay) reportOverlay.classList.remove('visible');
         });
 
-        // Type toggle
         document.querySelectorAll('.report-type-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.report-type-btn').forEach(b => b.classList.remove('active'));
@@ -442,10 +829,9 @@
                 });
 
                 if (!res.ok) throw new Error('Не вдалося створити задачу');
-                const data = await res.json();
                 reportOverlay.classList.remove('visible');
                 addMessage('assistant',
-                    `🦀 ${emoji} ${label} прийнято!\n\n📋 "${title}"\n👤 Призначено: Сергій\n⚡ Пріоритет: ${reportPriority.value === 'high' ? 'Високий' : reportPriority.value === 'low' ? 'Низький' : 'Звичайний'}\n\nСергій отримає сповіщення в Telegram. Дякую за фідбек! 💪`,
+                    `🦀 ${emoji} ${label} прийнято!\n\n📋 "${title}"\n👤 Призначено: Сергій\n⚡ Пріоритет: ${reportPriority.value === 'high' ? 'Високий' : reportPriority.value === 'low' ? 'Низький' : 'Звичайний'}\n\nСергій отримає сповіщення в Telegram. Дякую за фідбек!`,
                     new Date().toISOString()
                 );
             } catch (err) {

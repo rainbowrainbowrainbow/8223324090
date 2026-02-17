@@ -25,7 +25,11 @@ async function getLinesForDate(date) {
         if (cached) return cached.data;
         return [];
     }
-    AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
+    // v12.6: Don't cache empty lines — server always returns defaults via ensureDefaultLines,
+    // so empty means transient error. Let next render try fresh API call.
+    if (lines.length > 0) {
+        AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
+    }
     return lines;
 }
 
@@ -280,6 +284,22 @@ async function renderTimeline() {
     if (thisGen !== _renderGen) {
         _debugRender(`ABORT gen=${thisGen} (current=${_renderGen})`);
         return;
+    }
+
+    // v12.6: If lines came back empty (API error / transient failure), retry once after 2s
+    if (lines.length === 0 && !AppState._linesRetryScheduled) {
+        AppState._linesRetryScheduled = true;
+        const retryDateStr = formatDate(selectedDate);
+        setTimeout(() => {
+            AppState._linesRetryScheduled = false;
+            // Invalidate cache so retry fetches fresh data
+            delete AppState.cachedLines[retryDateStr];
+            // Only retry if still on the same date
+            if (formatDate(AppState.selectedDate) === retryDateStr) {
+                console.log('[Timeline] Retrying render — lines were empty');
+                renderTimeline();
+            }
+        }, 2000);
     }
 
     const { start } = getTimeRange(selectedDate);

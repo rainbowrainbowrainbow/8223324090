@@ -28,7 +28,7 @@ function handleAuthError(response) {
 async function apiGetBookings(date) {
     try {
         const response = await fetch(`${API_BASE}/bookings/${date}`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return [];
+        if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
     } catch (err) {
@@ -127,7 +127,7 @@ async function apiUpdateBooking(id, booking) {
 async function apiGetLines(date) {
     try {
         const response = await fetch(`${API_BASE}/lines/${date}`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return [];
+        if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
     } catch (err) {

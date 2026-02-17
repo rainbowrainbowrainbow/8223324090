@@ -11,6 +11,19 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Bookings');
 
+// Resolve animator line name for notifications
+async function getLineName(lineId, date) {
+    try {
+        const result = await pool.query(
+            'SELECT name FROM lines_by_date WHERE line_id = $1 AND date = $2', [lineId, date]
+        );
+        return result.rows[0]?.name || null;
+    } catch (err) {
+        log.error(`Failed to get line name: ${err.message}`);
+        return null;
+    }
+}
+
 // Get bookings for a date
 router.get('/:date', async (req, res) => {
     try {
@@ -85,11 +98,11 @@ router.post('/', async (req, res) => {
         await client.query('COMMIT');
 
         if (!b.linkedTo && b.status !== 'preliminary') {
-            notifyTelegram('create', {
+            getLineName(b.lineId, b.date).then(lineName => notifyTelegram('create', {
                 ...b, label: b.label, program_code: b.programCode,
                 program_name: b.programName, kids_count: b.kidsCount,
                 created_by: b.createdBy
-            }, { username: b.createdBy || req.user?.username })
+            }, { username: b.createdBy || req.user?.username, lineName }))
                 .catch(err => log.error(`Telegram notify failed (create): ${err.message}`));
         }
 
@@ -193,10 +206,10 @@ router.post('/full', async (req, res) => {
         await client.query('COMMIT');
 
         if (main.status !== 'preliminary') {
-            notifyTelegram('create', {
+            getLineName(main.lineId, main.date).then(lineName => notifyTelegram('create', {
                 ...main, program_code: main.programCode, program_name: main.programName,
                 kids_count: main.kidsCount, created_by: main.createdBy
-            }, { username: main.createdBy || req.user?.username })
+            }, { username: main.createdBy || req.user?.username, lineName }))
                 .catch(err => log.error(`Telegram notify failed (create/full): ${err.message}`));
         }
 
@@ -254,7 +267,8 @@ router.delete('/:id', async (req, res) => {
 
         await client.query('COMMIT');
 
-        notifyTelegram('delete', booking, { username: req.user?.username })
+        getLineName(booking.line_id, booking.date).then(lineName =>
+            notifyTelegram('delete', booking, { username: req.user?.username, lineName }))
             .catch(err => log.error(`Telegram notify failed (delete): ${err.message}`));
 
         // WebSocket: notify other clients
@@ -465,16 +479,20 @@ router.put('/:id', async (req, res) => {
 
         const statusChanged = oldBooking.status !== newStatus;
         const notifyCatch = err => log.error(`Telegram notify failed (update): ${err.message}`);
+        getLineName(b.lineId, b.date).then(lineName => {
+            if (statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
+                notifyTelegram('create', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
+            } else if (statusChanged) {
+                notifyTelegram('status_change', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
+            } else if (!b.linkedTo && newStatus !== 'preliminary') {
+                notifyTelegram('edit', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
+            }
+        }).catch(notifyCatch);
         if (statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
-            notifyTelegram('create', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
             // v8.3.2: Fetch fresh row from DB for automation (req.body may lack extra_data)
             pool.query('SELECT * FROM bookings WHERE id = $1', [id])
                 .then(r => r.rows[0] ? processBookingAutomation({ ...mapBookingRow(r.rows[0]), _event: 'confirm' }) : null)
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
-        } else if (statusChanged) {
-            notifyTelegram('status_change', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
-        } else if (!b.linkedTo && newStatus !== 'preliminary') {
-            notifyTelegram('edit', bookingForNotify, { username, bookingId: id }).catch(notifyCatch);
         }
 
         // WebSocket: notify other clients

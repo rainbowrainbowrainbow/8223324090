@@ -46,6 +46,7 @@ app.use(requestIdMiddleware);
 app.use(securityHeaders);
 app.use(cacheControl);
 app.use(express.static(path.join(__dirname)));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Graceful shutdown: reject new requests while shutting down
 let isShuttingDown = false;
@@ -87,6 +88,7 @@ app.use('/api/staff', require('./routes/staff'));
 app.use('/api/certificates', require('./routes/certificates'));
 app.use('/api/points', require('./routes/points'));
 app.use('/api/kleshnya', require('./routes/kleshnya'));
+app.use('/api/designs', require('./routes/designs'));
 
 // Settings router handles /api/stats, /api/settings, /api/rooms, /api/health
 const settingsRouter = require('./routes/settings');
@@ -109,6 +111,9 @@ app.get('/staff', (req, res) => {
 });
 app.get('/kleshnya', (req, res) => {
     res.sendFile(path.join(__dirname, 'kleshnya.html'));
+});
+app.get('/designs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'designs.html'));
 });
 
 // SPA fallback (must be last)

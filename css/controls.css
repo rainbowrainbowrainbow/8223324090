@@ -207,31 +207,6 @@
 
 /* Button colors defined per-class in modals.css (v5.31) */
 
-.time-shift-buttons {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-}
-
-.time-shift-buttons button {
-    padding: 8px 12px;
-    min-width: 44px;
-    border: 1px solid var(--gray-200);
-    background: var(--gray-50);
-    border-radius: var(--radius-xs);
-    font-weight: 700;
-    font-size: 12px;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all var(--speed-fast);
-}
-
-.time-shift-buttons button:hover {
-    background: var(--primary-50);
-    border-color: var(--primary);
-    color: var(--primary-dark);
-}
-
 /* btn-status-toggle styles in panel.css (v5.31) */
 
 /* ==========================================

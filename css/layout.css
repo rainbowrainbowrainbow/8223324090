@@ -84,7 +84,7 @@
     padding: 14px;
     border: 2px solid var(--gray-200);
     border-radius: var(--radius-sm);
-    font-size: var(--font-base);
+    font-size: var(--font-input, 16px);
     font-family: inherit;
     resize: vertical;
     min-height: 200px;
@@ -210,58 +210,11 @@ input[type="date"] {
     gap: 12px;
 }
 
-.view-mode-toggle {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-    user-select: none;
-}
-
-.view-mode-toggle input { display: none; }
-
-.toggle-slider {
-    width: 44px;
-    height: 24px;
-    background: var(--gray-300);
-    border-radius: 12px;
-    position: relative;
-    transition: all var(--speed-normal) var(--ease-smooth);
-}
-
-.toggle-slider::before {
-    content: '';
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    background: var(--white);
-    border-radius: 50%;
-    top: 2px;
-    left: 2px;
-    transition: all var(--speed-normal) var(--ease-bounce);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-}
-
-.view-mode-toggle input:checked + .toggle-slider {
-    background: var(--primary);
-    box-shadow: 0 0 8px rgba(16,185,129,0.3);
-}
-
-.view-mode-toggle input:checked + .toggle-slider::before {
-    left: 22px;
-}
-
-.toggle-label {
-    font-size: var(--font-sm);
-    font-weight: 600;
-    color: var(--gray-700);
-}
-
 .days-select {
     padding: 8px 12px;
     border: 2px solid var(--primary);
     border-radius: var(--radius-sm);
-    font-size: var(--font-sm);
+    font-size: var(--font-input, 16px);
     font-weight: 600;
     font-family: inherit;
     background: var(--white);

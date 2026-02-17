@@ -98,11 +98,9 @@ router.get('/health', async (req, res) => {
         let userCount = 0;
         try {
             const migCheck = await pool.query(
-                "SELECT applied_at FROM schema_migrations WHERE version = '005_password_reset'"
+                "SELECT version, applied_at FROM schema_migrations WHERE version LIKE '%password_reset%' ORDER BY applied_at DESC"
             );
-            passwordReset = migCheck.rows.length > 0
-                ? `done at ${migCheck.rows[0].applied_at}`
-                : 'not applied';
+            passwordReset = migCheck.rows.length > 0 ? migCheck.rows : 'not applied';
         } catch { passwordReset = 'schema_migrations not found'; }
         try {
             const uc = await pool.query('SELECT COUNT(*)::int as c FROM users');

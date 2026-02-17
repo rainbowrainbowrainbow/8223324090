@@ -207,15 +207,18 @@ async function initDatabase() {
             log.info('Default users seeded');
         }
 
-        // v12.3: One-time password reset for all default users
+        // v12.3: schema_migrations table
         await pool.query(`
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 version VARCHAR(255) PRIMARY KEY,
                 applied_at TIMESTAMP DEFAULT NOW()
             )
         `);
+
+        // v12.4: Force password reset (runs every deploy until login works)
+        const resetVersion = '006_password_reset_v12_4';
         const resetCheck = await pool.query(
-            "SELECT 1 FROM schema_migrations WHERE version = '005_password_reset'"
+            'SELECT 1 FROM schema_migrations WHERE version = $1', [resetVersion]
         );
         if (resetCheck.rows.length === 0) {
             const defaultPasswords = [
@@ -229,17 +232,28 @@ async function initDatabase() {
                 { username: 'Zhenya', password: 'Zhenya527' },
                 { username: 'Lera', password: 'Lera691' }
             ];
+            let resetCount = 0;
             for (const u of defaultPasswords) {
                 const hash = await bcrypt.hash(u.password, 10);
-                await pool.query(
+                const upd = await pool.query(
                     'UPDATE users SET password_hash = $1 WHERE LOWER(username) = LOWER($2)',
                     [hash, u.username]
                 );
+                resetCount += upd.rowCount;
+                log.info(`Password reset: ${u.username} → ${upd.rowCount} rows updated, hash: ${hash.substring(0, 15)}...`);
             }
-            await pool.query(
-                "INSERT INTO schema_migrations (version) VALUES ('005_password_reset')"
+            // Verify immediately after reset
+            const verifyResult = await pool.query(
+                "SELECT username, substring(password_hash, 1, 15) as hash_prefix FROM users WHERE LOWER(username) = 'anli'"
             );
-            log.info('Passwords reset for all default users (v12.3)');
+            log.info(`Post-reset verify Anli: ${JSON.stringify(verifyResult.rows)}`);
+
+            await pool.query(
+                'INSERT INTO schema_migrations (version) VALUES ($1)', [resetVersion]
+            );
+            log.info(`Passwords reset for ${resetCount} users (v12.4)`);
+        } else {
+            log.info('Password reset v12.4 already applied, skipping');
         }
 
         await pool.query(`

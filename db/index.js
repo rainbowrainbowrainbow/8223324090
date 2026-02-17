@@ -571,6 +571,48 @@ async function initDatabase() {
         `);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_kleshnya_chat_username ON kleshnya_chat(username, created_at)');
 
+        // v12.0: Design board — collections, designs, tags
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS design_collections (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                color VARCHAR(20) DEFAULT '#6366F1',
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS designs (
+                id SERIAL PRIMARY KEY,
+                filename VARCHAR(255) NOT NULL,
+                original_name VARCHAR(255) NOT NULL,
+                mime_type VARCHAR(100) NOT NULL,
+                file_size INTEGER NOT NULL,
+                width INTEGER,
+                height INTEGER,
+                title VARCHAR(200),
+                description TEXT,
+                is_pinned BOOLEAN DEFAULT FALSE,
+                collection_id INTEGER REFERENCES design_collections(id) ON DELETE SET NULL,
+                publish_date VARCHAR(20),
+                created_by VARCHAR(50),
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_designs_collection ON designs(collection_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_designs_pinned ON designs(is_pinned)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_designs_publish_date ON designs(publish_date)');
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS design_tags (
+                design_id INTEGER NOT NULL REFERENCES designs(id) ON DELETE CASCADE,
+                tag VARCHAR(50) NOT NULL,
+                PRIMARY KEY (design_id, tag)
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_design_tags_tag ON design_tags(tag)');
+
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);

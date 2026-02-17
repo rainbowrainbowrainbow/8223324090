@@ -14,17 +14,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=12.0">
-    <link rel="stylesheet" href="css/auth.css?v=12.0">
-    <link rel="stylesheet" href="css/layout.css?v=12.0">
-    <link rel="stylesheet" href="css/timeline.css?v=12.0">
-    <link rel="stylesheet" href="css/panel.css?v=12.0">
-    <link rel="stylesheet" href="css/modals.css?v=12.0">
-    <link rel="stylesheet" href="css/controls.css?v=12.0">
-    <link rel="stylesheet" href="css/features.css?v=12.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=12.0">
-    <link rel="stylesheet" href="css/responsive.css?v=12.0">
-    <link rel="stylesheet" href="css/pages.css?v=12.0">
+    <link rel="stylesheet" href="css/base.css?v=12.1">
+    <link rel="stylesheet" href="css/auth.css?v=12.1">
+    <link rel="stylesheet" href="css/layout.css?v=12.1">
+    <link rel="stylesheet" href="css/timeline.css?v=12.1">
+    <link rel="stylesheet" href="css/panel.css?v=12.1">
+    <link rel="stylesheet" href="css/modals.css?v=12.1">
+    <link rel="stylesheet" href="css/controls.css?v=12.1">
+    <link rel="stylesheet" href="css/features.css?v=12.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=12.1">
+    <link rel="stylesheet" href="css/responsive.css?v=12.1">
+    <link rel="stylesheet" href="css/pages.css?v=12.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -41,9 +41,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v12.0 — Дизайн-борд</p>
+                <p class="tagline">Система бронювання v12.1 — Розумна тема + UX</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v12.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v12.1</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -968,6 +968,15 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v12.1.0 — Розумна тема + UX</h4>
+                    <ul>
+                        <li>🌙 Авто dark mode — темна тема з 20:00 до 07:00, світла вдень</li>
+                        <li>🎨 Dark mode на всіх сторінках — дизайни, задачі, програми, графік</li>
+                        <li>📱 Дизайн-борд мобільний — картинки без обрізання, компактні фільтри та drop zone</li>
+                        <li>🔒 Фікс авторизації на /designs — сторінка більше не вимагає pzp_session</li>
+                        <li>📜 Фікс горизонтального скролу — жест не витікає на body на всіх сторінках</li>
+                    </ul>
+
                     <h4>v12.0.0 — Дизайн-борд</h4>
                     <ul>
                         <li>🎨 Нова сторінка /designs — галерея дизайнів з drag&drop завантаженням</li>
@@ -2336,21 +2345,21 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=12.0"></script>
-    <script src="js/api.js?v=12.0"></script>
-    <script src="js/ui.js?v=12.0"></script>
-    <script src="js/auth.js?v=12.0"></script>
-    <script src="js/timeline.js?v=12.0"></script>
-    <script src="js/booking.js?v=12.0"></script>
-    <script src="js/settings.js?v=12.0"></script>
-    <script src="js/booking-form.js?v=12.0"></script>
-    <script src="js/booking-linked.js?v=12.0"></script>
-    <script src="js/settings-dashboard.js?v=12.0"></script>
-    <script src="js/settings-history.js?v=12.0"></script>
-    <script src="js/settings-afisha.js?v=12.0"></script>
-    <script src="js/settings-certificates.js?v=12.0"></script>
-    <script src="js/offline.js?v=12.0"></script>
-    <script src="js/ws.js?v=12.0"></script>
-    <script src="js/app.js?v=12.0"></script>
+    <script src="js/config.js?v=12.1"></script>
+    <script src="js/api.js?v=12.1"></script>
+    <script src="js/ui.js?v=12.1"></script>
+    <script src="js/auth.js?v=12.1"></script>
+    <script src="js/timeline.js?v=12.1"></script>
+    <script src="js/booking.js?v=12.1"></script>
+    <script src="js/settings.js?v=12.1"></script>
+    <script src="js/booking-form.js?v=12.1"></script>
+    <script src="js/booking-linked.js?v=12.1"></script>
+    <script src="js/settings-dashboard.js?v=12.1"></script>
+    <script src="js/settings-history.js?v=12.1"></script>
+    <script src="js/settings-afisha.js?v=12.1"></script>
+    <script src="js/settings-certificates.js?v=12.1"></script>
+    <script src="js/offline.js?v=12.1"></script>
+    <script src="js/ws.js?v=12.1"></script>
+    <script src="js/app.js?v=12.1"></script>
 </body>
 </html>

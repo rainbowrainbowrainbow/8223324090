@@ -60,6 +60,7 @@ let editTags = [];
 // INIT
 // ==========================================
 async function initPage() {
+    initDarkMode();
     setupTabs();
     setupDropZone();
     setupFilters();

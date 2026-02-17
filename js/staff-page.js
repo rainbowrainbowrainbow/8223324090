@@ -688,23 +688,14 @@ function renderLoadView() {
     tbody.innerHTML = bodyHtml;
 }
 
-// ==========================================
-// DARK MODE
-// ==========================================
-
-function loadDarkMode() {
-    const saved = localStorage.getItem('pzp_dark_mode');
-    if (saved === 'true') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-    }
-}
+// Dark mode: handled by shared initDarkMode() from config.js
 
 // ==========================================
 // INIT
 // ==========================================
 
 async function initPage() {
-    loadDarkMode();
+    initDarkMode();
 
     const token = localStorage.getItem('pzp_token');
     if (!token) {

@@ -33,11 +33,10 @@ function initializeApp() {
 }
 
 function loadPreferences() {
-    AppState.darkMode = localStorage.getItem('pzp_dark_mode') === 'true';
+    AppState.darkMode = initDarkMode();
     AppState.compactMode = localStorage.getItem('pzp_compact_mode') === 'true';
     AppState.zoomLevel = parseInt(localStorage.getItem('pzp_zoom_level')) || 15;
     AppState.statusFilter = localStorage.getItem('pzp_status_filter') || 'all';
-    if (AppState.darkMode) document.body.classList.add('dark-mode');
     if (AppState.compactMode) {
         CONFIG.TIMELINE.CELL_WIDTH = 35;
         document.querySelector('.timeline-container')?.classList.add('compact');

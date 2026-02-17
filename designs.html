@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Дизайни — Парк Закревського Періоду</title>
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=12.0">
-    <link rel="stylesheet" href="css/layout.css?v=12.0">
-    <link rel="stylesheet" href="css/pages.css?v=12.0">
-    <link rel="stylesheet" href="css/modals.css?v=12.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=12.0">
-    <link rel="stylesheet" href="css/responsive.css?v=12.0">
+    <link rel="stylesheet" href="css/base.css?v=12.1">
+    <link rel="stylesheet" href="css/layout.css?v=12.1">
+    <link rel="stylesheet" href="css/pages.css?v=12.1">
+    <link rel="stylesheet" href="css/modals.css?v=12.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=12.1">
+    <link rel="stylesheet" href="css/responsive.css?v=12.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -369,6 +369,98 @@
         .empty-state { text-align: center; padding: 40px 20px; color: var(--gray-400); font-size: 14px; }
         .empty-state span { font-size: 40px; display: block; margin-bottom: 12px; }
 
+        /* ==========================================
+           DARK MODE
+           ========================================== */
+        body.dark-mode .design-tab {
+            background: rgba(255,255,255,0.08); color: var(--gray-400);
+        }
+        body.dark-mode .design-tab.active { background: var(--primary); color: #fff; }
+        body.dark-mode .design-filters {
+            background: rgba(255,255,255,0.05);
+        }
+        body.dark-mode .design-filters input,
+        body.dark-mode .design-filters select {
+            background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12);
+            color: var(--gray-200);
+        }
+        body.dark-mode .tag-chip { background: rgba(255,255,255,0.08); color: var(--gray-400); }
+        body.dark-mode .tag-chip.active { background: rgba(16,185,129,0.2); color: #6EE7B7; border-color: #059669; }
+        body.dark-mode .drop-zone {
+            border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.03);
+        }
+        body.dark-mode .drop-zone-text { color: var(--gray-400); }
+        body.dark-mode .design-card {
+            background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08);
+        }
+        body.dark-mode .design-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        body.dark-mode .design-card-img { background: rgba(255,255,255,0.04); }
+        body.dark-mode .design-card-title { color: var(--gray-200); }
+        body.dark-mode .design-card-meta { color: var(--gray-500); }
+        body.dark-mode .design-card-tags .mini-tag { background: rgba(255,255,255,0.08); color: var(--gray-400); }
+        body.dark-mode .design-card-actions button {
+            background: rgba(255,255,255,0.08); color: var(--gray-300);
+        }
+        body.dark-mode .design-card-actions .btn-tg { background: rgba(21,101,192,0.2); color: #90CAF9; }
+        body.dark-mode .design-card-actions .btn-download { background: rgba(46,125,50,0.2); color: #A5D6A7; }
+        body.dark-mode .design-card-actions .btn-delete { background: rgba(198,40,40,0.2); color: #EF9A9A; }
+        body.dark-mode .collection-card {
+            background: rgba(255,255,255,0.06); border-left-color: var(--primary);
+        }
+        body.dark-mode .collection-card-name { color: var(--gray-200); }
+        body.dark-mode .collection-card-count { color: var(--gray-500); }
+        body.dark-mode .add-collection-bar {
+            background: rgba(255,255,255,0.05);
+        }
+        body.dark-mode .add-collection-bar input {
+            background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12);
+            color: var(--gray-200);
+        }
+        body.dark-mode .price-table {
+            background: rgba(255,255,255,0.04);
+        }
+        body.dark-mode .price-table th {
+            background: rgba(255,255,255,0.06); color: var(--gray-400);
+            border-bottom-color: rgba(255,255,255,0.1);
+        }
+        body.dark-mode .price-table td {
+            color: var(--gray-300); border-bottom-color: rgba(255,255,255,0.06);
+        }
+        body.dark-mode .price-table .price-name { color: var(--gray-200); }
+        body.dark-mode .price-table .price-value { color: #6EE7B7; }
+        body.dark-mode .price-section-header { color: var(--gray-200); border-bottom-color: rgba(255,255,255,0.1); }
+        body.dark-mode .calendar-day {
+            background: rgba(255,255,255,0.04);
+        }
+        body.dark-mode .calendar-day:hover { background: rgba(255,255,255,0.08); }
+        body.dark-mode .calendar-day-num { color: var(--gray-300); }
+        body.dark-mode .calendar-nav-title { color: var(--gray-200); }
+        body.dark-mode .calendar-nav button {
+            background: rgba(255,255,255,0.08); color: var(--gray-300);
+        }
+        body.dark-mode .calendar-day-detail { background: rgba(255,255,255,0.06); }
+        body.dark-mode .calendar-day-detail h4 { color: var(--gray-200); }
+        body.dark-mode .design-edit-modal {
+            background: var(--gray-800, #1e1e2e); border: 1px solid rgba(255,255,255,0.1);
+        }
+        body.dark-mode .design-edit-modal h3 { color: var(--gray-200); }
+        body.dark-mode .design-edit-modal input,
+        body.dark-mode .design-edit-modal select,
+        body.dark-mode .design-edit-modal textarea {
+            background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12);
+            color: var(--gray-200);
+        }
+        body.dark-mode .design-edit-modal label { color: var(--gray-400); }
+        body.dark-mode .tag-input-container {
+            background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12);
+        }
+        body.dark-mode .tag-input-container input { color: var(--gray-200); }
+        body.dark-mode .summary-chip, body.dark-mode .btn-filter-pin {
+            background: rgba(255,255,255,0.08); color: var(--gray-300);
+            border-color: rgba(255,255,255,0.12);
+        }
+        body.dark-mode .empty-state { color: var(--gray-500); }
+
         /* Responsive */
         @media (max-width: 768px) {
             /* Tabs: scrollable row, no wrap */
@@ -576,9 +668,9 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=12.0"></script>
-    <script src="js/api.js?v=12.0"></script>
-    <script src="js/auth.js?v=12.0"></script>
-    <script src="js/designs-page.js?v=12.0"></script>
+    <script src="js/config.js?v=12.1"></script>
+    <script src="js/api.js?v=12.1"></script>
+    <script src="js/auth.js?v=12.1"></script>
+    <script src="js/designs-page.js?v=12.1"></script>
 </body>
 </html>

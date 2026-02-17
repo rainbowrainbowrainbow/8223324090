@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v11.0.6**. Клешня знає твоє ім'я: персональні привітання з displayName з JWT токена + кеш скидається при деплої.
+Версія **v12.1.0**. Авто dark mode за часом доби (20:00–07:00), повне покриття темної теми на всіх сторінках, UX-фікси мобільного дизайн-борду.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -21,16 +21,18 @@
 - v10.3.0: Особистий кабінет (profile modal)
 - v10.4.0: Особистий кабінет PRO (15+ SQL queries, бали, лідерборд, сертифікати)
 - v10.5.0: Profile modal на sub-pages (tasks, programs, staff)
-- **v11.0.0: Kleshnya greeting/chat + перебудований кабінет з 4 табами, 12 досягненнями**
+- v11.0.0: Kleshnya greeting/chat + перебудований кабінет з 4 табами, 12 досягненнями
+- v12.0.0: Дизайн-борд (галерея, колекції, прайс-лист, календар, Telegram)
+- **v12.1.0: Авто dark mode + мобільний UX + фікси авторизації та скролу**
 
 ## Архітектура
-- **6 сторінок:** / (таймлайн), /tasks, /programs, /staff, /invite, /kleshnya
-- **Backend:** 17 routes, 13 services, 4 middleware
-- **Frontend:** 19 JS + 11 CSS модулів
-- **БД:** ~29 таблиць, 40+ індексів, 4 міграції
+- **7 сторінок:** / (таймлайн), /tasks, /programs, /staff, /designs, /invite, /kleshnya
+- **Backend:** 18 routes, 13 services, 4 middleware
+- **Frontend:** 20 JS + 11 CSS модулів
+- **БД:** ~32 таблиці, 40+ індексів, 4 міграції
 - **11 schedulers**, WebSocket broadcast
 - **364 тести** (3 файли + helpers)
-- ~43 000 рядків коду
+- ~45 000 рядків коду
 
 ## Kleshnya Ecosystem (v10.0–v11.0)
 - **services/kleshnya.js** — центральний інтелект (створення задач, ескалація, бали, нотифікації)
@@ -39,21 +41,11 @@
 - **routes/points.js** — API балів (leaderboard, history)
 - **kleshnya.html** — чат-сторінка з історією повідомлень
 
-## Особистий кабінет (v10.3–v11.0)
-- 4 таби: Сьогодні / Задачі / Стати / Налашт.
-- SVG progress ring, actionable inbox, team overview (admin)
-- 12 досягнень з auto-grant, стріки, week-over-week deltas
-- 23 паралельні SQL запити в /profile (Promise.allSettled)
-- Inline task actions (start/done) з профілю
-
-## Tasker & Бали
-- **Типи задач:** human (людина) / bot (система)
-- **Ролі:** owner (менеджер) + assigned_to (виконавець)
-- **Ескалація:** 4 рівні → нагадування → увага → директор
-- **Бали:** permanent (накопичувальні) + monthly (обнуляються 1-го)
-- **Scheduler:** checkTaskReminders (60с), checkWorkDayTriggers (10:00/12:00), checkMonthlyPointsReset (1-ше)
-- **Bot:** /tasks, /done, /alltasks
-- **Telegram:** персональні (chat_id) + групові (@mention)
+## Dark Mode (v12.1)
+- `initDarkMode()` в config.js — єдина функція для всіх 7 сторінок
+- Авто: темна 20:00–07:00, світла 07:00–20:00
+- Ручний toggle зберігається в localStorage і перезаписує авто
+- Два селектори: `body.dark-mode` + `[data-theme="dark"]`
 
 ## Що далі
 - AI agent інтеграція для Kleshnya chat
@@ -62,9 +54,9 @@
 - Розширення тригерів Клешні
 
 ## Технічний стан
-- Branch: `claude/review-project-updates-YHNS2`
+- Branch: `claude/continue-assessment-project-oV20G`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-15, v11.0.0*
+*Оновлено: 2026-02-17, v12.1.0*

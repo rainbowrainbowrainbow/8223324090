@@ -93,7 +93,22 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
 router.get('/health', async (req, res) => {
     try {
         await pool.query('SELECT 1');
-        res.json({ status: 'ok', database: 'connected' });
+        // Check password reset migration status
+        let passwordReset = 'unknown';
+        let userCount = 0;
+        try {
+            const migCheck = await pool.query(
+                "SELECT applied_at FROM schema_migrations WHERE version = '005_password_reset'"
+            );
+            passwordReset = migCheck.rows.length > 0
+                ? `done at ${migCheck.rows[0].applied_at}`
+                : 'not applied';
+        } catch { passwordReset = 'schema_migrations not found'; }
+        try {
+            const uc = await pool.query('SELECT COUNT(*)::int as c FROM users');
+            userCount = uc.rows[0].c;
+        } catch { /* ignore */ }
+        res.json({ status: 'ok', database: 'connected', passwordReset, userCount });
     } catch (err) {
         res.json({ status: 'ok', database: 'not connected' });
     }

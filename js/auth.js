@@ -33,10 +33,10 @@ async function login(username, password) {
         localStorage.setItem('pzp_token', data.token);
         localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
         showMainApp();
-        return true;
+        return { success: true };
     } catch (err) {
         console.error('Login error:', err);
-        return false;
+        return { success: false, error: err.message || 'Невірний логін або пароль' };
     }
 }
 

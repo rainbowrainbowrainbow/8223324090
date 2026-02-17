@@ -91,8 +91,8 @@ function initAuthListeners() {
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const result = await login(document.getElementById('username').value, document.getElementById('password').value);
-        if (!result) {
-            document.getElementById('loginError').textContent = 'Невірний логін або пароль';
+        if (!result.success) {
+            document.getElementById('loginError').textContent = result.error || 'Невірний логін або пароль';
         }
     });
     document.getElementById('logoutBtn').addEventListener('click', logout);

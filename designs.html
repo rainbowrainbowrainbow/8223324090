@@ -103,9 +103,8 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .design-card-img {
-            width: 100%; aspect-ratio: auto; object-fit: contain; display: block;
+            width: 100%; aspect-ratio: 4/3; object-fit: contain; display: block;
             cursor: pointer; background: var(--gray-100);
-            max-height: 300px;
         }
         .design-card-body { padding: 12px; }
         .design-card-title {
@@ -488,7 +487,7 @@
 
             /* Grid: 2 columns */
             .design-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-            .design-card-img { max-height: 200px; }
+            .design-card-img { aspect-ratio: 1/1; }
             .design-card-body { padding: 8px; }
             .design-card-title { font-size: 12px; }
             .design-card-meta { font-size: 10px; margin-bottom: 4px; }
@@ -512,7 +511,7 @@
 
         @media (max-width: 480px) {
             .design-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-            .design-card-img { max-height: 160px; }
+            .design-card-img { aspect-ratio: 1/1; }
             .collections-grid { grid-template-columns: 1fr; }
             .calendar-day { min-height: 40px; }
             .calendar-day-num { font-size: 10px; }

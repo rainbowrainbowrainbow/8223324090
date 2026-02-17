@@ -24,7 +24,7 @@ router.post('/login', async (req, res) => {
         }
 
         const result = await pool.query(
-            'SELECT id, username, password_hash, role, name FROM users WHERE username = $1',
+            'SELECT id, username, password_hash, role, name FROM users WHERE LOWER(username) = LOWER($1)',
             [username.trim()]
         );
 

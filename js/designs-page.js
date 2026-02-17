@@ -24,22 +24,31 @@ let editTags = [];
 // ==========================================
 // AUTH CHECK (same pattern as tasks-page)
 // ==========================================
-(function initAuth() {
+(async function initAuth() {
     const token = localStorage.getItem('pzp_token');
-    const session = localStorage.getItem('pzp_session');
-    if (!token || !session) {
+    if (!token) {
         document.getElementById('loginOverlay').classList.remove('hidden');
         document.getElementById('mainApp').style.display = 'none';
         return;
     }
+
+    // Verify token with server
     try {
-        const user = JSON.parse(session);
+        const res = await fetch('/api/auth/verify', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Token invalid');
+        const data = await res.json();
+        const user = data.user || data;
         document.getElementById('currentUser').textContent = user.name || user.username;
-    } catch { /* ignore */ }
+    } catch {
+        document.getElementById('loginOverlay').classList.remove('hidden');
+        document.getElementById('mainApp').style.display = 'none';
+        return;
+    }
 
     document.getElementById('logoutBtn').addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
-        localStorage.removeItem('pzp_session');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location.href = '/';
     });

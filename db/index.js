@@ -188,11 +188,11 @@ async function initDatabase() {
         if (parseInt(userCount.rows[0].count) === 0) {
             const defaultUsers = [
                 { username: 'admin', password: 'admin123', role: 'admin', name: 'Адмін' },
-                { username: 'Vitalina', password: 'Vitalina109', role: 'user', name: 'Віталіна' },
-                { username: 'Dasha', password: 'Dasha743', role: 'user', name: 'Даша' },
+                { username: 'Vitalina', password: 'Vitalina109', role: 'admin', name: 'Віталіна' },
+                { username: 'Dasha', password: 'Dasha743', role: 'admin', name: 'Даша' },
                 { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
                 { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
-                { username: 'Animator', password: 'Animator612', role: 'viewer', name: 'Аніматор' },
+                { username: 'Animator', password: 'Animator612', role: 'admin', name: 'Аніматор' },
                 { username: 'Anli', password: 'Anli384', role: 'admin', name: 'Анлі' },
                 { username: 'Zhenya', password: 'Zhenya527', role: 'admin', name: 'Женя' },
                 { username: 'Lera', password: 'Lera691', role: 'admin', name: 'Лера' }

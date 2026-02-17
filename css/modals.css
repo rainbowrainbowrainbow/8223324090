@@ -163,6 +163,13 @@
     color: var(--white);
     margin-bottom: 6px;
     font-size: 18px;
+    /* v12.6: Reset sticky header styles inside booking detail header */
+    position: static;
+    background: transparent;
+    padding: 0;
+    border-bottom: none;
+    top: auto;
+    z-index: auto;
 }
 
 .booking-detail-row {

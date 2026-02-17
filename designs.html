@@ -103,8 +103,9 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .design-card-img {
-            width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block;
+            width: 100%; aspect-ratio: auto; object-fit: contain; display: block;
             cursor: pointer; background: var(--gray-100);
+            max-height: 300px;
         }
         .design-card-body { padding: 12px; }
         .design-card-title {
@@ -123,10 +124,11 @@
         }
         .design-card-actions { display: flex; gap: 4px; flex-wrap: wrap; }
         .design-card-actions button {
-            padding: 5px 8px; border: none; border-radius: 6px; font-size: 11px;
+            padding: 6px 10px; border: none; border-radius: 8px; font-size: 13px;
             cursor: pointer; font-family: inherit; font-weight: 600;
             background: var(--gray-100); color: var(--gray-600); transition: all 0.15s;
-            min-height: 30px;
+            min-height: 36px; min-width: 36px;
+            display: flex; align-items: center; justify-content: center;
         }
         .design-card-actions button:hover { background: var(--gray-200); }
         .design-card-actions .btn-tg { background: #E3F2FD; color: #1565C0; }
@@ -369,20 +371,64 @@
 
         /* Responsive */
         @media (max-width: 768px) {
-            .design-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+            /* Tabs: scrollable row, no wrap */
+            .design-tabs {
+                flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+                -webkit-overflow-scrolling: touch; padding-bottom: 4px;
+                scrollbar-width: none;
+            }
+            .design-tabs::-webkit-scrollbar { display: none; }
+            .design-tab { padding: 8px 14px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+
+            /* Filters: single compact row */
+            .design-filters {
+                flex-direction: row; align-items: center; gap: 6px;
+                padding: 8px; flex-wrap: nowrap;
+            }
+            .design-filters input[type="search"] { min-width: 0; flex: 1; font-size: 13px; padding: 8px 10px; }
+            .design-filters select { width: auto; min-width: 100px; flex-shrink: 1; font-size: 13px; padding: 8px 6px; }
+
+            /* Drop zone: compact bar */
+            .drop-zone { padding: 14px 16px; }
+            .drop-zone-icon { font-size: 22px; display: inline; margin-right: 6px; margin-bottom: 0; }
+            .drop-zone-text { display: inline; font-size: 13px; }
+            .drop-zone-hint { display: none; }
+
+            /* Grid: 2 columns */
+            .design-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+            .design-card-img { max-height: 200px; }
             .design-card-body { padding: 8px; }
-            .design-card-actions { flex-wrap: wrap; }
-            .design-filters { flex-direction: column; align-items: stretch; }
+            .design-card-title { font-size: 12px; }
+            .design-card-meta { font-size: 10px; margin-bottom: 4px; }
+            .design-card-tags { margin-bottom: 4px; }
+            .design-card-actions { gap: 3px; }
+            .design-card-actions button { padding: 5px 7px; font-size: 12px; min-height: 34px; min-width: 34px; }
+
+            /* Collections */
             .collections-grid { grid-template-columns: 1fr 1fr; }
+            .add-collection-bar { flex-wrap: wrap; }
+
+            /* Calendar */
             .calendar-grid { gap: 2px; }
             .calendar-day { min-height: 50px; padding: 4px; }
             .calendar-dot { width: 20px; height: 20px; }
-            .design-tab { padding: 6px 10px; font-size: 12px; }
+
+            /* Price */
             .price-table th, .price-table td { padding: 8px 10px; font-size: 13px; }
+            .price-section-header { font-size: 15px; }
         }
+
         @media (max-width: 480px) {
             .design-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+            .design-card-img { max-height: 160px; }
             .collections-grid { grid-template-columns: 1fr; }
+            .calendar-day { min-height: 40px; }
+            .calendar-day-num { font-size: 10px; }
+            .calendar-dot { width: 16px; height: 16px; border-radius: 4px; }
+
+            /* Filters: stack search above select+pin */
+            .design-filters { flex-wrap: wrap; }
+            .design-filters input[type="search"] { min-width: 100%; }
         }
     </style>
 </head>

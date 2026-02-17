@@ -21,6 +21,7 @@ function escapeHtml(str) {
 }
 
 async function initPage() {
+    initDarkMode();
     const token = localStorage.getItem('pzp_token');
     if (!token) {
         document.getElementById('loginOverlay').classList.remove('hidden');

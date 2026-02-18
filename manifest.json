@@ -1,7 +1,7 @@
 {
-  "name": "Парк Закревського Періоду — Бронювання",
-  "short_name": "Парк ЗП",
-  "description": "Система бронювання для дитячого розважального парку",
+  "name": "Event Maestro — AI First CRM",
+  "short_name": "Event Maestro",
+  "description": "Event Maestro — AI First CRM для дитячих розважальних центрів",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0F172A",

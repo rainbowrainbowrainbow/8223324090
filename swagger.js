@@ -1,5 +1,5 @@
 /**
- * swagger.js — OpenAPI 3.0 specification for Park Booking System API
+ * swagger.js — OpenAPI 3.0 specification for Event Maestro API
  *
  * This file contains the complete API spec as a plain JS object.
  * No swagger-jsdoc dependency needed — the spec is defined manually.
@@ -14,7 +14,7 @@
 const swaggerSpec = {
   openapi: '3.0.0',
   info: {
-    title: 'Парк Закревського Періоду — Booking API',
+    title: 'Event Maestro — Booking API',
     version: '11.0.0',
     description: 'REST API для системи бронювання дитячого розважального парку. Усі дати зберігаються в UTC, відображаються у Europe/Kyiv (UTC+2/+3). Валюта: UAH (₴). Номери бронювань: BK-YYYY-NNNN.'
   },

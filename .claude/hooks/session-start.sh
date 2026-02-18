@@ -6,7 +6,7 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
-echo "=== Park Booking System: Session Start Hook ==="
+echo "=== Event Maestro: Session Start Hook ==="
 
 # 1. Start PostgreSQL 16 if not already running
 if ! pg_isready -q 2>/dev/null; then

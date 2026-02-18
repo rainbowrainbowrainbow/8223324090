@@ -15,7 +15,7 @@ function getKleshnya() {
 
 const VALID_STATUSES = ['todo', 'in_progress', 'done'];
 const VALID_PRIORITIES = ['low', 'normal', 'high'];
-const VALID_CATEGORIES = ['event', 'purchase', 'admin', 'trampoline', 'personal', 'improvement'];
+const VALID_CATEGORIES = ['event', 'purchase', 'admin', 'trampoline', 'personal', 'improvement', 'operational', 'maintenance'];
 const VALID_TASK_TYPES = ['human', 'bot'];
 
 // GET /api/tasks — list with optional filters
@@ -116,9 +116,25 @@ router.get('/:id/logs', async (req, res) => {
 // POST /api/tasks — create (via Kleshnya) — admin/user only
 router.post('/', requireRole('admin', 'user'), async (req, res) => {
     try {
-        const { title, description, date, priority, assigned_to, owner, type, template_id,
-                afisha_id, category, task_type, deadline, time_window_start, time_window_end,
-                dependency_ids, control_policy, source_type } = req.body;
+        const b = req.body;
+        // Support both snake_case and camelCase (for external integrations like OpenClaw)
+        const title = b.title;
+        const description = b.description;
+        const date = b.date;
+        const priority = b.priority;
+        const assigned_to = b.assigned_to || b.assignedTo;
+        const owner = b.owner;
+        const type = b.type;
+        const template_id = b.template_id || b.templateId;
+        const afisha_id = b.afisha_id || b.afishaId;
+        const category = b.category;
+        const task_type = b.task_type || b.taskType;
+        const deadline = b.deadline;
+        const time_window_start = b.time_window_start || b.timeWindowStart;
+        const time_window_end = b.time_window_end || b.timeWindowEnd;
+        const dependency_ids = b.dependency_ids || b.dependencyIds;
+        const control_policy = b.control_policy || b.controlPolicy;
+        const source_type = b.source_type || b.sourceType;
 
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date' });
@@ -155,8 +171,20 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
 router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, date, status, priority, assigned_to, owner, category,
-                task_type, deadline, time_window_start, time_window_end } = req.body;
+        const b = req.body;
+        // Support both snake_case and camelCase (for external integrations like OpenClaw)
+        const title = b.title;
+        const description = b.description;
+        const date = b.date;
+        const status = b.status;
+        const priority = b.priority;
+        const assigned_to = b.assigned_to || b.assignedTo;
+        const owner = b.owner;
+        const category = b.category;
+        const task_type = b.task_type || b.taskType;
+        const deadline = b.deadline;
+        const time_window_start = b.time_window_start || b.timeWindowStart;
+        const time_window_end = b.time_window_end || b.timeWindowEnd;
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
 
         const taskStatus = VALID_STATUSES.includes(status) ? status : 'todo';

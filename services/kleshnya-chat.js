@@ -201,6 +201,102 @@ const SKILLS = [
     }
 ];
 
+// --- Category filter for "скільки піньят/квестів/шоу за тиждень?" ---
+
+const CATEGORY_MAP = {
+    'піньят': { db: 'pinata', icon: '🪅', name: 'Піньяти' },
+    'квест':  { db: 'quest', icon: '🎭', name: 'Квести' },
+    'шоу':    { db: 'show', icon: '🎪', name: 'Шоу' },
+    'анімац': { db: 'animation', icon: '🎨', name: 'Анімації' },
+    'майстер': { db: 'masterclass', icon: '🍬', name: 'Майстер-класи' },
+    'фото':   { db: 'photo', icon: '📸', name: 'Фото' },
+};
+
+const STATS_TRIGGER_WORDS = ['скільки', 'за тижд', 'за місяц', 'за день', 'тижд', 'місяц', 'вихідн', 'виручк', 'кількість', 'порахуй', 'підрахуй', 'статистик'];
+
+/**
+ * Try to handle category stats query (e.g., "скільки піньят за тиждень?")
+ * Returns response or null if not a category query.
+ */
+async function tryHandleCategoryStats(lower, username) {
+    // Find matching category
+    let matchedCat = null;
+    for (const [keyword, cat] of Object.entries(CATEGORY_MAP)) {
+        if (lower.includes(keyword)) {
+            matchedCat = cat;
+            break;
+        }
+    }
+    if (!matchedCat) return null;
+
+    // Must also contain a stats/time trigger word
+    const hasTimeTrigger = STATS_TRIGGER_WORDS.some(w => lower.includes(w));
+    if (!hasTimeTrigger) return null; // Let the programs skill handle "покажи квести"
+
+    const dateIntent = parseDateIntent(lower);
+    let from, to, label;
+    if (dateIntent.from) {
+        from = dateIntent.from;
+        to = dateIntent.to;
+        label = dateIntent.label;
+    } else {
+        from = dateIntent.date;
+        to = dateIntent.date;
+        label = dateIntent.label;
+    }
+
+    // Query bookings filtered by category
+    const res = await pool.query(
+        `SELECT id, date, time, program_name, price, status, group_name, kids_count
+         FROM bookings
+         WHERE date >= $1 AND date <= $2 AND category = $3
+           AND status != 'cancelled' AND linked_to IS NULL
+         ORDER BY date, time`,
+        [from, to, matchedCat.db]
+    );
+
+    const total = res.rows.length;
+    const revenue = res.rows.reduce((s, b) => s + (b.price || 0), 0);
+
+    let msg = `${matchedCat.icon} <b>${matchedCat.name} за ${label}</b>`;
+    msg += ` (${formatDateUkr(from)}`;
+    if (from !== to) msg += ` — ${formatDateUkr(to)}`;
+    msg += '):\n\n';
+
+    if (total === 0) {
+        msg += `Бронювань немає.`;
+        return {
+            message: msg,
+            suggestions: [`${matchedCat.name} за місяць`, 'Бронювання', 'Програми', 'Виручка']
+        };
+    }
+
+    msg += `📦 Кількість: <b>${total}</b>\n`;
+    msg += `💰 Виручка: <b>${formatPrice(revenue)}</b>\n\n`;
+
+    // Show individual bookings (up to 10)
+    const shown = res.rows.slice(0, 10);
+    for (const b of shown) {
+        const dateLabel = from !== to ? `${formatDateUkr(b.date)} ` : '';
+        msg += `• ${dateLabel}${b.time || '—'} — ${b.program_name || matchedCat.name}`;
+        if (b.group_name) msg += ` (${b.group_name})`;
+        msg += ` | ${formatPrice(b.price)}\n`;
+    }
+    if (total > 10) {
+        msg += `\n...і ще ${total - 10}`;
+    }
+
+    const otherCategories = Object.values(CATEGORY_MAP)
+        .filter(c => c.db !== matchedCat.db)
+        .slice(0, 2)
+        .map(c => `${c.name} за ${label}`);
+
+    return {
+        message: msg,
+        suggestions: [`${matchedCat.name} за місяць`, ...otherCategories, 'Бронювання']
+    };
+}
+
 // --- Greeting/Hello handler ---
 const HELLO_KEYWORDS = ['привіт', 'здоров', 'hi', 'hello', 'йо', 'хай', 'вітаю', 'салют', 'добрий день', 'доброго ранку', 'добрий вечір'];
 
@@ -225,6 +321,10 @@ async function generateChatResponse(userMessage, username) {
                 suggestions: ['Бронювання', 'Задачі', 'Виручка', 'Команда']
             };
         }
+
+        // 2.5. Check for category stats query (e.g., "скільки піньят за тиждень?")
+        const categoryResult = await tryHandleCategoryStats(lower, username);
+        if (categoryResult) return categoryResult;
 
         // 3. Find matching skill (check longer keywords first to match "створи задачу" before "задач")
         const sortedSkills = [...SKILLS].sort((a, b) => {
@@ -262,10 +362,12 @@ async function handleHelp() {
         lines.push(`${s.icon} <b>${s.name}</b> — ${s.description}`);
         lines.push(`   💬 <i>${s.examples.join(', ')}</i>`);
     }
+    lines.push(`\n🎯 <b>Фільтр по категоріях</b> — статистика по типу послуги`);
+    lines.push(`   💬 <i>Скільки піньят за тиждень?, Квести за місяць</i>`);
     lines.push('\n🦀 Просто пиши — я зрозумію!');
     return {
         message: lines.join('\n'),
-        suggestions: ['Бронювання сьогодні', 'Мої задачі', 'Виручка за тиждень', 'Хто працює?']
+        suggestions: ['Бронювання сьогодні', 'Піньяти за тиждень', 'Квести за місяць', 'Хто працює?']
     };
 }
 

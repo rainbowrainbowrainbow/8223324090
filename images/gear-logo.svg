@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE082"/>
+      <stop offset="40%" stop-color="#F5C842"/>
+      <stop offset="100%" stop-color="#D4A020"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#F5C842"/>
+      <stop offset="100%" stop-color="#C8960A"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 8-tooth gear, mathematically precise -->
+  <path d="
+    M46,4 L54,4 L56,16 C59,16.5 62,17.5 64.5,19 L74,11 L80,17
+    L72,27 C73.8,29.5 75.2,32.3 76,35.2 L88,34 L90,42 L78.5,46
+    C78.8,49 78.8,51 78.5,54 L90,58 L88,66 L76,64.8
+    C75.2,67.7 73.8,70.5 72,73 L80,83 L74,89 L64.5,81
+    C62,82.5 59,83.5 56,84 L54,96 L46,96 L44,84
+    C41,83.5 38,82.5 35.5,81 L26,89 L20,83 L28,73
+    C26.2,70.5 24.8,67.7 24,64.8 L12,66 L10,58 L21.5,54
+    C21.2,51 21.2,49 21.5,46 L10,42 L12,34 L24,35.2
+    C24.8,32.3 26.2,29.5 28,27 L20,17 L26,11 L35.5,19
+    C38,17.5 41,16.5 44,16 Z
+  " fill="url(#g1)" stroke="url(#g2)" stroke-width="1.5" stroke-linejoin="round"/>
+
+  <!-- Outer ring -->
+  <circle cx="50" cy="50" r="26" fill="none" stroke="url(#g2)" stroke-width="3"/>
+
+  <!-- Inner hole -->
+  <circle cx="50" cy="50" r="12" fill="#0a0a14" stroke="url(#g2)" stroke-width="2"/>
+
+  <!-- Center dot -->
+  <circle cx="50" cy="50" r="4" fill="url(#g1)"/>
+
+  <!-- Highlight reflection -->
+  <ellipse cx="42" cy="38" rx="8" ry="5" fill="rgba(255,255,255,0.12)" transform="rotate(-30,42,38)"/>
+</svg>

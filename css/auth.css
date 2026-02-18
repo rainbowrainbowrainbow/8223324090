@@ -63,14 +63,12 @@
     box-shadow: 0 4px 20px rgba(245,200,66,0.15);
 }
 
-.login-hero-img {
-    width: 100%;
-    max-width: 280px;
-    height: auto;
+.login-gear-icon {
+    width: 80px;
+    height: 80px;
     display: block;
-    margin: 0 auto 8px;
-    border-radius: 12px;
-    filter: drop-shadow(0 4px 20px rgba(245,200,66,0.25));
+    margin: 0 auto 4px;
+    filter: drop-shadow(0 4px 16px rgba(245,200,66,0.3));
 }
 
 .login-logo h1 {

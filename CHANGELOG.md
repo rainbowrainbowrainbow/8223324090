@@ -4,7 +4,7 @@
 
 ---
 
-## v12.8.0 — Kleshnya Chat v2 + Smart Chat (2026-02-18)
+## v13.0.0 — Kleshnya Chat v2 (2026-02-18)
 
 **Kleshnya Chat v2 — ChatGPT-style multi-session redesign:**
 - Sidebar сесій (desktop 280px, mobile overlay по свайпу/кнопці)
@@ -20,16 +20,7 @@
 - Повна dark mode підтримка для всіх нових компонентів
 - JS виділено в окремий файл js/kleshnya-page.js
 
-**Файли:**
-- `kleshnya.html` — повний редизайн (HTML + CSS)
-- `js/kleshnya-page.js` — нова фронтенд логіка (multi-session, WS, media, reactions)
-- `SNAPSHOT.md` — оновлено
-
----
-
-## v12.8.0 — Клешня Smart Chat (2026-02-18, backend)
-
-**Новий skill-based chat engine (12 навичок):**
+**Smart Chat engine (12 навичок):**
 - 📊 Бронювання — деталі, клієнти, кімнати, ціни по датах/тижням/місяцям
 - 📋 Задачі — мої/всі/прострочені з пріоритетами та статусами
 - ✏️ Створення задач — "Створи задачу купити серветки" прямо з чату
@@ -53,18 +44,14 @@
 - Контекстні — залежать від теми відповіді
 - Анімоване з'явлення, dark mode підтримка
 
-**UI покращення:**
-- HTML rendering в повідомленнях (bold, italic) з sanitizer
-- Оновлений hint з повним списком тем
-- FAB віджет: 6 кнопок (3x2) замість 4 (2x2)
-- Нові теми: Виручка, Команда, Програми
-
 **Backend:**
 - `services/kleshnya-chat.js` — новий skill engine з реальними DB запитами
-- `routes/kleshnya.js` v12.6 — новий `/api/kleshnya/skills` endpoint
-- Підключено `routes/stats.js` — analytics dashboard endpoints
+- `services/kleshnya-bridge.js` — Telegram Bridge для OpenClaw (227 рядків)
+- `routes/kleshnya.js` — повний CRUD sessions, paginated messages, reactions, media proxy
+- `services/websocket.js` — kleshnya:thinking, kleshnya:reply, kleshnya:media events
+- `db/migrations/005_kleshnya_chat_v2.sql` — chat_sessions, kleshnya_media
 
-**Cache bust:** `?v=12.8` на всіх CSS/JS
+**Cache bust:** `?v=13.0` на всіх CSS/JS всіх 7 сторінок
 
 ---
 

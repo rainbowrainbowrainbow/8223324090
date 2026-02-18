@@ -14,18 +14,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=12.8">
-    <link rel="stylesheet" href="css/auth.css?v=12.8">
-    <link rel="stylesheet" href="css/layout.css?v=12.8">
-    <link rel="stylesheet" href="css/timeline.css?v=12.8">
-    <link rel="stylesheet" href="css/panel.css?v=12.8">
-    <link rel="stylesheet" href="css/modals.css?v=12.8">
-    <link rel="stylesheet" href="css/controls.css?v=12.8">
-    <link rel="stylesheet" href="css/features.css?v=12.8">
-    <link rel="stylesheet" href="css/dark-mode.css?v=12.8">
-    <link rel="stylesheet" href="css/responsive.css?v=12.8">
-    <link rel="stylesheet" href="css/pages.css?v=12.8">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=12.8">
+    <link rel="stylesheet" href="css/base.css?v=13.0">
+    <link rel="stylesheet" href="css/auth.css?v=13.0">
+    <link rel="stylesheet" href="css/layout.css?v=13.0">
+    <link rel="stylesheet" href="css/timeline.css?v=13.0">
+    <link rel="stylesheet" href="css/panel.css?v=13.0">
+    <link rel="stylesheet" href="css/modals.css?v=13.0">
+    <link rel="stylesheet" href="css/controls.css?v=13.0">
+    <link rel="stylesheet" href="css/features.css?v=13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=13.0">
+    <link rel="stylesheet" href="css/pages.css?v=13.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=13.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -42,9 +42,9 @@
             <div class="login-logo">
                 <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
                 <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v12.8.0</p>
+                <p class="tagline">Система бронювання v13.0.0</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v12.8.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v13.0.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1040,6 +1040,19 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v13.0.0 — Kleshnya Chat v2</h4>
+                    <ul>
+                        <li>💬 <b>Multi-session чат</b> — ChatGPT-style sidebar з сесіями, створення/перемикання/видалення чатів</li>
+                        <li>📌 <b>Pin, emoji, rename</b> — закріплення, емодзі-іконки, перейменування через контекстне меню</li>
+                        <li>🖼 <b>Media bubbles</b> — зображення, аудіо, відео прямо в чаті з captions</li>
+                        <li>👍 <b>Reactions</b> — лайк/дизлайк на повідомленнях Клешні</li>
+                        <li>⚡ <b>WebSocket real-time</b> — миттєві відповіді від OpenClaw Bridge</li>
+                        <li>📱 <b>Mobile-first</b> — sidebar-overlay, FAB кнопка, touch long-press</li>
+                        <li>🦀 <b>12 навичок чату</b> — бронювання, задачі, фінанси, команда, програми, сертифікати</li>
+                        <li>🎯 <b>Telegram Bridge</b> — інтеграція з OpenClaw через Telegram</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v12.8.0 — Клешня Smart Chat</h4>
                     <ul>
@@ -2484,22 +2497,22 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=12.8"></script>
-    <script src="js/api.js?v=12.8"></script>
-    <script src="js/ui.js?v=12.8"></script>
-    <script src="js/auth.js?v=12.8"></script>
-    <script src="js/timeline.js?v=12.8"></script>
-    <script src="js/booking.js?v=12.8"></script>
-    <script src="js/settings.js?v=12.8"></script>
-    <script src="js/booking-form.js?v=12.8"></script>
-    <script src="js/booking-linked.js?v=12.8"></script>
-    <script src="js/settings-dashboard.js?v=12.8"></script>
-    <script src="js/settings-history.js?v=12.8"></script>
-    <script src="js/settings-afisha.js?v=12.8"></script>
-    <script src="js/settings-certificates.js?v=12.8"></script>
-    <script src="js/offline.js?v=12.8"></script>
-    <script src="js/ws.js?v=12.8"></script>
-    <script src="js/app.js?v=12.8"></script>
-    <script src="js/kleshnya-widget.js?v=12.8"></script>
+    <script src="js/config.js?v=13.0"></script>
+    <script src="js/api.js?v=13.0"></script>
+    <script src="js/ui.js?v=13.0"></script>
+    <script src="js/auth.js?v=13.0"></script>
+    <script src="js/timeline.js?v=13.0"></script>
+    <script src="js/booking.js?v=13.0"></script>
+    <script src="js/settings.js?v=13.0"></script>
+    <script src="js/booking-form.js?v=13.0"></script>
+    <script src="js/booking-linked.js?v=13.0"></script>
+    <script src="js/settings-dashboard.js?v=13.0"></script>
+    <script src="js/settings-history.js?v=13.0"></script>
+    <script src="js/settings-afisha.js?v=13.0"></script>
+    <script src="js/settings-certificates.js?v=13.0"></script>
+    <script src="js/offline.js?v=13.0"></script>
+    <script src="js/ws.js?v=13.0"></script>
+    <script src="js/app.js?v=13.0"></script>
+    <script src="js/kleshnya-widget.js?v=13.0"></script>
 </body>
 </html>

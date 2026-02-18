@@ -89,9 +89,9 @@ async function createTask(data) {
     // Log creation
     await logTaskAction(task.id, 'created', null, title, created_by);
 
-    // Notify assigned person
+    // Notify assigned person (fire-and-forget — never block task creation)
     if (assigned_to && task_type === 'human') {
-        await notifyTaskAssigned(task);
+        notifyTaskAssigned(task).catch(err => log.error(`Task notification error: ${err.message}`));
     }
 
     log.info(`Task created: #${task.id} "${title}" [${task_type}] assigned=${assigned_to || '—'} owner=${owner || '—'}`);
@@ -132,8 +132,8 @@ async function updateTaskStatus(taskId, newStatus, actor = 'system') {
         }
     }
 
-    // Notify about status change
-    await notifyTaskStatusChanged(task, oldStatus, newStatus, actor);
+    // Notify about status change (fire-and-forget — never block status update)
+    notifyTaskStatusChanged(task, oldStatus, newStatus, actor).catch(err => log.error(`Status notification error: ${err.message}`));
 
     log.info(`Task #${taskId} status: ${oldStatus} → ${newStatus} by ${actor}`);
 

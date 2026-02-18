@@ -39,6 +39,57 @@
 }
 
 /* ==========================================
+   PAGE HERO BANNER
+   ========================================== */
+
+.page-hero-banner {
+    position: relative;
+    border-radius: var(--radius-lg, 16px);
+    overflow: hidden;
+    margin-bottom: 24px;
+    height: 180px;
+    box-shadow: var(--shadow-md);
+}
+
+.page-hero-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+}
+
+.page-hero-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(10,10,15,0.7) 0%, rgba(10,10,15,0.3) 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 24px 32px;
+}
+
+.page-hero-overlay h2 {
+    font-size: 28px;
+    font-weight: 900;
+    color: #F5C842;
+    margin: 0 0 4px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.page-hero-overlay p {
+    font-size: 14px;
+    color: rgba(255,255,255,0.8);
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .page-hero-banner { height: 140px; }
+    .page-hero-overlay h2 { font-size: 22px; }
+    .page-hero-overlay { padding: 16px 20px; }
+}
+
+/* ==========================================
    PAGE SECTION HEADER
    ========================================== */
 
@@ -342,6 +393,15 @@
 .empty-state-icon {
     font-size: 48px;
     margin-bottom: 12px;
+}
+
+.empty-state-img {
+    width: 200px;
+    height: auto;
+    border-radius: var(--radius, 12px);
+    margin-bottom: 16px;
+    opacity: 0.7;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
 }
 
 .empty-state-text {

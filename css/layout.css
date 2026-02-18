@@ -52,6 +52,28 @@
     text-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
+/* Event Maestro logo in header */
+.em-logo {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+}
+
+.em-logo-title {
+    font-size: 1.2em;
+    font-weight: 900;
+    color: #F5C842;
+    font-family: 'Inter', sans-serif;
+}
+
+.em-logo-sub {
+    font-size: 0.65em;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-family: 'Inter', sans-serif;
+}
+
 /* Header nav */
 .header-nav { display: flex; align-items: center; gap: 4px; }
 

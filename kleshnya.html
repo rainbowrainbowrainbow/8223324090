@@ -15,150 +15,280 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         /* ==========================================
-           KLESHNYA PAGE — Chat Layout
+           KLESHNYA v2 — Chat Layout with Sidebar
            ========================================== */
-        .kleshnya-page {
-            max-width: 700px;
-            margin: 0 auto;
-            padding: 20px 16px 16px;
+        .kleshnya-layout {
             display: flex;
-            flex-direction: column;
-            height: calc(100vh - 70px);
+            height: calc(100vh - 56px);
+            overflow: hidden;
         }
 
         /* ==========================================
-           HEADER CARD — Kleshnya identity
+           SIDEBAR
            ========================================== */
-        .kleshnya-hero {
-            background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 50%, #FED7AA 100%);
-            border: 1px solid #FDBA74;
-            border-radius: 20px;
-            padding: 20px;
+        .kl-sidebar {
+            width: 280px;
+            flex-shrink: 0;
+            background: linear-gradient(180deg, #FFF7ED 0%, #FFFBF5 100%);
+            border-right: 1px solid #FDBA74;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+        }
+
+        .kl-sidebar-header {
+            padding: 16px;
+            flex-shrink: 0;
+        }
+
+        .kl-new-chat-btn {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px dashed #FDBA74;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.7);
+            color: #9A3412;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 8px;
+            transition: all 0.15s;
+            min-height: 46px;
+        }
+        .kl-new-chat-btn:hover {
+            background: #fff;
+            border-color: #EA580C;
+            border-style: solid;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(234,88,12,0.15);
+        }
+        .kl-new-chat-btn:active { transform: translateY(0); }
+
+        .kl-sessions-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 8px 8px;
+        }
+        .kl-sessions-list::-webkit-scrollbar { width: 4px; }
+        .kl-sessions-list::-webkit-scrollbar-thumb { background: #FDBA74; border-radius: 4px; }
+
+        .kl-sessions-group-label {
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #C2410C;
+            padding: 12px 8px 4px;
+        }
+
+        .kl-session-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.15s;
+            margin-bottom: 2px;
             position: relative;
+        }
+        .kl-session-item:hover {
+            background: rgba(234,88,12,0.06);
+        }
+        .kl-session-item.active {
+            background: rgba(234,88,12,0.1);
+            box-shadow: inset 3px 0 0 #EA580C;
+        }
+        .kl-session-item .kl-s-emoji {
+            font-size: 20px;
+            flex-shrink: 0;
+            width: 28px;
+            text-align: center;
+        }
+        .kl-session-item .kl-s-body {
+            flex: 1;
+            min-width: 0;
+        }
+        .kl-session-item .kl-s-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--gray-800);
+            white-space: nowrap;
             overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .kl-session-item .kl-s-preview {
+            font-size: 11px;
+            color: var(--gray-400);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 1px;
+        }
+        .kl-session-item .kl-s-time {
+            font-size: 10px;
+            color: var(--gray-400);
             flex-shrink: 0;
-        }
-        .kleshnya-hero::before {
-            content: '';
-            position: absolute;
-            top: -30px; right: -30px;
-            width: 120px; height: 120px;
-            background: radial-gradient(circle, rgba(234,88,12,0.08) 0%, transparent 70%);
-            border-radius: 50%;
-        }
-
-        .kleshnya-avatar {
-            width: 56px; height: 56px;
-            border-radius: 16px;
-            background: linear-gradient(135deg, #EA580C, #F97316);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 28px;
-            box-shadow: 0 4px 12px rgba(234,88,12,0.25);
-            flex-shrink: 0;
-        }
-
-        .kleshnya-info { flex: 1; min-width: 0; }
-        .kleshnya-info h2 {
-            font-size: 18px; font-weight: 900;
-            color: #9A3412;
-            margin: 0;
-        }
-        .kleshnya-info p {
-            font-size: 12px; color: #C2410C;
-            margin: 2px 0 0;
             font-weight: 600;
         }
-        .kleshnya-status {
-            display: inline-flex; align-items: center; gap: 5px;
-            padding: 3px 10px; border-radius: 20px;
-            font-size: 10px; font-weight: 800;
-            background: rgba(16,185,129,0.12); color: #059669;
-            margin-top: 6px;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
+        .kl-session-item .kl-s-pin {
+            font-size: 10px;
+            position: absolute;
+            top: 4px;
+            right: 6px;
         }
-        .kleshnya-status-dot {
-            width: 6px; height: 6px; border-radius: 50%;
-            background: #10B981;
-            animation: pulse-dot 2s infinite;
-        }
-        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        .kleshnya-hero-actions {
-            display: flex; flex-direction: column; gap: 6px;
+        .kl-sidebar-footer {
+            padding: 10px 16px;
+            border-top: 1px solid rgba(234,88,12,0.15);
             flex-shrink: 0;
         }
-        .btn-report {
+        .kl-sidebar-footer .btn-report {
+            width: 100%;
             padding: 8px 14px;
             border: 1px solid #FDBA74;
             border-radius: 10px;
             background: rgba(255,255,255,0.7);
             color: #9A3412;
-            font-family: inherit; font-size: 12px; font-weight: 700;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 700;
             cursor: pointer;
             transition: all 0.15s;
-            white-space: nowrap;
             min-height: 36px;
-            display: flex; align-items: center; gap: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
         }
-        .btn-report:hover {
+        .kl-sidebar-footer .btn-report:hover {
             background: #fff;
             border-color: #EA580C;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(234,88,12,0.15);
         }
+
+        /* ==========================================
+           MAIN CHAT AREA
+           ========================================== */
+        .kl-chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            background: var(--white);
+        }
+
+        .kl-chat-header {
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--gray-100);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+            min-height: 56px;
+        }
+        .kl-menu-btn {
+            display: none;
+            width: 40px; height: 40px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #FFF7ED, #FFEDD5);
+            font-size: 18px;
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .kl-chat-header-avatar {
+            width: 36px; height: 36px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #EA580C, #F97316);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            box-shadow: 0 2px 8px rgba(234,88,12,0.2);
+            flex-shrink: 0;
+        }
+        .kl-chat-header-info { flex: 1; min-width: 0; }
+        .kl-chat-header-info h3 {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--gray-800);
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .kl-chat-header-info .kl-status {
+            font-size: 11px;
+            color: #059669;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .kl-status-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: #10B981;
+            animation: kl-pulse-dot 2s infinite;
+        }
+        @keyframes kl-pulse-dot { 0%,100% { opacity:1 } 50% { opacity:0.3 } }
 
         /* ==========================================
            CHAT MESSAGES
            ========================================== */
-        .chat-messages {
+        .kl-messages {
             flex: 1;
             overflow-y: auto;
-            padding: 16px 0;
+            padding: 16px 20px;
             display: flex;
             flex-direction: column;
             gap: 16px;
             scroll-behavior: smooth;
         }
-        .chat-messages::-webkit-scrollbar { width: 4px; }
-        .chat-messages::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 4px; }
+        .kl-messages::-webkit-scrollbar { width: 4px; }
+        .kl-messages::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 4px; }
 
-        .chat-msg {
+        .kl-msg {
             display: flex;
             gap: 10px;
-            max-width: 82%;
-            animation: msg-in 0.3s ease-out;
+            max-width: 80%;
+            animation: kl-msg-in 0.3s ease-out;
         }
-        .chat-msg--assistant { align-self: flex-start; }
-        .chat-msg--user { align-self: flex-end; flex-direction: row-reverse; }
-        @keyframes msg-in {
+        .kl-msg--assistant { align-self: flex-start; }
+        .kl-msg--user { align-self: flex-end; flex-direction: row-reverse; }
+        @keyframes kl-msg-in {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .chat-msg-avatar {
-            width: 34px; height: 34px;
-            border-radius: 12px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 16px;
+        .kl-msg-avatar {
+            width: 32px; height: 32px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
             flex-shrink: 0;
             margin-top: 2px;
         }
-        .chat-msg--assistant .chat-msg-avatar {
+        .kl-msg--assistant .kl-msg-avatar {
             background: linear-gradient(135deg, #FFEDD5, #FED7AA);
             box-shadow: 0 2px 6px rgba(234,88,12,0.12);
         }
-        .chat-msg--user .chat-msg-avatar {
+        .kl-msg--user .kl-msg-avatar {
             background: linear-gradient(135deg, #D1FAE5, #A7F3D0);
             box-shadow: 0 2px 6px rgba(16,185,129,0.12);
         }
 
-        .chat-msg-content { min-width: 0; }
+        .kl-msg-content { min-width: 0; }
 
-        .chat-msg-bubble {
+        .kl-msg-bubble {
             padding: 10px 14px;
             border-radius: 16px;
             font-size: 14px;
@@ -166,172 +296,176 @@
             white-space: pre-line;
             word-break: break-word;
         }
-        .chat-msg--assistant .chat-msg-bubble {
+        .kl-msg--assistant .kl-msg-bubble {
             background: var(--white);
             border: 1px solid var(--gray-200);
             border-bottom-left-radius: 4px;
             color: var(--gray-800);
             box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         }
-        .chat-msg--user .chat-msg-bubble {
-            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        .kl-msg--user .kl-msg-bubble {
+            background: linear-gradient(135deg, #10B981, #059669);
             color: #fff;
             border-bottom-right-radius: 4px;
             box-shadow: 0 2px 8px rgba(16,185,129,0.2);
         }
 
-        .chat-msg-time {
+        /* Media in bubbles */
+        .kl-msg-media {
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+        .kl-msg-media img {
+            max-width: 100%;
+            max-height: 300px;
+            display: block;
+            border-radius: 12px;
+        }
+        .kl-msg-media audio { width: 100%; min-width: 200px; }
+        .kl-msg-media video {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 12px;
+        }
+        .kl-msg-media-caption {
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-top: 4px;
+            font-style: italic;
+        }
+
+        .kl-msg-time {
             font-size: 10px;
             color: var(--gray-400);
             margin-top: 3px;
             padding: 0 2px;
             font-weight: 600;
         }
-        .chat-msg--user .chat-msg-time { text-align: right; }
+        .kl-msg--user .kl-msg-time { text-align: right; }
+
+        /* Reactions */
+        .kl-msg-reactions {
+            display: flex;
+            gap: 4px;
+            margin-top: 4px;
+        }
+        .kl-reaction-btn {
+            width: 30px; height: 26px;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            background: var(--white);
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+            padding: 0;
+            opacity: 0.5;
+        }
+        .kl-reaction-btn:hover { opacity: 1; border-color: var(--gray-300); }
+        .kl-reaction-btn.active {
+            opacity: 1;
+            border-color: #EA580C;
+            background: rgba(234,88,12,0.06);
+        }
+
+        /* Skill badge */
+        .kl-skill-badge {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 6px;
+            background: rgba(234,88,12,0.08);
+            color: #C2410C;
+            margin-bottom: 4px;
+        }
 
         /* ==========================================
            TYPING INDICATOR
            ========================================== */
-        .chat-typing {
-            display: flex; align-items: center; gap: 8px;
+        .kl-typing {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             padding: 8px 14px;
-            font-size: 12px; color: var(--gray-500);
+            font-size: 12px;
+            color: var(--gray-500);
             font-weight: 600;
         }
-        .chat-typing-dots { display: flex; gap: 3px; }
-        .chat-typing-dots span {
-            width: 6px; height: 6px; border-radius: 50%;
-            background: #EA580C; opacity: 0.4;
-            animation: typing-bounce 1.4s infinite;
+        .kl-typing-dots { display: flex; gap: 3px; }
+        .kl-typing-dots span {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: #EA580C;
+            opacity: 0.4;
+            animation: kl-typing-bounce 1.4s infinite;
         }
-        .chat-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-        .chat-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes typing-bounce {
-            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+        .kl-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .kl-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes kl-typing-bounce {
+            0%,60%,100% { transform: translateY(0); opacity: 0.4; }
             30% { transform: translateY(-6px); opacity: 1; }
+        }
+
+        /* Generation progress bar */
+        .kl-generating {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 12px 14px;
+            background: rgba(234,88,12,0.04);
+            border: 1px solid rgba(234,88,12,0.15);
+            border-radius: 14px;
+            max-width: 280px;
+        }
+        .kl-generating-text {
+            font-size: 12px;
+            font-weight: 700;
+            color: #C2410C;
+        }
+        .kl-generating-bar {
+            height: 4px;
+            border-radius: 2px;
+            background: var(--gray-100);
+            overflow: hidden;
+        }
+        .kl-generating-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            background: linear-gradient(90deg, #EA580C, #F97316);
+            width: 0%;
+            animation: kl-gen-progress 30s ease-out forwards;
+        }
+        @keyframes kl-gen-progress {
+            0% { width: 0%; }
+            50% { width: 60%; }
+            80% { width: 85%; }
+            100% { width: 95%; }
         }
 
         /* ==========================================
            INPUT AREA
            ========================================== */
-        .chat-input-area {
-            display: flex;
-            gap: 8px;
-            padding: 12px 0 4px;
-            align-items: flex-end;
+        .kl-input-area {
+            padding: 12px 20px 16px;
             flex-shrink: 0;
         }
-        .chat-input-wrap {
-            flex: 1;
-            position: relative;
-        }
-        .chat-input {
-            width: 100%;
-            padding: 12px 16px;
-            border: 2px solid var(--gray-200);
-            border-radius: 16px;
-            font-family: inherit;
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s;
-            min-height: 46px;
-            resize: none;
-            background: var(--white);
-            color: var(--gray-800);
-            box-sizing: border-box;
-        }
-        .chat-input:focus {
-            border-color: #EA580C;
-            box-shadow: 0 0 0 3px rgba(234,88,12,0.1);
-        }
-        .chat-input::placeholder { color: var(--gray-400); }
-
-        .chat-send-btn {
-            width: 46px; height: 46px;
-            border: none; border-radius: 14px;
-            background: linear-gradient(135deg, #EA580C, #C2410C);
-            color: #fff; font-size: 18px;
-            cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            transition: transform 0.15s, box-shadow 0.15s;
-            flex-shrink: 0;
-            box-shadow: 0 2px 8px rgba(234,88,12,0.25);
-        }
-        .chat-send-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(234,88,12,0.35);
-        }
-        .chat-send-btn:active { transform: translateY(0); }
-        .chat-send-btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-
-        .chat-voice-btn {
-            width: 46px; height: 46px;
-            border: 2px solid var(--gray-200);
-            border-radius: 14px;
-            background: var(--white);
-            font-size: 18px;
-            cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            transition: all 0.15s;
-            flex-shrink: 0;
-            color: var(--gray-600);
-        }
-        .chat-voice-btn:hover {
-            border-color: #EA580C;
-            background: rgba(234,88,12,0.04);
-        }
-        .chat-voice-btn.recording {
-            border-color: #DC2626;
-            background: #FEE2E2;
-            animation: voice-pulse 1.5s infinite;
-        }
-        @keyframes voice-pulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.3); }
-            50% { box-shadow: 0 0 0 8px rgba(220,38,38,0); }
-        }
-        body.dark-mode .chat-voice-btn {
-            background: rgba(255,255,255,0.05);
-            border-color: rgba(255,255,255,0.1);
-        }
-        body.dark-mode .chat-voice-btn:hover {
-            border-color: rgba(234,88,12,0.5);
-            background: rgba(234,88,12,0.1);
-        }
-        body.dark-mode .chat-voice-btn.recording {
-            background: rgba(220,38,38,0.15);
-            border-color: rgba(220,38,38,0.5);
-        }
-
-        .chat-hint {
-            text-align: center;
-            padding: 4px 0;
-            font-size: 11px;
-            color: var(--gray-400);
-            font-weight: 600;
-        }
-
-        /* ==========================================
-           SUGGESTION CHIPS
-           ========================================== */
-        .chat-suggestions {
+        .kl-suggestions {
             display: flex;
             gap: 6px;
-            padding: 8px 0 4px;
+            padding-bottom: 8px;
             flex-wrap: wrap;
-            flex-shrink: 0;
-            animation: suggestions-in 0.3s ease-out;
+            animation: kl-fade-in 0.3s ease-out;
         }
-        @keyframes suggestions-in {
+        @keyframes kl-fade-in {
             from { opacity: 0; transform: translateY(6px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .suggestion-chip {
-            padding: 8px 14px;
+        .kl-suggestion-chip {
+            padding: 7px 12px;
             border: 1.5px solid #FDBA74;
             border-radius: 20px;
             background: linear-gradient(135deg, #FFF7ED, #FFEDD5);
@@ -342,29 +476,318 @@
             cursor: pointer;
             transition: all 0.15s;
             white-space: nowrap;
-            min-height: 36px;
+            min-height: 34px;
             display: flex;
             align-items: center;
         }
-        .suggestion-chip:hover {
+        .kl-suggestion-chip:hover {
             background: linear-gradient(135deg, #FFEDD5, #FED7AA);
             border-color: #EA580C;
             transform: translateY(-1px);
             box-shadow: 0 2px 8px rgba(234,88,12,0.15);
         }
-        .suggestion-chip:active {
-            transform: translateY(0);
+
+        .kl-input-row {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+        .kl-input-wrap { flex: 1; position: relative; }
+        .kl-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid var(--gray-200);
+            border-radius: 16px;
+            font-family: inherit;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            min-height: 46px;
+            resize: none;
+            background: var(--white);
+            color: var(--gray-800);
+            box-sizing: border-box;
+        }
+        .kl-input:focus {
+            border-color: #EA580C;
+            box-shadow: 0 0 0 3px rgba(234,88,12,0.1);
+        }
+        .kl-input::placeholder { color: var(--gray-400); }
+
+        .kl-voice-btn {
+            width: 46px; height: 46px;
+            border: 2px solid var(--gray-200);
+            border-radius: 14px;
+            background: var(--white);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+            flex-shrink: 0;
+            color: var(--gray-600);
+        }
+        .kl-voice-btn:hover { border-color: #EA580C; background: rgba(234,88,12,0.04); }
+        .kl-voice-btn.recording {
+            border-color: #DC2626;
+            background: #FEE2E2;
+            animation: kl-voice-pulse 1.5s infinite;
+        }
+        @keyframes kl-voice-pulse {
+            0%,100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.3); }
+            50% { box-shadow: 0 0 0 8px rgba(220,38,38,0); }
         }
 
-        body.dark-mode .suggestion-chip {
-            background: rgba(234,88,12,0.08);
-            border-color: rgba(234,88,12,0.3);
-            color: #FDBA74;
+        .kl-send-btn {
+            width: 46px; height: 46px;
+            border: none;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #EA580C, #C2410C);
+            color: #fff;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s, box-shadow 0.15s;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(234,88,12,0.25);
         }
-        body.dark-mode .suggestion-chip:hover {
-            background: rgba(234,88,12,0.15);
-            border-color: rgba(234,88,12,0.5);
-            box-shadow: 0 2px 10px rgba(234,88,12,0.2);
+        .kl-send-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(234,88,12,0.35);
+        }
+        .kl-send-btn:active { transform: translateY(0); }
+        .kl-send-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .kl-input-hint {
+            text-align: center;
+            padding: 4px 0 0;
+            font-size: 11px;
+            color: var(--gray-400);
+            font-weight: 600;
+        }
+
+        /* ==========================================
+           EMPTY STATE
+           ========================================== */
+        .kl-empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 40px 20px;
+        }
+        .kl-empty-icon {
+            width: 80px; height: 80px;
+            border-radius: 24px;
+            background: linear-gradient(135deg, #EA580C, #F97316);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            box-shadow: 0 8px 24px rgba(234,88,12,0.25);
+        }
+        .kl-empty-title {
+            font-size: 20px;
+            font-weight: 900;
+            color: #9A3412;
+        }
+        .kl-empty-desc {
+            font-size: 13px;
+            color: var(--gray-500);
+            text-align: center;
+            max-width: 300px;
+            line-height: 1.5;
+        }
+
+        /* ==========================================
+           MOBILE FAB
+           ========================================== */
+        .kl-fab {
+            display: none;
+            position: fixed;
+            bottom: 90px;
+            right: 16px;
+            width: 52px; height: 52px;
+            border: none;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #EA580C, #C2410C);
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 50;
+            box-shadow: 0 4px 16px rgba(234,88,12,0.35);
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s;
+        }
+        .kl-fab:active { transform: scale(0.92); }
+
+        /* ==========================================
+           SIDEBAR OVERLAY (mobile)
+           ========================================== */
+        .kl-sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 199;
+            backdrop-filter: blur(4px);
+        }
+        .kl-sidebar-overlay.visible { display: block; }
+
+        /* ==========================================
+           CONTEXT MENU
+           ========================================== */
+        .kl-context-menu {
+            display: none;
+            position: fixed;
+            z-index: 300;
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+            padding: 6px;
+            min-width: 180px;
+            animation: kl-ctx-in 0.15s ease-out;
+        }
+        .kl-context-menu.visible { display: block; }
+        @keyframes kl-ctx-in {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .kl-ctx-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 12px;
+            border: none;
+            background: none;
+            width: 100%;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--gray-700);
+            cursor: pointer;
+            transition: background 0.1s;
+            text-align: left;
+        }
+        .kl-ctx-item:hover { background: var(--gray-50); }
+        .kl-ctx-item.danger { color: #DC2626; }
+        .kl-ctx-item.danger:hover { background: #FEF2F2; }
+        .kl-ctx-sep {
+            height: 1px;
+            background: var(--gray-100);
+            margin: 4px 6px;
+        }
+
+        /* ==========================================
+           RENAME MODAL
+           ========================================== */
+        .kl-rename-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(6px);
+        }
+        .kl-rename-overlay.visible { display: flex; }
+        .kl-rename-modal {
+            background: var(--white);
+            border-radius: 20px;
+            padding: 24px;
+            max-width: 380px;
+            width: 90%;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.15);
+            animation: kl-modal-in 0.25s ease-out;
+        }
+        @keyframes kl-modal-in {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .kl-rename-modal h4 {
+            font-size: 16px;
+            font-weight: 800;
+            margin: 0 0 16px;
+            color: var(--gray-800);
+        }
+        .kl-rename-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 16px;
+            box-sizing: border-box;
+            min-height: 44px;
+            background: var(--white);
+            color: var(--gray-800);
+            outline: none;
+        }
+        .kl-rename-input:focus { border-color: #EA580C; box-shadow: 0 0 0 3px rgba(234,88,12,0.1); }
+        .kl-emoji-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+        .kl-emoji-opt {
+            width: 36px; height: 36px;
+            border: 2px solid var(--gray-200);
+            border-radius: 10px;
+            background: var(--white);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+        }
+        .kl-emoji-opt:hover { border-color: #EA580C; }
+        .kl-emoji-opt.active { border-color: #EA580C; background: rgba(234,88,12,0.06); }
+        .kl-rename-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        .kl-rename-save {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #EA580C, #C2410C);
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            min-height: 44px;
+        }
+        .kl-rename-cancel {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            background: var(--white);
+            color: var(--gray-600);
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            min-height: 44px;
         }
 
         /* ==========================================
@@ -378,27 +801,20 @@
             backdrop-filter: blur(6px);
         }
         .report-overlay.visible { display: flex; }
-
         .report-modal {
             background: var(--white);
             border-radius: 20px;
             padding: 28px;
             max-width: 440px; width: 90%;
             box-shadow: 0 25px 60px rgba(0,0,0,0.15);
-            animation: modal-in 0.25s ease-out;
+            animation: kl-modal-in 0.25s ease-out;
         }
-        @keyframes modal-in {
-            from { opacity: 0; transform: scale(0.95) translateY(10px); }
-            to { opacity: 1; transform: scale(1) translateY(0); }
-        }
-
         .report-modal h3 {
             font-size: 18px; font-weight: 900;
             margin-bottom: 20px;
             display: flex; align-items: center; gap: 8px;
             color: var(--gray-800);
         }
-
         .report-type-row { display: flex; gap: 8px; margin-bottom: 16px; }
         .report-type-btn {
             flex: 1; padding: 10px;
@@ -416,7 +832,6 @@
             color: #EA580C;
         }
         .report-type-btn:hover { border-color: #EA580C; }
-
         .report-modal label {
             display: block;
             font-size: 11px; font-weight: 800;
@@ -431,22 +846,21 @@
             width: 100%; padding: 10px 14px;
             border: 2px solid var(--gray-200);
             border-radius: 12px;
-            font-family: inherit; font-size: 14px;
+            font-family: inherit; font-size: 16px;
             box-sizing: border-box;
             min-height: 44px;
             background: var(--white);
             color: var(--gray-800);
+            outline: none;
         }
         .report-modal input:focus,
         .report-modal textarea:focus,
         .report-modal select:focus {
-            outline: none;
             border-color: #EA580C;
             box-shadow: 0 0 0 3px rgba(234,88,12,0.1);
         }
         .report-modal textarea { resize: vertical; min-height: 80px; }
         .report-modal .form-group { margin-bottom: 14px; }
-
         .report-actions { display: flex; gap: 8px; margin-top: 20px; }
         .report-submit {
             flex: 1; padding: 12px;
@@ -455,14 +869,9 @@
             color: #fff;
             font-family: inherit; font-size: 14px; font-weight: 700;
             cursor: pointer; min-height: 44px;
-            transition: transform 0.15s, box-shadow 0.15s;
             box-shadow: 0 2px 8px rgba(234,88,12,0.2);
         }
-        .report-submit:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(234,88,12,0.3);
-        }
-        .report-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .report-submit:disabled { opacity: 0.5; cursor: not-allowed; }
         .report-cancel {
             flex: 1; padding: 12px;
             border: 2px solid var(--gray-200);
@@ -471,84 +880,154 @@
             color: var(--gray-600);
             font-family: inherit; font-size: 14px; font-weight: 700;
             cursor: pointer; min-height: 44px;
-            transition: all 0.15s;
-        }
-        .report-cancel:hover {
-            border-color: var(--gray-300);
-            background: var(--gray-50);
         }
 
         /* ==========================================
            DARK MODE
            ========================================== */
-        body.dark-mode .kleshnya-hero {
-            background: linear-gradient(135deg, rgba(234,88,12,0.1) 0%, rgba(234,88,12,0.06) 50%, rgba(194,65,12,0.04) 100%);
-            border-color: rgba(234,88,12,0.25);
+        body.dark-mode .kl-sidebar {
+            background: linear-gradient(180deg, #1a1520 0%, #1e1e2e 100%);
+            border-color: rgba(234,88,12,0.15);
         }
-        body.dark-mode .kleshnya-hero::before {
-            background: radial-gradient(circle, rgba(234,88,12,0.12) 0%, transparent 70%);
-        }
-        body.dark-mode .kleshnya-avatar {
-            box-shadow: 0 4px 16px rgba(234,88,12,0.3);
-        }
-        body.dark-mode .kleshnya-info h2 { color: #FDBA74; }
-        body.dark-mode .kleshnya-info p { color: #FB923C; }
-        body.dark-mode .kleshnya-status {
-            background: rgba(16,185,129,0.12);
-            color: #6EE7B7;
-        }
-        body.dark-mode .btn-report {
-            background: rgba(255,255,255,0.06);
+        body.dark-mode .kl-new-chat-btn {
+            background: rgba(255,255,255,0.04);
             border-color: rgba(234,88,12,0.3);
             color: #FDBA74;
         }
-        body.dark-mode .btn-report:hover {
-            background: rgba(234,88,12,0.12);
+        body.dark-mode .kl-new-chat-btn:hover {
+            background: rgba(234,88,12,0.1);
             border-color: rgba(234,88,12,0.5);
         }
+        body.dark-mode .kl-session-item:hover { background: rgba(234,88,12,0.08); }
+        body.dark-mode .kl-session-item.active { background: rgba(234,88,12,0.12); }
+        body.dark-mode .kl-session-item .kl-s-title { color: #E2E8F0; }
+        body.dark-mode .kl-session-item .kl-s-preview { color: rgba(255,255,255,0.3); }
+        body.dark-mode .kl-session-item .kl-s-time { color: rgba(255,255,255,0.25); }
+        body.dark-mode .kl-sessions-group-label { color: #FB923C; }
+        body.dark-mode .kl-sidebar-footer { border-color: rgba(234,88,12,0.1); }
+        body.dark-mode .kl-sidebar-footer .btn-report {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(234,88,12,0.2);
+            color: #FDBA74;
+        }
 
-        body.dark-mode .chat-msg--assistant .chat-msg-bubble {
+        body.dark-mode .kl-chat-area { background: #1e1e2e; }
+        body.dark-mode .kl-chat-header { border-color: rgba(255,255,255,0.06); }
+        body.dark-mode .kl-chat-header-info h3 { color: #E2E8F0; }
+        body.dark-mode .kl-chat-header-info .kl-status { color: #6EE7B7; }
+        body.dark-mode .kl-menu-btn { background: rgba(234,88,12,0.1); }
+
+        body.dark-mode .kl-msg--assistant .kl-msg-bubble {
             background: rgba(255,255,255,0.06);
             border-color: rgba(255,255,255,0.08);
             color: #E2E8F0;
             box-shadow: 0 1px 4px rgba(0,0,0,0.2);
         }
-        body.dark-mode .chat-msg--user .chat-msg-bubble {
+        body.dark-mode .kl-msg--user .kl-msg-bubble {
             box-shadow: 0 2px 10px rgba(16,185,129,0.15);
         }
-        body.dark-mode .chat-msg--assistant .chat-msg-avatar {
+        body.dark-mode .kl-msg--assistant .kl-msg-avatar {
             background: linear-gradient(135deg, rgba(234,88,12,0.2), rgba(234,88,12,0.1));
         }
-        body.dark-mode .chat-msg--user .chat-msg-avatar {
+        body.dark-mode .kl-msg--user .kl-msg-avatar {
             background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.1));
         }
-        body.dark-mode .chat-msg-time { color: rgba(255,255,255,0.3); }
+        body.dark-mode .kl-msg-time { color: rgba(255,255,255,0.25); }
+        body.dark-mode .kl-reaction-btn {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.1);
+        }
+        body.dark-mode .kl-reaction-btn.active {
+            background: rgba(234,88,12,0.1);
+            border-color: rgba(234,88,12,0.4);
+        }
+        body.dark-mode .kl-skill-badge {
+            background: rgba(234,88,12,0.12);
+            color: #FB923C;
+        }
 
-        body.dark-mode .chat-typing { color: rgba(255,255,255,0.4); }
+        body.dark-mode .kl-typing { color: rgba(255,255,255,0.4); }
+        body.dark-mode .kl-generating {
+            background: rgba(234,88,12,0.06);
+            border-color: rgba(234,88,12,0.2);
+        }
+        body.dark-mode .kl-generating-text { color: #FB923C; }
+        body.dark-mode .kl-generating-bar { background: rgba(255,255,255,0.06); }
 
-        body.dark-mode .chat-input {
+        body.dark-mode .kl-input {
             background: rgba(255,255,255,0.05);
             border-color: rgba(255,255,255,0.1);
             color: #E2E8F0;
         }
-        body.dark-mode .chat-input:focus {
+        body.dark-mode .kl-input:focus {
             border-color: #EA580C;
             box-shadow: 0 0 0 3px rgba(234,88,12,0.15);
         }
-        body.dark-mode .chat-input::placeholder { color: rgba(255,255,255,0.25); }
-
-        body.dark-mode .chat-send-btn {
-            box-shadow: 0 2px 10px rgba(234,88,12,0.3);
+        body.dark-mode .kl-input::placeholder { color: rgba(255,255,255,0.25); }
+        body.dark-mode .kl-send-btn { box-shadow: 0 2px 10px rgba(234,88,12,0.3); }
+        body.dark-mode .kl-voice-btn {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
         }
-        body.dark-mode .chat-send-btn:hover {
-            box-shadow: 0 4px 16px rgba(234,88,12,0.4);
+        body.dark-mode .kl-voice-btn:hover {
+            border-color: rgba(234,88,12,0.5);
+            background: rgba(234,88,12,0.1);
+        }
+        body.dark-mode .kl-voice-btn.recording {
+            background: rgba(220,38,38,0.15);
+            border-color: rgba(220,38,38,0.5);
+        }
+        body.dark-mode .kl-input-hint { color: rgba(255,255,255,0.2); }
+        body.dark-mode .kl-suggestion-chip {
+            background: rgba(234,88,12,0.08);
+            border-color: rgba(234,88,12,0.3);
+            color: #FDBA74;
+        }
+        body.dark-mode .kl-suggestion-chip:hover {
+            background: rgba(234,88,12,0.15);
+            border-color: rgba(234,88,12,0.5);
+        }
+        body.dark-mode .kl-msg-media-caption { color: rgba(255,255,255,0.4); }
+        body.dark-mode .kl-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+
+        body.dark-mode .kl-empty-title { color: #FDBA74; }
+        body.dark-mode .kl-empty-desc { color: rgba(255,255,255,0.4); }
+
+        body.dark-mode .kl-context-menu {
+            background: #1e1e2e;
+            border-color: rgba(255,255,255,0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+        body.dark-mode .kl-ctx-item { color: #E2E8F0; }
+        body.dark-mode .kl-ctx-item:hover { background: rgba(255,255,255,0.06); }
+        body.dark-mode .kl-ctx-item.danger { color: #F87171; }
+        body.dark-mode .kl-ctx-item.danger:hover { background: rgba(220,38,38,0.1); }
+        body.dark-mode .kl-ctx-sep { background: rgba(255,255,255,0.06); }
+
+        body.dark-mode .kl-rename-modal {
+            background: #1e1e2e;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        body.dark-mode .kl-rename-modal h4 { color: #E2E8F0; }
+        body.dark-mode .kl-rename-input {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+            color: #E2E8F0;
+        }
+        body.dark-mode .kl-emoji-opt {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.1);
+        }
+        body.dark-mode .kl-emoji-opt.active {
+            border-color: #EA580C;
+            background: rgba(234,88,12,0.1);
+        }
+        body.dark-mode .kl-rename-cancel {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.6);
         }
 
-        body.dark-mode .chat-hint { color: rgba(255,255,255,0.25); }
-
-        body.dark-mode .chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
-
-        /* Report modal dark */
         body.dark-mode .report-modal {
             background: #1e1e2e;
             border: 1px solid rgba(255,255,255,0.08);
@@ -565,7 +1044,6 @@
             background: rgba(234,88,12,0.1);
             color: #FB923C;
         }
-        body.dark-mode .report-type-btn:hover { border-color: rgba(234,88,12,0.5); }
         body.dark-mode .report-modal input,
         body.dark-mode .report-modal textarea,
         body.dark-mode .report-modal select {
@@ -573,44 +1051,40 @@
             border-color: rgba(255,255,255,0.1);
             color: #E2E8F0;
         }
-        body.dark-mode .report-modal input:focus,
-        body.dark-mode .report-modal textarea:focus,
-        body.dark-mode .report-modal select:focus {
-            border-color: #EA580C;
-            box-shadow: 0 0 0 3px rgba(234,88,12,0.15);
-        }
         body.dark-mode .report-modal label { color: rgba(255,255,255,0.4); }
         body.dark-mode .report-cancel {
             background: rgba(255,255,255,0.05);
             border-color: rgba(255,255,255,0.1);
             color: rgba(255,255,255,0.6);
         }
-        body.dark-mode .report-cancel:hover {
-            background: rgba(255,255,255,0.08);
-        }
-        body.dark-mode .report-submit {
-            box-shadow: 0 2px 10px rgba(234,88,12,0.2);
-        }
 
         /* ==========================================
            RESPONSIVE
            ========================================== */
         @media (max-width: 768px) {
-            .kleshnya-page { padding: 12px 12px 8px; height: calc(100vh - 50px); }
-            .kleshnya-hero { padding: 14px; gap: 12px; border-radius: 16px; }
-            .kleshnya-avatar { width: 44px; height: 44px; font-size: 22px; border-radius: 12px; }
-            .kleshnya-info h2 { font-size: 16px; }
-            .kleshnya-info p { font-size: 11px; }
-            .chat-msg { max-width: 88%; gap: 8px; }
-            .chat-msg-avatar { width: 28px; height: 28px; font-size: 14px; border-radius: 10px; }
-            .chat-msg-bubble { font-size: 13px; padding: 9px 12px; }
-            .btn-report { padding: 6px 10px; font-size: 11px; }
+            .kl-sidebar {
+                position: fixed;
+                top: 0; left: 0; bottom: 0;
+                z-index: 200;
+                transform: translateX(-100%);
+                width: 280px;
+                box-shadow: 4px 0 24px rgba(0,0,0,0.15);
+            }
+            .kl-sidebar.open { transform: translateX(0); }
+            .kl-menu-btn { display: flex; }
+            .kl-fab { display: flex; }
+            .kl-layout { height: calc(100vh - 50px); }
+            .kl-messages { padding: 12px 14px; }
+            .kl-input-area { padding: 10px 14px 12px; }
+            .kl-msg { max-width: 88%; gap: 8px; }
+            .kl-msg-avatar { width: 28px; height: 28px; font-size: 14px; border-radius: 9px; }
+            .kl-msg-bubble { font-size: 13px; padding: 9px 12px; }
+            .kl-chat-header { padding: 10px 14px; }
         }
     </style>
 </head>
 <body>
     <script>
-    // Early dark mode to prevent flash
     (function(){var s=localStorage.getItem('pzp_dark_mode');var h=new Date().getHours();var isDark=s==='true'||(s!=='false'&&(h>=20||h<7));if(isDark){document.body.classList.add('dark-mode');document.documentElement.setAttribute('data-theme','dark')}})();
     </script>
 
@@ -639,46 +1113,79 @@
         </header>
 
         <main class="main-content">
-            <div class="kleshnya-page">
-                <div class="kleshnya-hero">
-                    <div class="kleshnya-avatar">🦀</div>
-                    <div class="kleshnya-info">
-                        <h2>Клешня</h2>
-                        <p>Центральний інтелект парку</p>
-                        <div class="kleshnya-status">
-                            <span class="kleshnya-status-dot"></span>
-                            <span>Онлайн</span>
+            <div class="kleshnya-layout kl-layout">
+                <!-- Sidebar -->
+                <aside class="kl-sidebar" id="klSidebar">
+                    <div class="kl-sidebar-header">
+                        <button class="kl-new-chat-btn" id="klNewChatBtn">➕ Новий чат</button>
+                    </div>
+                    <div class="kl-sessions-list" id="klSessionsList"></div>
+                    <div class="kl-sidebar-footer">
+                        <button class="btn-report" id="reportBtn">🐛 Фідбек</button>
+                    </div>
+                </aside>
+
+                <!-- Chat Area -->
+                <div class="kl-chat-area">
+                    <div class="kl-chat-header">
+                        <button class="kl-menu-btn" id="klMenuBtn">☰</button>
+                        <div class="kl-chat-header-avatar">🦀</div>
+                        <div class="kl-chat-header-info">
+                            <h3 id="klChatTitle">Клешня</h3>
+                            <div class="kl-status">
+                                <span class="kl-status-dot"></span>
+                                <span>Онлайн</span>
+                            </div>
                         </div>
                     </div>
-                    <div class="kleshnya-hero-actions">
-                        <button class="btn-report" id="reportBtn" title="Повідомити про баг або покращення">
-                            🐛 Фідбек
-                        </button>
+
+                    <div class="kl-messages" id="klMessages"></div>
+
+                    <div class="kl-input-area">
+                        <div class="kl-suggestions" id="klSuggestions"></div>
+                        <div class="kl-input-row">
+                            <div class="kl-input-wrap">
+                                <input type="text" class="kl-input" id="klInput" placeholder="Написати Клешні..." maxlength="500" autocomplete="off">
+                            </div>
+                            <button class="kl-voice-btn" id="klVoiceBtn" title="Голосове повідомлення">🎤</button>
+                            <button class="kl-send-btn" id="klSendBtn" title="Надіслати">➤</button>
+                        </div>
+                        <div class="kl-input-hint" id="klHint">📊 Бронювання · 📋 Задачі · 💰 Фінанси · 👥 Команда · 🎭 Програми</div>
                     </div>
-                </div>
-
-                <div class="chat-messages" id="chatMessages">
-                    <!-- Messages loaded dynamically -->
-                </div>
-
-                <div class="chat-suggestions" id="chatSuggestions"></div>
-
-                <div class="chat-hint" id="chatHint">
-                    📊 Бронювання · 📋 Задачі · 💰 Фінанси · 👥 Команда · 🎭 Програми · 🔥 Стрік — питай!
-                </div>
-
-                <div class="chat-input-area">
-                    <div class="chat-input-wrap">
-                        <input type="text" class="chat-input" id="chatInput" placeholder="Написати Клешні..." maxlength="500" autocomplete="off">
-                    </div>
-                    <button class="chat-voice-btn" id="chatVoiceBtn" title="Голосове повідомлення">🎤</button>
-                    <button class="chat-send-btn" id="chatSendBtn" title="Надіслати">➤</button>
                 </div>
             </div>
         </main>
     </div>
 
-    <!-- Report Bug/Improvement Modal -->
+    <!-- Mobile FAB -->
+    <button class="kl-fab" id="klFab" title="Новий чат">✚</button>
+
+    <!-- Sidebar overlay (mobile) -->
+    <div class="kl-sidebar-overlay" id="klSidebarOverlay"></div>
+
+    <!-- Context menu -->
+    <div class="kl-context-menu" id="klContextMenu">
+        <button class="kl-ctx-item" data-action="rename">✏️ Перейменувати</button>
+        <button class="kl-ctx-item" data-action="pin">📌 Закріпити</button>
+        <button class="kl-ctx-item" data-action="clear">🧹 Очистити</button>
+        <div class="kl-ctx-sep"></div>
+        <button class="kl-ctx-item danger" data-action="delete">🗑 Видалити</button>
+    </div>
+
+    <!-- Rename modal -->
+    <div class="kl-rename-overlay" id="klRenameOverlay">
+        <div class="kl-rename-modal">
+            <h4>Перейменувати чат</h4>
+            <input type="text" class="kl-rename-input" id="klRenameInput" placeholder="Назва чату" maxlength="60">
+            <div class="kl-emoji-row" id="klEmojiRow"></div>
+            <div class="kl-rename-actions">
+                <button class="kl-rename-save" id="klRenameSave">Зберегти</button>
+                <button class="kl-rename-cancel" id="klRenameCancel">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Modal -->
     <div class="report-overlay" id="reportOverlay">
         <div class="report-modal">
             <h3>🦀 Покращити систему</h3>
@@ -709,345 +1216,21 @@
         </div>
     </div>
 
+    <!-- v10.4: Personal cabinet modal -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
     <script src="js/config.js?v=12.8"></script>
     <script src="js/api.js?v=12.8"></script>
     <script src="js/auth.js?v=12.8"></script>
-    <script>
-    // Kleshnya Chat Page Logic (v12.6 — skill-based engine)
-    (function() {
-        const chatMessages = document.getElementById('chatMessages');
-        const chatInput = document.getElementById('chatInput');
-        const chatSendBtn = document.getElementById('chatSendBtn');
-        const chatSuggestions = document.getElementById('chatSuggestions');
-        const chatHint = document.getElementById('chatHint');
-
-        function getToken() {
-            return localStorage.getItem('pzp_token');
-        }
-
-        function formatTime(dateStr) {
-            const d = new Date(dateStr);
-            return d.toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
-        }
-
-        // Sanitize HTML — allow only safe tags from our own server
-        function sanitizeHtml(html) {
-            const div = document.createElement('div');
-            div.innerHTML = html;
-            // Remove script tags and event handlers
-            div.querySelectorAll('script,style,iframe,object,embed').forEach(el => el.remove());
-            div.querySelectorAll('*').forEach(el => {
-                for (const attr of [...el.attributes]) {
-                    if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
-                }
-            });
-            return div.innerHTML;
-        }
-
-        function addMessage(role, text, time) {
-            const msg = document.createElement('div');
-            msg.className = `chat-msg chat-msg--${role}`;
-
-            const avatar = document.createElement('div');
-            avatar.className = 'chat-msg-avatar';
-            avatar.textContent = role === 'assistant' ? '🦀' : '👤';
-
-            const wrapper = document.createElement('div');
-            wrapper.className = 'chat-msg-content';
-
-            const bubble = document.createElement('div');
-            bubble.className = 'chat-msg-bubble';
-            // Assistant messages may contain HTML formatting from skill engine
-            if (role === 'assistant') {
-                bubble.innerHTML = sanitizeHtml(text);
-            } else {
-                bubble.textContent = text;
-            }
-            wrapper.appendChild(bubble);
-
-            if (time) {
-                const timeEl = document.createElement('div');
-                timeEl.className = 'chat-msg-time';
-                timeEl.textContent = formatTime(time);
-                wrapper.appendChild(timeEl);
-            }
-
-            msg.appendChild(avatar);
-            msg.appendChild(wrapper);
-            chatMessages.appendChild(msg);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        function renderSuggestions(suggestions) {
-            chatSuggestions.innerHTML = '';
-            if (!suggestions || suggestions.length === 0) return;
-
-            // Hide hint when we have suggestions
-            chatHint.style.display = 'none';
-
-            for (const text of suggestions) {
-                const chip = document.createElement('button');
-                chip.className = 'suggestion-chip';
-                chip.textContent = text;
-                chip.addEventListener('click', () => {
-                    chatInput.value = text;
-                    sendMessage();
-                });
-                chatSuggestions.appendChild(chip);
-            }
-        }
-
-        function clearSuggestions() {
-            chatSuggestions.innerHTML = '';
-        }
-
-        function showTyping() {
-            const typing = document.createElement('div');
-            typing.className = 'chat-typing';
-            typing.id = 'typingIndicator';
-            typing.innerHTML = '<span>🦀 Клешня думає</span><div class="chat-typing-dots"><span></span><span></span><span></span></div>';
-            chatMessages.appendChild(typing);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        function hideTyping() {
-            const t = document.getElementById('typingIndicator');
-            if (t) t.remove();
-        }
-
-        async function loadChat() {
-            try {
-                const dateStr = new Date().toISOString().split('T')[0];
-                const greeting = await apiGetKleshnyaGreeting(dateStr);
-                const history = await apiGetKleshnyaChat();
-
-                if (history.length === 0 && greeting) {
-                    addMessage('assistant', greeting.message, new Date().toISOString());
-                } else if (history.length === 0) {
-                    addMessage('assistant', '🦀 Привіт! Я Клешня — центральний інтелект парку. Питай що завгодно!', new Date().toISOString());
-                } else {
-                    if (greeting) {
-                        addMessage('assistant', greeting.message, new Date().toISOString());
-                    }
-                    for (const msg of history) {
-                        addMessage(msg.role, msg.message, msg.created_at);
-                    }
-                }
-
-                // Show initial suggestions
-                renderSuggestions(['Що ти вмієш?', 'Бронювання сьогодні', 'Мої задачі', 'Хто працює?']);
-            } catch (err) {
-                console.error('Error loading chat:', err);
-                addMessage('assistant', '🦀 Привіт! Я Клешня. Виникла помилка при завантаженні — але я на зв\'язку!', new Date().toISOString());
-                renderSuggestions(['Бронювання', 'Задачі', 'Команда', 'Допомога']);
-            }
-        }
-
-        async function sendMessage() {
-            const text = chatInput.value.trim();
-            if (!text) return;
-
-            chatInput.value = '';
-            chatSendBtn.disabled = true;
-            clearSuggestions();
-            addMessage('user', text, new Date().toISOString());
-            showTyping();
-
-            try {
-                const response = await apiSendKleshnyaMessage(text);
-                hideTyping();
-
-                if (response && response.message) {
-                    addMessage('assistant', response.message, response.created_at || new Date().toISOString());
-                    // Render follow-up suggestions
-                    if (response.suggestions && response.suggestions.length > 0) {
-                        renderSuggestions(response.suggestions);
-                    }
-                } else {
-                    addMessage('assistant', '🦀 Упс, щось пішло не так. Спробуй ще раз!', new Date().toISOString());
-                    renderSuggestions(['Бронювання', 'Задачі', 'Допомога']);
-                }
-            } catch (err) {
-                hideTyping();
-                addMessage('assistant', '🦀 Помилка з\'єднання. Перевір інтернет!', new Date().toISOString());
-                renderSuggestions(['Бронювання', 'Задачі', 'Допомога']);
-            }
-
-            chatSendBtn.disabled = false;
-            chatInput.focus();
-        }
-
-        chatSendBtn.addEventListener('click', sendMessage);
-        chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-
-        function checkAuth() {
-            const token = getToken();
-            if (!token) {
-                window.location.href = '/';
-                return;
-            }
-
-            const user = localStorage.getItem('pzp_current_user');
-            if (user) {
-                try {
-                    const parsed = JSON.parse(user);
-                    document.getElementById('currentUser').textContent = parsed.name || parsed.username || '';
-                } catch {}
-            }
-
-            document.getElementById('mainApp').classList.remove('hidden');
-            if (typeof initDarkMode === 'function') initDarkMode();
-            loadChat();
-        }
-
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            localStorage.removeItem('pzp_token');
-            localStorage.removeItem('pzp_current_user');
-            localStorage.removeItem('pzp_session');
-            window.location.href = '/';
-        });
-
-        checkAuth();
-
-        // ==========================================
-        // VOICE INPUT (Web Speech API)
-        // ==========================================
-        const chatVoiceBtn = document.getElementById('chatVoiceBtn');
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        let voiceRecognition = null;
-        let voiceRecording = false;
-
-        if (!SpeechRecognition) {
-            chatVoiceBtn.style.display = 'none';
-        } else {
-            voiceRecognition = new SpeechRecognition();
-            voiceRecognition.lang = 'uk-UA';
-            voiceRecognition.interimResults = true;
-            voiceRecognition.continuous = false;
-            voiceRecognition.maxAlternatives = 1;
-
-            voiceRecognition.onresult = (event) => {
-                let transcript = '';
-                for (let i = 0; i < event.results.length; i++) {
-                    transcript += event.results[i][0].transcript;
-                }
-                chatInput.value = transcript;
-            };
-
-            voiceRecognition.onend = () => {
-                voiceRecording = false;
-                chatVoiceBtn.classList.remove('recording');
-                chatVoiceBtn.innerHTML = '🎤';
-                if (chatInput.value.trim()) {
-                    sendMessage();
-                }
-            };
-
-            voiceRecognition.onerror = (event) => {
-                console.error('Speech error:', event.error);
-                voiceRecording = false;
-                chatVoiceBtn.classList.remove('recording');
-                chatVoiceBtn.innerHTML = '🎤';
-            };
-
-            chatVoiceBtn.addEventListener('click', () => {
-                if (voiceRecording) {
-                    voiceRecognition.stop();
-                    voiceRecording = false;
-                    chatVoiceBtn.classList.remove('recording');
-                    chatVoiceBtn.innerHTML = '🎤';
-                } else {
-                    voiceRecognition.start();
-                    voiceRecording = true;
-                    chatVoiceBtn.classList.add('recording');
-                    chatVoiceBtn.innerHTML = '⏹';
-                }
-            });
-        }
-
-        // ==========================================
-        // REPORT BUG / IMPROVEMENT
-        // ==========================================
-        const reportOverlay = document.getElementById('reportOverlay');
-        const reportTitle = document.getElementById('reportTitle');
-        const reportDesc = document.getElementById('reportDesc');
-        const reportPriority = document.getElementById('reportPriority');
-        const reportSubmitBtn = document.getElementById('reportSubmitBtn');
-        let reportType = 'bug';
-
-        document.getElementById('reportBtn').addEventListener('click', () => {
-            reportOverlay.classList.add('visible');
-            reportTitle.value = '';
-            reportDesc.value = '';
-            reportPriority.value = 'normal';
-            reportTitle.focus();
-        });
-
-        document.getElementById('reportCancelBtn').addEventListener('click', () => {
-            reportOverlay.classList.remove('visible');
-        });
-        reportOverlay.addEventListener('click', (e) => {
-            if (e.target === reportOverlay) reportOverlay.classList.remove('visible');
-        });
-
-        document.querySelectorAll('.report-type-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.report-type-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                reportType = btn.dataset.type;
-            });
-        });
-
-        reportSubmitBtn.addEventListener('click', async () => {
-            const title = reportTitle.value.trim();
-            if (!title) { reportTitle.focus(); return; }
-
-            reportSubmitBtn.disabled = true;
-            reportSubmitBtn.textContent = 'Надсилаю...';
-
-            const emoji = reportType === 'bug' ? '🐛' : '💡';
-            const label = reportType === 'bug' ? 'Баг' : 'Покращення';
-            const user = localStorage.getItem('pzp_current_user');
-            let userName = 'Користувач';
-            try { userName = JSON.parse(user).name || JSON.parse(user).username; } catch {}
-
-            try {
-                const token = getToken();
-                const res = await fetch('/api/tasks', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({
-                        title: `${emoji} ${label}: ${title}`,
-                        description: (reportDesc.value.trim() ? reportDesc.value.trim() + '\n\n' : '') + `Від: ${userName}`,
-                        priority: reportPriority.value,
-                        category: 'improvement',
-                        assigned_to: 'Sergey',
-                        source_type: 'kleshnya',
-                        task_type: 'human'
-                    })
-                });
-
-                if (!res.ok) throw new Error('Не вдалося створити задачу');
-                reportOverlay.classList.remove('visible');
-                addMessage('assistant',
-                    `🦀 ${emoji} ${label} прийнято!\n\n📋 "${title}"\n👤 Призначено: Сергій\n⚡ Пріоритет: ${reportPriority.value === 'high' ? 'Високий' : reportPriority.value === 'low' ? 'Низький' : 'Звичайний'}\n\nСергій отримає сповіщення в Telegram. Дякую за фідбек!`,
-                    new Date().toISOString()
-                );
-            } catch (err) {
-                console.error('Report error:', err);
-                addMessage('assistant', '🦀 Упс, не вдалося створити задачу. Спробуй ще раз!', new Date().toISOString());
-                reportOverlay.classList.remove('visible');
-            }
-
-            reportSubmitBtn.disabled = false;
-            reportSubmitBtn.textContent = 'Надіслати Сергію';
-        });
-    })();
-    </script>
+    <script src="js/ws.js?v=12.8"></script>
+    <script src="js/kleshnya-page.js?v=12.8"></script>
 </body>
 </html>

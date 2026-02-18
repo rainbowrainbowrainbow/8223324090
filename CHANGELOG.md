@@ -4,7 +4,30 @@
 
 ---
 
-## v12.8.0 — Клешня Smart Chat (2026-02-18)
+## v12.8.0 — Kleshnya Chat v2 + Smart Chat (2026-02-18)
+
+**Kleshnya Chat v2 — ChatGPT-style multi-session redesign:**
+- Sidebar сесій (desktop 280px, mobile overlay по свайпу/кнопці)
+- Multi-session: створення, перемикання, перейменування, pin, emoji, видалення
+- Context menu (right-click / long press): rename, pin, clear, delete
+- Media bubbles: image, audio, video з proxy через /api/kleshnya/media/file/:fileId
+- Reactions (👍/👎) toggle на assistant повідомленнях
+- Generation indicator з animated progress bar (~30 сек)
+- WebSocket real-time: kleshnya:thinking, kleshnya:reply, kleshnya:media
+- Voice input (Web Speech API)
+- FAB на мобільному для "Новий чат"
+- Rename modal з emoji picker
+- Повна dark mode підтримка для всіх нових компонентів
+- JS виділено в окремий файл js/kleshnya-page.js
+
+**Файли:**
+- `kleshnya.html` — повний редизайн (HTML + CSS)
+- `js/kleshnya-page.js` — нова фронтенд логіка (multi-session, WS, media, reactions)
+- `SNAPSHOT.md` — оновлено
+
+---
+
+## v12.8.0 — Клешня Smart Chat (2026-02-18, backend)
 
 **Новий skill-based chat engine (12 навичок):**
 - 📊 Бронювання — деталі, клієнти, кімнати, ціни по датах/тижням/місяцям

@@ -721,12 +721,14 @@ async function apiGetKleshnyaChat() {
     }
 }
 
-async function apiSendKleshnyaMessage(message) {
+async function apiSendKleshnyaMessage(message, sessionId) {
     try {
+        const body = { message };
+        if (sessionId) body.session_id = sessionId;
         const response = await fetch(`${API_BASE}/kleshnya/chat`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify({ message })
+            body: JSON.stringify(body)
         });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
@@ -734,5 +736,111 @@ async function apiSendKleshnyaMessage(message) {
     } catch (err) {
         console.error('API kleshnya chat error:', err);
         return null;
+    }
+}
+
+// v2.0: Kleshnya Sessions API
+async function apiGetKleshnyaSessions() {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/sessions`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya sessions error:', err);
+        return [];
+    }
+}
+
+async function apiCreateKleshnyaSession(title, emoji) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/sessions`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ title, emoji })
+        });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API create session error:', err);
+        return null;
+    }
+}
+
+async function apiUpdateKleshnyaSession(id, updates) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/sessions/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(updates)
+        });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API update session error:', err);
+        return null;
+    }
+}
+
+async function apiDeleteKleshnyaSession(id) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/sessions/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return false;
+        return response.ok;
+    } catch (err) {
+        console.error('API delete session error:', err);
+        return false;
+    }
+}
+
+async function apiGetSessionMessages(sessionId, limit, offset) {
+    try {
+        let url = `${API_BASE}/kleshnya/sessions/${sessionId}/messages`;
+        const params = [];
+        if (limit) params.push(`limit=${limit}`);
+        if (offset) params.push(`offset=${offset}`);
+        if (params.length) url += '?' + params.join('&');
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('API session messages error:', err);
+        return [];
+    }
+}
+
+async function apiSetMessageReaction(messageId, reaction) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/messages/${messageId}/reaction`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ reaction })
+        });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API reaction error:', err);
+        return null;
+    }
+}
+
+async function apiGetKleshnyaMedia(type) {
+    try {
+        let url = `${API_BASE}/kleshnya/media`;
+        if (type) url += `?type=${type}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya media error:', err);
+        return [];
     }
 }

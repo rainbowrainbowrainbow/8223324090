@@ -1,5 +1,5 @@
 /**
- * sw.js — Service Worker for Парк Закревського Періоду Booking System
+ * sw.js — Service Worker for Event Maestro
  * Feature #9: Offline support with App Shell caching and API data caching
  *
  * Integration: In index.html, add before </body>:
@@ -16,8 +16,8 @@
  *   <script src="js/ws.js"></script>
  */
 
-const CACHE_NAME = 'park-booking-v9';
-const API_CACHE_NAME = 'park-booking-api-v9';
+const CACHE_NAME = 'event-maestro-v9';
+const API_CACHE_NAME = 'event-maestro-api-v9';
 
 // App Shell — static assets to pre-cache on install
 const APP_SHELL = [

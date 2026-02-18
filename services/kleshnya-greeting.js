@@ -243,7 +243,18 @@ async function getGreeting(username, dateStr, displayName) {
 
 // --- Chat functions ---
 
-async function getChatHistory(username, limit = 50) {
+async function getChatHistory(username, limit = 50, sessionId = null) {
+    if (sessionId) {
+        const result = await pool.query(
+            `SELECT id, role, message, media_type, media_url, media_file_id, media_caption,
+                    media_duration, skill_used, is_generating, reaction, created_at
+             FROM kleshnya_chat WHERE username = $1 AND session_id = $2
+             ORDER BY created_at ASC LIMIT $3`,
+            [username, sessionId, limit]
+        );
+        return result.rows;
+    }
+    // Legacy: no session filter (backward compat for widget + AI context)
     const result = await pool.query(
         `SELECT id, role, message, created_at FROM kleshnya_chat
          WHERE username = $1 ORDER BY created_at ASC LIMIT $2`,
@@ -252,10 +263,11 @@ async function getChatHistory(username, limit = 50) {
     return result.rows;
 }
 
-async function addChatMessage(username, role, message) {
+async function addChatMessage(username, role, message, sessionId = null, skillUsed = null) {
     const result = await pool.query(
-        `INSERT INTO kleshnya_chat (username, role, message) VALUES ($1, $2, $3) RETURNING id, created_at`,
-        [username, role, message]
+        `INSERT INTO kleshnya_chat (username, role, message, session_id, skill_used)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
+        [username, role, message, sessionId, skillUsed]
     );
     return result.rows[0];
 }

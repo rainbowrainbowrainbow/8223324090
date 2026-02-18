@@ -63,7 +63,7 @@ app.use('/api', rateLimiter);
 
 // Auth middleware: protect all API endpoints except public ones
 app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path.startsWith('/telegram/webhook')) {
+    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path.startsWith('/telegram/webhook') || req.path === '/kleshnya/webhook') {
         return next();
     }
     authenticateToken(req, res, next);

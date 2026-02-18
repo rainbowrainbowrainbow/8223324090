@@ -345,6 +345,41 @@ function sendToUser(userId, eventType, data) {
     }
 }
 
+/**
+ * Send a message to a specific user by username (all their connections).
+ * Useful for Kleshnya webhook where we know username but not userId.
+ * @param {string} username - Target username
+ * @param {string} eventType - Event type
+ * @param {object} data - Event payload
+ */
+function sendToUsername(username, eventType, data) {
+    if (!_wss) return;
+
+    const message = JSON.stringify({
+        type: eventType,
+        payload: data || {},
+        meta: { timestamp: new Date().toISOString() }
+    });
+
+    let sent = 0;
+    for (const [, connections] of _clients) {
+        for (const ws of connections) {
+            if (ws._pzp.username === username && ws.readyState === 1) {
+                try {
+                    ws.send(message);
+                    sent++;
+                } catch (err) {
+                    log.error('sendToUsername error:', err.message);
+                }
+            }
+        }
+    }
+
+    if (sent > 0) {
+        log.info(`sendToUsername [${eventType}] to ${username}: ${sent} connection(s)`);
+    }
+}
+
 // ==========================================
 // HEARTBEAT
 // ==========================================
@@ -422,6 +457,7 @@ module.exports = {
     initWebSocket,
     broadcast,
     sendToUser,
+    sendToUsername,
     getConnectedClientsCount,
     getWSS
 };

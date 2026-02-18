@@ -1,13 +1,226 @@
 /**
- * services/kleshnya-chat.js — Kleshnya Smart Chat Engine (v12.6)
+ * services/kleshnya-chat.js — Kleshnya Smart Chat Engine (v12.8)
  *
- * Skill-based chat system with real DB queries.
- * Each skill matches keywords, runs queries, returns message + suggestions.
+ * Hybrid chat system:
+ *  1. Claude AI (Haiku) — understands natural language, uses DB context
+ *  2. Skill engine fallback — keyword matching when AI unavailable
+ *
+ * AI mode requires ANTHROPIC_API_KEY env var.
  */
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const Anthropic = require('@anthropic-ai/sdk');
 
 const log = createLogger('KleshnyaChat');
+
+// --- AI Engine (Claude Haiku) ---
+
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const AI_ENABLED = !!ANTHROPIC_API_KEY;
+
+let anthropic = null;
+if (AI_ENABLED) {
+    anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+    log.info('Claude AI enabled for Kleshnya chat');
+} else {
+    log.info('Claude AI disabled (no ANTHROPIC_API_KEY). Using skill engine fallback.');
+}
+
+/**
+ * Gather extended context for AI system prompt
+ */
+async function gatherAIContext(username, dateStr) {
+    const ctx = {};
+    try {
+        // Today's bookings
+        const bookRes = await pool.query(
+            `SELECT COUNT(*) cnt, COALESCE(SUM(price),0) revenue,
+                    COUNT(*) FILTER (WHERE status='confirmed') confirmed,
+                    COUNT(*) FILTER (WHERE status='preliminary') preliminary
+             FROM bookings WHERE date = $1 AND linked_to IS NULL AND status != 'cancelled'`,
+            [dateStr]
+        );
+        ctx.todayBookings = bookRes.rows[0];
+
+        // Upcoming bookings (next 3 today)
+        const upcomingRes = await pool.query(
+            `SELECT time, program_name, group_name, room, kids_count, price, status
+             FROM bookings WHERE date = $1 AND linked_to IS NULL AND status != 'cancelled'
+             ORDER BY time LIMIT 5`,
+            [dateStr]
+        );
+        ctx.upcomingBookings = upcomingRes.rows;
+
+        // User's tasks
+        const tasksRes = await pool.query(
+            `SELECT id, title, priority, status, deadline FROM tasks
+             WHERE (assigned_to = $1 OR owner = $1) AND status NOT IN ('done')
+             ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END
+             LIMIT 10`,
+            [username]
+        );
+        ctx.userTasks = tasksRes.rows;
+
+        // Overdue tasks count
+        const overdueRes = await pool.query(
+            `SELECT COUNT(*) cnt FROM tasks WHERE status NOT IN ('done') AND deadline < NOW()`
+        );
+        ctx.overdueTasks = parseInt(overdueRes.rows[0].cnt);
+
+        // Team today
+        const teamRes = await pool.query(
+            `SELECT s.name, s.department, ss.shift_start, ss.shift_end
+             FROM staff s JOIN staff_schedule ss ON s.id = ss.staff_id AND ss.date = $1
+             WHERE s.is_active = true AND ss.status = 'working'
+             ORDER BY s.department, s.name`,
+            [dateStr]
+        );
+        ctx.teamToday = teamRes.rows;
+
+        // Week revenue
+        const weekRange = getKyivWeekRange();
+        const weekRes = await pool.query(
+            `SELECT COUNT(*) cnt, COALESCE(SUM(price),0) revenue
+             FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status = 'confirmed'`,
+            [weekRange.from, weekRange.to]
+        );
+        ctx.weekStats = weekRes.rows[0];
+
+        // Streak
+        const streakRes = await pool.query(
+            'SELECT current_streak, longest_streak FROM user_streaks WHERE username = $1',
+            [username]
+        );
+        ctx.streak = streakRes.rows[0] || { current_streak: 0, longest_streak: 0 };
+
+        // Programs catalog summary
+        const progsRes = await pool.query(
+            `SELECT category, COUNT(*) cnt FROM products WHERE is_active = true GROUP BY category`
+        );
+        ctx.programCategories = progsRes.rows;
+
+        // Active certificates
+        const certsRes = await pool.query(
+            `SELECT COUNT(*) cnt FROM certificates WHERE status = 'active'`
+        );
+        ctx.activeCertificates = parseInt(certsRes.rows[0].cnt);
+
+    } catch (err) {
+        log.error('Error gathering AI context', err);
+    }
+    return ctx;
+}
+
+function buildSystemPrompt(ctx, username, dateStr) {
+    const dayName = new Date(dateStr + 'T12:00:00').toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', weekday: 'long' });
+
+    return `Ти — Клешня 🦀, розумний помічник дитячого розважального парку "Парк Закревського Періоду" (Київ).
+Ти відповідаєш ТІЛЬКИ українською мовою. Ти дружній, лаконічний, з легким гумором.
+Використовуй емодзі помірно. Відповідай коротко (2-5 речень), якщо не просять деталей.
+
+Сьогодні: ${dateStr} (${dayName})
+Користувач: ${username}
+
+=== КОНТЕКСТ (реальні дані з БД) ===
+
+📊 Бронювання сьогодні: ${ctx.todayBookings?.cnt || 0} (підтв: ${ctx.todayBookings?.confirmed || 0}, непідтв: ${ctx.todayBookings?.preliminary || 0})
+💰 Виручка сьогодні: ${ctx.todayBookings?.revenue || 0} ₴
+${ctx.upcomingBookings?.length > 0 ? 'Найближчі бронювання:\n' + ctx.upcomingBookings.map(b =>
+    `  - ${b.time || '?'} ${b.program_name || '?'} ${b.group_name ? '(' + b.group_name + ')' : ''} ${b.room ? '| ' + b.room : ''} | ${b.price || 0} ₴`
+).join('\n') : 'Бронювань на сьогодні немає.'}
+
+📋 Задачі користувача (активні): ${ctx.userTasks?.length || 0}
+${ctx.userTasks?.length > 0 ? ctx.userTasks.map(t =>
+    `  - #${t.id} ${t.title} [${t.priority}] ${t.deadline && new Date(t.deadline) < new Date() ? '⏰ ПРОСТРОЧЕНА' : ''}`
+).join('\n') : 'Немає активних задач.'}
+🔴 Всього прострочених задач: ${ctx.overdueTasks || 0}
+
+👥 Команда на зміні: ${ctx.teamToday?.length || 0}
+${ctx.teamToday?.length > 0 ? ctx.teamToday.map(t =>
+    `  - ${t.name} (${t.department}) ${t.shift_start || ''}–${t.shift_end || ''}`
+).join('\n') : 'Ніхто не на зміні.'}
+
+📈 Статистика тижня: ${ctx.weekStats?.cnt || 0} бронювань, ${ctx.weekStats?.revenue || 0} ₴
+🔥 Стрік: ${ctx.streak?.current_streak || 0} днів (рекорд: ${ctx.streak?.longest_streak || 0})
+🎭 Програм в каталозі: ${ctx.programCategories?.map(c => c.category + ': ' + c.cnt).join(', ') || 'немає'}
+🎫 Активних сертифікатів: ${ctx.activeCertificates || 0}
+
+=== ПРАВИЛА ===
+1. Відповідай ТІЛЬКИ на основі наданого контексту. Не вигадуй дані.
+2. Якщо даних недостатньо — скажи чесно.
+3. Ціни в гривнях (₴), формат "1 000 ₴".
+4. Можеш використовувати HTML теги <b>, <i> для форматування.
+5. Не пиши код, SQL, JSON — тільки людська відповідь.
+6. Якщо питають про щось не повʼязане з парком — ввічливо поверни до теми.
+7. Ти можеш рекомендувати дії: "Раджу підтвердити бронювання", "Варто перевірити прострочені задачі".`;
+}
+
+function extractSuggestions(responseText) {
+    const suggestions = [];
+    const lower = responseText.toLowerCase();
+
+    if (lower.includes('бронюван')) suggestions.push('Бронювання на завтра');
+    if (lower.includes('задач')) suggestions.push('Мої задачі');
+    if (lower.includes('виручк') || lower.includes('фінанс') || lower.includes('₴')) suggestions.push('Виручка за тиждень');
+    if (lower.includes('команд') || lower.includes('аніматор') || lower.includes('зміні')) suggestions.push('Хто працює?');
+    if (lower.includes('стрік') || lower.includes('бал')) suggestions.push('Мій стрік');
+    if (lower.includes('програм') || lower.includes('квест')) suggestions.push('Програми');
+
+    // Always have at least 3 suggestions
+    const defaults = ['Бронювання сьогодні', 'Мої задачі', 'Виручка', 'Хто працює?'];
+    for (const d of defaults) {
+        if (suggestions.length >= 4) break;
+        if (!suggestions.includes(d)) suggestions.push(d);
+    }
+
+    return suggestions.slice(0, 4);
+}
+
+/**
+ * Generate AI response via Claude Haiku
+ */
+async function generateAIResponse(userMessage, username, chatHistory) {
+    if (!AI_ENABLED || !anthropic) return null;
+
+    try {
+        const dateStr = getKyivDate(0);
+        const ctx = await gatherAIContext(username, dateStr);
+        const systemPrompt = buildSystemPrompt(ctx, username, dateStr);
+
+        // Build messages array from chat history (last 10 messages)
+        const messages = [];
+        if (chatHistory && chatHistory.length > 0) {
+            const recent = chatHistory.slice(-10);
+            for (const msg of recent) {
+                messages.push({
+                    role: msg.role === 'assistant' ? 'assistant' : 'user',
+                    content: msg.message
+                });
+            }
+        }
+        // Add current user message
+        messages.push({ role: 'user', content: userMessage });
+
+        const response = await anthropic.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 800,
+            system: systemPrompt,
+            messages
+        });
+
+        const text = response.content[0]?.text;
+        if (!text) return null;
+
+        const suggestions = extractSuggestions(text);
+
+        log.info(`AI response for ${username}: ${text.length} chars, ${response.usage?.input_tokens || '?'}+${response.usage?.output_tokens || '?'} tokens`);
+
+        return { message: text, suggestions, source: 'ai' };
+    } catch (err) {
+        log.error('Claude AI error, falling back to skills', err.message || err);
+        return null;
+    }
+}
 
 // --- Helpers ---
 
@@ -302,11 +515,11 @@ const HELLO_KEYWORDS = ['привіт', 'здоров', 'hi', 'hello', 'йо', '
 
 // --- Main Chat Engine ---
 
-async function generateChatResponse(userMessage, username) {
+async function generateChatResponse(userMessage, username, chatHistory) {
     const lower = userMessage.toLowerCase().trim();
 
     try {
-        // 1. Check for greetings
+        // 1. Check for greetings (fast path, no AI needed)
         if (HELLO_KEYWORDS.some(k => lower.includes(k)) && lower.length < 30) {
             return {
                 message: `🦀 Привіт! Я Клешня — твій помічник у парку. Питай що хочеш — бронювання, задачі, фінанси, команду. Або скажи "що ти вмієш?" для повного списку!`,
@@ -314,7 +527,7 @@ async function generateChatResponse(userMessage, username) {
             };
         }
 
-        // 2. Check for thanks
+        // 2. Check for thanks (fast path)
         if (['дякую', 'спасибі', 'thanks', 'дяк', 'thank'].some(k => lower.includes(k))) {
             return {
                 message: '🦀 Завжди радий допомогти! Що ще цікавить?',
@@ -326,7 +539,13 @@ async function generateChatResponse(userMessage, username) {
         const categoryResult = await tryHandleCategoryStats(lower, username);
         if (categoryResult) return categoryResult;
 
-        // 3. Find matching skill (check longer keywords first to match "створи задачу" before "задач")
+        // 3. Try AI first (if enabled)
+        if (AI_ENABLED) {
+            const aiResult = await generateAIResponse(userMessage, username, chatHistory);
+            if (aiResult) return aiResult;
+        }
+
+        // 4. Fallback: skill engine (keyword matching)
         const sortedSkills = [...SKILLS].sort((a, b) => {
             const maxA = Math.max(...a.keywords.map(k => k.length));
             const maxB = Math.max(...b.keywords.map(k => k.length));
@@ -339,7 +558,7 @@ async function generateChatResponse(userMessage, username) {
             }
         }
 
-        // 4. Default
+        // 5. Default
         return {
             message: '🦀 Цікаве питання! Ось що я вмію — обирай тему:',
             suggestions: ['Що ти вмієш?', 'Бронювання', 'Задачі', 'Виручка']
@@ -1044,5 +1263,6 @@ async function handleAnalytics(lower, username) {
 // --- Exports ---
 module.exports = {
     generateChatResponse,
-    SKILLS // Export for potential API listing
+    SKILLS,
+    AI_ENABLED
 };

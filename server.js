@@ -100,6 +100,49 @@ app.use('/api/stats', require('./routes/stats'));
 const settingsRouter = require('./routes/settings');
 app.use('/api', settingsRouter);
 
+// --- Daily digest endpoint (Task 6) ---
+app.get('/api/shifts/daily-digest', async (req, res) => {
+    try {
+        const { getKyivDateStr } = require('./services/booking');
+        const { buildAndSendDigest } = require('./services/scheduler');
+        const todayStr = getKyivDateStr();
+
+        // Also gather today's tasks
+        const tasksResult = await pool.query(
+            "SELECT title, status, priority FROM tasks WHERE date = $1 ORDER BY priority DESC, created_at",
+            [todayStr]
+        );
+
+        // Send digest via existing scheduler logic (bookings + afisha)
+        const digestResult = await buildAndSendDigest(todayStr);
+
+        // If there are tasks, send a separate tasks digest
+        if (tasksResult.rows.length > 0) {
+            const { sendTelegramMessage, getConfiguredChatId } = require('./services/telegram');
+            const chatId = await getConfiguredChatId();
+            if (chatId) {
+                const [y, m, d] = todayStr.split('-');
+                let taskText = `📝 <b>ЗАДАЧІ НА ${d}.${m}.${y}</b>\n\n`;
+                for (const task of tasksResult.rows) {
+                    const icon = task.status === 'done' ? '✅' : task.status === 'in_progress' ? '🔄' : '⬜';
+                    taskText += `${icon} ${task.title}\n`;
+                }
+                await sendTelegramMessage(chatId, taskText);
+            }
+        }
+
+        res.json({
+            success: true,
+            date: todayStr,
+            bookings: digestResult?.count || 0,
+            tasks: tasksResult.rows.length
+        });
+    } catch (err) {
+        log.error('Daily digest endpoint error', err);
+        res.status(500).json({ error: 'Failed to send digest' });
+    }
+});
+
 // --- Static pages ---
 app.get('/invite', (req, res) => {
     res.sendFile(path.join(__dirname, 'invite.html'));

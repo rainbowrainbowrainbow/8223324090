@@ -20,6 +20,7 @@ const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya
 const { createLogger } = require('./utils/logger');
 const { validateEnv } = require('./utils/validateEnv');
 const { initWebSocket, getWSS } = require('./services/websocket');
+const { runMigrations } = require('./db/migrate');
 
 const log = createLogger('Server');
 
@@ -144,7 +145,9 @@ process.on('uncaughtException', (err) => {
 let server;
 const schedulerIntervals = [];
 
-initDatabase().catch(err => {
+initDatabase().then(() => {
+    return runMigrations(pool);
+}).catch(err => {
     log.error('Failed to initialize database, exiting', err);
     process.exit(1);
 }).then(() => {

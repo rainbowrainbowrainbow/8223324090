@@ -718,6 +718,25 @@ async function initDatabase() {
             log.info('Test contractor seeded: Євгенія (@armonia_del_mundo)');
         }
 
+        // v12.6: Seed openclaw API user
+        const openclawSeedVersion = '009_seed_user_openclaw';
+        const openclawSeedCheck = await pool.query(
+            'SELECT 1 FROM schema_migrations WHERE version = $1', [openclawSeedVersion]
+        );
+        if (openclawSeedCheck.rows.length === 0) {
+            const openclawHash = await bcrypt.hash('OpenClaw2026', 10);
+            await pool.query(
+                `INSERT INTO users (username, password_hash, role, name)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (username) DO UPDATE SET password_hash = $2`,
+                ['openclaw', openclawHash, 'user', 'OpenClaw 🦞']
+            );
+            await pool.query(
+                'INSERT INTO schema_migrations (version) VALUES ($1)', [openclawSeedVersion]
+            );
+            log.info('User seeded: openclaw (role: user)');
+        }
+
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);

@@ -269,6 +269,44 @@
             box-shadow: none;
         }
 
+        .chat-voice-btn {
+            width: 46px; height: 46px;
+            border: 2px solid var(--gray-200);
+            border-radius: 14px;
+            background: var(--white);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+            flex-shrink: 0;
+            color: var(--gray-600);
+        }
+        .chat-voice-btn:hover {
+            border-color: #EA580C;
+            background: rgba(234,88,12,0.04);
+        }
+        .chat-voice-btn.recording {
+            border-color: #DC2626;
+            background: #FEE2E2;
+            animation: voice-pulse 1.5s infinite;
+        }
+        @keyframes voice-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.3); }
+            50% { box-shadow: 0 0 0 8px rgba(220,38,38,0); }
+        }
+        body.dark-mode .chat-voice-btn {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+        }
+        body.dark-mode .chat-voice-btn:hover {
+            border-color: rgba(234,88,12,0.5);
+            background: rgba(234,88,12,0.1);
+        }
+        body.dark-mode .chat-voice-btn.recording {
+            background: rgba(220,38,38,0.15);
+            border-color: rgba(220,38,38,0.5);
+        }
+
         .chat-hint {
             text-align: center;
             padding: 4px 0;
@@ -633,6 +671,7 @@
                     <div class="chat-input-wrap">
                         <input type="text" class="chat-input" id="chatInput" placeholder="Написати Клешні..." maxlength="500" autocomplete="off">
                     </div>
+                    <button class="chat-voice-btn" id="chatVoiceBtn" title="Голосове повідомлення">🎤</button>
                     <button class="chat-send-btn" id="chatSendBtn" title="Надіслати">➤</button>
                 </div>
             </div>
@@ -874,6 +913,62 @@
         });
 
         checkAuth();
+
+        // ==========================================
+        // VOICE INPUT (Web Speech API)
+        // ==========================================
+        const chatVoiceBtn = document.getElementById('chatVoiceBtn');
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let voiceRecognition = null;
+        let voiceRecording = false;
+
+        if (!SpeechRecognition) {
+            chatVoiceBtn.style.display = 'none';
+        } else {
+            voiceRecognition = new SpeechRecognition();
+            voiceRecognition.lang = 'uk-UA';
+            voiceRecognition.interimResults = true;
+            voiceRecognition.continuous = false;
+            voiceRecognition.maxAlternatives = 1;
+
+            voiceRecognition.onresult = (event) => {
+                let transcript = '';
+                for (let i = 0; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
+                chatInput.value = transcript;
+            };
+
+            voiceRecognition.onend = () => {
+                voiceRecording = false;
+                chatVoiceBtn.classList.remove('recording');
+                chatVoiceBtn.innerHTML = '🎤';
+                if (chatInput.value.trim()) {
+                    sendMessage();
+                }
+            };
+
+            voiceRecognition.onerror = (event) => {
+                console.error('Speech error:', event.error);
+                voiceRecording = false;
+                chatVoiceBtn.classList.remove('recording');
+                chatVoiceBtn.innerHTML = '🎤';
+            };
+
+            chatVoiceBtn.addEventListener('click', () => {
+                if (voiceRecording) {
+                    voiceRecognition.stop();
+                    voiceRecording = false;
+                    chatVoiceBtn.classList.remove('recording');
+                    chatVoiceBtn.innerHTML = '🎤';
+                } else {
+                    voiceRecognition.start();
+                    voiceRecording = true;
+                    chatVoiceBtn.classList.add('recording');
+                    chatVoiceBtn.innerHTML = '⏹';
+                }
+            });
+        }
 
         // ==========================================
         // REPORT BUG / IMPROVEMENT

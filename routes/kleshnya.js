@@ -1,12 +1,14 @@
 /**
- * routes/kleshnya.js — Kleshnya greeting & chat API (v11.0)
+ * routes/kleshnya.js — Kleshnya greeting & chat API (v12.6)
  *
  * GET  /api/kleshnya/greeting?date=YYYY-MM-DD — get daily greeting (cached 4h)
  * GET  /api/kleshnya/chat                      — get chat history
- * POST /api/kleshnya/chat                      — add user message + get response
+ * POST /api/kleshnya/chat                      — add user message + get response (skill-based)
+ * GET  /api/kleshnya/skills                    — list available skills
  */
 const router = require('express').Router();
-const { getGreeting, getChatHistory, addChatMessage, gatherContext } = require('../services/kleshnya-greeting');
+const { getGreeting, getChatHistory, addChatMessage } = require('../services/kleshnya-greeting');
+const { generateChatResponse, SKILLS } = require('../services/kleshnya-chat');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('KleshnyaRoute');
@@ -38,7 +40,7 @@ router.get('/chat', async (req, res) => {
     }
 });
 
-// POST message to chat
+// POST message to chat — skill-based engine
 router.post('/chat', async (req, res) => {
     try {
         const username = req.user?.username;
@@ -52,20 +54,19 @@ router.post('/chat', async (req, res) => {
         // Save user message
         await addChatMessage(username, 'user', message.trim());
 
-        // Generate response (template-based for now, AI agent hook later)
-        const dateStr = new Date().toISOString().split('T')[0];
-        const ctx = await gatherContext(username, dateStr);
-        const response = generateChatResponse(message.trim(), ctx);
+        // Generate response via skill engine
+        const result = await generateChatResponse(message.trim(), username);
 
         // Save assistant response
-        const saved = await addChatMessage(username, 'assistant', response);
+        const saved = await addChatMessage(username, 'assistant', result.message);
 
         res.json({
             role: 'assistant',
-            message: response,
+            message: result.message,
+            suggestions: result.suggestions || [],
             id: saved.id,
             created_at: saved.created_at,
-            source: 'template'
+            source: 'skills'
         });
     } catch (err) {
         log.error('Error in chat', err);
@@ -73,66 +74,16 @@ router.post('/chat', async (req, res) => {
     }
 });
 
-// Template-based chat responses
-function generateChatResponse(userMessage, ctx) {
-    const lower = userMessage.toLowerCase();
-
-    if (lower.includes('бронюван') || lower.includes('booking')) {
-        if (ctx.bookingsCount > 0) {
-            const confirmed = ctx.bookingsCount - ctx.preliminaryCount;
-            let msg = `📊 Сьогодні ${ctx.bookingsCount} бронювань на ${ctx.totalRevenue} ₴.`;
-            if (ctx.preliminaryCount > 0) {
-                msg += ` ${ctx.preliminaryCount} непідтверджених — варто глянути.`;
-            } else {
-                msg += ` Всі ${confirmed} підтверджені, все ок!`;
-            }
-            return msg;
-        }
-        return '📊 Бронювань на сьогодні немає. Поки тихо!';
-    }
-
-    if (lower.includes('задач') || lower.includes('task') || lower.includes('місі')) {
-        if (ctx.overdueTasks > 0) {
-            return `🔴 Є ${ctx.overdueTasks} прострочених задач! Всього активних: ${ctx.pendingTasks}. Варто розібратись.`;
-        }
-        if (ctx.pendingTasks > 0) {
-            return `📋 Активних задач: ${ctx.pendingTasks}. Прострочених немає — все під контролем.`;
-        }
-        return '✅ Задач немає — все зроблено, можна відпочити!';
-    }
-
-    if (lower.includes('стрік') || lower.includes('streak')) {
-        if (ctx.streak >= 7) {
-            return `🔥 Стрік ${ctx.streak} днів! Ти легенда, так тримати!`;
-        }
-        if (ctx.streak > 0) {
-            return `🔥 Стрік: ${ctx.streak} днів. Не зупиняйся!`;
-        }
-        return '🔥 Стрік поки 0. Виконуй задачі щодня — і він почне рости!';
-    }
-
-    if (lower.includes('аніматор') || lower.includes('animator') || lower.includes('команд')) {
-        if (ctx.animatorsToday > 0) {
-            return `👥 Сьогодні ${ctx.animatorsToday} аніматорів на зміні. Команда на місці!`;
-        }
-        return '👥 Лінії поки порожні — перевір розклад.';
-    }
-
-    if (lower.includes('привіт') || lower.includes('здоров') || lower.includes('hi') || lower.includes('hello')) {
-        return '🦀 Привіт! Питай про бронювання, задачі, стрік чи аніматорів — розкажу!';
-    }
-
-    if (lower.includes('допомо') || lower.includes('help') || lower.includes('що вмієш')) {
-        return '🦀 Можу розповісти про:\n• 📊 Бронювання — скільки і на яку суму\n• 📋 Задачі — що треба зробити\n• 🔥 Стрік — скільки днів поспіль працюєш\n• 👥 Аніматори — хто сьогодні на зміні';
-    }
-
-    // Default
-    const defaults = [
-        '🦀 Хм, не зовсім зрозумів. Спробуй запитати про бронювання, задачі, стрік або аніматорів!',
-        '🦀 Поки вмію відповідати на: бронювання, задачі, стрік, аніматори. Скоро навчусь більшому!',
-        '🦀 Цікаве питання! Але поки знаю тільки про бронювання, задачі, стрік та команду.'
-    ];
-    return defaults[Math.floor(Math.random() * defaults.length)];
-}
+// GET available skills
+router.get('/skills', (req, res) => {
+    const skills = SKILLS.map(s => ({
+        id: s.id,
+        name: s.name,
+        icon: s.icon,
+        description: s.description,
+        examples: s.examples
+    }));
+    res.json(skills);
+});
 
 module.exports = router;

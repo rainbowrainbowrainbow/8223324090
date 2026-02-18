@@ -192,7 +192,10 @@ async function handleKleshnyaQuestion(topic, allBtns) {
             bookings: 'Розкажи про бронювання на сьогодні',
             tasks: 'Які у мене задачі?',
             streak: 'Який мій стрік?',
-            animators: 'Скільки аніматорів сьогодні на зміні?'
+            animators: 'Скільки аніматорів сьогодні на зміні?',
+            revenue: 'Виручка за тиждень',
+            team: 'Хто працює сьогодні?',
+            programs: 'Покажи програми'
         };
 
         const message = topicMessages[topic] || 'Що нового?';

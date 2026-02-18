@@ -278,6 +278,58 @@
         }
 
         /* ==========================================
+           SUGGESTION CHIPS
+           ========================================== */
+        .chat-suggestions {
+            display: flex;
+            gap: 6px;
+            padding: 8px 0 4px;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+            animation: suggestions-in 0.3s ease-out;
+        }
+        @keyframes suggestions-in {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .suggestion-chip {
+            padding: 8px 14px;
+            border: 1.5px solid #FDBA74;
+            border-radius: 20px;
+            background: linear-gradient(135deg, #FFF7ED, #FFEDD5);
+            color: #9A3412;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+        }
+        .suggestion-chip:hover {
+            background: linear-gradient(135deg, #FFEDD5, #FED7AA);
+            border-color: #EA580C;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(234,88,12,0.15);
+        }
+        .suggestion-chip:active {
+            transform: translateY(0);
+        }
+
+        body.dark-mode .suggestion-chip {
+            background: rgba(234,88,12,0.08);
+            border-color: rgba(234,88,12,0.3);
+            color: #FDBA74;
+        }
+        body.dark-mode .suggestion-chip:hover {
+            background: rgba(234,88,12,0.15);
+            border-color: rgba(234,88,12,0.5);
+            box-shadow: 0 2px 10px rgba(234,88,12,0.2);
+        }
+
+        /* ==========================================
            REPORT MODAL
            ========================================== */
         .report-overlay {
@@ -571,8 +623,10 @@
                     <!-- Messages loaded dynamically -->
                 </div>
 
-                <div class="chat-hint">
-                    Питай про бронювання, задачі, стріки — Клешня допоможе!
+                <div class="chat-suggestions" id="chatSuggestions"></div>
+
+                <div class="chat-hint" id="chatHint">
+                    📊 Бронювання · 📋 Задачі · 💰 Фінанси · 👥 Команда · 🎭 Програми · 🔥 Стрік — питай!
                 </div>
 
                 <div class="chat-input-area">
@@ -620,11 +674,13 @@
     <script src="js/api.js?v=12.2"></script>
     <script src="js/auth.js?v=12.2"></script>
     <script>
-    // Kleshnya Chat Page Logic
+    // Kleshnya Chat Page Logic (v12.6 — skill-based engine)
     (function() {
         const chatMessages = document.getElementById('chatMessages');
         const chatInput = document.getElementById('chatInput');
         const chatSendBtn = document.getElementById('chatSendBtn');
+        const chatSuggestions = document.getElementById('chatSuggestions');
+        const chatHint = document.getElementById('chatHint');
 
         function getToken() {
             return localStorage.getItem('pzp_token');
@@ -633,6 +689,20 @@
         function formatTime(dateStr) {
             const d = new Date(dateStr);
             return d.toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
+        }
+
+        // Sanitize HTML — allow only safe tags from our own server
+        function sanitizeHtml(html) {
+            const div = document.createElement('div');
+            div.innerHTML = html;
+            // Remove script tags and event handlers
+            div.querySelectorAll('script,style,iframe,object,embed').forEach(el => el.remove());
+            div.querySelectorAll('*').forEach(el => {
+                for (const attr of [...el.attributes]) {
+                    if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+                }
+            });
+            return div.innerHTML;
         }
 
         function addMessage(role, text, time) {
@@ -648,7 +718,12 @@
 
             const bubble = document.createElement('div');
             bubble.className = 'chat-msg-bubble';
-            bubble.textContent = text;
+            // Assistant messages may contain HTML formatting from skill engine
+            if (role === 'assistant') {
+                bubble.innerHTML = sanitizeHtml(text);
+            } else {
+                bubble.textContent = text;
+            }
             wrapper.appendChild(bubble);
 
             if (time) {
@@ -664,11 +739,34 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
+        function renderSuggestions(suggestions) {
+            chatSuggestions.innerHTML = '';
+            if (!suggestions || suggestions.length === 0) return;
+
+            // Hide hint when we have suggestions
+            chatHint.style.display = 'none';
+
+            for (const text of suggestions) {
+                const chip = document.createElement('button');
+                chip.className = 'suggestion-chip';
+                chip.textContent = text;
+                chip.addEventListener('click', () => {
+                    chatInput.value = text;
+                    sendMessage();
+                });
+                chatSuggestions.appendChild(chip);
+            }
+        }
+
+        function clearSuggestions() {
+            chatSuggestions.innerHTML = '';
+        }
+
         function showTyping() {
             const typing = document.createElement('div');
             typing.className = 'chat-typing';
             typing.id = 'typingIndicator';
-            typing.innerHTML = '<span>🦀 Клешня друкує</span><div class="chat-typing-dots"><span></span><span></span><span></span></div>';
+            typing.innerHTML = '<span>🦀 Клешня думає</span><div class="chat-typing-dots"><span></span><span></span><span></span></div>';
             chatMessages.appendChild(typing);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
@@ -696,9 +794,13 @@
                         addMessage(msg.role, msg.message, msg.created_at);
                     }
                 }
+
+                // Show initial suggestions
+                renderSuggestions(['Що ти вмієш?', 'Бронювання сьогодні', 'Мої задачі', 'Хто працює?']);
             } catch (err) {
                 console.error('Error loading chat:', err);
                 addMessage('assistant', '🦀 Привіт! Я Клешня. Виникла помилка при завантаженні — але я на зв\'язку!', new Date().toISOString());
+                renderSuggestions(['Бронювання', 'Задачі', 'Команда', 'Допомога']);
             }
         }
 
@@ -708,6 +810,7 @@
 
             chatInput.value = '';
             chatSendBtn.disabled = true;
+            clearSuggestions();
             addMessage('user', text, new Date().toISOString());
             showTyping();
 
@@ -717,12 +820,18 @@
 
                 if (response && response.message) {
                     addMessage('assistant', response.message, response.created_at || new Date().toISOString());
+                    // Render follow-up suggestions
+                    if (response.suggestions && response.suggestions.length > 0) {
+                        renderSuggestions(response.suggestions);
+                    }
                 } else {
                     addMessage('assistant', '🦀 Упс, щось пішло не так. Спробуй ще раз!', new Date().toISOString());
+                    renderSuggestions(['Бронювання', 'Задачі', 'Допомога']);
                 }
             } catch (err) {
                 hideTyping();
                 addMessage('assistant', '🦀 Помилка з\'єднання. Перевір інтернет!', new Date().toISOString());
+                renderSuggestions(['Бронювання', 'Задачі', 'Допомога']);
             }
 
             chatSendBtn.disabled = false;

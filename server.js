@@ -91,7 +91,10 @@ app.use('/api/kleshnya', require('./routes/kleshnya'));
 app.use('/api/designs', require('./routes/designs'));
 app.use('/api/contractors', require('./routes/contractors'));
 
-// Settings router handles /api/stats, /api/settings, /api/rooms, /api/health
+// Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
+app.use('/api/stats', require('./routes/stats'));
+
+// Settings router handles /api/stats/:from/:to, /api/settings, /api/rooms, /api/health
 const settingsRouter = require('./routes/settings');
 app.use('/api', settingsRouter);
 

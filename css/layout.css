@@ -68,7 +68,7 @@
 
 .em-logo-sub {
     font-size: 0.65em;
-    color: #666;
+    color: rgba(245,200,66,0.5);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-family: 'Inter', sans-serif;

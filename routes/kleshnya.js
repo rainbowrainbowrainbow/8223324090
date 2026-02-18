@@ -17,6 +17,7 @@
  *
  * Bridge (OpenClaw polling):
  *   GET    /api/kleshnya/pending-messages           — poll pending messages (secret auth)
+ *   POST   /api/kleshnya/sync-chat                  — synchronous chat via local engine (secret auth)
  *   POST   /api/kleshnya/webhook                    — OpenClaw response (secret auth)
  *
  * Reactions:
@@ -395,6 +396,99 @@ router.get('/pending-messages', async (req, res) => {
         res.json({ messages });
     } catch (err) {
         log.error('Error fetching pending messages', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /sync-chat — synchronous chat via local engine (for OpenClaw bridge)
+// Auth: X-Webhook-Secret (NOT JWT). Always uses local engine, never queues to pending.
+router.post('/sync-chat', async (req, res) => {
+    try {
+        const secret = req.headers['x-webhook-secret'] || req.query.secret;
+        if (!KLESHNYA_WEBHOOK_SECRET || secret !== KLESHNYA_WEBHOOK_SECRET) {
+            return res.status(403).json({ error: 'Invalid secret' });
+        }
+
+        const { username, message, session_id } = req.body;
+        if (!message || !message.trim()) {
+            return res.status(400).json({ error: 'message is required' });
+        }
+        if (!username) {
+            return res.status(400).json({ error: 'username is required' });
+        }
+
+        const text = message.trim();
+        let activeSessionId = session_id || null;
+
+        // Verify session exists (or auto-create)
+        if (activeSessionId) {
+            const check = await pool.query(
+                'SELECT id FROM chat_sessions WHERE id = $1 AND username = $2',
+                [activeSessionId, username]
+            );
+            if (check.rows.length === 0) {
+                const autoTitle = text.substring(0, 30) + (text.length > 30 ? '...' : '');
+                const newSession = await pool.query(
+                    'INSERT INTO chat_sessions (username, title) VALUES ($1, $2) RETURNING id',
+                    [username, autoTitle]
+                );
+                activeSessionId = newSession.rows[0].id;
+            }
+        }
+
+        // Save user message
+        const savedUser = await addChatMessage(username, 'user', text, activeSessionId);
+
+        if (activeSessionId) {
+            await pool.query(
+                `UPDATE chat_sessions SET message_count = message_count + 1,
+                 last_message = $1, last_message_at = NOW(), updated_at = NOW() WHERE id = $2`,
+                [text.substring(0, 100), activeSessionId]
+            );
+        }
+
+        // Generate response via local engine (always sync, never pending)
+        const chatHistory = AI_ENABLED
+            ? await getChatHistory(username, 20, activeSessionId)
+            : [];
+        const result = await generateChatResponse(text, username, chatHistory);
+
+        // Save assistant response
+        const saved = await addChatMessage(
+            username, 'assistant', result.message, activeSessionId, result.skill_used
+        );
+
+        if (activeSessionId) {
+            await pool.query(
+                `UPDATE chat_sessions SET message_count = message_count + 1,
+                 last_message = $1, last_message_at = NOW(), updated_at = NOW() WHERE id = $2`,
+                [result.message.substring(0, 100), activeSessionId]
+            );
+        }
+
+        // Broadcast via WebSocket so CRM UI updates in real-time
+        sendToUsername(username, 'kleshnya:reply', {
+            id: saved.id,
+            role: 'assistant',
+            message: result.message,
+            created_at: saved.created_at,
+            source: result.source || 'skills',
+            session_id: activeSessionId
+        });
+
+        log.info(`sync-chat: replied to "${text.substring(0, 40)}" for ${username}`);
+
+        res.json({
+            role: 'assistant',
+            message: result.message,
+            session_id: activeSessionId,
+            suggestions: result.suggestions || [],
+            id: saved.id,
+            created_at: saved.created_at,
+            source: result.source || 'skills'
+        });
+    } catch (err) {
+        log.error('Error in sync-chat', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

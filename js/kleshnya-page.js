@@ -655,44 +655,6 @@
     // ==========================================
     // WEBSOCKET — REAL-TIME RESPONSES
     // ==========================================
-    window.addEventListener('message', handleWSEvent);
-
-    // Listen for WS events dispatched by ws.js
-    function setupWSListener() {
-        // Override the default handler to catch kleshnya events
-        var origHandler = null;
-
-        // Poll for ParkWS messages - listen to raw WS events
-        if (typeof ParkWS !== 'undefined') {
-            // ParkWS dispatches unknown events to console.log
-            // We intercept them via a custom event approach
-        }
-
-        // Use a MutationObserver-like approach: periodically check nothing
-        // Actually, we need to hook into ws.js message handler
-        // The cleanest way: listen for custom events on window
-    }
-
-    // Patch ws.js to emit custom events for kleshnya
-    // We add a listener that hooks into the raw WebSocket
-    function hookWebSocket() {
-        // Wait for ParkWS to be available and connected
-        var checkInterval = setInterval(function () {
-            if (typeof ParkWS === 'undefined' || !ParkWS.isConnected()) return;
-            clearInterval(checkInterval);
-
-            // ParkWS.connect creates _ws internally. We can't access it directly.
-            // Instead, we'll use the window event approach by extending ws.js behavior.
-            // For now, listen for 'ws:kleshnya' custom events
-        }, 1000);
-    }
-
-    // Kleshnya WS events come through as custom events dispatched by ws.js
-    // We need to add kleshnya event handling to ws.js message handler
-    // Since ws.js logs unknown events, let's intercept via console override
-    // Better approach: just add kleshnya events to the window dispatch pattern
-
-    // Actually the simplest: add custom WS listener directly
     function initKleshnyaWS() {
         var token = getToken();
         if (!token) return;

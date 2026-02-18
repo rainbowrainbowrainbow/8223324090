@@ -1,17 +1,14 @@
 /**
- * services/kleshnya-bridge.js — Telegram Bridge to OpenClaw (v2.0)
+ * services/kleshnya-bridge.js — HTTP Polling Bridge to OpenClaw (v3.0)
  *
- * Sends CRM chat messages to the real Kleshnya (@EventHelper_One_Bot)
- * via Telegram API, and handles webhook responses from OpenClaw.
- *
- * Flow:
- *  1. User sends message in CRM → sendToOpenClaw() → Telegram message
- *  2. OpenClaw processes → POST /api/kleshnya/webhook → handleWebhookResponse()
- *  3. CRM saves response + broadcasts via WebSocket
+ * Polling architecture (no Telegram dependency):
+ *  1. User sends message in CRM → saved to DB with is_generating=TRUE
+ *  2. OpenClaw polls GET /api/kleshnya/pending-messages every ~30s
+ *  3. OpenClaw processes → POST /api/kleshnya/webhook → handleWebhookResponse()
+ *  4. CRM saves response + broadcasts via WebSocket
  *
  * Env vars:
- *  KLESHNYA_BRIDGE_CHAT_ID  — Telegram chat where OpenClaw receives messages
- *  KLESHNYA_WEBHOOK_SECRET  — shared secret for webhook validation
+ *  KLESHNYA_WEBHOOK_SECRET  — shared secret for webhook + polling auth
  *  MEDIA_CHANNEL_ID         — channel for storing generated media
  */
 const { telegramRequest, TELEGRAM_BOT_TOKEN } = require('./telegram');
@@ -20,59 +17,47 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('KleshnyaBridge');
 
-const KLESHNYA_BRIDGE_CHAT_ID = process.env.KLESHNYA_BRIDGE_CHAT_ID;
 const KLESHNYA_WEBHOOK_SECRET = process.env.KLESHNYA_WEBHOOK_SECRET;
 const MEDIA_CHANNEL_ID = process.env.MEDIA_CHANNEL_ID;
-const BRIDGE_ENABLED = !!(KLESHNYA_BRIDGE_CHAT_ID && TELEGRAM_BOT_TOKEN);
+const BRIDGE_ENABLED = !!KLESHNYA_WEBHOOK_SECRET;
 
 if (BRIDGE_ENABLED) {
-    log.info(`OpenClaw bridge enabled → chat_id: ${KLESHNYA_BRIDGE_CHAT_ID}`);
+    log.info('OpenClaw bridge enabled (HTTP polling mode)');
 } else {
-    log.info('OpenClaw bridge disabled (no KLESHNYA_BRIDGE_CHAT_ID). Using local AI/skills.');
-}
-
-if (!KLESHNYA_WEBHOOK_SECRET) {
-    log.warn('KLESHNYA_WEBHOOK_SECRET not set — webhook endpoint will reject all requests');
+    log.info('OpenClaw bridge disabled (no KLESHNYA_WEBHOOK_SECRET). Using local AI/skills.');
 }
 
 /**
- * Send a user message to OpenClaw via Telegram Bot API.
- * Uses the standardized [CRM_CHAT] prefix format.
+ * Atomically fetch and mark pending messages for OpenClaw.
+ * Uses UPDATE ... RETURNING to prevent double-pickup.
  *
- * @param {number} sessionId - Chat session ID
- * @param {string} username - CRM username
- * @param {number} messageId - kleshnya_chat message ID
- * @param {string} text - User message text
- * @returns {number|null} Telegram message_id or null on failure
+ * Messages are "pending" when: role='user', is_generating=TRUE, telegram_message_id IS NULL
+ * After pickup: telegram_message_id is set to -1 (marker for "picked up by OpenClaw")
+ *
+ * @returns {Array} pending messages with session context
  */
-async function sendToOpenClaw(sessionId, username, messageId, text) {
-    if (!BRIDGE_ENABLED) return null;
+async function getPendingMessages() {
+    // Atomically mark pending messages as picked up and return them
+    const result = await pool.query(
+        `UPDATE kleshnya_chat
+         SET telegram_message_id = -1
+         WHERE id IN (
+             SELECT kc.id FROM kleshnya_chat kc
+             JOIN chat_sessions cs ON cs.id = kc.session_id
+             WHERE kc.role = 'user'
+               AND kc.is_generating = TRUE
+               AND kc.telegram_message_id IS NULL
+             ORDER BY kc.created_at ASC
+             LIMIT 20
+         )
+         RETURNING id, session_id, username, message, created_at`
+    );
 
-    const formatted = `[CRM_CHAT session:${sessionId} user:${username} msg_id:${messageId}]\n${text}`;
-
-    try {
-        const result = await telegramRequest('sendMessage', {
-            chat_id: KLESHNYA_BRIDGE_CHAT_ID,
-            text: formatted,
-            disable_notification: false
-        });
-
-        if (result && result.ok && result.result) {
-            const tgMsgId = result.result.message_id;
-            await pool.query(
-                'UPDATE kleshnya_chat SET telegram_message_id = $1 WHERE id = $2',
-                [tgMsgId, messageId]
-            );
-            log.info(`Bridge: sent msg_id=${messageId} session=${sessionId} → tg_msg=${tgMsgId}`);
-            return tgMsgId;
-        }
-
-        log.warn('Bridge: sendMessage returned error', result);
-        return null;
-    } catch (err) {
-        log.error(`Bridge: send failed — ${err.message}`);
-        return null;
+    if (result.rows.length > 0) {
+        log.info(`Pending: ${result.rows.length} message(s) picked up by OpenClaw`);
     }
+
+    return result.rows;
 }
 
 /**
@@ -197,7 +182,7 @@ async function handleWebhookResponse(body) {
 
 /**
  * Get a Telegram file URL for a given file_id.
- * Uses Bot API getFile → constructs download URL.
+ * Still uses Telegram API for media file downloads.
  *
  * @param {string} fileId - Telegram file_id
  * @returns {string|null} Download URL
@@ -217,11 +202,10 @@ async function getTelegramFileUrl(fileId) {
 }
 
 module.exports = {
-    sendToOpenClaw,
+    getPendingMessages,
     handleWebhookResponse,
     getTelegramFileUrl,
     BRIDGE_ENABLED,
     KLESHNYA_WEBHOOK_SECRET,
-    KLESHNYA_BRIDGE_CHAT_ID,
     MEDIA_CHANNEL_ID
 };

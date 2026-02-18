@@ -15,8 +15,9 @@
  *   POST   /api/kleshnya/chat                      — send message (+ session + bridge)
  *   GET    /api/kleshnya/skills                    — available skills
  *
- * Webhook:
- *   POST   /api/kleshnya/webhook                   — OpenClaw response (unauthenticated)
+ * Bridge (OpenClaw polling):
+ *   GET    /api/kleshnya/pending-messages           — poll pending messages (secret auth)
+ *   POST   /api/kleshnya/webhook                    — OpenClaw response (secret auth)
  *
  * Reactions:
  *   PATCH  /api/kleshnya/messages/:id/reaction     — like/dislike
@@ -30,7 +31,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { getGreeting, getChatHistory, addChatMessage } = require('../services/kleshnya-greeting');
 const { generateChatResponse, SKILLS, AI_ENABLED } = require('../services/kleshnya-chat');
-const { sendToOpenClaw, handleWebhookResponse, getTelegramFileUrl,
+const { getPendingMessages, handleWebhookResponse, getTelegramFileUrl,
         BRIDGE_ENABLED, KLESHNYA_WEBHOOK_SECRET } = require('../services/kleshnya-bridge');
 const { sendToUsername } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
@@ -316,41 +317,29 @@ router.post('/chat', async (req, res) => {
             );
         }
 
-        // --- Bridge path: forward to OpenClaw ---
+        // --- Bridge path: mark as pending for OpenClaw polling ---
         if (BRIDGE_ENABLED && activeSessionId) {
             const genTrigger = detectGenerationTrigger(text);
 
-            // Mark message as generating (shows typing indicator)
+            // Mark message as pending (OpenClaw will pick it up via GET /pending-messages)
             await pool.query(
                 'UPDATE kleshnya_chat SET is_generating = TRUE WHERE id = $1',
                 [savedUser.id]
             );
 
-            // Send to OpenClaw via Telegram bridge
-            const tgMsgId = await sendToOpenClaw(activeSessionId, username, savedUser.id, text);
+            // Broadcast thinking event
+            sendToUsername(username, 'kleshnya:thinking', { session_id: activeSessionId });
 
-            if (tgMsgId) {
-                // Broadcast thinking event
-                sendToUsername(username, 'kleshnya:thinking', { session_id: activeSessionId });
-
-                return res.json({
-                    status: 'pending',
-                    session_id: activeSessionId,
-                    message_id: savedUser.id,
-                    action: genTrigger ? 'generating' : 'thinking',
-                    generation: genTrigger ? { skill: genTrigger.type, prompt: text } : undefined,
-                    message: genTrigger
-                        ? `Зараз створюю ${genTrigger.label}! ⏳ ~30 сек...`
-                        : undefined
-                });
-            }
-
-            // Bridge failed → fall back to local engine
-            await pool.query(
-                'UPDATE kleshnya_chat SET is_generating = FALSE WHERE id = $1',
-                [savedUser.id]
-            );
-            log.warn('Bridge send failed, falling back to local engine');
+            return res.json({
+                status: 'pending',
+                session_id: activeSessionId,
+                message_id: savedUser.id,
+                action: genTrigger ? 'generating' : 'thinking',
+                generation: genTrigger ? { skill: genTrigger.type, prompt: text } : undefined,
+                message: genTrigger
+                    ? `Зараз створюю ${genTrigger.label}! ⏳ ~30 сек...`
+                    : undefined
+            });
         }
 
         // --- Local engine path: AI + skills ---
@@ -389,9 +378,28 @@ router.post('/chat', async (req, res) => {
 });
 
 // ==========================================
-// WEBHOOK (from OpenClaw — unauthenticated)
+// BRIDGE: POLLING + WEBHOOK (OpenClaw — secret auth)
 // ==========================================
 
+// GET /pending-messages — OpenClaw polls this to get new messages
+router.get('/pending-messages', async (req, res) => {
+    try {
+        // Auth via query param or header (OpenClaw sends secret)
+        const secret = req.query.secret || req.headers['x-webhook-secret'];
+
+        if (!KLESHNYA_WEBHOOK_SECRET || secret !== KLESHNYA_WEBHOOK_SECRET) {
+            return res.status(403).json({ error: 'Invalid secret' });
+        }
+
+        const messages = await getPendingMessages();
+        res.json({ messages });
+    } catch (err) {
+        log.error('Error fetching pending messages', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /webhook — OpenClaw sends responses here
 router.post('/webhook', async (req, res) => {
     try {
         // Accept secret from X-Webhook-Secret header (OpenClaw) or body.secret (fallback)

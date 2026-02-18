@@ -17,6 +17,7 @@ const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount } = require('./services/telegram');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates } = require('./services/scheduler');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
+const { processStaleMessages, BRIDGE_ENABLED: OPENCLAW_BRIDGE } = require('./services/kleshnya-bridge');
 const { createLogger } = require('./utils/logger');
 const { validateEnv } = require('./utils/validateEnv');
 const { initWebSocket, getWSS } = require('./services/websocket');
@@ -193,6 +194,16 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(checkTaskReminders, 60000));
         schedulerIntervals.push(setInterval(checkWorkDayTriggers, 60000));
         schedulerIntervals.push(setInterval(checkMonthlyPointsReset, 60000));
+        // v13.1: OpenClaw bridge fallback — process stale pending messages (every 30s)
+        if (OPENCLAW_BRIDGE) {
+            const { generateChatResponse } = require('./services/kleshnya-chat');
+            const { getChatHistory, addChatMessage } = require('./services/kleshnya-greeting');
+            const { sendToUsername } = require('./services/websocket');
+            schedulerIntervals.push(setInterval(
+                () => processStaleMessages(generateChatResponse, addChatMessage, getChatHistory, sendToUsername),
+                30000
+            ));
+        }
         // v11.0: Kleshnya greeting cache cleanup (every 30min)
         schedulerIntervals.push(setInterval(cleanupKleshnyaMessages, 30 * 60 * 1000));
         // v11.1: Streak auto-update (daily at 23:55)

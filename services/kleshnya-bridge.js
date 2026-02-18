@@ -201,10 +201,84 @@ async function getTelegramFileUrl(fileId) {
     return null;
 }
 
+/**
+ * Fallback for stale pending messages.
+ * If OpenClaw hasn't responded within TIMEOUT_SEC, generate a local response.
+ * Called from scheduler every 30s.
+ */
+const STALE_TIMEOUT_SEC = 90;
+
+async function processStaleMessages(generateFn, addMessageFn, getChatHistoryFn, sendWsFn) {
+    try {
+        // Find messages that have been generating for too long
+        const stale = await pool.query(
+            `SELECT kc.id, kc.session_id, kc.username, kc.message
+             FROM kleshnya_chat kc
+             WHERE kc.role = 'user'
+               AND kc.is_generating = TRUE
+               AND kc.created_at < NOW() - INTERVAL '${STALE_TIMEOUT_SEC} seconds'
+             ORDER BY kc.created_at ASC
+             LIMIT 5`
+        );
+
+        if (stale.rows.length === 0) return;
+
+        log.info(`Fallback: ${stale.rows.length} stale message(s) — switching to local engine`);
+
+        for (const msg of stale.rows) {
+            try {
+                // Clear generating flag on the user message
+                await pool.query(
+                    'UPDATE kleshnya_chat SET is_generating = FALSE WHERE id = $1',
+                    [msg.id]
+                );
+
+                // Generate local response
+                const chatHistory = await getChatHistoryFn(msg.username, 20, msg.session_id);
+                const result = await generateFn(msg.message, msg.username, chatHistory);
+
+                // Save assistant response
+                const saved = await addMessageFn(
+                    msg.username, 'assistant', result.message, msg.session_id, result.skill_used
+                );
+
+                // Update session
+                await pool.query(
+                    `UPDATE chat_sessions SET message_count = message_count + 1,
+                     last_message = $1, last_message_at = NOW(), updated_at = NOW() WHERE id = $2`,
+                    [result.message.substring(0, 100), msg.session_id]
+                );
+
+                // Broadcast via WebSocket
+                sendWsFn(msg.username, 'kleshnya:reply', {
+                    id: saved.id,
+                    role: 'assistant',
+                    message: result.message,
+                    created_at: saved.created_at,
+                    source: result.source || 'skills',
+                    session_id: msg.session_id
+                });
+
+                log.info(`Fallback: replied to msg ${msg.id} session ${msg.session_id} via local engine`);
+            } catch (err) {
+                log.error(`Fallback: error processing msg ${msg.id} — ${err.message}`);
+                // Still clear the flag so user isn't stuck
+                await pool.query(
+                    'UPDATE kleshnya_chat SET is_generating = FALSE WHERE id = $1',
+                    [msg.id]
+                ).catch(() => {});
+            }
+        }
+    } catch (err) {
+        log.error(`Fallback scheduler error: ${err.message}`);
+    }
+}
+
 module.exports = {
     getPendingMessages,
     handleWebhookResponse,
     getTelegramFileUrl,
+    processStaleMessages,
     BRIDGE_ENABLED,
     KLESHNYA_WEBHOOK_SECRET,
     MEDIA_CHANNEL_ID

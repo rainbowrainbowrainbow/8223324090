@@ -394,7 +394,8 @@ router.post('/chat', async (req, res) => {
 
 router.post('/webhook', async (req, res) => {
     try {
-        const { secret } = req.body;
+        // Accept secret from X-Webhook-Secret header (OpenClaw) or body.secret (fallback)
+        const secret = req.headers['x-webhook-secret'] || req.body.secret;
 
         // Validate webhook secret
         if (!KLESHNYA_WEBHOOK_SECRET || secret !== KLESHNYA_WEBHOOK_SECRET) {

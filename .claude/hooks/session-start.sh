@@ -38,6 +38,8 @@ export PGHOST=/var/run/postgresql
 export RATE_LIMIT_MAX=5000
 export LOGIN_RATE_LIMIT_MAX=1000
 export JWT_SECRET=testsecret
+export KLESHNYA_BRIDGE_CHAT_ID=674972415
+export KLESHNYA_WEBHOOK_SECRET=5d4328228bc7c65e335ddceaea9369813fa775f1cc0c3048a02ae49e6aa7fc29
 ENVEOF
 
 echo "=== Session Start Hook complete ==="

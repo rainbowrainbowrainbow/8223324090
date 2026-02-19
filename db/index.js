@@ -195,7 +195,9 @@ async function initDatabase() {
                 { username: 'Animator', password: 'Animator612', role: 'admin', name: 'Аніматор' },
                 { username: 'Anli', password: 'Anli384', role: 'admin', name: 'Анлі' },
                 { username: 'Zhenya', password: 'Zhenya527', role: 'admin', name: 'Женя' },
-                { username: 'Lera', password: 'Lera691', role: 'admin', name: 'Лера' }
+                { username: 'Lera', password: 'Lera691', role: 'admin', name: 'Лера' },
+                { username: 'Anna', password: 'Anna321', role: 'admin', name: 'Анна' },
+                { username: 'Artem', password: 'Arte529', role: 'admin', name: 'Артем' }
             ];
             for (const u of defaultUsers) {
                 const hash = await bcrypt.hash(u.password, 10);
@@ -251,6 +253,32 @@ async function initDatabase() {
             log.info(`Users upsert complete: ${created} created, ${updated} updated (v12.5)`);
         } else {
             log.info('Users upsert v12.5 already applied, skipping');
+        }
+
+        // Add new admin users: Anna, Artem
+        const newUsersVersion = '008_add_anna_artem';
+        const newUsersCheck = await pool.query(
+            'SELECT 1 FROM schema_migrations WHERE version = $1', [newUsersVersion]
+        );
+        if (newUsersCheck.rows.length === 0) {
+            const newUsers = [
+                { username: 'Anna', password: 'Anna321', role: 'admin', name: 'Анна' },
+                { username: 'Artem', password: 'Arte529', role: 'admin', name: 'Артем' }
+            ];
+            for (const u of newUsers) {
+                const hash = await bcrypt.hash(u.password, 10);
+                await pool.query(
+                    `INSERT INTO users (username, password_hash, role, name)
+                     VALUES ($1, $2, $3, $4)
+                     ON CONFLICT (username) DO UPDATE SET password_hash = $2`,
+                    [u.username, hash, u.role, u.name]
+                );
+                log.info(`User added: ${u.username}`);
+            }
+            await pool.query(
+                'INSERT INTO schema_migrations (version) VALUES ($1)', [newUsersVersion]
+            );
+            log.info('Users Anna, Artem added');
         }
 
         await pool.query(`

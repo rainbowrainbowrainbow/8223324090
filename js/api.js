@@ -844,3 +844,132 @@ async function apiGetKleshnyaMedia(type) {
         return [];
     }
 }
+
+// Warehouse API
+async function apiGetWarehouse(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.category) params.set('category', filters.category);
+        if (filters.search) params.set('search', filters.search);
+        if (filters.low_stock) params.set('low_stock', 'true');
+        if (filters.all) params.set('all', 'true');
+        const qs = params.toString();
+        const response = await fetch(`${API_BASE}/warehouse${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { items: [], lowStockCount: 0 };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getWarehouse error:', err);
+        return { items: [], lowStockCount: 0 };
+    }
+}
+
+async function apiCreateWarehouseItem(item) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(item)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API createWarehouseItem error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiUpdateWarehouseItem(id, item) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(item)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API updateWarehouseItem error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiDeleteWarehouseItem(id) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API deleteWarehouseItem error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiUseWarehouseItem(id, amount, reason) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/${id}/use`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ amount, reason })
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API useWarehouseItem error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiRestockWarehouseItem(id, amount, reason) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/${id}/restock`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ amount, reason })
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API restockWarehouseItem error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiGetWarehouseHistory(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.limit) params.set('limit', filters.limit);
+        if (filters.offset) params.set('offset', filters.offset);
+        const qs = params.toString();
+        const response = await fetch(`${API_BASE}/warehouse/history${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { items: [], total: 0 };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getWarehouseHistory error:', err);
+        return { items: [], total: 0 };
+    }
+}

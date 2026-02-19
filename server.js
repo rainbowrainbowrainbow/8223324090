@@ -92,6 +92,7 @@ app.use('/api/points', require('./routes/points'));
 app.use('/api/kleshnya', require('./routes/kleshnya'));
 app.use('/api/designs', require('./routes/designs'));
 app.use('/api/contractors', require('./routes/contractors'));
+app.use('/api/warehouse', require('./routes/warehouse'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -163,6 +164,9 @@ app.get('/kleshnya', (req, res) => {
 });
 app.get('/designs', (req, res) => {
     res.sendFile(path.join(__dirname, 'designs.html'));
+});
+app.get('/warehouse', (req, res) => {
+    res.sendFile(path.join(__dirname, 'warehouse.html'));
 });
 
 // SPA fallback (must be last)

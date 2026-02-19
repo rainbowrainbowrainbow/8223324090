@@ -151,7 +151,8 @@ function mapBookingRow(row) {
         kidsCount: row.kids_count,
         updatedAt: row.updated_at,
         groupName: row.group_name || null,
-        extraData: row.extra_data || null
+        extraData: row.extra_data || null,
+        skipNotification: row.skip_notification || false
     };
 }
 
@@ -160,7 +161,9 @@ function mapBookingRow(row) {
 async function ensureDefaultLines(date) {
     const existing = await pool.query('SELECT COUNT(*) FROM lines_by_date WHERE date = $1', [date]);
     const count = parseInt(existing.rows[0].count);
-    if (count < 2) {
+    // v12.6: Only create defaults when NO lines exist (count === 0)
+    // Previously count < 2 caused phantom "Аніматор 1/2" to reappear after user deleted a line
+    if (count === 0) {
         const defaults = [
             { id: 'line1_' + date, name: 'Аніматор 1', color: '#4CAF50' },
             { id: 'line2_' + date, name: 'Аніматор 2', color: '#2196F3' }

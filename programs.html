@@ -3,17 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Програми — Парк Закревського Періоду</title>
+    <title>Event Maestro | Програми</title>
+    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Maestro">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=7.9.2">
-    <link rel="stylesheet" href="css/layout.css?v=7.9.2">
-    <link rel="stylesheet" href="css/pages.css?v=7.9.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=7.9.2">
-    <link rel="stylesheet" href="css/responsive.css?v=7.9.2">
+    <link rel="stylesheet" href="css/base.css?v=13.0">
+    <link rel="stylesheet" href="css/layout.css?v=13.0">
+    <link rel="stylesheet" href="css/pages.css?v=13.0">
+    <link rel="stylesheet" href="css/modals.css?v=13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=13.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <!-- Login overlay (hidden if authorized) -->
     <div id="loginOverlay" class="page-login-overlay hidden">
         <a href="/">Увійти в систему</a>
@@ -23,9 +28,10 @@
         <header class="header">
             <div class="header-content">
                 <div class="logo">
-                    <img src="images/favicon-512.png" alt="Логотип" class="logo-img-small">
-                    <div class="logo-text">
-                        <h1>Парк Закревського Періоду</h1>
+                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Maestro</span>
+                        <span class="em-logo-sub">AI First CRM</span>
                     </div>
                 </div>
                 <nav class="header-nav">
@@ -33,6 +39,8 @@
                     <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
                     <a href="/programs" class="nav-link active">📚 <span class="nav-text">Програми</span></a>
                     <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
+                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
                 </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
@@ -41,7 +49,7 @@
             </div>
         </header>
 
-        <main class="page-container">
+        <main id="main-content" class="page-container">
             <div class="page-header">
                 <h2>📚 Каталог програм</h2>
                 <button id="addProductBtn" class="btn-page-primary">+ Додати програму</button>
@@ -122,13 +130,24 @@
         </main>
     </div>
 
+    <!-- v10.4: Особистий кабінет -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
     <div id="notification" class="notification hidden">
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=7.9.2"></script>
-    <script src="js/api.js?v=7.9.2"></script>
-    <script src="js/auth.js?v=7.9.2"></script>
-    <script src="js/programs-page.js?v=7.9.2"></script>
+    <script src="js/config.js?v=13.0"></script>
+    <script src="js/api.js?v=13.0"></script>
+    <script src="js/auth.js?v=13.0"></script>
+    <script src="js/programs-page.js?v=13.0"></script>
 </body>
 </html>

@@ -25,7 +25,11 @@ async function getLinesForDate(date) {
         if (cached) return cached.data;
         return [];
     }
-    AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
+    // v12.6: Don't cache empty lines — server always returns defaults via ensureDefaultLines,
+    // so empty means transient error. Let next render try fresh API call.
+    if (lines.length > 0) {
+        AppState.cachedLines[dateStr] = { data: lines, ts: Date.now() };
+    }
     return lines;
 }
 
@@ -48,6 +52,7 @@ function canViewHistory() {
 
 // v5.8: Quick Stats Bar — show summary for selected date
 // v5.11: Filter by existing lines + exclude linked bookings
+// v11.1: Stats-only bar + separate floating widget
 function updateQuickStats(bookings, lineIds) {
     const bar = document.getElementById('quickStatsBar');
     if (!bar || isViewer()) return;
@@ -57,10 +62,153 @@ function updateQuickStats(bookings, lineIds) {
     // Filter: only bookings on existing lines, exclude linked (extra hosts)
     const mainBookings = bookings.filter(b => !b.linkedTo && (!lineIds || lineIds.includes(b.lineId)));
     const preliminary = mainBookings.filter(b => b.status === 'preliminary');
+    const confirmed = mainBookings.filter(b => b.status === 'confirmed');
     const total = mainBookings.reduce((sum, b) => sum + (b.price || 0), 0);
 
-    content.textContent = `📊 ${mainBookings.length} бронювань • ${formatPrice(total)} • ⏳ ${preliminary.length} попередніх`;
+    const parts = [`📊 ${mainBookings.length} бронювань`, formatPrice(total)];
+    if (confirmed.length > 0) parts.push(`✅ ${confirmed.length}`);
+    if (preliminary.length > 0) parts.push(`⏳ ${preliminary.length}`);
+    if (lineIds && lineIds.length > 0) parts.push(`👥 ${lineIds.length}`);
+    content.textContent = parts.join(' • ');
+
     bar.classList.remove('hidden');
+
+    // v11.1: Init floating Kleshnya widget (non-blocking)
+    initKleshnyaWidget();
+}
+
+// ==========================================
+// KLESHNYA FLOATING WIDGET — Futuristic Terminal v11.0.3
+// ==========================================
+
+let _kleshnyaWidgetReady = false;
+let _kleshnyaContext = null;
+let _kleshnyaTypingTimer = null;
+
+function initKleshnyaWidget() {
+    if (_kleshnyaWidgetReady) return;
+    _kleshnyaWidgetReady = true;
+
+    const widget = document.getElementById('kleshnyaWidget');
+    const fab = document.getElementById('kleshnyaFab');
+    const popup = document.getElementById('kleshnyaPopup');
+    const closeBtn = document.getElementById('kleshnyaClose');
+    if (!widget || !fab || !popup) return;
+
+    // Show widget
+    widget.classList.remove('hidden');
+
+    // Toggle popup
+    fab.addEventListener('click', () => {
+        const isOpen = !popup.classList.contains('hidden');
+        if (isOpen) {
+            popup.classList.add('hidden');
+        } else {
+            popup.classList.remove('hidden');
+            loadKleshnyaGreeting();
+        }
+    });
+
+    // Close button
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => popup.classList.add('hidden'));
+    }
+
+    // Close on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !popup.classList.contains('hidden')) {
+            popup.classList.add('hidden');
+        }
+    });
+
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+        if (!popup.classList.contains('hidden') && !widget.contains(e.target)) {
+            popup.classList.add('hidden');
+        }
+    });
+
+    // Interactive question buttons
+    const qBtns = document.querySelectorAll('.kleshnya-q-btn');
+    qBtns.forEach(btn => {
+        btn.addEventListener('click', () => handleKleshnyaQuestion(btn.dataset.topic, qBtns));
+    });
+}
+
+// Typing animation for terminal feel
+function typeText(el, text, speed) {
+    if (_kleshnyaTypingTimer) clearInterval(_kleshnyaTypingTimer);
+    const charSpeed = speed || 18;
+    el.textContent = '';
+    el.classList.add('typing');
+    let i = 0;
+    _kleshnyaTypingTimer = setInterval(() => {
+        if (i < text.length) {
+            el.textContent += text[i];
+            i++;
+        } else {
+            clearInterval(_kleshnyaTypingTimer);
+            _kleshnyaTypingTimer = null;
+            el.classList.remove('typing');
+        }
+    }, charSpeed);
+}
+
+async function loadKleshnyaGreeting() {
+    const el = document.getElementById('kleshnyaGreeting');
+    if (!el) return;
+
+    // Show boot sequence
+    el.classList.add('typing');
+    el.textContent = 'Ініціалізація систем...';
+
+    try {
+        const dateStr = formatDate(AppState.selectedDate);
+        const result = await apiGetKleshnyaGreeting(dateStr);
+        const msg = (result && result.message) || 'Системи онлайн. Обери модуль запиту нижче.';
+        _kleshnyaContext = (result && result.context) || null;
+        typeText(el, msg, 15);
+    } catch (err) {
+        typeText(el, 'З\'єднання встановлено. Обери модуль — доповім обстановку.', 15);
+    }
+}
+
+async function handleKleshnyaQuestion(topic, allBtns) {
+    const answerEl = document.getElementById('kleshnyaAnswer');
+    const answerText = document.getElementById('kleshnyaAnswerText');
+    if (!answerEl || !answerText) return;
+
+    // Mark active button
+    allBtns.forEach(b => b.classList.remove('active'));
+    const activeBtn = document.querySelector(`.kleshnya-q-btn[data-topic="${topic}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    // Show loading
+    answerText.textContent = 'Сканування...';
+    answerEl.classList.remove('hidden');
+
+    try {
+        const topicMessages = {
+            bookings: 'Розкажи про бронювання на сьогодні',
+            tasks: 'Які у мене задачі?',
+            streak: 'Який мій стрік?',
+            animators: 'Скільки аніматорів сьогодні на зміні?',
+            revenue: 'Виручка за тиждень',
+            team: 'Хто працює сьогодні?',
+            programs: 'Покажи програми'
+        };
+
+        const message = topicMessages[topic] || 'Що нового?';
+        const result = await apiSendKleshnyaMessage(message);
+
+        if (result && result.message) {
+            typeText(answerText, result.message, 12);
+        } else {
+            typeText(answerText, 'Модуль не відповідає. Повторіть запит.', 12);
+        }
+    } catch (err) {
+        typeText(answerText, 'Помилка зв\'язку. Перевірте підключення.', 12);
+    }
 }
 
 // ==========================================
@@ -139,6 +287,22 @@ async function renderTimeline() {
     if (thisGen !== _renderGen) {
         _debugRender(`ABORT gen=${thisGen} (current=${_renderGen})`);
         return;
+    }
+
+    // v12.6: If lines came back empty (API error / transient failure), retry once after 2s
+    if (lines.length === 0 && !AppState._linesRetryScheduled) {
+        AppState._linesRetryScheduled = true;
+        const retryDateStr = formatDate(selectedDate);
+        setTimeout(() => {
+            AppState._linesRetryScheduled = false;
+            // Invalidate cache so retry fetches fresh data
+            delete AppState.cachedLines[retryDateStr];
+            // Only retry if still on the same date
+            if (formatDate(AppState.selectedDate) === retryDateStr) {
+                console.log('[Timeline] Retrying render — lines were empty');
+                renderTimeline();
+            }
+        }, 2000);
     }
 
     const { start } = getTimeRange(selectedDate);
@@ -351,16 +515,45 @@ function createBookingBlock(booking, startHour) {
 
     // v5.19: Linked bookings click → navigate to parent booking details
     if (isLinked) {
-        block.addEventListener('click', () => showBookingDetails(booking.linkedTo));
+        block.addEventListener('click', (e) => {
+            // Feature #14: Don't trigger click if drag just ended
+            if (block._dragJustEnded) { block._dragJustEnded = false; return; }
+            showBookingDetails(booking.linkedTo);
+        });
     } else {
-        block.addEventListener('click', () => showBookingDetails(booking.id));
+        block.addEventListener('click', (e) => {
+            // Feature #14: Don't trigger click if drag just ended
+            if (block._dragJustEnded) { block._dragJustEnded = false; return; }
+            showBookingDetails(booking.id);
+        });
     }
-    block.addEventListener('mouseenter', (e) => showTooltip(e, booking));
-    block.addEventListener('mousemove', (e) => moveTooltip(e));
+    block.addEventListener('mouseenter', (e) => {
+        // Feature #14: Suppress tooltip during drag
+        if (_bookingDragState || _resizeState) return;
+        showTooltip(e, booking);
+    });
+    block.addEventListener('mousemove', (e) => {
+        if (_bookingDragState || _resizeState) return;
+        moveTooltip(e);
+    });
     block.addEventListener('mouseleave', hideTooltip);
     // v3.9: Touch events for mobile tooltip
-    block.addEventListener('touchstart', (e) => showTooltip(e.touches[0], booking), { passive: true });
+    block.addEventListener('touchstart', (e) => {
+        if (_bookingDragState || _resizeState) return;
+        showTooltip(e.touches[0], booking);
+    }, { passive: true });
     block.addEventListener('touchend', hideTooltip, { passive: true });
+
+    // Feature #14: Initialize drag-and-drop + resize handle
+    if (!isViewer() && !isLinked) {
+        initBookingDrag(block, booking, startHour);
+
+        const resizeHandle = document.createElement('div');
+        resizeHandle.className = 'resize-handle';
+        block.appendChild(resizeHandle);
+        initBookingResize(resizeHandle, block, booking, startHour);
+    }
+
     return block;
 }
 
@@ -559,6 +752,991 @@ function openAfishaModalAt(date, time) {
     if (time && timeInput) timeInput.value = time;
     renderAfishaList();
 }
+
+// ==========================================
+// DRAG-AND-DROP BOOKING BLOCKS (Feature #14)
+// ==========================================
+
+const DRAG_THRESHOLD_PX = 8;
+const LONG_PRESS_MS = 300;
+const SNAP_MINUTES = 5;
+
+let _bookingDragState = null;
+let _resizeState = null;
+
+// --- Haptic feedback ---
+function _triggerHaptic(type) {
+    if (!navigator.vibrate) return;
+    switch (type) {
+        case 'light': navigator.vibrate(30); break;
+        case 'medium': navigator.vibrate(50); break;
+        case 'success': navigator.vibrate([30, 50, 30]); break;
+        case 'error': navigator.vibrate([50, 30, 50, 30, 50]); break;
+    }
+}
+
+// --- Initialize drag on a booking block ---
+function initBookingDrag(block, booking, startHour) {
+    block.addEventListener('pointerdown', (e) => {
+        // Only primary button (left click / single touch)
+        if (e.button !== 0) return;
+        // Guard: afisha drag in progress
+        if (_afishaDragState) return;
+        // Guard: resize in progress
+        if (_resizeState) return;
+        // Guard: another drag in progress
+        if (_bookingDragState) return;
+        // Guard: multi-day mode
+        if (AppState.multiDayMode) return;
+        // Guard: don't start drag from resize handle
+        if (e.target.closest('.resize-handle')) return;
+
+        if (e.pointerType === 'touch') {
+            // Mobile: start long-press timer
+            _bookingDragState = {
+                booking: booking,
+                block: block,
+                startHour: startHour,
+                startX: e.clientX,
+                startY: e.clientY,
+                pointerId: e.pointerId,
+                isTouch: true,
+                moved: false,
+                longPressTimer: setTimeout(() => {
+                    _beginBookingDrag(block, booking, startHour, e);
+                    _triggerHaptic('medium');
+                    block.classList.add('long-press-pending');
+                }, LONG_PRESS_MS)
+            };
+        } else {
+            // Desktop: immediate state setup (drag activates after threshold)
+            _bookingDragState = {
+                booking: booking,
+                block: block,
+                startHour: startHour,
+                startX: e.clientX,
+                startY: e.clientY,
+                pointerId: e.pointerId,
+                isTouch: false,
+                moved: false,
+                longPressTimer: null
+            };
+        }
+    });
+}
+
+// --- Begin the visual drag ---
+function _beginBookingDrag(block, booking, startHour, e) {
+    const s = _bookingDragState;
+    if (!s) return;
+    s.moved = true;
+
+    // Hide tooltip immediately
+    hideTooltip();
+
+    // Capture pointer for reliable tracking
+    try { block.setPointerCapture(s.pointerId); } catch (err) { /* ignore */ }
+
+    // Calculate time constraints
+    const selectedDate = new Date(AppState.selectedDate);
+    const dayOfWeek = selectedDate.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    s.dayStartMin = (isWeekend ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START) * 60;
+    s.dayEndMin = CONFIG.TIMELINE.WEEKEND_END * 60;
+    s.duration = booking.duration;
+    s.startMin = timeToMinutes(booking.time);
+    s.currentMin = s.startMin;
+    s.startLeft = parseFloat(block.style.left);
+    s.startLineId = booking.lineId;
+    s.newLineId = booking.lineId;
+    s.grid = block.closest('.line-grid');
+
+    // Collect related bookings (linked: second animator, extra host)
+    s.relatedBookings = _collectRelatedBookings(booking);
+    s.relatedBlocks = _findRelatedBlocks(s.relatedBookings);
+    s.relatedOriginals = s.relatedBlocks.map(rb => ({
+        left: parseFloat(rb.el.style.left),
+        lineId: rb.booking.lineId,
+        min: timeToMinutes(rb.booking.time)
+    }));
+
+    // Add visual feedback
+    block.classList.add('dragging');
+    block.classList.remove('long-press-pending');
+    s.relatedBlocks.forEach(rb => rb.el.classList.add('dragging-related'));
+
+    // Create floating time label
+    s.timeLabel = document.createElement('div');
+    s.timeLabel.className = 'drag-time-label';
+    s.timeLabel.textContent = booking.time;
+    block.appendChild(s.timeLabel);
+
+    // Show count label for multi-booking drag
+    if (s.relatedBookings.length > 0) {
+        s.countLabel = document.createElement('div');
+        s.countLabel.className = 'drag-count-label';
+        s.countLabel.textContent = `${1 + s.relatedBookings.length} бронювань`;
+        block.appendChild(s.countLabel);
+    }
+
+    // Prevent default touch behavior (scrolling)
+    document.body.classList.add('dragging-active');
+
+    // Scroll interval handle
+    s.scrollInterval = null;
+
+    // Drop indicators
+    s.dropIndicators = [];
+
+    // v12.6: Store original grid rect for cross-line Y offset
+    s.originalGridRect = s.grid ? s.grid.getBoundingClientRect() : null;
+}
+
+// --- Collect related bookings for the dragged main booking ---
+function _collectRelatedBookings(mainBooking) {
+    const dateStr = formatDate(AppState.selectedDate);
+    const cached = AppState.cachedBookings[dateStr];
+    if (!cached) return [];
+    const allBookings = cached.data;
+
+    const related = [];
+
+    // Linked bookings: where linkedTo === mainBooking.id
+    const linked = allBookings.filter(b => b.linkedTo === mainBooking.id);
+    linked.forEach(lb => {
+        related.push({
+            booking: lb,
+            type: 'linked',
+            moveWith: true,
+            checkConflict: true
+        });
+    });
+
+    return related;
+}
+
+// --- Find DOM elements for related bookings ---
+function _findRelatedBlocks(relatedBookings) {
+    const results = [];
+    for (const rb of relatedBookings) {
+        // Find the block in the DOM by matching booking data
+        const lineGrid = document.querySelector(`.line-grid[data-line-id="${rb.booking.lineId}"]`);
+        if (!lineGrid) continue;
+        const blocks = lineGrid.querySelectorAll('.booking-block');
+        for (const bl of blocks) {
+            // Match by left position and content (closest approach without data-id)
+            const bookingTime = rb.booking.time;
+            const subtitle = bl.querySelector('.subtitle');
+            if (subtitle && subtitle.textContent.startsWith(bookingTime)) {
+                results.push({ el: bl, booking: rb.booking });
+                break;
+            }
+        }
+    }
+    return results;
+}
+
+// --- Handle pointer move for booking drag ---
+function _handleBookingDragMove(e) {
+    if (!_bookingDragState) return;
+    const s = _bookingDragState;
+
+    const dx = e.clientX - s.startX;
+    const dy = e.clientY - s.startY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // Touch: if moved before long-press triggers, cancel (user is scrolling)
+    if (s.isTouch && !s.moved && s.longPressTimer) {
+        if (dist > DRAG_THRESHOLD_PX) {
+            clearTimeout(s.longPressTimer);
+            s.block.classList.remove('long-press-pending');
+            _bookingDragState = null;
+            return;
+        }
+        return; // Wait for long-press timer
+    }
+
+    // Desktop: activate on threshold
+    if (!s.isTouch && !s.moved && dist > DRAG_THRESHOLD_PX) {
+        _beginBookingDrag(s.block, s.booking, s.startHour, e);
+    }
+
+    if (!s.moved) return;
+
+    // Prevent text selection and scrolling during drag
+    e.preventDefault();
+
+    _updateBookingDragPosition(e.clientX, e.clientY);
+}
+
+// --- Update block position during drag ---
+function _updateBookingDragPosition(clientX, clientY) {
+    const s = _bookingDragState;
+    const cellW = CONFIG.TIMELINE.CELL_WIDTH;
+    const cellM = CONFIG.TIMELINE.CELL_MINUTES;
+
+    // --- Horizontal: time shift ---
+    // Use scroll-aware delta: account for timeline scroll changes during drag
+    const scrollEl = document.getElementById('timelineScroll');
+    const scrollLeft = scrollEl ? scrollEl.scrollLeft : 0;
+    if (s._lastScrollLeft === undefined) s._lastScrollLeft = scrollLeft;
+    if (s._lastClientX === undefined) s._lastClientX = s.startX;
+
+    // The effective delta is clientX movement + scroll movement
+    const scrollDelta = scrollLeft - (s._initialScrollLeft !== undefined ? s._initialScrollLeft : scrollLeft);
+    if (s._initialScrollLeft === undefined) s._initialScrollLeft = scrollLeft;
+
+    const totalDeltaX = (clientX - s.startX) + scrollDelta;
+    const deltaMin = (totalDeltaX / cellW) * cellM;
+    let newMin = Math.round((s.startMin + deltaMin) / SNAP_MINUTES) * SNAP_MINUTES;
+
+    // Clamp to day boundaries
+    newMin = Math.max(s.dayStartMin, Math.min(s.dayEndMin - s.duration, newMin));
+    s.currentMin = newMin;
+
+    // Update main block position
+    const newLeft = ((newMin - s.startHour * 60) / cellM) * cellW;
+    s.block.style.left = `${newLeft}px`;
+
+    // Update time label
+    if (s.timeLabel) s.timeLabel.textContent = minutesToTime(newMin);
+
+    // --- Vertical: line switch ---
+    const targetLine = _detectTargetLine(clientY);
+    if (targetLine && targetLine !== s.newLineId) {
+        s.newLineId = targetLine;
+        _highlightTargetLine(targetLine);
+    }
+
+    // v12.6: Visually move block to target line via translateY
+    if (s.newLineId !== s.startLineId && s.originalGridRect) {
+        const targetGrid = document.querySelector(`.line-grid[data-line-id="${s.newLineId}"]`);
+        if (targetGrid) {
+            const targetRect = targetGrid.getBoundingClientRect();
+            const yOffset = targetRect.top - s.originalGridRect.top;
+            s.block.style.transform = `translateY(${yOffset}px) scale(1.03)`;
+        }
+    } else {
+        s.block.style.transform = 'scale(1.03)';
+    }
+
+    // --- Move related bookings by same delta ---
+    const timeDelta = newMin - s.startMin;
+    s.relatedBlocks.forEach((rb, i) => {
+        const orig = s.relatedOriginals[i];
+        const relNewMin = orig.min + timeDelta;
+        const relNewLeft = ((relNewMin - s.startHour * 60) / cellM) * cellW;
+        rb.el.style.left = `${relNewLeft}px`;
+    });
+
+    // --- Auto-scroll near edges ---
+    _handleDragEdgeScroll(clientX);
+
+    // --- Show ghost on target line if cross-line ---
+    if (s.newLineId !== s.startLineId) {
+        _showDropGhost(s.newLineId, newMin, s.duration, s.startHour);
+    } else {
+        _removeDropGhost();
+    }
+
+    // --- Update conflict preview ---
+    _updateConflictPreview(newMin, s.newLineId, timeDelta);
+}
+
+// --- Detect which line the pointer is over ---
+function _detectTargetLine(clientY) {
+    const lines = document.querySelectorAll('.line-grid[data-line-id]');
+    for (const lineGrid of lines) {
+        if (lineGrid.dataset.lineId === 'afisha') continue;
+        const rect = lineGrid.getBoundingClientRect();
+        if (clientY >= rect.top && clientY <= rect.bottom) {
+            return lineGrid.dataset.lineId;
+        }
+    }
+    return null;
+}
+
+// --- Highlight the target line ---
+function _highlightTargetLine(lineId) {
+    // Clear old highlights
+    document.querySelectorAll('.line-grid.drag-target, .line-grid.drag-invalid').forEach(el => {
+        el.classList.remove('drag-target', 'drag-invalid');
+    });
+    const targetGrid = document.querySelector(`.line-grid[data-line-id="${lineId}"]`);
+    if (targetGrid) targetGrid.classList.add('drag-target');
+}
+
+// --- Clear all drop indicators ---
+function _clearDropIndicators() {
+    document.querySelectorAll('.line-grid.drag-target, .line-grid.drag-invalid').forEach(el => {
+        el.classList.remove('drag-target', 'drag-invalid');
+    });
+    _removeDropGhost();
+}
+
+// --- Show ghost landing preview on target line ---
+function _showDropGhost(targetLineId, newMin, duration, startHour) {
+    _removeDropGhost();
+    const targetGrid = document.querySelector(`.line-grid[data-line-id="${targetLineId}"]`);
+    if (!targetGrid) return;
+
+    const cellW = CONFIG.TIMELINE.CELL_WIDTH;
+    const cellM = CONFIG.TIMELINE.CELL_MINUTES;
+    const left = ((newMin - startHour * 60) / cellM) * cellW;
+    const width = (duration / cellM) * cellW - 4;
+
+    const ghost = document.createElement('div');
+    ghost.className = 'drag-ghost';
+    ghost.id = 'dragGhostPreview';
+    ghost.style.left = `${left}px`;
+    ghost.style.width = `${width}px`;
+    targetGrid.appendChild(ghost);
+}
+
+function _removeDropGhost() {
+    const ghost = document.getElementById('dragGhostPreview');
+    if (ghost) ghost.remove();
+}
+
+// --- Auto-scroll when dragging near edges ---
+function _handleDragEdgeScroll(clientX) {
+    const s = _bookingDragState;
+    if (!s) return;
+    const scroll = document.getElementById('timelineScroll');
+    if (!scroll) return;
+
+    const rect = scroll.getBoundingClientRect();
+    const edgeZone = 60;
+    const scrollSpeed = 5;
+
+    if (s.scrollInterval) { clearInterval(s.scrollInterval); s.scrollInterval = null; }
+
+    if (clientX < rect.left + edgeZone) {
+        s.scrollInterval = setInterval(() => { scroll.scrollLeft -= scrollSpeed; }, 16);
+    } else if (clientX > rect.right - edgeZone) {
+        s.scrollInterval = setInterval(() => { scroll.scrollLeft += scrollSpeed; }, 16);
+    }
+}
+
+// --- Conflict preview during drag (visual only, uses cache) ---
+function _updateConflictPreview(newMin, lineId, timeDelta) {
+    const s = _bookingDragState;
+    if (!s) return;
+
+    const dateStr = formatDate(AppState.selectedDate);
+    const allBookings = (AppState.cachedBookings[dateStr] && AppState.cachedBookings[dateStr].data) || [];
+    const newEnd = newMin + s.duration;
+
+    // Check main booking conflicts on target line
+    const lineBookings = allBookings.filter(b =>
+        b.lineId === lineId &&
+        b.id !== s.booking.id &&
+        !s.relatedBookings.some(rb => rb.booking.id === b.id)
+    );
+
+    let hasConflict = false;
+    for (const other of lineBookings) {
+        const otherStart = timeToMinutes(other.time);
+        const otherEnd = otherStart + other.duration;
+        if (newMin < otherEnd && newEnd > otherStart) {
+            hasConflict = true;
+            break;
+        }
+    }
+
+    // Update ghost visual
+    const ghost = document.getElementById('dragGhostPreview');
+    if (ghost) ghost.classList.toggle('conflict', hasConflict);
+
+    // Update target line indicator
+    const targetGrid = document.querySelector(`.line-grid[data-line-id="${lineId}"]`);
+    if (targetGrid && lineId !== s.startLineId) {
+        targetGrid.classList.toggle('drag-target', !hasConflict);
+        targetGrid.classList.toggle('drag-invalid', hasConflict);
+    }
+}
+
+// --- Handle pointer up: validate and save ---
+async function _handleBookingDragEnd(e) {
+    if (!_bookingDragState) return;
+    const s = _bookingDragState;
+
+    // Clear long-press timer
+    if (s.longPressTimer) clearTimeout(s.longPressTimer);
+
+    // Clear auto-scroll
+    if (s.scrollInterval) clearInterval(s.scrollInterval);
+
+    // Release pointer capture
+    try { s.block.releasePointerCapture(s.pointerId); } catch (err) { /* ignore */ }
+
+    // Remove visual feedback
+    s.block.classList.remove('dragging', 'long-press-pending');
+    s.block.style.transform = ''; // v12.6: Reset cross-line Y offset
+    if (s.relatedBlocks) s.relatedBlocks.forEach(rb => rb.el.classList.remove('dragging-related'));
+    _clearDropIndicators();
+    document.body.classList.remove('dragging-active');
+
+    if (!s.moved) {
+        // No drag happened — pass through to click handler
+        if (s.timeLabel) s.timeLabel.remove();
+        if (s.countLabel) s.countLabel.remove();
+        _bookingDragState = null;
+        return; // click event will fire naturally
+    }
+
+    // Prevent the upcoming click event from triggering showBookingDetails
+    s.block._dragJustEnded = true;
+    setTimeout(() => { s.block._dragJustEnded = false; }, 100);
+
+    // Check if position actually changed
+    const timeDelta = s.currentMin - s.startMin;
+    const lineChanged = s.newLineId !== s.startLineId;
+
+    if (timeDelta === 0 && !lineChanged) {
+        _rollbackDragVisuals(s);
+        _bookingDragState = null;
+        return;
+    }
+
+    // --- Validate all positions ---
+    const validationResult = _validateDragDrop(s, timeDelta);
+
+    if (!validationResult.valid) {
+        showNotification(validationResult.error, 'error');
+        _triggerHaptic('error');
+        _rollbackDragVisuals(s);
+        _bookingDragState = null;
+        return;
+    }
+
+    // --- Save to server ---
+    const saved = await _saveDragResult(s, timeDelta, lineChanged);
+
+    if (!saved) {
+        _rollbackDragVisuals(s);
+    } else {
+        _triggerHaptic('success');
+    }
+
+    // Remove time label and count label
+    if (s.timeLabel) s.timeLabel.remove();
+    if (s.countLabel) s.countLabel.remove();
+    _bookingDragState = null;
+}
+
+// --- Handle pointer cancel ---
+function _handleBookingDragCancel(e) {
+    if (!_bookingDragState) return;
+    const s = _bookingDragState;
+
+    if (s.longPressTimer) clearTimeout(s.longPressTimer);
+    if (s.scrollInterval) clearInterval(s.scrollInterval);
+
+    try { s.block.releasePointerCapture(s.pointerId); } catch (err) { /* ignore */ }
+
+    if (s.moved) {
+        _rollbackDragVisuals(s);
+    }
+
+    s.block.classList.remove('dragging', 'long-press-pending');
+    s.block.style.transform = ''; // v12.6: Reset cross-line Y offset
+    if (s.relatedBlocks) s.relatedBlocks.forEach(rb => rb.el.classList.remove('dragging-related'));
+    _clearDropIndicators();
+    document.body.classList.remove('dragging-active');
+
+    if (s.timeLabel) s.timeLabel.remove();
+    if (s.countLabel) s.countLabel.remove();
+    _bookingDragState = null;
+}
+
+// --- Validate drag positions using cached data ---
+function _validateDragDrop(state, timeDelta) {
+    const s = state;
+    const newMin = s.currentMin;
+    const newEnd = newMin + s.duration;
+
+    const dateStr = formatDate(AppState.selectedDate);
+    const allBookings = (AppState.cachedBookings[dateStr] && AppState.cachedBookings[dateStr].data) || [];
+
+    // 1. Boundary check for main booking
+    if (newMin < s.dayStartMin || newEnd > s.dayEndMin) {
+        return { valid: false, error: 'Час виходить за межі робочого дня!' };
+    }
+
+    // 2. Conflict check for main booking on target line
+    const excludeIds = [s.booking.id, ...s.relatedBookings.map(rb => rb.booking.id)];
+    const lineBookings = allBookings.filter(b =>
+        b.lineId === s.newLineId && !excludeIds.includes(b.id)
+    );
+
+    for (const other of lineBookings) {
+        const otherStart = timeToMinutes(other.time);
+        const otherEnd = otherStart + other.duration;
+        if (newMin < otherEnd && newEnd > otherStart) {
+            return { valid: false, error: `Час зайнятий на цій лінії!` };
+        }
+    }
+
+    // 3. Validate each related booking
+    for (const rb of s.relatedBookings) {
+        if (!rb.checkConflict) continue;
+        const rbNewMin = timeToMinutes(rb.booking.time) + timeDelta;
+        const rbNewEnd = rbNewMin + rb.booking.duration;
+
+        // Boundary check
+        if (rbNewMin < s.dayStartMin || rbNewEnd > s.dayEndMin) {
+            return { valid: false, error: "Пов'язане бронювання виходить за межі дня" };
+        }
+
+        // Conflict check on related booking's line
+        const rbLineBookings = allBookings.filter(b =>
+            b.lineId === rb.booking.lineId && !excludeIds.includes(b.id)
+        );
+
+        for (const other of rbLineBookings) {
+            const otherStart = timeToMinutes(other.time);
+            const otherEnd = otherStart + other.duration;
+            if (rbNewMin < otherEnd && rbNewEnd > otherStart) {
+                // Get line name for specific error
+                const lineGrid = document.querySelector(`.line-grid[data-line-id="${rb.booking.lineId}"]`);
+                const lineHeader = lineGrid ? lineGrid.parentElement.querySelector('.line-name') : null;
+                const lineName = lineHeader ? lineHeader.textContent : "пов'язаний аніматор";
+                return { valid: false, error: `Накладка у ${lineName}!` };
+            }
+        }
+    }
+
+    // 4. Check "no pause" warning (non-blocking)
+    for (const other of lineBookings) {
+        const otherStart = timeToMinutes(other.time);
+        const otherEnd = otherStart + other.duration;
+        const gap = Math.max(otherStart - newEnd, newMin - otherEnd);
+        if (gap >= 0 && gap < CONFIG.MIN_PAUSE) {
+            showWarning('Немає 15-хвилинної паузи між програмами');
+            break;
+        }
+    }
+
+    return { valid: true };
+}
+
+// --- Save drag result to server ---
+async function _saveDragResult(state, timeDelta, lineChanged) {
+    const s = state;
+    const newTime = minutesToTime(s.currentMin);
+
+    try {
+        // 1. Update main booking
+        const mainUpdate = { ...s.booking, time: newTime, lineId: s.newLineId };
+        const mainResult = await apiUpdateBooking(s.booking.id, mainUpdate);
+        if (mainResult && mainResult.success === false) {
+            showNotification(mainResult.error || 'Помилка переміщення', 'error');
+            return false;
+        }
+
+        // 2. Update all related bookings
+        for (const rb of s.relatedBookings) {
+            if (!rb.moveWith) continue;
+            const rbNewMin = timeToMinutes(rb.booking.time) + timeDelta;
+            const rbNewTime = minutesToTime(rbNewMin);
+            const rbUpdate = { ...rb.booking, time: rbNewTime };
+            // Linked bookings stay on their own line (not switched)
+            const rbResult = await apiUpdateBooking(rb.booking.id, rbUpdate);
+            if (rbResult && rbResult.success === false) {
+                console.warn(`Failed to move related booking ${rb.booking.id}`);
+            }
+        }
+
+        // 3. History entry
+        const historyData = {
+            ...mainUpdate,
+            shiftMinutes: timeDelta,
+            lineSwitched: lineChanged,
+            oldLineId: s.startLineId,
+            oldTime: minutesToTime(s.startMin)
+        };
+        await apiAddHistory('drag', AppState.currentUser?.username, historyData);
+
+        // 4. Undo support
+        pushUndo('drag', {
+            bookingId: s.booking.id,
+            oldTime: minutesToTime(s.startMin),
+            oldLineId: s.startLineId,
+            newTime: newTime,
+            newLineId: s.newLineId,
+            timeDelta: -timeDelta,
+            linked: s.relatedBookings.map(rb => ({
+                id: rb.booking.id,
+                oldTime: rb.booking.time,
+                newTime: minutesToTime(timeToMinutes(rb.booking.time) + timeDelta)
+            }))
+        });
+
+        // 5. Invalidate cache & re-render
+        delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+        await renderTimeline();
+
+        // 6. Show undo toast
+        _showDragUndoToast(s.booking, timeDelta, lineChanged);
+
+        return true;
+    } catch (error) {
+        handleError('Перетягування бронювання', error);
+        return false;
+    }
+}
+
+// --- Rollback drag visuals to original position ---
+function _rollbackDragVisuals(state) {
+    const s = state;
+
+    // Restore main block position
+    if (s.startLeft !== undefined) {
+        s.block.style.left = `${s.startLeft}px`;
+    }
+    // v12.6: Reset cross-line Y offset
+    s.block.style.transform = '';
+    s.block.classList.remove('dragging', 'long-press-pending');
+
+    // Restore related blocks
+    if (s.relatedBlocks && s.relatedOriginals) {
+        s.relatedBlocks.forEach((rb, i) => {
+            rb.el.style.left = `${s.relatedOriginals[i].left}px`;
+            rb.el.classList.remove('dragging-related');
+        });
+    }
+
+    // Remove UI elements
+    if (s.timeLabel) s.timeLabel.remove();
+    if (s.countLabel) s.countLabel.remove();
+    _removeDropGhost();
+    _clearDropIndicators();
+    document.body.classList.remove('dragging-active');
+
+    // Clear scroll interval
+    if (s.scrollInterval) clearInterval(s.scrollInterval);
+}
+
+// --- Undo toast ---
+function _showDragUndoToast(booking, timeDelta, lineChanged) {
+    // Remove existing toast
+    const existingToast = document.querySelector('.drag-undo-toast');
+    if (existingToast) existingToast.remove();
+
+    const label = booking.label || booking.programCode;
+    let message;
+    if (lineChanged && timeDelta !== 0) {
+        // v12.6: Show target line name in undo toast
+        const targetHeader = document.querySelector(`.line-header[data-line-id="${_bookingDragState?.newLineId || ''}"] .line-name`) ||
+            document.querySelector(`.line-grid[data-line-id="${_bookingDragState?.newLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
+        const targetName = targetHeader ? targetHeader.textContent : 'іншу лінію';
+        message = `${label} → ${targetName} (${timeDelta > 0 ? '+' : ''}${timeDelta} хв)`;
+    } else if (lineChanged) {
+        const targetHeader = document.querySelector(`.line-grid[data-line-id="${_bookingDragState?.newLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
+        const targetName = targetHeader ? targetHeader.textContent : 'іншу лінію';
+        message = `${label} → ${targetName}`;
+    } else {
+        message = `${label} перенесено на ${timeDelta > 0 ? '+' : ''}${timeDelta} хв`;
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'drag-undo-toast';
+    toast.innerHTML = `
+        <span>${escapeHtml(message)}</span>
+        <button>Скасувати</button>
+    `;
+
+    const undoBtn = toast.querySelector('button');
+    undoBtn.addEventListener('click', () => {
+        handleUndo();
+        toast.remove();
+    });
+
+    document.body.appendChild(toast);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s';
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 5000);
+}
+
+// --- Global pointer event listeners for booking drag ---
+document.addEventListener('pointermove', (e) => {
+    _handleBookingDragMove(e);
+    _handleResizeMove(e);
+});
+document.addEventListener('pointerup', (e) => {
+    _handleBookingDragEnd(e);
+    _handleResizeEnd(e);
+});
+document.addEventListener('pointercancel', (e) => {
+    _handleBookingDragCancel(e);
+    _handleResizeCancel(e);
+});
+
+// ==========================================
+// RESIZE BOOKING BLOCKS (Feature #14)
+// ==========================================
+
+function initBookingResize(handle, block, booking, startHour) {
+    handle.addEventListener('pointerdown', (e) => {
+        // Only primary button
+        if (e.button !== 0) return;
+        // Guard: drag in progress
+        if (_bookingDragState) return;
+        if (_afishaDragState) return;
+        // Guard: multi-day mode
+        if (AppState.multiDayMode) return;
+
+        e.stopPropagation(); // Prevent drag initiation
+        e.preventDefault();
+
+        const program = getProductsSync().find(p => p.id === booking.programId);
+        const minDuration = (program && program.isCustom) ? 15 : ((program && program.duration) || 15);
+
+        _resizeState = {
+            block: block,
+            booking: booking,
+            startHour: startHour,
+            startX: e.clientX,
+            startWidth: parseFloat(block.style.width),
+            originalDuration: booking.duration,
+            minDuration: minDuration,
+            maxDuration: 240,
+            pointerId: e.pointerId,
+            newDuration: booking.duration
+        };
+
+        try { handle.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        block.classList.add('resizing');
+        document.body.classList.add('dragging-active');
+
+        // Hide tooltip
+        hideTooltip();
+    });
+}
+
+function _handleResizeMove(e) {
+    if (!_resizeState) return;
+    const s = _resizeState;
+    const cellW = CONFIG.TIMELINE.CELL_WIDTH;
+    const cellM = CONFIG.TIMELINE.CELL_MINUTES;
+
+    e.preventDefault();
+
+    const deltaX = e.clientX - s.startX;
+    const deltaMin = Math.round((deltaX / cellW) * cellM / SNAP_MINUTES) * SNAP_MINUTES;
+    let newDuration = s.originalDuration + deltaMin;
+
+    // Clamp
+    newDuration = Math.max(s.minDuration, Math.min(s.maxDuration, newDuration));
+
+    // Check end-of-day boundary
+    const endMin = timeToMinutes(s.booking.time) + newDuration;
+    const dayEnd = CONFIG.TIMELINE.WEEKEND_END * 60;
+    if (endMin > dayEnd) {
+        newDuration = dayEnd - timeToMinutes(s.booking.time);
+    }
+
+    s.newDuration = newDuration;
+
+    // Update visual width
+    const newWidth = (newDuration / cellM) * cellW - 4;
+    s.block.style.width = `${newWidth}px`;
+
+    // Update duration badge
+    const badge = s.block.querySelector('.duration-badge');
+    if (badge) badge.textContent = `${newDuration}хв`;
+}
+
+async function _handleResizeEnd(e) {
+    if (!_resizeState) return;
+    const s = _resizeState;
+
+    s.block.classList.remove('resizing');
+    document.body.classList.remove('dragging-active');
+
+    try { s.block.querySelector('.resize-handle')?.releasePointerCapture(s.pointerId); } catch (err) { /* ignore */ }
+
+    if (s.newDuration === s.originalDuration) {
+        _resizeState = null;
+        return;
+    }
+
+    // Client-side conflict check
+    const dateStr = formatDate(AppState.selectedDate);
+    const allBookings = (AppState.cachedBookings[dateStr] && AppState.cachedBookings[dateStr].data) || [];
+    const newEndMin = timeToMinutes(s.booking.time) + s.newDuration;
+    const myStartMin = timeToMinutes(s.booking.time);
+
+    const lineBookings = allBookings.filter(b =>
+        b.lineId === s.booking.lineId && b.id !== s.booking.id
+    );
+
+    let conflict = false;
+    for (const other of lineBookings) {
+        const otherStart = timeToMinutes(other.time);
+        const otherEnd = otherStart + other.duration;
+        if (myStartMin < otherEnd && newEndMin > otherStart) {
+            conflict = true;
+            break;
+        }
+    }
+
+    if (conflict) {
+        showNotification('Неможливо змінити тривалість — накладка з наступним бронюванням', 'error');
+        _triggerHaptic('error');
+        // Rollback visual
+        const origWidth = (s.originalDuration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+        s.block.style.width = `${origWidth}px`;
+        const badge = s.block.querySelector('.duration-badge');
+        if (badge) badge.textContent = `${s.originalDuration}хв`;
+        _resizeState = null;
+        return;
+    }
+
+    // Save to server
+    const updated = { ...s.booking, duration: s.newDuration };
+    const result = await apiUpdateBooking(s.booking.id, updated);
+
+    if (result && result.success === false) {
+        showNotification(result.error || 'Помилка зміни тривалості', 'error');
+        // Rollback
+        const origWidth = (s.originalDuration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+        s.block.style.width = `${origWidth}px`;
+        const badge = s.block.querySelector('.duration-badge');
+        if (badge) badge.textContent = `${s.originalDuration}хв`;
+    } else {
+        // Update linked bookings duration too
+        const linked = allBookings.filter(b => b.linkedTo === s.booking.id);
+        for (const lb of linked) {
+            await apiUpdateBooking(lb.id, { ...lb, duration: s.newDuration });
+        }
+
+        pushUndo('resize', {
+            bookingId: s.booking.id,
+            oldDuration: s.originalDuration,
+            newDuration: s.newDuration,
+            linked: linked.map(l => l.id)
+        });
+
+        delete AppState.cachedBookings[dateStr];
+        await renderTimeline();
+        showNotification(`Тривалість: ${s.newDuration} хв`, 'success');
+        _triggerHaptic('success');
+    }
+
+    _resizeState = null;
+}
+
+function _handleResizeCancel(e) {
+    if (!_resizeState) return;
+    const s = _resizeState;
+
+    s.block.classList.remove('resizing');
+    document.body.classList.remove('dragging-active');
+
+    try { s.block.querySelector('.resize-handle')?.releasePointerCapture(s.pointerId); } catch (err) { /* ignore */ }
+
+    // Rollback visual
+    const origWidth = (s.originalDuration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+    s.block.style.width = `${origWidth}px`;
+    const badge = s.block.querySelector('.duration-badge');
+    if (badge) badge.textContent = `${s.originalDuration}хв`;
+
+    _resizeState = null;
+}
+
+// ==========================================
+// DRAG/RESIZE INTEGRATION HOOKS (Feature #14)
+// ==========================================
+
+// Extend handleUndo() to support 'drag' and 'resize' actions
+// (handleUndo is defined in ui.js which loads before timeline.js)
+const _originalHandleUndo = handleUndo;
+handleUndo = async function() {
+    if (AppState.undoStack.length === 0) return;
+    const lastItem = AppState.undoStack[AppState.undoStack.length - 1];
+
+    if (lastItem.action === 'drag') {
+        AppState.undoStack.pop();
+        const { bookingId, oldTime, oldLineId, linked } = lastItem.data;
+        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const booking = bookings.find(b => b.id === bookingId);
+        if (booking) {
+            // Restore main booking
+            await apiUpdateBooking(bookingId, { ...booking, time: oldTime, lineId: oldLineId });
+            // Restore linked bookings
+            for (const lb of linked) {
+                const lbBooking = bookings.find(b => b.id === lb.id);
+                if (lbBooking) {
+                    await apiUpdateBooking(lb.id, { ...lbBooking, time: lb.oldTime });
+                }
+            }
+            await apiAddHistory('undo_drag', AppState.currentUser?.username, {
+                ...booking, time: oldTime, lineId: oldLineId
+            });
+        }
+        showNotification('Перетягування скасовано', 'warning');
+        AppState.cachedBookings = {};
+        await renderTimeline();
+        updateUndoButton();
+        return;
+    }
+
+    if (lastItem.action === 'resize') {
+        AppState.undoStack.pop();
+        const { bookingId, oldDuration, linked } = lastItem.data;
+        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const booking = bookings.find(b => b.id === bookingId);
+        if (booking) {
+            await apiUpdateBooking(bookingId, { ...booking, duration: oldDuration });
+            for (const lbId of linked) {
+                const lb = bookings.find(b => b.id === lbId);
+                if (lb) await apiUpdateBooking(lbId, { ...lb, duration: oldDuration });
+            }
+        }
+        showNotification('Зміну тривалості скасовано', 'warning');
+        AppState.cachedBookings = {};
+        await renderTimeline();
+        updateUndoButton();
+        return;
+    }
+
+    // Fall through to original handler for other actions
+    return _originalHandleUndo.call(this);
+};
+
+// Extend changeZoom() to cancel drag/resize on zoom change
+const _originalChangeZoom = changeZoom;
+changeZoom = function(level) {
+    if (_bookingDragState) {
+        _rollbackDragVisuals(_bookingDragState);
+        _bookingDragState = null;
+    }
+    if (_resizeState) {
+        _handleResizeCancel(null);
+    }
+    return _originalChangeZoom.call(this, level);
+};
+
+// Extend changeDate() to cancel drag/resize on date change
+const _originalChangeDate = changeDate;
+changeDate = function(days) {
+    if (_bookingDragState) {
+        _rollbackDragVisuals(_bookingDragState);
+        _bookingDragState = null;
+    }
+    if (_resizeState) {
+        _handleResizeCancel(null);
+    }
+    return _originalChangeDate.call(this, days);
+};
 
 // ==========================================
 // DRAG-TO-MOVE AFISHA BLOCKS

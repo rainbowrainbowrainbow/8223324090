@@ -5,9 +5,9 @@
 const router = require('express').Router();
 const { pool, generateCertCode } = require('../db');
 const { requireRole } = require('../middleware/auth');
-const { mapCertificateRow, calculateValidUntil, validateCertificateInput, VALID_STATUSES } = require('../services/certificates');
+const { mapCertificateRow, calculateValidUntil, validateCertificateInput, getCurrentSeason, VALID_STATUSES, VALID_SEASONS } = require('../services/certificates');
 const { sendTelegramMessage, sendTelegramPhoto, getConfiguredChatId, getBotUsername } = require('../services/telegram');
-const { formatCertificateNotification } = require('../services/templates');
+const { formatCertificateNotification, formatBatchCertificateNotification } = require('../services/templates');
 const { createLogger } = require('../utils/logger');
 const QRCode = require('qrcode');
 
@@ -118,7 +118,10 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             return res.status(400).json({ error: errors.join(', ') });
         }
 
-        const { displayMode, displayValue, typeText, validUntil, notes } = req.body;
+        const { displayMode, displayValue, typeText, validUntil, notes, season } = req.body;
+
+        // Validate season
+        const finalSeason = VALID_SEASONS.includes(season) ? season : getCurrentSeason();
 
         await client.query('BEGIN');
 
@@ -136,8 +139,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const finalValidUntil = validUntil || calculateValidUntil(new Date(), defaultDays);
 
         const result = await client.query(
-            `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+            `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, season, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
              RETURNING *`,
             [
                 certCode,
@@ -147,7 +150,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
                 finalValidUntil,
                 req.user.id || null,
                 req.user.name || req.user.username,
-                notes || null
+                notes || null,
+                finalSeason
             ]
         );
 
@@ -190,6 +194,7 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
 
         const typeText = req.body.typeText || 'на одноразовий вхід';
         const validUntil = req.body.validUntil;
+        const season = VALID_SEASONS.includes(req.body.season) ? req.body.season : getCurrentSeason();
 
         let defaultDays = 45;
         try {
@@ -207,8 +212,8 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
         for (let i = 0; i < quantity; i++) {
             const certCode = await generateCertCode(client);
             const result = await client.query(
-                `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, status)
-                 VALUES ($1, 'fio', '', $2, $3, $4, $5, $6, 'active')
+                `INSERT INTO certificates (cert_code, display_mode, display_value, type_text, valid_until, issued_by_user_id, issued_by_name, notes, season, status)
+                 VALUES ($1, 'fio', '', $2, $3, $4, $5, $6, $7, 'active')
                  RETURNING *`,
                 [
                     certCode,
@@ -216,7 +221,8 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
                     finalValidUntil,
                     req.user.id || null,
                     req.user.name || req.user.username,
-                    `Пакетна генерація (${quantity} шт.)`
+                    `Пакетна генерація (${quantity} шт.)`,
+                    season
                 ]
             );
             created.push(mapCertificateRow(result.rows[0]));
@@ -233,6 +239,30 @@ router.post('/batch', requireRole('admin', 'user'), async (req, res) => {
 
         await client.query('COMMIT');
         log.info(`Batch certificates created: ${quantity} by ${req.user.username}`);
+
+        // Telegram notification — fire-and-forget after commit
+        const codes = created.map(c => c.certCode);
+        (async () => {
+            try {
+                const text = formatBatchCertificateNotification(codes, {
+                    username: req.user.name || req.user.username,
+                    quantity,
+                    typeText,
+                    validUntil: finalValidUntil,
+                    season
+                });
+                let chatId;
+                try {
+                    const dirResult = await pool.query("SELECT value FROM settings WHERE key = 'cert_director_chat_id'");
+                    if (dirResult.rows.length > 0 && dirResult.rows[0].value) chatId = dirResult.rows[0].value;
+                } catch (e) { /* fallback */ }
+                if (!chatId) chatId = await getConfiguredChatId();
+                if (chatId) await sendTelegramMessage(chatId, text);
+            } catch (err) {
+                log.error(`Telegram batch alert failed: ${err.message}`);
+            }
+        })();
+
         res.status(201).json({ success: true, certificates: created });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});

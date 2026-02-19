@@ -9,7 +9,34 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Backup');
 
-const BACKUP_TABLES = ['bookings', 'lines_by_date', 'users', 'history', 'settings', 'afisha', 'pending_animators', 'telegram_known_chats', 'telegram_known_threads', 'booking_counter'];
+// Order matters for restore: parents before children (FK dependencies).
+// DELETE runs in reverse order (children first), INSERT in forward order (parents first).
+// The only FK: staff_schedule.staff_id → staff(id) ON DELETE CASCADE.
+// Note: scheduled_deletions is excluded (transient Telegram data, stale on restore).
+const BACKUP_TABLES = [
+    // === Independent tables (no FK dependencies) ===
+    'users',
+    'settings',
+    'booking_counter',
+    'certificate_counter',
+    'bookings',
+    'lines_by_date',
+    'history',
+    'pending_animators',
+    'telegram_known_chats',
+    'telegram_known_threads',
+    'afisha',
+    'afisha_templates',
+    'products',
+    'tasks',
+    'task_templates',
+    'automation_rules',
+    'certificates',
+    // === Parent tables (referenced by FK) ===
+    'staff',
+    // === Child tables (have FK to parent) ===
+    'staff_schedule',
+];
 
 async function generateBackupSQL() {
     const lines = [];
@@ -17,30 +44,46 @@ async function generateBackupSQL() {
     lines.push(`-- Date: ${new Date().toISOString()}`);
     lines.push(`-- Tables: ${BACKUP_TABLES.join(', ')}\n`);
 
+    // Fetch all data first
+    const tableData = {};
     for (const table of BACKUP_TABLES) {
         try {
             const result = await pool.query(`SELECT * FROM ${table}`);
-            if (result.rows.length === 0) continue;
-
-            lines.push(`-- ${table}: ${result.rows.length} rows`);
-            lines.push(`DELETE FROM ${table};`);
-
-            const columns = Object.keys(result.rows[0]);
-            for (const row of result.rows) {
-                const values = columns.map(col => {
-                    const val = row[col];
-                    if (val === null || val === undefined) return 'NULL';
-                    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
-                    if (val instanceof Date) return `'${val.toISOString()}'`;
-                    if (typeof val === 'object') return `'${JSON.stringify(val).replace(/'/g, "''")}'`;
-                    return `'${String(val).replace(/'/g, "''")}'`;
-                });
-                lines.push(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${values.join(', ')});`);
-            }
-            lines.push('');
+            tableData[table] = result.rows;
         } catch (err) {
-            lines.push(`-- ERROR backing up ${table}: ${err.message}\n`);
+            lines.push(`-- ERROR reading ${table}: ${err.message}`);
+            tableData[table] = null;
         }
+    }
+
+    // Phase 1: DELETE in reverse order (children before parents)
+    lines.push('-- === PHASE 1: DELETE (reverse FK order) ===');
+    for (const table of [...BACKUP_TABLES].reverse()) {
+        if (tableData[table] === null) continue;
+        lines.push(`DELETE FROM ${table};`);
+    }
+    lines.push('');
+
+    // Phase 2: INSERT in forward order (parents before children)
+    lines.push('-- === PHASE 2: INSERT (forward FK order) ===');
+    for (const table of BACKUP_TABLES) {
+        const rows = tableData[table];
+        if (!rows || rows.length === 0) continue;
+
+        lines.push(`-- ${table}: ${rows.length} rows`);
+        const columns = Object.keys(rows[0]);
+        for (const row of rows) {
+            const values = columns.map(col => {
+                const val = row[col];
+                if (val === null || val === undefined) return 'NULL';
+                if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+                if (val instanceof Date) return `'${val.toISOString()}'`;
+                if (typeof val === 'object') return `'${JSON.stringify(val).replace(/'/g, "''")}'`;
+                return `'${String(val).replace(/'/g, "''")}'`;
+            });
+            lines.push(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${values.join(', ')});`);
+        }
+        lines.push('');
     }
 
     return lines.join('\n');

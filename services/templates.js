@@ -12,6 +12,7 @@ const notificationTemplates = {
         text += `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n`;
         text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
         text += `🏠 ${booking.room}\n`;
+        if (extra.lineName) text += `🎪 Аніматор: ${extra.lineName}\n`;
         if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${booking.second_animator || booking.secondAnimator}\n`;
         if (booking.pinata_filler || booking.pinataFiller) text += `🪅 Наповнювач: №${booking.pinata_filler || booking.pinataFiller}\n`;
         if (booking.kids_count) text += `👶 ${booking.kids_count} дітей\n`;
@@ -27,6 +28,7 @@ const notificationTemplates = {
         text += `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n`;
         text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
         text += `🏠 ${booking.room}\n`;
+        if (extra.lineName) text += `🎪 Аніматор: ${extra.lineName}\n`;
         if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${booking.second_animator || booking.secondAnimator}\n`;
         if (booking.pinata_filler || booking.pinataFiller) text += `🪅 Наповнювач: №${booking.pinata_filler || booking.pinataFiller}\n`;
         if (booking.kids_count) text += `👶 ${booking.kids_count} дітей\n`;
@@ -37,20 +39,26 @@ const notificationTemplates = {
     },
 
     delete(booking, extra) {
-        return `🗑 <b>Видалено бронювання</b>\n\n` +
-            `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n` +
-            `🕐 ${booking.date} | ${booking.time}\n` +
-            `🏠 ${booking.room}\n` +
-            `\n👤 Видалив: ${extra.username || '?'}`;
+        let text = `🗑 <b>Видалено бронювання</b>\n\n`;
+        text += `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n`;
+        text += `🕐 ${booking.date} | ${booking.time}\n`;
+        text += `🏠 ${booking.room}\n`;
+        if (extra.lineName) text += `🎪 Аніматор: ${extra.lineName}\n`;
+        if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${booking.second_animator || booking.secondAnimator}\n`;
+        text += `\n👤 Видалив: ${extra.username || '?'}`;
+        return text;
     },
 
     status_change(booking, extra) {
         const statusText = booking.status === 'confirmed' ? '✅ Підтверджене' : '⏳ Попереднє';
-        return `⚡ <b>Статус змінено</b>\n\n` +
-            `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n` +
-            `🕐 ${booking.date} | ${booking.time}\n` +
-            `📊 ${statusText}\n` +
-            `\n👤 Змінив: ${extra.username || '?'}`;
+        let text = `⚡ <b>Статус змінено</b>\n\n`;
+        text += `🎭 ${booking.label || booking.program_code}: ${booking.program_name}\n`;
+        text += `🕐 ${booking.date} | ${booking.time}\n`;
+        text += `📊 ${statusText}\n`;
+        if (extra.lineName) text += `🎪 Аніматор: ${extra.lineName}\n`;
+        if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${booking.second_animator || booking.secondAnimator}\n`;
+        text += `\n👤 Змінив: ${extra.username || '?'}`;
+        return text;
     }
 };
 
@@ -101,6 +109,27 @@ const certificateTemplates = {
     }
 };
 
+/**
+ * Format batch certificate notification for Telegram.
+ * @param {Array<string>} codes - Array of cert_code strings
+ * @param {object} extra - { username, quantity, typeText, validUntil, season }
+ * @returns {string} formatted HTML text
+ */
+function formatBatchCertificateNotification(codes, extra = {}) {
+    const validDate = extra.validUntil ? new Date(extra.validUntil).toLocaleDateString('uk-UA') : '—';
+    let text = `📦 <b>Пакетна видача сертифікатів</b>\n\n`;
+    text += `📊 Кількість: ${extra.quantity || codes.length} шт.\n`;
+    text += `🏷 Тип: ${extra.typeText || 'на одноразовий вхід'}\n`;
+    text += `⏰ Дійсні до: ${validDate}\n`;
+    text += `👤 Видав: ${extra.username || '?'}\n\n`;
+    text += `🔑 <b>Номери сертифікатів:</b>\n`;
+    codes.forEach((code, i) => {
+        const prefix = i === codes.length - 1 ? '└' : '├';
+        text += `${prefix} <code>${code}</code>\n`;
+    });
+    return text;
+}
+
 function formatCertificateNotification(type, cert, extra = {}) {
     const template = certificateTemplates[type];
     if (!template) return '';
@@ -150,4 +179,4 @@ function formatAfishaBlock(events) {
     return text;
 }
 
-module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock, certificateTemplates, formatCertificateNotification };
+module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock, certificateTemplates, formatCertificateNotification, formatBatchCertificateNotification };

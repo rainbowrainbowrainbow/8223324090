@@ -1,120 +1,63 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <clipPath id="circle">
-      <circle cx="256" cy="256" r="256"/>
-    </clipPath>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a14"/>
+      <stop offset="100%" stop-color="#12121e"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5C842"/>
+      <stop offset="50%" stop-color="#E8B830"/>
+      <stop offset="100%" stop-color="#D4A020"/>
+    </linearGradient>
+    <linearGradient id="goldLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE082"/>
+      <stop offset="100%" stop-color="#F5C842"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
 
-  <!-- Geometric stained-glass background -->
-  <g clip-path="url(#circle)">
-    <!-- Background base -->
-    <rect width="512" height="512" fill="#2563EB"/>
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="url(#bgGrad)"/>
 
-    <!-- Geometric triangles -->
-    <polygon points="0,0 256,128 0,256" fill="#1E40AF" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="0,0 256,128 180,0" fill="#0EA5E9" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="180,0 256,128 350,0" fill="#2563EB" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="350,0 256,128 512,0" fill="#0D9488" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="512,0 256,128 512,256" fill="#059669" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="512,256 256,128 380,300" fill="#16A34A" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="512,256 380,300 512,420" fill="#65A30D" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="512,420 380,300 440,512" fill="#4D7C0F" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="440,512 380,300 256,512" fill="#EA580C" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="256,512 380,300 256,380" fill="#DC2626" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="256,380 380,300 256,128" fill="#84CC16" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="256,380 256,128 130,300" fill="#A21CAF" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="256,512 256,380 130,300" fill="#BE185D" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="256,512 130,300 80,512" fill="#DB2777" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="80,512 130,300 0,420" fill="#9333EA" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="0,420 130,300 0,256" fill="#7C3AED" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="0,256 130,300 256,128" fill="#6366F1" stroke="#9CA3AF" stroke-width="3"/>
-    <polygon points="0,420 0,512 80,512" fill="#C026D3" stroke="#9CA3AF" stroke-width="3"/>
+  <!-- Subtle glow behind gear -->
+  <circle cx="256" cy="256" r="140" fill="none" stroke="rgba(245,200,66,0.06)" stroke-width="80"/>
+
+  <!-- Main gear (12 teeth) -->
+  <g transform="translate(256,256)" filter="url(#glow)">
+    <path d="
+      M0,-150 L18,-148 L22,-130 A130,130,0,0,1,65,-115 L78,-128 L92,-118 L82,-102 A130,130,0,0,1,115,-65 L130,-72 L138,-55 L120,-48 A130,130,0,0,1,130,0 L148,-2 L148,18 L130,22 A130,130,0,0,1,115,65 L128,78 L118,92 L102,82 A130,130,0,0,1,65,115 L72,130 L55,138 L48,120 A130,130,0,0,1,0,130 L2,148 L-18,148 L-22,130 A130,130,0,0,1,-65,115 L-78,128 L-92,118 L-82,102 A130,130,0,0,1,-115,65 L-130,72 L-138,55 L-120,48 A130,130,0,0,1,-130,0 L-148,2 L-148,-18 L-130,-22 A130,130,0,0,1,-115,-65 L-128,-78 L-118,-92 L-102,-82 A130,130,0,0,1,-65,-115 L-72,-130 L-55,-138 L-48,-120 A130,130,0,0,1,0,-130 L-2,-148 Z
+    " fill="url(#goldGrad)" stroke="#D4A020" stroke-width="2"/>
+
+    <!-- Inner ring -->
+    <circle cx="0" cy="0" r="75" fill="url(#bgGrad)" stroke="url(#goldLight)" stroke-width="4"/>
+
+    <!-- Conductor baton (diagonal line with tip) -->
+    <g transform="rotate(-30)">
+      <line x1="-35" y1="35" x2="42" y2="-42" stroke="url(#goldLight)" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="45" cy="-45" r="5" fill="#FFE082"/>
+      <rect x="-42" y="28" width="16" height="10" rx="3" fill="#D4A020" transform="rotate(-45,-34,33)"/>
+    </g>
   </g>
 
-  <!-- Rabbit with clock -->
-  <g clip-path="url(#circle)">
-    <!-- Shadow under rabbit -->
-    <ellipse cx="256" cy="430" rx="100" ry="14" fill="rgba(0,0,0,0.15)"/>
+  <!-- Small decorative gear (top-right) -->
+  <g transform="translate(380,130) scale(0.3)" opacity="0.4">
+    <path d="
+      M0,-150 L18,-148 L22,-130 A130,130,0,0,1,65,-115 L78,-128 L92,-118 L82,-102 A130,130,0,0,1,115,-65 L130,-72 L138,-55 L120,-48 A130,130,0,0,1,130,0 L148,-2 L148,18 L130,22 A130,130,0,0,1,115,65 L128,78 L118,92 L102,82 A130,130,0,0,1,65,115 L72,130 L55,138 L48,120 A130,130,0,0,1,0,130 L2,148 L-18,148 L-22,130 A130,130,0,0,1,-65,115 L-78,128 L-92,118 L-82,102 A130,130,0,0,1,-115,65 L-130,72 L-138,55 L-120,48 A130,130,0,0,1,-130,0 L-148,2 L-148,-18 L-130,-22 A130,130,0,0,1,-115,-65 L-128,-78 L-118,-92 L-102,-82 A130,130,0,0,1,-65,-115 L-72,-130 L-55,-138 L-48,-120 A130,130,0,0,1,0,-130 L-2,-148 Z
+    " fill="url(#goldGrad)" stroke="#D4A020" stroke-width="2"/>
+    <circle cx="0" cy="0" r="50" fill="url(#bgGrad)"/>
+  </g>
 
-    <!-- Rabbit body -->
-    <g fill="#FFFFFF" stroke="#1E293B" stroke-width="8" stroke-linejoin="round" stroke-linecap="round">
-      <!-- Left ear -->
-      <path d="M200,155 Q185,80 195,50 Q205,30 218,35 Q232,42 225,120 L215,160 Z"/>
-      <!-- Right ear -->
-      <path d="M265,145 Q275,70 285,45 Q295,25 308,32 Q320,42 305,120 L290,155 Z"/>
-      <!-- Ear inners (pink) -->
-    </g>
-    <g fill="#F9A8D4" stroke="none">
-      <path d="M203,145 Q192,90 200,60 Q207,45 214,48 Q222,55 218,120 L212,150 Z"/>
-      <path d="M270,138 Q278,78 287,55 Q293,40 300,44 Q307,52 298,118 L288,148 Z"/>
-    </g>
-
-    <!-- Head -->
-    <ellipse cx="245" cy="195" rx="68" ry="60" fill="#FFFFFF" stroke="#1E293B" stroke-width="8"/>
-
-    <!-- Eyes -->
-    <circle cx="222" cy="185" r="8" fill="#1E293B"/>
-    <circle cx="260" cy="182" r="8" fill="#1E293B"/>
-    <circle cx="224" cy="183" r="3" fill="#FFFFFF"/>
-    <circle cx="262" cy="180" r="3" fill="#FFFFFF"/>
-
-    <!-- Nose -->
-    <ellipse cx="240" cy="202" rx="6" ry="4" fill="#F472B6"/>
-
-    <!-- Mouth -->
-    <path d="M240,206 Q232,215 228,212" fill="none" stroke="#1E293B" stroke-width="3" stroke-linecap="round"/>
-    <path d="M240,206 Q248,215 252,212" fill="none" stroke="#1E293B" stroke-width="3" stroke-linecap="round"/>
-
-    <!-- Whiskers -->
-    <line x1="195" y1="195" x2="165" y2="188" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="195" y1="202" x2="163" y2="202" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="195" y1="209" x2="165" y2="216" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="280" y1="192" x2="310" y2="185" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="280" y1="199" x2="312" y2="199" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="280" y1="206" x2="310" y2="213" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
-
-    <!-- Body -->
-    <ellipse cx="250" cy="330" rx="85" ry="95" fill="#FFFFFF" stroke="#1E293B" stroke-width="8"/>
-
-    <!-- Belly -->
-    <ellipse cx="252" cy="340" rx="55" ry="65" fill="#F5F5F5" stroke="none"/>
-
-    <!-- Left arm holding clock -->
-    <path d="M180,290 Q140,300 130,330 Q125,350 140,355 Q150,358 165,340" fill="#FFFFFF" stroke="#1E293B" stroke-width="8" stroke-linecap="round"/>
-
-    <!-- Right arm -->
-    <path d="M320,290 Q355,310 358,340 Q360,355 345,358 Q335,360 322,342" fill="#FFFFFF" stroke="#1E293B" stroke-width="8" stroke-linecap="round"/>
-
-    <!-- Clock -->
-    <circle cx="155" cy="325" r="48" fill="#FFFFFF" stroke="#1E293B" stroke-width="7"/>
-    <circle cx="155" cy="325" r="40" fill="#FFFFFF" stroke="#1E293B" stroke-width="3"/>
-    <!-- Clock hour markers -->
-    <line x1="155" y1="290" x2="155" y2="296" stroke="#1E293B" stroke-width="3" stroke-linecap="round"/>
-    <line x1="155" y1="354" x2="155" y2="360" stroke="#1E293B" stroke-width="3" stroke-linecap="round"/>
-    <line x1="120" y1="325" x2="126" y2="325" stroke="#1E293B" stroke-width="3" stroke-linecap="round"/>
-    <line x1="184" y1="325" x2="190" y2="325" stroke="#1E293B" stroke-width="3" stroke-linecap="round"/>
-    <!-- Small markers -->
-    <line x1="175" y1="296" x2="172" y2="301" stroke="#1E293B" stroke-width="2"/>
-    <line x1="185" y1="310" x2="181" y2="312" stroke="#1E293B" stroke-width="2"/>
-    <line x1="185" y1="340" x2="181" y2="338" stroke="#1E293B" stroke-width="2"/>
-    <line x1="175" y1="354" x2="172" y2="349" stroke="#1E293B" stroke-width="2"/>
-    <line x1="135" y1="354" x2="138" y2="349" stroke="#1E293B" stroke-width="2"/>
-    <line x1="125" y1="340" x2="129" y2="338" stroke="#1E293B" stroke-width="2"/>
-    <line x1="125" y1="310" x2="129" y2="312" stroke="#1E293B" stroke-width="2"/>
-    <line x1="135" y1="296" x2="138" y2="301" stroke="#1E293B" stroke-width="2"/>
-    <!-- Clock hands — 10:10 -->
-    <line x1="155" y1="325" x2="140" y2="300" stroke="#1E293B" stroke-width="4" stroke-linecap="round"/>
-    <line x1="155" y1="325" x2="172" y2="302" stroke="#1E293B" stroke-width="4" stroke-linecap="round"/>
-    <!-- Center dot -->
-    <circle cx="155" cy="325" r="4" fill="#1E293B"/>
-
-    <!-- Left foot -->
-    <ellipse cx="210" cy="420" rx="35" ry="16" fill="#FFFFFF" stroke="#1E293B" stroke-width="7"/>
-    <!-- Right foot -->
-    <ellipse cx="290" cy="420" rx="35" ry="16" fill="#FFFFFF" stroke="#1E293B" stroke-width="7"/>
-
-    <!-- Tail -->
-    <circle cx="335" cy="380" r="18" fill="#FFFFFF" stroke="#1E293B" stroke-width="6"/>
-    <circle cx="335" cy="380" r="10" fill="#F5F5F5"/>
+  <!-- Small decorative gear (bottom-left) -->
+  <g transform="translate(140,395) scale(0.22)" opacity="0.3">
+    <path d="
+      M0,-150 L18,-148 L22,-130 A130,130,0,0,1,65,-115 L78,-128 L92,-118 L82,-102 A130,130,0,0,1,115,-65 L130,-72 L138,-55 L120,-48 A130,130,0,0,1,130,0 L148,-2 L148,18 L130,22 A130,130,0,0,1,115,65 L128,78 L118,92 L102,82 A130,130,0,0,1,65,115 L72,130 L55,138 L48,120 A130,130,0,0,1,0,130 L2,148 L-18,148 L-22,130 A130,130,0,0,1,-65,115 L-78,128 L-92,118 L-82,102 A130,130,0,0,1,-115,65 L-130,72 L-138,55 L-120,48 A130,130,0,0,1,-130,0 L-148,2 L-148,-18 L-130,-22 A130,130,0,0,1,-115,-65 L-128,-78 L-118,-92 L-102,-82 A130,130,0,0,1,-65,-115 L-72,-130 L-55,-138 L-48,-120 A130,130,0,0,1,0,-130 L-2,-148 Z
+    " fill="url(#goldGrad)" stroke="#D4A020" stroke-width="2"/>
+    <circle cx="0" cy="0" r="50" fill="url(#bgGrad)"/>
   </g>
 </svg>

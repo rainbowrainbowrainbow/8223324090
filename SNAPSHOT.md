@@ -1,86 +1,78 @@
 # SNAPSHOT — Park Booking System
 
-> Оновлюється кожні 10-15 повідомлень. Швидкий контекст для продовження роботи.
+> Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v8.6.0**. Розумний розподіл: redesign birthday блоків + авто-distribute афіші перед дайджестами.
+Версія **v13.0.0**. Kleshnya Chat v2 — multi-session чат з sidebar, media, reactions, WebSocket real-time.
 
-## Що готово
-- v5.30-v5.38: UI/UX overhaul (design system, responsive, dark mode, PWA)
-- v5.39-v5.41: Bugfixes, Security, Performance
-- v5.42-v5.48: Design System v4.0 + Integration
-- v5.49-v5.51: Program Search, Duplicate Booking, Undo
-- v6.0: Test Mode (безпарольний вхід, тимчасовий)
-- v7.0: Product Catalog MVP (програми в БД, API read-only)
-- v7.1: Admin CRUD каталогу (create/edit/deactivate, role manager, product form)
-- v7.2: Clawd Bot (7 Telegram-команд: today/tomorrow/programs/find/price/stats/menu)
-- v7.3: Афіша в Telegram (дайджест + нагадування про завтра)
-- v7.4: Типи подій (event/birthday/regular), іменинники в Telegram
-- v7.5: Задачник MVP (tasks CRUD, статуси, пріоритети, фільтрація)
-- v7.6: Афіша -> Задачі (генерація задач по кнопці, шаблони, каскад)
-- v7.6.1: Переключення ліній аніматорів + bugfix
-- v7.8: Standalone Tasks & Programs pages + recurring task templates
-- v7.8.1-v7.8.9: Мобільна адаптація (свайп, тулбар, glassmorphism, WCAG touch targets)
-- v7.8.10: Дайджест для 2го ведучого + афіша ±1год
-- v7.9.0: Дошка задач з категоріями (5 вкладок, канбан, авто-задачі з афіші)
-- v7.9.1: SVG іконки (відкинуто)
-- v7.9.2: Стилізовані емодзі іконки з градієнтними колами по категоріях
-- v8.3.0: Автоматизація (правила, задачі, Telegram) + Drag-to-Move афіша
-- v8.3.1: МК Футболки (розміри XS-XL в extra_data, 2 автоматизації) + афіша-блоки row layout
-- v8.3.2: Фікс історії (афіша/автоматизація рендеринг) + extra_data в linked bookings
-- v8.3.3: Bugfixes (undo_edit/undo_shift в історії, share/copy invite crash fix)
-- v8.4.0: Сертифікати (реєстр CERT-YYYY-NNNNN, Telegram-сповіщення, scheduler)
-- v8.5.0: Панель сертифікатів (slide-in, статистика, градієнтні картки)
-- v8.5.1: Графічні сертифікати (Canvas PNG, Містер Зак)
-- v8.5.2: Сезонний маскот (4 seasonal ілюстрації)
-- v8.6.0: Розумний розподіл (birthday pill-redesign + авто-distribute перед дайджестами)
+## Що готово (коротко)
+- v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
+- v6.0: Test Mode
+- v7.0–v7.6: Каталог, Clawd Bot, Афіша, Задачник, auto-tasks
+- v7.8–v7.9: Standalone pages, мобільна адаптація, дошка задач
+- v8.3–v8.6: Автоматизація, сертифікати, розумний розподіл
+- v9.0: DnD, recurring bookings, analytics, offline, migrations
+- v9.0.1–v9.0.2: Staff toolbar fix, accessibility (skip-links, reduced motion)
+- v9.1.0: WebSocket live-sync, SessionStart hook
+- v10.0.0: Tasker + Клешня — операційний центр
+- v10.0.1: Security hotfix (RBAC, input validation)
+- v10.1.0: Data integrity (unique indexes, atomic dedup, optimistic locking)
+- v10.2.0: Reliability (logging, ROLLBACK safety, graceful shutdown)
+- v10.3.0: Особистий кабінет (profile modal)
+- v10.4.0: Особистий кабінет PRO (15+ SQL queries, бали, лідерборд, сертифікати)
+- v10.5.0: Profile modal на sub-pages (tasks, programs, staff)
+- v11.0.0: Kleshnya greeting/chat + перебудований кабінет з 4 табами, 12 досягненнями
+- v12.0.0: Дизайн-борд (галерея, колекції, прайс-лист, календар, Telegram)
+- v12.1.0: Авто dark mode + мобільний UX + фікси авторизації та скролу
+- **v13.0.0: Kleshnya Chat v2 — multi-session + sidebar + media + reactions + WebSocket**
 
-## Що далі (план)
-- Clawd Bot команди для задач (/tasks, /done)
-- Авто-задачі (контент для соцмереж, нагадування)
-- Drag-n-drop сортування програм
+## Архітектура
+- **7 сторінок:** / (таймлайн), /tasks, /programs, /staff, /designs, /invite, /kleshnya
+- **Backend:** 18 routes, 13 services, 4 middleware
+- **Frontend:** 21 JS + 11 CSS модулів (+ kleshnya-page.js)
+- **БД:** ~32 таблиці + chat_sessions + kleshnya_media, 40+ індексів, 5 міграцій
+- **11 schedulers**, WebSocket broadcast
+- **364 тести** (3 файли + helpers)
+- ~47 000 рядків коду
+
+## Kleshnya Chat v2 (v12.8)
+- **kleshnya.html** — повний редизайн: sidebar сесій + chat area
+- **js/kleshnya-page.js** — вся фронтенд-логіка (sessions, messages, reactions, WS, voice)
+- **routes/kleshnya.js** — CRUD sessions, paginated messages, reactions, media proxy, webhook
+- **services/kleshnya-bridge.js** — Telegram Bridge для OpenClaw (227 рядків)
+- **services/kleshnya-greeting.js** — greeting engine з session support
+- **services/websocket.js** — kleshnya:thinking, kleshnya:reply, kleshnya:media events
+- **js/api.js** — 10 клієнтських функцій для Kleshnya v2
+- **db/migrations/005_kleshnya_chat_v2.sql** — chat_sessions, нові колонки, kleshnya_media
+
+### Фічі фронтенду
+1. Sidebar сесій (desktop 280px, mobile overlay)
+2. Multi-session: створення, перемикання, перейменування, pin, emoji, видалення
+3. Context menu (right-click / long press)
+4. Media bubbles (image, audio, video) + captions
+5. Reactions (👍/👎) toggle на assistant повідомленнях
+6. Generation indicator з progress bar (~30 сек)
+7. WebSocket real-time: kleshnya:thinking → typing, kleshnya:reply → message
+8. Voice input (Web Speech API)
+9. FAB на мобільному для нового чату
+10. Dark mode повна підтримка
+
+## Dark Mode (v12.1+)
+- `initDarkMode()` в config.js — єдина функція для всіх 7 сторінок
+- Авто: темна 20:00–07:00, світла 07:00–20:00
+- Ручний toggle зберігається в localStorage і перезаписує авто
+- Два селектори: `body.dark-mode` + `[data-theme="dark"]`
+
+## Що далі
+- Тестування Kleshnya Chat v2 з OpenClaw Bridge
+- Swagger /api-docs
 - Export PDF/Excel
-
-## Архітектура (v7.9.2)
-
-### 4 HTML-сторінки
-| Шлях | Файли | Опис |
-|---|---|---|
-| `/` | index.html + 8 JS + 10 CSS | Таймлайн (SPA) |
-| `/tasks` | tasks.html + tasks-page.js | Задачник (5 вкладок, канбан, категорії) |
-| `/programs` | programs.html + programs-page.js | Каталог програм (категорії, CRUD, іконки) |
-| `/invite` | invite.html | Запрошення (standalone) |
-
-CSS (10 модулів): base, auth, layout, timeline, panel, modals, controls, features, dark-mode, responsive + pages.css
-JS (10 модулів): config, api, ui, auth, timeline, booking, settings, app + programs-page, tasks-page
-
-### 13 таблиць БД
-bookings, lines_by_date, history, settings, users, booking_counter, pending_animators, afisha, telegram_known_chats, telegram_known_threads, products, tasks, task_templates
-
-### 4 Schedulers (60s interval)
-- checkAutoDigest (налаштовується)
-- checkAutoReminder (налаштовується)
-- checkAutoBackup (03:00)
-- checkRecurringTasks (00:05) — авто-створення recurring задач
+- Розширення тригерів Клешні
 
 ## Технічний стан
-- Branch: `claude/review-project-docs-mSGjR`
+- Branch: `claude/continue-project-12.6.0-8O2BS`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
-- 190 тестів, 54 suites
-
-### Задачі (Tasks System)
-- routes/tasks.js — CRUD + PATCH status + filter by type/afisha_id/category
-- routes/task-templates.js — recurring templates CRUD
-- tasks.category: event | purchase | admin | trampoline | personal
-- tasks.status: todo | in_progress | done
-- tasks.priority: low | normal | high
-- tasks.afisha_id: зв'язок з подією
-- tasks.template_id: зв'язок з шаблоном
-- task_templates.recurrence_pattern: daily | weekdays | weekly | custom
-
-### Іконки програм (v7.9.2)
-- Унікальні емодзі обгорнуті в .icon-circle з градієнтним фоном по категорії
-- Кольори: фіолетовий (quest), блакитний (animation), помаранчевий (show), бірюзовий (photo), зелений (masterclass), рожевий (pinata), сірий (custom)
+- SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-12, v8.3.3*
+*Оновлено: 2026-02-18, v13.0.0*

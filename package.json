@@ -1,19 +1,22 @@
 {
-  "name": "park-booking-system",
-  "version": "8.6.0",
-  "description": "Система бронювання для Парку Закревського Періоду",
+  "name": "event-maestro",
+  "version": "14.0.0",
+  "description": "Event Maestro — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "node --test tests/api.test.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.75.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.0.2",
     "pg": "^8.11.3",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "ws": "^8.19.0"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Парк Закревського Періоду | Бронювання</title>
-    <meta name="description" content="Система бронювання для дитячого розважального Парку Закревського Періоду. Квести, анімації, шоу, майстер-класи.">
-    <meta name="theme-color" content="#10B981">
+    <title>Event Maestro | Бронювання</title>
+    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Maestro">
+    <meta name="theme-color" content="#F5C842">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <!-- Favicon -->
@@ -14,30 +15,37 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=8.6.0">
-    <link rel="stylesheet" href="css/auth.css?v=8.6.0">
-    <link rel="stylesheet" href="css/layout.css?v=8.6.0">
-    <link rel="stylesheet" href="css/timeline.css?v=8.6.0">
-    <link rel="stylesheet" href="css/panel.css?v=8.6.0">
-    <link rel="stylesheet" href="css/modals.css?v=8.6.0">
-    <link rel="stylesheet" href="css/controls.css?v=8.6.0">
-    <link rel="stylesheet" href="css/features.css?v=8.6.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=8.6.0">
-    <link rel="stylesheet" href="css/responsive.css?v=8.6.0">
-    <link rel="stylesheet" href="css/pages.css?v=8.6.0">
+    <link rel="stylesheet" href="css/base.css?v=14.0">
+    <link rel="stylesheet" href="css/auth.css?v=14.0">
+    <link rel="stylesheet" href="css/layout.css?v=14.0">
+    <link rel="stylesheet" href="css/timeline.css?v=14.0">
+    <link rel="stylesheet" href="css/panel.css?v=14.0">
+    <link rel="stylesheet" href="css/modals.css?v=14.0">
+    <link rel="stylesheet" href="css/controls.css?v=14.0">
+    <link rel="stylesheet" href="css/features.css?v=14.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=14.0">
+    <link rel="stylesheet" href="css/responsive.css?v=14.0">
+    <link rel="stylesheet" href="css/pages.css?v=14.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=14.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <script>
+    // Dark mode flash prevention — runs synchronously before any content renders
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <!-- Екран авторизації -->
     <div id="loginScreen" class="login-screen">
         <div class="login-container">
             <div class="login-logo">
-                <img src="images/favicon-512.png" alt="Логотип" class="logo-img">
-                <h1>Парк Закревського Періоду</h1>
-                <p class="tagline">Система бронювання v8.6.0 — Розумний розподіл</p>
+                <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
+                <h1>Event Maestro</h1>
+                <p class="tagline">AI First CRM</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v8.6.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v14.0.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -47,9 +55,10 @@
                     <label for="password">Пароль</label>
                     <input type="password" id="password" placeholder="Введіть пароль" required>
                 </div>
-                <button type="submit" class="btn-login">Увійти</button>
+                <button type="submit" class="btn-login">Увійти →</button>
                 <p id="loginError" class="error-message"></p>
             </form>
+            <p class="login-footer">MagicGears · Event Maestro · 2026</p>
         </div>
     </div>
 
@@ -59,9 +68,10 @@
         <header class="header">
             <div class="header-content">
                 <div class="logo">
-                    <img src="images/favicon-512.png" alt="Логотип" class="logo-img-small">
-                    <div class="logo-text">
-                        <h1>Парк Закревського Періоду</h1>
+                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Maestro</span>
+                        <span class="em-logo-sub">AI First CRM</span>
                     </div>
                 </div>
                 <nav class="header-nav">
@@ -69,16 +79,18 @@
                     <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
                     <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
                     <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
+                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
                 </nav>
                 <div class="user-panel">
-                    <span id="currentUser" class="user-name"></span>
+                    <span id="currentUser" class="user-name user-name-clickable" role="button" tabindex="0" title="Особистий кабінет"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
 
         <!-- Основний контент - Таймлайн -->
-        <main class="main-content">
+        <main id="main-content" class="main-content">
             <!-- Панель керування -->
             <div class="control-panel">
                 <div class="date-controls">
@@ -151,10 +163,76 @@
                 <span id="quickStatsContent"></span>
             </div>
 
+            <!-- Kleshnya Floating Widget — Futuristic Terminal v11.0.3 -->
+            <div id="kleshnyaWidget" class="kleshnya-widget hidden">
+                <button type="button" id="kleshnyaFab" class="kleshnya-fab" title="Клешня — командний центр" aria-label="Відкрити Клешню">
+                    <span class="kleshnya-fab-icon">🦀</span>
+                    <span class="kleshnya-fab-ring"></span>
+                    <span class="kleshnya-fab-sonar"></span>
+                </button>
+                <div id="kleshnyaPopup" class="kleshnya-popup hidden" role="dialog" aria-label="Клешня — Командний Центр">
+                    <div class="kleshnya-scanline"></div>
+                    <div class="kleshnya-popup-header">
+                        <div class="kleshnya-header-left">
+                            <span class="kleshnya-status-dot"></span>
+                            <span class="kleshnya-popup-title">KLESHNYA <span class="kleshnya-version">v3.0</span></span>
+                        </div>
+                        <div class="kleshnya-header-right">
+                            <span class="kleshnya-status-text">ONLINE</span>
+                            <button type="button" id="kleshnyaClose" class="kleshnya-popup-close" aria-label="Закрити">✕</button>
+                        </div>
+                    </div>
+                    <div class="kleshnya-popup-body">
+                        <div class="kleshnya-terminal-line">
+                            <span class="kleshnya-prompt">&gt;</span>
+                            <div id="kleshnyaGreeting" class="kleshnya-greeting">Ініціалізація систем...</div>
+                        </div>
+                        <div id="kleshnyaAnswer" class="kleshnya-answer hidden">
+                            <span class="kleshnya-answer-prompt">&gt;&gt;</span>
+                            <span id="kleshnyaAnswerText" class="kleshnya-answer-text"></span>
+                        </div>
+                        <div class="kleshnya-divider">
+                            <span class="kleshnya-divider-text">ШВИДКІ ЗАПИТИ</span>
+                        </div>
+                        <div id="kleshnyaQuestions" class="kleshnya-questions">
+                            <button type="button" class="kleshnya-q-btn" data-topic="bookings">
+                                <span class="kleshnya-q-icon">📊</span>
+                                <span class="kleshnya-q-label">Бронювання</span>
+                            </button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="tasks">
+                                <span class="kleshnya-q-icon">📋</span>
+                                <span class="kleshnya-q-label">Задачі</span>
+                            </button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="revenue">
+                                <span class="kleshnya-q-icon">💰</span>
+                                <span class="kleshnya-q-label">Виручка</span>
+                            </button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="team">
+                                <span class="kleshnya-q-icon">👥</span>
+                                <span class="kleshnya-q-label">Команда</span>
+                            </button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="streak">
+                                <span class="kleshnya-q-icon">🔥</span>
+                                <span class="kleshnya-q-label">Стрік</span>
+                            </button>
+                            <button type="button" class="kleshnya-q-btn" data-topic="programs">
+                                <span class="kleshnya-q-icon">🎭</span>
+                                <span class="kleshnya-q-label">Програми</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="kleshnya-popup-footer">
+                        <a href="/kleshnya" class="kleshnya-goto-chat">
+                            <span class="kleshnya-chat-icon">⬡</span> Відкрити чат →
+                        </a>
+                    </div>
+                </div>
+            </div>
+
             <!-- Попередження -->
-            <div id="warningBanner" class="warning-banner hidden">
+            <div id="warningBanner" class="warning-banner hidden" role="alert" aria-live="assertive">
                 <span id="warningText"></span>
-                <button id="closeWarning" class="btn-close-warning">✕</button>
+                <button id="closeWarning" class="btn-close-warning" aria-label="Закрити попередження">✕</button>
             </div>
 
             <!-- v8.6: Banner for preliminary filter mode -->
@@ -434,6 +512,14 @@
                     </div>
                 </div>
 
+                <!-- v12.6: Silent booking (no notifications) -->
+                <div class="form-section">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="skipNotificationToggle">
+                        <span class="toggle-text">🔇 Без сповіщень (тихе бронювання)</span>
+                    </label>
+                </div>
+
                 <button type="submit" id="bookingSubmitBtn" class="btn-submit">Додати бронювання</button>
             </form>
         </aside>
@@ -506,7 +592,7 @@
     </div>
 
     <!-- Модальне вікно управління аніматорами (тільки для Сергія) -->
-    <div id="animatorsModal" class="modal hidden">
+    <div id="animatorsModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Список аніматорів">
         <div class="modal-content modal-large">
             <span class="modal-close">&times;</span>
             <h3>👥 Управління аніматорами</h3>
@@ -612,10 +698,17 @@
                         <button type="button" id="saveDigestTimeBtn" class="btn-submit btn-full">💾 Зберегти налаштування сповіщень</button>
                     </div>
                 </div>
+                <!-- v12.6: Contractors Management -->
+                <div class="settings-section" id="settingsContractorsSection">
+                    <h4>🤝 Підрядники</h4>
+                    <p class="digest-hint">Зовнішні виконавці, яким автоматично надсилаються замовлення (друк піньят, футболки тощо).</p>
+                    <div id="contractorsList" class="contractors-list"></div>
+                    <button type="button" class="btn-submit btn-purple" onclick="showAddContractor()">➕ Додати підрядника</button>
+                </div>
                 <!-- v8.3: Automation Rules -->
                 <div class="settings-section" id="settingsAutomationSection">
                     <h4>🤖 Автоматизація бронювань</h4>
-                    <p class="digest-hint">Правила автоматично створюють задачі та надсилають повідомлення при бронюванні певних програм. Головний бот буде підключено пізніше.</p>
+                    <p class="digest-hint">Правила автоматично створюють задачі та надсилають повідомлення при бронюванні певних програм.</p>
                     <div id="automationRulesList" class="automation-rules-list"></div>
                     <button type="button" id="addAutomationRuleBtn" class="btn-submit btn-purple" onclick="showAddAutomationRule()">➕ Додати правило</button>
                 </div>
@@ -655,7 +748,56 @@
                 <div class="form-group">
                     <label><input type="checkbox" id="arSendTelegram"> Також надіслати в Telegram групу</label>
                 </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="arNotifyContractor" onchange="toggleContractorSelect()"> Надіслати підряднику</label>
+                    <div id="arContractorSelectWrap" class="hidden" style="margin-top:8px">
+                        <select id="arContractorId">
+                            <option value="">Оберіть підрядника</option>
+                        </select>
+                        <div class="form-group" style="margin-top:8px">
+                            <label for="arContractorTemplate">Шаблон для підрядника</label>
+                            <input type="text" id="arContractorTemplate" value="🔔 <b>Нове замовлення</b>\n\n📅 {date} о {time}\n🏠 {room}\n👶 Дітей: {kidsCount}" placeholder="Шаблон повідомлення для підрядника">
+                        </div>
+                    </div>
+                </div>
                 <button type="submit" class="btn-submit btn-full">✅ Створити правило</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- v12.6: Модалка додавання/редагування підрядника -->
+    <div id="contractorModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Підрядник">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3 id="contractorModalTitle">🤝 Новий підрядник</h3>
+            <form id="contractorForm" onsubmit="handleContractorSubmit(event)">
+                <input type="hidden" id="contractorEditId">
+                <div class="form-group">
+                    <label for="contractorName">Ім'я / Назва</label>
+                    <input type="text" id="contractorName" placeholder="напр: Євгенія" required>
+                </div>
+                <div class="form-group">
+                    <label for="contractorSpecialty">Спеціалізація (через кому)</label>
+                    <input type="text" id="contractorSpecialty" placeholder="напр: pinata_print, print">
+                    <p class="form-hint">Категорії: pinata_print, tshirt_order, print, supplies, banner</p>
+                </div>
+                <div class="form-group">
+                    <label for="contractorTelegramId">Telegram Chat ID</label>
+                    <input type="text" id="contractorTelegramId" placeholder="напр: 622480549">
+                </div>
+                <div class="form-group">
+                    <label for="contractorTelegramUser">Telegram username</label>
+                    <input type="text" id="contractorTelegramUser" placeholder="напр: armonia_del_mundo">
+                </div>
+                <div class="form-group">
+                    <label for="contractorPhone">Телефон</label>
+                    <input type="text" id="contractorPhone" placeholder="+380...">
+                </div>
+                <div class="form-group">
+                    <label for="contractorNotes">Примітки</label>
+                    <input type="text" id="contractorNotes" placeholder="Що робить, умови...">
+                </div>
+                <button type="submit" class="btn-submit btn-full">💾 Зберегти</button>
             </form>
         </div>
     </div>
@@ -688,14 +830,21 @@
                         <input type="text" id="certTypeText" value="на одноразовий вхід" maxlength="200" class="hidden">
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="certValidUntil">Дійсний до</label>
-                    <div class="cert-date-row">
-                        <span id="certValidUntilDisplay" class="cert-date-display"></span>
-                        <button type="button" id="certDateGearBtn" class="cert-gear-btn" onclick="toggleCertDateEdit()" title="Змінити дату">&#9881;</button>
+                <div class="form-group" style="display:none">
+                    <label>Сезон (візуал сертифіката)</label>
+                    <div class="cert-season-row" id="certSeasonRow">
+                        <button type="button" class="cert-season-btn" data-season="winter">&#10052; Зима</button>
+                        <button type="button" class="cert-season-btn" data-season="spring">&#127800; Весна</button>
+                        <button type="button" class="cert-season-btn" data-season="summer">&#9728; Літо</button>
+                        <button type="button" class="cert-season-btn" data-season="autumn">&#127810; Осінь</button>
                     </div>
-                    <input type="date" id="certValidUntil" class="hidden">
-                    <small class="form-hint">За замовчуванням: +45 днів</small>
+                    <input type="hidden" id="certSeason" value="winter">
+                </div>
+                <div class="form-group">
+                    <label>Дійсний до</label>
+                    <span id="certValidUntilDisplay" class="cert-date-display"></span>
+                    <input type="hidden" id="certValidUntil">
+                    <small class="form-hint">Автоматично: сьогодні + 45 днів</small>
                 </div>
                 <div class="form-group">
                     <label for="certNotes">Примітка</label>
@@ -745,10 +894,21 @@
                     <input type="text" id="batchCertEventName" maxlength="200" placeholder="напр. Вітання Іменинників">
                     <small class="form-hint">Друкується на сертифікаті замість типу</small>
                 </div>
+                <div class="form-group" style="display:none">
+                    <label>Сезон (візуал сертифіката)</label>
+                    <div class="cert-season-row" id="batchCertSeasonRow">
+                        <button type="button" class="cert-season-btn" data-season="winter">&#10052; Зима</button>
+                        <button type="button" class="cert-season-btn" data-season="spring">&#127800; Весна</button>
+                        <button type="button" class="cert-season-btn" data-season="summer">&#9728; Літо</button>
+                        <button type="button" class="cert-season-btn" data-season="autumn">&#127810; Осінь</button>
+                    </div>
+                    <input type="hidden" id="batchCertSeason" value="winter">
+                </div>
                 <div class="form-group">
-                    <label for="batchCertValidUntil">Дійсний до</label>
-                    <input type="date" id="batchCertValidUntil">
-                    <small class="form-hint">За замовчуванням: +45 днів</small>
+                    <label>Дійсний до</label>
+                    <span id="batchCertValidUntilDisplay" class="cert-date-display"></span>
+                    <input type="hidden" id="batchCertValidUntil">
+                    <small class="form-hint">Автоматично: сьогодні + 45 днів</small>
                 </div>
                 <button type="submit" class="btn-submit btn-full" id="batchCertSubmitBtn">📦 Згенерувати</button>
             </form>
@@ -819,7 +979,7 @@
     </div>
 
     <!-- v3.9: Модальне вікно примітки (замість prompt) -->
-    <div id="noteModal" class="modal hidden">
+    <div id="noteModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Введіть примітку">
         <div class="modal-content modal-confirm">
             <h3>Додати аніматора</h3>
             <p>Примітка (опціонально):</p>
@@ -865,6 +1025,17 @@
         </div>
     </div>
 
+    <!-- v10.3: Особистий кабінет -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Сповіщення -->
     <!-- Модальне вікно Changelog -->
     <div id="changelogModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Що нового">
@@ -872,6 +1043,297 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v14.0.0 — Branding Integration</h4>
+                    <ul>
+                        <li>🎨 <b>Branding images</b> — 9 фірмових ілюстрацій інтегровано по всій системі</li>
+                        <li>🖼 <b>Hero-банери</b> — кожна сторінка отримала візуальний банер (ракета, щит, шестерні, потяг)</li>
+                        <li>🔐 <b>Новий логін</b> — AI Orchestral Magic лого + фон з диригентською паличкою</li>
+                        <li>🏢 <b>Хедер</b> — іконка Event Maestro в шапці всіх 6 сторінок</li>
+                        <li>🤝 <b>Invite</b> — нове hero-зображення Trust & Collaboration</li>
+                        <li>📊 <b>Empty state</b> — CRM Dashboard замість emoji на порожніх сторінках</li>
+                        <li>✨ <b>Підпис хедера</b> — виправлено видимість "AI First CRM" на зеленому/темному фоні</li>
+                        <li>⚡ <b>Favicon</b> — нова SVG іконка з золотою шестернею + паличкою</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v13.2.0 — Event Maestro Redesign</h4>
+                    <ul>
+                        <li>🎨 <b>Event Maestro</b> — повний ребрендинг системи з новим золотим стилем</li>
+                        <li>🌙 <b>Dark login</b> — темна сторінка входу з gold акцентами (#0a0a0f + #F5C842)</li>
+                        <li>🎭 <b>Gold navbar</b> — "Event Maestro / AI First CRM" у шапці всіх сторінок</li>
+                        <li>🏷 <b>Meta теги</b> — оновлені description та og:title на всіх сторінках</li>
+                        <li>📊 <b>Daily digest</b> — новий endpoint GET /api/shifts/daily-digest</li>
+                        <li>🎫 <b>Сертифікати</b> — приховано вибір сезону з форми</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v13.1.0 — Kleshnya Chat Fix</h4>
+                    <ul>
+                        <li>🐛 <b>Fix білого вікна</b> — виправлено ReferenceError що блокував запуск чату Клешні</li>
+                        <li>🎨 <b>Full-bleed layout</b> — чат Клешні тепер займає весь простір без зайвих відступів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v13.0.0 — Kleshnya Chat v2</h4>
+                    <ul>
+                        <li>💬 <b>Multi-session чат</b> — ChatGPT-style sidebar з сесіями, створення/перемикання/видалення чатів</li>
+                        <li>📌 <b>Pin, emoji, rename</b> — закріплення, емодзі-іконки, перейменування через контекстне меню</li>
+                        <li>🖼 <b>Media bubbles</b> — зображення, аудіо, відео прямо в чаті з captions</li>
+                        <li>👍 <b>Reactions</b> — лайк/дизлайк на повідомленнях Клешні</li>
+                        <li>⚡ <b>WebSocket real-time</b> — миттєві відповіді від OpenClaw Bridge</li>
+                        <li>📱 <b>Mobile-first</b> — sidebar-overlay, FAB кнопка, touch long-press</li>
+                        <li>🦀 <b>12 навичок чату</b> — бронювання, задачі, фінанси, команда, програми, сертифікати</li>
+                        <li>🎯 <b>Telegram Bridge</b> — інтеграція з OpenClaw через Telegram</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v12.8.0 — Клешня Smart Chat</h4>
+                    <ul>
+                        <li>🦀 <b>12 навичок чату</b> — бронювання, задачі, фінанси, команда, програми, сертифікати, кімнати, афіша, аналітика, стрік/бали, лідерборд</li>
+                        <li>✏️ <b>Створення задач з чату</b> — "Створи задачу купити серветки"</li>
+                        <li>🎯 <b>Фільтр по категоріях</b> — "Скільки піньят за тиждень?", "Квести за місяць"</li>
+                        <li>💡 <b>Suggestion chips</b> — кнопки підказок після кожної відповіді</li>
+                        <li>📊 <b>Stats API</b> — підключено /api/stats/revenue, programs, load, trends</li>
+                        <li>🎨 FAB віджет — 6 кнопок швидких запитів (3x2 grid)</li>
+                    </ul>
+
+                <div class="changelog-section">
+                    <h4>v12.7.1 — CSS bugfixes</h4>
+                    <ul>
+                        <li>🐛 Виправлено білу рамку навколо заголовка у деталях бронювання (sticky h3 стилі протікали в кольоровий хедер)</li>
+                        <li>🐛 Виправлено обрізану кнопку «Додати аніматора» внизу таймлайну (<code>overflow: hidden</code> → <code>overflow: clip</code>)</li>
+                    </ul>
+
+                <div class="changelog-section">
+                    <h4>v12.7.0</h4>
+                    <ul>
+                        <li>🔢 Version bump</li>
+                    </ul>
+
+                <div class="changelog-section">
+                    <h4>v12.6.0 — Cross-line drag & bugfix</h4>
+                    <ul>
+                        <li>🐛 Виправлено критичний баг: linked booking для другого аніматора не створювався (запит до неіснуючої таблиці <code>lines</code> замість <code>lines_by_date</code>)</li>
+                        <li>🐛 Виправлено фантомних аніматорів: ensureDefaultLines більше не створює "Аніматор 1/2" якщо хоча б одна лінія є</li>
+                        <li>🎯 Покращено cross-line drag & drop — блок візуально переміщується на цільову лінію під час перетягування</li>
+                        <li>✨ Покращено ghost-превʼю: пульсуюча анімація + рамка для кращої видимості</li>
+                    </ul>
+
+                <div class="changelog-section">
+                    <h4>v12.5.0 — Автостворення юзерів</h4>
+                    <ul>
+                        <li>🐛 Виправлено: юзери не створювались на Railway — seed пропускався бо таблиця не порожня</li>
+                        <li>🔄 UPSERT міграція — створює відсутніх юзерів + скидає паролі існуючих</li>
+                    </ul>
+
+                <div class="changelog-section">
+                    <h4>v12.4.0 — Діагностика логіну</h4>
+                    <ul>
+                        <li>🔍 Детальні помилки входу — показується реальна причина (не знайдено / невірний пароль)</li>
+                        <li>🔑 Примусовий повторний скид паролів — нова міграція v12.4</li>
+                        <li>🩺 Дебаг-ендпоінт /api/auth/debug-login — діагностика проблем авторизації</li>
+                        <li>📊 /api/health показує статус міграцій і кількість юзерів</li>
+                    </ul>
+
+                <div class="changelog-section">
+                    <h4>v12.3.0 — Логін без регістру</h4>
+                    <ul>
+                        <li>🔓 Логін нечутливий до регістру — lera, LERA, Lera — все працює</li>
+                        <li>🔑 Одноразовий скид паролів при деплої — виправлення проблем з авторизацією</li>
+                    </ul>
+
+                <div class="changelog-section">
+                    <h4>v12.2.0 — CSS Audit + Design Tokens</h4>
+                    <ul>
+                        <li>🧹 Видалено 690 рядків мертвого CSS — невикористані класи, дублікати, orphaned overrides</li>
+                        <li>🎨 15 нових дизайн-токенів — --font-caption, --radius-md, --shadow-focus-primary, --quest-dark та інші</li>
+                        <li>🌙 Dark mode для профілю та standalone сторінок — badges, trends, cert chips</li>
+                        <li>👆 Touch targets 44px — modal-close, prof-inbox-btn, prof-task-btn, btn-close</li>
+                        <li>📱 iOS zoom fix — font-size 16px на всіх інпутах, responsive для notification</li>
+                        <li>🔧 Виправлено конфлікти селекторів — toggle-slider, time-shift-buttons, empty-state</li>
+                    </ul>
+
+                    <h4>v12.1.0 — Розумна тема + UX</h4>
+                    <ul>
+                        <li>🌙 Авто dark mode — темна тема з 20:00 до 07:00, світла вдень</li>
+                        <li>🎨 Dark mode на всіх сторінках — дизайни, задачі, програми, графік</li>
+                        <li>📱 Дизайн-борд мобільний — картинки без обрізання, компактні фільтри та drop zone</li>
+                        <li>🔒 Фікс авторизації на /designs — сторінка більше не вимагає pzp_session</li>
+                        <li>📜 Фікс горизонтального скролу — жест не витікає на body на всіх сторінках</li>
+                    </ul>
+
+                    <h4>v12.0.0 — Дизайн-борд</h4>
+                    <ul>
+                        <li>🎨 Нова сторінка /designs — галерея дизайнів з drag&drop завантаженням</li>
+                        <li>📁 Колекції — групування дизайнів за темами з кольоровим кодуванням</li>
+                        <li>🏷️ Хештеги з автокомплітом для організації та пошуку</li>
+                        <li>⭐ Закріплення улюблених дизайнів зверху</li>
+                        <li>💰 Прайс-лист — живі ціни з бази, готовий до друку</li>
+                        <li>📅 Контент-календар — місячний вигляд з мініатюрами</li>
+                        <li>📲 Відправка дизайнів в Telegram одним кліком</li>
+                        <li>🔍 Пошук + фільтри за тегами, колекціями, закріпленими</li>
+                        <li>🖼️ Лайтбокс для перегляду зображень</li>
+                    </ul>
+
+                    <h4>v11.1.0 — Клешня тепер з менюхою</h4>
+                    <ul>
+                        <li>📋 Telegram Menu Button — 12 команд в автокомпліті при натисканні "/"</li>
+                        <li>🏆 /points — рейтинг команди з медалями + особисті бали</li>
+                        <li>🔥 /streak — перегляд стріку з мотиваційними повідомленнями</li>
+                        <li>🔘 Inline-кнопки на задачах — «В роботу» та «Виконано» прямо в Telegram</li>
+                        <li>🐛 Фікс task_reject — тепер правильно ставить «cancelled»</li>
+                        <li>📊 Автооновлення стріків щоденно о 23:55</li>
+                        <li>👋 /start — персональне привітання + автоз'єднання акаунту</li>
+                    </ul>
+
+                    <h4>v11.0.6 — Клешня знає твоє ім'я</h4>
+                    <ul>
+                        <li>👤 Привітання тепер персональні — Клешня звертається по імені з акаунту</li>
+                        <li>🔧 Виправлено "Денний" — більше ніяких дефолтних звернень</li>
+                        <li>🗑️ Кеш привітань очищується при кожному деплої</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v11.0.4 — Клешня без пафосу</h4>
+                    <ul>
+                        <li>💬 Привітання переписані — жива українська замість "сканування завершено"</li>
+                        <li>🦀 Відповіді на питання — просто та корисно, без "місій" та "оперативників"</li>
+                        <li>🏷️ Кнопки: Задачі (замість Місії), Аніматори (замість Оперативники)</li>
+                        <li>📌 Футуристичний візуал залишився, але тексти тепер дружні</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v11.0.3 — Голографічний Термінал</h4>
+                    <ul>
+                        <li>🖥️ Повний редизайн Клешні — темний термінал з голографічним ефектом</li>
+                        <li>🔮 FAB з обертовим кільцем, сонарним імпульсом та neon-glow</li>
+                        <li>📡 Сканлайн-оверлей, блимаючий статус-дот, monospace шрифт</li>
+                        <li>⌨️ Typing-анімація — текст друкується як в терміналі</li>
+                        <li>◈ Кнопки з sweep-ефектом та обертовими іконками</li>
+                        <li>🌙 Повна підтримка dark mode з посиленим glow</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v11.0.2 — Футуристична Клешня</h4>
+                    <ul>
+                        <li>🦀 Floating widget — інтерактивна кнопка Клешні (FAB) замість статичного банера</li>
+                        <li>💬 Popup з привітанням + кнопки швидких питань (бронювання, задачі, стрік, аніматори)</li>
+                        <li>🛸 Футуристичний стиль — привітання та відповіді в стилі командного центру</li>
+                        <li>📡 Оперативна лексика: місії, оперативники, сканування, модулі аналізу</li>
+                        <li>🌙 Dark mode + responsive для нового віджету</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v11.0.1 — Документація та Swagger</h4>
+                    <ul>
+                        <li>📚 PROJECT_PASSPORT.md оновлено до v11.0.0 (30 таблиць, 17 routes, Kleshnya, кабінет)</li>
+                        <li>📝 CLAUDE.md — актуальна структура (19 JS, 11 CSS, 364 тести)</li>
+                        <li>🔧 swagger.js оновлено з v8.6.1 до v11.0.0 (+25 endpoints, +10 schemas)</li>
+                        <li>📖 Нова секція "Особистий кабінет" у паспорті проекту</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v11.0.0 — Дофамінові покращення</h4>
+                    <ul>
+                        <li>🧠 Повна перебудова Особистого кабінету: 4 таби (Сьогодні / Задачі / Стати / Налашт.)</li>
+                        <li>🎯 Таб "Сьогодні": блок зміни, SVG прогрес-ринг, inbox з простроченими та найближчими задачами</li>
+                        <li>✅ Таб "Задачі": inline дії (старт/готово), індикатори блокувань, залежності між задачами</li>
+                        <li>🏆 Система досягнень: 12 ачівок (перша задача, стріки 3/7/30, booking pro та ін.)</li>
+                        <li>🔥 Стріки: автоматичне відслідковування послідовних робочих днів</li>
+                        <li>📊 Статистика: дельти тиждень-до-тижня, командний огляд (admin)</li>
+                        <li>📨 Inbox: actionable картки з кнопками done/start прямо з кабінету</li>
+                        <li>📈 Трекінг дій користувача: таблиця user_action_log + API</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v10.5.0 — Verification Bump</h4>
+                    <ul>
+                        <li>Уніфікація версій cache bust тегів по всіх HTML файлах</li>
+                        <li>Перевірка працездатності системи після version bump</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v10.4.0 — Особистий кабінет PRO</h4>
+                    <ul>
+                        <li>Повний кабінет: прострочені задачі, дедлайни, ранг в лідерборді, ескалації</li>
+                        <li>Мої задачі: inline список з пріоритетами та дедлайнами</li>
+                        <li>Бали: транзакції нарахувань, причини, розбивка по категоріях</li>
+                        <li>Бронювання: по статусах, виручка (admin), топ-3 програми</li>
+                        <li>Сертифікати: видані по статусах</li>
+                        <li>Зміна пароля: безпосередньо з кабінету</li>
+                        <li>Активність: пагінація "Показати ще"</li>
+                        <li>Telegram статус підключення</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v10.3.0 — Особистий кабінет</h4>
+                    <ul>
+                        <li>Клік по імені — персональний кабінет з усією інформацією</li>
+                        <li>Статистика: бронювання, задачі, бали, остання активність</li>
+                        <li>v10.0.1–10.2.0: RBAC, atomic dedup, optimistic locking, graceful shutdown</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v10.0.0 — Tasker & Клешня</h4>
+                    <ul>
+                        <li>🦀 Клешня — центральний інтелект системи: створення задач, ескалація, бали, нотифікації</li>
+                        <li>📋 Два типи задач: HUMAN (людина) / BOT (система), з owner та assigned_to</li>
+                        <li>⏰ 4-рівнева ескалація: нагадування → увага → прострочена → директор</li>
+                        <li>⭐ Система балів: постійні + місячні, автонарахування за виконання задач</li>
+                        <li>🤖 Telegram: /tasks, /done, /alltasks — керування задачами з бота</li>
+                        <li>🪅 Автозадачі: піньяти та футболки створюються на початку робочого дня</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v9.1.0 — Live-Sync</h4>
+                    <ul>
+                        <li>📡 WebSocket підключено: live-синхронізація таймлайну між пристроями в реальному часі</li>
+                        <li>🔄 Автоматичний reconnect з exponential backoff (1с–30с)</li>
+                        <li>📢 Broadcast подій: створення, редагування, видалення бронювань та зміна ліній аніматорів</li>
+                        <li>💓 Heartbeat (30с) з авто-відключенням мертвих з'єднань</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v9.0.2 — Доступність</h4>
+                    <ul>
+                        <li>♿ Skip-links на всіх 5 сторінках: швидкий перехід до контенту для screen readers</li>
+                        <li>🎯 prefers-reduced-motion: вимкнення анімацій для користувачів з чутливістю до руху</li>
+                        <li>🔍 Focus indicators: :focus-visible з emerald кольором на всіх інтерактивних елементах</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v9.0.1 — Стабілізація</h4>
+                    <ul>
+                        <li>🔧 Виправлено запуск на Railway: JWT_SECRET тепер warning замість fatal error</li>
+                        <li>📐 Графік роботи: toolbar кнопки винесені в окремий блок, більше не накладаються</li>
+                        <li>🔄 Оновлено cache-bust версії на всіх standalone сторінках (staff, tasks)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v9.0.0 — Розумна платформа</h4>
+                    <ul>
+                        <li>🖱️ Drag-and-drop на таймлайні: перетягування бронювань мишкою/пальцем, resize, undo</li>
+                        <li>🔄 Повторювані бронювання: шаблони (щотижня/через тиждень/щомісяця), авто-генерація на 14 днів</li>
+                        <li>📊 Аналітика: дашборд виручки, топ програм, завантаженість по днях/кімнатах/аніматорах</li>
+                        <li>🔒 Оптимістичне блокування: захист від конфліктів при одночасному редагуванні</li>
+                        <li>📡 WebSocket: live-синхронізація таймлайну між пристроями в реальному часі</li>
+                        <li>📴 Offline режим: Service Worker + IndexedDB черга для роботи без інтернету</li>
+                        <li>📖 Swagger/OpenAPI: повна документація всіх API ендпоінтів</li>
+                        <li>🗄️ Міграції БД: версіонування структури бази даних (001-003)</li>
+                        <li>🛡️ Безпека: graceful shutdown, env validation, rate limiting, Telegram timeout</li>
+                        <li>♿ Доступність: ARIA-атрибути, фокус-індикатори, skip-links, зменшений рух</li>
+                        <li>🧪 Тести: сертифікати (47 тестів) + автоматизація (40+ тестів)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v8.6.1 — Оновлений дизайн сертифікатів</h4>
+                    <ul>
+                        <li>🎨 Новий фон сертифіката з оновленим розташуванням логотипу</li>
+                        <li>📐 QR-код перенесено в нижній лівий кут (не перекриває персонажа)</li>
+                        <li>📝 Інфо-блок (дата, умови, телефон) поруч з QR-кодом</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v8.6.0 — Розумний розподіл</h4>
                     <ul>
@@ -1774,7 +2236,7 @@
     </div>
 
     <!-- Модальне вікно каталогу програм -->
-    <div id="programsCatalogModal" class="modal hidden">
+    <div id="programsCatalogModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Каталог програм">
         <div class="modal-content modal-catalog">
             <span class="modal-close">&times;</span>
             <h3>🎭 Розважальні програми</h3>
@@ -2064,18 +2526,27 @@
         </div>
     </div>
 
-    <div id="notification" class="notification hidden">
+    <div id="notification" class="notification hidden" role="status" aria-live="polite" aria-atomic="true">
         <span id="notificationText"></span>
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=8.6.0"></script>
-    <script src="js/api.js?v=8.6.0"></script>
-    <script src="js/ui.js?v=8.6.0"></script>
-    <script src="js/auth.js?v=8.6.0"></script>
-    <script src="js/timeline.js?v=8.6.0"></script>
-    <script src="js/booking.js?v=8.6.0"></script>
-    <script src="js/settings.js?v=8.6.1"></script>
-    <script src="js/app.js?v=8.6.0"></script>
+    <script src="js/config.js?v=14.0"></script>
+    <script src="js/api.js?v=14.0"></script>
+    <script src="js/ui.js?v=14.0"></script>
+    <script src="js/auth.js?v=14.0"></script>
+    <script src="js/timeline.js?v=14.0"></script>
+    <script src="js/booking.js?v=14.0"></script>
+    <script src="js/settings.js?v=14.0"></script>
+    <script src="js/booking-form.js?v=14.0"></script>
+    <script src="js/booking-linked.js?v=14.0"></script>
+    <script src="js/settings-dashboard.js?v=14.0"></script>
+    <script src="js/settings-history.js?v=14.0"></script>
+    <script src="js/settings-afisha.js?v=14.0"></script>
+    <script src="js/settings-certificates.js?v=14.0"></script>
+    <script src="js/offline.js?v=14.0"></script>
+    <script src="js/ws.js?v=14.0"></script>
+    <script src="js/app.js?v=14.0"></script>
+    <script src="js/kleshnya-widget.js?v=14.0"></script>
 </body>
 </html>

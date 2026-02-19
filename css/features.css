@@ -6,25 +6,6 @@
    TELEGRAM & DIGEST
    ========================================== */
 
-.btn-digest {
-    padding: 8px 16px;
-    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
-    color: #FFFFFF;
-    border: none;
-    border-radius: var(--radius-xs);
-    font-weight: 700;
-    font-size: 12px;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all var(--speed-fast) var(--ease-smooth);
-    box-shadow: 0 2px 8px rgba(59,130,246,0.3);
-}
-
-.btn-digest:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59,130,246,0.4);
-}
-
 .telegram-setup { padding: 10px 0; }
 
 .telegram-chats {
@@ -152,7 +133,7 @@
     padding: 4px 8px;
     border-radius: var(--radius-xs);
     border: 1px solid var(--gray-300);
-    font-size: var(--font-sm);
+    font-size: var(--font-input, 16px);
     font-family: inherit;
 }
 
@@ -191,29 +172,6 @@
 /* ==========================================
    SETTINGS PAGE
    ========================================== */
-
-.btn-action {
-    padding: 8px 16px;
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-    color: #FFFFFF;
-    border: none;
-    border-radius: var(--radius-xs);
-    font-weight: 700;
-    font-size: 12px;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all var(--speed-fast) var(--ease-smooth);
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    box-shadow: 0 2px 8px rgba(16,185,129,0.3);
-}
-
-.btn-action:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(16,185,129,0.4);
-}
 
 .settings-sections {
     display: flex;
@@ -460,6 +418,140 @@
 
 .dash-bar-value { width: 70px; text-align: right; color: var(--gray-500); font-size: 12px; flex-shrink: 0; font-weight: 700; }
 
+/* v9.0: Growth trend indicators */
+.dash-trend {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-right: 2px;
+}
+
+.dash-trend-up {
+    color: #059669;
+    background: rgba(5, 150, 105, 0.15);
+}
+
+.dash-trend-down {
+    color: #DC2626;
+    background: rgba(220, 38, 38, 0.15);
+}
+
+/* v9.0: Programs toggle (by count / by revenue) */
+.dash-toggle-group {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+.dash-toggle-btn {
+    padding: 5px 12px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-full);
+    background: var(--gray-50);
+    font-size: var(--font-xs);
+    font-weight: 700;
+    color: var(--gray-500);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--speed-fast);
+}
+
+.dash-toggle-btn.active {
+    background: var(--primary);
+    color: var(--white);
+    border-color: var(--primary);
+}
+
+.dash-toggle-btn:hover:not(.active) {
+    background: var(--gray-100);
+}
+
+/* v9.0: Daily revenue vertical bar chart */
+.dash-daily-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 160px;
+    padding: 10px 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+}
+
+.dash-daily-bar {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    justify-content: flex-end;
+    min-width: 16px;
+    max-width: 32px;
+    cursor: default;
+}
+
+.dash-daily-fill {
+    width: 100%;
+    background: linear-gradient(180deg, var(--primary), #34D399);
+    border-radius: 3px 3px 0 0;
+    min-height: 2px;
+    transition: height 0.5s ease;
+}
+
+.dash-daily-label {
+    font-size: 9px;
+    color: var(--gray-400);
+    margin-top: 4px;
+    white-space: nowrap;
+    writing-mode: vertical-lr;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+    max-height: 40px;
+    overflow: hidden;
+}
+
+/* v9.0: Day-of-week vertical bar chart */
+.dash-weekday-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    height: 120px;
+    padding: 10px 0;
+}
+
+.dash-weekday-bar {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    justify-content: flex-end;
+}
+
+.dash-weekday-fill {
+    width: 100%;
+    background: linear-gradient(180deg, var(--primary), #34D399);
+    border-radius: 4px 4px 0 0;
+    min-height: 3px;
+    transition: height 0.5s ease;
+}
+
+.dash-weekday-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--gray-600);
+    margin-top: 6px;
+}
+
+.dash-weekday-count {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--gray-500);
+    margin-bottom: 4px;
+}
+
 /* v5.44: Enhanced empty state */
 .no-data {
     text-align: center;
@@ -588,7 +680,7 @@
     padding: 10px;
     border: 2px solid var(--gray-200);
     border-radius: var(--radius-sm);
-    font-size: var(--font-xs);
+    font-size: var(--font-input, 16px);
     font-family: monospace;
     resize: vertical;
     min-height: 60px;
@@ -799,64 +891,6 @@
     margin-bottom: 8px;
 }
 
-/* Afisha timeline markers */
-.afisha-marker {
-    position: absolute;
-    top: -2px;
-    height: 4px;
-    background: linear-gradient(90deg, #8B5CF6, #6D28D9);
-    border-radius: 2px;
-    z-index: 25;
-    overflow: visible;
-    cursor: default;
-}
-
-/* v5.18: Afisha as blocking layer — full height overlay */
-.afisha-marker.afisha-blocking {
-    top: 0;
-    height: 100%;
-    background: repeating-linear-gradient(
-        -45deg,
-        rgba(139,92,246,0.06),
-        rgba(139,92,246,0.06) 4px,
-        rgba(139,92,246,0.12) 4px,
-        rgba(139,92,246,0.12) 8px
-    );
-    border: 1px dashed rgba(139,92,246,0.3);
-    border-radius: 4px;
-    pointer-events: none;
-    z-index: 20;
-}
-
-.afisha-marker-text {
-    position: absolute;
-    top: -18px;
-    left: 0;
-    font-size: 9px;
-    font-weight: 700;
-    color: #6D28D9;
-    white-space: nowrap;
-    background: rgba(245,243,255,0.9);
-    padding: 1px 4px;
-    border-radius: 3px;
-}
-
-/* v5.18.1: Afisha blocking text — subtle bottom label */
-.afisha-blocking .afisha-marker-text {
-    top: auto;
-    bottom: 2px;
-    left: 4px;
-    transform: none;
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-    background: none;
-    color: rgba(109,40,217,0.5);
-    padding: 0;
-    pointer-events: none;
-    text-transform: uppercase;
-}
-
 /* ==========================================
    AFISHA TIMELINE LINE (v7.9.3)
    ========================================== */
@@ -1054,13 +1088,6 @@
     gap: 4px !important;
     animation: birthday-pulse 2.5s ease-in-out infinite;
     cursor: pointer !important;
-}
-
-.afisha-type-birthday .birthday-icon {
-    font-size: 18px;
-    line-height: 1;
-    flex-shrink: 0;
-    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
 }
 
 .afisha-type-birthday .title {
@@ -1344,7 +1371,7 @@
     padding: 8px 12px;
     border: 1px solid var(--gray-200, #E5E7EB);
     border-radius: 8px;
-    font-size: 13px;
+    font-size: var(--font-input, 16px);
     font-family: inherit;
     background: var(--white, #fff);
     min-width: 140px;
@@ -1682,29 +1709,42 @@ body.dark-mode .filter-mode-banner-text p { color: #FBBF24; }
     display: none;
 }
 
-/* Certificate date row: display + gear button */
-.cert-date-row {
+/* Certificate season selector */
+.cert-season-row {
     display: flex;
-    align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
 }
+.cert-season-btn {
+    flex: 1;
+    min-width: 80px;
+    padding: 8px 12px;
+    border: 2px solid var(--gray-200, #E5E7EB);
+    border-radius: 10px;
+    background: var(--bg-primary, #fff);
+    color: var(--gray-600, #4B5563);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+}
+.cert-season-btn:hover {
+    border-color: var(--primary, #3B82F6);
+    background: rgba(59,130,246,0.05);
+}
+.cert-season-btn.active {
+    border-color: var(--primary, #3B82F6);
+    background: rgba(59,130,246,0.1);
+    color: var(--primary, #3B82F6);
+}
+
+/* Certificate date display (read-only) */
 .cert-date-display {
     font-size: 15px;
     font-weight: 600;
     color: var(--gray-700, #374151);
-}
-.cert-gear-btn {
-    background: none;
-    border: none;
-    font-size: 18px;
-    cursor: pointer;
-    opacity: 0.35;
-    padding: 4px;
-    transition: opacity 0.15s;
-    color: var(--gray-500, #6B7280);
-}
-.cert-gear-btn:hover {
-    opacity: 0.8;
 }
 
 /* Certificate detail: highlight ПІБ row */

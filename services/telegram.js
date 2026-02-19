@@ -13,27 +13,136 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8068946683:AAFz0os
 const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '-1001805304620';
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || crypto.randomBytes(32).toString('hex');
 
+// --- Timeout constants ---
+const TELEGRAM_SOCKET_TIMEOUT = 15000;   // 15s for TCP/TLS connection
+const TELEGRAM_RESPONSE_TIMEOUT = 15000; // 15s for full response
+
+// --- In-flight request tracking (for graceful shutdown) ---
+let inFlightCount = 0;
+let drainResolvers = [];
+
+// --- Circuit breaker state ---
+const CIRCUIT_BREAKER_THRESHOLD = 5;   // consecutive failures to trip
+const CIRCUIT_BREAKER_RESET_MS = 60000; // 60s cooldown before retry
+let consecutiveFailures = 0;
+let circuitOpenUntil = 0; // timestamp when circuit can close again
+
+/**
+ * Check if circuit breaker is open (should block requests).
+ * Automatically resets to half-open after cooldown period.
+ */
+function isCircuitOpen() {
+    if (consecutiveFailures < CIRCUIT_BREAKER_THRESHOLD) return false;
+    if (Date.now() >= circuitOpenUntil) {
+        // Cooldown elapsed — allow a single probe request (half-open)
+        log.info('Circuit breaker half-open, allowing probe request');
+        return false;
+    }
+    return true;
+}
+
+/** Record a successful Telegram request — resets circuit breaker. */
+function recordSuccess() {
+    if (consecutiveFailures > 0) {
+        log.info(`Circuit breaker reset after ${consecutiveFailures} consecutive failures`);
+    }
+    consecutiveFailures = 0;
+}
+
+/** Record a failed Telegram request — may trip circuit breaker. */
+function recordFailure() {
+    consecutiveFailures++;
+    if (consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+        circuitOpenUntil = Date.now() + CIRCUIT_BREAKER_RESET_MS;
+        log.warn(`Circuit breaker OPEN after ${consecutiveFailures} consecutive failures. Blocking requests for ${CIRCUIT_BREAKER_RESET_MS / 1000}s`);
+    }
+}
+
+/**
+ * Check if an error is retryable (network-level).
+ * API-level 4xx errors are NOT retryable.
+ */
+function isRetryableError(err) {
+    if (!err) return false;
+    const code = err.code || '';
+    return ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE', 'EHOSTUNREACH'].includes(code)
+        || err.message?.includes('timeout')
+        || err.message?.includes('socket hang up');
+}
+
 let webhookSet = false;
 let cachedBotUsername = null;
 
 function telegramRequest(method, body) {
+    // Circuit breaker check
+    if (isCircuitOpen()) {
+        const err = new Error(`Telegram circuit breaker is OPEN (${consecutiveFailures} consecutive failures). Request blocked.`);
+        err.code = 'ECIRCUITOPEN';
+        return Promise.reject(err);
+    }
+
     return new Promise((resolve, reject) => {
+        inFlightCount++;
         const data = body ? JSON.stringify(body) : '';
         const options = {
             hostname: 'api.telegram.org',
             path: `/bot${TELEGRAM_BOT_TOKEN}/${method}`,
             method: body ? 'POST' : 'GET',
-            headers: body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}
+            headers: body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {},
+            timeout: TELEGRAM_SOCKET_TIMEOUT
         };
+
+        let settled = false;
+        function settle(fn, value) {
+            if (settled) return;
+            settled = true;
+            inFlightCount--;
+            if (inFlightCount === 0) {
+                drainResolvers.forEach(r => r());
+                drainResolvers = [];
+            }
+            fn(value);
+        }
+
+        // Response-level timeout (covers slow body delivery)
+        const responseTimer = setTimeout(() => {
+            req.destroy(new Error(`Telegram API response timeout (${TELEGRAM_RESPONSE_TIMEOUT}ms) for ${method}`));
+        }, TELEGRAM_RESPONSE_TIMEOUT);
+
         const req = https.request(options, (res) => {
             let result = '';
             res.on('data', (chunk) => result += chunk);
             res.on('end', () => {
-                try { resolve(JSON.parse(result)); }
-                catch (e) { reject(e); }
+                clearTimeout(responseTimer);
+                try {
+                    const parsed = JSON.parse(result);
+                    recordSuccess();
+                    settle(resolve, parsed);
+                } catch (e) {
+                    recordFailure();
+                    settle(reject, e);
+                }
             });
         });
-        req.on('error', reject);
+
+        req.on('timeout', () => {
+            req.destroy(new Error(`Telegram API socket timeout (${TELEGRAM_SOCKET_TIMEOUT}ms) for ${method}`));
+        });
+
+        req.on('error', (err) => {
+            clearTimeout(responseTimer);
+            recordFailure();
+            // Enhance error message for common network errors
+            if (err.code === 'ETIMEDOUT') {
+                err.message = `Telegram API connection timed out (ETIMEDOUT) for ${method}: ${err.message}`;
+            } else if (err.code === 'ECONNRESET') {
+                err.message = `Telegram API connection reset (ECONNRESET) for ${method}: ${err.message}`;
+            } else if (err.code === 'ECONNREFUSED') {
+                err.message = `Telegram API connection refused (ECONNREFUSED) for ${method}: ${err.message}`;
+            }
+            settle(reject, err);
+        });
+
         if (body) req.write(data);
         req.end();
     });
@@ -64,9 +173,9 @@ async function getConfiguredThreadId() {
 }
 
 async function sendTelegramMessage(chatId, text, options = {}) {
-    const retries = options.retries || 3;
+    const maxRetries = options.retries || 3;
     const threadId = await getConfiguredThreadId();
-    for (let attempt = 1; attempt <= retries; attempt++) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             const payload = {
                 chat_id: chatId,
@@ -80,16 +189,27 @@ async function sendTelegramMessage(chatId, text, options = {}) {
                 log.info(`Message sent to ${chatId}${threadId ? ' thread=' + threadId : ''} (attempt ${attempt})`);
             } else {
                 log.warn(`API returned error on attempt ${attempt}`, result);
+                // API-level client errors (4xx) — retrying won't help
+                if (result?.error_code >= 400 && result?.error_code < 500) {
+                    return result;
+                }
             }
             return result;
         } catch (err) {
-            log.error(`Send error (attempt ${attempt}/${retries}): ${err.message}`);
-            if (attempt < retries) {
-                await new Promise(r => setTimeout(r, 1000 * attempt));
+            log.error(`Send error (attempt ${attempt}/${maxRetries}): ${err.message}`);
+            // Only retry on retryable (network/timeout) errors
+            if (attempt < maxRetries && isRetryableError(err)) {
+                const backoff = 2000 * Math.pow(2, attempt - 1); // 2s, 4s
+                log.info(`Retrying in ${backoff}ms...`);
+                await new Promise(r => setTimeout(r, backoff));
+            } else if (!isRetryableError(err)) {
+                // Non-retryable error — bail out immediately
+                log.error(`Non-retryable error, giving up: ${err.message}`);
+                return null;
             }
         }
     }
-    log.error(`All ${retries} attempts failed for chat ${chatId}`);
+    log.error(`All ${maxRetries} attempts failed for chat ${chatId}`);
     return null;
 }
 
@@ -264,6 +384,13 @@ async function getTelegramChatId() {
  * Used for certificate image notifications.
  */
 async function sendTelegramPhoto(chatId, photoBuffer, caption, options = {}) {
+    // Circuit breaker check
+    if (isCircuitOpen()) {
+        const err = new Error(`Telegram circuit breaker is OPEN. sendPhoto blocked.`);
+        err.code = 'ECIRCUITOPEN';
+        throw err;
+    }
+
     const threadId = await getConfiguredThreadId();
     const boundary = '----TgBoundary' + Date.now().toString(16);
 
@@ -284,6 +411,23 @@ async function sendTelegramPhoto(chatId, photoBuffer, caption, options = {}) {
     const body = Buffer.concat([head, fileHeader, photoBuffer, tail]);
 
     return new Promise((resolve, reject) => {
+        inFlightCount++;
+        let settled = false;
+        function settle(fn, value) {
+            if (settled) return;
+            settled = true;
+            inFlightCount--;
+            if (inFlightCount === 0) {
+                drainResolvers.forEach(r => r());
+                drainResolvers = [];
+            }
+            fn(value);
+        }
+
+        const responseTimer = setTimeout(() => {
+            req.destroy(new Error(`Telegram sendPhoto response timeout (${TELEGRAM_RESPONSE_TIMEOUT}ms)`));
+        }, TELEGRAM_RESPONSE_TIMEOUT);
+
         const req = https.request({
             hostname: 'api.telegram.org',
             path: `/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
@@ -291,20 +435,36 @@ async function sendTelegramPhoto(chatId, photoBuffer, caption, options = {}) {
             headers: {
                 'Content-Type': `multipart/form-data; boundary=${boundary}`,
                 'Content-Length': body.length
-            }
+            },
+            timeout: TELEGRAM_SOCKET_TIMEOUT
         }, (res) => {
             let result = '';
             res.on('data', (chunk) => result += chunk);
             res.on('end', () => {
+                clearTimeout(responseTimer);
                 try {
                     const parsed = JSON.parse(result);
                     if (parsed.ok) log.info(`Photo sent to ${chatId}`);
                     else log.warn('sendPhoto API error', parsed);
-                    resolve(parsed);
-                } catch (e) { reject(e); }
+                    recordSuccess();
+                    settle(resolve, parsed);
+                } catch (e) {
+                    recordFailure();
+                    settle(reject, e);
+                }
             });
         });
-        req.on('error', reject);
+
+        req.on('timeout', () => {
+            req.destroy(new Error(`Telegram sendPhoto socket timeout (${TELEGRAM_SOCKET_TIMEOUT}ms)`));
+        });
+
+        req.on('error', (err) => {
+            clearTimeout(responseTimer);
+            recordFailure();
+            settle(reject, err);
+        });
+
         req.write(body);
         req.end();
     });
@@ -330,10 +490,31 @@ async function scheduleAutoDelete(chatId, messageId) {
     }
 }
 
+/**
+ * Wait for all in-flight Telegram requests to complete.
+ * Used by graceful shutdown in server.js.
+ * @param {number} timeoutMs - Max time to wait (default 5000ms)
+ * @returns {Promise<void>}
+ */
+function drainTelegramRequests(timeoutMs = 5000) {
+    if (inFlightCount === 0) return Promise.resolve();
+    log.info(`Draining ${inFlightCount} in-flight Telegram request(s)...`);
+    return new Promise((resolve, reject) => {
+        drainResolvers.push(resolve);
+        setTimeout(() => reject(new Error(`Telegram drain timeout (${timeoutMs}ms), ${inFlightCount} request(s) still in-flight`)), timeoutMs);
+    });
+}
+
+/** Get current number of in-flight Telegram HTTPS requests. */
+function getInFlightCount() {
+    return inFlightCount;
+}
+
 module.exports = {
     TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, WEBHOOK_SECRET,
     telegramRequest, sendTelegramMessage, sendTelegramPhoto, editTelegramMessage, deleteTelegramMessage,
     getConfiguredChatId, getConfiguredThreadId,
     notifyTelegram, ensureWebhook, getTelegramChatId, scheduleAutoDelete,
-    setWebhookFlag, getWebhookFlag, getBotUsername
+    setWebhookFlag, getWebhookFlag, getBotUsername,
+    drainTelegramRequests, getInFlightCount
 };

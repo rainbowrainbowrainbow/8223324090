@@ -21,6 +21,7 @@ function escapeHtml(str) {
 }
 
 async function initPage() {
+    initDarkMode();
     const token = localStorage.getItem('pzp_token');
     if (!token) {
         document.getElementById('loginOverlay').classList.remove('hidden');
@@ -106,7 +107,7 @@ function renderProducts() {
     }
 
     if (filtered.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📚</div><div class="empty-state-text">Немає програм у цій категорії</div></div>';
+        grid.innerHTML = '<div class="empty-state"><img src="images/branding/slide5-dashboard.png" alt="" class="empty-state-img"><div class="empty-state-text">Немає програм у цій категорії</div></div>';
         return;
     }
 

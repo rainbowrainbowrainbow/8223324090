@@ -68,6 +68,28 @@ async function initDatabase() {
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS kids_count INTEGER`);
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS costume VARCHAR(100)`);
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`);
+
+        // Optimistic locking: backfill NULL updated_at with created_at
+        await pool.query(`UPDATE bookings SET updated_at = created_at WHERE updated_at IS NULL`);
+
+        // Optimistic locking: auto-update trigger for updated_at
+        await pool.query(`
+            CREATE OR REPLACE FUNCTION update_updated_at_column()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.updated_at = NOW();
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+        `);
+        await pool.query(`DROP TRIGGER IF EXISTS trg_bookings_updated_at ON bookings`);
+        await pool.query(`
+            CREATE TRIGGER trg_bookings_updated_at
+                BEFORE UPDATE ON bookings
+                FOR EACH ROW
+                EXECUTE FUNCTION update_updated_at_column()
+        `);
+
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS group_name VARCHAR(100)`);
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS telegram_message_id INTEGER`);
 
@@ -166,11 +188,16 @@ async function initDatabase() {
         if (parseInt(userCount.rows[0].count) === 0) {
             const defaultUsers = [
                 { username: 'admin', password: 'admin123', role: 'admin', name: 'Адмін' },
-                { username: 'Vitalina', password: 'Vitalina109', role: 'user', name: 'Віталіна' },
-                { username: 'Dasha', password: 'Dasha743', role: 'user', name: 'Даша' },
+                { username: 'Vitalina', password: 'Vitalina109', role: 'admin', name: 'Віталіна' },
+                { username: 'Dasha', password: 'Dasha743', role: 'admin', name: 'Даша' },
                 { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
                 { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
-                { username: 'Animator', password: 'Animator612', role: 'viewer', name: 'Аніматор' }
+                { username: 'Animator', password: 'Animator612', role: 'admin', name: 'Аніматор' },
+                { username: 'Anli', password: 'Anli384', role: 'admin', name: 'Анлі' },
+                { username: 'Zhenya', password: 'Zhenya527', role: 'admin', name: 'Женя' },
+                { username: 'Lera', password: 'Lera691', role: 'admin', name: 'Лера' },
+                { username: 'Anna', password: 'Anna321', role: 'admin', name: 'Анна' },
+                { username: 'Artem', password: 'Arte529', role: 'admin', name: 'Артем' }
             ];
             for (const u of defaultUsers) {
                 const hash = await bcrypt.hash(u.password, 10);
@@ -180,6 +207,78 @@ async function initDatabase() {
                 );
             }
             log.info('Default users seeded');
+        }
+
+        // v12.3: schema_migrations table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version VARCHAR(255) PRIMARY KEY,
+                applied_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // v12.5: UPSERT all default users (create if missing + reset passwords)
+        const resetVersion = '007_upsert_users_v12_5';
+        const resetCheck = await pool.query(
+            'SELECT 1 FROM schema_migrations WHERE version = $1', [resetVersion]
+        );
+        if (resetCheck.rows.length === 0) {
+            const defaultUsers = [
+                { username: 'admin', password: 'admin123', role: 'admin', name: 'Адмін' },
+                { username: 'Vitalina', password: 'Vitalina109', role: 'admin', name: 'Віталіна' },
+                { username: 'Dasha', password: 'Dasha743', role: 'admin', name: 'Даша' },
+                { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
+                { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
+                { username: 'Animator', password: 'Animator612', role: 'admin', name: 'Аніматор' },
+                { username: 'Anli', password: 'Anli384', role: 'admin', name: 'Анлі' },
+                { username: 'Zhenya', password: 'Zhenya527', role: 'admin', name: 'Женя' },
+                { username: 'Lera', password: 'Lera691', role: 'admin', name: 'Лера' }
+            ];
+            let created = 0, updated = 0;
+            for (const u of defaultUsers) {
+                const hash = await bcrypt.hash(u.password, 10);
+                const res = await pool.query(
+                    `INSERT INTO users (username, password_hash, role, name)
+                     VALUES ($1, $2, $3, $4)
+                     ON CONFLICT (username) DO UPDATE SET password_hash = $2
+                     RETURNING (xmax = 0) AS inserted`,
+                    [u.username, hash, u.role, u.name]
+                );
+                if (res.rows[0].inserted) { created++; } else { updated++; }
+                log.info(`User upsert: ${u.username} → ${res.rows[0].inserted ? 'CREATED' : 'password UPDATED'}`);
+            }
+            await pool.query(
+                'INSERT INTO schema_migrations (version) VALUES ($1)', [resetVersion]
+            );
+            log.info(`Users upsert complete: ${created} created, ${updated} updated (v12.5)`);
+        } else {
+            log.info('Users upsert v12.5 already applied, skipping');
+        }
+
+        // Add new admin users: Anna, Artem
+        const newUsersVersion = '008_add_anna_artem';
+        const newUsersCheck = await pool.query(
+            'SELECT 1 FROM schema_migrations WHERE version = $1', [newUsersVersion]
+        );
+        if (newUsersCheck.rows.length === 0) {
+            const newUsers = [
+                { username: 'Anna', password: 'Anna321', role: 'admin', name: 'Анна' },
+                { username: 'Artem', password: 'Arte529', role: 'admin', name: 'Артем' }
+            ];
+            for (const u of newUsers) {
+                const hash = await bcrypt.hash(u.password, 10);
+                await pool.query(
+                    `INSERT INTO users (username, password_hash, role, name)
+                     VALUES ($1, $2, $3, $4)
+                     ON CONFLICT (username) DO UPDATE SET password_hash = $2`,
+                    [u.username, hash, u.role, u.name]
+                );
+                log.info(`User added: ${u.username}`);
+            }
+            await pool.query(
+                'INSERT INTO schema_migrations (version) VALUES ($1)', [newUsersVersion]
+            );
+            log.info('Users Anna, Artem added');
         }
 
         await pool.query(`
@@ -273,6 +372,71 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category)');
         // Also add category to templates
         await pool.query(`ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'admin'`);
+
+        // v10.0: Tasker — extended task fields
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_type VARCHAR(10) DEFAULT 'human'`); // 'human' or 'bot'
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS owner VARCHAR(50)`); // manager/responsible (escalation target)
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS time_window_start VARCHAR(10)`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS time_window_end VARCHAR(10)`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS dependency_ids INTEGER[] DEFAULT '{}'`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS control_policy JSONB DEFAULT '{"reminder_minutes":[60,30,10],"escalation_after_minutes":120}'`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS escalation_level INTEGER DEFAULT 0`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_type VARCHAR(30) DEFAULT 'manual'`); // 'booking','trigger','manual','recurring','kleshnya'
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_id VARCHAR(50)`);
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMP`);
+        // v10.1: Optimistic locking version column
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1`);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_task_type ON tasks(task_type)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_escalation ON tasks(escalation_level)');
+
+        // v10.0: Task change log
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS task_logs (
+                id SERIAL PRIMARY KEY,
+                task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                action VARCHAR(30) NOT NULL,
+                old_value TEXT,
+                new_value TEXT,
+                actor VARCHAR(50) DEFAULT 'system',
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_task_logs_created_at ON task_logs(created_at)');
+
+        // v10.0: Points system
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS user_points (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                permanent_points INTEGER DEFAULT 0,
+                monthly_points INTEGER DEFAULT 0,
+                month VARCHAR(7) NOT NULL,
+                updated_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(username, month)
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_points_username ON user_points(username)');
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS point_transactions (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                points INTEGER NOT NULL,
+                type VARCHAR(10) NOT NULL DEFAULT 'monthly',
+                reason VARCHAR(200),
+                task_id INTEGER,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_point_transactions_username ON point_transactions(username)');
+
+        // v10.0: Telegram chat_id mapping for personal notifications
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT`);
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100)`);
 
         // v7.10: Scheduled Telegram message deletions (replaces setTimeout)
         await pool.query(`
@@ -408,12 +572,198 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_certificates_cert_code ON certificates(cert_code)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_certificates_valid_until ON certificates(valid_until)');
 
+        // v8.7: Season column for seasonal certificate backgrounds
+        await pool.query(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS season VARCHAR(10) DEFAULT 'winter'`);
+
         await pool.query(`
             CREATE TABLE IF NOT EXISTS certificate_counter (
                 year INTEGER PRIMARY KEY,
                 counter INTEGER NOT NULL DEFAULT 0
             )
         `);
+
+        // v10.6: User action log (who clicked what where)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS user_action_log (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                action VARCHAR(50) NOT NULL,
+                target VARCHAR(100),
+                meta JSONB,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_action_log_username ON user_action_log(username)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_action_log_created_at ON user_action_log(created_at)');
+
+        // v10.6: Achievements system
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS user_achievements (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                achievement_key VARCHAR(50) NOT NULL,
+                unlocked_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(username, achievement_key)
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_achievements_username ON user_achievements(username)');
+
+        // v10.6: User streaks
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS user_streaks (
+                username VARCHAR(50) PRIMARY KEY,
+                current_streak INTEGER DEFAULT 0,
+                longest_streak INTEGER DEFAULT 0,
+                last_active_date VARCHAR(20),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // v11.0: Kleshnya messages cache (rate-limit AI generation)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS kleshnya_messages (
+                id SERIAL PRIMARY KEY,
+                scope VARCHAR(30) NOT NULL DEFAULT 'daily_greeting',
+                target_date VARCHAR(20),
+                target_user VARCHAR(50),
+                message TEXT NOT NULL,
+                context JSONB,
+                source VARCHAR(20) DEFAULT 'template',
+                created_at TIMESTAMP DEFAULT NOW(),
+                expires_at TIMESTAMP NOT NULL
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kleshnya_messages_scope ON kleshnya_messages(scope, target_date)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kleshnya_messages_expires ON kleshnya_messages(expires_at)');
+
+        // v11.0: Kleshnya chat history
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS kleshnya_chat (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                role VARCHAR(10) NOT NULL DEFAULT 'assistant',
+                message TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_kleshnya_chat_username ON kleshnya_chat(username, created_at)');
+
+        // v12.0: Design board — collections, designs, tags
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS design_collections (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                color VARCHAR(20) DEFAULT '#6366F1',
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS designs (
+                id SERIAL PRIMARY KEY,
+                filename VARCHAR(255) NOT NULL,
+                original_name VARCHAR(255) NOT NULL,
+                mime_type VARCHAR(100) NOT NULL,
+                file_size INTEGER NOT NULL,
+                width INTEGER,
+                height INTEGER,
+                title VARCHAR(200),
+                description TEXT,
+                is_pinned BOOLEAN DEFAULT FALSE,
+                collection_id INTEGER REFERENCES design_collections(id) ON DELETE SET NULL,
+                publish_date VARCHAR(20),
+                created_by VARCHAR(50),
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_designs_collection ON designs(collection_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_designs_pinned ON designs(is_pinned)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_designs_publish_date ON designs(publish_date)');
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS design_tags (
+                design_id INTEGER NOT NULL REFERENCES designs(id) ON DELETE CASCADE,
+                tag VARCHAR(50) NOT NULL,
+                PRIMARY KEY (design_id, tag)
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_design_tags_tag ON design_tags(tag)');
+
+        // v12.6: Contractors table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS contractors (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                specialty JSONB DEFAULT '[]',
+                telegram_chat_id BIGINT,
+                telegram_username VARCHAR(100),
+                invite_token VARCHAR(50) UNIQUE,
+                phone VARCHAR(30),
+                notes TEXT,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_contractors_active ON contractors(is_active)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_contractors_invite ON contractors(invite_token)');
+
+        // v12.6: Contractor notification log
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS contractor_notifications (
+                id SERIAL PRIMARY KEY,
+                contractor_id INTEGER NOT NULL REFERENCES contractors(id) ON DELETE CASCADE,
+                booking_id VARCHAR(50),
+                rule_id INTEGER,
+                message_id INTEGER,
+                status VARCHAR(20) DEFAULT 'sent',
+                responded_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_contractor_notif_contractor ON contractor_notifications(contractor_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_contractor_notif_status ON contractor_notifications(status)');
+
+        // v12.6: skip_notification flag for bookings
+        await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS skip_notification BOOLEAN DEFAULT false`);
+
+        // v12.6: Seed test contractor (Женя / Євгенія)
+        const contractorSeedVersion = '008_seed_contractor_zhenya';
+        const contractorSeedCheck = await pool.query(
+            'SELECT 1 FROM schema_migrations WHERE version = $1', [contractorSeedVersion]
+        );
+        if (contractorSeedCheck.rows.length === 0) {
+            const crypto = require('crypto');
+            const inviteToken = 'ctr_' + crypto.randomBytes(8).toString('hex');
+            await pool.query(
+                `INSERT INTO contractors (name, specialty, telegram_chat_id, telegram_username, invite_token, phone, notes)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+                ['Євгенія', JSON.stringify(['pinata_print', 'print']), 622480549, 'armonia_del_mundo', inviteToken, null, 'Друк картинок на піньяти']
+            );
+            await pool.query(
+                'INSERT INTO schema_migrations (version) VALUES ($1)', [contractorSeedVersion]
+            );
+            log.info('Test contractor seeded: Євгенія (@armonia_del_mundo)');
+        }
+
+        // v12.6: Seed openclaw API user
+        const openclawSeedVersion = '009_seed_user_openclaw';
+        const openclawSeedCheck = await pool.query(
+            'SELECT 1 FROM schema_migrations WHERE version = $1', [openclawSeedVersion]
+        );
+        if (openclawSeedCheck.rows.length === 0) {
+            const openclawHash = await bcrypt.hash('OpenClaw2026', 10);
+            await pool.query(
+                `INSERT INTO users (username, password_hash, role, name)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (username) DO UPDATE SET password_hash = $2`,
+                ['openclaw', openclawHash, 'user', 'OpenClaw 🦞']
+            );
+            await pool.query(
+                'INSERT INTO schema_migrations (version) VALUES ($1)', [openclawSeedVersion]
+            );
+            log.info('User seeded: openclaw (role: user)');
+        }
 
         log.info('Database initialized');
     } catch (err) {

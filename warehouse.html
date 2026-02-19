@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Maestro | Склад</title>
+    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Maestro">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=13.0">
+    <link rel="stylesheet" href="css/layout.css?v=13.0">
+    <link rel="stylesheet" href="css/pages.css?v=13.0">
+    <link rel="stylesheet" href="css/modals.css?v=13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=13.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* Warehouse-specific styles */
+        .wh-alert-banner {
+            background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+            border: 1px solid #F59E0B;
+            border-radius: var(--radius-sm);
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: var(--font-sm);
+            color: #92400E;
+        }
+        body.dark-mode .wh-alert-banner {
+            background: linear-gradient(135deg, #78350F 0%, #92400E 100%);
+            border-color: #B45309;
+            color: #FDE68A;
+        }
+
+        .wh-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .wh-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: var(--white);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow-xs);
+            border: 1px solid var(--gray-100);
+        }
+
+        .wh-table th {
+            background: var(--gray-50);
+            padding: 12px 16px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--gray-500);
+            text-align: left;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .wh-table td {
+            padding: 14px 16px;
+            font-size: var(--font-sm);
+            border-bottom: 1px solid var(--gray-50);
+            color: var(--gray-700);
+            vertical-align: middle;
+        }
+
+        .wh-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .wh-table tr:hover td {
+            background: rgba(16, 185, 129, 0.03);
+        }
+
+        .wh-table tr.low-stock td {
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .wh-table tr.low-stock:hover td {
+            background: rgba(239, 68, 68, 0.08);
+        }
+
+        .wh-item-name {
+            font-weight: 700;
+            color: var(--gray-800);
+        }
+
+        .wh-cat-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+            background: var(--gray-100);
+            color: var(--gray-600);
+        }
+
+        .wh-qty {
+            font-weight: 800;
+            font-size: var(--font-base);
+        }
+
+        .wh-qty.danger {
+            color: #EF4444;
+        }
+
+        .wh-qty.ok {
+            color: var(--primary-dark);
+        }
+
+        .wh-qty-info {
+            font-size: 11px;
+            color: var(--gray-400);
+        }
+
+        .wh-actions {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .wh-btn {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-xs);
+            background: var(--white);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            transition: all var(--speed-fast);
+            color: var(--gray-600);
+        }
+
+        .wh-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .wh-btn.danger:hover {
+            border-color: #EF4444;
+            color: #EF4444;
+            background: #FEE2E2;
+        }
+
+        .wh-btn.restock:hover {
+            border-color: #3B82F6;
+            color: #3B82F6;
+            background: #EFF6FF;
+        }
+
+        /* Search & filters row */
+        .wh-filters {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .wh-search {
+            flex: 1;
+            min-width: 180px;
+            padding: 10px 14px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+            font-family: inherit;
+            background: var(--white);
+            color: var(--gray-800);
+            min-height: 44px;
+        }
+
+        .wh-search:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+
+        .wh-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 14px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: var(--font-sm);
+            font-weight: 600;
+            color: var(--gray-600);
+            cursor: pointer;
+            background: var(--white);
+            min-height: 44px;
+            font-family: inherit;
+            transition: all var(--speed-fast);
+            white-space: nowrap;
+        }
+
+        .wh-toggle.active {
+            background: #FEF3C7;
+            border-color: #F59E0B;
+            color: #92400E;
+        }
+
+        body.dark-mode .wh-toggle.active {
+            background: #78350F;
+            border-color: #B45309;
+            color: #FDE68A;
+        }
+
+        /* History section */
+        .wh-history {
+            margin-top: 32px;
+        }
+
+        .wh-history h3 {
+            font-size: var(--font-base);
+            font-weight: 800;
+            color: var(--gray-800);
+            margin-bottom: 12px;
+        }
+
+        .wh-history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .wh-history-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            background: var(--white);
+            border-radius: var(--radius-xs);
+            font-size: var(--font-sm);
+            border: 1px solid var(--gray-50);
+        }
+
+        .wh-history-change {
+            font-weight: 800;
+            min-width: 50px;
+        }
+
+        .wh-history-change.plus {
+            color: var(--primary-dark);
+        }
+
+        .wh-history-change.minus {
+            color: #EF4444;
+        }
+
+        .wh-history-name {
+            font-weight: 700;
+            color: var(--gray-700);
+        }
+
+        .wh-history-reason {
+            color: var(--gray-500);
+            flex: 1;
+        }
+
+        .wh-history-meta {
+            font-size: 11px;
+            color: var(--gray-400);
+            white-space: nowrap;
+        }
+
+        /* Modal for use/restock */
+        .wh-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 16px;
+        }
+
+        .wh-modal {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 28px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: var(--shadow-xl);
+        }
+
+        .wh-modal h3 {
+            font-size: var(--font-lg);
+            font-weight: 800;
+            margin-bottom: 20px;
+            color: var(--gray-800);
+        }
+
+        .wh-modal .form-group {
+            margin-bottom: 16px;
+        }
+
+        .wh-modal .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 700;
+            font-size: var(--font-sm);
+            color: var(--gray-700);
+        }
+
+        .wh-modal .form-group input,
+        .wh-modal .form-group select {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+            font-family: inherit;
+            background: var(--white);
+            color: var(--gray-800);
+            min-height: 44px;
+        }
+
+        .wh-modal .form-group input:focus,
+        .wh-modal .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+
+        .wh-modal-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 20px;
+        }
+
+        /* Mobile: cards instead of table */
+        .wh-cards {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .wh-card {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 16px;
+            box-shadow: var(--shadow-xs);
+        }
+
+        .wh-card.low-stock {
+            border-left: 4px solid #EF4444;
+        }
+
+        .wh-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .wh-card-header .wh-item-name {
+            font-size: var(--font-base);
+        }
+
+        .wh-card-meta {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        .wh-card-qty {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        @media (max-width: 768px) {
+            .wh-table-wrap { display: none; }
+            .wh-cards { display: flex; }
+
+            .wh-filters {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .wh-history-item {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <!-- Login overlay (hidden if authorized) -->
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Maestro</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/warehouse" class="nav-link active">📦 <span class="nav-text">Склад</span></a>
+                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container">
+            <!-- Alert banner -->
+            <div id="lowStockBanner" class="wh-alert-banner" style="display:none;"></div>
+
+            <div class="page-header">
+                <h2>📦 Склад</h2>
+                <button id="addItemBtn" class="btn-page-primary" style="display:none;">+ Додати позицію</button>
+            </div>
+
+            <!-- Category tabs -->
+            <div id="categoryTabs" class="category-tabs"></div>
+
+            <!-- Filters -->
+            <div class="wh-filters">
+                <input type="text" id="searchInput" class="wh-search" placeholder="Пошук за назвою...">
+                <button id="lowStockToggle" class="wh-toggle">⚠️ Мало на складі</button>
+            </div>
+
+            <!-- Add/edit form (hidden by default) -->
+            <div id="itemForm" class="inline-form" style="display:none;">
+                <div class="form-field">
+                    <label>Назва</label>
+                    <input type="text" id="wf-name" placeholder="Туалетний папір" maxlength="255" style="min-width:200px">
+                </div>
+                <div class="form-field">
+                    <label>Категорія</label>
+                    <select id="wf-category">
+                        <option value="consumable">🧻 Витратні</option>
+                        <option value="craft">🎨 Для МК</option>
+                        <option value="props">🎭 Реквізит</option>
+                        <option value="food">🍕 Кулінарія</option>
+                        <option value="decor">🎈 Декор</option>
+                        <option value="prizes">🎁 Призи</option>
+                        <option value="office">📎 Канцелярія</option>
+                        <option value="tech">🔌 Техніка</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>Кількість</label>
+                    <input type="number" id="wf-quantity" value="0" min="0" style="width:90px">
+                </div>
+                <div class="form-field">
+                    <label>Мінімум</label>
+                    <input type="number" id="wf-min" value="0" min="0" style="width:90px">
+                </div>
+                <div class="form-field">
+                    <label>Одиниця</label>
+                    <select id="wf-unit">
+                        <option value="шт">шт</option>
+                        <option value="рул">рул</option>
+                        <option value="уп">уп</option>
+                        <option value="кг">кг</option>
+                        <option value="л">л</option>
+                        <option value="м">м</option>
+                        <option value="компл">компл</option>
+                        <option value="набір">набір</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>Примітки</label>
+                    <input type="text" id="wf-notes" placeholder="Де купити, постачальник..." style="min-width:200px">
+                </div>
+                <input type="hidden" id="wf-id" value="">
+                <div style="display:flex; gap:8px; margin-top:20px;">
+                    <button id="saveItemBtn" class="btn-page-primary">Зберегти</button>
+                    <button id="cancelItemBtn" class="btn-page-secondary">Скасувати</button>
+                </div>
+            </div>
+
+            <!-- Desktop: table -->
+            <div class="wh-table-wrap">
+                <table class="wh-table">
+                    <thead>
+                        <tr>
+                            <th>Назва</th>
+                            <th>Категорія</th>
+                            <th>Залишок</th>
+                            <th>Мін.</th>
+                            <th>Одиниця</th>
+                            <th>Дії</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stockTableBody"></tbody>
+                </table>
+            </div>
+
+            <!-- Mobile: cards -->
+            <div id="stockCards" class="wh-cards"></div>
+
+            <!-- Empty state -->
+            <div id="emptyState" class="empty-state" style="display:none;">
+                <div class="empty-state-icon">📦</div>
+                <div class="empty-state-text">Склад порожній. Додайте першу позицію!</div>
+            </div>
+
+            <!-- History section -->
+            <div class="wh-history">
+                <h3>📋 Останні операції</h3>
+                <div id="historyList" class="wh-history-list"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Use/Restock modal -->
+    <div id="qtyModal" class="wh-modal-overlay" style="display:none;">
+        <div class="wh-modal">
+            <h3 id="qtyModalTitle">Списати</h3>
+            <div class="form-group">
+                <label>Кількість</label>
+                <input type="number" id="qtyModalAmount" value="1" min="1" step="1">
+            </div>
+            <div class="form-group">
+                <label>Причина</label>
+                <input type="text" id="qtyModalReason" placeholder="Щоденне використання">
+            </div>
+            <div class="wh-modal-actions">
+                <button id="qtyModalConfirm" class="btn-page-primary">Підтвердити</button>
+                <button id="qtyModalCancel" class="btn-page-secondary">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- v10.4: Profile modal -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=13.0"></script>
+    <script src="js/api.js?v=13.0"></script>
+    <script src="js/auth.js?v=13.0"></script>
+    <script src="js/warehouse-page.js?v=13.0"></script>
+</body>
+</html>

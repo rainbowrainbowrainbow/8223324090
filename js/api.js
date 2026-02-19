@@ -28,7 +28,7 @@ function handleAuthError(response) {
 async function apiGetBookings(date) {
     try {
         const response = await fetch(`${API_BASE}/bookings/${date}`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return [];
+        if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
     } catch (err) {
@@ -103,6 +103,16 @@ async function apiUpdateBooking(id, booking) {
             body: JSON.stringify(booking)
         });
         if (handleAuthError(response)) return { success: false };
+        // Optimistic locking: 409 with conflict field
+        if (response.status === 409) {
+            const body = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                conflict: body.conflict || false,
+                error: body.error || 'Конфлікт даних',
+                currentData: body.currentData || null
+            };
+        }
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             return { success: false, error: body.error || 'API error' };
@@ -117,7 +127,7 @@ async function apiUpdateBooking(id, booking) {
 async function apiGetLines(date) {
     try {
         const response = await fetch(`${API_BASE}/lines/${date}`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return [];
+        if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
     } catch (err) {
@@ -197,6 +207,72 @@ async function apiGetStats(dateFrom, dateTo) {
     } catch (err) {
         console.error('apiGetStats error:', err);
         return [];
+    }
+}
+
+// v9.0: Enhanced stats API (server-side aggregation)
+async function apiGetStatsRevenue(params = {}) {
+    try {
+        const qs = new URLSearchParams();
+        if (params.period) qs.set('period', params.period);
+        if (params.from) qs.set('from', params.from);
+        if (params.to) qs.set('to', params.to);
+        const url = `${API_BASE}/stats/revenue${qs.toString() ? '?' + qs.toString() : ''}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsRevenue error:', err);
+        return null;
+    }
+}
+
+async function apiGetStatsPrograms(params = {}) {
+    try {
+        const qs = new URLSearchParams();
+        if (params.period) qs.set('period', params.period);
+        if (params.from) qs.set('from', params.from);
+        if (params.to) qs.set('to', params.to);
+        if (params.limit) qs.set('limit', params.limit);
+        const url = `${API_BASE}/stats/programs${qs.toString() ? '?' + qs.toString() : ''}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsPrograms error:', err);
+        return null;
+    }
+}
+
+async function apiGetStatsLoad(params = {}) {
+    try {
+        const qs = new URLSearchParams();
+        if (params.period) qs.set('period', params.period);
+        if (params.from) qs.set('from', params.from);
+        if (params.to) qs.set('to', params.to);
+        const url = `${API_BASE}/stats/load${qs.toString() ? '?' + qs.toString() : ''}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsLoad error:', err);
+        return null;
+    }
+}
+
+async function apiGetStatsTrends(period = 'month') {
+    try {
+        const url = `${API_BASE}/stats/trends?period=${encodeURIComponent(period)}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('apiGetStatsTrends error:', err);
+        return null;
     }
 }
 
@@ -377,6 +453,120 @@ async function apiVerifyToken() {
     }
 }
 
+// v10.4: Personal cabinet profile
+async function apiGetProfile() {
+    try {
+        const response = await fetch(`${API_BASE}/auth/profile`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getProfile error:', err);
+        return null;
+    }
+}
+
+// v10.4: Change password
+async function apiChangePassword(currentPassword, newPassword) {
+    try {
+        const response = await fetch(`${API_BASE}/auth/password`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ currentPassword, newPassword })
+        });
+        if (handleAuthError(response)) return { success: false };
+        const data = await response.json();
+        if (!response.ok) return { success: false, error: data.error || 'API error' };
+        return { success: true };
+    } catch (err) {
+        console.error('API changePassword error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+// v10.6: Quick task status from profile
+async function apiQuickTaskStatus(taskId, status) {
+    try {
+        const response = await fetch(`${API_BASE}/auth/tasks/${taskId}/quick-status`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ status })
+        });
+        if (handleAuthError(response)) return { success: false };
+        const data = await response.json();
+        if (!response.ok) return { success: false, error: data.error || 'API error' };
+        return { success: true, ...data };
+    } catch (err) {
+        console.error('API quickTaskStatus error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+// v10.6: Log user UI action
+async function apiLogAction(action, target, meta) {
+    try {
+        fetch(`${API_BASE}/auth/log-action`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ action, target, meta })
+        }); // fire-and-forget
+    } catch { /* ignore */ }
+}
+
+// v10.6: Get achievements definitions
+async function apiGetAchievements() {
+    try {
+        const response = await fetch(`${API_BASE}/auth/achievements`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return {};
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getAchievements error:', err);
+        return {};
+    }
+}
+
+// v10.6: Get user action log
+async function apiGetActionLog(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.user) params.set('user', filters.user);
+        if (filters.limit) params.set('limit', filters.limit);
+        if (filters.offset) params.set('offset', filters.offset);
+        const qs = params.toString();
+        const response = await fetch(`${API_BASE}/auth/action-log${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { items: [], total: 0 };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getActionLog error:', err);
+        return { items: [], total: 0 };
+    }
+}
+
+// v10.4: Profile activity with pagination
+async function apiGetProfileActivity(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        params.set('user', AppState.currentUser.username);
+        if (filters.action) params.set('action', filters.action);
+        if (filters.from) params.set('from', filters.from);
+        if (filters.to) params.set('to', filters.to);
+        if (filters.limit) params.set('limit', filters.limit);
+        if (filters.offset) params.set('offset', filters.offset);
+        const url = `${API_BASE}/history?${params.toString()}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { items: [], total: 0 };
+        if (!response.ok) throw new Error('API error');
+        const data = await response.json();
+        if (Array.isArray(data)) return { items: data, total: data.length };
+        return data;
+    } catch (err) {
+        console.error('API getProfileActivity error:', err);
+        return { items: [], total: 0 };
+    }
+}
+
 // v8.4: Certificates API
 async function apiGetCertificates(filters = {}) {
     try {
@@ -503,5 +693,283 @@ async function apiDeleteCertificate(id) {
     } catch (err) {
         console.error('API deleteCertificate error:', err);
         return { success: false, error: err.message };
+    }
+}
+
+// v11.0: Kleshnya API
+async function apiGetKleshnyaGreeting(date) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/greeting?date=${date}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya greeting error:', err);
+        return null;
+    }
+}
+
+async function apiGetKleshnyaChat() {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/chat`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya chat error:', err);
+        return [];
+    }
+}
+
+async function apiSendKleshnyaMessage(message, sessionId) {
+    try {
+        const body = { message };
+        if (sessionId) body.session_id = sessionId;
+        const response = await fetch(`${API_BASE}/kleshnya/chat`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(body)
+        });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya chat error:', err);
+        return null;
+    }
+}
+
+// v2.0: Kleshnya Sessions API
+async function apiGetKleshnyaSessions() {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/sessions`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya sessions error:', err);
+        return [];
+    }
+}
+
+async function apiCreateKleshnyaSession(title, emoji) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/sessions`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ title, emoji })
+        });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API create session error:', err);
+        return null;
+    }
+}
+
+async function apiUpdateKleshnyaSession(id, updates) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/sessions/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(updates)
+        });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API update session error:', err);
+        return null;
+    }
+}
+
+async function apiDeleteKleshnyaSession(id) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/sessions/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return false;
+        return response.ok;
+    } catch (err) {
+        console.error('API delete session error:', err);
+        return false;
+    }
+}
+
+async function apiGetSessionMessages(sessionId, limit, offset) {
+    try {
+        let url = `${API_BASE}/kleshnya/sessions/${sessionId}/messages`;
+        const params = [];
+        if (limit) params.push(`limit=${limit}`);
+        if (offset) params.push(`offset=${offset}`);
+        if (params.length) url += '?' + params.join('&');
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('API session messages error:', err);
+        return [];
+    }
+}
+
+async function apiSetMessageReaction(messageId, reaction) {
+    try {
+        const response = await fetch(`${API_BASE}/kleshnya/messages/${messageId}/reaction`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ reaction })
+        });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API reaction error:', err);
+        return null;
+    }
+}
+
+async function apiGetKleshnyaMedia(type) {
+    try {
+        let url = `${API_BASE}/kleshnya/media`;
+        if (type) url += `?type=${type}`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) return [];
+        return await response.json();
+    } catch (err) {
+        console.error('API kleshnya media error:', err);
+        return [];
+    }
+}
+
+// Warehouse API
+async function apiGetWarehouse(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.category) params.set('category', filters.category);
+        if (filters.search) params.set('search', filters.search);
+        if (filters.low_stock) params.set('low_stock', 'true');
+        if (filters.all) params.set('all', 'true');
+        const qs = params.toString();
+        const response = await fetch(`${API_BASE}/warehouse${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { items: [], lowStockCount: 0 };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getWarehouse error:', err);
+        return { items: [], lowStockCount: 0 };
+    }
+}
+
+async function apiCreateWarehouseItem(item) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(item)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API createWarehouseItem error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiUpdateWarehouseItem(id, item) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(item)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API updateWarehouseItem error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiDeleteWarehouseItem(id) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API deleteWarehouseItem error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiUseWarehouseItem(id, amount, reason) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/${id}/use`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ amount, reason })
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API useWarehouseItem error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiRestockWarehouseItem(id, amount, reason) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/${id}/restock`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ amount, reason })
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API restockWarehouseItem error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiGetWarehouseHistory(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.limit) params.set('limit', filters.limit);
+        if (filters.offset) params.set('offset', filters.offset);
+        const qs = params.toString();
+        const response = await fetch(`${API_BASE}/warehouse/history${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { items: [], total: 0 };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getWarehouseHistory error:', err);
+        return { items: [], total: 0 };
     }
 }

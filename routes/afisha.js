@@ -308,7 +308,7 @@ async function distributeAfishaForDate(date) {
         await client.query('COMMIT');
         return { success: true, distribution };
     } catch (err) {
-        await client.query('ROLLBACK');
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed in distributeAfisha', rbErr));
         throw err;
     } finally {
         client.release();
@@ -352,7 +352,7 @@ router.get('/:date', async (req, res) => {
         const { date } = req.params;
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date' });
         // v8.3: Ensure recurring templates are applied before returning results
-        try { await ensureRecurringAfishaForDate(date); } catch (e) { /* non-blocking */ }
+        try { await ensureRecurringAfishaForDate(date); } catch (e) { log.warn(`Recurring afisha setup failed for ${date}`, e.message); }
         const result = await pool.query('SELECT * FROM afisha WHERE date = $1 ORDER BY time', [date]);
         res.json(result.rows);
     } catch (err) {

@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Maestro | Дизайни</title>
+    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Maestro">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=13.0">
+    <link rel="stylesheet" href="css/layout.css?v=13.0">
+    <link rel="stylesheet" href="css/pages.css?v=13.0">
+    <link rel="stylesheet" href="css/modals.css?v=13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=13.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* ==========================================
+           DESIGN BOARD — page-specific styles
+           ========================================== */
+
+        /* Tabs */
+        .design-tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .design-tab {
+            padding: 8px 16px; border: none; border-radius: 10px;
+            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+            background: rgba(255,255,255,0.3); color: var(--gray-600);
+            transition: all 0.2s; backdrop-filter: blur(10px);
+        }
+        .design-tab.active { background: var(--primary); color: #fff; }
+        .design-tab .tab-count {
+            display: inline-block; min-width: 20px; height: 20px; line-height: 20px;
+            text-align: center; border-radius: 10px; font-size: 11px; font-weight: 800;
+            background: rgba(0,0,0,0.1); margin-left: 4px;
+        }
+        .design-tab.active .tab-count { background: rgba(255,255,255,0.3); }
+
+        /* Filter bar */
+        .design-filters {
+            display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;
+            background: rgba(255,255,255,0.3); backdrop-filter: blur(10px);
+            padding: 10px; border-radius: 12px;
+        }
+        .design-filters input, .design-filters select {
+            padding: 8px 12px; border: 1.5px solid var(--gray-200); border-radius: 8px;
+            font-family: inherit; font-size: 14px; background: rgba(255,255,255,0.6);
+            min-height: 40px;
+        }
+        .design-filters input[type="search"] { flex: 1; min-width: 150px; }
+        .design-filters .btn-filter-pin {
+            padding: 8px 12px; border: 1.5px solid var(--gray-200); border-radius: 8px;
+            background: rgba(255,255,255,0.6); cursor: pointer; font-size: 16px;
+            min-height: 40px; transition: all 0.15s; font-family: inherit;
+        }
+        .design-filters .btn-filter-pin.active {
+            background: #FEF3C7; border-color: #F59E0B; color: #92400E;
+        }
+
+        /* Tag chips */
+        .tag-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+        .tag-chip {
+            padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700;
+            cursor: pointer; font-family: inherit; border: 2px solid transparent;
+            background: var(--gray-100); color: var(--gray-600); transition: all 0.15s;
+        }
+        .tag-chip.active { border-color: var(--primary); background: #D1FAE5; color: #065F46; }
+        .tag-chip .tag-count { font-weight: 600; opacity: 0.6; margin-left: 2px; }
+
+        /* Drop zone */
+        .drop-zone {
+            border: 2px dashed var(--gray-300); border-radius: 16px;
+            padding: 32px 20px; text-align: center; margin-bottom: 20px;
+            transition: all 0.2s; cursor: pointer; background: rgba(255,255,255,0.2);
+        }
+        .drop-zone.dragover {
+            border-color: var(--primary); background: rgba(16,185,129,0.05);
+            transform: scale(1.01);
+        }
+        .drop-zone-icon { font-size: 36px; margin-bottom: 8px; }
+        .drop-zone-text { font-size: 14px; font-weight: 600; color: var(--gray-500); }
+        .drop-zone-hint { font-size: 12px; color: var(--gray-400); margin-top: 4px; }
+        .drop-zone input[type="file"] { display: none; }
+
+        /* Design grid */
+        .design-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 16px;
+        }
+
+        /* Design card */
+        .design-card {
+            background: rgba(255,255,255,0.5); border-radius: 14px;
+            overflow: hidden; backdrop-filter: blur(20px);
+            transition: all 0.2s; border: 1px solid rgba(0,0,0,0.06);
+            position: relative;
+        }
+        .design-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.1); transform: translateY(-2px); }
+        .design-card.pinned { border-color: #F59E0B; }
+        .design-card .pin-badge {
+            position: absolute; top: 8px; right: 8px; z-index: 2;
+            background: #FEF3C7; border-radius: 50%; width: 28px; height: 28px;
+            display: flex; align-items: center; justify-content: center; font-size: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .design-card-img {
+            width: 100%; aspect-ratio: 4/3; object-fit: contain; display: block;
+            cursor: pointer; background: var(--gray-100);
+        }
+        .design-card-body { padding: 12px; }
+        .design-card-title {
+            font-weight: 700; font-size: 13px; margin-bottom: 4px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .design-card-meta { font-size: 11px; color: var(--gray-500); margin-bottom: 6px; }
+        .design-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+        .design-card-tags .mini-tag {
+            padding: 2px 6px; border-radius: 10px; font-size: 10px; font-weight: 700;
+            background: var(--gray-100); color: var(--gray-500);
+        }
+        .design-card-collection {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 10px; font-weight: 700; color: #fff; margin-bottom: 6px;
+        }
+        .design-card-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+        .design-card-actions button {
+            padding: 6px 10px; border: none; border-radius: 8px; font-size: 13px;
+            cursor: pointer; font-family: inherit; font-weight: 600;
+            background: var(--gray-100); color: var(--gray-600); transition: all 0.15s;
+            min-height: 36px; min-width: 36px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .design-card-actions button:hover { background: var(--gray-200); }
+        .design-card-actions .btn-tg { background: #E3F2FD; color: #1565C0; }
+        .design-card-actions .btn-tg:hover { background: #BBDEFB; }
+        .design-card-actions .btn-download { background: #E8F5E9; color: #2E7D32; }
+        .design-card-actions .btn-download:hover { background: #C8E6C9; }
+        .design-card-actions .btn-delete { background: #FFEBEE; color: #C62828; }
+        .design-card-actions .btn-delete:hover { background: #FFCDD2; }
+
+        /* Collections section */
+        .collections-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px; margin-bottom: 20px;
+        }
+        .collection-card {
+            background: rgba(255,255,255,0.5); border-radius: 12px;
+            padding: 16px; backdrop-filter: blur(20px);
+            border-left: 4px solid var(--primary); cursor: pointer;
+            transition: all 0.15s;
+        }
+        .collection-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
+        .collection-card-name { font-weight: 800; font-size: 15px; margin-bottom: 4px; }
+        .collection-card-count { font-size: 12px; color: var(--gray-500); }
+        .collection-card-actions { margin-top: 8px; display: flex; gap: 4px; }
+        .collection-card-actions button {
+            padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px;
+            cursor: pointer; font-family: inherit; font-weight: 600;
+            background: var(--gray-100); color: var(--gray-600); transition: all 0.1s;
+        }
+        .collection-card-actions button:hover { background: var(--gray-200); }
+
+        .add-collection-bar {
+            display: flex; gap: 8px; margin-bottom: 16px;
+            background: rgba(255,255,255,0.3); backdrop-filter: blur(10px);
+            padding: 10px; border-radius: 12px;
+        }
+        .add-collection-bar input {
+            padding: 8px 12px; border: 1.5px solid var(--gray-200); border-radius: 8px;
+            font-family: inherit; font-size: 14px; background: rgba(255,255,255,0.6); flex: 1;
+        }
+        .add-collection-bar input[type="color"] { width: 44px; padding: 4px; cursor: pointer; }
+        .add-collection-bar button {
+            padding: 8px 16px; border: none; border-radius: 8px;
+            background: var(--primary); color: #fff; font-weight: 700;
+            font-family: inherit; cursor: pointer; white-space: nowrap;
+        }
+
+        /* Price list tab */
+        .price-section { margin-bottom: 32px; }
+        .price-section-header {
+            font-size: 18px; font-weight: 800; margin-bottom: 12px;
+            padding-bottom: 8px; border-bottom: 2px solid var(--gray-200);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .price-table {
+            width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.5);
+            backdrop-filter: blur(20px); border-radius: 12px; overflow: hidden;
+        }
+        .price-table th {
+            text-align: left; padding: 10px 14px; font-size: 12px; font-weight: 800;
+            text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-500);
+            background: rgba(0,0,0,0.03); border-bottom: 2px solid var(--gray-200);
+        }
+        .price-table td {
+            padding: 10px 14px; font-size: 14px; border-bottom: 1px solid var(--gray-100);
+        }
+        .price-table tr:last-child td { border-bottom: none; }
+        .price-table .price-icon { font-size: 20px; }
+        .price-table .price-name { font-weight: 700; }
+        .price-table .price-value { font-weight: 800; color: var(--primary-dark); white-space: nowrap; }
+        .price-table .price-per-child { font-size: 11px; color: var(--gray-400); }
+        .price-table .price-details { font-size: 12px; color: var(--gray-500); }
+        .price-actions {
+            display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+        }
+
+        /* Calendar tab */
+        .calendar-grid {
+            display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+            margin-bottom: 20px;
+        }
+        .calendar-header {
+            text-align: center; font-weight: 800; font-size: 12px;
+            color: var(--gray-500); padding: 8px 4px;
+        }
+        .calendar-day {
+            min-height: 80px; padding: 6px; border-radius: 8px;
+            background: rgba(255,255,255,0.3); backdrop-filter: blur(10px);
+            cursor: pointer; transition: all 0.15s; position: relative;
+        }
+        .calendar-day:hover { background: rgba(255,255,255,0.6); }
+        .calendar-day.today { border: 2px solid var(--primary); }
+        .calendar-day.other-month { opacity: 0.3; }
+        .calendar-day-num {
+            font-size: 12px; font-weight: 800; margin-bottom: 4px; color: var(--gray-700);
+        }
+        .calendar-day-dots { display: flex; flex-wrap: wrap; gap: 3px; }
+        .calendar-dot {
+            width: 28px; height: 28px; border-radius: 6px; object-fit: cover;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+        .calendar-dot-more {
+            width: 28px; height: 28px; border-radius: 6px;
+            background: var(--gray-200); display: flex; align-items: center;
+            justify-content: center; font-size: 10px; font-weight: 800; color: var(--gray-600);
+        }
+        .calendar-nav {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+        }
+        .calendar-nav-title { font-size: 18px; font-weight: 800; }
+        .calendar-nav button {
+            padding: 8px 14px; border: none; border-radius: 8px;
+            background: rgba(255,255,255,0.4); cursor: pointer; font-family: inherit;
+            font-weight: 700; font-size: 14px; transition: all 0.15s;
+        }
+        .calendar-nav button:hover { background: rgba(255,255,255,0.7); }
+        .calendar-day-detail {
+            background: rgba(255,255,255,0.4); backdrop-filter: blur(10px);
+            border-radius: 12px; padding: 16px; margin-top: 12px;
+        }
+        .calendar-day-detail h4 { font-weight: 800; margin-bottom: 10px; }
+
+        /* Lightbox */
+        .lightbox {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+            z-index: 10000; display: none; align-items: center; justify-content: center;
+            cursor: pointer;
+        }
+        .lightbox.visible { display: flex; }
+        .lightbox img {
+            max-width: 90vw; max-height: 90vh; border-radius: 12px;
+            box-shadow: 0 4px 40px rgba(0,0,0,0.5);
+        }
+        .lightbox-close {
+            position: absolute; top: 20px; right: 20px; font-size: 32px;
+            color: #fff; cursor: pointer; background: none; border: none;
+            width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+        }
+        .lightbox-info {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.7); color: #fff; padding: 8px 20px;
+            border-radius: 20px; font-size: 13px; font-weight: 600;
+            max-width: 80vw; text-align: center;
+        }
+
+        /* Edit modal (inline) */
+        .design-edit-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+            z-index: 9000; display: none; align-items: center; justify-content: center;
+        }
+        .design-edit-overlay.visible { display: flex; }
+        .design-edit-modal {
+            background: #fff; border-radius: 16px; padding: 24px;
+            width: 90%; max-width: 480px; max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 4px 40px rgba(0,0,0,0.2);
+        }
+        .design-edit-modal h3 { font-weight: 800; margin-bottom: 16px; }
+        .design-edit-modal .form-field { margin-bottom: 12px; }
+        .design-edit-modal label {
+            display: block; font-size: 12px; font-weight: 700; color: var(--gray-500);
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;
+        }
+        .design-edit-modal input,
+        .design-edit-modal select,
+        .design-edit-modal textarea {
+            width: 100%; padding: 10px 14px; border: 1.5px solid var(--gray-200);
+            border-radius: 8px; font-family: inherit; font-size: 14px;
+            background: #fff; color: var(--gray-800); min-height: 44px;
+            box-sizing: border-box;
+        }
+        .design-edit-modal textarea { min-height: 70px; resize: vertical; }
+        .design-edit-modal input:focus,
+        .design-edit-modal select:focus,
+        .design-edit-modal textarea:focus {
+            outline: none; border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+        }
+        .design-edit-modal .edit-actions {
+            display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;
+        }
+        .design-edit-modal .btn-save {
+            padding: 10px 24px; background: var(--primary); color: #fff;
+            border: none; border-radius: 8px; font-weight: 700; cursor: pointer;
+            font-family: inherit; font-size: 14px;
+        }
+        .design-edit-modal .btn-cancel {
+            padding: 10px 24px; background: var(--gray-100); color: var(--gray-700);
+            border: none; border-radius: 8px; font-weight: 700; cursor: pointer;
+            font-family: inherit; font-size: 14px;
+        }
+        .tag-input-container {
+            display: flex; flex-wrap: wrap; gap: 4px; padding: 8px;
+            border: 1.5px solid var(--gray-200); border-radius: 8px;
+            background: #fff; min-height: 44px; align-items: center; cursor: text;
+        }
+        .tag-input-container:focus-within {
+            border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+        }
+        .tag-input-container .tag-pill {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: 700;
+            background: #D1FAE5; color: #065F46;
+        }
+        .tag-input-container .tag-pill button {
+            background: none; border: none; cursor: pointer; font-size: 14px;
+            color: #065F46; padding: 0; line-height: 1;
+        }
+        .tag-input-container input {
+            border: none; outline: none; font-family: inherit; font-size: 14px;
+            flex: 1; min-width: 80px; padding: 4px; min-height: auto;
+            box-shadow: none;
+        }
+        .tag-autocomplete {
+            position: absolute; background: #fff; border: 1px solid var(--gray-200);
+            border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            max-height: 150px; overflow-y: auto; z-index: 100; display: none;
+        }
+        .tag-autocomplete.visible { display: block; }
+        .tag-autocomplete-item {
+            padding: 8px 12px; cursor: pointer; font-size: 13px; font-weight: 600;
+        }
+        .tag-autocomplete-item:hover { background: var(--gray-50); }
+
+        /* Print styles for price list */
+        @media print {
+            .header, .design-tabs, .design-filters, .drop-zone,
+            .tag-chips, .price-actions, .lightbox, .design-edit-overlay,
+            .user-panel, .notification, .skip-link, .page-login-overlay { display: none !important; }
+            body { background: #fff !important; }
+            .page-container { padding: 0 !important; max-width: none !important; }
+            .price-table { page-break-inside: avoid; }
+            .price-section { page-break-inside: avoid; }
+            .price-table th { background: #f5f5f5 !important; }
+            .price-section-header { font-size: 16px; }
+        }
+
+        /* Empty state */
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--gray-400); font-size: 14px; }
+        .empty-state span { font-size: 40px; display: block; margin-bottom: 12px; }
+
+        /* ==========================================
+           DARK MODE
+           ========================================== */
+        body.dark-mode .design-tab {
+            background: rgba(255,255,255,0.08); color: var(--gray-400);
+        }
+        body.dark-mode .design-tab.active { background: var(--primary); color: #fff; }
+        body.dark-mode .design-filters {
+            background: rgba(255,255,255,0.05);
+        }
+        body.dark-mode .design-filters input,
+        body.dark-mode .design-filters select {
+            background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12);
+            color: var(--gray-200);
+        }
+        body.dark-mode .tag-chip { background: rgba(255,255,255,0.08); color: var(--gray-400); }
+        body.dark-mode .tag-chip.active { background: rgba(16,185,129,0.2); color: #6EE7B7; border-color: #059669; }
+        body.dark-mode .drop-zone {
+            border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.03);
+        }
+        body.dark-mode .drop-zone-text { color: var(--gray-400); }
+        body.dark-mode .design-card {
+            background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08);
+        }
+        body.dark-mode .design-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        body.dark-mode .design-card-img { background: rgba(255,255,255,0.04); }
+        body.dark-mode .design-card-title { color: var(--gray-200); }
+        body.dark-mode .design-card-meta { color: var(--gray-500); }
+        body.dark-mode .design-card-tags .mini-tag { background: rgba(255,255,255,0.08); color: var(--gray-400); }
+        body.dark-mode .design-card-actions button {
+            background: rgba(255,255,255,0.08); color: var(--gray-300);
+        }
+        body.dark-mode .design-card-actions .btn-tg { background: rgba(21,101,192,0.2); color: #90CAF9; }
+        body.dark-mode .design-card-actions .btn-download { background: rgba(46,125,50,0.2); color: #A5D6A7; }
+        body.dark-mode .design-card-actions .btn-delete { background: rgba(198,40,40,0.2); color: #EF9A9A; }
+        body.dark-mode .collection-card {
+            background: rgba(255,255,255,0.06); border-left-color: var(--primary);
+        }
+        body.dark-mode .collection-card-name { color: var(--gray-200); }
+        body.dark-mode .collection-card-count { color: var(--gray-500); }
+        body.dark-mode .add-collection-bar {
+            background: rgba(255,255,255,0.05);
+        }
+        body.dark-mode .add-collection-bar input {
+            background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12);
+            color: var(--gray-200);
+        }
+        body.dark-mode .price-table {
+            background: rgba(255,255,255,0.04);
+        }
+        body.dark-mode .price-table th {
+            background: rgba(255,255,255,0.06); color: var(--gray-400);
+            border-bottom-color: rgba(255,255,255,0.1);
+        }
+        body.dark-mode .price-table td {
+            color: var(--gray-300); border-bottom-color: rgba(255,255,255,0.06);
+        }
+        body.dark-mode .price-table .price-name { color: var(--gray-200); }
+        body.dark-mode .price-table .price-value { color: #6EE7B7; }
+        body.dark-mode .price-section-header { color: var(--gray-200); border-bottom-color: rgba(255,255,255,0.1); }
+        body.dark-mode .calendar-day {
+            background: rgba(255,255,255,0.04);
+        }
+        body.dark-mode .calendar-day:hover { background: rgba(255,255,255,0.08); }
+        body.dark-mode .calendar-day-num { color: var(--gray-300); }
+        body.dark-mode .calendar-nav-title { color: var(--gray-200); }
+        body.dark-mode .calendar-nav button {
+            background: rgba(255,255,255,0.08); color: var(--gray-300);
+        }
+        body.dark-mode .calendar-day-detail { background: rgba(255,255,255,0.06); }
+        body.dark-mode .calendar-day-detail h4 { color: var(--gray-200); }
+        body.dark-mode .design-edit-modal {
+            background: var(--gray-800, #1e1e2e); border: 1px solid rgba(255,255,255,0.1);
+        }
+        body.dark-mode .design-edit-modal h3 { color: var(--gray-200); }
+        body.dark-mode .design-edit-modal input,
+        body.dark-mode .design-edit-modal select,
+        body.dark-mode .design-edit-modal textarea {
+            background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12);
+            color: var(--gray-200);
+        }
+        body.dark-mode .design-edit-modal label { color: var(--gray-400); }
+        body.dark-mode .tag-input-container {
+            background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12);
+        }
+        body.dark-mode .tag-input-container input { color: var(--gray-200); }
+        body.dark-mode .summary-chip, body.dark-mode .btn-filter-pin {
+            background: rgba(255,255,255,0.08); color: var(--gray-300);
+            border-color: rgba(255,255,255,0.12);
+        }
+        body.dark-mode .empty-state { color: var(--gray-500); }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            /* Tabs: scrollable row, no wrap */
+            .design-tabs {
+                flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+                -webkit-overflow-scrolling: touch; padding-bottom: 4px;
+                scrollbar-width: none;
+            }
+            .design-tabs::-webkit-scrollbar { display: none; }
+            .design-tab { padding: 8px 14px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+
+            /* Filters: single compact row */
+            .design-filters {
+                flex-direction: row; align-items: center; gap: 6px;
+                padding: 8px; flex-wrap: nowrap;
+            }
+            .design-filters input[type="search"] { min-width: 0; flex: 1; font-size: 13px; padding: 8px 10px; }
+            .design-filters select { width: auto; min-width: 100px; flex-shrink: 1; font-size: 13px; padding: 8px 6px; }
+
+            /* Drop zone: compact bar */
+            .drop-zone { padding: 14px 16px; }
+            .drop-zone-icon { font-size: 22px; display: inline; margin-right: 6px; margin-bottom: 0; }
+            .drop-zone-text { display: inline; font-size: 13px; }
+            .drop-zone-hint { display: none; }
+
+            /* Grid: 2 columns */
+            .design-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+            .design-card-img { aspect-ratio: 1/1; }
+            .design-card-body { padding: 8px; }
+            .design-card-title { font-size: 12px; }
+            .design-card-meta { font-size: 10px; margin-bottom: 4px; }
+            .design-card-tags { margin-bottom: 4px; }
+            .design-card-actions { gap: 3px; }
+            .design-card-actions button { padding: 5px 7px; font-size: 12px; min-height: 34px; min-width: 34px; }
+
+            /* Collections */
+            .collections-grid { grid-template-columns: 1fr 1fr; }
+            .add-collection-bar { flex-wrap: wrap; }
+
+            /* Calendar */
+            .calendar-grid { gap: 2px; }
+            .calendar-day { min-height: 50px; padding: 4px; }
+            .calendar-dot { width: 20px; height: 20px; }
+
+            /* Price */
+            .price-table th, .price-table td { padding: 8px 10px; font-size: 13px; }
+            .price-section-header { font-size: 15px; }
+        }
+
+        @media (max-width: 480px) {
+            .design-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+            .design-card-img { aspect-ratio: 1/1; }
+            .collections-grid { grid-template-columns: 1fr; }
+            .calendar-day { min-height: 40px; }
+            .calendar-day-num { font-size: 10px; }
+            .calendar-dot { width: 16px; height: 16px; border-radius: 4px; }
+
+            /* Filters: stack search above select+pin */
+            .design-filters { flex-wrap: wrap; }
+            .design-filters input[type="search"] { min-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Maestro</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/designs" class="nav-link active">🎨 <span class="nav-text">Дизайни</span></a>
+                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container">
+            <!-- Tabs -->
+            <div class="design-tabs" id="designTabs">
+                <button class="design-tab active" data-tab="gallery">🎨 Дизайни <span class="tab-count" id="countDesigns">0</span></button>
+                <button class="design-tab" data-tab="collections">📁 Колекції <span class="tab-count" id="countCollections">0</span></button>
+                <button class="design-tab" data-tab="price">💰 Прайс-лист</button>
+                <button class="design-tab" data-tab="calendar">📅 Календар</button>
+            </div>
+
+            <!-- ==================== GALLERY TAB ==================== -->
+            <div id="tabGallery">
+                <!-- Filters -->
+                <div class="design-filters">
+                    <input type="search" id="searchInput" placeholder="Пошук за назвою...">
+                    <select id="collectionFilter">
+                        <option value="">Всі колекції</option>
+                    </select>
+                    <button class="btn-filter-pin" id="pinFilter" title="Тільки закріплені">⭐</button>
+                </div>
+
+                <!-- Tag chips -->
+                <div class="tag-chips" id="tagChips"></div>
+
+                <!-- Drop zone -->
+                <div class="drop-zone" id="dropZone">
+                    <div class="drop-zone-icon">📁</div>
+                    <div class="drop-zone-text">Перетягніть файли сюди або натисніть для вибору</div>
+                    <div class="drop-zone-hint">JPG, PNG, GIF, WEBP, SVG, PDF — до 20 МБ</div>
+                    <input type="file" id="fileInput" multiple accept="image/*,.pdf,.svg">
+                </div>
+
+                <!-- Design grid -->
+                <div class="design-grid" id="designGrid"></div>
+
+                <!-- Load more -->
+                <div id="loadMore" style="display:none; text-align:center; padding:20px;">
+                    <button id="loadMoreBtn" style="padding:10px 24px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; cursor:pointer; font-family:inherit;">Завантажити ще</button>
+                </div>
+            </div>
+
+            <!-- ==================== COLLECTIONS TAB ==================== -->
+            <div id="tabCollections" style="display:none">
+                <div class="add-collection-bar">
+                    <input type="text" id="newCollectionName" placeholder="Назва колекції...">
+                    <input type="color" id="newCollectionColor" value="#6366F1" title="Колір">
+                    <button id="addCollectionBtn">+ Колекція</button>
+                </div>
+                <div class="collections-grid" id="collectionsGrid"></div>
+            </div>
+
+            <!-- ==================== PRICE TAB ==================== -->
+            <div id="tabPrice" style="display:none">
+                <div class="price-actions">
+                    <button onclick="window.print()" style="padding:10px 20px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; cursor:pointer; font-family:inherit;">🖨️ Друкувати</button>
+                </div>
+                <div id="priceContent"></div>
+            </div>
+
+            <!-- ==================== CALENDAR TAB ==================== -->
+            <div id="tabCalendar" style="display:none">
+                <div class="calendar-nav">
+                    <button id="calPrev">◀</button>
+                    <span class="calendar-nav-title" id="calTitle"></span>
+                    <button id="calNext">▶</button>
+                    <button id="calToday" style="margin-left:auto">Сьогодні</button>
+                </div>
+                <div class="calendar-grid" id="calendarGrid"></div>
+                <div class="calendar-day-detail" id="calDetail" style="display:none"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Lightbox -->
+    <div class="lightbox" id="lightbox">
+        <button class="lightbox-close">&times;</button>
+        <img id="lightboxImg" src="" alt="Превʼю">
+        <div class="lightbox-info" id="lightboxInfo"></div>
+    </div>
+
+    <!-- Edit modal -->
+    <div class="design-edit-overlay" id="editOverlay">
+        <div class="design-edit-modal">
+            <h3 id="editModalTitle">Редагувати дизайн</h3>
+            <div class="form-field">
+                <label>Назва</label>
+                <input type="text" id="editTitle">
+            </div>
+            <div class="form-field">
+                <label>Опис</label>
+                <textarea id="editDescription" rows="3"></textarea>
+            </div>
+            <div class="form-field">
+                <label>Колекція</label>
+                <select id="editCollection"><option value="">— Без колекції —</option></select>
+            </div>
+            <div class="form-field">
+                <label>Дата публікації</label>
+                <input type="date" id="editPublishDate">
+            </div>
+            <div class="form-field" style="position:relative">
+                <label>Хештеги</label>
+                <div class="tag-input-container" id="editTagContainer">
+                    <input type="text" id="editTagInput" placeholder="Додати тег...">
+                </div>
+                <div class="tag-autocomplete" id="tagAutocomplete"></div>
+            </div>
+            <div class="edit-actions">
+                <button class="btn-cancel" id="editCancel">Скасувати</button>
+                <button class="btn-save" id="editSave">Зберегти</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=13.0"></script>
+    <script src="js/api.js?v=13.0"></script>
+    <script src="js/auth.js?v=13.0"></script>
+    <script src="js/designs-page.js?v=13.0"></script>
+</body>
+</html>

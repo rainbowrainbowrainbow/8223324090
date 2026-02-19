@@ -1,5 +1,5 @@
 /**
- * services/bot.js — Clawd Bot command handlers (v7.2)
+ * services/bot.js — Clawd Bot command handlers (v11.1)
  *
  * Telegram bot commands for park management:
  *   /menu     — show command menu
@@ -8,6 +8,13 @@
  *   /programs — list active programs by category
  *   /price <code> <new_price> — update product price
  *   /find <query> — search products by name/code
+ *   /stats    — monthly statistics
+ *   /cert <code> — verify certificate
+ *   /tasks    — my tasks for today
+ *   /done <id> — complete a task
+ *   /alltasks — all team tasks for today
+ *   /points   — personal rating + team leaderboard
+ *   /streak   — current streak info
  */
 const { pool } = require('../db');
 const { sendTelegramMessage, telegramRequest } = require('./telegram');
@@ -29,11 +36,20 @@ function fmtPrice(amount) {
 async function handleMenu(chatId, threadId) {
     const text = `🐾 <b>Clawd Bot — Парк Закревського Періоду</b>\n\n`
         + `Доступні команди:\n\n`
+        + `📅 <b>Бронювання</b>\n`
         + `/today — бронювання на сьогодні\n`
-        + `/tomorrow — бронювання на завтра\n`
+        + `/tomorrow — бронювання на завтра\n\n`
+        + `📋 <b>Каталог</b>\n`
         + `/programs — каталог програм\n`
         + `/find <запит> — пошук програми\n`
-        + `/price <код> <ціна> — змінити ціну\n`
+        + `/price <код> <ціна> — змінити ціну\n\n`
+        + `🦀 <b>Tasker (Клешня)</b>\n`
+        + `/tasks — мої задачі на сьогодні\n`
+        + `/done <id> — завершити задачу\n`
+        + `/alltasks — всі задачі команди\n`
+        + `/points — рейтинг та бали\n`
+        + `/streak — мій стрік\n\n`
+        + `📊 <b>Інше</b>\n`
         + `/stats — статистика за місяць\n`
         + `/cert <код> — перевірити сертифікат\n`
         + `/menu — це меню`;
@@ -333,6 +349,309 @@ async function handleStats(chatId, threadId) {
     }
 }
 
+// v10.0: /tasks — show my tasks for today
+async function handleTasks(chatId, threadId, fromUsername) {
+    try {
+        const today = formatDate(getKyivNow());
+
+        // Try to find user by telegram username or chat_id
+        const userResult = await pool.query(
+            'SELECT username FROM users WHERE telegram_username = $1 OR telegram_chat_id = $2 LIMIT 1',
+            [fromUsername, chatId]
+        );
+
+        let tasks;
+        if (userResult.rows.length > 0) {
+            const username = userResult.rows[0].username;
+            tasks = await pool.query(
+                `SELECT * FROM tasks WHERE assigned_to = $1 AND (date = $2 OR (date IS NULL AND status != 'done'))
+                 AND status != 'done'
+                 ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END, created_at`,
+                [username, today]
+            );
+        } else {
+            // Fallback: show all undone tasks for today
+            tasks = await pool.query(
+                `SELECT * FROM tasks WHERE date = $1 AND status != 'done'
+                 ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END, created_at`,
+                [today]
+            );
+        }
+
+        if (tasks.rows.length === 0) {
+            return sendBotMessage(chatId, threadId, `🦀 <b>Задачі на сьогодні</b>\n\n✅ Немає відкритих задач. Все чисто!`);
+        }
+
+        let text = `🦀 <b>Задачі на сьогодні (${today})</b>\n`;
+        text += `📋 Відкритих: ${tasks.rows.length}\n\n`;
+
+        const priorityIcon = { high: '🔴', normal: '', low: '🔵' };
+        const statusIcon = { todo: '⬜', in_progress: '🔄' };
+        const typeIcon = { human: '👤', bot: '🤖' };
+
+        for (let i = 0; i < tasks.rows.length; i++) {
+            const t = tasks.rows[i];
+            const isLast = i === tasks.rows.length - 1;
+            const prefix = isLast ? '└' : '├';
+            const pIcon = priorityIcon[t.priority] || '';
+            const sIcon = statusIcon[t.status] || '?';
+            const tIcon = typeIcon[t.task_type] || '';
+
+            text += `${prefix} ${sIcon}${pIcon}${tIcon} <b>#${t.id}</b> ${escapeHtml(t.title)}`;
+            if (t.deadline) {
+                const dl = new Date(t.deadline);
+                text += ` ⏰${dl.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}`;
+            }
+            text += '\n';
+        }
+
+        text += `\n💡 /done <id> — завершити задачу`;
+        return sendBotMessage(chatId, threadId, text);
+    } catch (err) {
+        log.error('handleTasks error', err);
+        return sendBotMessage(chatId, threadId, '❌ Помилка завантаження задач');
+    }
+}
+
+// v10.0: /done <id> — complete a task
+async function handleDone(chatId, threadId, args, fromUsername) {
+    const taskId = parseInt((args || '').trim());
+    if (!taskId || isNaN(taskId)) {
+        return sendBotMessage(chatId, threadId, '📋 Використання: /done <номер задачі>\nПриклад: /done 42');
+    }
+
+    try {
+        const { updateTaskStatus } = require('./kleshnya');
+
+        // Determine actor
+        let actor = 'telegram';
+        const userResult = await pool.query(
+            'SELECT username FROM users WHERE telegram_username = $1 OR telegram_chat_id = $2 LIMIT 1',
+            [fromUsername, chatId]
+        );
+        if (userResult.rows.length > 0) {
+            actor = userResult.rows[0].username;
+        }
+
+        const task = await updateTaskStatus(taskId, 'done', actor);
+
+        const text = `✅ <b>Задачу завершено</b>\n\n`
+            + `📋 #${task.id} ${escapeHtml(task.title)}\n`
+            + `👤 Виконав: ${actor}\n`
+            + `\n🦀 Клешня зафіксувала`;
+
+        return sendBotMessage(chatId, threadId, text);
+    } catch (err) {
+        if (err.message === 'Task not found') {
+            return sendBotMessage(chatId, threadId, `❌ Задачу #${taskId} не знайдено`);
+        }
+        log.error('handleDone error', err);
+        return sendBotMessage(chatId, threadId, '❌ Помилка завершення задачі');
+    }
+}
+
+// v10.0: /alltasks — all team tasks for today
+async function handleAllTasks(chatId, threadId) {
+    try {
+        const today = formatDate(getKyivNow());
+        const tasks = await pool.query(
+            `SELECT * FROM tasks WHERE (date = $1 OR (date IS NULL AND status != 'done'))
+             AND status != 'done'
+             ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
+                      assigned_to NULLS LAST, created_at`,
+            [today]
+        );
+
+        if (tasks.rows.length === 0) {
+            return sendBotMessage(chatId, threadId, `🦀 <b>Задачі команди (${today})</b>\n\n✅ Усі задачі виконані!`);
+        }
+
+        let text = `🦀 <b>Задачі команди (${today})</b>\n`;
+        text += `📋 Відкритих: ${tasks.rows.length}\n\n`;
+
+        const priorityIcon = { high: '🔴', normal: '', low: '🔵' };
+        const statusIcon = { todo: '⬜', in_progress: '🔄' };
+
+        // Group by assignee
+        const groups = {};
+        for (const t of tasks.rows) {
+            const key = t.assigned_to || 'Не призначено';
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(t);
+        }
+
+        for (const [assignee, assigneeTasks] of Object.entries(groups)) {
+            text += `👤 <b>${escapeHtml(assignee)}</b> (${assigneeTasks.length})\n`;
+            for (let i = 0; i < assigneeTasks.length; i++) {
+                const t = assigneeTasks[i];
+                const isLast = i === assigneeTasks.length - 1;
+                const prefix = isLast ? '  └' : '  ├';
+                const pIcon = priorityIcon[t.priority] || '';
+                const sIcon = statusIcon[t.status] || '?';
+                text += `${prefix} ${sIcon}${pIcon} <b>#${t.id}</b> ${escapeHtml(t.title)}\n`;
+            }
+            text += '\n';
+        }
+
+        text += `💡 /done <id> — завершити задачу`;
+        return sendBotMessage(chatId, threadId, text);
+    } catch (err) {
+        log.error('handleAllTasks error', err);
+        return sendBotMessage(chatId, threadId, '❌ Помилка завантаження задач');
+    }
+}
+
+// v11.1: /points — personal rating + team leaderboard
+async function handlePoints(chatId, threadId, fromUsername) {
+    try {
+        const { getUserPoints, getAllPoints } = require('./kleshnya');
+
+        // Resolve username
+        let myUsername = null;
+        if (fromUsername) {
+            const userResult = await pool.query(
+                'SELECT username FROM users WHERE telegram_username = $1 OR telegram_chat_id = $2 LIMIT 1',
+                [fromUsername, chatId]
+            );
+            if (userResult.rows.length > 0) myUsername = userResult.rows[0].username;
+        }
+
+        // Get leaderboard
+        const allPoints = await getAllPoints();
+
+        let text = `🏆 <b>Рейтинг команди</b>\n\n`;
+
+        if (allPoints.length === 0) {
+            text += `Поки немає даних.\nВиконуй задачі — набирай бали!\n`;
+        } else {
+            const medals = ['🥇', '🥈', '🥉'];
+            for (let i = 0; i < allPoints.length; i++) {
+                const p = allPoints[i];
+                const medal = medals[i] || `${i + 1}.`;
+                const isMe = myUsername && p.username === myUsername;
+                const name = isMe ? `<b>${escapeHtml(p.username)}</b> ← ти` : escapeHtml(p.username);
+                text += `${medal} ${name}\n`;
+                text += `   💎 ${p.permanent_total || 0} загальних · 📊 ${p.monthly_current || 0} за місяць\n`;
+            }
+        }
+
+        // Show personal summary if identified
+        if (myUsername) {
+            const my = await getUserPoints(myUsername);
+            text += `\n━━━━━━━━━━━━━━━\n`;
+            text += `👤 <b>Твої бали (${my.month})</b>\n`;
+            text += `📊 Місячних: <b>${my.monthly_points}</b>\n`;
+            text += `💎 Загальних: <b>${my.permanent_points}</b>\n`;
+        }
+
+        text += `\n🦀 Клешня рахує все`;
+        return sendBotMessage(chatId, threadId, text);
+    } catch (err) {
+        log.error('handlePoints error', err);
+        return sendBotMessage(chatId, threadId, '❌ Помилка завантаження рейтингу');
+    }
+}
+
+// v11.1: /streak — current streak info
+async function handleStreak(chatId, threadId, fromUsername) {
+    try {
+        // Resolve username
+        let myUsername = null;
+        if (fromUsername) {
+            const userResult = await pool.query(
+                'SELECT username FROM users WHERE telegram_username = $1 OR telegram_chat_id = $2 LIMIT 1',
+                [fromUsername, chatId]
+            );
+            if (userResult.rows.length > 0) myUsername = userResult.rows[0].username;
+        }
+
+        if (!myUsername) {
+            return sendBotMessage(chatId, threadId,
+                '🔥 Стрік відстежується автоматично.\n\nНапишіть боту /start у приватному чаті щоб з\'єднати акаунт.');
+        }
+
+        const streakResult = await pool.query(
+            'SELECT current_streak, longest_streak, last_active_date FROM user_streaks WHERE username = $1',
+            [myUsername]
+        );
+
+        if (streakResult.rows.length === 0 || !streakResult.rows[0].current_streak) {
+            return sendBotMessage(chatId, threadId,
+                `🔥 <b>Стрік: ${myUsername}</b>\n\nПоки 0 днів. Заходь щодня — Клешня рахує!`);
+        }
+
+        const s = streakResult.rows[0];
+        let text = `🔥 <b>Стрік: ${escapeHtml(myUsername)}</b>\n\n`;
+        text += `📅 Поточний: <b>${s.current_streak}</b> днів\n`;
+        text += `🏆 Найдовший: <b>${s.longest_streak}</b> днів\n`;
+        if (s.last_active_date) text += `⏰ Останній вхід: ${s.last_active_date}\n`;
+
+        if (s.current_streak >= 30) text += `\n🌟 Легенда! Місяць без перерви!`;
+        else if (s.current_streak >= 14) text += `\n💪 Два тижні поспіль — красунчик!`;
+        else if (s.current_streak >= 7) text += `\n🔥 Тижневий стрік — тримай так!`;
+        else if (s.current_streak >= 3) text += `\n👍 Добрий початок, не зупиняйся!`;
+
+        text += `\n\n🦀 Клешня рахує все`;
+        return sendBotMessage(chatId, threadId, text);
+    } catch (err) {
+        log.error('handleStreak error', err);
+        return sendBotMessage(chatId, threadId, '❌ Помилка завантаження стріку');
+    }
+}
+
+// v11.1: /start — personal greeting for private chats
+async function handleStart(chatId, threadId, fromUsername) {
+    // Register chat_id for personal notifications
+    if (fromUsername) {
+        try {
+            await pool.query(
+                'UPDATE users SET telegram_chat_id = $1 WHERE telegram_username = $2',
+                [chatId, fromUsername]
+            );
+        } catch (e) { /* ignore */ }
+    }
+
+    const name = fromUsername ? `@${fromUsername}` : 'друже';
+    const text = `🦀 <b>Привіт, ${escapeHtml(name)}!</b>\n\n`
+        + `Я Клешня — бот Парку Закревського Періоду.\n`
+        + `Тепер ти будеш отримувати персональні сповіщення прямо сюди.\n\n`
+        + `✅ Акаунт з'єднано\n\n`
+        + `Напиши /menu щоб побачити всі команди.`;
+
+    return sendBotMessage(chatId, threadId, text);
+}
+
+// v11.1: Register bot commands in Telegram menu
+async function registerBotCommands() {
+    try {
+        const commands = [
+            { command: 'today', description: 'Бронювання на сьогодні' },
+            { command: 'tomorrow', description: 'Бронювання на завтра' },
+            { command: 'tasks', description: 'Мої задачі на сьогодні' },
+            { command: 'done', description: 'Завершити задачу (+ номер)' },
+            { command: 'alltasks', description: 'Задачі всієї команди' },
+            { command: 'points', description: 'Рейтинг та бали' },
+            { command: 'streak', description: 'Мій стрік' },
+            { command: 'programs', description: 'Каталог програм' },
+            { command: 'find', description: 'Пошук програми' },
+            { command: 'stats', description: 'Статистика за місяць' },
+            { command: 'cert', description: 'Перевірити сертифікат' },
+            { command: 'menu', description: 'Всі команди' },
+        ];
+
+        const result = await telegramRequest('setMyCommands', { commands });
+        if (result && result.ok) {
+            log.info(`Bot menu registered: ${commands.length} commands`);
+        } else {
+            log.warn('setMyCommands failed', result);
+        }
+        return result;
+    } catch (err) {
+        log.error('registerBotCommands error', err);
+        return null;
+    }
+}
+
 // Helper: send message respecting thread
 async function sendBotMessage(chatId, threadId, text) {
     const payload = {
@@ -365,13 +684,14 @@ function formatDate(date) {
 
 /**
  * Main command router — called from webhook handler
+ * @param {string|number} fromUsername — Telegram username of sender (for /tasks)
  */
-async function handleBotCommand(chatId, threadId, text) {
+async function handleBotCommand(chatId, threadId, text, fromUsername) {
     const trimmed = text.trim();
     const command = trimmed.split(/\s+/)[0].toLowerCase().replace(/@.*$/, ''); // remove @botname
     const args = trimmed.slice(command.length).trim();
 
-    log.info(`Bot command: ${command} from chat ${chatId}`);
+    log.info(`Bot command: ${command} from chat ${chatId} (user: ${fromUsername || '?'})`);
 
     switch (command) {
         case '/menu':
@@ -383,7 +703,7 @@ async function handleBotCommand(chatId, threadId, text) {
             if (args && args.startsWith('cert_')) {
                 return handleCertVerify(chatId, threadId, args.slice(5));
             }
-            return handleMenu(chatId, threadId);
+            return handleStart(chatId, threadId, fromUsername);
 
         case '/today':
             return handleDaySummary(chatId, threadId, formatDate(getKyivNow()), 'Сьогодні');
@@ -408,6 +728,22 @@ async function handleBotCommand(chatId, threadId, text) {
 
         case '/cert':
             return handleCertVerify(chatId, threadId, args);
+
+        case '/tasks':
+            return handleTasks(chatId, threadId, fromUsername);
+
+        case '/done':
+            return handleDone(chatId, threadId, args, fromUsername);
+
+        case '/alltasks':
+            return handleAllTasks(chatId, threadId);
+
+        case '/points':
+        case '/rating':
+            return handlePoints(chatId, threadId, fromUsername);
+
+        case '/streak':
+            return handleStreak(chatId, threadId, fromUsername);
 
         default:
             return null; // Not a known command — ignore
@@ -517,4 +853,4 @@ async function handleCertUse(certId, callbackQueryId, chatId, threadId) {
     }
 }
 
-module.exports = { handleBotCommand, handleCertUse };
+module.exports = { handleBotCommand, handleCertUse, registerBotCommands };

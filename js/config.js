@@ -1,5 +1,5 @@
 /**
- * Парк Закревського Періоду - Система бронювання
+ * Event Maestro — AI First CRM
  * config.js - Константи, конфігурація та глобальний стан
  */
 
@@ -146,6 +146,32 @@ const CATEGORY_NAMES_SHORT = {
 function formatPrice(amount) {
     if (amount === null || amount === undefined) return '0 ₴';
     return Number(amount).toLocaleString('uk-UA') + ' ₴';
+}
+
+// ==========================================
+// DARK MODE — автоматичний за часом доби
+// ==========================================
+
+/**
+ * v12.1: Ініціалізація dark mode.
+ * Пріоритет: localStorage > автоматично за часом (20:00–7:00 = темна).
+ * Застосовує body.dark-mode + data-theme="dark" для повної сумісності.
+ */
+function initDarkMode() {
+    const saved = localStorage.getItem('pzp_dark_mode');
+    let isDark;
+    if (saved === 'true') {
+        isDark = true;
+    } else if (saved === 'false') {
+        isDark = false;
+    } else {
+        // Авто: темна тема з 20:00 до 07:00
+        const hour = new Date().getHours();
+        isDark = hour >= 20 || hour < 7;
+    }
+    document.body.classList.toggle('dark-mode', isDark);
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    return isDark;
 }
 
 // ==========================================

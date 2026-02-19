@@ -55,14 +55,14 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: center;
+    object-position: right center;
     display: block;
 }
 
 .page-hero-overlay {
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, rgba(10,10,15,0.7) 0%, rgba(10,10,15,0.3) 100%);
+    background: linear-gradient(90deg, rgba(10,22,40,0.88) 35%, rgba(10,22,40,0.4) 65%, transparent 80%);
     display: flex;
     flex-direction: column;
     justify-content: center;

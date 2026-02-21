@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v13.0.0**. Kleshnya Chat v2 — multi-session чат з sidebar, media, reactions, WebSocket real-time.
+Версія **v14.2.0**. Тест 33.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -25,6 +25,9 @@
 - v12.0.0: Дизайн-борд (галерея, колекції, прайс-лист, календар, Telegram)
 - v12.1.0: Авто dark mode + мобільний UX + фікси авторизації та скролу
 - **v13.0.0: Kleshnya Chat v2 — multi-session + sidebar + media + reactions + WebSocket**
+- v14.0.0: Branding Integration
+- v14.1.0: Склад (warehouse stock management)
+- **v14.2.0: Тест 33**
 
 ## Архітектура
 - **7 сторінок:** / (таймлайн), /tasks, /programs, /staff, /designs, /invite, /kleshnya

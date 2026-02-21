@@ -282,9 +282,27 @@ function initSettingsListeners() {
     const sendTestReminderBtn = document.getElementById('sendTestReminderBtn');
     if (sendTestReminderBtn) sendTestReminderBtn.addEventListener('click', sendTestReminder);
 
-    // F: Afisha button
+    // F: Afisha button — [FIX] robust handler з fallback та error logging
     const afishaBtn = document.getElementById('afishaBtn');
-    if (afishaBtn) afishaBtn.addEventListener('click', showAfishaModal);
+    if (afishaBtn) {
+        afishaBtn.addEventListener('click', async (e) => {
+            e.stopPropagation(); // не закривати dropdown до відкриття модала
+            try {
+                if (typeof showAfishaModal === 'function') {
+                    await showAfishaModal();
+                } else if (window.SettingsAfisha) {
+                    await window.SettingsAfisha.init();
+                } else {
+                    console.error('[afishaBtn] showAfishaModal not defined');
+                }
+            } catch (err) {
+                console.error('[afishaBtn] error:', err);
+            }
+            // Закрити dropdown після відкриття модала
+            const content = document.getElementById('dropdownContent');
+            if (content) content.classList.add('hidden');
+        });
+    }
 
     const addAfishaBtn = document.getElementById('addAfishaBtn');
     if (addAfishaBtn) addAfishaBtn.addEventListener('click', addAfishaItem);

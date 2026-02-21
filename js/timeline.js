@@ -320,10 +320,12 @@ async function renderTimeline() {
         digestBtn.classList.toggle('hidden', isViewer());
     }
 
-    document.getElementById('dayOfWeekLabel').textContent = DAYS[selectedDate.getDay()];
-
     const dayOfWeek = selectedDate.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    // [FIX] Показуємо день тижня + дату — зручно на мобільному (вертикальний режим)
+    const dd = String(selectedDate.getDate()).padStart(2, '0');
+    const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    document.getElementById('dayOfWeekLabel').textContent = `${DAYS[dayOfWeek]}, ${dd}.${mm}`;
     document.getElementById('workingHours').textContent = isWeekend ? '10:00-20:00' : '12:00-20:00';
 
     container.innerHTML = '';

@@ -627,6 +627,16 @@ async function handleBookingSubmit(e) {
         showNotification('Оберіть другого аніматора — ця програма потребує 2 ведучих', 'error'); unlockSubmitBtn(); return;
     }
 
+    // [FIX] Заборона бронювання в минулому
+    if (!AppState.editingBookingId) {
+        const bookingDateTime = new Date(`${formatDate(AppState.selectedDate)}T${formData.time}:00`);
+        if (bookingDateTime < new Date()) {
+            showNotification('Неможливо створити бронювання в минулому. Оберіть майбутній час.', 'error');
+            unlockSubmitBtn();
+            return;
+        }
+    }
+
     // v7.10: Check if animator is off duty on this date
     await checkAnimatorAvailability(formData.lineId, formData.secondAnimator);
 

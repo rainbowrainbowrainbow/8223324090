@@ -4,6 +4,12 @@
 
 ---
 
+## v14.2.0 — Тест 33 (2026-02-21)
+
+**Тест 33**
+
+---
+
 ## v13.0.0 — Kleshnya Chat v2 (2026-02-18)
 
 **Kleshnya Chat v2 — ChatGPT-style multi-session redesign:**

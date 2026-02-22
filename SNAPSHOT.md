@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v16.0.0**. Finance Module.
+Версія **v16.1.0**. Analytics v2.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -26,30 +26,30 @@
 - v14.0.0–v14.4.0: Branding, Warehouse, тести
 - v15.0.0: HR Module — повний HR-блок
 - v15.1.0: CRM Phase 2 — клієнтська база, фільтри, RFM, ДН, сертифікати, експорт
-- **v16.0.0: Finance Module — каса, P&L, зарплати, категорії, автозапис, CSV**
+- v16.0.0: Finance Module — каса, P&L, зарплати, категорії, автозапис, CSV
+- **v16.1.0: Analytics v2 — єдиний дашборд (bookings + finance + HR + CRM), порівняння періодів**
 
 ## Архітектура
-- **10 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /invite, /kleshnya
-- **Backend:** 19 routes, 13 services, 4 middleware
-- **Frontend:** 23 JS + 11 CSS модулів
-- **БД:** ~34 таблиці (+ finance_categories, finance_transactions), 50+ індексів, 5 міграцій
+- **11 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya
+- **Backend:** 20 routes, 13 services, 4 middleware
+- **Frontend:** 24 JS + 11 CSS модулів
+- **БД:** ~34 таблиці, 50+ індексів, 5 міграцій
 - **13 schedulers** (+ birthday greetings), WebSocket broadcast
-- **261 тестів** (3 файли + helpers)
-- ~51 000 рядків коду
+- **269 тестів** (3 файли + helpers)
+- ~52 000 рядків коду
 
-## Finance Module (v16.0)
-- **finance.html** — сторінка з 4 табами (дашборд, транзакції, місячний звіт, зарплати)
-- **js/finance-page.js** — фронтенд: CRUD, фільтри, графіки, CSV-експорт
-- **routes/finance.js** — CRUD categories + transactions, dashboard, P&L monthly, salary report, CSV export
-- **db/index.js** — finance_categories, finance_transactions, bookings.payment_method, certificates.value_uah
-- **routes/bookings.js** — автозапис income transaction при підтвердженому бронюванні
-- **services/booking.js** — mapBookingRow + paymentMethod
-- **Категорії:** 12 початкових (Бронювання, Сертифікати, Кафе, МК, Інший дохід, Зарплата, Оренда, Закупки, Реклама, Комунальні, Обслуговування, Інші витрати)
-- **Методи оплати:** cash, card, transfer, mixed
-- **Навігація:** посилання "Фінанси" на всіх 10 сторінках
+## Analytics v2 (v16.1)
+- **analytics.html** — сторінка з KPI-картками, графіками, порівнянням
+- **js/analytics-page.js** — фронтенд: period tabs, chart rendering, comparison
+- **routes/analytics.js** — 3 ендпоінти: overview, charts, comparison (5-хв кеш)
+- **overview** — cross-module KPIs (bookings + finance + customers + HR) + growth %
+- **charts** — daily bookings, daily finance, top programs, weekday load, fin categories, customer segments
+- **comparison** — 6 метрик поточний vs попередній період
+- **Періоди:** day, week, month, quarter, year, custom
+- **Навігація:** посилання "Аналітика" на всіх 11 сторінках
 
 ## Dark Mode (v12.1+)
-- `initDarkMode()` в config.js — єдина функція для всіх 10 сторінок
+- `initDarkMode()` в config.js — єдина функція для всіх 11 сторінок
 - Авто: темна 20:00–07:00, світла 07:00–20:00
 - Ручний toggle зберігається в localStorage і перезаписує авто
 - Два селектори: `body.dark-mode` + `[data-theme="dark"]`
@@ -58,8 +58,8 @@
 - Тестування Kleshnya Chat v2 з OpenClaw Bridge
 - Swagger /api-docs
 - Export PDF/Excel
-- Розширення тригерів Клешні
 - Бюджетне планування (план vs факт)
+- Розширення тригерів Клешні
 
 ## Технічний стан
 - Branch: `claude/bump-version-0.1-lj64Q`
@@ -67,4 +67,4 @@
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-22, v16.0.0*
+*Оновлено: 2026-02-22, v16.1.0*

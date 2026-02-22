@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=16.0">
-    <link rel="stylesheet" href="css/auth.css?v=16.0">
-    <link rel="stylesheet" href="css/layout.css?v=16.0">
-    <link rel="stylesheet" href="css/timeline.css?v=16.0">
-    <link rel="stylesheet" href="css/panel.css?v=16.0">
-    <link rel="stylesheet" href="css/modals.css?v=16.0">
-    <link rel="stylesheet" href="css/controls.css?v=16.0">
-    <link rel="stylesheet" href="css/features.css?v=16.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=16.0">
-    <link rel="stylesheet" href="css/responsive.css?v=16.0">
-    <link rel="stylesheet" href="css/pages.css?v=16.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=16.0">
+    <link rel="stylesheet" href="css/base.css?v=16.1">
+    <link rel="stylesheet" href="css/auth.css?v=16.1">
+    <link rel="stylesheet" href="css/layout.css?v=16.1">
+    <link rel="stylesheet" href="css/timeline.css?v=16.1">
+    <link rel="stylesheet" href="css/panel.css?v=16.1">
+    <link rel="stylesheet" href="css/modals.css?v=16.1">
+    <link rel="stylesheet" href="css/controls.css?v=16.1">
+    <link rel="stylesheet" href="css/features.css?v=16.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=16.1">
+    <link rel="stylesheet" href="css/responsive.css?v=16.1">
+    <link rel="stylesheet" href="css/pages.css?v=16.1">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=16.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v16.0.0 — Finance Module</p>
+                <p class="tagline">AI First CRM v16.1.0 — Analytics v2</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v16.0.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v16.1.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -83,6 +83,7 @@
                     <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
                     <a href="/customers" class="nav-link">🗂 <span class="nav-text">Клієнти</span></a>
                     <a href="/finance" class="nav-link">💰 <span class="nav-text">Фінанси</span></a>
+                    <a href="/analytics" class="nav-link">📊 <span class="nav-text">Аналітика</span></a>
                     <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
                 </nav>
                 <div class="user-panel">
@@ -1102,6 +1103,18 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-entry">
+                    <h4>v16.1.0 — Analytics v2 (22.02.2026)</h4>
+                    <ul>
+                        <li><b>Аналітика v2</b> — нова сторінка /analytics з об'єднаними даними</li>
+                        <li><b>KPI-дашборд</b> — 6 карток: виручка, бронювання, чек, фінанси, клієнти, HR</li>
+                        <li><b>Порівняння періодів</b> — автоматичне vs попередній період з % зміни</li>
+                        <li><b>Графіки</b> — бронювання по днях, фінансові потоки, топ програм, навантаження по днях тижня</li>
+                        <li><b>Сегменти клієнтів</b> — чемпіони, лояльні, нові, неактивні</li>
+                        <li><b>Періоди</b> — сьогодні, тиждень, місяць, квартал, рік, довільний діапазон</li>
+                        <li><b>Навігація</b> — посилання «Аналітика» на всіх 11 сторінках</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v16.0.0 — Finance Module (22.02.2026)</h4>
                     <ul>
                         <li><b>Фінансовий модуль</b> — нова сторінка /finance з 4 табами</li>
@@ -2656,22 +2669,22 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=16.0"></script>
-    <script src="js/api.js?v=16.0"></script>
-    <script src="js/ui.js?v=16.0"></script>
-    <script src="js/auth.js?v=16.0"></script>
-    <script src="js/timeline.js?v=16.0"></script>
-    <script src="js/booking.js?v=16.0"></script>
-    <script src="js/settings.js?v=16.0"></script>
-    <script src="js/booking-form.js?v=16.0"></script>
-    <script src="js/booking-linked.js?v=16.0"></script>
-    <script src="js/settings-dashboard.js?v=16.0"></script>
-    <script src="js/settings-history.js?v=16.0"></script>
-    <script src="js/settings-afisha.js?v=16.0"></script>
-    <script src="js/settings-certificates.js?v=16.0"></script>
-    <script src="js/offline.js?v=16.0"></script>
-    <script src="js/ws.js?v=16.0"></script>
-    <script src="js/app.js?v=16.0"></script>
-    <script src="js/kleshnya-widget.js?v=16.0"></script>
+    <script src="js/config.js?v=16.1"></script>
+    <script src="js/api.js?v=16.1"></script>
+    <script src="js/ui.js?v=16.1"></script>
+    <script src="js/auth.js?v=16.1"></script>
+    <script src="js/timeline.js?v=16.1"></script>
+    <script src="js/booking.js?v=16.1"></script>
+    <script src="js/settings.js?v=16.1"></script>
+    <script src="js/booking-form.js?v=16.1"></script>
+    <script src="js/booking-linked.js?v=16.1"></script>
+    <script src="js/settings-dashboard.js?v=16.1"></script>
+    <script src="js/settings-history.js?v=16.1"></script>
+    <script src="js/settings-afisha.js?v=16.1"></script>
+    <script src="js/settings-certificates.js?v=16.1"></script>
+    <script src="js/offline.js?v=16.1"></script>
+    <script src="js/ws.js?v=16.1"></script>
+    <script src="js/app.js?v=16.1"></script>
+    <script src="js/kleshnya-widget.js?v=16.1"></script>
 </body>
 </html>

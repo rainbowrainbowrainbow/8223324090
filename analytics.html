@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Maestro | Аналітика</title>
+    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Maestro">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=16.1">
+    <link rel="stylesheet" href="css/layout.css?v=16.1">
+    <link rel="stylesheet" href="css/pages.css?v=16.1">
+    <link rel="stylesheet" href="css/modals.css?v=16.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=16.1">
+    <link rel="stylesheet" href="css/responsive.css?v=16.1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* ==========================================
+           ANALYTICS PAGE STYLES
+           ========================================== */
+
+        /* Period tabs */
+        .an-period-tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--gray-100);
+            border-radius: var(--radius);
+            padding: 3px;
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+        .an-period-tab {
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            border-radius: var(--radius-sm);
+            color: var(--gray-600);
+            white-space: nowrap;
+            min-height: 44px;
+        }
+        .an-period-tab.active {
+            background: var(--white);
+            color: var(--gray-900);
+            box-shadow: var(--shadow-xs);
+        }
+
+        .an-custom-range {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .an-custom-range.visible { display: flex; }
+        .an-custom-range input {
+            padding: 8px 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+            font-family: inherit;
+            min-height: 44px;
+            box-sizing: border-box;
+        }
+        .an-custom-range button {
+            padding: 8px 16px;
+            min-height: 44px;
+        }
+
+        /* KPI cards grid */
+        .an-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .an-kpi-card {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 18px;
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-xs);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .an-kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0;
+            width: 4px; height: 100%;
+        }
+        .an-kpi-card.green::before { background: #10B981; }
+        .an-kpi-card.blue::before { background: #3B82F6; }
+        .an-kpi-card.purple::before { background: #8B5CF6; }
+        .an-kpi-card.orange::before { background: #F97316; }
+        .an-kpi-card.red::before { background: #EF4444; }
+        .an-kpi-card.teal::before { background: #14B8A6; }
+
+        .an-kpi-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .an-kpi-value {
+            font-size: 28px;
+            font-weight: 900;
+            color: var(--gray-900);
+            line-height: 1.2;
+        }
+
+        .an-kpi-sub {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .an-growth {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .an-growth.up { background: #ECFDF5; color: #059669; }
+        .an-growth.down { background: #FEF2F2; color: #DC2626; }
+        .an-growth.flat { background: var(--gray-100); color: var(--gray-500); }
+
+        .an-kpi-prev {
+            color: var(--gray-400);
+            font-size: 11px;
+        }
+
+        /* Section titles */
+        .an-section {
+            margin-bottom: 24px;
+        }
+        .an-section-title {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--gray-700);
+            margin: 0 0 12px 0;
+        }
+
+        /* Charts */
+        .an-chart-container {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .an-chart-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--gray-600);
+            margin: 0 0 12px 0;
+        }
+
+        .an-bar-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 160px;
+        }
+        .an-bar-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            min-width: 16px;
+        }
+        .an-bar-pair {
+            display: flex;
+            gap: 2px;
+            align-items: flex-end;
+            width: 100%;
+            height: 140px;
+        }
+        .an-bar {
+            flex: 1;
+            border-radius: 3px 3px 0 0;
+            min-height: 2px;
+            transition: height 0.3s ease;
+        }
+        .an-bar.green { background: #10B981; }
+        .an-bar.red { background: #EF4444; }
+        .an-bar.blue { background: #3B82F6; }
+        .an-bar.purple { background: #8B5CF6; }
+        .an-bar.orange { background: #F97316; }
+        .an-bar-label {
+            font-size: 9px;
+            color: var(--gray-500);
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        /* Two-column chart layout */
+        .an-charts-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        /* Programs table */
+        .an-mini-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .an-mini-table td { padding: 8px 10px; border-bottom: 1px solid var(--gray-50); }
+        .an-mini-table .rank {
+            width: 26px; height: 26px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 800; color: white;
+        }
+        .rank-1 { background: #F59E0B; }
+        .rank-2 { background: #94A3B8; }
+        .rank-3 { background: #D97706; }
+        .rank-n { background: var(--gray-200); color: var(--gray-600); }
+
+        /* Horizontal bar */
+        .an-hbar-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 6px 0; border-bottom: 1px solid var(--gray-50);
+        }
+        .an-hbar-row:last-child { border-bottom: none; }
+        .an-hbar-label { font-size: 13px; font-weight: 600; min-width: 80px; }
+        .an-hbar-track {
+            flex: 1; height: 8px;
+            background: var(--gray-100); border-radius: 4px; overflow: hidden;
+        }
+        .an-hbar-fill {
+            height: 100%; border-radius: 4px; transition: width 0.6s ease;
+        }
+        .an-hbar-value { font-size: 12px; font-weight: 700; min-width: 60px; text-align: right; }
+
+        /* Comparison table */
+        .an-comp-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .an-comp-table th {
+            background: var(--gray-50);
+            padding: 10px 14px;
+            text-align: right;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            border-bottom: 2px solid var(--gray-100);
+        }
+        .an-comp-table th:first-child { text-align: left; }
+        .an-comp-table td {
+            padding: 10px 14px; text-align: right;
+            border-bottom: 1px solid var(--gray-50);
+        }
+        .an-comp-table td:first-child { text-align: left; font-weight: 600; }
+
+        /* Customer segments mini */
+        .an-segments {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        .an-segment {
+            text-align: center;
+            padding: 12px 8px;
+            background: var(--gray-50);
+            border-radius: var(--radius-sm);
+        }
+        .an-segment-count {
+            font-size: 22px; font-weight: 900; line-height: 1.2;
+        }
+        .an-segment-label {
+            font-size: 10px; font-weight: 700;
+            color: var(--gray-500); text-transform: uppercase;
+            margin-top: 2px;
+        }
+
+        /* Legend */
+        .an-legend {
+            display: flex; gap: 16px; font-size: 12px; margin-top: 8px;
+        }
+        .an-legend-item {
+            display: flex; align-items: center; gap: 4px;
+        }
+        .an-legend-dot {
+            width: 10px; height: 10px; border-radius: 2px;
+        }
+
+        /* Dark mode */
+        [data-theme="dark"] .an-period-tabs { background: var(--gray-800); }
+        [data-theme="dark"] .an-period-tab { color: var(--gray-400); }
+        [data-theme="dark"] .an-period-tab.active { background: var(--gray-700); color: var(--gray-200); }
+        [data-theme="dark"] .an-kpi-card { background: var(--gray-800); border-color: var(--gray-700); }
+        [data-theme="dark"] .an-kpi-value { color: var(--gray-100); }
+        [data-theme="dark"] .an-kpi-label { color: var(--gray-400); }
+        [data-theme="dark"] .an-section-title { color: var(--gray-300); }
+        [data-theme="dark"] .an-chart-container { background: var(--gray-800); border-color: var(--gray-700); }
+        [data-theme="dark"] .an-chart-title { color: var(--gray-400); }
+        [data-theme="dark"] .an-mini-table td { border-bottom-color: var(--gray-700); color: var(--gray-300); }
+        [data-theme="dark"] .an-hbar-row { border-bottom-color: var(--gray-700); }
+        [data-theme="dark"] .an-hbar-track { background: var(--gray-700); }
+        [data-theme="dark"] .an-comp-table th { background: var(--gray-700); color: var(--gray-400); border-bottom-color: var(--gray-600); }
+        [data-theme="dark"] .an-comp-table td { border-bottom-color: var(--gray-700); color: var(--gray-300); }
+        [data-theme="dark"] .an-segment { background: var(--gray-700); }
+        [data-theme="dark"] .an-custom-range input { background: var(--gray-800); border-color: var(--gray-700); color: var(--gray-200); }
+        [data-theme="dark"] .an-growth.up { background: #064E3B; color: #6EE7B7; }
+        [data-theme="dark"] .an-growth.down { background: #7F1D1D; color: #FCA5A5; }
+        [data-theme="dark"] .an-growth.flat { background: var(--gray-700); color: var(--gray-400); }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .an-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .an-charts-row { grid-template-columns: 1fr; }
+            .an-segments { grid-template-columns: repeat(2, 1fr); }
+            .an-bar-label { font-size: 8px; }
+            .an-kpi-value { font-size: 22px; }
+        }
+    </style>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Maestro</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/hr" class="nav-link">🏢 <span class="nav-text">HR</span></a>
+                    <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
+                    <a href="/customers" class="nav-link">🗂 <span class="nav-text">Клієнти</span></a>
+                    <a href="/finance" class="nav-link">💰 <span class="nav-text">Фінанси</span></a>
+                    <a href="/analytics" class="nav-link active">📊 <span class="nav-text">Аналітика</span></a>
+                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container">
+            <div class="page-header">
+                <h2>📊 Аналітика</h2>
+            </div>
+
+            <!-- Period selector -->
+            <div class="an-period-tabs">
+                <button class="an-period-tab" data-period="day">Сьогодні</button>
+                <button class="an-period-tab" data-period="week">Тиждень</button>
+                <button class="an-period-tab active" data-period="month">Місяць</button>
+                <button class="an-period-tab" data-period="quarter">Квартал</button>
+                <button class="an-period-tab" data-period="year">Рік</button>
+                <button class="an-period-tab" data-period="custom">Довільний</button>
+            </div>
+
+            <!-- Custom range -->
+            <div id="customRange" class="an-custom-range">
+                <input type="date" id="customFrom">
+                <span style="color:var(--gray-400)">—</span>
+                <input type="date" id="customTo">
+                <button class="btn-page-primary" id="applyCustomBtn">Застосувати</button>
+            </div>
+
+            <!-- KPI cards -->
+            <div id="kpiGrid" class="an-kpi-grid"></div>
+
+            <!-- Charts -->
+            <div id="chartsContent"></div>
+
+            <!-- Comparison section -->
+            <div id="comparisonContent"></div>
+        </main>
+    </div>
+
+    <!-- Profile modal -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=16.1"></script>
+    <script src="js/api.js?v=16.1"></script>
+    <script src="js/auth.js?v=16.1"></script>
+    <script src="js/analytics-page.js?v=16.1"></script>
+</body>
+</html>

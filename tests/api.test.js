@@ -3471,3 +3471,101 @@ describe('Finance — Static Page (v16.0)', () => {
         assert.ok(body.includes('Фінанси'), 'Should contain Фінанси');
     });
 });
+
+// ==========================================
+// ANALYTICS v2 (v16.1)
+// ==========================================
+
+describe('Analytics — Overview (v16.1)', () => {
+    it('GET /api/analytics/overview — returns cross-module KPIs', async () => {
+        const res = await authRequest('GET', '/api/analytics/overview?period=month');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.period);
+        assert.ok(res.data.bookings);
+        assert.ok(typeof res.data.bookings.revenue === 'number');
+        assert.ok(typeof res.data.bookings.total === 'number');
+        assert.ok(typeof res.data.bookings.revenueGrowth === 'number');
+        assert.ok(res.data.finance);
+        assert.ok(typeof res.data.finance.income === 'number');
+        assert.ok(typeof res.data.finance.expense === 'number');
+        assert.ok(typeof res.data.finance.profit === 'number');
+        assert.ok(res.data.customers);
+        assert.ok(typeof res.data.customers.newCustomers === 'number');
+        assert.ok(res.data.hr);
+        assert.ok(typeof res.data.hr.totalHours === 'number');
+    });
+
+    it('GET /api/analytics/overview — custom date range', async () => {
+        const res = await authRequest('GET', `/api/analytics/overview?from=${testDate()}&to=${testDate()}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.period.from);
+        assert.ok(res.data.period.to);
+        assert.ok(res.data.period.prev);
+    });
+
+    it('GET /api/analytics/overview — all periods work', async () => {
+        for (const period of ['day', 'week', 'month', 'quarter', 'year']) {
+            const res = await authRequest('GET', `/api/analytics/overview?period=${period}`);
+            assert.equal(res.status, 200, `Period ${period} should work`);
+        }
+    });
+});
+
+describe('Analytics — Charts (v16.1)', () => {
+    it('GET /api/analytics/charts — returns chart data', async () => {
+        const res = await authRequest('GET', `/api/analytics/charts?from=${testDate()}&to=${testDate()}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.period);
+        assert.ok(Array.isArray(res.data.dailyBookings));
+        assert.ok(Array.isArray(res.data.dailyFinance));
+        assert.ok(Array.isArray(res.data.topPrograms));
+        assert.ok(Array.isArray(res.data.financeCategories));
+        assert.ok(Array.isArray(res.data.weekdayLoad));
+        assert.ok(res.data.customerSegments);
+    });
+
+    it('GET /api/analytics/charts — customer segments structure', async () => {
+        const res = await authRequest('GET', '/api/analytics/charts?period=year');
+        assert.equal(res.status, 200);
+        const seg = res.data.customerSegments;
+        assert.ok(typeof seg.champions === 'number');
+        assert.ok(typeof seg.loyal === 'number');
+        assert.ok(typeof seg.potential === 'number');
+        assert.ok(typeof seg.inactive === 'number');
+        assert.ok(typeof seg.total === 'number');
+    });
+});
+
+describe('Analytics — Comparison (v16.1)', () => {
+    it('GET /api/analytics/comparison — returns metric comparison', async () => {
+        const res = await authRequest('GET', '/api/analytics/comparison?period=month');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.current);
+        assert.ok(res.data.previous);
+        assert.ok(Array.isArray(res.data.metrics));
+        assert.ok(res.data.metrics.length >= 5, 'Should have at least 5 metrics');
+        // Check structure
+        const first = res.data.metrics[0];
+        assert.ok(first.key);
+        assert.ok(first.label);
+        assert.ok(typeof first.current === 'number');
+        assert.ok(typeof first.previous === 'number');
+        assert.ok(typeof first.growth === 'number');
+    });
+
+    it('GET /api/analytics/comparison — custom dates', async () => {
+        const res = await authRequest('GET', `/api/analytics/comparison?from=${testDate()}&to=${testDate()}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.metrics.length >= 5);
+    });
+});
+
+describe('Analytics — Static Page (v16.1)', () => {
+    it('GET /analytics — returns HTML', async () => {
+        const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
+        const res = await fetch(`${BASE_URL}/analytics`);
+        assert.equal(res.status, 200);
+        const body = await res.text();
+        assert.ok(body.includes('Аналітика'), 'Should contain Аналітика');
+    });
+});

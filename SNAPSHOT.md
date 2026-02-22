@@ -67,6 +67,7 @@
 - Два селектори: `body.dark-mode` + `[data-theme="dark"]`
 
 ## Що далі
+- **CRM Client Database** — специфікація готова → `CRM_SPEC.md` (8 кроків реалізації)
 - Тестування Kleshnya Chat v2 з OpenClaw Bridge
 - Swagger /api-docs
 - Export PDF/Excel
@@ -78,4 +79,4 @@
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-18, v13.0.0*
+*Оновлено: 2026-02-22, v15.0.0+*

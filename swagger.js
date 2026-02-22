@@ -15,7 +15,7 @@ const swaggerSpec = {
   openapi: '3.0.0',
   info: {
     title: 'Event Maestro — Booking API',
-    version: '11.0.0',
+    version: '16.2.0',
     description: 'REST API для системи бронювання дитячого розважального парку. Усі дати зберігаються в UTC, відображаються у Europe/Kyiv (UTC+2/+3). Валюта: UAH (₴). Номери бронювань: BK-YYYY-NNNN.'
   },
   servers: [
@@ -629,6 +629,213 @@ const swaggerSpec = {
           tasks: { type: 'object', description: 'Task statistics for user' },
           achievements: { type: 'array', items: { type: 'object' } },
           streak: { type: 'object', properties: { currentStreak: { type: 'integer' }, longestStreak: { type: 'integer' } } }
+        }
+      },
+
+      // --- Customer (v15.1) ---
+      Customer: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          name: { type: 'string', example: 'Олена Петренко' },
+          phone: { type: 'string', nullable: true },
+          instagram: { type: 'string', nullable: true },
+          childName: { type: 'string', nullable: true },
+          childBirthday: { type: 'string', format: 'date', nullable: true },
+          source: { type: 'string', nullable: true, enum: ['instagram', 'google', 'recommendation', 'website', 'other'] },
+          notes: { type: 'string', nullable: true },
+          totalBookings: { type: 'integer' },
+          totalSpent: { type: 'number' },
+          firstVisit: { type: 'string', format: 'date', nullable: true },
+          lastVisit: { type: 'string', format: 'date', nullable: true },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time', nullable: true }
+        }
+      },
+      CustomerCreateRequest: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string' },
+          phone: { type: 'string', nullable: true },
+          instagram: { type: 'string', nullable: true },
+          childName: { type: 'string', nullable: true },
+          childBirthday: { type: 'string', format: 'date', nullable: true },
+          source: { type: 'string', nullable: true },
+          notes: { type: 'string', nullable: true }
+        }
+      },
+
+      // --- Finance (v16.0) ---
+      FinanceCategory: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          name: { type: 'string', example: 'Бронювання' },
+          type: { type: 'string', enum: ['income', 'expense'] },
+          icon: { type: 'string', nullable: true },
+          color: { type: 'string', nullable: true },
+          isSystem: { type: 'boolean' },
+          sortOrder: { type: 'integer' }
+        }
+      },
+      FinanceTransaction: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          type: { type: 'string', enum: ['income', 'expense'] },
+          categoryId: { type: 'integer', nullable: true },
+          categoryName: { type: 'string', nullable: true },
+          categoryIcon: { type: 'string', nullable: true },
+          categoryColor: { type: 'string', nullable: true },
+          amount: { type: 'number', example: 3500 },
+          description: { type: 'string', nullable: true },
+          date: { type: 'string', format: 'date' },
+          paymentMethod: { type: 'string', nullable: true, enum: ['cash', 'card', 'transfer', 'mixed'] },
+          bookingId: { type: 'string', nullable: true },
+          staffId: { type: 'integer', nullable: true },
+          certificateId: { type: 'integer', nullable: true },
+          createdBy: { type: 'string' },
+          createdAt: { type: 'string', format: 'date-time' }
+        }
+      },
+      FinanceTransactionCreate: {
+        type: 'object',
+        required: ['type', 'amount', 'date'],
+        properties: {
+          type: { type: 'string', enum: ['income', 'expense'] },
+          categoryId: { type: 'integer', nullable: true },
+          amount: { type: 'number', minimum: 0 },
+          description: { type: 'string', nullable: true },
+          date: { type: 'string', format: 'date' },
+          paymentMethod: { type: 'string', nullable: true },
+          bookingId: { type: 'string', nullable: true },
+          staffId: { type: 'integer', nullable: true },
+          certificateId: { type: 'integer', nullable: true }
+        }
+      },
+
+      // --- HR (v15.0) ---
+      HrShift: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          staffId: { type: 'integer' },
+          shiftDate: { type: 'string', format: 'date' },
+          plannedStart: { type: 'string', example: '10:00' },
+          plannedEnd: { type: 'string', example: '20:00' },
+          shiftType: { type: 'string', enum: ['regular', 'morning', 'evening', 'night', 'custom'] },
+          breakMinutes: { type: 'integer' },
+          notes: { type: 'string', nullable: true }
+        }
+      },
+      HrTimeRecord: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          staffId: { type: 'integer' },
+          shiftId: { type: 'integer', nullable: true },
+          clockIn: { type: 'string', format: 'date-time' },
+          clockOut: { type: 'string', format: 'date-time', nullable: true },
+          status: { type: 'string', enum: ['present', 'late', 'early_leave', 'absent', 'sick', 'vacation', 'day_off'] },
+          lateMinutes: { type: 'integer' },
+          earlyLeaveMinutes: { type: 'integer' },
+          overtimeMinutes: { type: 'integer' },
+          totalWorkedMinutes: { type: 'integer', nullable: true }
+        }
+      },
+      HrShiftTemplate: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          name: { type: 'string' },
+          plannedStart: { type: 'string' },
+          plannedEnd: { type: 'string' },
+          breakMinutes: { type: 'integer' },
+          shiftType: { type: 'string' },
+          isDefault: { type: 'boolean' }
+        }
+      },
+
+      // --- Design (v12.0) ---
+      Design: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          filename: { type: 'string' },
+          originalName: { type: 'string' },
+          mimeType: { type: 'string' },
+          fileSize: { type: 'integer' },
+          width: { type: 'integer', nullable: true },
+          height: { type: 'integer', nullable: true },
+          title: { type: 'string', nullable: true },
+          description: { type: 'string', nullable: true },
+          isPinned: { type: 'boolean' },
+          collectionId: { type: 'integer', nullable: true },
+          collectionName: { type: 'string', nullable: true },
+          collectionColor: { type: 'string', nullable: true },
+          publishDate: { type: 'string', format: 'date', nullable: true },
+          tags: { type: 'array', items: { type: 'string' } },
+          createdBy: { type: 'string' },
+          createdAt: { type: 'string', format: 'date-time' }
+        }
+      },
+      DesignCollection: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          name: { type: 'string' },
+          color: { type: 'string', nullable: true },
+          sortOrder: { type: 'integer' },
+          designCount: { type: 'integer' },
+          createdAt: { type: 'string', format: 'date-time' }
+        }
+      },
+
+      // --- Contractor (v12.6) ---
+      Contractor: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          name: { type: 'string' },
+          specialty: { type: 'object', nullable: true },
+          telegramChatId: { type: 'string', nullable: true },
+          telegramUsername: { type: 'string', nullable: true },
+          phone: { type: 'string', nullable: true },
+          notes: { type: 'string', nullable: true },
+          inviteToken: { type: 'string', nullable: true },
+          isActive: { type: 'boolean' },
+          createdAt: { type: 'string', format: 'date-time' }
+        }
+      },
+
+      // --- Warehouse (v14.0) ---
+      WarehouseItem: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          name: { type: 'string', example: 'Серветки' },
+          category: { type: 'string', enum: ['consumable', 'craft', 'props', 'food', 'decor', 'prizes', 'office', 'tech'] },
+          quantity: { type: 'integer' },
+          minQuantity: { type: 'integer' },
+          unit: { type: 'string', enum: ['шт', 'рул', 'уп', 'кг', 'л', 'м', 'компл', 'набір'] },
+          notes: { type: 'string', nullable: true },
+          isActive: { type: 'boolean' },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time', nullable: true },
+          updatedBy: { type: 'string', nullable: true }
+        }
+      },
+      WarehouseHistoryEntry: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          stockId: { type: 'integer' },
+          stockName: { type: 'string' },
+          change: { type: 'integer', description: 'Positive = restock, negative = usage' },
+          reason: { type: 'string', nullable: true },
+          createdBy: { type: 'string' },
+          createdAt: { type: 'string', format: 'date-time' }
         }
       },
 
@@ -2185,6 +2392,962 @@ const swaggerSpec = {
         },
         responses: {
           200: { description: 'Generation results', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+
+    // ==========================================
+    // CUSTOMERS (v15.1)
+    // ==========================================
+    '/customers': {
+      get: {
+        tags: ['Customers'],
+        summary: 'List customers with pagination & filters',
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100 } },
+          { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Search by name, phone, instagram, child name' },
+          { name: 'source', in: 'query', schema: { type: 'string' } },
+          { name: 'minVisits', in: 'query', schema: { type: 'integer' } },
+          { name: 'maxVisits', in: 'query', schema: { type: 'integer' } },
+          { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['updated_at', 'name', 'total_bookings', 'total_spent', 'last_visit', 'created_at'] } }
+        ],
+        responses: {
+          200: { description: 'Paginated customer list', content: { 'application/json': { schema: { type: 'object', properties: { customers: { type: 'array', items: { $ref: '#/components/schemas/Customer' } }, total: { type: 'integer' }, page: { type: 'integer' }, pages: { type: 'integer' } } } } } }
+        }
+      },
+      post: {
+        tags: ['Customers'],
+        summary: 'Create customer',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/CustomerCreateRequest' } } }
+        },
+        responses: {
+          201: { description: 'Customer created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Customer' } } } }
+        }
+      }
+    },
+    '/customers/search': {
+      get: {
+        tags: ['Customers'],
+        summary: 'Autocomplete search for booking form',
+        parameters: [
+          { name: 'q', in: 'query', required: true, schema: { type: 'string', minLength: 2 }, description: 'Min 2 chars' }
+        ],
+        responses: {
+          200: { description: 'Search results (max 10)', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Customer' } } } } }
+        }
+      }
+    },
+    '/customers/rfm': {
+      get: {
+        tags: ['Customers'],
+        summary: 'RFM analytics — Recency, Frequency, Monetary',
+        responses: {
+          200: { description: 'RFM segmentation', content: { 'application/json': { schema: { type: 'object', properties: { customers: { type: 'array', items: { type: 'object' } }, segments: { type: 'object', properties: { champions: { type: 'integer' }, loyal: { type: 'integer' }, potential: { type: 'integer' }, atRisk: { type: 'integer' }, lost: { type: 'integer' } } }, total: { type: 'integer' } } } } } }
+        }
+      }
+    },
+    '/customers/export': {
+      get: {
+        tags: ['Customers'],
+        summary: 'Export customers as CSV',
+        responses: {
+          200: { description: 'CSV file (UTF-8 BOM, ; separator)', content: { 'text/csv': { schema: { type: 'string' } } } }
+        }
+      }
+    },
+    '/customers/stats': {
+      get: {
+        tags: ['Customers'],
+        summary: 'Customer statistics overview',
+        responses: {
+          200: { description: 'Stats: total, by source, top spenders, recent, averages', content: { 'application/json': { schema: { type: 'object', properties: { total: { type: 'integer' }, bySource: { type: 'array', items: { type: 'object' } }, topBySpent: { type: 'array', items: { $ref: '#/components/schemas/Customer' } }, recentCustomers: { type: 'array', items: { $ref: '#/components/schemas/Customer' } }, averages: { type: 'object', properties: { avg_bookings: { type: 'number' }, avg_spent: { type: 'number' } } } } } } } }
+        }
+      }
+    },
+    '/customers/{id}': {
+      get: {
+        tags: ['Customers'],
+        summary: 'Get customer with booking history & certificates',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Customer with bookings and certificates arrays' },
+          404: { description: 'Customer not found' }
+        }
+      },
+      put: {
+        tags: ['Customers'],
+        summary: 'Update customer',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/CustomerCreateRequest' } } }
+        },
+        responses: {
+          200: { description: 'Updated customer', content: { 'application/json': { schema: { $ref: '#/components/schemas/Customer' } } } }
+        }
+      },
+      delete: {
+        tags: ['Customers'],
+        summary: 'Delete customer (unlinks bookings & certificates)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+
+    // ==========================================
+    // FINANCE (v16.0)
+    // ==========================================
+    '/finance/categories': {
+      get: {
+        tags: ['Finance'],
+        summary: 'List finance categories',
+        description: 'Returns income and expense categories. Viewers are blocked (403).',
+        parameters: [
+          { name: 'type', in: 'query', schema: { type: 'string', enum: ['income', 'expense'] } }
+        ],
+        responses: {
+          200: { description: 'Category list', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/FinanceCategory' } } } } },
+          403: { description: 'Viewers not allowed' }
+        }
+      },
+      post: {
+        tags: ['Finance'],
+        summary: 'Create finance category',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['name', 'type'], properties: { name: { type: 'string' }, type: { type: 'string', enum: ['income', 'expense'] }, icon: { type: 'string' }, color: { type: 'string' }, sortOrder: { type: 'integer' } } } } }
+        },
+        responses: {
+          201: { description: 'Category created', content: { 'application/json': { schema: { $ref: '#/components/schemas/FinanceCategory' } } } }
+        }
+      }
+    },
+    '/finance/categories/{id}': {
+      put: {
+        tags: ['Finance'],
+        summary: 'Update finance category',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, icon: { type: 'string' }, color: { type: 'string' }, sortOrder: { type: 'integer' } } } } }
+        },
+        responses: {
+          200: { description: 'Updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      },
+      delete: {
+        tags: ['Finance'],
+        summary: 'Soft-delete category (system categories protected)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+    '/finance/transactions': {
+      get: {
+        tags: ['Finance'],
+        summary: 'List transactions with filters',
+        parameters: [
+          { name: 'type', in: 'query', schema: { type: 'string', enum: ['income', 'expense'] } },
+          { name: 'categoryId', in: 'query', schema: { type: 'integer' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'paymentMethod', in: 'query', schema: { type: 'string' } },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 200 } },
+          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['date', 'amount', 'amount_asc', 'created_at'] } }
+        ],
+        responses: {
+          200: { description: 'Paginated transactions', content: { 'application/json': { schema: { type: 'object', properties: { transactions: { type: 'array', items: { $ref: '#/components/schemas/FinanceTransaction' } }, total: { type: 'integer' }, page: { type: 'integer' }, totalPages: { type: 'integer' } } } } } }
+        }
+      },
+      post: {
+        tags: ['Finance'],
+        summary: 'Create transaction',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/FinanceTransactionCreate' } } }
+        },
+        responses: {
+          201: { description: 'Transaction created', content: { 'application/json': { schema: { $ref: '#/components/schemas/FinanceTransaction' } } } }
+        }
+      }
+    },
+    '/finance/transactions/{id}': {
+      put: {
+        tags: ['Finance'],
+        summary: 'Update transaction',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', properties: { type: { type: 'string' }, categoryId: { type: 'integer' }, amount: { type: 'number' }, description: { type: 'string' }, date: { type: 'string', format: 'date' }, paymentMethod: { type: 'string' } } } } }
+        },
+        responses: {
+          200: { description: 'Updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      },
+      delete: {
+        tags: ['Finance'],
+        summary: 'Delete transaction',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+    '/finance/dashboard': {
+      get: {
+        tags: ['Finance'],
+        summary: 'Financial overview for period',
+        description: 'Income, expense, profit, daily breakdown, category breakdown, payment methods',
+        parameters: [
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'period', in: 'query', schema: { type: 'string' } }
+        ],
+        responses: {
+          200: { description: 'Dashboard data with totals, daily, categories, paymentMethods' }
+        }
+      }
+    },
+    '/finance/report/monthly': {
+      get: {
+        tags: ['Finance'],
+        summary: 'P&L monthly report',
+        parameters: [
+          { name: 'year', in: 'query', schema: { type: 'integer' }, description: 'Defaults to current year' }
+        ],
+        responses: {
+          200: { description: 'Monthly P&L with months array and totals' }
+        }
+      }
+    },
+    '/finance/report/salary': {
+      get: {
+        tags: ['Finance'],
+        summary: 'Salary report from HR time records',
+        parameters: [
+          { name: 'month', in: 'query', required: true, schema: { type: 'string' }, description: 'YYYY-MM format' }
+        ],
+        responses: {
+          200: { description: 'Staff salary data with totalSalary' }
+        }
+      }
+    },
+    '/finance/export': {
+      get: {
+        tags: ['Finance'],
+        summary: 'Export transactions as CSV',
+        parameters: [
+          { name: 'from', in: 'query', required: true, schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', required: true, schema: { type: 'string', format: 'date' } },
+          { name: 'type', in: 'query', schema: { type: 'string', enum: ['income', 'expense'] } }
+        ],
+        responses: {
+          200: { description: 'CSV file (UTF-8 BOM, ; separator)', content: { 'text/csv': { schema: { type: 'string' } } } }
+        }
+      }
+    },
+
+    // ==========================================
+    // ANALYTICS (v16.1)
+    // ==========================================
+    '/analytics/overview': {
+      get: {
+        tags: ['Analytics'],
+        summary: 'Unified KPI dashboard',
+        description: 'Cross-module KPIs: bookings + finance + customers + HR with growth vs previous period. 5-min cache.',
+        parameters: [
+          { name: 'period', in: 'query', schema: { type: 'string', enum: ['day', 'week', 'month', 'quarter', 'year'], default: 'month' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } }
+        ],
+        responses: {
+          200: { description: 'Overview with bookings, finance, customers, hr objects + period info' },
+          403: { description: 'Viewers not allowed' }
+        }
+      }
+    },
+    '/analytics/charts': {
+      get: {
+        tags: ['Analytics'],
+        summary: 'Chart data for period',
+        description: 'Daily bookings, daily finance, top programs, weekday load, finance categories, customer segments.',
+        parameters: [
+          { name: 'period', in: 'query', schema: { type: 'string', default: 'month' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } }
+        ],
+        responses: {
+          200: { description: 'Chart arrays: dailyBookings, dailyFinance, topPrograms, weekdayLoad, financeCategories, customerSegments' }
+        }
+      }
+    },
+    '/analytics/comparison': {
+      get: {
+        tags: ['Analytics'],
+        summary: 'Side-by-side period comparison',
+        description: '6 metrics: bookingRevenue, bookingCount, finIncome, finExpense, newCustomers, hrHours.',
+        parameters: [
+          { name: 'period', in: 'query', schema: { type: 'string', default: 'month' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } }
+        ],
+        responses: {
+          200: { description: 'Comparison with current, previous periods and metrics array' }
+        }
+      }
+    },
+
+    // ==========================================
+    // HR (v15.0)
+    // ==========================================
+    '/hr/staff': {
+      get: {
+        tags: ['HR'],
+        summary: 'List staff with HR fields',
+        parameters: [
+          { name: 'active', in: 'query', schema: { type: 'boolean' } },
+          { name: 'role_type', in: 'query', schema: { type: 'string' } }
+        ],
+        responses: {
+          200: { description: 'Staff list with HR data' }
+        }
+      }
+    },
+    '/hr/staff/{id}': {
+      get: {
+        tags: ['HR'],
+        summary: 'Get full staff HR profile',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Staff profile' },
+          404: { description: 'Not found' }
+        }
+      },
+      put: {
+        tags: ['HR'],
+        summary: 'Update staff HR fields',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', properties: { phone: { type: 'string' }, emergency_contact: { type: 'string' }, emergency_phone: { type: 'string' }, role_type: { type: 'string' }, hourly_rate: { type: 'number' }, birth_date: { type: 'string', format: 'date' }, notes: { type: 'string' } } } } }
+        },
+        responses: {
+          200: { description: 'Updated staff' }
+        }
+      }
+    },
+    '/hr/staff/{id}/status': {
+      put: {
+        tags: ['HR'],
+        summary: 'Activate or deactivate staff member',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['is_active'], properties: { is_active: { type: 'boolean' } } } } }
+        },
+        responses: {
+          200: { description: 'Updated' }
+        }
+      }
+    },
+    '/hr/shift-templates': {
+      get: {
+        tags: ['HR'],
+        summary: 'List shift templates',
+        responses: {
+          200: { description: 'Template list', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'array', items: { $ref: '#/components/schemas/HrShiftTemplate' } } } } } } }
+        }
+      },
+      post: {
+        tags: ['HR'],
+        summary: 'Create shift template',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['name', 'planned_start', 'planned_end'], properties: { name: { type: 'string' }, planned_start: { type: 'string' }, planned_end: { type: 'string' }, break_minutes: { type: 'integer' }, shift_type: { type: 'string' } } } } }
+        },
+        responses: {
+          201: { description: 'Template created' }
+        }
+      }
+    },
+    '/hr/shift-templates/{id}': {
+      delete: {
+        tags: ['HR'],
+        summary: 'Delete shift template',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+    '/hr/shifts': {
+      get: {
+        tags: ['HR'],
+        summary: 'Get shifts for date range',
+        parameters: [
+          { name: 'week', in: 'query', schema: { type: 'string', format: 'date' }, description: 'ISO week start' },
+          { name: 'month', in: 'query', schema: { type: 'string' }, description: 'YYYY-MM' },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'staff_id', in: 'query', schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Shifts grouped by staff with names and colors' }
+        }
+      },
+      post: {
+        tags: ['HR'],
+        summary: 'Create single shift',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['staff_id', 'shift_date', 'planned_start', 'planned_end'], properties: { staff_id: { type: 'integer' }, shift_date: { type: 'string', format: 'date' }, planned_start: { type: 'string' }, planned_end: { type: 'string' }, shift_type: { type: 'string' }, break_minutes: { type: 'integer' }, notes: { type: 'string' } } } } }
+        },
+        responses: {
+          201: { description: 'Shift created' }
+        }
+      }
+    },
+    '/hr/shifts/{id}': {
+      put: {
+        tags: ['HR'],
+        summary: 'Update shift',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', properties: { planned_start: { type: 'string' }, planned_end: { type: 'string' }, shift_type: { type: 'string' }, break_minutes: { type: 'integer' }, notes: { type: 'string' } } } } }
+        },
+        responses: {
+          200: { description: 'Updated' }
+        }
+      },
+      delete: {
+        tags: ['HR'],
+        summary: 'Delete shift',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+    '/hr/shifts/bulk': {
+      post: {
+        tags: ['HR'],
+        summary: 'Bulk create shifts',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['staff_ids', 'dates'], properties: { staff_ids: { type: 'array', items: { type: 'integer' } }, dates: { type: 'array', items: { type: 'string', format: 'date' } }, template_id: { type: 'integer' }, planned_start: { type: 'string' }, planned_end: { type: 'string' }, break_minutes: { type: 'integer' }, shift_type: { type: 'string' } } } } }
+        },
+        responses: {
+          200: { description: 'Bulk result with count' }
+        }
+      }
+    },
+    '/hr/shifts/copy-week': {
+      post: {
+        tags: ['HR'],
+        summary: 'Copy week shifts to another week',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['source_week', 'target_week'], properties: { source_week: { type: 'string', format: 'date' }, target_week: { type: 'string', format: 'date' } } } } }
+        },
+        responses: {
+          200: { description: 'Copy result with count' }
+        }
+      }
+    },
+    '/hr/today': {
+      get: {
+        tags: ['HR'],
+        summary: 'Today dashboard — attendance summary',
+        responses: {
+          200: { description: 'Staff attendance with summary: total, present, late, absent, vacation, sick' }
+        }
+      }
+    },
+    '/hr/clock-in': {
+      post: {
+        tags: ['HR'],
+        summary: 'Clock in staff member',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['staff_id'], properties: { staff_id: { type: 'integer' } } } } }
+        },
+        responses: {
+          200: { description: 'Time record with clock_in, late_minutes, status' }
+        }
+      }
+    },
+    '/hr/clock-out': {
+      post: {
+        tags: ['HR'],
+        summary: 'Clock out staff member',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['staff_id'], properties: { staff_id: { type: 'integer' } } } } }
+        },
+        responses: {
+          200: { description: 'Time record with clock_out, total_worked_minutes, overtime' }
+        }
+      }
+    },
+    '/hr/mark-absent': {
+      post: {
+        tags: ['HR'],
+        summary: 'Mark staff as sick/vacation/day_off',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['staff_id', 'status'], properties: { staff_id: { type: 'integer' }, status: { type: 'string', enum: ['sick', 'vacation', 'day_off'] }, notes: { type: 'string' } } } } }
+        },
+        responses: {
+          200: { description: 'Absence record' }
+        }
+      }
+    },
+    '/hr/records/{id}/correct': {
+      put: {
+        tags: ['HR'],
+        summary: 'Correct clock times (admin only)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', properties: { clock_in: { type: 'string' }, clock_out: { type: 'string' }, notes: { type: 'string' } } } } }
+        },
+        responses: {
+          200: { description: 'Corrected record with recalculated metrics' }
+        }
+      }
+    },
+    '/hr/report/monthly': {
+      get: {
+        tags: ['HR'],
+        summary: 'Monthly attendance & salary report',
+        parameters: [
+          { name: 'month', in: 'query', schema: { type: 'string' }, description: 'YYYY-MM' },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } }
+        ],
+        responses: {
+          200: { description: 'Monthly report per staff with attendance rate, salary estimate' }
+        }
+      }
+    },
+    '/hr/report/daily': {
+      get: {
+        tags: ['HR'],
+        summary: 'Daily attendance report',
+        parameters: [
+          { name: 'date', in: 'query', schema: { type: 'string', format: 'date' } }
+        ],
+        responses: {
+          200: { description: 'Daily attendance records' }
+        }
+      }
+    },
+    '/hr/report/export': {
+      get: {
+        tags: ['HR'],
+        summary: 'Export HR time records as CSV',
+        parameters: [
+          { name: 'from', in: 'query', required: true, schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', required: true, schema: { type: 'string', format: 'date' } }
+        ],
+        responses: {
+          200: { description: 'CSV file (UTF-8 BOM)', content: { 'text/csv': { schema: { type: 'string' } } } }
+        }
+      }
+    },
+
+    // ==========================================
+    // DESIGNS (v12.0)
+    // ==========================================
+    '/designs': {
+      get: {
+        tags: ['Designs'],
+        summary: 'List designs with filters',
+        parameters: [
+          { name: 'tag', in: 'query', schema: { type: 'string' } },
+          { name: 'collection', in: 'query', schema: { type: 'integer' } },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'pinned', in: 'query', schema: { type: 'boolean' } },
+          { name: 'publish_from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'publish_to', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 200 } },
+          { name: 'offset', in: 'query', schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Designs list', content: { 'application/json': { schema: { type: 'object', properties: { items: { type: 'array', items: { $ref: '#/components/schemas/Design' } }, total: { type: 'integer' } } } } } }
+        }
+      }
+    },
+    '/designs/tags': {
+      get: {
+        tags: ['Designs'],
+        summary: 'Get all unique tags',
+        responses: {
+          200: { description: 'Tags with counts', content: { 'application/json': { schema: { type: 'array', items: { type: 'object', properties: { tag: { type: 'string' }, count: { type: 'integer' } } } } } } }
+        }
+      }
+    },
+    '/designs/calendar': {
+      get: {
+        tags: ['Designs'],
+        summary: 'Designs grouped by publish date',
+        parameters: [
+          { name: 'month', in: 'query', schema: { type: 'string' }, description: 'YYYY-MM' }
+        ],
+        responses: {
+          200: { description: 'Map of date → designs array' }
+        }
+      }
+    },
+    '/designs/collections': {
+      get: {
+        tags: ['Designs'],
+        summary: 'List design collections',
+        responses: {
+          200: { description: 'Collections', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/DesignCollection' } } } } }
+        }
+      },
+      post: {
+        tags: ['Designs'],
+        summary: 'Create collection',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['name'], properties: { name: { type: 'string' }, color: { type: 'string' } } } } }
+        },
+        responses: {
+          201: { description: 'Collection created', content: { 'application/json': { schema: { $ref: '#/components/schemas/DesignCollection' } } } }
+        }
+      }
+    },
+    '/designs/collections/{id}': {
+      put: {
+        tags: ['Designs'],
+        summary: 'Update collection',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, color: { type: 'string' }, sort_order: { type: 'integer' } } } } }
+        },
+        responses: {
+          200: { description: 'Updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/DesignCollection' } } } }
+        }
+      },
+      delete: {
+        tags: ['Designs'],
+        summary: 'Delete collection (orphans designs)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+    '/designs/upload': {
+      post: {
+        tags: ['Designs'],
+        summary: 'Upload designs (max 20 files, 20MB each)',
+        description: 'Accepts jpg, png, gif, webp, svg, pdf. Uses multipart/form-data.',
+        requestBody: {
+          required: true,
+          content: { 'multipart/form-data': { schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string', format: 'binary' } }, tags: { type: 'string', description: 'JSON array of tags' }, collection_id: { type: 'integer' }, title_prefix: { type: 'string' } } } } }
+        },
+        responses: {
+          200: { description: 'Upload result', content: { 'application/json': { schema: { type: 'object', properties: { items: { type: 'array', items: { $ref: '#/components/schemas/Design' } }, count: { type: 'integer' } } } } } }
+        }
+      }
+    },
+    '/designs/{id}': {
+      put: {
+        tags: ['Designs'],
+        summary: 'Update design metadata',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', properties: { title: { type: 'string' }, description: { type: 'string' }, is_pinned: { type: 'boolean' }, collection_id: { type: 'integer' }, publish_date: { type: 'string', format: 'date' }, tags: { type: 'array', items: { type: 'string' } } } } } }
+        },
+        responses: {
+          200: { description: 'Updated design', content: { 'application/json': { schema: { $ref: '#/components/schemas/Design' } } } }
+        }
+      },
+      delete: {
+        tags: ['Designs'],
+        summary: 'Delete design (removes file from disk)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+    '/designs/{id}/telegram': {
+      post: {
+        tags: ['Designs'],
+        summary: 'Send design to Telegram',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', properties: { caption: { type: 'string' } } } } }
+        },
+        responses: {
+          200: { description: 'Sent', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+
+    // ==========================================
+    // CONTRACTORS (v12.6)
+    // ==========================================
+    '/contractors': {
+      get: {
+        tags: ['Contractors'],
+        summary: 'List all contractors',
+        responses: {
+          200: { description: 'Contractor list', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Contractor' } } } } }
+        }
+      },
+      post: {
+        tags: ['Contractors'],
+        summary: 'Create contractor',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['name'], properties: { name: { type: 'string' }, specialty: { type: 'object' }, telegram_chat_id: { type: 'string' }, telegram_username: { type: 'string' }, phone: { type: 'string' }, notes: { type: 'string' } } } } }
+        },
+        responses: {
+          201: { description: 'Created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Contractor' } } } }
+        }
+      }
+    },
+    '/contractors/{id}': {
+      get: {
+        tags: ['Contractors'],
+        summary: 'Get single contractor',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Contractor', content: { 'application/json': { schema: { $ref: '#/components/schemas/Contractor' } } } },
+          404: { description: 'Not found' }
+        }
+      },
+      put: {
+        tags: ['Contractors'],
+        summary: 'Update contractor',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, specialty: { type: 'object' }, telegram_chat_id: { type: 'string' }, telegram_username: { type: 'string' }, phone: { type: 'string' }, notes: { type: 'string' }, is_active: { type: 'boolean' } } } } }
+        },
+        responses: {
+          200: { description: 'Updated' }
+        }
+      },
+      delete: {
+        tags: ['Contractors'],
+        summary: 'Delete contractor',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+    '/contractors/{id}/regenerate-invite': {
+      post: {
+        tags: ['Contractors'],
+        summary: 'Generate new invite token',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'New invite token', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, invite_token: { type: 'string' } } } } } }
+        }
+      }
+    },
+    '/contractors/{id}/test-message': {
+      post: {
+        tags: ['Contractors'],
+        summary: 'Send test Telegram message',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Message sent', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessResponse' } } } }
+        }
+      }
+    },
+    '/contractors/notifications/recent': {
+      get: {
+        tags: ['Contractors'],
+        summary: 'Recent contractor notifications',
+        responses: {
+          200: { description: 'Last 50 notifications' }
+        }
+      }
+    },
+
+    // ==========================================
+    // WAREHOUSE (v14.0)
+    // ==========================================
+    '/warehouse': {
+      get: {
+        tags: ['Warehouse'],
+        summary: 'List stock items',
+        parameters: [
+          { name: 'category', in: 'query', schema: { type: 'string', enum: ['consumable', 'craft', 'props', 'food', 'decor', 'prizes', 'office', 'tech'] } },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'low_stock', in: 'query', schema: { type: 'boolean' }, description: 'Only items below min quantity' },
+          { name: 'all', in: 'query', schema: { type: 'boolean' }, description: 'Include inactive items' }
+        ],
+        responses: {
+          200: { description: 'Items with low stock count', content: { 'application/json': { schema: { type: 'object', properties: { items: { type: 'array', items: { $ref: '#/components/schemas/WarehouseItem' } }, lowStockCount: { type: 'integer' } } } } } }
+        }
+      },
+      post: {
+        tags: ['Warehouse'],
+        summary: 'Create stock item (admin/manager)',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['name'], properties: { name: { type: 'string', maxLength: 255 }, category: { type: 'string', default: 'consumable' }, quantity: { type: 'integer', default: 0 }, minQuantity: { type: 'integer', default: 0 }, unit: { type: 'string', default: 'шт' }, notes: { type: 'string' } } } } }
+        },
+        responses: {
+          201: { description: 'Item created', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, item: { $ref: '#/components/schemas/WarehouseItem' } } } } } }
+        }
+      }
+    },
+    '/warehouse/history': {
+      get: {
+        tags: ['Warehouse'],
+        summary: 'Recent history across all items',
+        parameters: [
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 200 } },
+          { name: 'offset', in: 'query', schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'History entries', content: { 'application/json': { schema: { type: 'object', properties: { items: { type: 'array', items: { $ref: '#/components/schemas/WarehouseHistoryEntry' } }, total: { type: 'integer' } } } } } }
+        }
+      }
+    },
+    '/warehouse/{id}': {
+      get: {
+        tags: ['Warehouse'],
+        summary: 'Get stock item with recent history',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Item with history array (last 20 entries)' },
+          404: { description: 'Not found' }
+        }
+      },
+      put: {
+        tags: ['Warehouse'],
+        summary: 'Update stock item (admin/manager)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          content: { 'application/json': { schema: { type: 'object', required: ['name'], properties: { name: { type: 'string' }, category: { type: 'string' }, minQuantity: { type: 'integer' }, unit: { type: 'string' }, notes: { type: 'string' } } } } }
+        },
+        responses: {
+          200: { description: 'Updated', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, item: { $ref: '#/components/schemas/WarehouseItem' } } } } } }
+        }
+      },
+      delete: {
+        tags: ['Warehouse'],
+        summary: 'Soft-delete stock item (admin only)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'Deactivated', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, item: { $ref: '#/components/schemas/WarehouseItem' } } } } } }
+        }
+      }
+    },
+    '/warehouse/{id}/use': {
+      post: {
+        tags: ['Warehouse'],
+        summary: 'Deduct stock (consume)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['amount'], properties: { amount: { type: 'integer', minimum: 1 }, reason: { type: 'string' } } } } }
+        },
+        responses: {
+          200: { description: 'Updated item with new quantity' },
+          400: { description: 'Insufficient stock' }
+        }
+      }
+    },
+    '/warehouse/{id}/restock': {
+      post: {
+        tags: ['Warehouse'],
+        summary: 'Add stock (replenish)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['amount'], properties: { amount: { type: 'integer', minimum: 1 }, reason: { type: 'string' } } } } }
+        },
+        responses: {
+          200: { description: 'Updated item with new quantity' }
+        }
+      }
+    },
+    '/warehouse/{id}/history': {
+      get: {
+        tags: ['Warehouse'],
+        summary: 'History for specific item',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 200 } },
+          { name: 'offset', in: 'query', schema: { type: 'integer' } }
+        ],
+        responses: {
+          200: { description: 'History entries', content: { 'application/json': { schema: { type: 'object', properties: { items: { type: 'array', items: { $ref: '#/components/schemas/WarehouseHistoryEntry' } }, total: { type: 'integer' } } } } } }
         }
       }
     }

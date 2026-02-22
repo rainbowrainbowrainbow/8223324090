@@ -23,6 +23,8 @@ const { createLogger } = require('./utils/logger');
 const { validateEnv } = require('./utils/validateEnv');
 const { initWebSocket, getWSS } = require('./services/websocket');
 const { runMigrations } = require('./db/migrate');
+const swaggerUi = require('swagger-ui-express');
+const { swaggerSpec } = require('./swagger');
 
 const log = createLogger('Server');
 
@@ -60,6 +62,10 @@ app.use((req, res, next) => {
     }
     next();
 });
+
+// Swagger UI — public, no auth required
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { customSiteTitle: 'Event Maestro API' }));
+app.get('/api-docs.json', (req, res) => res.json(swaggerSpec));
 
 // Rate limiter for all API routes
 app.use('/api', rateLimiter);

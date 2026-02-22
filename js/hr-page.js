@@ -925,9 +925,7 @@ const AI_WORKERS = [
             'Нагадування про дедлайни контрактів',
             'Архів комунікацій з партнерами'
         ],
-        integration: 'Підключається через Клешню (🦀). Для активації: відкрийте чат Клешні → ' +
-            'напишіть «Підключити Тимура» → Клешня надасть інструкції з налаштування.',
-        metrics: { processed: '—', avgResponse: '—', satisfaction: '—' }
+        integration: 'Telegram-бот. Підключається через Клешню — напишіть в чаті Клешні «Підключити Тимура».'
     },
     {
         id: 'svitlana',
@@ -945,8 +943,7 @@ const AI_WORKERS = [
             'Ескалація прострочених задач',
             'Щоденні звіти про продуктивність команди'
         ],
-        integration: 'Буде інтегрована з системою задач (📝 Задачі) та Telegram-сповіщеннями.',
-        metrics: { processed: '—', avgResponse: '—', satisfaction: '—' }
+        integration: 'Буде інтегрована з системою задач та Telegram-сповіщеннями.'
     },
     {
         id: 'taras',
@@ -964,61 +961,137 @@ const AI_WORKERS = [
             'Генерація зведених звітів',
             'Публікація результатів на сайт'
         ],
-        integration: 'Буде інтегрований з модулями Фінанси (💰), Аналітика (📊) та HR-звітами.',
-        metrics: { processed: '—', avgResponse: '—', satisfaction: '—' }
+        integration: 'Буде інтегрований з модулями Фінанси, Аналітика та HR-звітами.'
     }
 ];
 
-function renderAITeam() {
-    const grid = document.getElementById('aiTeamGrid');
-    if (!grid) return;
+// AI worker task journal (in-memory, per session)
+const aiJournal = { tymur: [], svitlana: [], taras: [] };
 
-    grid.innerHTML = AI_WORKERS.map(w => {
-        const statusColor = w.status === 'active' ? '#10B981' : '#F59E0B';
+function renderAITeam() {
+    const list = document.getElementById('aiTeamList');
+    if (!list) return;
+
+    list.innerHTML = AI_WORKERS.map(w => {
+        const badgeCls = w.status === 'active' ? 'active' : 'planned';
         const statusIcon = w.status === 'active' ? '●' : '◐';
         const capsList = w.capabilities.map(c => `<li>${escapeHtml(c)}</li>`).join('');
+        const journal = aiJournal[w.id] || [];
+        const journalHTML = journal.length > 0
+            ? journal.map(j => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-100);">
+                <span>${escapeHtml(j.task)}</span>
+                <span style="color:var(--gray-400);font-size:11px;white-space:nowrap;margin-left:12px;">${j.time}</span>
+              </div>`).join('')
+            : `<div class="ai-journal-empty">Ще немає записів</div>`;
 
         return `
-        <div class="hr-team-card" style="cursor:default;">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-                <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#6366F1,#8B5CF6);
-                    display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;">
-                    ${w.avatar}
+        <div class="ai-worker" id="ai-worker-${w.id}">
+            <div class="ai-worker-header">
+                <div class="ai-worker-avatar">${w.avatar}</div>
+                <div class="ai-worker-info">
+                    <div class="ai-worker-name">${escapeHtml(w.name)}</div>
+                    <div class="ai-worker-dept">${escapeHtml(w.department)}</div>
                 </div>
-                <div style="flex:1;min-width:0;">
-                    <div class="hr-team-name" style="font-size:18px;margin-bottom:2px;">${escapeHtml(w.name)}</div>
-                    <div style="font-size:12px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;">
-                        ${escapeHtml(w.department)}
-                    </div>
-                </div>
-                <div style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:${statusColor};
-                    background:${statusColor}15;padding:4px 10px;border-radius:12px;white-space:nowrap;">
-                    ${statusIcon} ${escapeHtml(w.statusLabel)}
-                </div>
+                <div class="ai-worker-badge ${badgeCls}">${statusIcon} ${escapeHtml(w.statusLabel)}</div>
             </div>
 
-            <div class="hr-team-role" style="font-size:15px;font-weight:800;color:var(--gray-800);margin-bottom:8px;">
-                ${escapeHtml(w.role)}
-            </div>
+            <div class="ai-worker-role">${escapeHtml(w.role)}</div>
+            <div class="ai-worker-desc">${escapeHtml(w.description)}</div>
 
-            <p style="font-size:13px;color:var(--gray-600);line-height:1.6;margin:0 0 12px 0;">
-                ${escapeHtml(w.description)}
-            </p>
-
-            <div style="margin-bottom:12px;">
-                <div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">
+            <div class="ai-worker-actions">
+                <button class="ai-worker-toggle" onclick="toggleAIPanel('${w.id}','caps')">
                     Можливості
-                </div>
-                <ul style="margin:0;padding-left:18px;font-size:12px;color:var(--gray-600);line-height:1.8;">
-                    ${capsList}
-                </ul>
+                </button>
+                <button class="ai-worker-toggle" onclick="toggleAIPanel('${w.id}','integration')">
+                    Інтеграція
+                </button>
+                <button class="ai-worker-toggle" onclick="toggleAIPanel('${w.id}','journal')">
+                    Журнал
+                </button>
+                <button class="ai-worker-send-btn" onclick="toggleAIPanel('${w.id}','send')">
+                    Відправити на завдання
+                </button>
             </div>
 
-            <div style="background:var(--gray-50);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--gray-600);line-height:1.5;">
-                <strong style="color:var(--gray-700);">Інтеграція:</strong> ${escapeHtml(w.integration)}
+            <div class="ai-worker-panel" id="ai-panel-${w.id}-caps">
+                <h5>Можливості</h5>
+                <ul>${capsList}</ul>
+            </div>
+
+            <div class="ai-worker-panel" id="ai-panel-${w.id}-integration">
+                <h5>Інтеграція</h5>
+                <p style="margin:0;">${escapeHtml(w.integration)}</p>
+            </div>
+
+            <div class="ai-worker-panel" id="ai-panel-${w.id}-journal">
+                <h5>Журнал виконання</h5>
+                <div id="ai-journal-${w.id}">${journalHTML}</div>
+            </div>
+
+            <div class="ai-worker-panel" id="ai-panel-${w.id}-send">
+                <h5>Відправити на завдання</h5>
+                <div class="ai-task-form">
+                    <input type="text" id="ai-task-input-${w.id}" placeholder="Опишіть завдання..." maxlength="200">
+                    <button onclick="sendAITask('${w.id}')">Відправити</button>
+                </div>
             </div>
         </div>`;
     }).join('');
+}
+
+function toggleAIPanel(workerId, panel) {
+    const panelEl = document.getElementById(`ai-panel-${workerId}-${panel}`);
+    if (!panelEl) return;
+    const isOpen = panelEl.classList.contains('open');
+
+    // Close all panels for this worker
+    document.querySelectorAll(`#ai-worker-${workerId} .ai-worker-panel`).forEach(p => p.classList.remove('open'));
+    document.querySelectorAll(`#ai-worker-${workerId} .ai-worker-toggle`).forEach(b => b.classList.remove('open'));
+
+    // Toggle the clicked one
+    if (!isOpen) {
+        panelEl.classList.add('open');
+        // Find the matching toggle button
+        const btns = document.querySelectorAll(`#ai-worker-${workerId} .ai-worker-toggle`);
+        const panels = ['caps', 'integration', 'journal'];
+        const idx = panels.indexOf(panel);
+        if (idx >= 0 && btns[idx]) btns[idx].classList.add('open');
+    }
+}
+
+function sendAITask(workerId) {
+    const input = document.getElementById(`ai-task-input-${workerId}`);
+    if (!input) return;
+    const task = input.value.trim();
+    if (!task) {
+        showNotification('Введіть опис завдання', 'error');
+        return;
+    }
+
+    const now = new Date();
+    const time = now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
+    const date = now.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Kyiv' });
+
+    aiJournal[workerId].unshift({ task, time: `${date} ${time}`, status: 'sent' });
+    input.value = '';
+
+    // Refresh journal panel
+    const journalEl = document.getElementById(`ai-journal-${workerId}`);
+    if (journalEl) {
+        const journal = aiJournal[workerId];
+        journalEl.innerHTML = journal.map(j =>
+            `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-100);">
+                <span>${escapeHtml(j.task)}</span>
+                <span style="color:var(--gray-400);font-size:11px;white-space:nowrap;margin-left:12px;">${j.time}</span>
+            </div>`
+        ).join('');
+    }
+
+    // Open journal panel to show the result
+    toggleAIPanel(workerId, 'journal');
+
+    const worker = AI_WORKERS.find(w => w.id === workerId);
+    showNotification(`Завдання відправлено ${worker ? worker.name : 'працівнику'}`, 'success');
 }
 
 // ==========================================

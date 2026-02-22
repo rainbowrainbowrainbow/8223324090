@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v16.1.0**. Analytics v2.
+Версія **v16.2.0**. Swagger API Docs.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -27,7 +27,8 @@
 - v15.0.0: HR Module — повний HR-блок
 - v15.1.0: CRM Phase 2 — клієнтська база, фільтри, RFM, ДН, сертифікати, експорт
 - v16.0.0: Finance Module — каса, P&L, зарплати, категорії, автозапис, CSV
-- **v16.1.0: Analytics v2 — єдиний дашборд (bookings + finance + HR + CRM), порівняння періодів**
+- v16.1.0: Analytics v2 — єдиний дашборд (bookings + finance + HR + CRM), порівняння періодів
+- **v16.2.0: Swagger API Docs — /api-docs, OpenAPI 3.0, 136 ендпоінтів, 54 схеми**
 
 ## Архітектура
 - **11 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya
@@ -38,15 +39,11 @@
 - **269 тестів** (3 файли + helpers)
 - ~52 000 рядків коду
 
-## Analytics v2 (v16.1)
-- **analytics.html** — сторінка з KPI-картками, графіками, порівнянням
-- **js/analytics-page.js** — фронтенд: period tabs, chart rendering, comparison
-- **routes/analytics.js** — 3 ендпоінти: overview, charts, comparison (5-хв кеш)
-- **overview** — cross-module KPIs (bookings + finance + customers + HR) + growth %
-- **charts** — daily bookings, daily finance, top programs, weekday load, fin categories, customer segments
-- **comparison** — 6 метрик поточний vs попередній період
-- **Періоди:** day, week, month, quarter, year, custom
-- **Навігація:** посилання "Аналітика" на всіх 11 сторінках
+## Swagger API Docs (v16.2)
+- **swagger-ui-express** — інтерактивна документація на `/api-docs`
+- **swagger.js** — OpenAPI 3.0 специфікація (136 paths, 54 schemas, 25 tags)
+- **/api-docs.json** — JSON endpoint для автогенерації клієнтів
+- **Повне покриття:** Auth, Bookings, Lines, History, Products, Afisha, Tasks, Task Templates, Staff, Certificates, Telegram, Backup, Settings, Automation, Points, Kleshnya, Recurring, Stats, Customers, Finance, Analytics, HR, Designs, Contractors, Warehouse
 
 ## Dark Mode (v12.1+)
 - `initDarkMode()` в config.js — єдина функція для всіх 11 сторінок
@@ -56,7 +53,6 @@
 
 ## Що далі
 - Тестування Kleshnya Chat v2 з OpenClaw Bridge
-- Swagger /api-docs
 - Export PDF/Excel
 - Бюджетне планування (план vs факт)
 - Розширення тригерів Клешні
@@ -67,4 +63,4 @@
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-22, v16.1.0*
+*Оновлено: 2026-02-22, v16.2.0*

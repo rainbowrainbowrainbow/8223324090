@@ -16,6 +16,7 @@ const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount } = require('./services/telegram');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates } = require('./services/scheduler');
+const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
 const { processStaleMessages, BRIDGE_ENABLED: OPENCLAW_BRIDGE } = require('./services/kleshnya-bridge');
 const { createLogger } = require('./utils/logger');
@@ -93,6 +94,7 @@ app.use('/api/kleshnya', require('./routes/kleshnya'));
 app.use('/api/designs', require('./routes/designs'));
 app.use('/api/contractors', require('./routes/contractors'));
 app.use('/api/warehouse', require('./routes/warehouse'));
+app.use('/api/hr', require('./routes/hr'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -167,6 +169,9 @@ app.get('/designs', (req, res) => {
 });
 app.get('/warehouse', (req, res) => {
     res.sendFile(path.join(__dirname, 'warehouse.html'));
+});
+app.get('/hr', (req, res) => {
+    res.sendFile(path.join(__dirname, 'hr.html'));
 });
 
 // SPA fallback (must be last)
@@ -251,6 +256,9 @@ initDatabase().then(() => {
                 30000
             ));
         }
+        // v15.0: HR cron jobs (auto-close at 23:55, no-show at 13:00)
+        schedulerIntervals.push(setInterval(checkHrAutoClose, 60000));
+        schedulerIntervals.push(setInterval(checkHrNoShow, 60000));
         // v11.0: Kleshnya greeting cache cleanup (every 30min)
         schedulerIntervals.push(setInterval(cleanupKleshnyaMessages, 30 * 60 * 1000));
         // v11.1: Streak auto-update (daily at 23:55)

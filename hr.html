@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Maestro | HR</title>
+    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Maestro">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=15.0">
+    <link rel="stylesheet" href="css/layout.css?v=15.0">
+    <link rel="stylesheet" href="css/pages.css?v=15.0">
+    <link rel="stylesheet" href="css/modals.css?v=15.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=15.0">
+    <link rel="stylesheet" href="css/responsive.css?v=15.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* ==========================================
+           HR TABS
+           ========================================== */
+        .hr-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 24px;
+            background: var(--gray-100);
+            border-radius: var(--radius);
+            padding: 4px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .hr-tab {
+            flex: 1;
+            min-width: 120px;
+            padding: 10px 16px;
+            border: none;
+            background: transparent;
+            font-family: inherit;
+            font-size: var(--font-sm);
+            font-weight: 700;
+            color: var(--gray-500);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all var(--speed-fast) var(--ease-smooth);
+            white-space: nowrap;
+            text-align: center;
+        }
+        .hr-tab:hover { color: var(--gray-700); background: rgba(255,255,255,0.5); }
+        .hr-tab.active {
+            background: var(--white);
+            color: var(--primary);
+            box-shadow: var(--shadow-xs);
+        }
+        body.dark-mode .hr-tabs { background: var(--gray-800); }
+        body.dark-mode .hr-tab.active { background: var(--gray-700); color: var(--primary-light); }
+
+        .hr-tab-content { display: none; }
+        .hr-tab-content.active { display: block; }
+
+        /* ==========================================
+           TAB 1: TODAY DASHBOARD
+           ========================================== */
+        .hr-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .hr-summary-card {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 16px;
+            text-align: center;
+            box-shadow: var(--shadow-xs);
+        }
+        .hr-summary-card .value {
+            font-size: 28px;
+            font-weight: 900;
+            color: var(--gray-800);
+            line-height: 1.2;
+        }
+        .hr-summary-card .label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--gray-500);
+            margin-top: 4px;
+        }
+        .hr-summary-card.green .value { color: #10B981; }
+        .hr-summary-card.yellow .value { color: #F59E0B; }
+        .hr-summary-card.red .value { color: #EF4444; }
+
+        .hr-today-date {
+            font-size: var(--font-lg);
+            font-weight: 800;
+            color: var(--gray-800);
+            margin-bottom: 16px;
+        }
+
+        .hr-staff-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .hr-staff-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 14px 18px;
+            box-shadow: var(--shadow-xs);
+            transition: box-shadow var(--speed-fast) var(--ease-smooth);
+        }
+        .hr-staff-row:hover { box-shadow: var(--shadow-sm); }
+
+        .hr-staff-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .hr-staff-indicator.present { background: #10B981; }
+        .hr-staff-indicator.late { background: #F59E0B; }
+        .hr-staff-indicator.absent { background: #9CA3AF; }
+        .hr-staff-indicator.done { background: #3B82F6; }
+        .hr-staff-indicator.sick { background: #8B5CF6; }
+        .hr-staff-indicator.vacation { background: #8B5CF6; }
+        .hr-staff-indicator.day_off { background: #8B5CF6; }
+        .hr-staff-indicator.no_show { background: #EF4444; }
+        .hr-staff-indicator.auto_closed { background: #6B7280; }
+
+        .hr-staff-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .hr-staff-name {
+            font-weight: 700;
+            font-size: var(--font-base);
+            color: var(--gray-800);
+        }
+        .hr-staff-meta {
+            font-size: var(--font-xs);
+            color: var(--gray-500);
+            margin-top: 2px;
+        }
+        .hr-staff-meta .late-badge {
+            color: #F59E0B;
+            font-weight: 700;
+        }
+
+        .hr-clock-btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-family: inherit;
+            font-size: var(--font-xs);
+            font-weight: 700;
+            cursor: pointer;
+            transition: all var(--speed-fast) var(--ease-smooth);
+            white-space: nowrap;
+            min-width: 160px;
+            text-align: center;
+        }
+        .hr-clock-btn.clock-in {
+            background: var(--gray-100);
+            color: var(--gray-600);
+        }
+        .hr-clock-btn.clock-in:hover { background: var(--gray-200); }
+        .hr-clock-btn.clock-out {
+            background: #10B981;
+            color: #fff;
+        }
+        .hr-clock-btn.clock-out:hover { background: #059669; }
+        .hr-clock-btn.clock-out.late {
+            background: #F59E0B;
+            color: #fff;
+        }
+        .hr-clock-btn.clock-out.late:hover { background: #D97706; }
+        .hr-clock-btn.done {
+            background: #DBEAFE;
+            color: #3B82F6;
+            cursor: default;
+        }
+        .hr-clock-btn.special {
+            background: #EDE9FE;
+            color: #7C3AED;
+            cursor: default;
+        }
+
+        /* Context menu */
+        .hr-context-menu {
+            position: fixed;
+            z-index: 1100;
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            padding: 4px 0;
+            min-width: 180px;
+            display: none;
+        }
+        .hr-context-menu.visible { display: block; }
+        .hr-context-item {
+            display: block;
+            width: 100%;
+            padding: 10px 16px;
+            border: none;
+            background: none;
+            font-family: inherit;
+            font-size: var(--font-sm);
+            color: var(--gray-700);
+            text-align: left;
+            cursor: pointer;
+        }
+        .hr-context-item:hover { background: var(--gray-50); }
+
+        /* ==========================================
+           TAB 2: SCHEDULE
+           ========================================== */
+        .hr-schedule-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .hr-schedule-controls .btn-nav {
+            padding: 6px 12px;
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            border-radius: var(--radius-xs);
+            font-size: var(--font-base);
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .hr-schedule-controls .btn-nav:hover { background: var(--gray-50); }
+        .hr-week-label {
+            font-weight: 700;
+            font-size: var(--font-base);
+            color: var(--gray-800);
+            min-width: 220px;
+            text-align: center;
+        }
+        .hr-schedule-actions {
+            display: flex;
+            gap: 8px;
+            margin-left: auto;
+        }
+        .hr-schedule-actions button {
+            padding: 6px 14px;
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            border-radius: var(--radius-xs);
+            font-family: inherit;
+            font-size: var(--font-xs);
+            font-weight: 700;
+            cursor: pointer;
+            color: var(--gray-600);
+        }
+        .hr-schedule-actions button:hover { background: var(--gray-50); color: var(--primary); }
+
+        .hr-view-toggle {
+            display: flex;
+            gap: 0;
+            margin-bottom: 16px;
+        }
+        .hr-view-btn {
+            padding: 6px 16px;
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            font-family: inherit;
+            font-size: var(--font-xs);
+            font-weight: 700;
+            cursor: pointer;
+            color: var(--gray-500);
+        }
+        .hr-view-btn:first-child { border-radius: var(--radius-xs) 0 0 var(--radius-xs); }
+        .hr-view-btn:last-child { border-radius: 0 var(--radius-xs) var(--radius-xs) 0; border-left: none; }
+        .hr-view-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        .hr-schedule-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: var(--radius);
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-xs);
+        }
+        .hr-schedule-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            min-width: 600px;
+        }
+        .hr-schedule-table th {
+            background: var(--gray-50);
+            padding: 10px 12px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--gray-500);
+            text-align: center;
+            border-bottom: 1px solid var(--gray-200);
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+        .hr-schedule-table th:first-child {
+            text-align: left;
+            position: sticky;
+            left: 0;
+            z-index: 3;
+            background: var(--gray-50);
+            min-width: 140px;
+        }
+        .hr-schedule-table td {
+            padding: 6px 8px;
+            text-align: center;
+            border-bottom: 1px solid var(--gray-50);
+            font-size: var(--font-xs);
+            vertical-align: middle;
+            cursor: pointer;
+            min-width: 80px;
+            transition: background var(--speed-fast);
+        }
+        .hr-schedule-table td:first-child {
+            text-align: left;
+            font-weight: 700;
+            color: var(--gray-700);
+            position: sticky;
+            left: 0;
+            background: var(--white);
+            z-index: 1;
+            cursor: default;
+            padding-left: 12px;
+        }
+        .hr-schedule-table td:hover:not(:first-child) { background: var(--gray-50); }
+        .hr-schedule-table th.today { background: #FEF3C7; color: var(--primary); }
+        .hr-schedule-table td.today { background: #FFFBEB; }
+
+        .hr-shift-cell {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.3;
+        }
+        .hr-shift-cell.regular { background: #D1FAE5; color: #065F46; }
+        .hr-shift-cell.overtime, .hr-shift-cell.event { background: #FEF3C7; color: #92400E; }
+        .hr-shift-cell.training { background: #DBEAFE; color: #1E40AF; }
+        .hr-shift-cell.holiday { background: #EDE9FE; color: #5B21B6; }
+        .hr-shift-cell.empty { color: var(--gray-300); font-weight: 400; }
+        .hr-shift-cell.past { opacity: 0.5; }
+
+        /* ==========================================
+           TAB 3: TEAM
+           ========================================== */
+        .hr-team-filters {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .hr-team-search {
+            padding: 8px 14px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-family: inherit;
+            font-size: var(--font-sm);
+            min-width: 200px;
+            background: var(--white);
+            color: var(--gray-700);
+        }
+        .hr-team-select {
+            padding: 8px 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-family: inherit;
+            font-size: var(--font-sm);
+            background: var(--white);
+            color: var(--gray-700);
+        }
+        .hr-team-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 16px;
+        }
+        .hr-team-card {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: var(--shadow-xs);
+            display: flex;
+            gap: 16px;
+            transition: box-shadow var(--speed-fast);
+        }
+        .hr-team-card:hover { box-shadow: var(--shadow-sm); }
+        .hr-team-card.inactive { opacity: 0.5; }
+
+        .hr-team-avatar {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: var(--gray-100);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 900;
+            color: var(--gray-400);
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+        .hr-team-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .hr-team-details { flex: 1; min-width: 0; }
+        .hr-team-name {
+            font-weight: 800;
+            font-size: var(--font-base);
+            color: var(--gray-800);
+            margin-bottom: 4px;
+        }
+        .hr-team-role {
+            font-size: var(--font-xs);
+            color: var(--gray-500);
+            margin-bottom: 8px;
+        }
+        .hr-team-contact {
+            font-size: var(--font-xs);
+            color: var(--gray-600);
+            line-height: 1.6;
+        }
+        .hr-team-stats {
+            font-size: 11px;
+            color: var(--gray-500);
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--gray-100);
+        }
+        .hr-team-edit {
+            margin-top: 10px;
+            padding: 6px 14px;
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            border-radius: var(--radius-xs);
+            font-family: inherit;
+            font-size: var(--font-xs);
+            font-weight: 700;
+            cursor: pointer;
+            color: var(--gray-600);
+        }
+        .hr-team-edit:hover { background: var(--gray-50); color: var(--primary); }
+
+        /* ==========================================
+           TAB 4: REPORTS
+           ========================================== */
+        .hr-report-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .hr-report-controls select,
+        .hr-report-controls input {
+            padding: 8px 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-family: inherit;
+            font-size: var(--font-sm);
+            background: var(--white);
+            color: var(--gray-700);
+        }
+
+        .hr-report-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .hr-report-stat {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 16px;
+            text-align: center;
+            box-shadow: var(--shadow-xs);
+        }
+        .hr-report-stat .stat-value {
+            font-size: 24px;
+            font-weight: 900;
+            color: var(--gray-800);
+        }
+        .hr-report-stat .stat-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--gray-500);
+            margin-top: 4px;
+        }
+
+        .hr-report-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .hr-report-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: var(--white);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow-xs);
+            border: 1px solid var(--gray-100);
+        }
+        .hr-report-table th {
+            background: var(--gray-50);
+            padding: 10px 14px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--gray-500);
+            text-align: left;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        .hr-report-table td {
+            padding: 12px 14px;
+            font-size: var(--font-sm);
+            border-bottom: 1px solid var(--gray-50);
+            color: var(--gray-700);
+            white-space: nowrap;
+        }
+        .hr-report-table tr:last-child td { border-bottom: none; }
+        .hr-report-table tr:hover td { background: var(--gray-50); }
+        .hr-report-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+        /* ==========================================
+           MODALS
+           ========================================== */
+        .hr-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 16px;
+        }
+        .hr-modal {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 24px;
+            max-width: 440px;
+            width: 100%;
+            box-shadow: var(--shadow-lg);
+        }
+        .hr-modal h3 {
+            font-size: var(--font-lg);
+            font-weight: 800;
+            color: var(--gray-800);
+            margin-bottom: 16px;
+        }
+        .hr-modal .form-group {
+            margin-bottom: 14px;
+        }
+        .hr-modal .form-group label {
+            display: block;
+            font-size: var(--font-xs);
+            font-weight: 700;
+            color: var(--gray-600);
+            margin-bottom: 4px;
+        }
+        .hr-modal .form-group input,
+        .hr-modal .form-group select,
+        .hr-modal .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-xs);
+            font-family: inherit;
+            font-size: var(--font-sm);
+            color: var(--gray-700);
+            background: var(--white);
+            box-sizing: border-box;
+        }
+        .hr-modal .form-group textarea { resize: vertical; min-height: 60px; }
+        .hr-modal-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        .hr-modal-actions button {
+            padding: 8px 20px;
+            border: none;
+            border-radius: var(--radius-xs);
+            font-family: inherit;
+            font-size: var(--font-sm);
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+        }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-secondary {
+            background: var(--gray-100);
+            color: var(--gray-600);
+        }
+        .btn-secondary:hover { background: var(--gray-200); }
+        .btn-danger {
+            background: #EF4444;
+            color: #fff;
+        }
+        .btn-danger:hover { background: #DC2626; }
+        .btn-export {
+            padding: 8px 20px;
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            border-radius: var(--radius-xs);
+            font-family: inherit;
+            font-size: var(--font-sm);
+            font-weight: 700;
+            cursor: pointer;
+            color: var(--gray-600);
+        }
+        .btn-export:hover { background: var(--gray-50); color: var(--primary); }
+
+        /* ==========================================
+           DARK MODE
+           ========================================== */
+        body.dark-mode .hr-summary-card,
+        body.dark-mode .hr-staff-row,
+        body.dark-mode .hr-team-card,
+        body.dark-mode .hr-report-stat,
+        body.dark-mode .hr-modal {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+        }
+        body.dark-mode .hr-staff-name,
+        body.dark-mode .hr-team-name,
+        body.dark-mode .hr-today-date,
+        body.dark-mode .hr-week-label,
+        body.dark-mode .hr-modal h3 {
+            color: var(--gray-100);
+        }
+        body.dark-mode .hr-schedule-table th { background: var(--gray-800); color: var(--gray-400); border-color: var(--gray-700); }
+        body.dark-mode .hr-schedule-table td { border-color: var(--gray-700); }
+        body.dark-mode .hr-schedule-table td:first-child { background: var(--gray-800); }
+        body.dark-mode .hr-schedule-wrap { border-color: var(--gray-700); }
+        body.dark-mode .hr-report-table { background: var(--gray-800); border-color: var(--gray-700); }
+        body.dark-mode .hr-report-table th { background: var(--gray-900); border-color: var(--gray-700); }
+        body.dark-mode .hr-report-table td { border-color: var(--gray-700); color: var(--gray-300); }
+        body.dark-mode .hr-context-menu { background: var(--gray-800); border-color: var(--gray-700); }
+        body.dark-mode .hr-context-item { color: var(--gray-300); }
+        body.dark-mode .hr-context-item:hover { background: var(--gray-700); }
+
+        /* ==========================================
+           RESPONSIVE
+           ========================================== */
+        @media (max-width: 768px) {
+            .hr-tabs { gap: 2px; }
+            .hr-tab { min-width: 80px; padding: 8px 10px; font-size: 12px; }
+            .hr-schedule-controls { flex-direction: column; align-items: stretch; }
+            .hr-schedule-actions { margin-left: 0; }
+            .hr-team-grid { grid-template-columns: 1fr; }
+            .hr-team-card { padding: 14px; }
+            .hr-team-avatar { width: 48px; height: 48px; font-size: 18px; }
+            .hr-report-controls { flex-direction: column; align-items: stretch; }
+            .hr-clock-btn { min-width: 120px; padding: 8px 12px; }
+            .hr-staff-row { padding: 10px 14px; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <script>
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Maestro</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/hr" class="nav-link active">🏢 <span class="nav-text">HR</span></a>
+                    <a href="/warehouse" class="nav-link">📦 <span class="nav-text">Склад</span></a>
+                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container">
+            <div class="page-header">
+                <h2>🏢 HR</h2>
+            </div>
+
+            <div class="hr-tabs">
+                <button class="hr-tab active" data-tab="today">Хто зараз</button>
+                <button class="hr-tab" data-tab="schedule">Розклад</button>
+                <button class="hr-tab" data-tab="team">Команда</button>
+                <button class="hr-tab" data-tab="reports">Звіти</button>
+            </div>
+
+            <!-- TAB 1: TODAY -->
+            <div id="tab-today" class="hr-tab-content active">
+                <div id="todayDate" class="hr-today-date"></div>
+                <div id="todaySummary" class="hr-summary"></div>
+                <div id="todayList" class="hr-staff-list"></div>
+            </div>
+
+            <!-- TAB 2: SCHEDULE -->
+            <div id="tab-schedule" class="hr-tab-content">
+                <div class="hr-view-toggle">
+                    <button class="hr-view-btn active" data-view="week">Тиждень</button>
+                    <button class="hr-view-btn" data-view="month">Місяць</button>
+                </div>
+                <div class="hr-schedule-controls">
+                    <button id="schedPrev" class="btn-nav">◀</button>
+                    <span id="schedLabel" class="hr-week-label"></span>
+                    <button id="schedNext" class="btn-nav">▶</button>
+                    <div class="hr-schedule-actions">
+                        <button id="schedToday">Сьогодні</button>
+                        <button id="schedCopy">Копіювати тиждень</button>
+                    </div>
+                </div>
+                <div id="scheduleTemplate" style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+                    <label style="font-size:var(--font-xs);font-weight:700;color:var(--gray-600);">Шаблон:</label>
+                    <select id="templateSelect" class="hr-team-select" style="min-width:140px;"></select>
+                </div>
+                <div class="hr-schedule-wrap">
+                    <table class="hr-schedule-table">
+                        <thead id="schedHead"></thead>
+                        <tbody id="schedBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 3: TEAM -->
+            <div id="tab-team" class="hr-tab-content">
+                <div class="hr-team-filters">
+                    <input type="text" id="teamSearch" class="hr-team-search" placeholder="Пошук за ім'ям або телефоном...">
+                    <select id="teamRoleFilter" class="hr-team-select">
+                        <option value="">Всі ролі</option>
+                        <option value="animator">Аніматор</option>
+                        <option value="host">Ведуча</option>
+                        <option value="technician">Технік</option>
+                        <option value="admin">Адмін</option>
+                        <option value="cleaner">Прибиральник</option>
+                        <option value="manager">Менеджер</option>
+                        <option value="intern">Стажер</option>
+                    </select>
+                    <label style="font-size:var(--font-xs);display:flex;align-items:center;gap:6px;cursor:pointer;">
+                        <input type="checkbox" id="teamActiveOnly" checked> Тільки активні
+                    </label>
+                </div>
+                <div id="teamGrid" class="hr-team-grid"></div>
+            </div>
+
+            <!-- TAB 4: REPORTS -->
+            <div id="tab-reports" class="hr-tab-content">
+                <div class="hr-report-controls">
+                    <select id="reportMonth" class="hr-team-select"></select>
+                    <button id="reportExport" class="btn-export">📥 Експорт CSV</button>
+                </div>
+                <div id="reportSummary" class="hr-report-summary"></div>
+                <div class="hr-report-table-wrap">
+                    <table class="hr-report-table">
+                        <thead id="reportHead"></thead>
+                        <tbody id="reportBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Shift modal -->
+    <div id="shiftModal" class="hr-modal-overlay" style="display:none;">
+        <div class="hr-modal">
+            <h3 id="shiftModalTitle">Додати зміну</h3>
+            <div class="form-group">
+                <label>Початок</label>
+                <input type="time" id="shiftStart">
+            </div>
+            <div class="form-group">
+                <label>Кінець</label>
+                <input type="time" id="shiftEnd">
+            </div>
+            <div class="form-group">
+                <label>Тип</label>
+                <select id="shiftType">
+                    <option value="regular">Звичайна</option>
+                    <option value="overtime">Переробка</option>
+                    <option value="event">Подія</option>
+                    <option value="training">Навчання</option>
+                    <option value="holiday">Свято</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Перерва (хв)</label>
+                <input type="number" id="shiftBreak" value="30" min="0">
+            </div>
+            <div class="form-group">
+                <label>Нотатки</label>
+                <textarea id="shiftNotes" rows="2"></textarea>
+            </div>
+            <div class="hr-modal-actions">
+                <button id="shiftDelete" class="btn-danger" style="display:none;">Видалити</button>
+                <button id="shiftCancel" class="btn-secondary">Скасувати</button>
+                <button id="shiftSave" class="btn-primary">Зберегти</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Staff edit modal -->
+    <div id="staffEditModal" class="hr-modal-overlay" style="display:none;">
+        <div class="hr-modal" style="max-width:520px;">
+            <h3>Редагувати профіль</h3>
+            <input type="hidden" id="editStaffId">
+            <div class="form-group">
+                <label>Посада / Роль</label>
+                <select id="editRoleType">
+                    <option value="animator">Аніматор</option>
+                    <option value="host">Ведуча</option>
+                    <option value="technician">Технік</option>
+                    <option value="admin">Адмін</option>
+                    <option value="cleaner">Прибиральник</option>
+                    <option value="manager">Менеджер</option>
+                    <option value="intern">Стажер</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Телефон</label>
+                <input type="tel" id="editPhone" placeholder="+380...">
+            </div>
+            <div class="form-group">
+                <label>Дата народження</label>
+                <input type="date" id="editBirthDate">
+            </div>
+            <div class="form-group">
+                <label>Екстрений контакт</label>
+                <input type="text" id="editEmergencyContact" placeholder="Мама, Петренко О.В.">
+            </div>
+            <div class="form-group">
+                <label>Телефон екстр. контакту</label>
+                <input type="tel" id="editEmergencyPhone" placeholder="+380...">
+            </div>
+            <div class="form-group">
+                <label>Ставка грн/год</label>
+                <input type="number" id="editHourlyRate" min="0" step="10" value="0">
+            </div>
+            <div class="form-group">
+                <label>Telegram ID</label>
+                <input type="text" id="editTelegramId" placeholder="123456789">
+            </div>
+            <div class="form-group">
+                <label>Нотатки</label>
+                <textarea id="editNotes" rows="3"></textarea>
+            </div>
+            <div class="hr-modal-actions">
+                <button id="editCancel" class="btn-secondary">Скасувати</button>
+                <button id="editSave" class="btn-primary">Зберегти</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Correction modal -->
+    <div id="correctionModal" class="hr-modal-overlay" style="display:none;">
+        <div class="hr-modal">
+            <h3>Виправити час</h3>
+            <input type="hidden" id="corrRecordId">
+            <div class="form-group">
+                <label>Прихід</label>
+                <input type="time" id="corrClockIn">
+            </div>
+            <div class="form-group">
+                <label>Відхід</label>
+                <input type="time" id="corrClockOut">
+            </div>
+            <div class="form-group">
+                <label>Причина корекції</label>
+                <textarea id="corrNotes" rows="2" placeholder="Забув відмітитись..."></textarea>
+            </div>
+            <div class="hr-modal-actions">
+                <button id="corrCancel" class="btn-secondary">Скасувати</button>
+                <button id="corrSave" class="btn-primary">Зберегти</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context menu -->
+    <div id="contextMenu" class="hr-context-menu">
+        <button class="hr-context-item" data-action="sick">🏥 Позначити хворобу</button>
+        <button class="hr-context-item" data-action="vacation">🌴 Позначити відпустку</button>
+        <button class="hr-context-item" data-action="day_off">📴 Позначити вихідний</button>
+        <button class="hr-context-item" data-action="correct">✏️ Виправити час</button>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=15.0"></script>
+    <script src="js/api.js?v=15.0"></script>
+    <script src="js/auth.js?v=15.0"></script>
+    <script src="js/hr-page.js?v=15.0"></script>
+</body>
+</html>

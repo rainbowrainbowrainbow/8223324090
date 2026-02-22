@@ -4,7 +4,43 @@
  * Cross-module KPIs, charts, comparisons: bookings + finance + HR + CRM.
  */
 
-/* global apiRequest, apiVerifyToken, initDarkMode, showNotification */
+/* global apiVerifyToken, initDarkMode */
+
+// ==========================================
+// HELPERS — apiRequest & showNotification
+// ==========================================
+
+async function apiRequest(method, url, body) {
+    const token = localStorage.getItem('pzp_token');
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (body) headers['Content-Type'] = 'application/json';
+    const res = await fetch(url, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined
+    });
+    if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem('pzp_token');
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
+        if (document.getElementById('mainApp')) document.getElementById('mainApp').style.display = 'none';
+        throw new Error('Unauthorized');
+    }
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    return await res.json();
+}
+
+function showNotification(message, type = '') {
+    const el = document.getElementById('notification');
+    if (!el) return;
+    document.getElementById('notificationText').textContent = message;
+    el.className = 'notification' + (type ? ` ${type}` : '');
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 3000);
+}
 
 // ==========================================
 // STATE
@@ -396,7 +432,7 @@ function refreshAll() {
 document.addEventListener('DOMContentLoaded', async () => {
     if (typeof initDarkMode === 'function') initDarkMode();
 
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('pzp_token');
     if (!token) {
         document.getElementById('loginOverlay').classList.remove('hidden');
         document.getElementById('mainApp').style.display = 'none';
@@ -415,7 +451,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Logout
     document.getElementById('logoutBtn')?.addEventListener('click', () => {
-        localStorage.removeItem('token');
+        localStorage.removeItem('pzp_token');
         window.location.href = '/';
     });
 

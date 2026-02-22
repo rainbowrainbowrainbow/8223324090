@@ -185,6 +185,7 @@ function initTabs() {
             if (target === 'schedule') loadSchedule();
             if (target === 'team') loadTeam();
             if (target === 'reports') loadReports();
+            if (target === 'ai-team') renderAITeam();
         });
     });
 }
@@ -901,6 +902,123 @@ async function saveCorrection() {
     } else {
         showNotification(data?.error || 'Помилка', 'error');
     }
+}
+
+// ==========================================
+// TAB 5: AI TEAM (Electronic Workers)
+// ==========================================
+
+const AI_WORKERS = [
+    {
+        id: 'tymur',
+        name: 'Тимур',
+        avatar: '🤝',
+        role: 'Взаємодія з підрядниками',
+        department: 'Зовнішні комунікації',
+        status: 'active',
+        statusLabel: 'Готовий до роботи',
+        description: 'Відповідає за комунікацію з постачальниками, підрядниками та партнерами. ' +
+            'Формує запити, відстежує статуси замовлень, нагадує про дедлайни та веде архів контрактів.',
+        capabilities: [
+            'Автоматичні запити постачальникам',
+            'Відстеження статусів замовлень',
+            'Нагадування про дедлайни контрактів',
+            'Архів комунікацій з партнерами'
+        ],
+        integration: 'Підключається через Клешню (🦀). Для активації: відкрийте чат Клешні → ' +
+            'напишіть «Підключити Тимура» → Клешня надасть інструкції з налаштування.',
+        metrics: { processed: '—', avgResponse: '—', satisfaction: '—' }
+    },
+    {
+        id: 'svitlana',
+        name: 'Світлана',
+        avatar: '📋',
+        role: 'Контроль виконання задач',
+        department: 'Операційний контроль',
+        status: 'planned',
+        statusLabel: 'В розробці',
+        description: 'Моніторить виконання задач працівниками, відстежує дедлайни, ' +
+            'надсилає нагадування та ескалює прострочені задачі. Формує щоденні звіти про продуктивність.',
+        capabilities: [
+            'Моніторинг дедлайнів задач',
+            'Автоматичні нагадування виконавцям',
+            'Ескалація прострочених задач',
+            'Щоденні звіти про продуктивність команди'
+        ],
+        integration: 'Буде інтегрована з системою задач (📝 Задачі) та Telegram-сповіщеннями.',
+        metrics: { processed: '—', avgResponse: '—', satisfaction: '—' }
+    },
+    {
+        id: 'taras',
+        name: 'Тарас',
+        avatar: '📊',
+        role: 'Звіти та аналітика',
+        department: 'Аналітичний відділ',
+        status: 'planned',
+        statusLabel: 'В розробці',
+        description: 'Приймає звіти від працівників, обробляє та структурує дані, ' +
+            'публікує результати на сайті. Автоматично генерує зведені звіти за період.',
+        capabilities: [
+            'Прийом та валідація звітів',
+            'Автоматична обробка даних',
+            'Генерація зведених звітів',
+            'Публікація результатів на сайт'
+        ],
+        integration: 'Буде інтегрований з модулями Фінанси (💰), Аналітика (📊) та HR-звітами.',
+        metrics: { processed: '—', avgResponse: '—', satisfaction: '—' }
+    }
+];
+
+function renderAITeam() {
+    const grid = document.getElementById('aiTeamGrid');
+    if (!grid) return;
+
+    grid.innerHTML = AI_WORKERS.map(w => {
+        const statusColor = w.status === 'active' ? '#10B981' : '#F59E0B';
+        const statusIcon = w.status === 'active' ? '●' : '◐';
+        const capsList = w.capabilities.map(c => `<li>${escapeHtml(c)}</li>`).join('');
+
+        return `
+        <div class="hr-team-card" style="cursor:default;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#6366F1,#8B5CF6);
+                    display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;">
+                    ${w.avatar}
+                </div>
+                <div style="flex:1;min-width:0;">
+                    <div class="hr-team-name" style="font-size:18px;margin-bottom:2px;">${escapeHtml(w.name)}</div>
+                    <div style="font-size:12px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;">
+                        ${escapeHtml(w.department)}
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:${statusColor};
+                    background:${statusColor}15;padding:4px 10px;border-radius:12px;white-space:nowrap;">
+                    ${statusIcon} ${escapeHtml(w.statusLabel)}
+                </div>
+            </div>
+
+            <div class="hr-team-role" style="font-size:15px;font-weight:800;color:var(--gray-800);margin-bottom:8px;">
+                ${escapeHtml(w.role)}
+            </div>
+
+            <p style="font-size:13px;color:var(--gray-600);line-height:1.6;margin:0 0 12px 0;">
+                ${escapeHtml(w.description)}
+            </p>
+
+            <div style="margin-bottom:12px;">
+                <div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">
+                    Можливості
+                </div>
+                <ul style="margin:0;padding-left:18px;font-size:12px;color:var(--gray-600);line-height:1.8;">
+                    ${capsList}
+                </ul>
+            </div>
+
+            <div style="background:var(--gray-50);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--gray-600);line-height:1.5;">
+                <strong style="color:var(--gray-700);">Інтеграція:</strong> ${escapeHtml(w.integration)}
+            </div>
+        </div>`;
+    }).join('');
 }
 
 // ==========================================

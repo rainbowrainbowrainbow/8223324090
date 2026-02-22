@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v17.0.0**. Export, Budget & Procurement.
+Версія **v17.1.0**. AI Team & Contractor Cards.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -29,7 +29,8 @@
 - v16.0.0: Finance Module — каса, P&L, зарплати, категорії, автозапис, CSV
 - v16.1.0: Analytics v2 — єдиний дашборд (bookings + finance + HR + CRM)
 - v16.2.0: Swagger API Docs — /api-docs, OpenAPI 3.0, 136 ендпоінтів
-- **v17.0.0: Export Excel/PDF + Бюджетне планування + Система закупок**
+- v17.0.0: Export Excel/PDF + Бюджетне планування + Система закупок
+- **v17.1.0: AI Team редизайн — акордеон-панелі, журнал, відправка на завдання**
 
 ## Архітектура
 - **11 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse

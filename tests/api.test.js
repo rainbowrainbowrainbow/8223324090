@@ -3090,3 +3090,177 @@ describe('CRM Booking Integration (v15.1)', () => {
         if (customerId) await authRequest('DELETE', `/api/customers/${customerId}`);
     });
 });
+
+// ==========================================
+// CRM PHASE 2 (v15.1)
+// ==========================================
+
+describe('CRM Phase 2 — Filters & Sorting (v15.1)', () => {
+    let customerId1, customerId2;
+
+    before(async () => {
+        const res1 = await authRequest('POST', '/api/customers', {
+            name: 'Фільтр Тест Один',
+            phone: '+380501110001',
+            source: 'instagram',
+            childName: 'Аліса',
+            childBirthday: '2019-06-15'
+        });
+        customerId1 = res1.data.id;
+
+        const res2 = await authRequest('POST', '/api/customers', {
+            name: 'Фільтр Тест Два',
+            phone: '+380501110002',
+            source: 'google',
+            childName: 'Борис',
+            childBirthday: '2020-01-10'
+        });
+        customerId2 = res2.data.id;
+    });
+
+    it('GET /api/customers?source=instagram — filter by source', async () => {
+        const res = await authRequest('GET', '/api/customers?source=instagram');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.customers.length > 0);
+        for (const c of res.data.customers) {
+            assert.equal(c.source, 'instagram');
+        }
+    });
+
+    it('GET /api/customers?source=google — filter by source google', async () => {
+        const res = await authRequest('GET', '/api/customers?source=google');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.customers.length > 0);
+        for (const c of res.data.customers) {
+            assert.equal(c.source, 'google');
+        }
+    });
+
+    it('GET /api/customers?sortBy=name — sort by name', async () => {
+        const res = await authRequest('GET', '/api/customers?sortBy=name');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.customers.length >= 2);
+        // Should be alphabetically sorted
+        for (let i = 1; i < res.data.customers.length; i++) {
+            assert.ok(res.data.customers[i].name >= res.data.customers[i - 1].name,
+                'Should be sorted by name ASC');
+        }
+    });
+
+    it('GET /api/customers?sortBy=total_spent — sort by spend', async () => {
+        const res = await authRequest('GET', '/api/customers?sortBy=total_spent');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.customers.length > 0);
+    });
+
+    it('GET /api/customers?search=Фільтр — text search works with filters', async () => {
+        const res = await authRequest('GET', '/api/customers?search=Фільтр&source=instagram');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.customers.length >= 1);
+        assert.ok(res.data.customers[0].name.includes('Фільтр'));
+        assert.equal(res.data.customers[0].source, 'instagram');
+    });
+
+    after(async () => {
+        if (customerId1) await authRequest('DELETE', `/api/customers/${customerId1}`);
+        if (customerId2) await authRequest('DELETE', `/api/customers/${customerId2}`);
+    });
+});
+
+describe('CRM Phase 2 — Stats (v15.1)', () => {
+    it('GET /api/customers/stats — returns overview', async () => {
+        const res = await authRequest('GET', '/api/customers/stats');
+        assert.equal(res.status, 200);
+        assert.ok(typeof res.data.total === 'number');
+        assert.ok(Array.isArray(res.data.bySource));
+        assert.ok(Array.isArray(res.data.topBySpent));
+        assert.ok(Array.isArray(res.data.recentCustomers));
+        assert.ok(res.data.averages);
+    });
+});
+
+describe('CRM Phase 2 — RFM Analytics (v15.1)', () => {
+    let customerId;
+
+    before(async () => {
+        const res = await authRequest('POST', '/api/customers', {
+            name: 'RFM Тест Клієнт',
+            phone: '+380509990001'
+        });
+        customerId = res.data.id;
+    });
+
+    it('GET /api/customers/rfm — returns RFM data', async () => {
+        const res = await authRequest('GET', '/api/customers/rfm');
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.customers));
+        assert.ok(res.data.segments);
+        assert.ok(typeof res.data.total === 'number');
+    });
+
+    it('GET /api/customers/rfm — customers have RFM scores', async () => {
+        const res = await authRequest('GET', '/api/customers/rfm');
+        assert.equal(res.status, 200);
+        if (res.data.customers.length > 0) {
+            const c = res.data.customers[0];
+            assert.ok(typeof c.rScore === 'number', 'Should have R score');
+            assert.ok(typeof c.fScore === 'number', 'Should have F score');
+            assert.ok(typeof c.mScore === 'number', 'Should have M score');
+            assert.ok(typeof c.rfmScore === 'number', 'Should have total RFM score');
+            assert.ok(c.rfmSegment, 'Should have RFM segment');
+        }
+    });
+
+    it('GET /api/customers/rfm — segments have correct keys', async () => {
+        const res = await authRequest('GET', '/api/customers/rfm');
+        assert.equal(res.status, 200);
+        const seg = res.data.segments;
+        assert.ok(typeof seg.champions === 'number');
+        assert.ok(typeof seg.loyal === 'number');
+        assert.ok(typeof seg.potential === 'number');
+        assert.ok(typeof seg.atRisk === 'number');
+        assert.ok(typeof seg.lost === 'number');
+    });
+
+    after(async () => {
+        if (customerId) await authRequest('DELETE', `/api/customers/${customerId}`);
+    });
+});
+
+describe('CRM Phase 2 — CSV Export (v15.1)', () => {
+    it('GET /api/customers/export — returns CSV', async () => {
+        const token = await getToken();
+        // Use native fetch directly because helper parses as JSON
+        const res = await fetch('http://localhost:3000/api/customers/export', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        assert.equal(res.status, 200);
+        const contentType = res.headers.get('content-type') || '';
+        assert.ok(contentType.includes('text/csv'), `Expected text/csv, got ${contentType}`);
+        const body = await res.text();
+        assert.ok(body.length > 10, 'CSV should have content');
+    });
+});
+
+describe('CRM Phase 2 — Customer Detail with Certificates (v15.1)', () => {
+    let customerId;
+
+    before(async () => {
+        const res = await authRequest('POST', '/api/customers', {
+            name: 'Сертифікат Тест',
+            phone: '+380501112233'
+        });
+        customerId = res.data.id;
+    });
+
+    it('GET /api/customers/:id — includes certificates array', async () => {
+        const res = await authRequest('GET', `/api/customers/${customerId}`);
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.certificates), 'Should have certificates array');
+        assert.ok(Array.isArray(res.data.bookings), 'Should have bookings array');
+    });
+
+    after(async () => {
+        if (customerId) await authRequest('DELETE', `/api/customers/${customerId}`);
+    });
+});

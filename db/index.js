@@ -575,6 +575,10 @@ async function initDatabase() {
         // v8.7: Season column for seasonal certificate backgrounds
         await pool.query(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS season VARCHAR(10) DEFAULT 'winter'`);
 
+        // v15.1: Link certificates to customers
+        await pool.query(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)`);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_certificates_customer_id ON certificates(customer_id)');
+
         await pool.query(`
             CREATE TABLE IF NOT EXISTS certificate_counter (
                 year INTEGER PRIMARY KEY,

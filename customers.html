@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Maestro | Клієнти</title>
+    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Maestro">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=15.1">
+    <link rel="stylesheet" href="css/layout.css?v=15.1">
+    <link rel="stylesheet" href="css/pages.css?v=15.1">
+    <link rel="stylesheet" href="css/modals.css?v=15.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=15.1">
+    <link rel="stylesheet" href="css/responsive.css?v=15.1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* ==========================================
+           CRM PAGE STYLES
+           ========================================== */
+
+        .crm-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 16px;
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-xs);
+            text-align: center;
+        }
+
+        .stat-card .stat-value {
+            font-size: 28px;
+            font-weight: 900;
+            color: var(--primary);
+            line-height: 1.2;
+        }
+
+        .stat-card .stat-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+
+        /* Filter bar */
+        .crm-filters {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .crm-filters input,
+        .crm-filters select {
+            padding: 8px 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: var(--font-sm);
+            font-family: inherit;
+            min-height: 44px;
+            box-sizing: border-box;
+        }
+
+        .crm-filters input:focus,
+        .crm-filters select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+        }
+
+        .crm-search {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .crm-filter-select {
+            min-width: 140px;
+        }
+
+        .crm-filter-date {
+            width: 140px;
+        }
+
+        .crm-toolbar {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .crm-toolbar .btn-page-secondary {
+            font-size: 12px;
+            padding: 6px 14px;
+            min-height: 36px;
+            white-space: nowrap;
+            border-radius: var(--radius-sm);
+        }
+
+        /* Tab bar */
+        .crm-tabs {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 16px;
+            background: var(--gray-100);
+            border-radius: var(--radius);
+            padding: 3px;
+        }
+
+        .crm-tab {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            background: transparent;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--gray-500);
+            cursor: pointer;
+            border-radius: var(--radius-sm);
+            transition: all 0.15s;
+            text-align: center;
+            min-height: 44px;
+        }
+
+        .crm-tab:hover {
+            color: var(--gray-700);
+        }
+
+        .crm-tab.active {
+            background: var(--white);
+            color: var(--gray-800);
+            box-shadow: var(--shadow-xs);
+        }
+
+        /* Customer table */
+        .crm-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--gray-100);
+        }
+
+        .crm-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 800px;
+            background: var(--white);
+        }
+
+        .crm-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: var(--gray-50);
+            padding: 10px 12px;
+            font-size: 11px;
+            font-weight: 800;
+            color: var(--gray-500);
+            text-align: left;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--gray-200);
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .crm-table thead th:hover {
+            color: var(--gray-700);
+        }
+
+        .crm-table tbody tr {
+            transition: background 0.1s;
+            cursor: pointer;
+        }
+
+        .crm-table tbody tr:hover {
+            background: rgba(16,185,129,0.03);
+        }
+
+        .crm-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--gray-100);
+            font-size: 13px;
+            color: var(--gray-700);
+        }
+
+        .crm-table .customer-name {
+            font-weight: 700;
+            color: var(--gray-800);
+        }
+
+        .crm-table .customer-child {
+            font-size: 12px;
+            color: var(--gray-400);
+        }
+
+        .crm-table .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .badge-source {
+            background: rgba(16,185,129,0.1);
+            color: #059669;
+        }
+
+        .badge-visits {
+            background: rgba(59,130,246,0.1);
+            color: #2563EB;
+        }
+
+        .badge-spent {
+            background: rgba(245,158,11,0.1);
+            color: #D97706;
+        }
+
+        /* RFM segments */
+        .rfm-champion { background: rgba(16,185,129,0.15); color: #059669; }
+        .rfm-loyal { background: rgba(59,130,246,0.15); color: #2563EB; }
+        .rfm-potential { background: rgba(245,158,11,0.15); color: #D97706; }
+        .rfm-at_risk { background: rgba(239,68,68,0.15); color: #DC2626; }
+        .rfm-lost { background: rgba(100,116,139,0.15); color: #64748B; }
+
+        /* RFM chart */
+        .rfm-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .rfm-segment-card {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 16px;
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-xs);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .rfm-segment-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .rfm-segment-info .rfm-count {
+            font-size: 22px;
+            font-weight: 900;
+            line-height: 1.2;
+        }
+
+        .rfm-segment-info .rfm-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--gray-500);
+        }
+
+        /* Pagination */
+        .crm-pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .crm-pagination button {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .crm-pagination button:hover:not(:disabled) {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .crm-pagination button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .crm-pagination .page-info {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--gray-500);
+        }
+
+        /* Empty state */
+        .crm-empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--gray-400);
+        }
+
+        .crm-empty .empty-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .crm-empty .empty-text {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        /* Detail panel */
+        .customer-detail {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 20px;
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .customer-detail-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .customer-detail-header h3 {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--gray-800);
+        }
+
+        .detail-section {
+            margin-bottom: 16px;
+        }
+
+        .detail-section h4 {
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 16px;
+        }
+
+        .detail-field {
+            font-size: 13px;
+        }
+
+        .detail-field .field-label {
+            font-weight: 700;
+            color: var(--gray-500);
+            font-size: 11px;
+        }
+
+        .detail-field .field-value {
+            color: var(--gray-800);
+            font-weight: 600;
+        }
+
+        .detail-bookings {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .detail-booking-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--gray-50);
+            font-size: 13px;
+        }
+
+        .detail-booking-row:last-child {
+            border-bottom: none;
+        }
+
+        /* Dark mode */
+        [data-theme="dark"] .stat-card {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .stat-card .stat-label { color: var(--gray-400); }
+        [data-theme="dark"] .crm-tabs { background: var(--gray-800); }
+        [data-theme="dark"] .crm-tab { color: var(--gray-400); }
+        [data-theme="dark"] .crm-tab.active {
+            background: var(--gray-700);
+            color: var(--gray-200);
+        }
+        [data-theme="dark"] .crm-table {
+            background: var(--gray-800);
+        }
+        [data-theme="dark"] .crm-table thead th {
+            background: var(--gray-700);
+            color: var(--gray-400);
+            border-bottom-color: var(--gray-600);
+        }
+        [data-theme="dark"] .crm-table td {
+            border-bottom-color: var(--gray-700);
+            color: var(--gray-300);
+        }
+        [data-theme="dark"] .crm-table .customer-name { color: var(--gray-200); }
+        [data-theme="dark"] .crm-table tbody tr:hover {
+            background: rgba(16,185,129,0.05);
+        }
+        [data-theme="dark"] .crm-table-wrap {
+            border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .crm-filters input,
+        [data-theme="dark"] .crm-filters select {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+            color: var(--gray-200);
+        }
+        [data-theme="dark"] .crm-pagination button {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+            color: var(--gray-300);
+        }
+        [data-theme="dark"] .rfm-segment-card {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .customer-detail {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .customer-detail-header h3 { color: var(--gray-200); }
+        [data-theme="dark"] .detail-field .field-value { color: var(--gray-200); }
+        [data-theme="dark"] .detail-booking-row { border-bottom-color: var(--gray-700); }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .crm-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .crm-filters {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .crm-search { min-width: 0; }
+            .crm-filter-date { width: 100%; }
+            .crm-filter-select { min-width: 0; }
+            .crm-toolbar {
+                justify-content: center;
+            }
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+            .rfm-overview {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <!-- Login overlay -->
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Maestro</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/hr" class="nav-link">🏢 <span class="nav-text">HR</span></a>
+                    <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
+                    <a href="/customers" class="nav-link active">🗂 <span class="nav-text">Клієнти</span></a>
+                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container">
+            <div class="page-header">
+                <h2>🗂 База клієнтів</h2>
+                <div style="display:flex;gap:6px">
+                    <button id="exportCsvBtn" class="btn-page-secondary" style="display:none">📥 Експорт CSV</button>
+                    <button id="addCustomerBtn" class="btn-page-primary" style="display:none">+ Новий клієнт</button>
+                </div>
+            </div>
+
+            <!-- Stats overview -->
+            <div id="crmStats" class="crm-stats"></div>
+
+            <!-- Tabs -->
+            <div class="crm-tabs">
+                <button class="crm-tab active" data-tab="list">📋 Список</button>
+                <button class="crm-tab" data-tab="rfm">📊 RFM-аналітика</button>
+            </div>
+
+            <!-- List tab -->
+            <div id="tabList">
+                <!-- Filters -->
+                <div class="crm-filters">
+                    <input type="text" id="searchInput" class="crm-search" placeholder="Пошук по імені, телефону, Instagram...">
+                    <select id="sourceFilter" class="crm-filter-select">
+                        <option value="">Всі джерела</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="google">Google</option>
+                        <option value="recommendation">Рекомендація</option>
+                        <option value="repeat">Повторний</option>
+                        <option value="other">Інше</option>
+                    </select>
+                    <select id="sortFilter" class="crm-filter-select">
+                        <option value="updated_at">За оновленням</option>
+                        <option value="name">За іменем</option>
+                        <option value="total_bookings">За візитами</option>
+                        <option value="total_spent">За витратами</option>
+                        <option value="last_visit">За останнім візитом</option>
+                        <option value="created_at">За створенням</option>
+                    </select>
+                    <input type="date" id="dateFromFilter" class="crm-filter-date" title="Візити від">
+                    <input type="date" id="dateToFilter" class="crm-filter-date" title="Візити до">
+                </div>
+
+                <!-- Table -->
+                <div class="crm-table-wrap">
+                    <table class="crm-table">
+                        <thead>
+                            <tr>
+                                <th>Клієнт</th>
+                                <th>Телефон</th>
+                                <th>Instagram</th>
+                                <th>Джерело</th>
+                                <th>Візити</th>
+                                <th>Витрачено</th>
+                                <th>Останній візит</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customerTableBody"></tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div id="pagination" class="crm-pagination"></div>
+            </div>
+
+            <!-- RFM tab -->
+            <div id="tabRfm" style="display:none">
+                <div id="rfmOverview" class="rfm-overview"></div>
+                <div class="crm-table-wrap">
+                    <table class="crm-table">
+                        <thead>
+                            <tr>
+                                <th>Клієнт</th>
+                                <th>R (днів)</th>
+                                <th>F (візити)</th>
+                                <th>M (грн)</th>
+                                <th>RFM</th>
+                                <th>Сегмент</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rfmTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Customer detail modal -->
+    <div id="customerDetailModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Деталі клієнта">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <div id="customerDetailContent"></div>
+        </div>
+    </div>
+
+    <!-- Customer edit modal -->
+    <div id="customerEditModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Редагувати клієнта">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3 id="customerEditTitle">Новий клієнт</h3>
+            <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Ім'я клієнта *</label>
+                    <input type="text" id="editName" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;min-height:44px;box-sizing:border-box">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Телефон</label>
+                        <input type="tel" id="editPhone" placeholder="+380..." style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;min-height:44px;box-sizing:border-box">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Instagram</label>
+                        <input type="text" id="editInstagram" placeholder="@username" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;min-height:44px;box-sizing:border-box">
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Ім'я дитини</label>
+                        <input type="text" id="editChildName" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;min-height:44px;box-sizing:border-box">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">ДН дитини</label>
+                        <input type="date" id="editChildBirthday" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px;box-sizing:border-box">
+                    </div>
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Звідки дізналися</label>
+                    <select id="editSource" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;min-height:44px;box-sizing:border-box">
+                        <option value="">Не вказано</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="google">Google</option>
+                        <option value="recommendation">Рекомендація</option>
+                        <option value="repeat">Повторний</option>
+                        <option value="other">Інше</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Нотатки</label>
+                    <textarea id="editNotes" rows="3" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:4px">
+                    <button id="saveCustomerBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
+                    <button id="cancelEditBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- v10.4: Profile modal -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=15.1"></script>
+    <script src="js/api.js?v=15.1"></script>
+    <script src="js/auth.js?v=15.1"></script>
+    <script src="js/customers-page.js?v=15.1"></script>
+</body>
+</html>

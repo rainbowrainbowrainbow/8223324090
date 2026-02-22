@@ -835,11 +835,79 @@ async function checkStreakUpdates() {
     }
 }
 
+// v15.1: Birthday greeting — runs daily at 09:00 Kyiv time
+// Checks customers with child_birthday matching today (month-day) and sends Telegram notification
+let birthdaySentToday = null;
+
+async function checkBirthdayGreetings() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (birthdaySentToday === todayStr) return;
+
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '09:00') return;
+
+        const dbLast = await getLastSent('birthday_greeting');
+        if (dbLast === todayStr) { birthdaySentToday = todayStr; return; }
+
+        birthdaySentToday = todayStr;
+        await setLastSent('birthday_greeting', todayStr);
+
+        // Find customers whose child has a birthday today (match month and day)
+        const kyiv = getKyivDate();
+        const month = kyiv.getMonth() + 1;
+        const day = kyiv.getDate();
+
+        const result = await pool.query(
+            `SELECT id, name, phone, child_name, child_birthday, total_bookings, total_spent
+             FROM customers
+             WHERE child_birthday IS NOT NULL
+               AND EXTRACT(MONTH FROM child_birthday) = $1
+               AND EXTRACT(DAY FROM child_birthday) = $2`,
+            [month, day]
+        );
+
+        if (result.rows.length === 0) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        const [y, m, d] = todayStr.split('-');
+        let text = `🎂 <b>ДНІ НАРОДЖЕННЯ СЬОГОДНІ (${d}.${m}.${y})</b>\n\n`;
+
+        for (const customer of result.rows) {
+            const childAge = customer.child_birthday
+                ? kyiv.getFullYear() - new Date(customer.child_birthday).getFullYear()
+                : '?';
+
+            text += `🎁 <b>${customer.child_name || 'Дитина'}</b>`;
+            if (childAge !== '?') text += ` — ${childAge} р.`;
+            text += `\n`;
+            text += `   👤 Клієнт: ${customer.name}`;
+            if (customer.phone) text += ` · 📞 ${customer.phone}`;
+            text += `\n`;
+            if (customer.total_bookings > 0) {
+                text += `   📊 Візитів: ${customer.total_bookings} · Витрачено: ${customer.total_spent || 0} ₴\n`;
+            }
+            text += `\n`;
+        }
+
+        text += `💡 <i>Зателефонуйте та запропонуйте святкування!</i>`;
+
+        await sendTelegramMessage(chatId, text, { silent: false });
+        log.info(`Birthday greetings sent: ${result.rows.length} birthdays for ${todayStr}`);
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('BirthdayGreetings error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
     checkScheduledDeletions, checkRecurringAfisha, ensureRecurringAfishaForDate,
     checkRecurringBookings, checkCertificateExpiry,
     checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset,
-    checkStreakUpdates
+    checkStreakUpdates, checkBirthdayGreetings
 };

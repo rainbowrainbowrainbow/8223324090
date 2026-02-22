@@ -3569,3 +3569,213 @@ describe('Analytics — Static Page (v16.1)', () => {
         assert.ok(body.includes('Аналітика'), 'Should contain Аналітика');
     });
 });
+
+// ==========================================
+// BUDGET PLANNING (v17.0)
+// ==========================================
+
+describe('Budget — CRUD (v17.0)', () => {
+    it('GET /api/finance/budget — returns budget plans for year', async () => {
+        const res = await authRequest('GET', '/api/finance/budget?year=2026');
+        assert.equal(res.status, 200);
+        assert.equal(res.data.year, 2026);
+        assert.ok(Array.isArray(res.data.plans));
+    });
+
+    it('PUT /api/finance/budget — creates/updates budget plan', async () => {
+        // Get first category
+        const cats = await authRequest('GET', '/api/finance/categories');
+        assert.equal(cats.status, 200);
+        const catId = cats.data[0].id;
+
+        const res = await authRequest('PUT', '/api/finance/budget', {
+            year: 2099,
+            month: 1,
+            categoryId: catId,
+            plannedAmount: 50000,
+            notes: 'Test budget'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+
+    it('PUT /api/finance/budget — validation errors', async () => {
+        const res = await authRequest('PUT', '/api/finance/budget', { year: 2099 });
+        assert.equal(res.status, 400);
+    });
+
+    it('GET /api/finance/budget/comparison — returns plan vs fact', async () => {
+        const res = await authRequest('GET', '/api/finance/budget/comparison?year=2099&month=1');
+        assert.equal(res.status, 200);
+        assert.equal(res.data.year, 2099);
+        assert.equal(res.data.month, 1);
+        assert.ok(Array.isArray(res.data.comparison));
+        assert.ok(res.data.totals);
+    });
+});
+
+// ==========================================
+// PROCUREMENT (v17.0)
+// ==========================================
+
+describe('Procurement — Lists CRUD (v17.0)', () => {
+    let testListId;
+
+    it('POST /api/procurement — creates a list', async () => {
+        const res = await authRequest('POST', '/api/procurement', {
+            title: 'Test Procurement',
+            department: 'animators',
+            plannedDate: testDate()
+        });
+        assert.equal(res.status, 201);
+        assert.ok(res.data.success);
+        assert.ok(res.data.list);
+        assert.ok(res.data.list.id);
+        testListId = res.data.list.id;
+    });
+
+    it('GET /api/procurement — lists all procurement lists', async () => {
+        const res = await authRequest('GET', '/api/procurement');
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.lists));
+        assert.ok(res.data.lists.length > 0);
+    });
+
+    it('GET /api/procurement — filter by department', async () => {
+        const res = await authRequest('GET', '/api/procurement?department=animators');
+        assert.equal(res.status, 200);
+        for (const list of res.data.lists) {
+            assert.equal(list.department, 'animators');
+        }
+    });
+
+    it('GET /api/procurement/:id — returns list with items', async () => {
+        const res = await authRequest('GET', `/api/procurement/${testListId}`);
+        assert.equal(res.status, 200);
+        assert.equal(res.data.id, testListId);
+        assert.ok(Array.isArray(res.data.items));
+        assert.equal(res.data.departmentLabel, 'Аніматорська');
+    });
+
+    it('PUT /api/procurement/:id — updates list', async () => {
+        const res = await authRequest('PUT', `/api/procurement/${testListId}`, {
+            title: 'Updated Procurement',
+            status: 'approved'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+
+    it('POST /api/procurement — validation errors', async () => {
+        const res = await authRequest('POST', '/api/procurement', { title: '' });
+        assert.equal(res.status, 400);
+    });
+});
+
+describe('Procurement — Items CRUD (v17.0)', () => {
+    let testListId;
+    let testItemId;
+
+    before(async () => {
+        const res = await authRequest('POST', '/api/procurement', {
+            title: 'Items Test List',
+            department: 'cleaning'
+        });
+        testListId = res.data.list.id;
+    });
+
+    it('POST /api/procurement/:id/items — adds item', async () => {
+        const res = await authRequest('POST', `/api/procurement/${testListId}/items`, {
+            name: 'Губки для миття',
+            quantity: 10,
+            unit: 'уп',
+            estimatedPrice: 50
+        });
+        assert.equal(res.status, 201);
+        assert.ok(res.data.success);
+        assert.ok(res.data.item);
+        testItemId = res.data.item.id;
+    });
+
+    it('PUT /api/procurement/:id/items/:itemId — updates item', async () => {
+        const res = await authRequest('PUT', `/api/procurement/${testListId}/items/${testItemId}`, {
+            isPurchased: true,
+            actualPrice: 45
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+
+    it('DELETE /api/procurement/:id/items/:itemId — removes item', async () => {
+        // Add another item then delete it
+        const add = await authRequest('POST', `/api/procurement/${testListId}/items`, {
+            name: 'Delete me',
+            quantity: 1
+        });
+        const res = await authRequest('DELETE', `/api/procurement/${testListId}/items/${add.data.item.id}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+
+    it('POST /api/procurement/:id/items — validation errors', async () => {
+        const res = await authRequest('POST', `/api/procurement/${testListId}/items`, { name: '' });
+        assert.equal(res.status, 400);
+    });
+});
+
+describe('Procurement — Suggestions (v17.0)', () => {
+    it('GET /api/procurement/suggestions/low-stock — returns suggestions', async () => {
+        const res = await authRequest('GET', '/api/procurement/suggestions/low-stock');
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.suggestions));
+    });
+});
+
+describe('Procurement — Complete (v17.0)', () => {
+    it('POST /api/procurement/:id/complete — completes list', async () => {
+        const list = await authRequest('POST', '/api/procurement', {
+            title: 'Complete Test',
+            department: 'tech'
+        });
+        const listId = list.data.list.id;
+
+        // Add item
+        await authRequest('POST', `/api/procurement/${listId}/items`, {
+            name: 'Test cable', quantity: 2, estimatedPrice: 100
+        });
+
+        const res = await authRequest('POST', `/api/procurement/${listId}/complete`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(typeof res.data.restockedCount === 'number');
+    });
+});
+
+describe('Finance — Excel Export (v17.0)', () => {
+    it('GET /api/finance/export-xlsx — returns XLSX', async () => {
+        const token = await getToken();
+        const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
+        const res = await fetch(`${BASE_URL}/api/finance/export-xlsx?from=${testDate()}&to=${testDate()}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.headers.get('content-type').includes('spreadsheetml'));
+    });
+
+    it('GET /api/finance/export-xlsx — requires dates', async () => {
+        const res = await authRequest('GET', '/api/finance/export-xlsx');
+        assert.equal(res.status, 400);
+    });
+});
+
+describe('Customers — Excel Export (v17.0)', () => {
+    it('GET /api/customers/export-xlsx — returns XLSX', async () => {
+        const token = await getToken();
+        const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
+        const res = await fetch(`${BASE_URL}/api/customers/export-xlsx`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.headers.get('content-type').includes('spreadsheetml'));
+    });
+});

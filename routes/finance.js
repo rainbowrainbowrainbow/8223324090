@@ -506,6 +506,237 @@ router.get('/report/salary', async (req, res) => {
 });
 
 // ==========================================
+// BUDGET PLANNING (v17.0)
+// ==========================================
+
+// GET /api/finance/budget — get budget plan for a year
+router.get('/budget', async (req, res) => {
+    try {
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+
+        const result = await pool.query(`
+            SELECT bp.*, fc.name AS category_name, fc.type AS category_type,
+                   fc.icon AS category_icon, fc.color AS category_color
+            FROM budget_plans bp
+            JOIN finance_categories fc ON bp.category_id = fc.id
+            WHERE bp.year = $1
+            ORDER BY bp.month, fc.type, fc.sort_order
+        `, [year]);
+
+        res.json({
+            year,
+            plans: result.rows.map(r => ({
+                id: r.id,
+                year: r.year,
+                month: r.month,
+                categoryId: r.category_id,
+                categoryName: r.category_name,
+                categoryType: r.category_type,
+                categoryIcon: r.category_icon,
+                categoryColor: r.category_color,
+                plannedAmount: r.planned_amount,
+                notes: r.notes,
+                createdBy: r.created_by
+            }))
+        });
+    } catch (err) {
+        log.error('GET /budget error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PUT /api/finance/budget — create or update a budget entry (upsert)
+router.put('/budget', async (req, res) => {
+    try {
+        const { year, month, categoryId, plannedAmount, notes } = req.body;
+
+        if (!year || !month || !categoryId || plannedAmount === undefined) {
+            return res.status(400).json({ error: 'year, month, categoryId, plannedAmount required' });
+        }
+        if (month < 1 || month > 12) {
+            return res.status(400).json({ error: 'month must be 1-12' });
+        }
+        if (typeof plannedAmount !== 'number' || plannedAmount < 0) {
+            return res.status(400).json({ error: 'plannedAmount must be a non-negative number' });
+        }
+
+        const result = await pool.query(`
+            INSERT INTO budget_plans (year, month, category_id, planned_amount, notes, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (year, month, category_id)
+            DO UPDATE SET planned_amount = $4, notes = $5, updated_at = NOW()
+            RETURNING *
+        `, [year, month, categoryId, plannedAmount, notes || null, req.user.username]);
+
+        res.json({ success: true, plan: result.rows[0] });
+    } catch (err) {
+        log.error('PUT /budget error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// DELETE /api/finance/budget/:id — delete a budget entry
+router.delete('/budget/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query('DELETE FROM budget_plans WHERE id = $1 RETURNING id', [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Budget plan not found' });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /budget error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/finance/budget/comparison — plan vs fact
+router.get('/budget/comparison', async (req, res) => {
+    try {
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+        const month = parseInt(req.query.month) || (new Date().getMonth() + 1);
+
+        const range = getMonthRange(year, month);
+
+        // Get budget plans for this month
+        const plans = await pool.query(`
+            SELECT bp.category_id, bp.planned_amount, fc.name, fc.type, fc.icon, fc.color
+            FROM budget_plans bp
+            JOIN finance_categories fc ON bp.category_id = fc.id
+            WHERE bp.year = $1 AND bp.month = $2
+            ORDER BY fc.type, fc.sort_order
+        `, [year, month]);
+
+        // Get actual spending per category for this month
+        const actuals = await pool.query(`
+            SELECT category_id,
+                COALESCE(SUM(amount), 0)::int AS actual_amount,
+                COUNT(*)::int AS transaction_count
+            FROM finance_transactions
+            WHERE date >= $1 AND date <= $2
+            GROUP BY category_id
+        `, [range.from, range.to]);
+
+        const actualMap = {};
+        for (const r of actuals.rows) {
+            actualMap[r.category_id] = { actual: r.actual_amount, count: r.transaction_count };
+        }
+
+        const MONTH_NAMES = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень',
+                             'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
+
+        const comparison = plans.rows.map(p => {
+            const act = actualMap[p.category_id] || { actual: 0, count: 0 };
+            const diff = act.actual - p.planned_amount;
+            const pct = p.planned_amount > 0 ? Math.round((act.actual / p.planned_amount) * 100) : 0;
+            return {
+                categoryId: p.category_id,
+                categoryName: p.name,
+                categoryType: p.type,
+                categoryIcon: p.icon,
+                categoryColor: p.color,
+                planned: p.planned_amount,
+                actual: act.actual,
+                diff,
+                percentUsed: pct,
+                transactionCount: act.count
+            };
+        });
+
+        // Totals by type
+        const incomePlanned = comparison.filter(c => c.categoryType === 'income').reduce((s, c) => s + c.planned, 0);
+        const incomeActual = comparison.filter(c => c.categoryType === 'income').reduce((s, c) => s + c.actual, 0);
+        const expensePlanned = comparison.filter(c => c.categoryType === 'expense').reduce((s, c) => s + c.planned, 0);
+        const expenseActual = comparison.filter(c => c.categoryType === 'expense').reduce((s, c) => s + c.actual, 0);
+
+        res.json({
+            year,
+            month,
+            monthName: MONTH_NAMES[month - 1],
+            comparison,
+            totals: {
+                incomePlanned, incomeActual,
+                expensePlanned, expenseActual,
+                profitPlanned: incomePlanned - expensePlanned,
+                profitActual: incomeActual - expenseActual
+            }
+        });
+    } catch (err) {
+        log.error('GET /budget/comparison error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// EXCEL EXPORT (v17.0)
+// ==========================================
+
+router.get('/export-xlsx', async (req, res) => {
+    try {
+        let { from, to, type } = req.query;
+        if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
+            return res.status(400).json({ error: 'from and to dates required' });
+        }
+
+        let where = 'WHERE ft.date >= $1 AND ft.date <= $2';
+        const params = [from, to];
+        if (type && ['income', 'expense'].includes(type)) {
+            params.push(type);
+            where += ` AND ft.type = $${params.length}`;
+        }
+
+        const result = await pool.query(`
+            SELECT ft.*, fc.name AS category_name
+            FROM finance_transactions ft
+            LEFT JOIN finance_categories fc ON ft.category_id = fc.id
+            ${where}
+            ORDER BY ft.date, ft.id
+        `, params);
+
+        const ExcelJS = require('exceljs');
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'Event Maestro';
+        const sheet = workbook.addWorksheet('Фінанси');
+
+        sheet.columns = [
+            { header: 'ID', key: 'id', width: 8 },
+            { header: 'Тип', key: 'type', width: 12 },
+            { header: 'Категорія', key: 'category', width: 20 },
+            { header: 'Сума (₴)', key: 'amount', width: 14 },
+            { header: 'Опис', key: 'description', width: 30 },
+            { header: 'Дата', key: 'date', width: 14 },
+            { header: 'Спосіб оплати', key: 'payment', width: 16 },
+            { header: 'Створив', key: 'createdBy', width: 16 }
+        ];
+
+        // Style header row
+        sheet.getRow(1).font = { bold: true };
+        sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+
+        for (const r of result.rows) {
+            sheet.addRow({
+                id: r.id,
+                type: r.type === 'income' ? 'Дохід' : 'Витрата',
+                category: r.category_name || '',
+                amount: r.amount,
+                description: r.description || '',
+                date: r.date,
+                payment: r.payment_method || '',
+                createdBy: r.created_by || ''
+            });
+        }
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="finance_${from}_${to}.xlsx"`);
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (err) {
+        log.error('GET /export-xlsx error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
 // CSV EXPORT
 // ==========================================
 

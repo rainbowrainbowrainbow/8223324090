@@ -4,6 +4,42 @@
 
 ---
 
+## v17.0.0 — Export, Budget & Procurement (2026-02-22)
+
+**3 великі фічі: Export Excel/PDF, Бюджетне планування, Система закупок**
+
+### Export Excel/PDF
+- **Excel (.xlsx)** — експорт фінансів, клієнтів, закупок через `exceljs`
+- **3 ендпоінти** — `/api/finance/export-xlsx`, `/api/customers/export-xlsx`, `/api/procurement/export-xlsx`
+- **PDF** — print-friendly CSS на сторінці складу та закупок (Ctrl+P → PDF)
+- **Стилізовані файли** — заголовки, формат, автоширина колонок
+
+### Бюджетне планування (план vs факт)
+- **Таблиця `budget_plans`** — план по категоріях × місяцях, UNIQUE(year, month, category_id)
+- **Upsert API** — `PUT /api/finance/budget` (створення або оновлення)
+- **Порівняння** — `GET /api/finance/budget/comparison?year=2026&month=2` з % виконання
+- **Фронтенд** — новий таб «Бюджет» в Фінансах з KPI-картками та таблицею план/факт/різниця/%
+
+### Система планування закупок
+- **2 таблиці** — `procurement_lists` (списки) + `procurement_items` (позиції)
+- **Відділи** — аніматорська, хозка, кафе, техніка, адміністрація
+- **Статуси** — чернетка → затверджено → в процесі → закуплено → доставлено
+- **Повний CRUD** — 10 API-ендпоінтів для списків та позицій
+- **Авто-поповнення** — `GET /api/procurement/suggestions/low-stock` генерує списки з нестач
+- **Авто-реstock** — `POST /api/procurement/:id/complete` поповнює склад + записує в історію
+- **Фронтенд** — новий таб «Закупки» на сторінці складу з фільтрами, картками, деталями
+- **Excel export** — вивантаження списків закупок з фільтрами
+
+### Технічне
+- **Міграція 009** — `budget_plans`, `procurement_lists`, `procurement_items` + індекси
+- **routes/procurement.js** — новий маршрутний модуль (300+ рядків)
+- **exceljs** — нова залежність
+- **22 нові тести** — budget CRUD, procurement CRUD, items, suggestions, complete, excel export
+- **288 тестів** загалом (287 pass)
+- Cache bust: `?v=17.0` all files
+
+---
+
 ## v16.2.0 — Swagger API Docs (2026-02-22)
 
 **Інтерактивна документація API — /api-docs**

@@ -47,9 +47,9 @@ Test user: admin / admin123
 ```
 server.js          — Entry point (~240 lines, routes + schedulers + graceful shutdown)
 db/                — Pool, initDatabase (30 таблиць), migrate.js, migrations/
-routes/ (17)       — auth, bookings, lines, history, settings, stats, afisha,
+routes/ (18)       — auth, bookings, lines, history, settings, stats, afisha,
                      telegram, backup, products, tasks, task-templates, staff,
-                     certificates, recurring, points, kleshnya
+                     certificates, recurring, points, kleshnya, procurement
 services/ (13)     — booking, bookingAutomation, bot, certificates, kleshnya,
                      kleshnya-greeting, recurring, telegram, templates,
                      taskTemplates, scheduler, backup, websocket
@@ -68,7 +68,7 @@ js/ (19)           — config, api, auth, app, ui, booking, booking-form,
                      settings-certificates, settings-dashboard, settings-history,
                      programs-page, tasks-page, staff-page, offline, ws
 images/            — Logo, program icons, favicon set
-tests/ (3+1)       — api.test.js (223), certificates.test.js (82),
+tests/ (3+1)       — api.test.js (288), certificates.test.js (82),
                      automation.test.js (59), helpers.js
 swagger.js         — OpenAPI 3.0 spec (not yet integrated)
 ```

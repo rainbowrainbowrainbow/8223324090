@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=16.2">
-    <link rel="stylesheet" href="css/auth.css?v=16.2">
-    <link rel="stylesheet" href="css/layout.css?v=16.2">
-    <link rel="stylesheet" href="css/timeline.css?v=16.2">
-    <link rel="stylesheet" href="css/panel.css?v=16.2">
-    <link rel="stylesheet" href="css/modals.css?v=16.2">
-    <link rel="stylesheet" href="css/controls.css?v=16.2">
-    <link rel="stylesheet" href="css/features.css?v=16.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=16.2">
-    <link rel="stylesheet" href="css/responsive.css?v=16.2">
-    <link rel="stylesheet" href="css/pages.css?v=16.2">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=16.2">
+    <link rel="stylesheet" href="css/base.css?v=17.0">
+    <link rel="stylesheet" href="css/auth.css?v=17.0">
+    <link rel="stylesheet" href="css/layout.css?v=17.0">
+    <link rel="stylesheet" href="css/timeline.css?v=17.0">
+    <link rel="stylesheet" href="css/panel.css?v=17.0">
+    <link rel="stylesheet" href="css/modals.css?v=17.0">
+    <link rel="stylesheet" href="css/controls.css?v=17.0">
+    <link rel="stylesheet" href="css/features.css?v=17.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=17.0">
+    <link rel="stylesheet" href="css/responsive.css?v=17.0">
+    <link rel="stylesheet" href="css/pages.css?v=17.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=17.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v16.2.0 — Swagger API Docs</p>
+                <p class="tagline">AI First CRM v17.0.0 — Export, Budget & Procurement</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v16.2.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v17.0.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1102,6 +1102,19 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-entry">
+                    <h4>v17.0.0 — Export, Budget & Procurement (22.02.2026)</h4>
+                    <ul>
+                        <li><b>Export Excel</b> — вивантаження фінансів, клієнтів, закупок у .xlsx</li>
+                        <li><b>Export PDF</b> — друк-оптимізований CSS для складу та закупок</li>
+                        <li><b>Бюджетне планування</b> — встановлення плану по категоріях, порівняння план vs факт</li>
+                        <li><b>Система закупок</b> — списки закупок по відділах (аніматорська, хозка, кафе, техніка)</li>
+                        <li><b>Авто-поповнення</b> — генерація списків закупок з позицій з нестачею на складі</li>
+                        <li><b>Авто-реstock</b> — при завершенні закупки автоматичне поповнення складу</li>
+                        <li><b>Таби Склад/Закупки</b> — нова навігація на сторінці складу</li>
+                        <li><b>22 нові тести</b> — повне покриття budget та procurement API</li>
+                    </ul>
+                </div>
                 <div class="changelog-entry">
                     <h4>v16.2.0 — Swagger API Docs (22.02.2026)</h4>
                     <ul>
@@ -2679,22 +2692,22 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=16.2"></script>
-    <script src="js/api.js?v=16.2"></script>
-    <script src="js/ui.js?v=16.2"></script>
-    <script src="js/auth.js?v=16.2"></script>
-    <script src="js/timeline.js?v=16.2"></script>
-    <script src="js/booking.js?v=16.2"></script>
-    <script src="js/settings.js?v=16.2"></script>
-    <script src="js/booking-form.js?v=16.2"></script>
-    <script src="js/booking-linked.js?v=16.2"></script>
-    <script src="js/settings-dashboard.js?v=16.2"></script>
-    <script src="js/settings-history.js?v=16.2"></script>
-    <script src="js/settings-afisha.js?v=16.2"></script>
-    <script src="js/settings-certificates.js?v=16.2"></script>
-    <script src="js/offline.js?v=16.2"></script>
-    <script src="js/ws.js?v=16.2"></script>
-    <script src="js/app.js?v=16.2"></script>
-    <script src="js/kleshnya-widget.js?v=16.2"></script>
+    <script src="js/config.js?v=17.0"></script>
+    <script src="js/api.js?v=17.0"></script>
+    <script src="js/ui.js?v=17.0"></script>
+    <script src="js/auth.js?v=17.0"></script>
+    <script src="js/timeline.js?v=17.0"></script>
+    <script src="js/booking.js?v=17.0"></script>
+    <script src="js/settings.js?v=17.0"></script>
+    <script src="js/booking-form.js?v=17.0"></script>
+    <script src="js/booking-linked.js?v=17.0"></script>
+    <script src="js/settings-dashboard.js?v=17.0"></script>
+    <script src="js/settings-history.js?v=17.0"></script>
+    <script src="js/settings-afisha.js?v=17.0"></script>
+    <script src="js/settings-certificates.js?v=17.0"></script>
+    <script src="js/offline.js?v=17.0"></script>
+    <script src="js/ws.js?v=17.0"></script>
+    <script src="js/app.js?v=17.0"></script>
+    <script src="js/kleshnya-widget.js?v=17.0"></script>
 </body>
 </html>

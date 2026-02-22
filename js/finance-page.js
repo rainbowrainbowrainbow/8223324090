@@ -513,12 +513,14 @@ function switchTab(tabName) {
     document.getElementById('tabTransactions').style.display = tabName === 'transactions' ? '' : 'none';
     document.getElementById('tabMonthly').style.display = tabName === 'monthly' ? '' : 'none';
     document.getElementById('tabSalary').style.display = tabName === 'salary' ? '' : 'none';
+    document.getElementById('tabBudget').style.display = tabName === 'budget' ? '' : 'none';
 
     // Load data for tab
     if (tabName === 'dashboard') fetchDashboard();
     if (tabName === 'transactions') fetchTransactions();
     if (tabName === 'monthly') fetchMonthlyReport();
     if (tabName === 'salary') fetchSalaryReport();
+    if (tabName === 'budget') initBudgetTab();
 }
 
 // ==========================================
@@ -544,6 +546,159 @@ async function exportCSV() {
     } catch (err) {
         showNotification('Помилка експорту', 'error');
     }
+}
+
+// ==========================================
+// EXCEL EXPORT (v17.0)
+// ==========================================
+
+async function exportXLSX() {
+    try {
+        const { from, to } = getFilterDates();
+        const token = localStorage.getItem('token');
+        const res = await fetch(`/api/finance/export-xlsx?from=${from}&to=${to}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Export failed');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `finance_${from}_${to}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showNotification('Excel завантажено');
+    } catch (err) {
+        showNotification('Помилка експорту', 'error');
+    }
+}
+
+// ==========================================
+// BUDGET (v17.0)
+// ==========================================
+
+let budgetInitialized = false;
+
+function initBudgetTab() {
+    if (!budgetInitialized) {
+        // Populate year selector
+        const yearSelect = document.getElementById('budgetYear');
+        if (yearSelect && yearSelect.options.length === 0) {
+            const currentYear = new Date().getFullYear();
+            for (let y = currentYear - 1; y <= currentYear + 1; y++) {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.textContent = y;
+                if (y === currentYear) opt.selected = true;
+                yearSelect.appendChild(opt);
+            }
+        }
+
+        // Set current month
+        const monthSelect = document.getElementById('budgetMonth');
+        if (monthSelect) monthSelect.value = new Date().getMonth() + 1;
+
+        // Populate category selector
+        const catSelect = document.getElementById('budgetCategorySelect');
+        if (catSelect && catSelect.options.length === 0) {
+            for (const cat of FinState.categories) {
+                const opt = document.createElement('option');
+                opt.value = cat.id;
+                opt.textContent = `${cat.icon || ''} ${cat.name} (${cat.type === 'income' ? 'дохід' : 'витрата'})`;
+                catSelect.appendChild(opt);
+            }
+        }
+
+        budgetInitialized = true;
+    }
+    loadBudgetComparison();
+}
+
+async function loadBudgetComparison() {
+    const year = parseInt(document.getElementById('budgetYear')?.value) || new Date().getFullYear();
+    const month = parseInt(document.getElementById('budgetMonth')?.value) || (new Date().getMonth() + 1);
+
+    const data = await apiGetBudgetComparison(year, month);
+    if (!data) return;
+
+    const container = document.getElementById('budgetComparison');
+    if (data.comparison.length === 0) {
+        container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--gray-400);">Бюджет на цей місяць ще не встановлено. Додайте план нижче.</div>';
+        return;
+    }
+
+    // Render totals
+    const t = data.totals;
+    let html = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;">
+        <div class="fin-stat-card fin-stat-income">
+            <div class="fin-stat-value">${formatMoney(t.incomeActual)}</div>
+            <div class="fin-stat-label">Дохід (план: ${formatMoney(t.incomePlanned)})</div>
+        </div>
+        <div class="fin-stat-card fin-stat-expense">
+            <div class="fin-stat-value">${formatMoney(t.expenseActual)}</div>
+            <div class="fin-stat-label">Витрати (план: ${formatMoney(t.expensePlanned)})</div>
+        </div>
+        <div class="fin-stat-card fin-stat-profit">
+            <div class="fin-stat-value">${formatMoney(t.profitActual)}</div>
+            <div class="fin-stat-label">Прибуток (план: ${formatMoney(t.profitPlanned)})</div>
+        </div>
+    </div>`;
+
+    // Render comparison table
+    html += `<div class="fin-table-wrap"><table class="fin-monthly-table">
+        <thead><tr>
+            <th style="text-align:left">Категорія</th>
+            <th>План ₴</th>
+            <th>Факт ₴</th>
+            <th>Різниця ₴</th>
+            <th>%</th>
+        </tr></thead><tbody>`;
+
+    for (const c of data.comparison) {
+        const diffColor = c.categoryType === 'expense'
+            ? (c.diff > 0 ? '#EF4444' : '#10B981')
+            : (c.diff >= 0 ? '#10B981' : '#EF4444');
+        const pctColor = c.categoryType === 'expense'
+            ? (c.percentUsed > 100 ? '#EF4444' : '#10B981')
+            : (c.percentUsed >= 80 ? '#10B981' : '#F59E0B');
+
+        html += `<tr>
+            <td style="text-align:left">${c.categoryIcon || ''} ${escapeHtml(c.categoryName)}</td>
+            <td>${formatMoney(c.planned)}</td>
+            <td>${formatMoney(c.actual)}</td>
+            <td style="color:${diffColor};font-weight:700">${c.diff > 0 ? '+' : ''}${formatMoney(c.diff)}</td>
+            <td style="color:${pctColor};font-weight:700">${c.percentUsed}%</td>
+        </tr>`;
+    }
+
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+}
+
+async function saveBudgetPlan() {
+    const year = parseInt(document.getElementById('budgetYear')?.value);
+    const month = parseInt(document.getElementById('budgetMonth')?.value);
+    const categoryId = parseInt(document.getElementById('budgetCategorySelect')?.value);
+    const plannedAmount = parseInt(document.getElementById('budgetAmountInput')?.value);
+
+    if (!categoryId || isNaN(plannedAmount) || plannedAmount < 0) {
+        showNotification('Вкажіть категорію та суму', 'error');
+        return;
+    }
+
+    const result = await apiSaveBudget({ year, month, categoryId, plannedAmount });
+    if (result && result.success) {
+        showNotification('Бюджет збережено');
+        document.getElementById('budgetAmountInput').value = '';
+        loadBudgetComparison();
+    } else {
+        showNotification(result?.error || 'Помилка', 'error');
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ==========================================
@@ -585,6 +740,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (addBtn) addBtn.style.display = '';
             const exportBtn = document.getElementById('exportCsvBtn');
             if (exportBtn) exportBtn.style.display = '';
+            const xlsxBtn = document.getElementById('exportXlsxBtn');
+            if (xlsxBtn) xlsxBtn.style.display = '';
         }
     } catch {
         document.getElementById('loginOverlay').classList.remove('hidden');
@@ -627,8 +784,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Add transaction button
     document.getElementById('addTransactionBtn')?.addEventListener('click', () => openTransModal());
 
-    // Export CSV
+    // Export CSV & XLSX
     document.getElementById('exportCsvBtn')?.addEventListener('click', exportCSV);
+    document.getElementById('exportXlsxBtn')?.addEventListener('click', exportXLSX);
 
     // Save transaction
     document.getElementById('saveTransBtn')?.addEventListener('click', saveTransaction);

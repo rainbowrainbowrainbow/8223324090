@@ -433,6 +433,291 @@ function renderHistory(items) {
 }
 
 // ==========================================
+// v17.0: PAGE TABS (Stock / Procurement)
+// ==========================================
+
+function switchPageTab(tab) {
+    document.querySelectorAll('.wh-page-tab').forEach(t => t.classList.toggle('active', t.dataset.pageTab === tab));
+    document.getElementById('stockTab').style.display = tab === 'stock' ? '' : 'none';
+    document.getElementById('procurementTab').style.display = tab === 'procurement' ? '' : 'none';
+    if (tab === 'procurement' && procLists.length === 0) loadProcLists();
+}
+
+// ==========================================
+// v17.0: PROCUREMENT
+// ==========================================
+
+let procLists = [];
+let currentProcListId = null;
+let currentProcDetail = null;
+
+async function loadProcLists() {
+    const dept = document.getElementById('procDeptFilter')?.value || '';
+    const status = document.getElementById('procStatusFilter')?.value || '';
+    const data = await apiGetProcurementLists({ department: dept, status: status });
+    procLists = data.lists || [];
+    renderProcLists();
+}
+
+function renderProcLists() {
+    const container = document.getElementById('procListCards');
+    const empty = document.getElementById('procEmptyState');
+
+    if (procLists.length === 0) {
+        container.innerHTML = '';
+        empty.style.display = '';
+        return;
+    }
+    empty.style.display = 'none';
+
+    container.innerHTML = procLists.map(list => {
+        const progress = list.itemCount > 0 ? Math.round((list.purchasedCount / list.itemCount) * 100) : 0;
+        const totalFmt = list.totalEstimated > 0 ? `${list.totalEstimated.toLocaleString('uk-UA')} ₴` : '';
+
+        return `<div class="proc-card" onclick="openProcDetail(${list.id})">
+            <div class="proc-card-header">
+                <span class="proc-card-title">${escapeHtml(list.title)}</span>
+                <span class="proc-status-badge proc-status-${list.status}">${escapeHtml(list.statusLabel)}</span>
+            </div>
+            <div class="proc-card-meta">
+                <span>${escapeHtml(list.departmentLabel)}</span>
+                ${list.plannedDate ? `<span>📅 ${list.plannedDate}</span>` : ''}
+                ${list.assignedName ? `<span>👤 ${escapeHtml(list.assignedName)}</span>` : ''}
+                <span>${list.itemCount || 0} позицій</span>
+            </div>
+            <div class="proc-card-footer">
+                <span class="proc-card-total">${totalFmt}</span>
+                <div class="proc-progress">
+                    <div class="proc-progress-bar"><div class="proc-progress-fill" style="width:${progress}%"></div></div>
+                    <span>${list.purchasedCount || 0}/${list.itemCount || 0}</span>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function openProcForm(listId = null) {
+    document.getElementById('pf-id').value = '';
+    document.getElementById('pf-title').value = '';
+    document.getElementById('pf-department').value = document.getElementById('procDeptFilter')?.value || 'animators';
+    document.getElementById('pf-date').value = '';
+    document.getElementById('pf-notes').value = '';
+    document.getElementById('procFormTitle').textContent = 'Новий список закупок';
+
+    if (listId) {
+        const list = procLists.find(l => l.id === listId);
+        if (list) {
+            document.getElementById('pf-id').value = list.id;
+            document.getElementById('pf-title').value = list.title;
+            document.getElementById('pf-department').value = list.department;
+            document.getElementById('pf-date').value = list.plannedDate || '';
+            document.getElementById('pf-notes').value = list.notes || '';
+            document.getElementById('procFormTitle').textContent = 'Редагувати список';
+        }
+    }
+    document.getElementById('procFormModal').style.display = '';
+}
+
+function closeProcForm() {
+    document.getElementById('procFormModal').style.display = 'none';
+}
+
+async function saveProcList() {
+    const id = document.getElementById('pf-id').value;
+    const data = {
+        title: document.getElementById('pf-title').value.trim(),
+        department: document.getElementById('pf-department').value,
+        plannedDate: document.getElementById('pf-date').value || null,
+        notes: document.getElementById('pf-notes').value.trim() || null
+    };
+
+    if (!data.title) {
+        showNotification('Назва обов\'язкова', 'error');
+        return;
+    }
+
+    let result;
+    if (id) {
+        result = await apiUpdateProcurementList(id, data);
+    } else {
+        result = await apiCreateProcurementList(data);
+    }
+
+    if (result && result.success) {
+        showNotification(id ? 'Список оновлено' : 'Список створено', 'success');
+        closeProcForm();
+        await loadProcLists();
+        if (result.list) openProcDetail(result.list.id);
+    } else {
+        showNotification(result?.error || 'Помилка', 'error');
+    }
+}
+
+async function openProcDetail(listId) {
+    currentProcListId = listId;
+    const data = await apiGetProcurementList(listId);
+    if (!data) return;
+    currentProcDetail = data;
+
+    document.getElementById('procDetailTitle').textContent = data.title;
+
+    const statusBadge = `<span class="proc-status-badge proc-status-${data.status}">${escapeHtml(data.statusLabel)}</span>`;
+    document.getElementById('procDetailMeta').innerHTML =
+        `${data.departmentLabel} ${statusBadge} ${data.plannedDate ? `· 📅 ${data.plannedDate}` : ''} ${data.assignedName ? `· 👤 ${escapeHtml(data.assignedName)}` : ''}`;
+
+    renderProcDetailItems(data.items || []);
+
+    const complBtn = document.getElementById('procCompleteBtn');
+    complBtn.style.display = (data.status === 'draft' || data.status === 'approved' || data.status === 'in_progress') ? '' : 'none';
+
+    document.getElementById('procDetailModal').style.display = '';
+}
+
+function renderProcDetailItems(items) {
+    const container = document.getElementById('procDetailItems');
+    if (items.length === 0) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray-400);">Додайте позиції нижче</div>';
+        return;
+    }
+
+    container.innerHTML = items.map(item => {
+        const priceFmt = item.estimatedPrice > 0 ? `${(item.quantity * item.estimatedPrice).toLocaleString('uk-UA')} ₴` : '';
+        const nameClass = item.isPurchased ? 'proc-item-name proc-item-purchased' : 'proc-item-name';
+
+        return `<div class="proc-item-row">
+            <input type="checkbox" class="proc-item-check" ${item.isPurchased ? 'checked' : ''}
+                   onchange="toggleProcItem(${currentProcListId}, ${item.id}, this.checked)">
+            <span class="${nameClass}">${escapeHtml(item.name)}</span>
+            <span style="color:var(--gray-400);font-size:12px;">${item.quantity} ${escapeHtml(item.unit)}</span>
+            <span class="proc-item-price">${priceFmt}</span>
+            <button class="wh-btn danger" onclick="removeProcItem(${currentProcListId}, ${item.id})" title="Видалити" style="width:28px;height:28px;font-size:12px;">✕</button>
+        </div>`;
+    }).join('');
+}
+
+function closeProcDetail() {
+    document.getElementById('procDetailModal').style.display = 'none';
+    currentProcListId = null;
+    currentProcDetail = null;
+}
+
+async function addProcItem() {
+    if (!currentProcListId) return;
+    const name = document.getElementById('pd-item-name').value.trim();
+    const qty = parseInt(document.getElementById('pd-item-qty').value) || 1;
+    const price = parseInt(document.getElementById('pd-item-price').value) || 0;
+
+    if (!name) {
+        showNotification('Вкажіть назву позиції', 'error');
+        return;
+    }
+
+    const result = await apiAddProcurementItem(currentProcListId, {
+        name, quantity: qty, estimatedPrice: price
+    });
+
+    if (result && result.success) {
+        document.getElementById('pd-item-name').value = '';
+        document.getElementById('pd-item-qty').value = 1;
+        document.getElementById('pd-item-price').value = 0;
+        await openProcDetail(currentProcListId);
+    } else {
+        showNotification(result?.error || 'Помилка', 'error');
+    }
+}
+
+async function toggleProcItem(listId, itemId, checked) {
+    await apiUpdateProcurementItem(listId, itemId, { isPurchased: checked });
+}
+
+async function removeProcItem(listId, itemId) {
+    await apiDeleteProcurementItem(listId, itemId);
+    await openProcDetail(listId);
+}
+
+async function completeProcList() {
+    if (!currentProcListId) return;
+    if (!confirm('Закупити все? Позиції, пов\'язані зі складом, будуть поповнені автоматично.')) return;
+
+    const result = await apiCompleteProcurement(currentProcListId);
+    if (result && result.success) {
+        showNotification(`Закупку завершено! Поповнено ${result.restockedCount || 0} позицій на складі`, 'success');
+        closeProcDetail();
+        await Promise.all([loadProcLists(), loadStock()]);
+    } else {
+        showNotification(result?.error || 'Помилка', 'error');
+    }
+}
+
+async function loadSuggestions() {
+    const data = await apiGetProcurementSuggestions();
+    const suggestions = data.suggestions || [];
+    if (suggestions.length === 0) {
+        showNotification('Всі позиції в нормі — нічого поповнювати!', 'success');
+        return;
+    }
+
+    // Group by department
+    const groups = {};
+    for (const s of suggestions) {
+        const dept = s.suggestedDepartment;
+        if (!groups[dept]) groups[dept] = [];
+        groups[dept].push(s);
+    }
+
+    // Create lists per department
+    const DEPT_NAMES = { animators: 'Аніматорська', cleaning: 'Хозка', cafe: 'Кафе', tech: 'Техніка', admin: 'Адміністрація' };
+    let created = 0;
+    for (const [dept, items] of Object.entries(groups)) {
+        const today = new Date().toISOString().slice(0, 10);
+        const listResult = await apiCreateProcurementList({
+            title: `Поповнення ${DEPT_NAMES[dept] || dept} — ${today}`,
+            department: dept,
+            plannedDate: today
+        });
+        if (listResult && listResult.success && listResult.list) {
+            for (const item of items) {
+                await apiAddProcurementItem(listResult.list.id, {
+                    name: item.name,
+                    stockId: item.stockId,
+                    quantity: item.deficit > 0 ? item.deficit : 1,
+                    unit: item.unit
+                });
+            }
+            created++;
+        }
+    }
+
+    showNotification(`Створено ${created} списків з ${suggestions.length} позицій`, 'success');
+    await loadProcLists();
+}
+
+async function exportProcXlsx() {
+    try {
+        const dept = document.getElementById('procDeptFilter')?.value || '';
+        const status = document.getElementById('procStatusFilter')?.value || '';
+        const params = new URLSearchParams();
+        if (dept) params.set('department', dept);
+        if (status) params.set('status', status);
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch(`${API_BASE}/procurement/export-xlsx?${params}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Export failed');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'procurement.xlsx';
+        a.click();
+        URL.revokeObjectURL(url);
+        showNotification('Excel завантажено');
+    } catch (err) {
+        showNotification('Помилка експорту', 'error');
+    }
+}
+
+// ==========================================
 // START
 // ==========================================
 

@@ -974,6 +974,176 @@ async function apiGetWarehouseHistory(filters = {}) {
     }
 }
 
+// v17.0: Procurement API
+async function apiGetProcurementLists(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.department) params.set('department', filters.department);
+        if (filters.status) params.set('status', filters.status);
+        if (filters.all) params.set('all', 'true');
+        const response = await fetch(`${API_BASE}/procurement?${params}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { lists: [] };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getProcurementLists error:', err);
+        return { lists: [] };
+    }
+}
+
+async function apiGetProcurementList(id) {
+    try {
+        const response = await fetch(`${API_BASE}/procurement/${id}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getProcurementList error:', err);
+        return null;
+    }
+}
+
+async function apiCreateProcurementList(data) {
+    try {
+        const response = await fetch(`${API_BASE}/procurement`, {
+            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API createProcurementList error:', err);
+        return null;
+    }
+}
+
+async function apiUpdateProcurementList(id, data) {
+    try {
+        const response = await fetch(`${API_BASE}/procurement/${id}`, {
+            method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API updateProcurementList error:', err);
+        return null;
+    }
+}
+
+async function apiDeleteProcurementList(id) {
+    try {
+        const response = await fetch(`${API_BASE}/procurement/${id}`, {
+            method: 'DELETE', headers: getAuthHeaders()
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API deleteProcurementList error:', err);
+        return null;
+    }
+}
+
+async function apiAddProcurementItem(listId, data) {
+    try {
+        const response = await fetch(`${API_BASE}/procurement/${listId}/items`, {
+            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API addProcurementItem error:', err);
+        return null;
+    }
+}
+
+async function apiUpdateProcurementItem(listId, itemId, data) {
+    try {
+        const response = await fetch(`${API_BASE}/procurement/${listId}/items/${itemId}`, {
+            method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API updateProcurementItem error:', err);
+        return null;
+    }
+}
+
+async function apiDeleteProcurementItem(listId, itemId) {
+    try {
+        const response = await fetch(`${API_BASE}/procurement/${listId}/items/${itemId}`, {
+            method: 'DELETE', headers: getAuthHeaders()
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API deleteProcurementItem error:', err);
+        return null;
+    }
+}
+
+async function apiCompleteProcurement(id) {
+    try {
+        const response = await fetch(`${API_BASE}/procurement/${id}/complete`, {
+            method: 'POST', headers: getAuthHeaders()
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API completeProcurement error:', err);
+        return null;
+    }
+}
+
+async function apiGetProcurementSuggestions() {
+    try {
+        const response = await fetch(`${API_BASE}/procurement/suggestions/low-stock`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { suggestions: [] };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getProcurementSuggestions error:', err);
+        return { suggestions: [] };
+    }
+}
+
+// v17.0: Budget API
+async function apiGetBudget(year) {
+    try {
+        const response = await fetch(`${API_BASE}/finance/budget?year=${year}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { plans: [] };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getBudget error:', err);
+        return { plans: [] };
+    }
+}
+
+async function apiSaveBudget(data) {
+    try {
+        const response = await fetch(`${API_BASE}/finance/budget`, {
+            method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API saveBudget error:', err);
+        return null;
+    }
+}
+
+async function apiGetBudgetComparison(year, month) {
+    try {
+        const response = await fetch(`${API_BASE}/finance/budget/comparison?year=${year}&month=${month}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getBudgetComparison error:', err);
+        return null;
+    }
+}
+
 // v15.1: CRM — Customer search (autocomplete)
 async function apiSearchCustomers(query) {
     try {

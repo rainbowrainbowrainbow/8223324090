@@ -7,12 +7,12 @@
     <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Maestro">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=16.2">
-    <link rel="stylesheet" href="css/layout.css?v=16.2">
-    <link rel="stylesheet" href="css/pages.css?v=16.2">
-    <link rel="stylesheet" href="css/modals.css?v=16.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=16.2">
-    <link rel="stylesheet" href="css/responsive.css?v=16.2">
+    <link rel="stylesheet" href="css/base.css?v=17.0">
+    <link rel="stylesheet" href="css/layout.css?v=17.0">
+    <link rel="stylesheet" href="css/pages.css?v=17.0">
+    <link rel="stylesheet" href="css/modals.css?v=17.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=17.0">
+    <link rel="stylesheet" href="css/responsive.css?v=17.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -390,18 +390,95 @@
             justify-content: space-between;
         }
 
+        /* v17.0: Top-level tabs */
+        .wh-page-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 20px;
+            background: var(--gray-50);
+            border-radius: var(--radius-sm);
+            padding: 4px;
+        }
+        .wh-page-tab {
+            flex: 1;
+            padding: 12px 16px;
+            border: none;
+            background: transparent;
+            border-radius: var(--radius-xs);
+            font-size: var(--font-sm);
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            color: var(--gray-500);
+            transition: all var(--speed-fast);
+            min-height: 44px;
+        }
+        .wh-page-tab.active {
+            background: var(--white);
+            color: var(--primary-dark);
+            box-shadow: var(--shadow-xs);
+        }
+        body.dark-mode .wh-page-tab.active { background: var(--gray-700); color: var(--primary-light); }
+
+        /* Procurement */
+        .proc-filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .proc-filter-select {
+            padding: 10px 14px; border: 1px solid var(--gray-200); border-radius: var(--radius-sm);
+            font-size: 16px; font-family: inherit; background: var(--white); color: var(--gray-800); min-height: 44px;
+        }
+        .proc-cards { display: flex; flex-direction: column; gap: 12px; }
+        .proc-card {
+            background: var(--white); border: 1px solid var(--gray-100); border-radius: var(--radius);
+            padding: 20px; box-shadow: var(--shadow-xs); cursor: pointer; transition: all var(--speed-fast);
+        }
+        .proc-card:hover { border-color: var(--primary); box-shadow: var(--shadow-sm); }
+        .proc-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+        .proc-card-title { font-weight: 800; font-size: var(--font-base); color: var(--gray-800); }
+        .proc-status-badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .proc-status-draft { background: var(--gray-100); color: var(--gray-600); }
+        .proc-status-approved { background: #DBEAFE; color: #1E40AF; }
+        .proc-status-in_progress { background: #FEF3C7; color: #92400E; }
+        .proc-status-purchased { background: #D1FAE5; color: #065F46; }
+        .proc-status-delivered { background: #E0E7FF; color: #3730A3; }
+        .proc-status-cancelled { background: #FEE2E2; color: #991B1B; }
+        body.dark-mode .proc-status-approved { background: #1E3A5F; color: #93C5FD; }
+        body.dark-mode .proc-status-in_progress { background: #78350F; color: #FDE68A; }
+        body.dark-mode .proc-status-purchased { background: #064E3B; color: #6EE7B7; }
+        .proc-card-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--gray-500); }
+        .proc-card-footer {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--gray-50);
+        }
+        .proc-card-total { font-weight: 800; color: var(--gray-800); }
+        .proc-progress { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gray-500); }
+        .proc-progress-bar { width: 60px; height: 6px; background: var(--gray-100); border-radius: 3px; overflow: hidden; }
+        .proc-progress-fill { height: 100%; background: var(--primary); border-radius: 3px; }
+        .proc-detail-items { max-height: 400px; overflow-y: auto; }
+        .proc-item-row {
+            display: flex; align-items: center; gap: 10px; padding: 10px 0;
+            border-bottom: 1px solid var(--gray-50); font-size: var(--font-sm);
+        }
+        .proc-item-row:last-child { border-bottom: none; }
+        .proc-item-check { width: 20px; height: 20px; cursor: pointer; }
+        .proc-item-name { flex: 1; font-weight: 600; }
+        .proc-item-purchased { text-decoration: line-through; opacity: 0.6; }
+        .proc-item-price { font-weight: 700; min-width: 70px; text-align: right; }
+
+        @media print {
+            .header, .skip-link, #notification, .wh-page-tabs,
+            .proc-filters, .wh-filters, .wh-actions, .wh-btn,
+            .btn-page-primary, .btn-page-secondary, .btn-logout, .user-panel { display: none !important; }
+            .page-container { padding: 0; }
+            .wh-table-wrap { display: block !important; }
+            .wh-cards { display: none !important; }
+        }
+
         @media (max-width: 768px) {
             .wh-table-wrap { display: none; }
             .wh-cards { display: flex; }
-
-            .wh-filters {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .wh-history-item {
-                flex-wrap: wrap;
-            }
+            .wh-filters { flex-direction: column; align-items: stretch; }
+            .wh-history-item { flex-wrap: wrap; }
+            .proc-filters { flex-direction: column; }
         }
     </style>
 </head>
@@ -443,12 +520,23 @@
         </header>
 
         <main id="main-content" class="page-container">
+            <!-- v17.0: Page-level tabs -->
+            <div class="wh-page-tabs">
+                <button class="wh-page-tab active" data-page-tab="stock" onclick="switchPageTab('stock')">📦 Склад</button>
+                <button class="wh-page-tab" data-page-tab="procurement" onclick="switchPageTab('procurement')">🛒 Закупки</button>
+            </div>
+
+            <!-- ============ STOCK TAB ============ -->
+            <div id="stockTab">
             <!-- Alert banner -->
             <div id="lowStockBanner" class="wh-alert-banner" style="display:none;"></div>
 
             <div class="page-header">
                 <h2>📦 Склад</h2>
-                <button id="addItemBtn" class="btn-page-primary" style="display:none;">+ Додати позицію</button>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="window.print()" class="btn-page-secondary">🖨 PDF</button>
+                    <button id="addItemBtn" class="btn-page-primary" style="display:none;">+ Додати позицію</button>
+                </div>
             </div>
 
             <!-- Category tabs -->
@@ -542,6 +630,44 @@
                 <h3>📋 Останні операції</h3>
                 <div id="historyList" class="wh-history-list"></div>
             </div>
+            </div><!-- /stockTab -->
+
+            <!-- ============ PROCUREMENT TAB ============ -->
+            <div id="procurementTab" style="display:none;">
+                <div class="page-header">
+                    <h2>🛒 Закупки</h2>
+                    <div style="display:flex;gap:8px;">
+                        <button onclick="exportProcXlsx()" class="btn-page-secondary">📊 Excel</button>
+                        <button onclick="openProcForm()" class="btn-page-primary">+ Новий список</button>
+                    </div>
+                </div>
+
+                <div class="proc-filters">
+                    <select id="procDeptFilter" class="proc-filter-select" onchange="loadProcLists()">
+                        <option value="">Всі відділи</option>
+                        <option value="animators">🎭 Аніматорська</option>
+                        <option value="cleaning">🧹 Хозка</option>
+                        <option value="cafe">☕ Кафе</option>
+                        <option value="tech">🔌 Техніка</option>
+                        <option value="admin">📎 Адміністрація</option>
+                    </select>
+                    <select id="procStatusFilter" class="proc-filter-select" onchange="loadProcLists()">
+                        <option value="">Всі статуси</option>
+                        <option value="draft">Чернетка</option>
+                        <option value="approved">Затверджено</option>
+                        <option value="in_progress">В процесі</option>
+                        <option value="purchased">Закуплено</option>
+                        <option value="delivered">Доставлено</option>
+                    </select>
+                    <button onclick="loadSuggestions()" class="wh-toggle">💡 Авто з нестач</button>
+                </div>
+
+                <div id="procListCards" class="proc-cards"></div>
+                <div id="procEmptyState" class="empty-state" style="display:none;">
+                    <div class="empty-state-icon">🛒</div>
+                    <div class="empty-state-text">Списків закупок немає. Створіть перший!</div>
+                </div>
+            </div><!-- /procurementTab -->
         </main>
     </div>
 
@@ -575,13 +701,69 @@
         </div>
     </div>
 
+    <!-- Procurement list form modal -->
+    <div id="procFormModal" class="wh-modal-overlay" style="display:none;">
+        <div class="wh-modal" style="max-width:500px;">
+            <h3 id="procFormTitle">Новий список закупок</h3>
+            <div class="form-group">
+                <label>Назва</label>
+                <input type="text" id="pf-title" placeholder="Закупка на тиждень...">
+            </div>
+            <div class="form-group">
+                <label>Відділ</label>
+                <select id="pf-department">
+                    <option value="animators">🎭 Аніматорська</option>
+                    <option value="cleaning">🧹 Хозка</option>
+                    <option value="cafe">☕ Кафе</option>
+                    <option value="tech">🔌 Техніка</option>
+                    <option value="admin">📎 Адміністрація</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Планова дата</label>
+                <input type="date" id="pf-date">
+            </div>
+            <div class="form-group">
+                <label>Примітки</label>
+                <input type="text" id="pf-notes" placeholder="Постачальник, коментарі...">
+            </div>
+            <input type="hidden" id="pf-id" value="">
+            <div class="wh-modal-actions">
+                <button onclick="saveProcList()" class="btn-page-primary">Зберегти</button>
+                <button onclick="closeProcForm()" class="btn-page-secondary">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Procurement detail modal -->
+    <div id="procDetailModal" class="wh-modal-overlay" style="display:none;">
+        <div class="wh-modal" style="max-width:600px;">
+            <h3 id="procDetailTitle">Список закупок</h3>
+            <div id="procDetailMeta" style="margin-bottom:16px;font-size:13px;color:var(--gray-500);"></div>
+            <div id="procDetailItems" class="proc-detail-items"></div>
+
+            <!-- Add item inline -->
+            <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+                <input type="text" id="pd-item-name" placeholder="Позиція" style="flex:1;min-width:140px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
+                <input type="number" id="pd-item-qty" placeholder="К-сть" value="1" min="1" style="width:70px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
+                <input type="number" id="pd-item-price" placeholder="Ціна ₴" value="0" min="0" style="width:90px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
+                <button onclick="addProcItem()" class="btn-page-primary" style="white-space:nowrap;">+ Додати</button>
+            </div>
+
+            <div class="wh-modal-actions" style="margin-top:20px;">
+                <button id="procCompleteBtn" onclick="completeProcList()" class="btn-page-primary" style="background:#10B981;">Закупити все</button>
+                <button onclick="closeProcDetail()" class="btn-page-secondary">Закрити</button>
+            </div>
+        </div>
+    </div>
+
     <div id="notification" class="notification hidden">
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=16.2"></script>
-    <script src="js/api.js?v=16.2"></script>
-    <script src="js/auth.js?v=16.2"></script>
-    <script src="js/warehouse-page.js?v=16.2"></script>
+    <script src="js/config.js?v=17.0"></script>
+    <script src="js/api.js?v=17.0"></script>
+    <script src="js/auth.js?v=17.0"></script>
+    <script src="js/warehouse-page.js?v=17.0"></script>
 </body>
 </html>

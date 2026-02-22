@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Maestro | Фінанси</title>
+    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Maestro">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=16.0">
+    <link rel="stylesheet" href="css/layout.css?v=16.0">
+    <link rel="stylesheet" href="css/pages.css?v=16.0">
+    <link rel="stylesheet" href="css/modals.css?v=16.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=16.0">
+    <link rel="stylesheet" href="css/responsive.css?v=16.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* ==========================================
+           FINANCE PAGE STYLES
+           ========================================== */
+
+        .fin-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .fin-stat-card {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 18px;
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-xs);
+            text-align: center;
+        }
+
+        .fin-stat-card .fin-stat-value {
+            font-size: 28px;
+            font-weight: 900;
+            line-height: 1.2;
+        }
+
+        .fin-stat-card .fin-stat-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+
+        .fin-stat-income .fin-stat-value { color: #10B981; }
+        .fin-stat-expense .fin-stat-value { color: #EF4444; }
+        .fin-stat-profit .fin-stat-value { color: #6366F1; }
+        .fin-stat-bookings .fin-stat-value { color: #F59E0B; }
+
+        /* Tabs */
+        .fin-tabs {
+            display: flex;
+            gap: 2px;
+            background: var(--gray-100);
+            border-radius: var(--radius);
+            padding: 3px;
+            margin-bottom: 16px;
+            overflow-x: auto;
+        }
+
+        .fin-tab {
+            padding: 10px 18px;
+            font-size: var(--font-sm);
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            border-radius: var(--radius-sm);
+            color: var(--gray-600);
+            white-space: nowrap;
+            min-height: 44px;
+        }
+
+        .fin-tab.active {
+            background: var(--white);
+            color: var(--gray-900);
+            box-shadow: var(--shadow-xs);
+        }
+
+        /* Filters bar */
+        .fin-filters {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .fin-filters input,
+        .fin-filters select {
+            padding: 8px 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: var(--font-sm);
+            font-family: inherit;
+            min-height: 44px;
+            box-sizing: border-box;
+        }
+
+        .fin-filters input:focus,
+        .fin-filters select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+        }
+
+        .fin-search {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .fin-filter-select {
+            min-width: 130px;
+        }
+
+        .fin-filter-date {
+            width: 140px;
+        }
+
+        /* Table */
+        .fin-table-wrap {
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            overflow-x: auto;
+            margin-bottom: 16px;
+        }
+
+        .fin-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .fin-table thead th {
+            background: var(--gray-50);
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--gray-100);
+            white-space: nowrap;
+        }
+
+        .fin-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--gray-50);
+            vertical-align: middle;
+        }
+
+        .fin-table tbody tr { cursor: pointer; }
+        .fin-table tbody tr:hover { background: rgba(16,185,129,0.03); }
+
+        .fin-amount-income { color: #10B981; font-weight: 700; }
+        .fin-amount-expense { color: #EF4444; font-weight: 700; }
+
+        .fin-type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .fin-type-badge.income { background: #ECFDF5; color: #059669; }
+        .fin-type-badge.expense { background: #FEF2F2; color: #DC2626; }
+
+        .fin-payment-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            background: var(--gray-100);
+            color: var(--gray-600);
+        }
+
+        /* Pagination */
+        .fin-pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 12px;
+        }
+        .fin-pagination button {
+            padding: 6px 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            background: var(--white);
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            min-height: 44px;
+        }
+        .fin-pagination button.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        .fin-pagination button:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        /* Chart section (simple bar chart) */
+        .fin-chart {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .fin-chart h4 {
+            font-size: 14px;
+            font-weight: 800;
+            color: var(--gray-700);
+            margin: 0 0 16px 0;
+        }
+
+        .fin-bar-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 160px;
+            padding: 0 4px;
+        }
+
+        .fin-bar-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            min-width: 20px;
+        }
+
+        .fin-bar-pair {
+            display: flex;
+            gap: 2px;
+            align-items: flex-end;
+            width: 100%;
+            height: 140px;
+        }
+
+        .fin-bar {
+            flex: 1;
+            border-radius: 3px 3px 0 0;
+            min-height: 2px;
+            transition: height 0.3s ease;
+        }
+
+        .fin-bar.income { background: #10B981; }
+        .fin-bar.expense { background: #EF4444; }
+
+        .fin-bar-label {
+            font-size: 9px;
+            color: var(--gray-500);
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        /* Monthly report table */
+        .fin-monthly-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .fin-monthly-table th {
+            background: var(--gray-50);
+            padding: 10px 14px;
+            text-align: right;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            border-bottom: 2px solid var(--gray-100);
+        }
+        .fin-monthly-table th:first-child { text-align: left; }
+        .fin-monthly-table td {
+            padding: 10px 14px;
+            text-align: right;
+            border-bottom: 1px solid var(--gray-50);
+        }
+        .fin-monthly-table td:first-child { text-align: left; font-weight: 600; }
+        .fin-monthly-table tfoot td {
+            font-weight: 800;
+            border-top: 2px solid var(--gray-200);
+        }
+
+        /* Category breakdown */
+        .fin-categories {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .fin-cat-section {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 16px;
+        }
+        .fin-cat-section h4 {
+            font-size: 14px;
+            font-weight: 800;
+            margin: 0 0 12px 0;
+        }
+
+        .fin-cat-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--gray-50);
+        }
+        .fin-cat-row:last-child { border-bottom: none; }
+
+        .fin-cat-icon { font-size: 18px; }
+        .fin-cat-name {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .fin-cat-amount {
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .fin-cat-bar {
+            width: 60px;
+            height: 6px;
+            background: var(--gray-100);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .fin-cat-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        /* Dark mode */
+        [data-theme="dark"] .fin-stat-card {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .fin-stat-card .fin-stat-label { color: var(--gray-400); }
+        [data-theme="dark"] .fin-tabs { background: var(--gray-800); }
+        [data-theme="dark"] .fin-tab { color: var(--gray-400); }
+        [data-theme="dark"] .fin-tab.active {
+            background: var(--gray-700);
+            color: var(--gray-200);
+        }
+        [data-theme="dark"] .fin-table-wrap,
+        [data-theme="dark"] .fin-chart,
+        [data-theme="dark"] .fin-cat-section {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .fin-table thead th {
+            background: var(--gray-700);
+            color: var(--gray-400);
+            border-bottom-color: var(--gray-600);
+        }
+        [data-theme="dark"] .fin-table td {
+            border-bottom-color: var(--gray-700);
+            color: var(--gray-300);
+        }
+        [data-theme="dark"] .fin-table tbody tr:hover {
+            background: rgba(16,185,129,0.05);
+        }
+        [data-theme="dark"] .fin-filters input,
+        [data-theme="dark"] .fin-filters select {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+            color: var(--gray-200);
+        }
+        [data-theme="dark"] .fin-pagination button {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+            color: var(--gray-300);
+        }
+        [data-theme="dark"] .fin-chart h4 { color: var(--gray-300); }
+        [data-theme="dark"] .fin-monthly-table th {
+            background: var(--gray-700);
+            color: var(--gray-400);
+            border-bottom-color: var(--gray-600);
+        }
+        [data-theme="dark"] .fin-monthly-table td {
+            border-bottom-color: var(--gray-700);
+            color: var(--gray-300);
+        }
+        [data-theme="dark"] .fin-monthly-table tfoot td {
+            border-top-color: var(--gray-600);
+        }
+        [data-theme="dark"] .fin-cat-row {
+            border-bottom-color: var(--gray-700);
+        }
+        [data-theme="dark"] .fin-cat-bar { background: var(--gray-700); }
+        [data-theme="dark"] .fin-payment-badge {
+            background: var(--gray-700);
+            color: var(--gray-300);
+        }
+        [data-theme="dark"] .fin-type-badge.income { background: #064E3B; color: #6EE7B7; }
+        [data-theme="dark"] .fin-type-badge.expense { background: #7F1D1D; color: #FCA5A5; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .fin-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .fin-filters {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .fin-search { min-width: 0; }
+            .fin-filter-date { width: 100%; }
+            .fin-filter-select { min-width: 0; }
+            .fin-categories {
+                grid-template-columns: 1fr;
+            }
+            .fin-bar-label { font-size: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <!-- Login overlay -->
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Maestro</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/hr" class="nav-link">🏢 <span class="nav-text">HR</span></a>
+                    <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
+                    <a href="/customers" class="nav-link">🗂 <span class="nav-text">Клієнти</span></a>
+                    <a href="/finance" class="nav-link active">💰 <span class="nav-text">Фінанси</span></a>
+                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container">
+            <div class="page-header">
+                <h2>💰 Фінанси</h2>
+                <div style="display:flex;gap:6px">
+                    <button id="exportCsvBtn" class="btn-page-secondary" style="display:none">📥 Експорт CSV</button>
+                    <button id="addTransactionBtn" class="btn-page-primary" style="display:none">+ Транзакція</button>
+                </div>
+            </div>
+
+            <!-- Stats overview -->
+            <div id="finStats" class="fin-stats"></div>
+
+            <!-- Tabs -->
+            <div class="fin-tabs">
+                <button class="fin-tab active" data-tab="dashboard">📊 Дашборд</button>
+                <button class="fin-tab" data-tab="transactions">📋 Транзакції</button>
+                <button class="fin-tab" data-tab="monthly">📅 Звіт по місяцях</button>
+                <button class="fin-tab" data-tab="salary">👤 Зарплати</button>
+            </div>
+
+            <!-- Dashboard tab -->
+            <div id="tabDashboard">
+                <!-- Daily chart -->
+                <div class="fin-chart">
+                    <h4>Доходи та витрати по днях</h4>
+                    <div id="dailyChart" class="fin-bar-chart"></div>
+                </div>
+
+                <!-- Category breakdown -->
+                <div class="fin-categories">
+                    <div class="fin-cat-section">
+                        <h4 style="color:#10B981">📈 Доходи по категоріях</h4>
+                        <div id="incomeCats"></div>
+                    </div>
+                    <div class="fin-cat-section">
+                        <h4 style="color:#EF4444">📉 Витрати по категоріях</h4>
+                        <div id="expenseCats"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transactions tab -->
+            <div id="tabTransactions" style="display:none">
+                <!-- Filters -->
+                <div class="fin-filters">
+                    <input type="text" id="searchInput" class="fin-search" placeholder="Пошук по опису...">
+                    <select id="typeFilter" class="fin-filter-select">
+                        <option value="">Всі типи</option>
+                        <option value="income">Доходи</option>
+                        <option value="expense">Витрати</option>
+                    </select>
+                    <select id="categoryFilter" class="fin-filter-select">
+                        <option value="">Всі категорії</option>
+                    </select>
+                    <select id="paymentFilter" class="fin-filter-select">
+                        <option value="">Спосіб оплати</option>
+                        <option value="cash">Готівка</option>
+                        <option value="card">Картка</option>
+                        <option value="transfer">Переказ</option>
+                        <option value="mixed">Змішаний</option>
+                    </select>
+                    <input type="date" id="dateFromFilter" class="fin-filter-date" title="Від">
+                    <input type="date" id="dateToFilter" class="fin-filter-date" title="До">
+                </div>
+
+                <!-- Table -->
+                <div class="fin-table-wrap">
+                    <table class="fin-table">
+                        <thead>
+                            <tr>
+                                <th>Дата</th>
+                                <th>Тип</th>
+                                <th>Категорія</th>
+                                <th>Опис</th>
+                                <th>Сума</th>
+                                <th>Оплата</th>
+                                <th>Створив</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transTableBody"></tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div id="pagination" class="fin-pagination"></div>
+            </div>
+
+            <!-- Monthly report tab -->
+            <div id="tabMonthly" style="display:none">
+                <div class="fin-filters" style="margin-bottom: 16px">
+                    <select id="yearFilter" class="fin-filter-select"></select>
+                </div>
+
+                <!-- Monthly chart -->
+                <div class="fin-chart">
+                    <h4>Доходи / Витрати / Прибуток по місяцях</h4>
+                    <div id="monthlyChart" class="fin-bar-chart"></div>
+                </div>
+
+                <div class="fin-table-wrap">
+                    <table class="fin-monthly-table" id="monthlyTable">
+                        <thead>
+                            <tr>
+                                <th>Місяць</th>
+                                <th>Доходи ₴</th>
+                                <th>Витрати ₴</th>
+                                <th>Прибуток ₴</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthlyTableBody"></tbody>
+                        <tfoot id="monthlyTableFoot"></tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Salary tab -->
+            <div id="tabSalary" style="display:none">
+                <div class="fin-filters" style="margin-bottom: 16px">
+                    <input type="month" id="salaryMonth" class="fin-filter-date" style="width:180px">
+                </div>
+
+                <div class="fin-table-wrap">
+                    <table class="fin-table">
+                        <thead>
+                            <tr>
+                                <th>Працівник</th>
+                                <th>Відділ</th>
+                                <th>Посада</th>
+                                <th>Ставка ₴/год</th>
+                                <th>Години</th>
+                                <th>Нараховано ₴</th>
+                            </tr>
+                        </thead>
+                        <tbody id="salaryTableBody"></tbody>
+                        <tfoot id="salaryTableFoot"></tfoot>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Transaction edit modal -->
+    <div id="transEditModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Транзакція">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3 id="transEditTitle">Нова транзакція</h3>
+            <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Тип *</label>
+                        <select id="editType" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;min-height:44px;box-sizing:border-box">
+                            <option value="income">Дохід</option>
+                            <option value="expense">Витрата</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Категорія *</label>
+                        <select id="editCategory" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;min-height:44px;box-sizing:border-box">
+                        </select>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Сума (₴) *</label>
+                        <input type="number" id="editAmount" min="1" step="1" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px;box-sizing:border-box">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Дата *</label>
+                        <input type="date" id="editDate" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px;box-sizing:border-box">
+                    </div>
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Спосіб оплати</label>
+                    <select id="editPayment" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;min-height:44px;box-sizing:border-box">
+                        <option value="">Не вказано</option>
+                        <option value="cash">Готівка</option>
+                        <option value="card">Картка</option>
+                        <option value="transfer">Переказ</option>
+                        <option value="mixed">Змішаний</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Опис</label>
+                    <textarea id="editDescription" rows="3" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:4px">
+                    <button id="saveTransBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
+                    <button id="cancelTransBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- v10.4: Profile modal -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=16.0"></script>
+    <script src="js/api.js?v=16.0"></script>
+    <script src="js/auth.js?v=16.0"></script>
+    <script src="js/finance-page.js?v=16.0"></script>
+</body>
+</html>

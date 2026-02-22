@@ -3264,3 +3264,210 @@ describe('CRM Phase 2 — Customer Detail with Certificates (v15.1)', () => {
         if (customerId) await authRequest('DELETE', `/api/customers/${customerId}`);
     });
 });
+
+// ==========================================
+// FINANCE MODULE (v16.0)
+// ==========================================
+
+describe('Finance — Categories (v16.0)', () => {
+    it('GET /api/finance/categories — returns seeded categories', async () => {
+        const res = await authRequest('GET', '/api/finance/categories');
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data), 'Should return array');
+        assert.ok(res.data.length >= 10, 'Should have at least 10 seeded categories');
+        const first = res.data[0];
+        assert.ok(first.id, 'Should have id');
+        assert.ok(first.name, 'Should have name');
+        assert.ok(['income', 'expense'].includes(first.type), 'Type should be income or expense');
+    });
+
+    it('GET /api/finance/categories?type=income — filters by type', async () => {
+        const res = await authRequest('GET', '/api/finance/categories?type=income');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.every(c => c.type === 'income'), 'All should be income');
+    });
+
+    it('POST /api/finance/categories — creates custom category', async () => {
+        const res = await authRequest('POST', '/api/finance/categories', {
+            name: 'Тестова категорія',
+            type: 'expense',
+            icon: '🧪',
+            color: '#FF0000'
+        });
+        assert.equal(res.status, 201);
+        assert.ok(res.data.id);
+        assert.equal(res.data.name, 'Тестова категорія');
+        assert.equal(res.data.type, 'expense');
+        await authRequest('DELETE', `/api/finance/categories/${res.data.id}`);
+    });
+
+    it('DELETE /api/finance/categories — cannot delete system category', async () => {
+        const cats = await authRequest('GET', '/api/finance/categories');
+        const systemCat = cats.data.find(c => c.isSystem);
+        if (systemCat) {
+            const res = await authRequest('DELETE', `/api/finance/categories/${systemCat.id}`);
+            assert.equal(res.status, 400);
+        }
+    });
+});
+
+describe('Finance — Transactions CRUD (v16.0)', () => {
+    let transactionId;
+    let categoryId;
+
+    before(async () => {
+        const cats = await authRequest('GET', '/api/finance/categories?type=income');
+        categoryId = cats.data[0]?.id;
+    });
+
+    it('POST /api/finance/transactions — creates transaction', async () => {
+        const res = await authRequest('POST', '/api/finance/transactions', {
+            type: 'income',
+            categoryId,
+            amount: 5000,
+            description: 'Test transaction',
+            date: testDate(),
+            paymentMethod: 'cash'
+        });
+        assert.equal(res.status, 201);
+        assert.ok(res.data.id);
+        assert.equal(res.data.amount, 5000);
+        assert.equal(res.data.type, 'income');
+        transactionId = res.data.id;
+    });
+
+    it('GET /api/finance/transactions — lists transactions', async () => {
+        const res = await authRequest('GET', `/api/finance/transactions?from=${testDate()}&to=${testDate()}`);
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.transactions));
+        assert.ok(res.data.total >= 1);
+        assert.ok(res.data.totalPages >= 1);
+    });
+
+    it('GET /api/finance/transactions — filters by type', async () => {
+        const res = await authRequest('GET', `/api/finance/transactions?type=income&from=${testDate()}&to=${testDate()}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.transactions.every(t => t.type === 'income'));
+    });
+
+    it('PUT /api/finance/transactions/:id — updates transaction', async () => {
+        const res = await authRequest('PUT', `/api/finance/transactions/${transactionId}`, {
+            amount: 7500,
+            description: 'Updated test'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+
+    it('DELETE /api/finance/transactions/:id — deletes transaction', async () => {
+        const res = await authRequest('DELETE', `/api/finance/transactions/${transactionId}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+
+    it('POST /api/finance/transactions — validation errors', async () => {
+        let res = await authRequest('POST', '/api/finance/transactions', {
+            type: 'income', date: testDate()
+        });
+        assert.equal(res.status, 400);
+
+        res = await authRequest('POST', '/api/finance/transactions', {
+            type: 'income', amount: 1000
+        });
+        assert.equal(res.status, 400);
+
+        res = await authRequest('POST', '/api/finance/transactions', {
+            type: 'invalid', amount: 1000, date: testDate()
+        });
+        assert.equal(res.status, 400);
+    });
+});
+
+describe('Finance — Dashboard (v16.0)', () => {
+    before(async () => {
+        const cats = await authRequest('GET', '/api/finance/categories');
+        const incomeCat = cats.data.find(c => c.type === 'income');
+        const expenseCat = cats.data.find(c => c.type === 'expense');
+        await authRequest('POST', '/api/finance/transactions', {
+            type: 'income', categoryId: incomeCat?.id, amount: 10000,
+            description: 'Dashboard test income', date: testDate(), paymentMethod: 'card'
+        });
+        await authRequest('POST', '/api/finance/transactions', {
+            type: 'expense', categoryId: expenseCat?.id, amount: 3000,
+            description: 'Dashboard test expense', date: testDate(), paymentMethod: 'cash'
+        });
+    });
+
+    it('GET /api/finance/dashboard — returns overview', async () => {
+        const res = await authRequest('GET', `/api/finance/dashboard?from=${testDate()}&to=${testDate()}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.period);
+        assert.ok(res.data.totals);
+        assert.ok(typeof res.data.totals.income === 'number');
+        assert.ok(typeof res.data.totals.expense === 'number');
+        assert.ok(typeof res.data.totals.profit === 'number');
+        assert.ok(res.data.totals.income >= 10000);
+        assert.ok(res.data.totals.expense >= 3000);
+    });
+
+    it('GET /api/finance/dashboard — includes category breakdowns', async () => {
+        const res = await authRequest('GET', `/api/finance/dashboard?from=${testDate()}&to=${testDate()}`);
+        assert.ok(Array.isArray(res.data.incomeByCategory));
+        assert.ok(Array.isArray(res.data.expenseByCategory));
+        assert.ok(Array.isArray(res.data.daily));
+        assert.ok(Array.isArray(res.data.paymentMethods));
+    });
+
+    it('GET /api/finance/dashboard — includes booking revenue', async () => {
+        const res = await authRequest('GET', `/api/finance/dashboard?from=${testDate()}&to=${testDate()}`);
+        assert.ok(res.data.bookingRevenue);
+        assert.ok(typeof res.data.bookingRevenue.revenue === 'number');
+        assert.ok(typeof res.data.bookingRevenue.count === 'number');
+    });
+});
+
+describe('Finance — Monthly Report (v16.0)', () => {
+    it('GET /api/finance/report/monthly — returns 12 months', async () => {
+        const res = await authRequest('GET', '/api/finance/report/monthly?year=2026');
+        assert.equal(res.status, 200);
+        assert.equal(res.data.year, 2026);
+        assert.ok(Array.isArray(res.data.months));
+        assert.equal(res.data.months.length, 12);
+        assert.ok(res.data.totals);
+        const jan = res.data.months[0];
+        assert.equal(jan.month, 1);
+        assert.equal(jan.monthName, 'Січень');
+        assert.ok(typeof jan.income === 'number');
+        assert.ok(typeof jan.expense === 'number');
+        assert.ok(typeof jan.profit === 'number');
+    });
+});
+
+describe('Finance — CSV Export (v16.0)', () => {
+    it('GET /api/finance/export — returns CSV', async () => {
+        const token = await getToken();
+        const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
+        const res = await fetch(`${BASE_URL}/api/finance/export?from=${testDate()}&to=${testDate()}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.headers.get('content-type').includes('text/csv'));
+        const body = await res.text();
+        assert.ok(body.includes('ID;Тип;Категорія'), 'CSV should have header');
+    });
+
+    it('GET /api/finance/export — requires dates', async () => {
+        const res = await authRequest('GET', '/api/finance/export');
+        assert.equal(res.status, 400);
+    });
+});
+
+describe('Finance — Static Page (v16.0)', () => {
+    it('GET /finance — returns HTML', async () => {
+        const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
+        const res = await fetch(`${BASE_URL}/finance`);
+        assert.equal(res.status, 200);
+        const body = await res.text();
+        assert.ok(body.includes('Фінанси'), 'Should contain Фінанси');
+    });
+});

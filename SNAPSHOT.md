@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v15.1.0**. CRM Phase 2.
+Версія **v16.0.0**. Finance Module.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -24,30 +24,32 @@
 - v12.1.0: Авто dark mode + мобільний UX
 - v13.0.0: Kleshnya Chat v2 — multi-session + sidebar + media + WebSocket
 - v14.0.0–v14.4.0: Branding, Warehouse, тести
-- **v15.0.0: HR Module — повний HR-блок**
-- **v15.1.0: CRM Phase 2 — клієнтська база, фільтри, RFM, ДН, сертифікати, експорт**
+- v15.0.0: HR Module — повний HR-блок
+- v15.1.0: CRM Phase 2 — клієнтська база, фільтри, RFM, ДН, сертифікати, експорт
+- **v16.0.0: Finance Module — каса, P&L, зарплати, категорії, автозапис, CSV**
 
 ## Архітектура
-- **9 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /invite, /kleshnya
-- **Backend:** 18 routes, 13 services, 4 middleware
-- **Frontend:** 22 JS + 11 CSS модулів
-- **БД:** ~32 таблиці + customers + certificates.customer_id, 40+ індексів, 5 міграцій
+- **10 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /invite, /kleshnya
+- **Backend:** 19 routes, 13 services, 4 middleware
+- **Frontend:** 23 JS + 11 CSS модулів
+- **БД:** ~34 таблиці (+ finance_categories, finance_transactions), 50+ індексів, 5 міграцій
 - **13 schedulers** (+ birthday greetings), WebSocket broadcast
-- **255 тестів** (3 файли + helpers)
-- ~49 000 рядків коду
+- **261 тестів** (3 файли + helpers)
+- ~51 000 рядків коду
 
-## CRM Phase 2 (v15.1)
-- **customers.html** — повна сторінка CRM з таблицею, фільтрами, пагінацією
-- **js/customers-page.js** — фронтенд: CRUD, пошук, RFM, деталі, експорт
-- **routes/customers.js** — CRUD + search + filters + RFM + stats + CSV export
-- **services/scheduler.js** — birthday greeting scheduler (09:00 Kyiv)
-- **db/index.js** — certificates.customer_id + index
-- **Фільтри:** source, sortBy, dateFrom/dateTo, minVisits/maxVisits, пошук
-- **RFM:** Recency/Frequency/Monetary з 5 сегментами (champion, loyal, potential, at_risk, lost)
-- **Навігація:** посилання "Клієнти" на всіх 9 сторінках
+## Finance Module (v16.0)
+- **finance.html** — сторінка з 4 табами (дашборд, транзакції, місячний звіт, зарплати)
+- **js/finance-page.js** — фронтенд: CRUD, фільтри, графіки, CSV-експорт
+- **routes/finance.js** — CRUD categories + transactions, dashboard, P&L monthly, salary report, CSV export
+- **db/index.js** — finance_categories, finance_transactions, bookings.payment_method, certificates.value_uah
+- **routes/bookings.js** — автозапис income transaction при підтвердженому бронюванні
+- **services/booking.js** — mapBookingRow + paymentMethod
+- **Категорії:** 12 початкових (Бронювання, Сертифікати, Кафе, МК, Інший дохід, Зарплата, Оренда, Закупки, Реклама, Комунальні, Обслуговування, Інші витрати)
+- **Методи оплати:** cash, card, transfer, mixed
+- **Навігація:** посилання "Фінанси" на всіх 10 сторінках
 
 ## Dark Mode (v12.1+)
-- `initDarkMode()` в config.js — єдина функція для всіх 9 сторінок
+- `initDarkMode()` в config.js — єдина функція для всіх 10 сторінок
 - Авто: темна 20:00–07:00, світла 07:00–20:00
 - Ручний toggle зберігається в localStorage і перезаписує авто
 - Два селектори: `body.dark-mode` + `[data-theme="dark"]`
@@ -57,6 +59,7 @@
 - Swagger /api-docs
 - Export PDF/Excel
 - Розширення тригерів Клешні
+- Бюджетне планування (план vs факт)
 
 ## Технічний стан
 - Branch: `claude/bump-version-0.1-lj64Q`
@@ -64,4 +67,4 @@
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-22, v15.1.0*
+*Оновлено: 2026-02-22, v16.0.0*

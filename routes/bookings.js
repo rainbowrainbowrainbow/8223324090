@@ -104,10 +104,10 @@ router.post('/', async (req, res) => {
         }
 
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
              RETURNING *`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId]
+            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId, b.paymentMethod || null]
         );
 
         // CRM: update customer aggregates
@@ -145,6 +145,16 @@ router.post('/', async (req, res) => {
         if (!b.linkedTo) {
             processBookingAutomation(b)
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
+        }
+
+        // v16.0: Auto-record finance transaction for confirmed bookings
+        if (!b.linkedTo && b.price > 0 && b.status !== 'preliminary') {
+            pool.query(
+                `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, created_by)
+                 VALUES ('income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' LIMIT 1),
+                         $1, $2, $3, $4, $5, $6)`,
+                [b.price, `${b.programName || b.label || b.programCode} (${b.id})`, b.date, b.paymentMethod || null, b.id, b.createdBy || req.user?.username]
+            ).catch(err => log.error(`Finance auto-record failed: ${err.message}`));
         }
 
         const booking = insertResult.rows[0] ? mapBookingRow(insertResult.rows[0]) : { id: b.id };

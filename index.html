@@ -388,6 +388,61 @@
                     <input type="text" id="bookingGroupName" placeholder="Напр: День народження Олі" title="Об'єднує бронювання в одну подію">
                 </div>
 
+                <!-- v15.1: CRM — Дані клієнта (toggle) -->
+                <div class="form-section">
+                    <label class="toggle-label crm-toggle-label">
+                        <input type="checkbox" id="customerDataToggle">
+                        <span class="toggle-text">Дані клієнта</span>
+                    </label>
+                </div>
+
+                <div id="customerDataSection" class="customer-data-section hidden">
+                    <div class="form-section">
+                        <label>Пошук клієнта</label>
+                        <div class="customer-search-wrap">
+                            <input type="text" id="customerSearch" placeholder="Ім'я, телефон або Instagram..." autocomplete="off">
+                            <div id="customerSearchResults" class="customer-search-results hidden"></div>
+                        </div>
+                        <input type="hidden" id="selectedCustomerId">
+                    </div>
+                    <div class="customer-fields">
+                        <div class="form-section">
+                            <label>Ім'я клієнта <span class="required-mark">*</span></label>
+                            <input type="text" id="customerName" placeholder="Прізвище Ім'я">
+                        </div>
+                        <div class="form-section">
+                            <label>Телефон</label>
+                            <input type="tel" id="customerPhone" placeholder="+380..." inputmode="tel">
+                        </div>
+                        <div class="form-section">
+                            <label>Instagram</label>
+                            <input type="text" id="customerInstagram" placeholder="username">
+                        </div>
+                        <div class="form-section">
+                            <label>Ім'я дитини</label>
+                            <input type="text" id="customerChildName" placeholder="Ім'я іменинника">
+                        </div>
+                        <div class="form-section">
+                            <label>Дата народження дитини</label>
+                            <input type="date" id="customerChildBirthday">
+                        </div>
+                        <div class="form-section">
+                            <label>Звідки дізналися</label>
+                            <select id="customerSource">
+                                <option value="">— не вказано —</option>
+                                <option value="instagram">Instagram</option>
+                                <option value="google">Google</option>
+                                <option value="recommendation">Рекомендація</option>
+                                <option value="repeat">Повторний клієнт</option>
+                                <option value="other">Інше</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="customerInfo" class="customer-info hidden">
+                        <span class="customer-info-badge" id="customerVisitBadge">0 візитів</span>
+                    </div>
+                </div>
+
                 <!-- ===== БЛОК 2: Програма (нижче) ===== -->
 
                 <!-- Програми іконками -->

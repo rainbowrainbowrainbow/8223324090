@@ -29,6 +29,8 @@ function initializeApp() {
     loadPreferences();
     checkSession();
     initializeEventListeners();
+    // v15.1: CRM customer toggle + autocomplete
+    if (typeof initCustomerCRM === 'function') initCustomerCRM();
     AppState.nowLineInterval = setInterval(renderNowLine, 60000);
 }
 

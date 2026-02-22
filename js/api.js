@@ -973,3 +973,28 @@ async function apiGetWarehouseHistory(filters = {}) {
         return { items: [], total: 0 };
     }
 }
+
+// v15.1: CRM — Customer search (autocomplete)
+async function apiSearchCustomers(query) {
+    try {
+        const response = await fetch(`${API_BASE}/customers/search?q=${encodeURIComponent(query)}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API searchCustomers error:', err);
+        return [];
+    }
+}
+
+async function apiGetCustomer(id) {
+    try {
+        const response = await fetch(`${API_BASE}/customers/${id}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getCustomer error:', err);
+        return null;
+    }
+}

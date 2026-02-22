@@ -152,7 +152,8 @@ function mapBookingRow(row) {
         updatedAt: row.updated_at,
         groupName: row.group_name || null,
         extraData: row.extra_data || null,
-        skipNotification: row.skip_notification || false
+        skipNotification: row.skip_notification || false,
+        customerId: row.customer_id || null
     };
 }
 

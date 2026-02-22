@@ -95,6 +95,7 @@ app.use('/api/designs', require('./routes/designs'));
 app.use('/api/contractors', require('./routes/contractors'));
 app.use('/api/warehouse', require('./routes/warehouse'));
 app.use('/api/hr', require('./routes/hr'));
+app.use('/api/customers', require('./routes/customers'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));

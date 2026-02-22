@@ -727,6 +727,33 @@ async function initDatabase() {
         // v12.6: skip_notification flag for bookings
         await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS skip_notification BOOLEAN DEFAULT false`);
 
+        // v15.1: CRM — customers table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS customers (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                phone VARCHAR(30),
+                instagram VARCHAR(100),
+                child_name VARCHAR(200),
+                child_birthday DATE,
+                source VARCHAR(50),
+                notes TEXT,
+                total_bookings INTEGER DEFAULT 0,
+                total_spent INTEGER DEFAULT 0,
+                first_visit DATE,
+                last_visit DATE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_customers_instagram ON customers(instagram)');
+
+        // v15.1: CRM — link bookings to customers
+        await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)`);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_customer_id ON bookings(customer_id)');
+
         // v12.6: Seed test contractor (Женя / Євгенія)
         const contractorSeedVersion = '008_seed_contractor_zhenya';
         const contractorSeedCheck = await pool.query(

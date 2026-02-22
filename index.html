@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=15.0">
-    <link rel="stylesheet" href="css/auth.css?v=15.0">
-    <link rel="stylesheet" href="css/layout.css?v=15.0">
-    <link rel="stylesheet" href="css/timeline.css?v=15.0">
-    <link rel="stylesheet" href="css/panel.css?v=15.0">
-    <link rel="stylesheet" href="css/modals.css?v=15.0">
-    <link rel="stylesheet" href="css/controls.css?v=15.0">
-    <link rel="stylesheet" href="css/features.css?v=15.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=15.0">
-    <link rel="stylesheet" href="css/responsive.css?v=15.0">
-    <link rel="stylesheet" href="css/pages.css?v=15.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=15.0">
+    <link rel="stylesheet" href="css/base.css?v=15.1">
+    <link rel="stylesheet" href="css/auth.css?v=15.1">
+    <link rel="stylesheet" href="css/layout.css?v=15.1">
+    <link rel="stylesheet" href="css/timeline.css?v=15.1">
+    <link rel="stylesheet" href="css/panel.css?v=15.1">
+    <link rel="stylesheet" href="css/modals.css?v=15.1">
+    <link rel="stylesheet" href="css/controls.css?v=15.1">
+    <link rel="stylesheet" href="css/features.css?v=15.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=15.1">
+    <link rel="stylesheet" href="css/responsive.css?v=15.1">
+    <link rel="stylesheet" href="css/pages.css?v=15.1">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=15.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v15.0.0 — HR Module</p>
+                <p class="tagline">AI First CRM v15.1.0 — CRM Phase 2</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v15.0.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v15.1.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -81,6 +81,7 @@
                     <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
                     <a href="/hr" class="nav-link">🏢 <span class="nav-text">HR</span></a>
                     <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
+                    <a href="/customers" class="nav-link">🗂 <span class="nav-text">Клієнти</span></a>
                     <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
                 </nav>
                 <div class="user-panel">
@@ -1099,6 +1100,18 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-entry">
+                    <h4>v15.1.0 — CRM Phase 2 (22.02.2026)</h4>
+                    <ul>
+                        <li><b>Сторінка CRM</b> — /customers з таблицею клієнтів, пошуком, фільтрами</li>
+                        <li><b>Фільтри клієнтів</b> — по джерелу, візитах, даті, сортування</li>
+                        <li><b>RFM-аналітика</b> — сегментація клієнтів (чемпіони, лояльні, під загрозою, втрачені)</li>
+                        <li><b>Автопривітання ДН</b> — щоденний Telegram о 09:00 з іменинниками</li>
+                        <li><b>Зв'язок сертифікатів</b> — certificates.customer_id, відображення в картці клієнта</li>
+                        <li><b>Експорт CSV</b> — вивантаження бази клієнтів з усіма полями</li>
+                        <li><b>Навігація</b> — посилання «Клієнти» додано на всі 9 сторінок</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v15.0.0 — HR Module</h4>
                     <ul>
@@ -2626,22 +2639,22 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=15.0"></script>
-    <script src="js/api.js?v=15.0"></script>
-    <script src="js/ui.js?v=15.0"></script>
-    <script src="js/auth.js?v=15.0"></script>
-    <script src="js/timeline.js?v=15.0"></script>
-    <script src="js/booking.js?v=15.0"></script>
-    <script src="js/settings.js?v=15.0"></script>
-    <script src="js/booking-form.js?v=15.0"></script>
-    <script src="js/booking-linked.js?v=15.0"></script>
-    <script src="js/settings-dashboard.js?v=15.0"></script>
-    <script src="js/settings-history.js?v=15.0"></script>
-    <script src="js/settings-afisha.js?v=15.0"></script>
-    <script src="js/settings-certificates.js?v=15.0"></script>
-    <script src="js/offline.js?v=15.0"></script>
-    <script src="js/ws.js?v=15.0"></script>
-    <script src="js/app.js?v=15.0"></script>
-    <script src="js/kleshnya-widget.js?v=15.0"></script>
+    <script src="js/config.js?v=15.1"></script>
+    <script src="js/api.js?v=15.1"></script>
+    <script src="js/ui.js?v=15.1"></script>
+    <script src="js/auth.js?v=15.1"></script>
+    <script src="js/timeline.js?v=15.1"></script>
+    <script src="js/booking.js?v=15.1"></script>
+    <script src="js/settings.js?v=15.1"></script>
+    <script src="js/booking-form.js?v=15.1"></script>
+    <script src="js/booking-linked.js?v=15.1"></script>
+    <script src="js/settings-dashboard.js?v=15.1"></script>
+    <script src="js/settings-history.js?v=15.1"></script>
+    <script src="js/settings-afisha.js?v=15.1"></script>
+    <script src="js/settings-certificates.js?v=15.1"></script>
+    <script src="js/offline.js?v=15.1"></script>
+    <script src="js/ws.js?v=15.1"></script>
+    <script src="js/app.js?v=15.1"></script>
+    <script src="js/kleshnya-widget.js?v=15.1"></script>
 </body>
 </html>

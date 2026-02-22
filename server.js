@@ -96,6 +96,7 @@ app.use('/api/contractors', require('./routes/contractors'));
 app.use('/api/warehouse', require('./routes/warehouse'));
 app.use('/api/hr', require('./routes/hr'));
 app.use('/api/customers', require('./routes/customers'));
+app.use('/api/finance', require('./routes/finance'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -176,6 +177,9 @@ app.get('/hr', (req, res) => {
 });
 app.get('/customers', (req, res) => {
     res.sendFile(path.join(__dirname, 'customers.html'));
+});
+app.get('/finance', (req, res) => {
+    res.sendFile(path.join(__dirname, 'finance.html'));
 });
 
 // SPA fallback (must be last)

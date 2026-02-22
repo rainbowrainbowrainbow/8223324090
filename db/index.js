@@ -796,6 +796,72 @@ async function initDatabase() {
             log.info('User seeded: openclaw (role: user)');
         }
 
+        // v16.0: Finance module — categories
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS finance_categories (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                type VARCHAR(10) NOT NULL,
+                icon VARCHAR(10),
+                color VARCHAR(20),
+                is_system BOOLEAN DEFAULT FALSE,
+                is_active BOOLEAN DEFAULT TRUE,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_finance_categories_type ON finance_categories(type)');
+
+        // v16.0: Finance module — transactions
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS finance_transactions (
+                id SERIAL PRIMARY KEY,
+                type VARCHAR(10) NOT NULL,
+                category_id INTEGER REFERENCES finance_categories(id),
+                amount INTEGER NOT NULL,
+                description TEXT,
+                date VARCHAR(20) NOT NULL,
+                payment_method VARCHAR(30),
+                booking_id VARCHAR(50),
+                staff_id INTEGER REFERENCES staff(id) ON DELETE SET NULL,
+                certificate_id INTEGER REFERENCES certificates(id) ON DELETE SET NULL,
+                created_by VARCHAR(50),
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_finance_transactions_date ON finance_transactions(date)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_finance_transactions_type ON finance_transactions(type)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_finance_transactions_category ON finance_transactions(category_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_finance_transactions_booking ON finance_transactions(booking_id)');
+
+        // v16.0: Add payment_method to bookings
+        await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30)`);
+
+        // v16.0: Add value_uah to certificates
+        await pool.query(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS value_uah INTEGER DEFAULT 0`);
+
+        // v16.0: Seed finance categories if empty
+        const finCatCount = await pool.query('SELECT COUNT(*) FROM finance_categories');
+        if (parseInt(finCatCount.rows[0].count) === 0) {
+            await pool.query(
+                `INSERT INTO finance_categories (name, type, icon, color, is_system, sort_order) VALUES
+                ('Бронювання', 'income', '🎪', '#10B981', true, 1),
+                ('Сертифікати', 'income', '🎫', '#6366F1', true, 2),
+                ('Кафе', 'income', '☕', '#F59E0B', false, 3),
+                ('Майстер-класи', 'income', '🎨', '#EC4899', false, 4),
+                ('Інший дохід', 'income', '💰', '#8B5CF6', false, 5),
+                ('Зарплата', 'expense', '👤', '#EF4444', true, 1),
+                ('Оренда', 'expense', '🏢', '#F97316', false, 2),
+                ('Закупки', 'expense', '🛒', '#14B8A6', false, 3),
+                ('Реклама', 'expense', '📢', '#3B82F6', false, 4),
+                ('Комунальні', 'expense', '💡', '#A855F7', false, 5),
+                ('Обслуговування', 'expense', '🔧', '#64748B', false, 6),
+                ('Інші витрати', 'expense', '📋', '#78716C', false, 7)`
+            );
+            log.info('Finance categories seeded (12 categories)');
+        }
+
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);

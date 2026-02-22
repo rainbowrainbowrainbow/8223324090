@@ -738,6 +738,7 @@
                 <button class="hr-tab" data-tab="schedule">Розклад</button>
                 <button class="hr-tab" data-tab="team">Команда</button>
                 <button class="hr-tab" data-tab="reports">Звіти</button>
+                <button class="hr-tab" data-tab="ai-team">🤖 AI Команда</button>
             </div>
 
             <!-- TAB 1: TODAY -->
@@ -808,6 +809,17 @@
                         <tbody id="reportBody"></tbody>
                     </table>
                 </div>
+            </div>
+
+            <!-- TAB 5: AI TEAM -->
+            <div id="tab-ai-team" class="hr-tab-content">
+                <div class="ai-team-intro" style="margin-bottom:24px;">
+                    <p style="font-size:var(--font-sm);color:var(--gray-600);line-height:1.6;margin:0;">
+                        Електронні працівники — AI-помічники, які автоматизують рутинні процеси парку.
+                        Кожен має свою зону відповідальності та працює через систему Клешня.
+                    </p>
+                </div>
+                <div id="aiTeamGrid" class="hr-team-grid"></div>
             </div>
         </main>
     </div>

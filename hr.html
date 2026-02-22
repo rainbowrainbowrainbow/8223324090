@@ -688,7 +688,187 @@
             .hr-report-controls { flex-direction: column; align-items: stretch; }
             .hr-clock-btn { min-width: 120px; padding: 8px 12px; }
             .hr-staff-row { padding: 10px 14px; gap: 10px; }
+            .ai-worker { padding: 16px; }
+            .ai-worker-header { flex-direction: column; gap: 10px; }
+            .ai-worker-avatar { width: 48px; height: 48px; font-size: 22px; }
         }
+
+        /* ==========================================
+           AI WORKER CARDS
+           ========================================== */
+        .ai-worker {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 20px 24px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow-xs);
+            transition: box-shadow var(--speed-fast);
+        }
+        .ai-worker:hover { box-shadow: var(--shadow-sm); }
+        .ai-worker-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+        .ai-worker-avatar {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366F1, #8B5CF6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            flex-shrink: 0;
+        }
+        .ai-worker-info { flex: 1; min-width: 0; }
+        .ai-worker-name {
+            font-weight: 900;
+            font-size: 18px;
+            color: var(--gray-800);
+            margin-bottom: 2px;
+        }
+        .ai-worker-dept {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .ai-worker-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 12px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .ai-worker-badge.active { color: #059669; background: #ECFDF5; }
+        .ai-worker-badge.planned { color: #D97706; background: #FFFBEB; }
+        .ai-worker-role {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--gray-700);
+            margin-bottom: 8px;
+        }
+        .ai-worker-desc {
+            font-size: 13px;
+            color: var(--gray-600);
+            line-height: 1.6;
+            margin-bottom: 14px;
+        }
+        .ai-worker-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 4px;
+        }
+        .ai-worker-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            background: var(--gray-50);
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--gray-600);
+            cursor: pointer;
+            transition: all var(--speed-fast);
+        }
+        .ai-worker-toggle:hover { background: var(--gray-100); color: var(--gray-800); }
+        .ai-worker-toggle.open { background: var(--white); border-color: #6366F1; color: #6366F1; }
+        .ai-worker-send-btn {
+            padding: 7px 14px;
+            border: none;
+            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, #6366F1, #8B5CF6);
+            color: #fff;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity var(--speed-fast);
+        }
+        .ai-worker-send-btn:hover { opacity: 0.85; }
+        .ai-worker-panel {
+            display: none;
+            margin-top: 12px;
+            padding: 14px 16px;
+            background: var(--gray-50);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--gray-100);
+            font-size: 13px;
+            color: var(--gray-600);
+            line-height: 1.6;
+        }
+        .ai-worker-panel.open { display: block; }
+        .ai-worker-panel h5 {
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--gray-700);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 0 0 8px 0;
+        }
+        .ai-worker-panel ul {
+            margin: 0;
+            padding-left: 18px;
+            line-height: 1.9;
+        }
+        .ai-worker-panel li::marker { color: #6366F1; }
+        .ai-journal-empty {
+            text-align: center;
+            color: var(--gray-400);
+            font-style: italic;
+            padding: 20px;
+        }
+        .ai-task-form {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .ai-task-form input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-family: inherit;
+            font-size: 13px;
+            min-width: 0;
+        }
+        .ai-task-form input:focus { outline: none; border-color: #6366F1; }
+        .ai-task-form button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: var(--radius-sm);
+            background: #6366F1;
+            color: #fff;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .ai-task-form button:hover { background: #4F46E5; }
+
+        /* Dark mode AI workers */
+        body.dark-mode .ai-worker { background: var(--gray-800); border-color: var(--gray-700); }
+        body.dark-mode .ai-worker-name { color: var(--gray-100); }
+        body.dark-mode .ai-worker-role { color: var(--gray-300); }
+        body.dark-mode .ai-worker-desc { color: var(--gray-400); }
+        body.dark-mode .ai-worker-toggle { background: var(--gray-700); border-color: var(--gray-600); color: var(--gray-300); }
+        body.dark-mode .ai-worker-toggle:hover { background: var(--gray-600); }
+        body.dark-mode .ai-worker-panel { background: var(--gray-700); border-color: var(--gray-600); color: var(--gray-400); }
+        body.dark-mode .ai-worker-panel h5 { color: var(--gray-300); }
+        body.dark-mode .ai-task-form input { background: var(--gray-700); border-color: var(--gray-600); color: var(--gray-200); }
     </style>
 </head>
 <body>
@@ -813,13 +993,12 @@
 
             <!-- TAB 5: AI TEAM -->
             <div id="tab-ai-team" class="hr-tab-content">
-                <div class="ai-team-intro" style="margin-bottom:24px;">
-                    <p style="font-size:var(--font-sm);color:var(--gray-600);line-height:1.6;margin:0;">
-                        Електронні працівники — AI-помічники, які автоматизують рутинні процеси парку.
-                        Кожен має свою зону відповідальності та працює через систему Клешня.
+                <div style="margin-bottom:20px;padding:14px 18px;background:linear-gradient(135deg,#EEF2FF,#E0E7FF);border-radius:var(--radius);border-left:4px solid #6366F1;">
+                    <p style="font-size:var(--font-sm);color:#4338CA;line-height:1.6;margin:0;font-weight:600;">
+                        Електронні працівники — AI-помічники парку. Кожен має свою зону відповідальності.
                     </p>
                 </div>
-                <div id="aiTeamGrid" class="hr-team-grid"></div>
+                <div id="aiTeamList"></div>
             </div>
         </main>
     </div>

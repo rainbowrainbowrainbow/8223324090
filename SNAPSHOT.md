@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v16.2.0**. Swagger API Docs.
+Версія **v17.0.0**. Export, Budget & Procurement.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -27,35 +27,53 @@
 - v15.0.0: HR Module — повний HR-блок
 - v15.1.0: CRM Phase 2 — клієнтська база, фільтри, RFM, ДН, сертифікати, експорт
 - v16.0.0: Finance Module — каса, P&L, зарплати, категорії, автозапис, CSV
-- v16.1.0: Analytics v2 — єдиний дашборд (bookings + finance + HR + CRM), порівняння періодів
-- **v16.2.0: Swagger API Docs — /api-docs, OpenAPI 3.0, 136 ендпоінтів, 54 схеми**
+- v16.1.0: Analytics v2 — єдиний дашборд (bookings + finance + HR + CRM)
+- v16.2.0: Swagger API Docs — /api-docs, OpenAPI 3.0, 136 ендпоінтів
+- **v17.0.0: Export Excel/PDF + Бюджетне планування + Система закупок**
 
 ## Архітектура
-- **11 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya
-- **Backend:** 20 routes, 13 services, 4 middleware
+- **11 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse
+- **Backend:** 21 routes, 13 services, 4 middleware
 - **Frontend:** 24 JS + 11 CSS модулів
-- **БД:** ~34 таблиці, 50+ індексів, 5 міграцій
+- **БД:** ~37 таблиць (budget_plans, procurement_lists, procurement_items — нові), 50+ індексів, 9 міграцій
 - **13 schedulers** (+ birthday greetings), WebSocket broadcast
-- **269 тестів** (3 файли + helpers)
-- ~52 000 рядків коду
+- **288 тестів** (3 файли + helpers)
+- ~54 000 рядків коду
 
-## Swagger API Docs (v16.2)
-- **swagger-ui-express** — інтерактивна документація на `/api-docs`
-- **swagger.js** — OpenAPI 3.0 специфікація (136 paths, 54 schemas, 25 tags)
-- **/api-docs.json** — JSON endpoint для автогенерації клієнтів
-- **Повне покриття:** Auth, Bookings, Lines, History, Products, Afisha, Tasks, Task Templates, Staff, Certificates, Telegram, Backup, Settings, Automation, Points, Kleshnya, Recurring, Stats, Customers, Finance, Analytics, HR, Designs, Contractors, Warehouse
+## v17.0 — Нові модулі
+
+### Export Excel
+- `exceljs` — server-side Excel generation
+- `/api/finance/export-xlsx` — фінансові транзакції
+- `/api/customers/export-xlsx` — клієнтська база
+- `/api/procurement/export-xlsx` — списки закупок
+- Print CSS для PDF через Ctrl+P
+
+### Бюджетне планування
+- `budget_plans` — план по категоріях × місяцях
+- `PUT /api/finance/budget` — upsert (ON CONFLICT)
+- `GET /api/finance/budget/comparison` — план vs факт з % виконання
+- Фронтенд: таб «Бюджет» у Фінансах
+
+### Система закупок
+- `procurement_lists` + `procurement_items`
+- 6 відділів: animators, cleaning, cafe, tech, admin, security
+- 6 статусів: draft → approved → in_progress → purchased → delivered / cancelled
+- Авто-поповнення з нестач (`suggestions/low-stock`)
+- Авто-реstock при завершенні закупки (`complete`)
+- Фронтенд: таб «Закупки» на сторінці Складу
+- Excel export для закупок
 
 ## Dark Mode (v12.1+)
-- `initDarkMode()` в config.js — єдина функція для всіх 11 сторінок
+- `initDarkMode()` в config.js — єдина функція для всіх сторінок
 - Авто: темна 20:00–07:00, світла 07:00–20:00
 - Ручний toggle зберігається в localStorage і перезаписує авто
-- Два селектори: `body.dark-mode` + `[data-theme="dark"]`
 
 ## Що далі
 - Тестування Kleshnya Chat v2 з OpenClaw Bridge
-- Export PDF/Excel
-- Бюджетне планування (план vs факт)
 - Розширення тригерів Клешні
+- Інтеграція закупок з Telegram-сповіщеннями
+- Мобільна оптимізація закупок
 
 ## Технічний стан
 - Branch: `claude/bump-version-0.1-lj64Q`
@@ -63,4 +81,4 @@
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-22, v16.2.0*
+*Оновлено: 2026-02-22, v17.0.0*

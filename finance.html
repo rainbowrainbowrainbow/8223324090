@@ -7,12 +7,12 @@
     <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Maestro">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=16.2">
-    <link rel="stylesheet" href="css/layout.css?v=16.2">
-    <link rel="stylesheet" href="css/pages.css?v=16.2">
-    <link rel="stylesheet" href="css/modals.css?v=16.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=16.2">
-    <link rel="stylesheet" href="css/responsive.css?v=16.2">
+    <link rel="stylesheet" href="css/base.css?v=17.0">
+    <link rel="stylesheet" href="css/layout.css?v=17.0">
+    <link rel="stylesheet" href="css/pages.css?v=17.0">
+    <link rel="stylesheet" href="css/modals.css?v=17.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=17.0">
+    <link rel="stylesheet" href="css/responsive.css?v=17.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -476,7 +476,8 @@
             <div class="page-header">
                 <h2>💰 Фінанси</h2>
                 <div style="display:flex;gap:6px">
-                    <button id="exportCsvBtn" class="btn-page-secondary" style="display:none">📥 Експорт CSV</button>
+                    <button id="exportXlsxBtn" class="btn-page-secondary" style="display:none" title="Excel">📊 Excel</button>
+                    <button id="exportCsvBtn" class="btn-page-secondary" style="display:none">📥 CSV</button>
                     <button id="addTransactionBtn" class="btn-page-primary" style="display:none">+ Транзакція</button>
                 </div>
             </div>
@@ -490,6 +491,7 @@
                 <button class="fin-tab" data-tab="transactions">📋 Транзакції</button>
                 <button class="fin-tab" data-tab="monthly">📅 Звіт по місяцях</button>
                 <button class="fin-tab" data-tab="salary">👤 Зарплати</button>
+                <button class="fin-tab" data-tab="budget">📋 Бюджет</button>
             </div>
 
             <!-- Dashboard tab -->
@@ -610,6 +612,39 @@
                     </table>
                 </div>
             </div>
+
+            <!-- Budget tab (v17.0) -->
+            <div id="tabBudget" style="display:none">
+                <div class="fin-filters" style="margin-bottom:16px">
+                    <select id="budgetYear" class="fin-filter-select"></select>
+                    <select id="budgetMonth" class="fin-filter-select">
+                        <option value="1">Січень</option>
+                        <option value="2">Лютий</option>
+                        <option value="3">Березень</option>
+                        <option value="4">Квітень</option>
+                        <option value="5">Травень</option>
+                        <option value="6">Червень</option>
+                        <option value="7">Липень</option>
+                        <option value="8">Серпень</option>
+                        <option value="9">Вересень</option>
+                        <option value="10">Жовтень</option>
+                        <option value="11">Листопад</option>
+                        <option value="12">Грудень</option>
+                    </select>
+                    <button id="loadBudgetBtn" class="btn-page-primary" onclick="loadBudgetComparison()">Порівняти</button>
+                </div>
+
+                <div id="budgetComparison"></div>
+
+                <div style="margin-top:24px">
+                    <h4 style="font-weight:800;margin-bottom:12px;">Встановити план</h4>
+                    <div class="fin-filters" style="gap:8px">
+                        <select id="budgetCategorySelect" class="fin-filter-select"></select>
+                        <input type="number" id="budgetAmountInput" placeholder="Сума ₴" min="0" style="width:120px;padding:10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px;">
+                        <button onclick="saveBudgetPlan()" class="btn-page-primary">Зберегти план</button>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -680,9 +715,9 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=16.2"></script>
-    <script src="js/api.js?v=16.2"></script>
-    <script src="js/auth.js?v=16.2"></script>
-    <script src="js/finance-page.js?v=16.2"></script>
+    <script src="js/config.js?v=17.0"></script>
+    <script src="js/api.js?v=17.0"></script>
+    <script src="js/auth.js?v=17.0"></script>
+    <script src="js/finance-page.js?v=17.0"></script>
 </body>
 </html>

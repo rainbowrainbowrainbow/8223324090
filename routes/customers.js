@@ -127,6 +127,68 @@ router.get('/export', async (req, res) => {
     }
 });
 
+// v17.0: Excel export
+router.get('/export-xlsx', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT c.*,
+                   (SELECT COUNT(*) FROM certificates cert WHERE cert.customer_id = c.id) AS cert_count
+            FROM customers c
+            ORDER BY c.name
+        `);
+
+        const ExcelJS = require('exceljs');
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'Event Maestro';
+        const sheet = workbook.addWorksheet('Клієнти');
+
+        sheet.columns = [
+            { header: 'ID', key: 'id', width: 8 },
+            { header: "Ім'я", key: 'name', width: 22 },
+            { header: 'Телефон', key: 'phone', width: 16 },
+            { header: 'Instagram', key: 'instagram', width: 18 },
+            { header: "Ім'я дитини", key: 'childName', width: 18 },
+            { header: 'ДН дитини', key: 'childBday', width: 14 },
+            { header: 'Джерело', key: 'source', width: 14 },
+            { header: 'Бронювань', key: 'bookings', width: 12 },
+            { header: 'Витрачено (₴)', key: 'spent', width: 14 },
+            { header: 'Перший візит', key: 'firstVisit', width: 14 },
+            { header: 'Останній візит', key: 'lastVisit', width: 14 },
+            { header: 'Сертифікатів', key: 'certs', width: 12 },
+            { header: 'Нотатки', key: 'notes', width: 24 }
+        ];
+
+        sheet.getRow(1).font = { bold: true };
+        sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+
+        for (const r of result.rows) {
+            sheet.addRow({
+                id: r.id,
+                name: r.name || '',
+                phone: r.phone || '',
+                instagram: r.instagram || '',
+                childName: r.child_name || '',
+                childBday: r.child_birthday || '',
+                source: r.source || '',
+                bookings: r.total_bookings || 0,
+                spent: r.total_spent || 0,
+                firstVisit: r.first_visit || '',
+                lastVisit: r.last_visit || '',
+                certs: parseInt(r.cert_count) || 0,
+                notes: r.notes || ''
+            });
+        }
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="customers_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (err) {
+        log.error('Customer export-xlsx error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // v15.1: Stats overview
 router.get('/stats', async (req, res) => {
     try {

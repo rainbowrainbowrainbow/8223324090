@@ -1,6 +1,6 @@
 {
   "name": "event-maestro",
-  "version": "16.2.0",
+  "version": "17.0.0",
   "description": "Event Maestro — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
   "scripts": {
@@ -11,6 +11,7 @@
     "@anthropic-ai/sdk": "^0.75.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
+    "exceljs": "^4.4.0",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",

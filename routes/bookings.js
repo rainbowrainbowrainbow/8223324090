@@ -87,16 +87,42 @@ router.post('/', async (req, res) => {
             }
         }
 
+        // CRM: resolve or create customer
+        let customerId = b.customerId ? parseInt(b.customerId) : null;
+        if (b.customer && b.customer.name && !customerId) {
+            const c = b.customer;
+            const custResult = await client.query(
+                `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
+                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+            );
+            customerId = custResult.rows[0].id;
+        }
+
         if (!b.id || !/^BK-\d{4}-\d{4,}$/.test(b.id)) {
             b.id = await generateBookingNumber(client);
         }
 
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
              RETURNING *`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false]
+            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId]
         );
+
+        // CRM: update customer aggregates
+        if (customerId) {
+            await client.query(
+                `UPDATE customers SET
+                    total_bookings = total_bookings + 1,
+                    total_spent = total_spent + $1,
+                    last_visit = GREATEST(last_visit, $2::date),
+                    first_visit = LEAST(COALESCE(first_visit, $2::date), $2::date),
+                    updated_at = NOW()
+                 WHERE id = $3`,
+                [b.price || 0, b.date, customerId]
+            );
+        }
 
         await client.query(
             'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
@@ -173,16 +199,42 @@ router.post('/full', async (req, res) => {
             });
         }
 
+        // CRM: resolve or create customer
+        let customerId = main.customerId ? parseInt(main.customerId) : null;
+        if (main.customer && main.customer.name && !customerId) {
+            const c = main.customer;
+            const custResult = await client.query(
+                `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
+                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+            );
+            customerId = custResult.rows[0].id;
+        }
+
         if (!main.id || !/^BK-\d{4}-\d{4,}$/.test(main.id)) {
             main.id = await generateBookingNumber(client);
         }
 
         const mainInsert = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
              RETURNING *`,
-            [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false]
+            [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId]
         );
+
+        // CRM: update customer aggregates
+        if (customerId) {
+            await client.query(
+                `UPDATE customers SET
+                    total_bookings = total_bookings + 1,
+                    total_spent = total_spent + $1,
+                    last_visit = GREATEST(last_visit, $2::date),
+                    first_visit = LEAST(COALESCE(first_visit, $2::date), $2::date),
+                    updated_at = NOW()
+                 WHERE id = $3`,
+                [main.price || 0, main.date, customerId]
+            );
+        }
 
         const linkedRows = [];
         if (Array.isArray(linked)) {
@@ -275,6 +327,18 @@ router.delete('/:id', async (req, res) => {
             );
         }
 
+        // CRM: decrement customer aggregates
+        if (booking.customer_id) {
+            await client.query(
+                `UPDATE customers SET
+                    total_bookings = GREATEST(0, total_bookings - 1),
+                    total_spent = GREATEST(0, total_spent - $1),
+                    updated_at = NOW()
+                 WHERE id = $2`,
+                [booking.price || 0, booking.customer_id]
+            );
+        }
+
         await client.query('COMMIT');
 
         getLineName(booking.line_id, booking.date).then(lineName =>
@@ -356,6 +420,9 @@ router.put('/:id', async (req, res) => {
 
         const newStatus = b.status || 'confirmed';
 
+        // CRM: resolve customer_id for update
+        const updateCustomerId = b.customerId ? parseInt(b.customerId) : (oldBooking.customer_id || null);
+
         let updateResult;
         if (clientUpdatedAt) {
             // Optimistic locking: check updated_at matches client's version
@@ -364,14 +431,14 @@ router.put('/:id', async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25
                  WHERE id=$23 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
                  b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null,
-                 id, clientUpdatedAt]
+                 id, clientUpdatedAt, updateCustomerId]
             );
         } else {
             // Legacy: no optimistic locking (backward compatibility)
@@ -379,13 +446,13 @@ router.put('/:id', async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24
                  WHERE id=$23
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
-                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id]
+                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId]
             );
         }
 

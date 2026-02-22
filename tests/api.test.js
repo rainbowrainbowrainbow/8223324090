@@ -2935,3 +2935,158 @@ describe('Staff Schedule Check Date (v7.10)', () => {
         if (unavailableId) await authRequest('DELETE', `/api/staff/${unavailableId}`);
     });
 });
+
+// ==========================================
+// CRM CUSTOMERS (v15.1)
+// ==========================================
+
+describe('CRM Customers (v15.1)', () => {
+    let customerId;
+
+    it('POST /api/customers — create customer', async () => {
+        const res = await authRequest('POST', '/api/customers', {
+            name: 'Тест Іваненко',
+            phone: '+380671234567',
+            instagram: 'test_ivanenko',
+            childName: 'Максим',
+            childBirthday: '2018-03-27',
+            source: 'instagram'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.id);
+        assert.equal(res.data.name, 'Тест Іваненко');
+        assert.equal(res.data.phone, '+380671234567');
+        assert.equal(res.data.instagram, 'test_ivanenko');
+        assert.equal(res.data.childName, 'Максим');
+        assert.equal(res.data.source, 'instagram');
+        customerId = res.data.id;
+    });
+
+    it('POST /api/customers — requires name', async () => {
+        const res = await authRequest('POST', '/api/customers', {
+            phone: '+380671111111'
+        });
+        assert.equal(res.status, 400);
+    });
+
+    it('GET /api/customers/search?q= — autocomplete search', async () => {
+        const res = await authRequest('GET', '/api/customers/search?q=Іваненко');
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data));
+        assert.ok(res.data.length > 0);
+        assert.equal(res.data[0].name, 'Тест Іваненко');
+    });
+
+    it('GET /api/customers/search?q= — search by phone', async () => {
+        const res = await authRequest('GET', '/api/customers/search?q=067123');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.length > 0);
+    });
+
+    it('GET /api/customers/search?q= — short query returns empty', async () => {
+        const res = await authRequest('GET', '/api/customers/search?q=T');
+        assert.equal(res.status, 200);
+        assert.equal(res.data.length, 0);
+    });
+
+    it('GET /api/customers — list with pagination', async () => {
+        const res = await authRequest('GET', '/api/customers');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.customers);
+        assert.ok(res.data.total >= 1);
+        assert.equal(res.data.page, 1);
+    });
+
+    it('GET /api/customers/:id — get with booking history', async () => {
+        const res = await authRequest('GET', `/api/customers/${customerId}`);
+        assert.equal(res.status, 200);
+        assert.equal(res.data.name, 'Тест Іваненко');
+        assert.ok(Array.isArray(res.data.bookings));
+    });
+
+    it('PUT /api/customers/:id — update customer', async () => {
+        const res = await authRequest('PUT', `/api/customers/${customerId}`, {
+            name: 'Тест Оновлений',
+            phone: '+380679999999',
+            instagram: 'updated_ig',
+            childName: 'Олег',
+            source: 'google'
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.name, 'Тест Оновлений');
+        assert.equal(res.data.instagram, 'updated_ig');
+    });
+
+    it('GET /api/customers/:id — 404 for nonexistent', async () => {
+        const res = await authRequest('GET', '/api/customers/999999');
+        assert.equal(res.status, 404);
+    });
+
+    it('DELETE /api/customers/:id — delete customer', async () => {
+        const res = await authRequest('DELETE', `/api/customers/${customerId}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+
+        // Verify deleted
+        const check = await authRequest('GET', `/api/customers/${customerId}`);
+        assert.equal(check.status, 404);
+    });
+});
+
+describe('CRM Booking Integration (v15.1)', () => {
+    let customerId;
+    let bookingId;
+
+    before(async () => {
+        // Create a test customer
+        const res = await authRequest('POST', '/api/customers', {
+            name: 'Бронювання Тест',
+            phone: '+380501111111'
+        });
+        customerId = res.data.id;
+    });
+
+    it('POST /api/bookings — create with customerId', async () => {
+        const date = testDate();
+        // Ensure lines exist
+        await authRequest('POST', '/api/lines/' + date, {
+            lines: [{ id: 'crm_line1', name: 'CRM Тест 1', color: '#FF0000' }]
+        });
+
+        const res = await authRequest('POST', '/api/bookings', {
+            date: date,
+            time: '10:00',
+            lineId: 'crm_line1',
+            programId: 'kv1',
+            programCode: 'КВ1',
+            label: 'КВ1(60)',
+            programName: 'Легендарний тренд',
+            category: 'quest',
+            duration: 60,
+            price: 2200,
+            hosts: 1,
+            room: 'Marvel',
+            createdBy: 'admin',
+            customerId: customerId
+        });
+
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(res.data.booking.id);
+        bookingId = res.data.booking.id;
+        assert.equal(res.data.booking.customerId, customerId);
+    });
+
+    it('GET /api/customers/:id — aggregates updated after booking', async () => {
+        const res = await authRequest('GET', `/api/customers/${customerId}`);
+        assert.equal(res.status, 200);
+        assert.equal(res.data.totalBookings, 1);
+        assert.equal(res.data.totalSpent, 2200);
+        assert.ok(res.data.bookings.length >= 1);
+    });
+
+    after(async () => {
+        if (bookingId) await authRequest('DELETE', `/api/bookings/${bookingId}?permanent=true`);
+        if (customerId) await authRequest('DELETE', `/api/customers/${customerId}`);
+    });
+});

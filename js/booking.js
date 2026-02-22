@@ -64,12 +64,120 @@ async function openBookingPanel(time, lineId) {
     const changeBtn = document.getElementById('changeProgramBtn');
     if (changeBtn) changeBtn.remove();
 
+    // v15.1: Reset CRM customer section
+    clearCustomerFields();
+    const customerToggle = document.getElementById('customerDataToggle');
+    if (customerToggle) customerToggle.checked = false;
+    document.getElementById('customerDataSection')?.classList.add('hidden');
+
     document.getElementById('bookingPanel').classList.remove('hidden');
     document.querySelector('.main-content').classList.add('panel-open');
     // v5.33: Lock body scroll on mobile when panel is open
     document.body.classList.add('panel-open');
     // v5.35: Show backdrop overlay on tablet/mobile
     document.getElementById('panelBackdrop')?.classList.remove('hidden');
+}
+
+// ==========================================
+// CRM: CUSTOMER DATA (v15.1)
+// ==========================================
+
+function clearCustomerFields() {
+    const fields = ['customerSearch', 'customerName', 'customerPhone', 'customerInstagram', 'customerChildName', 'customerChildBirthday'];
+    fields.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    const source = document.getElementById('customerSource');
+    if (source) source.value = '';
+    const hiddenId = document.getElementById('selectedCustomerId');
+    if (hiddenId) hiddenId.value = '';
+    document.getElementById('customerSearchResults')?.classList.add('hidden');
+    document.getElementById('customerInfo')?.classList.add('hidden');
+}
+
+function selectCustomerFromSearch(customer) {
+    document.getElementById('selectedCustomerId').value = customer.id;
+    document.getElementById('customerName').value = customer.name || '';
+    document.getElementById('customerPhone').value = customer.phone || '';
+    document.getElementById('customerInstagram').value = customer.instagram || '';
+    document.getElementById('customerChildName').value = customer.childName || '';
+    document.getElementById('customerChildBirthday').value = customer.childBirthday ? customer.childBirthday.split('T')[0] : '';
+    document.getElementById('customerSearch').value = customer.name || '';
+    document.getElementById('customerSearchResults').classList.add('hidden');
+
+    // Show visit badge
+    if (customer.totalBookings > 0) {
+        const info = document.getElementById('customerInfo');
+        const badge = document.getElementById('customerVisitBadge');
+        if (info && badge) {
+            badge.textContent = `${customer.totalBookings} візит${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'и' : 'ів'}`;
+            info.classList.remove('hidden');
+        }
+    }
+}
+
+function renderCustomerSearchResults(customers) {
+    const container = document.getElementById('customerSearchResults');
+    if (!container) return;
+
+    if (!customers || customers.length === 0) {
+        container.classList.add('hidden');
+        return;
+    }
+
+    container.innerHTML = customers.map(c => `
+        <div class="customer-search-item" data-id="${c.id}">
+            <div class="customer-search-name">${escapeHtml(c.name)}</div>
+            <div class="customer-search-meta">
+                ${c.phone ? escapeHtml(c.phone) : ''}
+                ${c.instagram ? ' @' + escapeHtml(c.instagram) : ''}
+                ${c.totalBookings ? ' · ' + c.totalBookings + ' віз.' : ''}
+            </div>
+        </div>
+    `).join('');
+    container.classList.remove('hidden');
+
+    // Click handlers
+    container.querySelectorAll('.customer-search-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const id = parseInt(item.dataset.id);
+            const customer = customers.find(c => c.id === id);
+            if (customer) selectCustomerFromSearch(customer);
+        });
+    });
+}
+
+// Toggle + autocomplete listeners (called once on page load)
+function initCustomerCRM() {
+    // Toggle
+    document.getElementById('customerDataToggle')?.addEventListener('change', (e) => {
+        const section = document.getElementById('customerDataSection');
+        if (section) section.classList.toggle('hidden', !e.target.checked);
+        if (!e.target.checked) clearCustomerFields();
+    });
+
+    // Autocomplete search with debounce
+    let customerSearchTimeout;
+    document.getElementById('customerSearch')?.addEventListener('input', (e) => {
+        clearTimeout(customerSearchTimeout);
+        const q = e.target.value.trim();
+        if (q.length < 2) {
+            document.getElementById('customerSearchResults')?.classList.add('hidden');
+            return;
+        }
+        customerSearchTimeout = setTimeout(async () => {
+            const results = await apiSearchCustomers(q);
+            renderCustomerSearchResults(results);
+        }, 300);
+    });
+
+    // Close dropdown on outside click
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.customer-search-wrap')) {
+            document.getElementById('customerSearchResults')?.classList.add('hidden');
+        }
+    });
 }
 
 // v5.18: Show free rooms for selected time/duration
@@ -483,6 +591,27 @@ function buildBookingObject(formData, program) {
         extraData: buildExtraData(formData.programId),
         skipNotification: document.getElementById('skipNotificationToggle')?.checked || false
     };
+
+    // v15.1: CRM — attach customer data
+    const customerToggle = document.getElementById('customerDataToggle');
+    if (customerToggle && customerToggle.checked) {
+        const existingId = document.getElementById('selectedCustomerId')?.value;
+        if (existingId) {
+            obj.customerId = parseInt(existingId);
+        } else {
+            const customerName = document.getElementById('customerName')?.value?.trim();
+            if (customerName) {
+                obj.customer = {
+                    name: customerName,
+                    phone: document.getElementById('customerPhone')?.value?.trim() || null,
+                    instagram: document.getElementById('customerInstagram')?.value?.trim() || null,
+                    childName: document.getElementById('customerChildName')?.value?.trim() || null,
+                    childBirthday: document.getElementById('customerChildBirthday')?.value || null,
+                    source: document.getElementById('customerSource')?.value || null
+                };
+            }
+        }
+    }
 
     // Optimistic locking: include updatedAt from the booking being edited
     if (AppState.editingBookingId) {
@@ -969,6 +1098,7 @@ async function showBookingDetails(bookingId) {
         </div>
         ${booking.notes ? `<div class="booking-detail-row"><span class="label">Примітки:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
         ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">🎪 ${escapeHtml(booking.groupName)}</span></div>` : ''}
+        <div id="bookingCustomerBlock"></div>
         ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">Оновлено:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
         ${descriptionHtml}
         ${!isViewer() ? `<div class="status-toggle-section">
@@ -980,6 +1110,32 @@ async function showBookingDetails(bookingId) {
     `;
 
     document.getElementById('bookingModal').classList.remove('hidden');
+
+    // v15.1: CRM — async load customer info
+    if (booking.customerId) {
+        apiGetCustomer(booking.customerId).then(customer => {
+            const block = document.getElementById('bookingCustomerBlock');
+            if (!block || !customer) return;
+            const lines = [];
+            lines.push(escapeHtml(customer.name));
+            if (customer.phone) lines.push(escapeHtml(customer.phone));
+            if (customer.instagram) lines.push('@' + escapeHtml(customer.instagram));
+            if (customer.childName) {
+                let childLine = escapeHtml(customer.childName);
+                if (customer.childBirthday) {
+                    const bd = new Date(customer.childBirthday);
+                    childLine += ` (${bd.toLocaleDateString('uk-UA')})`;
+                }
+                lines.push('Дитина: ' + childLine);
+            }
+            if (customer.totalBookings) lines.push(`${customer.totalBookings} візит${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'и' : 'ів'} · ${formatPrice(customer.totalSpent)}`);
+            block.innerHTML = `
+                <div class="booking-customer-info">
+                    <div class="customer-header">Клієнт</div>
+                    <div class="customer-detail">${lines.join('<br>')}</div>
+                </div>`;
+        });
+    }
 }
 
 // ==========================================
@@ -1047,6 +1203,36 @@ async function editBooking(bookingId) {
                 if (inp) inp.value = sizes[s] || 0;
             });
         }
+    }
+
+    // v15.1: CRM — populate customer data if linked
+    if (booking.customerId) {
+        const customerToggle = document.getElementById('customerDataToggle');
+        if (customerToggle) {
+            customerToggle.checked = true;
+            document.getElementById('customerDataSection')?.classList.remove('hidden');
+        }
+        document.getElementById('selectedCustomerId').value = booking.customerId;
+        // Load customer data from API
+        apiGetCustomer(booking.customerId).then(customer => {
+            if (customer) {
+                document.getElementById('customerName').value = customer.name || '';
+                document.getElementById('customerPhone').value = customer.phone || '';
+                document.getElementById('customerInstagram').value = customer.instagram || '';
+                document.getElementById('customerChildName').value = customer.childName || '';
+                document.getElementById('customerChildBirthday').value = customer.childBirthday ? customer.childBirthday.split('T')[0] : '';
+                document.getElementById('customerSource').value = customer.source || '';
+                document.getElementById('customerSearch').value = customer.name || '';
+                if (customer.totalBookings > 0) {
+                    const info = document.getElementById('customerInfo');
+                    const badge = document.getElementById('customerVisitBadge');
+                    if (info && badge) {
+                        badge.textContent = `${customer.totalBookings} візит${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'и' : 'ів'}`;
+                        info.classList.remove('hidden');
+                    }
+                }
+            }
+        });
     }
 
     // Статус

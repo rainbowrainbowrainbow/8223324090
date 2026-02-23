@@ -439,6 +439,7 @@
     color: var(--gray-800);
     font-weight: 600;
 }
+
 /* v5.16: History filters */
 .history-filters {
     margin-bottom: 12px;

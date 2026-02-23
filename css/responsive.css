@@ -84,8 +84,6 @@
         padding: 6px 10px;
     }
 
-    .logo-text { display: none; }
-
     .logo-img-small {
         width: 28px;
         height: 28px;
@@ -603,7 +601,6 @@
     .control-panel { gap: 4px; padding: 8px; }
 
     .day-info { display: none; }
-    .logo-text h1 { display: none; }
     .logo-img-small { width: 32px; height: 32px; }
 
     .v32-controls { gap: 4px; }

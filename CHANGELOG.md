@@ -4,6 +4,29 @@
 
 ---
 
+## v17.2.0 — Design System Polish (2026-02-23)
+
+**Повне впровадження дизайн-токенів, покращення доступності, очистка CSS**
+
+### Токени дизайн-системи
+- **Кольори** — 200+ хардкоджених hex/rgb замінено на `var(--token)` по всіх 11 CSS-файлах
+- **Типографіка** — 114 font-size значень переведено на `var(--font-*)`
+- **Радіуси** — 77 border-radius значень переведено на `var(--radius-*)`
+- **Тіні** — box-shadow переведено на `var(--shadow-*)`
+- **Нові токени** — brand-gold, danger-light, info-light, warning-light, accessible-text variants, font-3xs/3xl/4xl, radius-lg
+
+### Доступність (WCAG 2.1)
+- **aria-label** — додано на 13 іконкових кнопках (index, kleshnya, staff, designs, hr)
+- **focus-visible** — стилі для auth inputs, panel search, certificate form, kleshnya input
+- **Viewport** — прибрано `user-scalable=no` з staff.html та designs.html
+- **Contrast** — нові WCAG AA-сумісні текстові токени (primary-text, danger-text, warning-text, info-text)
+
+### Очистка CSS
+- **Видалено дублікати** — .kleshnya-fab з layout.css (існує в kleshnya-widget.css), .logo-text h1
+- **Видалено невикористані** — .test-mode-hint, .status-badge--cancelled, .no-history
+
+---
+
 ## v17.1.0 — AI Team & Contractor Cards (2026-02-22)
 
 **Редизайн AI-команди: акордеон-панелі, журнал, відправка на завдання**

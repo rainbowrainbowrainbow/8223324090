@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=17.4.3.2.1">
-    <link rel="stylesheet" href="css/auth.css?v=17.4.3.2.1">
-    <link rel="stylesheet" href="css/layout.css?v=17.4.3.2.1">
-    <link rel="stylesheet" href="css/timeline.css?v=17.4.3.2.1">
-    <link rel="stylesheet" href="css/panel.css?v=17.4.3.2.1">
-    <link rel="stylesheet" href="css/modals.css?v=17.4.3.2.1">
-    <link rel="stylesheet" href="css/controls.css?v=17.4.3.2.1">
-    <link rel="stylesheet" href="css/features.css?v=17.4.3.2.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=17.4.3.2.1">
-    <link rel="stylesheet" href="css/responsive.css?v=17.4.3.2.1">
-    <link rel="stylesheet" href="css/pages.css?v=17.4.3.2.1">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=17.4.3.2.1">
+    <link rel="stylesheet" href="css/base.css?v=17.4.4.3.2.1">
+    <link rel="stylesheet" href="css/auth.css?v=17.4.4.3.2.1">
+    <link rel="stylesheet" href="css/layout.css?v=17.4.4.3.2.1">
+    <link rel="stylesheet" href="css/timeline.css?v=17.4.4.3.2.1">
+    <link rel="stylesheet" href="css/panel.css?v=17.4.4.3.2.1">
+    <link rel="stylesheet" href="css/modals.css?v=17.4.4.3.2.1">
+    <link rel="stylesheet" href="css/controls.css?v=17.4.4.3.2.1">
+    <link rel="stylesheet" href="css/features.css?v=17.4.4.3.2.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=17.4.4.3.2.1">
+    <link rel="stylesheet" href="css/responsive.css?v=17.4.4.3.2.1">
+    <link rel="stylesheet" href="css/pages.css?v=17.4.4.3.2.1">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=17.4.4.3.2.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v17.4.3 — Лєо в AI Команді (Клешня)</p>
+                <p class="tagline">AI First CRM v17.4.4 — AI Команда — редизайн (Клешня)</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v17.4.3</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v17.4.4</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1120,7 +1120,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
-                                                                <div class="changelog-section">
+                                                                                <div class="changelog-section">
+                    <h4>v17.4.4 — AI Команда — редизайн (Клешня, 23.02.2026)</h4>
+                    <ul>
+                        <li><b>Тимур видалений</b> — з БД, API та UI повністю прибраний</li>
+                        <li><b>Лєо картка</b> — фіолетовий градієнт, ping-індикатор, live-статистика</li>
+                        <li><b>Можливості</b> — красиві чіпи замість зламаного [object Object]</li>
+                        <li><b>Тип замовлення</b> — вибір піньята/торт/декор/закупівля/кастом</li>
+                        <li><b>Журнал</b> — кольорові статуси, timestamps</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
                     <h4>v17.4.3 — Лєо в AI Команді (Клешня, 23.02.2026)</h4>
                     <ul>
                         <li><b>Тимур→Лєо</b> — перейменування AI Workers картки в БД</li>
@@ -2773,22 +2783,22 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=17.4.3.2.1"></script>
-    <script src="js/api.js?v=17.4.3.2.1"></script>
-    <script src="js/ui.js?v=17.4.3.2.1"></script>
-    <script src="js/auth.js?v=17.4.3.2.1"></script>
-    <script src="js/timeline.js?v=17.4.3.2.1"></script>
-    <script src="js/booking.js?v=17.4.3.2.1"></script>
-    <script src="js/settings.js?v=17.4.3.2.1"></script>
-    <script src="js/booking-form.js?v=17.4.3.2.1"></script>
-    <script src="js/booking-linked.js?v=17.4.3.2.1"></script>
-    <script src="js/settings-dashboard.js?v=17.4.3.2.1"></script>
-    <script src="js/settings-history.js?v=17.4.3.2.1"></script>
-    <script src="js/settings-afisha.js?v=17.4.3.2.1"></script>
-    <script src="js/settings-certificates.js?v=17.4.3.2.1"></script>
-    <script src="js/offline.js?v=17.4.3.2.1"></script>
-    <script src="js/ws.js?v=17.4.3.2.1"></script>
-    <script src="js/app.js?v=17.4.3.2.1"></script>
-    <script src="js/kleshnya-widget.js?v=17.4.3.2.1"></script>
+    <script src="js/config.js?v=17.4.4.3.2.1"></script>
+    <script src="js/api.js?v=17.4.4.3.2.1"></script>
+    <script src="js/ui.js?v=17.4.4.3.2.1"></script>
+    <script src="js/auth.js?v=17.4.4.3.2.1"></script>
+    <script src="js/timeline.js?v=17.4.4.3.2.1"></script>
+    <script src="js/booking.js?v=17.4.4.3.2.1"></script>
+    <script src="js/settings.js?v=17.4.4.3.2.1"></script>
+    <script src="js/booking-form.js?v=17.4.4.3.2.1"></script>
+    <script src="js/booking-linked.js?v=17.4.4.3.2.1"></script>
+    <script src="js/settings-dashboard.js?v=17.4.4.3.2.1"></script>
+    <script src="js/settings-history.js?v=17.4.4.3.2.1"></script>
+    <script src="js/settings-afisha.js?v=17.4.4.3.2.1"></script>
+    <script src="js/settings-certificates.js?v=17.4.4.3.2.1"></script>
+    <script src="js/offline.js?v=17.4.4.3.2.1"></script>
+    <script src="js/ws.js?v=17.4.4.3.2.1"></script>
+    <script src="js/app.js?v=17.4.4.3.2.1"></script>
+    <script src="js/kleshnya-widget.js?v=17.4.4.3.2.1"></script>
 </body>
 </html>

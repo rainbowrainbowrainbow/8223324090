@@ -1,7 +1,7 @@
 -- Migration 010: AI Workers (Digital Employees) backend (v17.3)
 --
 -- Two tables:
---   ai_workers      — registry of digital employees (Tymur, Svitlana, Taras, etc.)
+--   ai_workers      — registry of digital employees (Leo, Svitlana, Taras, etc.)
 --   ai_worker_tasks — task journal with persistent storage
 
 -- ============================================================
@@ -51,12 +51,12 @@ CREATE INDEX IF NOT EXISTS idx_ai_worker_tasks_status ON ai_worker_tasks(status)
 
 INSERT INTO ai_workers (id, name, avatar, role, department, status, status_label, description, capabilities, integration, webhook_url, webhook_secret) VALUES
 (
-    'tymur', 'Тимур', '🤝',
+    'leo', 'Леонард', '🦁',
     'Взаємодія з підрядниками', 'Зовнішні комунікації',
     'active', 'Готовий до роботи',
     'Відповідає за комунікацію з постачальниками, підрядниками та партнерами. Формує запити, відстежує статуси замовлень, нагадує про дедлайни та веде архів контрактів.',
     '["Автоматичні запити постачальникам", "Відстеження статусів замовлень", "Нагадування про дедлайни контрактів", "Архів комунікацій з партнерами"]'::jsonb,
-    'Telegram-бот @TimurParkRozvagbot. Підключений через API.',
+    'Telegram-бот @TimurParkRozvagbot (Лео). Підключений через API.',
     'https://tymur-bot-production.up.railway.app/order/create',
     'kleshnya-tymur-secret-2026'
 ),

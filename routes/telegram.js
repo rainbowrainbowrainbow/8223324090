@@ -390,8 +390,8 @@ router.post('/webhook', async (req, res) => {
                     });
                 }
 
-            } else if (data.startsWith('tymur_send:')) {
-                // v17.3: Send pinata order to Tymur bot
+            } else if (data.startsWith('leo_send:')) {
+                // v17.3: Send pinata order to Leo bot
                 const parts = data.split(':');
                 const bookingId = parts[1] || null;
                 const pinataSku = parts.slice(2).join(':') || 'Піньята';
@@ -400,28 +400,28 @@ router.post('/webhook', async (req, res) => {
                     return res.sendStatus(200);
                 }
                 try {
-                    const { sendPinataToTymur } = require('../services/ai-workers');
+                    const { sendPinataToLeo } = require('../services/ai-workers');
                     const cbFrom = update.callback_query.from?.username || 'telegram';
-                    const result = await sendPinataToTymur(bookingId, pinataSku, cbFrom);
+                    const result = await sendPinataToLeo(bookingId, pinataSku, cbFrom);
 
                     if (result.sent) {
                         await telegramRequest('answerCallbackQuery', {
                             callback_query_id: id,
-                            text: '📤 Відправлено Тимуру!'
+                            text: '📤 Відправлено Лео!'
                         });
                         await telegramRequest('editMessageText', {
                             chat_id: chatId,
                             message_id: message.message_id,
-                            text: message.text + `\n\n✅ <b>Відправлено Тимуру</b> (${cbFrom})`,
+                            text: message.text + `\n\n✅ <b>Відправлено Лео</b> (${cbFrom})`,
                             parse_mode: 'HTML'
                         });
 
                         // Log to ai_worker_tasks
                         pool.query(
                             `INSERT INTO ai_worker_tasks (worker_id, username, task, status, result)
-                             VALUES ('tymur', $1, $2, 'sent', $3)`,
+                             VALUES ('leo', $1, $2, 'sent', $3)`,
                             [cbFrom, `Піньята для ${bookingId}: ${pinataSku}`, result.orderId || 'ok']
-                        ).catch(e => log.error('Failed to log tymur task', e));
+                        ).catch(e => log.error('Failed to log leo task', e));
                     } else {
                         await telegramRequest('answerCallbackQuery', {
                             callback_query_id: id,
@@ -430,7 +430,7 @@ router.post('/webhook', async (req, res) => {
                         });
                     }
                 } catch (err) {
-                    log.error('tymur_send callback error', err);
+                    log.error('leo_send callback error', err);
                     await telegramRequest('answerCallbackQuery', {
                         callback_query_id: id,
                         text: 'Помилка відправки',

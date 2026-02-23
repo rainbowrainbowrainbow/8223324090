@@ -417,9 +417,9 @@ const SKILLS = [
         name: 'AI Команда',
         icon: '🤖',
         description: 'Цифрові співробітники: статус, журнал, управління',
-        keywords: ['ai команд', 'цифров', 'тимур', 'світлан', 'тарас', 'робот', 'бот', 'підключити тимур', 'ai team', 'digital', 'воркер'],
+        keywords: ['ai команд', 'цифров', 'лео', 'леонард', 'світлан', 'тарас', 'робот', 'бот', 'підключити лео', 'ai team', 'digital', 'воркер'],
         handler: handleAITeam,
-        examples: ['AI Команда', 'Підключити Тимура', 'Журнал AI Команди']
+        examples: ['AI Команда', 'Підключити Лео', 'Журнал AI Команди']
     }
 ];
 
@@ -1289,7 +1289,7 @@ async function handleAITeam(lower, username) {
     // Check if user wants to see task journal
     const wantsJournal = lower.includes('журнал') || lower.includes('лог') || lower.includes('історі');
     // Check if user wants to send task
-    const wantsSend = lower.includes('підключити') || lower.includes('відправ') || lower.includes('завдання тимур');
+    const wantsSend = lower.includes('підключити') || lower.includes('відправ') || lower.includes('завдання лео');
 
     if (wantsJournal) {
         const tasksRes = await pool.query(

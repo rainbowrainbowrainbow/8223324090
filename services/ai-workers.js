@@ -2,25 +2,26 @@
  * services/ai-workers.js — AI Workers (Digital Employees) service
  *
  * Handles task dispatch to external bots via Telegram or webhook.
- * Tymur uses a dedicated FastAPI endpoint (POST /order/create).
+ * Leo (formerly Tymur) uses a dedicated FastAPI endpoint (POST /order/create).
  */
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('AIWorkers');
 
-const TYMUR_API_URL = process.env.TYMUR_API_URL || 'https://tymur-bot-production.up.railway.app';
-const TYMUR_SECRET = process.env.TYMUR_SECRET || 'kleshnya-tymur-secret-2026';
-const PINATA_VENDOR_CHAT_ID = process.env.PINATA_VENDOR_CHAT_ID || null;
+// Leo bot env (Railway service still named tymur-bot)
+const LEO_API_URL = process.env.TYMUR_API_URL || 'https://tymur-bot-production.up.railway.app';
+const LEO_SECRET = process.env.TYMUR_SECRET || 'kleshnya-tymur-secret-2026';
+const PINATA_VENDOR_CHAT_ID = process.env.PINATA_VENDOR_CHAT_ID || '674972415';
 
 /**
  * Send a task to an AI worker's external bot.
  * Routes to the appropriate transport based on worker config.
  */
 async function sendTaskToWorker(worker, taskText, username) {
-    // Tymur special case: use his FastAPI order endpoint
-    if (worker.id === 'tymur' && worker.webhook_url) {
-        return sendToTymurAPI(worker, taskText, username);
+    // Leo special case: use his FastAPI order endpoint
+    if (worker.id === 'leo' && worker.webhook_url) {
+        return sendToLeoAPI(worker, taskText, username);
     }
 
     // Generic webhook
@@ -38,9 +39,9 @@ async function sendTaskToWorker(worker, taskText, username) {
 }
 
 /**
- * Send task to Tymur's FastAPI /order/create
+ * Send task to Leo's FastAPI /order/create
  */
-async function sendToTymurAPI(worker, taskText, username) {
+async function sendToLeoAPI(worker, taskText, username) {
     const orderId = `crm-${Date.now()}`;
     const body = {
         order_id: orderId,
@@ -59,7 +60,7 @@ async function sendToTymurAPI(worker, taskText, username) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Secret': worker.webhook_secret || TYMUR_SECRET
+                'X-Secret': worker.webhook_secret || LEO_SECRET
             },
             body: JSON.stringify(body),
             signal: AbortSignal.timeout(15000)
@@ -67,15 +68,15 @@ async function sendToTymurAPI(worker, taskText, username) {
 
         if (!resp.ok) {
             const errText = await resp.text().catch(() => 'unknown');
-            log.error(`Tymur API error ${resp.status}: ${errText}`);
-            return { sent: false, error: `Tymur API ${resp.status}: ${errText}` };
+            log.error(`Leo API error ${resp.status}: ${errText}`);
+            return { sent: false, error: `Leo API ${resp.status}: ${errText}` };
         }
 
         const data = await resp.json();
-        log.info(`Tymur order sent: ${orderId} → ${data.status || 'ok'}`);
+        log.info(`Leo order sent: ${orderId} → ${data.status || 'ok'}`);
         return { sent: true, orderId, data };
     } catch (err) {
-        log.error(`Tymur API request failed: ${err.message}`);
+        log.error(`Leo API request failed: ${err.message}`);
         return { sent: false, error: err.message };
     }
 }
@@ -143,12 +144,12 @@ async function sendViaTelegram(worker, taskText, username) {
 }
 
 /**
- * Send pinata order to Tymur directly (called from booking flow).
+ * Send pinata order to Leo directly (called from booking flow).
  * @param {string} bookingId - CRM booking ID (e.g., BK-2026-0042)
  * @param {string} pinataSku - pinata name/number
  * @param {string} username - who initiated
  */
-async function sendPinataToTymur(bookingId, pinataSku, username) {
+async function sendPinataToLeo(bookingId, pinataSku, username) {
     const orderId = `pinata-${Date.now()}`;
     const body = {
         order_id: orderId,
@@ -163,11 +164,11 @@ async function sendPinataToTymur(bookingId, pinataSku, username) {
     };
 
     try {
-        const resp = await fetch(`${TYMUR_API_URL}/order/create`, {
+        const resp = await fetch(`${LEO_API_URL}/order/create`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Secret': TYMUR_SECRET
+                'X-Secret': LEO_SECRET
             },
             body: JSON.stringify(body),
             signal: AbortSignal.timeout(15000)
@@ -175,15 +176,15 @@ async function sendPinataToTymur(bookingId, pinataSku, username) {
 
         if (!resp.ok) {
             const errText = await resp.text().catch(() => 'unknown');
-            log.error(`Tymur pinata order error ${resp.status}: ${errText}`);
+            log.error(`Leo pinata order error ${resp.status}: ${errText}`);
             return { sent: false, error: `${resp.status}: ${errText}` };
         }
 
         const data = await resp.json();
-        log.info(`Pinata order sent to Tymur: ${orderId} for booking ${bookingId}`);
+        log.info(`Pinata order sent to Leo: ${orderId} for booking ${bookingId}`);
         return { sent: true, orderId, data };
     } catch (err) {
-        log.error(`Tymur pinata request failed: ${err.message}`);
+        log.error(`Leo pinata request failed: ${err.message}`);
         return { sent: false, error: err.message };
     }
 }
@@ -194,8 +195,8 @@ function escapeHtml(str) {
 
 module.exports = {
     sendTaskToWorker,
-    sendPinataToTymur,
-    TYMUR_API_URL,
-    TYMUR_SECRET,
+    sendPinataToLeo,
+    LEO_API_URL,
+    LEO_SECRET,
     PINATA_VENDOR_CHAT_ID
 };

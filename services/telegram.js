@@ -279,7 +279,7 @@ async function notifyTelegram(type, booking, extra = {}) {
             return;
         }
 
-        // Check if this is a pinata booking — add "Send to Tymur" button
+        // Check if this is a pinata booking — add "Send to Leo" button
         const category = booking.category || booking.programCategory || '';
         const hasPinata = category === 'pinata' || (booking.pinata_filler || booking.pinataFiller);
 
@@ -292,7 +292,7 @@ async function notifyTelegram(type, booking, extra = {}) {
                 parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [[
-                        { text: '📤 Відправити Тимуру', callback_data: `tymur_send:${bookingId}:${pinataSku.slice(0, 40)}` }
+                        { text: '📤 Відправити Лео', callback_data: `leo_send:${bookingId}:${pinataSku.slice(0, 40)}` }
                     ]]
                 }
             };

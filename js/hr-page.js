@@ -910,9 +910,9 @@ async function saveCorrection() {
 
 const AI_WORKERS = [
     {
-        id: 'tymur',
-        name: 'Тимур',
-        avatar: '🤝',
+        id: 'leo',
+        name: 'Лєо',
+        avatar: '🦁',
         role: 'Взаємодія з підрядниками',
         department: 'Зовнішні комунікації',
         status: 'active',
@@ -925,7 +925,7 @@ const AI_WORKERS = [
             'Нагадування про дедлайни контрактів',
             'Архів комунікацій з партнерами'
         ],
-        integration: 'Telegram-бот. Підключається через Клешню — напишіть в чаті Клешні «Підключити Тимура».'
+        integration: 'Telegram-бот @TimurParkRozvagbot. Автоматично отримує задачі на друк піньят.'
     },
     {
         id: 'svitlana',
@@ -966,7 +966,7 @@ const AI_WORKERS = [
 ];
 
 // AI worker task journal (in-memory, per session)
-const aiJournal = { tymur: [], svitlana: [], taras: [] };
+const aiJournal = { leo: [], svitlana: [], taras: [] };
 
 function renderAITeam() {
     const list = document.getElementById('aiTeamList');

@@ -421,3 +421,205 @@
         display: none;
     }
 }
+
+/* ══════════════════════════════════════════════════════
+   AI TEAM — Цифрова команда (Клешня, 23.02.2026)
+═══════════════════════════════════════════════════════ */
+
+#aiTeamList {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 20px;
+    padding: 4px 2px;
+}
+
+.ai-team-empty {
+    grid-column: 1/-1;
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--gray-400);
+}
+
+/* ── Worker Card ── */
+.ai-worker {
+    background: var(--bg-secondary, #f8fafc);
+    border-radius: 16px;
+    border: 1.5px solid var(--gray-200, #e2e8f0);
+    overflow: hidden;
+    transition: box-shadow .2s, transform .2s;
+}
+.ai-worker:hover { box-shadow: 0 8px 32px rgba(0,0,0,.08); transform: translateY(-2px); }
+
+/* Лєо — gradient header */
+.ai-worker-leo { border-color: #7c3aed44; }
+.ai-worker-leo .ai-worker-header {
+    background: linear-gradient(135deg, #7c3aed 0%, #a855f7 50%, #ec4899 100%);
+    color: white;
+}
+.ai-worker-leo .ai-worker-name { color: white; }
+.ai-worker-leo .ai-worker-dept { color: rgba(255,255,255,.8); }
+.ai-worker-leo .ai-worker-badge { background: rgba(255,255,255,.2) !important; color: white !important; border: none !important; }
+.ai-worker-leo .ai-worker-badge .badge-dot { background: #4ade80; }
+
+/* Default header */
+.ai-worker-default .ai-worker-header { background: var(--bg-tertiary, #f1f5f9); }
+
+.ai-worker-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 18px 14px;
+}
+
+/* Avatar */
+.ai-worker-avatar-wrap { position: relative; flex-shrink: 0; }
+.ai-worker-avatar {
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.25);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+.leo-ping-dot {
+    position: absolute; bottom: 2px; right: 2px;
+    width: 12px; height: 12px;
+    border-radius: 50%; border: 2px solid white;
+    cursor: help;
+}
+.leo-ping-dot.online  { background: #22c55e; }
+.leo-ping-dot.offline { background: #ef4444; }
+.leo-ping-dot.checking { background: #f59e0b; animation: ping-pulse 1s infinite; }
+@keyframes ping-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.ai-worker-info { flex: 1; min-width: 0; }
+.ai-worker-name { font-size: 17px; font-weight: 800; line-height: 1.2; }
+.ai-worker-dept { font-size: 12px; opacity: .75; margin-top: 2px; }
+
+/* Badge */
+.ai-worker-badge {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; white-space: nowrap;
+    background: var(--bg-secondary); border: 1.5px solid var(--gray-200); color: var(--text-secondary);
+}
+.ai-worker-badge.active { background: #dcfce7; border-color: #86efac; color: #166534; }
+.ai-worker-badge.planned { background: #fef9c3; border-color: #fde047; color: #713f12; }
+.badge-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+/* Body */
+.ai-worker-role {
+    font-size: 13px; font-weight: 700; color: var(--primary, #7c3aed);
+    padding: 12px 18px 4px; line-height: 1.4;
+}
+.ai-worker-desc {
+    font-size: 13px; color: var(--text-secondary); padding: 0 18px 12px; line-height: 1.55;
+}
+
+/* Stats bar (Лєо only) */
+.leo-stats-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 18px; background: #f5f3ff; font-size: 12px; color: var(--text-secondary); border-top: 1px solid #e9d5ff; flex-wrap: wrap;
+}
+.leo-stats-refresh {
+    background: none; border: 1px solid #c4b5fd; color: #7c3aed; border-radius: 6px;
+    width: 22px; height: 22px; cursor: pointer; font-size: 13px; line-height: 1; padding: 0; flex-shrink: 0;
+}
+
+/* Action buttons */
+.ai-worker-actions {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 10px 18px 12px;
+}
+.ai-worker-toggle, .ai-worker-send-btn {
+    padding: 7px 13px; border-radius: 8px; border: 1.5px solid var(--gray-200);
+    background: var(--bg-secondary); font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: all .18s; color: var(--text-secondary);
+}
+.ai-worker-toggle:hover, .ai-worker-toggle.open { background: #ede9fe; border-color: #c4b5fd; color: #7c3aed; }
+.ai-worker-send-btn {
+    background: linear-gradient(135deg, #7c3aed, #a855f7);
+    color: white; border-color: transparent; margin-left: auto;
+}
+.ai-worker-send-btn:hover { opacity: .9; transform: scale(1.02); }
+.ai-worker-send-btn.open { background: #6d28d9; }
+
+/* Panels */
+.ai-worker-panel {
+    display: none; padding: 14px 18px 16px;
+    border-top: 1.5px solid var(--gray-100); background: var(--bg-primary);
+    animation: panelIn .18s ease;
+}
+.ai-worker-panel.open { display: block; }
+.ai-worker-panel h5 { margin: 0 0 12px; font-size: 13px; font-weight: 800; color: var(--text-primary); }
+@keyframes panelIn { from {opacity:0;transform:translateY(-6px)} to {opacity:1;transform:translateY(0)} }
+
+/* Capabilities chips */
+.ai-caps-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-cap-chip {
+    padding: 5px 11px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    background: #ede9fe; color: #6d28d9; border: 1px solid #c4b5fd; cursor: default;
+    transition: background .15s;
+}
+.ai-cap-chip:hover { background: #ddd6fe; }
+
+/* Integration */
+.ai-integration-text {
+    font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 10px;
+    white-space: pre-wrap; word-break: break-all;
+}
+.ai-integration-links { display: flex; gap: 8px; flex-wrap: wrap; }
+.ai-int-link {
+    padding: 6px 14px; border-radius: 8px; background: #f5f3ff;
+    border: 1px solid #c4b5fd; color: #7c3aed; text-decoration: none; font-size: 12px; font-weight: 700;
+}
+.ai-int-link:hover { background: #ede9fe; }
+
+/* Journal */
+.ai-journal-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 0; border-bottom: 1px solid var(--gray-100); font-size: 13px;
+}
+.ai-journal-item:last-child { border-bottom: none; }
+.ai-journal-icon { flex-shrink: 0; font-size: 15px; }
+.ai-journal-icon.done { color: #22c55e; }
+.ai-journal-icon.failed { color: #ef4444; }
+.ai-journal-icon.sent { color: #7c3aed; }
+.ai-journal-icon.queued { color: #f59e0b; }
+.ai-journal-icon.progress { color: #3b82f6; }
+.ai-journal-task { flex: 1; line-height: 1.45; }
+.ai-journal-time { color: var(--gray-400); font-size: 11px; white-space: nowrap; flex-shrink: 0; margin-left: 8px; }
+.ai-journal-empty { color: var(--gray-400); text-align: center; padding: 16px 0; font-size: 13px; }
+.ai-journal-load-btn {
+    margin-top: 10px; width: 100%; padding: 7px; border-radius: 8px;
+    border: 1px solid var(--gray-200); background: var(--bg-secondary); font-size: 12px; cursor: pointer;
+    color: var(--text-secondary);
+}
+.ai-journal-load-btn:hover { background: var(--bg-tertiary); }
+
+/* Send form */
+.ai-send-type-row { margin-bottom: 10px; }
+.ai-send-type-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; display: block; }
+.ai-send-type-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.ai-type-chip {
+    padding: 5px 11px; border-radius: 16px; font-size: 12px; font-weight: 600;
+    border: 1.5px solid var(--gray-200); background: var(--bg-secondary); cursor: pointer; transition: all .15s;
+    color: var(--text-secondary);
+}
+.ai-type-chip.active { background: #7c3aed; color: white; border-color: #7c3aed; }
+.ai-type-chip:hover:not(.active) { border-color: #c4b5fd; color: #7c3aed; }
+
+.ai-task-form { display: flex; flex-direction: column; gap: 8px; }
+.ai-task-form textarea {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--gray-200);
+    border-radius: 10px; font-size: 13px; resize: vertical; min-height: 60px;
+    font-family: inherit; background: var(--bg-secondary);
+    box-sizing: border-box;
+}
+.ai-task-form textarea:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px #ede9fe; }
+.ai-task-send {
+    padding: 10px 20px; border-radius: 10px; border: none;
+    background: linear-gradient(135deg, #7c3aed, #a855f7);
+    color: white; font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity .2s;
+}
+.ai-task-send:hover { opacity: .9; }
+.ai-task-send:disabled { opacity: .5; cursor: default; }

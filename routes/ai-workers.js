@@ -25,7 +25,9 @@ router.get('/', async (req, res) => {
                     description, capabilities, integration,
                     webhook_url IS NOT NULL OR bot_token IS NOT NULL AS has_transport,
                     created_at, updated_at
-             FROM ai_workers ORDER BY status DESC, name`
+             FROM ai_workers
+             WHERE id NOT IN ('tymur','tymur_bot') AND name NOT ILIKE '%тимур%'
+             ORDER BY status DESC, name`
         );
         res.json({ success: true, data: result.rows });
     } catch (err) {

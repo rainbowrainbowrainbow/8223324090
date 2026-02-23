@@ -952,6 +952,9 @@ async function initDatabase() {
             )
         `);
 
+        // 010b: Delete old Тимур worker if exists
+        await pool.query(`DELETE FROM ai_workers WHERE id IN ('tymur','tymur_bot') OR name ILIKE '%тимур%'`).catch(() => {});
+
         const leoSeedVersion = '010_ai_workers_leo_seed_v2';
         const leoExists = await pool.query('SELECT 1 FROM schema_migrations WHERE version = $1', [leoSeedVersion]);
         if (leoExists.rows.length === 0) {

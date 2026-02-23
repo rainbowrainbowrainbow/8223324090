@@ -57,7 +57,7 @@
     align-items: center;
     gap: 4px;
     cursor: pointer;
-    font-size: 16px;
+    font-size: var(--font-input);
     padding: 8px 10px;
     min-height: 44px;
     background: var(--gray-50);
@@ -88,7 +88,7 @@
     border: 1px solid var(--gray-200);
     background: var(--gray-50);
     border-radius: var(--radius-sm);
-    font-size: 12px;
+    font-size: var(--font-caption);
     font-weight: 700;
     cursor: pointer;
     transition: all var(--speed-fast) var(--ease-smooth);
@@ -125,7 +125,7 @@
 }
 
 .timeline-container.compact .booking-block .title {
-    font-size: 10px;
+    font-size: var(--font-2xs);
 }
 
 .timeline-container.compact .booking-block .subtitle {
@@ -148,11 +148,11 @@
 }
 
 .timeline-container[data-zoom="30"] .booking-block .title {
-    font-size: 13px;
+    font-size: var(--font-sm);
 }
 
 .timeline-container[data-zoom="30"] .booking-block .subtitle {
-    font-size: 11px;
+    font-size: var(--font-xs);
 }
 
 /* 60-min zoom */
@@ -167,11 +167,11 @@
 }
 
 .timeline-container[data-zoom="60"] .booking-block .title {
-    font-size: 14px;
+    font-size: var(--font-base);
 }
 
 .timeline-container[data-zoom="60"] .booking-block .subtitle {
-    font-size: 12px;
+    font-size: var(--font-caption);
 }
 
 /* ==========================================
@@ -221,7 +221,7 @@
     border: none;
     border-radius: var(--radius-xs);
     font-weight: 700;
-    font-size: 12px;
+    font-size: var(--font-caption);
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
@@ -300,7 +300,7 @@
 .period-btn {
     padding: 10px 14px;
     min-height: 44px;
-    font-size: 12px;
+    font-size: var(--font-caption);
     font-weight: 700;
     border: none;
     border-radius: var(--radius-xs);
@@ -399,7 +399,7 @@
     display: inline-block;
     padding: 2px 6px;
     border-radius: var(--radius-2xs);
-    font-size: 10px;
+    font-size: var(--font-2xs);
     font-weight: 800;
     margin-left: 4px;
 }

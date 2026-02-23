@@ -612,23 +612,6 @@ body.dark-mode .quick-stats-bar {
     color: #6EE7B7;
 }
 
-/* Kleshnya futuristic terminal in dark — enhanced glow */
-body.dark-mode .kleshnya-fab {
-    background: radial-gradient(circle at 35% 35%, #FF6B2B 0%, #EA580C 40%, #7C2D12 100%);
-    border-color: rgba(234, 88, 12, 0.8);
-    box-shadow:
-        0 0 25px rgba(234,88,12,0.5),
-        0 0 50px rgba(234,88,12,0.2),
-        inset 0 -2px 6px rgba(0,0,0,0.4),
-        inset 0 2px 6px rgba(255,255,255,0.1);
-}
-body.dark-mode .kleshnya-fab:hover {
-    box-shadow:
-        0 0 35px rgba(234,88,12,0.7),
-        0 0 70px rgba(234,88,12,0.25),
-        inset 0 -2px 6px rgba(0,0,0,0.4),
-        inset 0 2px 6px rgba(255,255,255,0.1);
-}
 body.dark-mode .kleshnya-fab-ring {
     border-color: rgba(234,88,12,0.5);
 }

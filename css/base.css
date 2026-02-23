@@ -312,12 +312,6 @@ body {
     border-color: var(--status-preliminary-border);
 }
 
-.status-badge--cancelled {
-    background: var(--status-cancelled-bg);
-    color: var(--status-cancelled-color);
-    border-color: var(--status-cancelled-border);
-}
-
 /* ==========================================
    SKIP LINK (Accessibility)
    ========================================== */

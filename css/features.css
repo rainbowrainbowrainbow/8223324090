@@ -1686,6 +1686,13 @@ body.dark-mode .filter-mode-banner-text p { color: #FBBF24; }
     border-color: var(--primary);
     background: var(--white);
 }
+
+#certificateForm .form-group input:focus-visible,
+#certificateForm .form-group select:focus-visible,
+#certificateForm .form-group textarea:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
 #certDisplayValue {
     border: 2px solid var(--info) !important;
     background: var(--animation-bg) !important;

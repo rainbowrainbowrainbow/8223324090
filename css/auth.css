@@ -245,18 +245,6 @@
     font-family: 'Inter', sans-serif;
 }
 
-/* v6.0: Test mode hint */
-.test-mode-hint {
-    text-align: center;
-    margin-top: 12px;
-    padding: 8px 12px;
-    background: rgba(245,200,66,0.1);
-    color: var(--brand-gold);
-    border-radius: var(--radius-md);
-    font-size: var(--font-caption);
-    font-weight: 700;
-}
-
 .error-message {
     color: var(--danger);
     text-align: center;

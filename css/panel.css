@@ -153,6 +153,11 @@
     box-shadow: var(--shadow-focus-primary);
 }
 
+.program-search-input:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
 .program-search-input::placeholder { color: var(--gray-400); }
 
 .programs-icons {

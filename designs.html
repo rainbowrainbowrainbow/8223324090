@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Event Maestro | Дизайни</title>
     <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Maestro">
@@ -621,9 +621,9 @@
             <!-- ==================== CALENDAR TAB ==================== -->
             <div id="tabCalendar" style="display:none">
                 <div class="calendar-nav">
-                    <button id="calPrev">◀</button>
+                    <button id="calPrev" aria-label="Попередній місяць">◀</button>
                     <span class="calendar-nav-title" id="calTitle"></span>
-                    <button id="calNext">▶</button>
+                    <button id="calNext" aria-label="Наступний місяць">▶</button>
                     <button id="calToday" style="margin-left:auto">Сьогодні</button>
                 </div>
                 <div class="calendar-grid" id="calendarGrid"></div>
@@ -634,7 +634,7 @@
 
     <!-- Lightbox -->
     <div class="lightbox" id="lightbox">
-        <button class="lightbox-close">&times;</button>
+        <button class="lightbox-close" aria-label="Закрити">&times;</button>
         <img id="lightboxImg" src="" alt="Превʼю">
         <div class="lightbox-info" id="lightboxInfo"></div>
     </div>

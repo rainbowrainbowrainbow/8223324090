@@ -693,6 +693,11 @@
     box-shadow: 0 0 0 4px rgba(139,92,246,0.1);
 }
 
+
+.afisha-import-section textarea:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
 .afisha-import-section label {
     font-size: var(--font-xs);
     color: var(--gray-500);

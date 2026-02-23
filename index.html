@@ -289,7 +289,7 @@
         <aside id="bookingPanel" class="booking-panel hidden">
             <div class="panel-header">
                 <h3>Нове бронювання</h3>
-                <button id="closePanel" class="btn-close">✕</button>
+                <button id="closePanel" class="btn-close" aria-label="Закрити панель">✕</button>
             </div>
 
             <form id="bookingForm" class="booking-form">
@@ -587,7 +587,7 @@
         <aside id="certificatesPanel" class="certificates-panel hidden">
             <div class="panel-header">
                 <h3>📄 Сертифікати</h3>
-                <button id="closeCertPanel" class="btn-close" onclick="closeCertificatesPanel()">✕</button>
+                <button id="closeCertPanel" class="btn-close" aria-label="Закрити панель сертифікатів" onclick="closeCertificatesPanel()">✕</button>
             </div>
             <div class="cert-panel-body">
                 <div class="cert-panel-stats" id="certPanelStats"></div>
@@ -1012,7 +1012,7 @@
                         <input type="date" id="historyFilterTo" class="history-filter-input" title="До">
                     </div>
                     <button type="button" id="historyFilterApply" class="btn-history-filter">🔍</button>
-                    <button type="button" id="historyFilterReset" class="btn-history-reset">✕</button>
+                    <button type="button" id="historyFilterReset" class="btn-history-reset" aria-label="Скинути фільтри">✕</button>
                 </div>
                 <div id="historyStats" class="history-stats"></div>
             </div>

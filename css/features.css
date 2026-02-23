@@ -1772,3 +1772,23 @@ body.dark-mode .filter-mode-banner-text p { color: #FBBF24; }
     font-size: var(--font-input);
     color: #0D47A1;
 }
+
+
+/* ── Лєо: Vendor Queue (Клешня, 23.02.2026) ──────────────────────────────── */
+.queue-type-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.queue-tab { padding: 6px 12px; border-radius: 20px; border: 1px solid var(--gray-200, #e2e8f0); background: var(--bg-secondary, #f8fafc); cursor: pointer; font-size: 13px; transition: all .2s; }
+.queue-tab.active { background: var(--primary, #7c3aed); color: #fff; border-color: var(--primary, #7c3aed); }
+.vendor-queue-list { margin: 12px 0; min-height: 60px; border: 2px dashed var(--gray-200, #e2e8f0); border-radius: 10px; padding: 8px; }
+.queue-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 8px; background: var(--bg-secondary, #f8fafc); border-radius: 8px; border: 1px solid var(--gray-200, #e2e8f0); cursor: grab; user-select: none; }
+.queue-item:hover { border-color: var(--primary, #7c3aed); }
+.queue-item.dragging { opacity: .4; }
+.queue-item-num { font-weight: 700; color: var(--primary, #7c3aed); min-width: 22px; }
+.queue-item-name { flex: 1; font-weight: 600; }
+.queue-item-arrow { color: #94a3b8; font-size: 16px; }
+.queue-item-remove { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 18px; line-height: 1; padding: 0 4px; }
+.queue-item-remove:hover { color: #ef4444; }
+.queue-final { text-align: center; padding: 10px; color: #64748b; font-style: italic; font-size: 13px; }
+.queue-empty { text-align: center; padding: 16px; color: #94a3b8; font-size: 13px; }
+.queue-add-row { display: flex; gap: 8px; margin: 8px 0; }
+.queue-add-row select { flex: 1; padding: 8px 12px; border: 1px solid var(--gray-200, #e2e8f0); border-radius: 8px; }
+

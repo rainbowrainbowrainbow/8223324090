@@ -3093,3 +3093,171 @@ async function downloadCertificateImage(certId) {
         if (btn) { btn.disabled = false; btn.textContent = '🖼️ Скачати'; }
     }
 }
+
+// ── Лєо: Vendor Queue Management (Клешня, 23.02.2026) ────────────────────────
+
+const LEO_API_URL = 'https://tymur-bot-production.up.railway.app';
+const LEO_SECRET  = 'kleshnya-tymur-secret-2026';
+
+let _queueData   = {};
+let _queueType   = 'pinata_print';
+let _draggedItem = null;
+
+async function loadVendorQueues() {
+    try {
+        const res = await fetch(`${LEO_API_URL}/vendor-queues`, {
+            headers: { 'X-Secret': LEO_SECRET }
+        });
+        if (res.ok) {
+            _queueData = await res.json();
+        } else {
+            _queueData = {};
+        }
+    } catch (e) {
+        console.warn('[Лєо Queue] Failed to load:', e);
+        _queueData = {};
+    }
+    renderVendorQueue(_queueType);
+    populateQueueSelect();
+    initQueueTabs();
+    initQueueButtons();
+}
+
+function renderVendorQueue(orderType) {
+    const list = document.getElementById('vendorQueueList');
+    if (!list) return;
+    const items = _queueData[orderType] || [];
+
+    if (items.length === 0) {
+        list.innerHTML = '<p class="queue-empty">Черга порожня — додайте підрядників 👇</p>';
+    } else {
+        list.innerHTML = items.map((v, i) => `
+            <div class="queue-item" data-idx="${i}" data-chatid="${v.chat_id}" draggable="true">
+                <span class="queue-item-num">#${i + 1}</span>
+                <span class="queue-item-name">${v.name || v.chat_id}</span>
+                ${i < items.length - 1 ? '<span class="queue-item-arrow">↓</span>' : ''}
+                <button class="queue-item-remove" title="Видалити" onclick="removeFromQueue('${v.chat_id}')">✕</button>
+            </div>
+        `).join('') + `<div class="queue-final">↓ 🦞 Клешня (якщо всі не відповіли)</div>`;
+        initQueueDragDrop();
+    }
+}
+
+function removeFromQueue(chatId) {
+    if (!_queueData[_queueType]) return;
+    _queueData[_queueType] = _queueData[_queueType].filter(v => v.chat_id !== chatId);
+    renderVendorQueue(_queueType);
+}
+
+async function saveVendorQueue() {
+    const items = _queueData[_queueType] || [];
+    const vendor_ids = items.map(v => v.chat_id);
+    try {
+        const res = await fetch(`${LEO_API_URL}/vendor-queue/${_queueType}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-Secret': LEO_SECRET },
+            body: JSON.stringify({ vendor_ids })
+        });
+        if (res.ok) {
+            showNotification('✅ Черга збережена в Лєо');
+        } else {
+            showNotification('❌ Помилка збереження', 'error');
+        }
+    } catch (e) {
+        showNotification('❌ Немає зв\'язку з Лєо', 'error');
+    }
+}
+
+function addToQueue() {
+    const select = document.getElementById('queueVendorSelect');
+    const chatId = select.value;
+    if (!chatId) return;
+    const name = select.options[select.selectedIndex]?.text || chatId;
+    if (!_queueData[_queueType]) _queueData[_queueType] = [];
+    if (_queueData[_queueType].find(v => v.chat_id === chatId)) {
+        showNotification('Цей підрядник вже в черзі', 'warning');
+        return;
+    }
+    const pos = _queueData[_queueType].length + 1;
+    _queueData[_queueType].push({ chat_id: chatId, name, position: pos });
+    renderVendorQueue(_queueType);
+    select.value = '';
+}
+
+async function populateQueueSelect() {
+    const select = document.getElementById('queueVendorSelect');
+    if (!select) return;
+    try {
+        const res = await fetch(`${API_BASE}/contractors`, { headers: getAuthHeaders(false) });
+        if (!res.ok) return;
+        const contractors = await res.json();
+        contractors.forEach(c => {
+            if (!c.telegramId) return;
+            const opt = document.createElement('option');
+            opt.value = String(c.telegramId);
+            opt.text  = c.name;
+            select.appendChild(opt);
+        });
+    } catch (e) { /* silent */ }
+}
+
+function initQueueTabs() {
+    document.querySelectorAll('.queue-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.queue-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            _queueType = btn.dataset.type;
+            renderVendorQueue(_queueType);
+        });
+    });
+}
+
+function initQueueButtons() {
+    const addBtn  = document.getElementById('addToQueueBtn');
+    const saveBtn = document.getElementById('saveQueueBtn');
+    if (addBtn)  addBtn.addEventListener('click',  addToQueue);
+    if (saveBtn) saveBtn.addEventListener('click', saveVendorQueue);
+}
+
+function initQueueDragDrop() {
+    const list = document.getElementById('vendorQueueList');
+    if (!list) return;
+    list.querySelectorAll('.queue-item').forEach(item => {
+        item.addEventListener('dragstart', () => { _draggedItem = item; item.classList.add('dragging'); });
+        item.addEventListener('dragend',   () => { item.classList.remove('dragging'); _draggedItem = null; });
+        item.addEventListener('dragover',  e => e.preventDefault());
+        item.addEventListener('drop', e => {
+            e.preventDefault();
+            if (!_draggedItem || _draggedItem === item) return;
+            const arr    = _queueData[_queueType] || [];
+            const items  = [...list.querySelectorAll('.queue-item')];
+            const fromI  = Number(_draggedItem.dataset.idx);
+            const toI    = Number(item.dataset.idx);
+            const [moved] = arr.splice(fromI, 1);
+            arr.splice(toI, 0, moved);
+            _queueData[_queueType] = arr.map((v, i) => ({ ...v, position: i + 1 }));
+            renderVendorQueue(_queueType);
+        });
+    });
+}
+
+// Call loadVendorQueues when settings panel opens (hook into existing openSettings or similar)
+(function patchSettingsLoad() {
+    const orig = window.loadSettings || null;
+    if (orig) {
+        window.loadSettings = async function (...args) {
+            await orig.apply(this, args);
+            await loadVendorQueues();
+        };
+    } else {
+        // Fallback: observe vendorQueueSection becoming visible
+        const obs = new MutationObserver(() => {
+            const sec = document.getElementById('vendorQueueSection');
+            if (sec && sec.closest('.settings-panel') && !sec.dataset.loaded) {
+                sec.dataset.loaded = '1';
+                loadVendorQueues();
+            }
+        });
+        obs.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    }
+})();

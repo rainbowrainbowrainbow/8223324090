@@ -764,6 +764,24 @@
                     <div id="contractorsList" class="contractors-list"></div>
                     <button type="button" class="btn-submit btn-purple" onclick="showAddContractor()">➕ Додати підрядника</button>
                 </div>
+                <!-- Лєо: Fallback chain (Клешня, 23.02.2026) -->
+                <div class="settings-section" id="vendorQueueSection">
+                    <h4>🔗 Ланцюжок підрядників (Лєо)</h4>
+                    <p class="digest-hint">Якщо підрядник не відповідає 12 хв — Лєо автоматично спробує наступного. Перетягуйте для зміни пріоритету.</p>
+                    <div class="queue-type-tabs" id="queueTypeTabs">
+                        <button class="queue-tab active" data-type="pinata_print">🖨️ Піньяти</button>
+                        <button class="queue-tab" data-type="cake_order">🎂 Торти</button>
+                        <button class="queue-tab" data-type="decoration">🎈 Декор</button>
+                        <button class="queue-tab" data-type="supply_order">📦 Закупівлі</button>
+                        <button class="queue-tab" data-type="custom">📋 Інше</button>
+                    </div>
+                    <div id="vendorQueueList" class="vendor-queue-list"></div>
+                    <div class="queue-add-row">
+                        <select id="queueVendorSelect"><option value="">Оберіть підрядника...</option></select>
+                        <button type="button" id="addToQueueBtn" class="btn-submit btn-purple">+ Додати</button>
+                    </div>
+                    <button type="button" id="saveQueueBtn" class="btn-submit btn-full">💾 Зберегти черга</button>
+                </div>
                 <!-- v8.3: Automation Rules -->
                 <div class="settings-section" id="settingsAutomationSection">
                     <h4>🤖 Автоматизація бронювань</h4>

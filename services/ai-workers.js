@@ -2,26 +2,39 @@
  * services/ai-workers.js — AI Workers (Digital Employees) service
  *
  * Handles task dispatch to external bots via Telegram or webhook.
- * Leo (formerly Tymur) uses a dedicated FastAPI endpoint (POST /order/create).
+ * Лєо uses FastAPI /order/create (v2.0 schema).
  */
-const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('AIWorkers');
 
-// Leo bot env (Railway service still named tymur-bot)
-const LEO_API_URL = process.env.TYMUR_API_URL || 'https://tymur-bot-production.up.railway.app';
-const LEO_SECRET = process.env.TYMUR_SECRET || 'kleshnya-tymur-secret-2026';
-const PINATA_VENDOR_CHAT_ID = process.env.PINATA_VENDOR_CHAT_ID || '674972415';
+// Лєо bot (Railway service URL; env vars override)
+const LEO_API_URL = process.env.LEO_API_URL || process.env.TYMUR_API_URL || 'https://tymur-bot-production.up.railway.app';
+const LEO_SECRET  = process.env.LEO_SECRET  || process.env.TYMUR_SECRET  || 'kleshnya-tymur-secret-2026';
+const DEFAULT_VENDOR_CHAT_ID = process.env.PINATA_VENDOR_CHAT_ID || '';
 
 /**
- * Send a task to an AI worker's external bot.
- * Routes to the appropriate transport based on worker config.
+ * Detect order type from free-text task description.
+ * Fallback: "custom".
+ */
+function detectOrderType(taskText) {
+    const t = taskText.toLowerCase();
+    if (t.includes('піньят') || t.includes('pinata') || t.includes('друк') || t.includes('print')) return 'pinata_print';
+    if (t.includes('торт') || t.includes('cake') || t.includes('кондитер')) return 'cake_order';
+    if (t.includes('куль') || t.includes('декор') || t.includes('balloon') || t.includes('decoration')) return 'decoration';
+    if (t.includes('закупівл') || t.includes('supply') || t.includes('supplies') || t.includes('запас')) return 'supply_order';
+    return 'custom';
+}
+
+/**
+ * Route task to the right transport based on worker config.
  */
 async function sendTaskToWorker(worker, taskText, username) {
-    // Leo special case: use his FastAPI order endpoint
-    if (worker.id === 'leo' && worker.webhook_url) {
-        return sendToLeoAPI(worker, taskText, username);
+    // Лєо special case — use FastAPI /order/create
+    if (worker.id === 'leo') {
+        const url = worker.webhook_url || `${LEO_API_URL}/order/create`;
+        const secret = worker.webhook_secret || LEO_SECRET;
+        return sendToLeoAPI(url, secret, taskText, username, worker.bot_chat_id);
     }
 
     // Generic webhook
@@ -34,62 +47,105 @@ async function sendTaskToWorker(worker, taskText, username) {
         return sendViaTelegram(worker, taskText, username);
     }
 
-    log.warn(`Worker ${worker.id}: no transport configured (no webhook_url, no bot_token+bot_chat_id)`);
+    log.warn(`Worker ${worker.id}: no transport configured`);
     return { sent: false, error: 'Бот не підключений — немає webhook або bot_token' };
 }
 
 /**
- * Send task to Leo's FastAPI /order/create
+ * Send to Лєо API (v2.0 schema).
+ * order_type auto-detected from taskText.
+ * vendor_chat_id: from worker.bot_chat_id → env → empty (Лєо picks from queue).
  */
-async function sendToLeoAPI(worker, taskText, username) {
-    const orderId = `crm-${Date.now()}`;
+async function sendToLeoAPI(apiUrl, secret, taskText, username, vendorChatId) {
+    const orderId   = `crm-${Date.now()}`;
+    const orderType = detectOrderType(taskText);
     const body = {
-        order_id: orderId,
-        pinata_sku_or_number: taskText,
-        print_size: 'A4',
-        qty: 4,
-        color_mode: 'Color',
-        need_file: false,
-        reference: null,
-        notes: `Від ${username} через CRM AI Команда`,
-        vendor_chat_id: PINATA_VENDOR_CHAT_ID || worker.bot_chat_id || ''
+        order_id:      orderId,
+        order_type:    orderType,
+        title:         taskText,
+        description:   '',
+        qty:           1,
+        notes:         `Від ${username} через CRM AI Команда`,
+        vendor_chat_id: vendorChatId || DEFAULT_VENDOR_CHAT_ID || ''
     };
 
+    // Add pinata-specific fields if needed
+    if (orderType === 'pinata_print') {
+        body.print_size  = 'A4';
+        body.color_mode  = 'Color';
+        body.need_file   = false;
+    }
+
     try {
-        const resp = await fetch(worker.webhook_url, {
+        const resp = await fetch(apiUrl, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Secret': worker.webhook_secret || LEO_SECRET
-            },
+            headers: { 'Content-Type': 'application/json', 'X-Secret': secret },
             body: JSON.stringify(body),
             signal: AbortSignal.timeout(15000)
         });
 
         if (!resp.ok) {
             const errText = await resp.text().catch(() => 'unknown');
-            log.error(`Leo API error ${resp.status}: ${errText}`);
-            return { sent: false, error: `Leo API ${resp.status}: ${errText}` };
+            log.error(`Лєо API error ${resp.status}: ${errText}`);
+            return { sent: false, error: `Лєо API ${resp.status}: ${errText}` };
         }
 
         const data = await resp.json();
-        log.info(`Leo order sent: ${orderId} → ${data.status || 'ok'}`);
+        log.info(`Лєо order sent: ${orderId} (${orderType}) → ${data.status || 'ok'}`);
         return { sent: true, orderId, data };
     } catch (err) {
-        log.error(`Leo API request failed: ${err.message}`);
+        log.error(`Лєо API request failed: ${err.message}`);
         return { sent: false, error: err.message };
     }
 }
 
 /**
- * Send task via generic webhook POST
+ * Send pinata order to Лєо from booking flow (v2.0).
+ */
+async function sendPinataToLeo(bookingId, pinataSku, username) {
+    const orderId = `pinata-${Date.now()}`;
+    const body = {
+        order_id:       orderId,
+        order_type:     'pinata_print',
+        title:          pinataSku || 'Піньята (без назви)',
+        print_size:     'A4',
+        color_mode:     'Color',
+        qty:            4,
+        need_file:      false,
+        notes:          `Booking #${bookingId}`,
+        vendor_chat_id: DEFAULT_VENDOR_CHAT_ID
+    };
+
+    try {
+        const resp = await fetch(`${LEO_API_URL}/order/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Secret': LEO_SECRET },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(15000)
+        });
+
+        if (!resp.ok) {
+            const errText = await resp.text().catch(() => 'unknown');
+            log.error(`Лєо pinata error ${resp.status}: ${errText}`);
+            return { sent: false, error: `${resp.status}: ${errText}` };
+        }
+
+        const data = await resp.json();
+        log.info(`Pinata order sent to Лєо: ${orderId} for booking ${bookingId}`);
+        return { sent: true, orderId, data };
+    } catch (err) {
+        log.error(`Лєо pinata request failed: ${err.message}`);
+        return { sent: false, error: err.message };
+    }
+}
+
+/**
+ * Generic webhook POST
  */
 async function sendViaWebhook(worker, taskText, username) {
     try {
         const headers = { 'Content-Type': 'application/json' };
-        if (worker.webhook_secret) {
-            headers['X-Secret'] = worker.webhook_secret;
-        }
+        if (worker.webhook_secret) headers['X-Secret'] = worker.webhook_secret;
 
         const resp = await fetch(worker.webhook_url, {
             method: 'POST',
@@ -105,13 +161,12 @@ async function sendViaWebhook(worker, taskText, username) {
 
         return { sent: true };
     } catch (err) {
-        log.error(`Webhook request failed for ${worker.id}: ${err.message}`);
         return { sent: false, error: err.message };
     }
 }
 
 /**
- * Send task via raw Telegram Bot API sendMessage
+ * Raw Telegram Bot API sendMessage
  */
 async function sendViaTelegram(worker, taskText, username) {
     const text = `📋 Нове завдання від <b>${escapeHtml(username)}</b>:\n\n${escapeHtml(taskText)}`;
@@ -122,11 +177,7 @@ async function sendViaTelegram(worker, taskText, username) {
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: worker.bot_chat_id,
-                    text,
-                    parse_mode: 'HTML'
-                }),
+                body: JSON.stringify({ chat_id: worker.bot_chat_id, text, parse_mode: 'HTML' }),
                 signal: AbortSignal.timeout(15000)
             }
         );
@@ -138,53 +189,6 @@ async function sendViaTelegram(worker, taskText, username) {
 
         return { sent: true };
     } catch (err) {
-        log.error(`Telegram send failed for ${worker.id}: ${err.message}`);
-        return { sent: false, error: err.message };
-    }
-}
-
-/**
- * Send pinata order to Leo directly (called from booking flow).
- * @param {string} bookingId - CRM booking ID (e.g., BK-2026-0042)
- * @param {string} pinataSku - pinata name/number
- * @param {string} username - who initiated
- */
-async function sendPinataToLeo(bookingId, pinataSku, username) {
-    const orderId = `pinata-${Date.now()}`;
-    const body = {
-        order_id: orderId,
-        pinata_sku_or_number: pinataSku || 'Піньята (без назви)',
-        print_size: 'A4',
-        qty: 4,
-        color_mode: 'Color',
-        need_file: false,
-        reference: null,
-        notes: `Booking #${bookingId}`,
-        vendor_chat_id: PINATA_VENDOR_CHAT_ID || ''
-    };
-
-    try {
-        const resp = await fetch(`${LEO_API_URL}/order/create`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Secret': LEO_SECRET
-            },
-            body: JSON.stringify(body),
-            signal: AbortSignal.timeout(15000)
-        });
-
-        if (!resp.ok) {
-            const errText = await resp.text().catch(() => 'unknown');
-            log.error(`Leo pinata order error ${resp.status}: ${errText}`);
-            return { sent: false, error: `${resp.status}: ${errText}` };
-        }
-
-        const data = await resp.json();
-        log.info(`Pinata order sent to Leo: ${orderId} for booking ${bookingId}`);
-        return { sent: true, orderId, data };
-    } catch (err) {
-        log.error(`Leo pinata request failed: ${err.message}`);
         return { sent: false, error: err.message };
     }
 }
@@ -193,10 +197,4 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-module.exports = {
-    sendTaskToWorker,
-    sendPinataToLeo,
-    LEO_API_URL,
-    LEO_SECRET,
-    PINATA_VENDOR_CHAT_ID
-};
+module.exports = { sendTaskToWorker, sendPinataToLeo, LEO_API_URL, LEO_SECRET, DEFAULT_VENDOR_CHAT_ID };

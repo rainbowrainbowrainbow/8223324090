@@ -918,6 +918,72 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_procurement_items_list ON procurement_items(list_id)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_procurement_items_stock ON procurement_items(stock_id)');
 
+        // 010: AI Workers — таблиці + seed Лєо (Клешня, 23.02.2026)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS ai_workers (
+                id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                avatar VARCHAR(10) DEFAULT '🤖',
+                role VARCHAR(200),
+                department VARCHAR(100) DEFAULT 'digital',
+                status VARCHAR(20) DEFAULT 'active',
+                status_label VARCHAR(100) DEFAULT 'Активний',
+                description TEXT,
+                capabilities JSONB DEFAULT '[]',
+                integration TEXT,
+                bot_token TEXT,
+                bot_chat_id TEXT,
+                webhook_url TEXT,
+                webhook_secret TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS ai_worker_tasks (
+                id SERIAL PRIMARY KEY,
+                worker_id VARCHAR(50) REFERENCES ai_workers(id) ON DELETE CASCADE,
+                username VARCHAR(100),
+                task TEXT NOT NULL,
+                status VARCHAR(20) DEFAULT 'sent',
+                result TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                completed_at TIMESTAMP
+            )
+        `);
+
+        const leoSeedVersion = '010_ai_workers_leo_seed_v2';
+        const leoExists = await pool.query('SELECT 1 FROM schema_migrations WHERE version = $1', [leoSeedVersion]);
+        if (leoExists.rows.length === 0) {
+            await pool.query(`
+                INSERT INTO ai_workers (id, name, avatar, role, department, status, status_label, description, capabilities, integration, webhook_url, webhook_secret)
+                VALUES (
+                    'leo', '🦁 Лєо', '🦁',
+                    'Менеджер підрядників — друк, торти, декор, закупівлі',
+                    'Підрядники', 'active', '✅ Активний',
+                    'Цифровий співробітник Парку. Координує підрядників: відправляє замовлення, отримує підтвердження, ескалює якщо не відповідають. Автоматичний fallback: якщо підрядник А не відповідає 12 хв — Лєо сам пише до підрядника Б.',
+                    '[{"name":"Друк піньят 🖨️","desc":"Замовляє друк через підрядника"},{"name":"Торти та кондитерка 🎂","desc":"Координує замовлення"},{"name":"Декор та кулі 🎈","desc":"Організовує декорування"},{"name":"Закупівлі 📦","desc":"Контролює поставки витратників"},{"name":"Довільні замовлення 📋","desc":"Будь-яке завдання підряднику"},{"name":"Anti-ghosting ⏱️","desc":"Нагадує якщо не відповідають"},{"name":"Fallback ланцюжок 🔗","desc":"А→Б→В→Клешня автоматично"}]',
+                    'Telegram бот @TimurParkRozvagbot | API: tymur-bot-production.up.railway.app',
+                    'https://tymur-bot-production.up.railway.app/order/create',
+                    'kleshnya-tymur-secret-2026'
+                )
+                ON CONFLICT (id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    avatar = EXCLUDED.avatar,
+                    role = EXCLUDED.role,
+                    status = EXCLUDED.status,
+                    status_label = EXCLUDED.status_label,
+                    description = EXCLUDED.description,
+                    capabilities = EXCLUDED.capabilities,
+                    integration = EXCLUDED.integration,
+                    webhook_url = EXCLUDED.webhook_url,
+                    webhook_secret = EXCLUDED.webhook_secret,
+                    updated_at = NOW()
+            `);
+            await pool.query('INSERT INTO schema_migrations (version) VALUES ($1)', [leoSeedVersion]);
+            log.info('AI worker seeded: 🦁 Лєо');
+        }
+
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);
@@ -1148,3 +1214,4 @@ async function seedStaff() {
 }
 
 module.exports = { pool, initDatabase, generateBookingNumber, generateCertCode };
+

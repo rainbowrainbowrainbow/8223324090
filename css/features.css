@@ -1678,7 +1678,7 @@ body.dark-mode .filter-mode-banner-text p { color: #FBBF24; }
 #certificateForm .form-group input:focus,
 #certificateForm .form-group select:focus,
 #certificateForm .form-group textarea:focus {
-    border-color: var(--primary, var(--primary));
+    border-color: var(--primary);
     background: var(--white);
 }
 #certDisplayValue {

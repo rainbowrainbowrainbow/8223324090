@@ -120,7 +120,7 @@
     gap: 4px;
     padding: 3px 10px;
     border-radius: var(--radius-lg);
-    font-size: 11px;
+    font-size: var(--font-xs);
     font-weight: 700;
     white-space: nowrap;
 }
@@ -152,7 +152,7 @@
 }
 
 .inline-form label {
-    font-size: 11px;
+    font-size: var(--font-xs);
     font-weight: 700;
     color: var(--gray-500);
     text-transform: uppercase;
@@ -268,7 +268,7 @@
    ========================================== */
 
 .program-card .program-icon {
-    font-size: 28px;
+    font-size: var(--font-3xl);
     line-height: 1;
 }
 

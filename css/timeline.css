@@ -60,7 +60,7 @@
 .mini-time-mark {
     width: 120px;
     min-width: 120px;
-    font-size: 10px;
+    font-size: var(--font-2xs);
     font-weight: 700;
     color: var(--gray-400);
     text-align: left;
@@ -124,7 +124,7 @@
     border-radius: 5px;
     padding: 2px 6px;
     color: var(--white);
-    font-size: 10px;
+    font-size: var(--font-2xs);
     font-weight: 700;
     overflow: hidden;
     cursor: pointer;
@@ -192,20 +192,20 @@
     width: 50px;
     min-width: 50px;
     text-align: center;
-    font-size: 10px;
+    font-size: var(--font-2xs);
     font-weight: 600;
     color: var(--gray-400);
 }
 
 .time-mark.hour {
     color: var(--gray-700);
-    font-size: 12px;
+    font-size: var(--font-caption);
     font-weight: 800;
 }
 
 .time-mark.half {
     color: var(--gray-400);
-    font-size: 10px;
+    font-size: var(--font-2xs);
 }
 
 /* ==========================================
@@ -260,7 +260,7 @@
 }
 
 .line-sub {
-    font-size: 10px;
+    font-size: var(--font-2xs);
     color: var(--gray-400);
     margin-top: 2px;
 }
@@ -342,11 +342,11 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: 12px;
+    font-size: var(--font-caption);
 }
 
 .booking-block .subtitle {
-    font-size: 10px;
+    font-size: var(--font-2xs);
     opacity: 0.85;
     margin-top: 2px;
 }
@@ -369,7 +369,7 @@
     position: absolute;
     top: 3px;
     right: 5px;
-    font-size: 9px;
+    font-size: var(--font-3xs);
     font-weight: 800;
     opacity: 0.8;
     background: rgba(255,255,255,0.25);
@@ -383,7 +383,7 @@
 
 /* Notes on block */
 .booking-block .note-text {
-    font-size: 9px;
+    font-size: var(--font-3xs);
     font-weight: 600;
     opacity: 0.9;
     margin-top: 1px;
@@ -427,7 +427,7 @@
 }
 
 .btn-add-line-big span:first-child {
-    font-size: 28px;
+    font-size: var(--font-3xl);
     font-weight: 900;
 }
 
@@ -451,7 +451,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 11px;
+    font-size: var(--font-xs);
     font-weight: 700;
     padding: 5px 12px 5px 8px;
     border-radius: var(--radius-full);
@@ -511,7 +511,7 @@
 .pending-header .pending-timer {
     color: var(--warning);
     font-weight: 800;
-    font-size: 12px;
+    font-size: var(--font-caption);
 }
 
 .pending-grid {
@@ -609,7 +609,7 @@
     color: var(--white);
     padding: 10px 14px;
     border-radius: var(--radius-xs);
-    font-size: 12px;
+    font-size: var(--font-caption);
     line-height: 1.6;
     max-width: 280px;
     box-shadow: var(--shadow-lg);
@@ -703,7 +703,7 @@ body.dragging-active {
     color: var(--white);
     padding: 3px 10px;
     border-radius: var(--radius-full);
-    font-size: 12px;
+    font-size: var(--font-caption);
     font-weight: 800;
     white-space: nowrap;
     z-index: 110;
@@ -720,7 +720,7 @@ body.dragging-active {
     color: var(--white);
     padding: 2px 8px;
     border-radius: var(--radius-full);
-    font-size: 10px;
+    font-size: var(--font-2xs);
     font-weight: 800;
     white-space: nowrap;
     z-index: 110;

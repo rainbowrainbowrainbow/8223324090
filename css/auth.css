@@ -72,7 +72,7 @@
 }
 
 .login-logo h1 {
-    font-size: 28px;
+    font-size: var(--font-3xl);
     font-weight: 900;
     color: var(--brand-gold);
     margin-top: 14px;
@@ -82,7 +82,7 @@
 
 .tagline {
     color: var(--gray-400);
-    font-size: 13px;
+    font-size: var(--font-sm);
     margin-top: 6px;
     font-weight: 600;
     text-transform: uppercase;
@@ -99,7 +99,7 @@
     border: 1px solid rgba(245,200,66,0.2);
     border-radius: var(--radius-md);
     font-weight: 700;
-    font-size: 13px;
+    font-size: var(--font-sm);
     color: var(--brand-gold);
     cursor: pointer;
     font-family: 'Inter', sans-serif;
@@ -173,7 +173,7 @@
     display: block;
     margin-bottom: 8px;
     font-weight: 700;
-    font-size: 13px;
+    font-size: var(--font-sm);
     color: var(--gray-400);
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -185,7 +185,7 @@
     padding: 14px 18px;
     border: 1px solid #333;
     border-radius: var(--radius-md);
-    font-size: 16px;
+    font-size: var(--font-input);
     font-family: 'Inter', sans-serif;
     transition: all 0.2s ease;
     background: #1a1a25;
@@ -210,7 +210,7 @@
     color: #0a0a0f;
     border: none;
     border-radius: var(--radius-md);
-    font-size: 16px;
+    font-size: var(--font-input);
     font-weight: 800;
     cursor: pointer;
     font-family: 'Inter', sans-serif;
@@ -234,7 +234,7 @@
     text-align: center;
     margin-top: 24px;
     color: var(--gray-500);
-    font-size: 11px;
+    font-size: var(--font-xs);
     font-weight: 600;
     letter-spacing: 0.05em;
     font-family: 'Inter', sans-serif;
@@ -248,7 +248,7 @@
     background: rgba(245,200,66,0.1);
     color: var(--brand-gold);
     border-radius: var(--radius-md);
-    font-size: 12px;
+    font-size: var(--font-caption);
     font-weight: 700;
 }
 
@@ -257,7 +257,7 @@
     text-align: center;
     margin-top: 16px;
     font-weight: 600;
-    font-size: 13px;
+    font-size: var(--font-sm);
 }
 
 /* ==========================================
@@ -271,6 +271,6 @@
     }
 
     .login-logo h1 {
-        font-size: 24px;
+        font-size: var(--font-2xl);
     }
 }

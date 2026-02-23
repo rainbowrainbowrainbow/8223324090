@@ -36,7 +36,7 @@
 
 .telegram-chat-item .chat-type {
     font-size: var(--font-2xs);
-    background: #EFF6FF;
+    background: var(--animation-bg);
     padding: 2px 6px;
     border-radius: var(--radius-2xs);
     margin-left: 4px;
@@ -643,7 +643,7 @@
 
 .btn-auto-time:hover {
     border-color: var(--quest);
-    background: #F5F3FF;
+    background: var(--quest-bg);
 }
 
 /* v5.36: Afisha add button — replaces inline style */
@@ -1154,7 +1154,7 @@
    ========================================== */
 
 .invite-section {
-    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+    background: linear-gradient(135deg, var(--status-preliminary-bg) 0%, var(--warning-light) 100%);
     border: 1px solid var(--status-preliminary-border);
     border-radius: var(--radius-card);
     padding: 14px;
@@ -1258,7 +1258,7 @@
     display: inline-block;
     padding: 2px 8px;
     margin-left: 6px;
-    background: #EFF6FF;
+    background: var(--animation-bg);
     border: 1px solid #93C5FD;
     border-radius: var(--radius-2xs);
     font-size: var(--font-xs);
@@ -1475,7 +1475,7 @@
 .filter-mode-banner {
     margin: 0 16px 8px;
     border-radius: var(--radius-card);
-    background: linear-gradient(135deg, #FEF3C7 0%, var(--warning-light) 100%);
+    background: linear-gradient(135deg, var(--warning-light) 0%, var(--warning-light) 100%);
     border: 2px solid var(--warning);
     padding: 12px 16px;
     animation: banner-slide-in 0.3s ease-out;
@@ -1683,7 +1683,7 @@ body.dark-mode .filter-mode-banner-text p { color: #FBBF24; }
 }
 #certDisplayValue {
     border: 2px solid var(--info) !important;
-    background: #EFF6FF !important;
+    background: var(--animation-bg) !important;
     font-weight: 700;
     font-size: 18px;
     padding: 14px !important;
@@ -1749,7 +1749,7 @@ body.dark-mode .filter-mode-banner-text p { color: #FBBF24; }
 
 /* Certificate detail: highlight ПІБ row */
 .cert-detail-row-name {
-    background: #EFF6FF;
+    background: var(--animation-bg);
     border-radius: var(--radius-md);
     padding: 8px 12px;
     margin: 0 -12px;

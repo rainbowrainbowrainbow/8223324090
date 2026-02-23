@@ -131,7 +131,7 @@
 
     .btn-logout {
         padding: 5px 10px;
-        font-size: 11px;
+        font-size: var(--font-xs);
         min-height: 44px;
     }
 
@@ -173,7 +173,7 @@
         flex: 1;
         min-width: 0;
         padding: 8px 6px;
-        font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
+        font-size: var(--font-input); /* >= 16px prevents iOS auto-zoom on focus */
     }
 
     .date-controls .day-info {
@@ -182,7 +182,7 @@
 
     .day-label {
         padding: 4px 8px;
-        font-size: 11px;
+        font-size: var(--font-xs);
     }
 
     /* v7.8.3: Row 2 — Status filter + Period selector */
@@ -197,7 +197,7 @@
         flex: 1;
         text-align: center;
         padding: 6px 4px;
-        font-size: 10px;
+        font-size: var(--font-2xs);
         min-height: 44px;
         min-width: 0;
         white-space: nowrap;
@@ -212,7 +212,7 @@
     }
 
     .period-btn {
-        font-size: 10px;
+        font-size: var(--font-2xs);
         padding: 6px 8px;
         min-height: 44px;
     }
@@ -237,12 +237,12 @@
 
     .zoom-controls .zoom-btn {
         padding: 6px 8px;
-        font-size: 10px;
+        font-size: var(--font-2xs);
         min-height: 44px;
     }
 
     .toggle-mini {
-        font-size: 13px;
+        font-size: var(--font-sm);
         padding: 4px 6px;
         min-height: 44px;
     }
@@ -250,14 +250,14 @@
     /* v5.15: Today button mobile */
     .btn-today {
         padding: 6px 10px;
-        font-size: 11px;
+        font-size: var(--font-xs);
         min-height: 44px;
     }
 
     .timeline-scroll { padding: 12px; }
     .time-scale { margin-left: 90px; }
     .line-header { width: 90px; min-width: 90px; }
-    .line-name { font-size: 12px; }
+    .line-name { font-size: var(--font-caption); }
 
     /* v7.8.8: WCAG touch targets for action buttons */
     .btn-export,
@@ -276,7 +276,7 @@
         padding: 10px;
         margin-top: 8px;
         border-width: 1.5px;
-        font-size: 12px;
+        font-size: var(--font-caption);
         gap: 6px;
     }
 
@@ -301,13 +301,13 @@
     }
 
     .pending-text {
-        font-size: 11px;
+        font-size: var(--font-xs);
     }
 
     .user-panel { gap: 8px; }
     .btn-logout {
         padding: 8px 12px;
-        font-size: 12px;
+        font-size: var(--font-caption);
     }
 
     /* v7.8.6: Booking panel — compact on mobile */
@@ -332,8 +332,8 @@
         margin-bottom: 5px;
     }
 
-    .info-label { font-size: 12px; }
-    .info-value { font-size: 13px; }
+    .info-label { font-size: var(--font-caption); }
+    .info-value { font-size: var(--font-sm); }
 
     .form-section {
         margin-bottom: 12px;
@@ -341,19 +341,19 @@
 
     .form-section label {
         margin-bottom: 5px;
-        font-size: 11px;
+        font-size: var(--font-xs);
     }
 
     .form-section select,
     .form-section input {
         padding: 9px 10px;
-        font-size: 16px; /* >= 16px prevents iOS auto-zoom */
+        font-size: var(--font-input); /* >= 16px prevents iOS auto-zoom */
         border-width: 1.5px;
     }
 
     .program-search-input {
         padding: 8px 10px;
-        font-size: 16px;
+        font-size: var(--font-input);
         border-width: 1.5px;
     }
 
@@ -371,7 +371,7 @@
     }
 
     .extra-host-section .toggle-label {
-        font-size: 12px;
+        font-size: var(--font-caption);
         gap: 8px;
     }
 
@@ -383,7 +383,7 @@
     .hosts-warning {
         padding: 10px 12px;
         margin-bottom: 12px;
-        font-size: 11px;
+        font-size: var(--font-xs);
     }
 
     .kids-count-section input {
@@ -391,7 +391,7 @@
     }
 
     .category-header {
-        font-size: 10px;
+        font-size: var(--font-2xs);
         padding: 6px 0 3px;
     }
 
@@ -412,7 +412,7 @@
     }
 
     .program-icon .name {
-        font-size: 9px;
+        font-size: var(--font-3xs);
     }
 
     .btn-submit {
@@ -424,7 +424,7 @@
     .btn-change-program {
         padding: 7px 12px;
         margin-bottom: 8px;
-        font-size: 12px;
+        font-size: var(--font-caption);
     }
 
     .status-section {
@@ -434,11 +434,11 @@
     .btn-status-toggle {
         padding: 10px 14px;
         margin-top: 8px;
-        font-size: 12px;
+        font-size: var(--font-caption);
     }
 
     .detail-row {
-        font-size: 12px;
+        font-size: var(--font-caption);
         margin-bottom: 4px;
     }
 
@@ -580,7 +580,7 @@
     .mini-line-header {
         width: 60px;
         min-width: 60px;
-        font-size: 10px;
+        font-size: var(--font-2xs);
         padding: 4px 6px;
     }
 }
@@ -595,8 +595,8 @@
     .category-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
     .program-icon { min-height: 68px; padding: 10px 4px; }
     .program-icon .icon-circle { width: 34px; height: 34px; margin-bottom: 3px; }
-    .program-icon .icon { font-size: 17px; }
-    .program-icon .name { font-size: 9px; }
+    .program-icon .icon { font-size: var(--font-lg); }
+    .program-icon .name { font-size: var(--font-3xs); }
     .program-duration { font-size: 8px; padding: 1px 4px; }
 
     /* v7.8.3: Ultra-compact toolbar */
@@ -612,11 +612,11 @@
     .toggle-mini-label { display: none; }
 
     /* v8.5.2: Cert detail compact */
-    .cert-detail-val { font-size: 13px; }
-    .cert-detail-label { font-size: 11px; }
+    .cert-detail-val { font-size: var(--font-sm); }
+    .cert-detail-label { font-size: var(--font-xs); }
     .cert-card { padding: 10px 12px; }
-    .cert-display-value { font-size: 14px; }
-    .cert-badge { font-size: 10px; padding: 2px 8px; }
+    .cert-display-value { font-size: var(--font-base); }
+    .cert-badge { font-size: var(--font-2xs); padding: 2px 8px; }
 
     /* v5.34: Full-screen modals on small screens */
     .modal { padding: 0; }
@@ -631,21 +631,21 @@
     .modal-catalog { max-width: 100%; max-height: 100vh; border-radius: 0; }
 
     /* v7.8.8: WCAG-friendly compact controls (min 38px) */
-    .status-filter-btn { font-size: 9px; padding: 5px 3px; min-width: 0; min-height: 38px; }
-    .period-btn { font-size: 9px; padding: 5px 6px; min-height: 38px; }
-    .zoom-controls .zoom-btn { padding: 5px 7px; font-size: 9px; min-height: 38px; }
-    .toggle-mini { padding: 4px 5px; min-height: 38px; font-size: 12px; }
-    .btn-today { padding: 5px 8px; font-size: 10px; min-height: 38px; }
+    .status-filter-btn { font-size: var(--font-3xs); padding: 5px 3px; min-width: 0; min-height: 38px; }
+    .period-btn { font-size: var(--font-3xs); padding: 5px 6px; min-height: 38px; }
+    .zoom-controls .zoom-btn { padding: 5px 7px; font-size: var(--font-3xs); min-height: 38px; }
+    .toggle-mini { padding: 4px 5px; min-height: 38px; font-size: var(--font-caption); }
+    .btn-today { padding: 5px 8px; font-size: var(--font-2xs); min-height: 38px; }
     .date-controls .btn-nav { width: 38px; height: 38px; min-width: 38px; }
-    .btn-export { font-size: 10px; padding: 5px 8px; min-height: 38px; }
-    .btn-menu-toggle { font-size: 10px; padding: 5px 8px; min-height: 38px; }
+    .btn-export { font-size: var(--font-2xs); padding: 5px 8px; min-height: 38px; }
+    .btn-menu-toggle { font-size: var(--font-2xs); padding: 5px 8px; min-height: 38px; }
 
     /* v7.8.6: Booking panel extra compact on small screens */
     .panel-header { padding: 10px 12px; }
     .booking-form { padding: 10px 12px; }
     .selected-info { padding: 8px 10px; margin-bottom: 10px; }
     .form-section { margin-bottom: 10px; }
-    .form-section label { margin-bottom: 4px; font-size: 10px; }
+    .form-section label { margin-bottom: 4px; font-size: var(--font-2xs); }
     .form-section select,
     .form-section input { padding: 8px 9px; border-width: 1.5px; }
     .program-search-input { padding: 7px 9px; border-width: 1.5px; }
@@ -655,17 +655,17 @@
     .extra-host-section,
     .kids-count-section { padding: 8px 10px; margin-bottom: 10px; }
     .hosts-warning { padding: 8px 10px; margin-bottom: 10px; }
-    .btn-submit { padding: 12px; font-size: 13px; }
+    .btn-submit { padding: 12px; font-size: var(--font-sm); }
     .program-icon { padding: 6px 3px; min-height: 58px; }
     .program-icon .icon-circle { width: 30px; height: 30px; margin-bottom: 2px; }
-    .program-icon .icon { font-size: 15px; }
+    .program-icon .icon { font-size: var(--font-md); }
     .program-icon .name { font-size: 8px; }
 
     /* v5.34: Timeline compact */
     .timeline-scroll { padding: 8px; }
     .time-scale { margin-left: 70px; }
     .line-header { width: 70px; min-width: 70px; }
-    .line-name { font-size: 11px; }
+    .line-name { font-size: var(--font-xs); }
 
     /* Dashboard */
     .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
@@ -674,14 +674,14 @@
 
     /* v9.0: Dashboard enhanced — mobile */
     .dash-weekday-chart { height: 80px; gap: 4px; }
-    .dash-weekday-label { font-size: 10px; }
-    .dash-weekday-count { font-size: 9px; }
+    .dash-weekday-label { font-size: var(--font-2xs); }
+    .dash-weekday-count { font-size: var(--font-3xs); }
     .dash-daily-chart { height: 100px; }
     .dash-daily-label { font-size: 8px; }
     .dash-period-tabs { flex-wrap: wrap; }
     .dash-toggle-group { flex-wrap: wrap; }
-    .dash-bar-label { width: 60px; font-size: 11px; }
-    .dash-bar-value { width: 60px; font-size: 11px; }
+    .dash-bar-label { width: 60px; font-size: var(--font-xs); }
+    .dash-bar-value { width: 60px; font-size: var(--font-xs); }
 
     .notification {
         bottom: 12px;
@@ -705,42 +705,42 @@
     /* v7.8.6: Ultra-compact header */
     .header-content { padding: 5px 8px; }
     .logo-img-small { width: 26px; height: 26px; }
-    .nav-link { padding: 4px 10px; font-size: 14px; }
-    .btn-logout { padding: 4px 8px; font-size: 10px; }
+    .nav-link { padding: 4px 10px; font-size: var(--font-base); }
+    .btn-logout { padding: 4px 8px; font-size: var(--font-2xs); }
 
     /* v7.8.3: Toolbar ultra-compact */
     .control-panel { gap: 3px; padding: 6px; }
     .date-controls { gap: 3px; }
     .date-controls input[type="date"] {
         padding: 6px 4px;
-        font-size: 16px; /* >= 16px prevents iOS auto-zoom on focus */
+        font-size: var(--font-input); /* >= 16px prevents iOS auto-zoom on focus */
     }
     .date-controls .btn-nav {
         width: 34px;
         height: 32px;
         min-width: 34px;
         padding: 0;
-        font-size: 13px;
+        font-size: var(--font-sm);
     }
     .btn-today {
         padding: 5px 6px;
-        font-size: 10px;
+        font-size: var(--font-2xs);
         min-height: 32px;
     }
 
     /* v7.8.8: WCAG compromise — min 34px on extra small */
-    .status-filter-btn { font-size: 9px; padding: 4px 2px; min-height: 34px; }
-    .period-btn { font-size: 9px; padding: 4px 5px; min-height: 34px; }
-    .zoom-controls .zoom-btn { padding: 4px 6px; font-size: 9px; min-height: 34px; }
-    .toggle-mini { padding: 4px 5px; min-height: 34px; font-size: 12px; }
+    .status-filter-btn { font-size: var(--font-3xs); padding: 4px 2px; min-height: 34px; }
+    .period-btn { font-size: var(--font-3xs); padding: 4px 5px; min-height: 34px; }
+    .zoom-controls .zoom-btn { padding: 4px 6px; font-size: var(--font-3xs); min-height: 34px; }
+    .toggle-mini { padding: 4px 5px; min-height: 34px; font-size: var(--font-caption); }
 
     /* Timeline: narrower headers */
     .time-scale { margin-left: 60px; }
     .line-header { width: 60px; min-width: 60px; }
-    .line-name { font-size: 10px; }
+    .line-name { font-size: var(--font-2xs); }
 
-    .btn-export { font-size: 10px; padding: 4px 6px; min-height: 34px; }
-    .btn-menu-toggle { font-size: 10px; padding: 4px 6px; min-height: 34px; }
+    .btn-export { font-size: var(--font-2xs); padding: 4px 6px; min-height: 34px; }
+    .btn-menu-toggle { font-size: var(--font-2xs); padding: 4px 6px; min-height: 34px; }
 }
 
 /* ==========================================
@@ -752,16 +752,16 @@
 
     .header-content { padding: 4px 6px; }
     .logo-img-small { width: 24px; height: 24px; }
-    .nav-link { padding: 3px 8px; font-size: 13px; }
-    .btn-logout { padding: 3px 6px; font-size: 9px; }
+    .nav-link { padding: 3px 8px; font-size: var(--font-sm); }
+    .btn-logout { padding: 3px 6px; font-size: var(--font-3xs); }
 
     .control-panel { gap: 2px; padding: 4px; }
     .date-controls { gap: 2px; }
-    .date-controls .btn-nav { width: 32px; height: 32px; min-width: 32px; font-size: 12px; }
+    .date-controls .btn-nav { width: 32px; height: 32px; min-width: 32px; font-size: var(--font-caption); }
 
     .time-scale { margin-left: 50px; }
     .line-header { width: 50px; min-width: 50px; }
-    .line-name { font-size: 9px; }
+    .line-name { font-size: var(--font-3xs); }
 
     .status-filter-btn { font-size: 8px; min-height: 32px; }
     .period-btn { font-size: 8px; min-height: 32px; }
@@ -830,14 +830,14 @@
    ========================================== */
 
 @media (max-width: 480px) {
-    .quick-stats-bar { padding: 8px 12px; font-size: 12px; }
+    .quick-stats-bar { padding: 8px 12px; font-size: var(--font-caption); }
 
     .kleshnya-widget { bottom: 16px; right: 16px; }
     .kleshnya-fab { width: 52px; height: 52px; }
-    .kleshnya-fab-icon { font-size: 24px; }
+    .kleshnya-fab-icon { font-size: var(--font-2xl); }
     .kleshnya-fab-ring { inset: -4px; }
     .kleshnya-fab-sonar { inset: -5px; }
     .kleshnya-popup { width: calc(100vw - 32px); right: -8px; bottom: 66px; }
-    .kleshnya-q-label { font-size: 10px; }
-    .kleshnya-popup-title { font-size: 11px; letter-spacing: 1px; }
+    .kleshnya-q-label { font-size: var(--font-2xs); }
+    .kleshnya-popup-title { font-size: var(--font-xs); letter-spacing: 1px; }
 }

@@ -72,7 +72,7 @@ app.use('/api', rateLimiter);
 
 // Auth middleware: protect all API endpoints except public ones
 app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path.startsWith('/telegram/webhook') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat') {
+    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path.startsWith('/telegram/webhook') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || /^\/ai-workers\/[^/]+\/webhook$/.test(req.path)) {
         return next();
     }
     authenticateToken(req, res, next);
@@ -105,6 +105,7 @@ app.use('/api/customers', require('./routes/customers'));
 app.use('/api/finance', require('./routes/finance'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/procurement', require('./routes/procurement'));
+app.use('/api/ai-workers', require('./routes/ai-workers'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));

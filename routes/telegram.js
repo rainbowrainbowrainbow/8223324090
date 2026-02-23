@@ -390,6 +390,55 @@ router.post('/webhook', async (req, res) => {
                     });
                 }
 
+            } else if (data.startsWith('tymur_send:')) {
+                // v17.3: Send pinata order to Tymur bot
+                const parts = data.split(':');
+                const bookingId = parts[1] || null;
+                const pinataSku = parts.slice(2).join(':') || 'Піньята';
+                if (!bookingId) {
+                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' });
+                    return res.sendStatus(200);
+                }
+                try {
+                    const { sendPinataToTymur } = require('../services/ai-workers');
+                    const cbFrom = update.callback_query.from?.username || 'telegram';
+                    const result = await sendPinataToTymur(bookingId, pinataSku, cbFrom);
+
+                    if (result.sent) {
+                        await telegramRequest('answerCallbackQuery', {
+                            callback_query_id: id,
+                            text: '📤 Відправлено Тимуру!'
+                        });
+                        await telegramRequest('editMessageText', {
+                            chat_id: chatId,
+                            message_id: message.message_id,
+                            text: message.text + `\n\n✅ <b>Відправлено Тимуру</b> (${cbFrom})`,
+                            parse_mode: 'HTML'
+                        });
+
+                        // Log to ai_worker_tasks
+                        pool.query(
+                            `INSERT INTO ai_worker_tasks (worker_id, username, task, status, result)
+                             VALUES ('tymur', $1, $2, 'sent', $3)`,
+                            [cbFrom, `Піньята для ${bookingId}: ${pinataSku}`, result.orderId || 'ok']
+                        ).catch(e => log.error('Failed to log tymur task', e));
+                    } else {
+                        await telegramRequest('answerCallbackQuery', {
+                            callback_query_id: id,
+                            text: `❌ Помилка: ${(result.error || 'невідома').slice(0, 100)}`,
+                            show_alert: true
+                        });
+                    }
+                } catch (err) {
+                    log.error('tymur_send callback error', err);
+                    await telegramRequest('answerCallbackQuery', {
+                        callback_query_id: id,
+                        text: 'Помилка відправки',
+                        show_alert: true
+                    });
+                }
+                return res.sendStatus(200);
+
             } else if (data.startsWith('ctr_accept:') || data.startsWith('ctr_reject:')) {
                 // v12.6: Contractor accept/reject callback
                 const parts = data.split(':');

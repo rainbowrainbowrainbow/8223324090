@@ -279,6 +279,31 @@ async function notifyTelegram(type, booking, extra = {}) {
             return;
         }
 
+        // Check if this is a pinata booking — add "Send to Tymur" button
+        const category = booking.category || booking.programCategory || '';
+        const hasPinata = category === 'pinata' || (booking.pinata_filler || booking.pinataFiller);
+
+        if (type === 'create' && hasPinata && bookingId) {
+            const pinataSku = booking.program_name || booking.label || booking.program_code || 'Піньята';
+            const threadId = await getConfiguredThreadId();
+            const payload = {
+                chat_id: chatId,
+                text: text,
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: '📤 Відправити Тимуру', callback_data: `tymur_send:${bookingId}:${pinataSku.slice(0, 40)}` }
+                    ]]
+                }
+            };
+            if (threadId) payload.message_thread_id = threadId;
+            const result = await telegramRequest('sendMessage', payload);
+            if (result && result.ok && result.result) {
+                await pool.query('UPDATE bookings SET telegram_message_id = $1 WHERE id = $2', [result.result.message_id, bookingId]);
+            }
+            return;
+        }
+
         const result = await sendTelegramMessage(chatId, text);
         if (result && result.ok && result.result && bookingId) {
             await pool.query('UPDATE bookings SET telegram_message_id = $1 WHERE id = $2', [result.result.message_id, bookingId]);

@@ -908,81 +908,56 @@ async function saveCorrection() {
 // TAB 5: AI TEAM (Electronic Workers)
 // ==========================================
 
-const AI_WORKERS = [
-    {
-        id: 'tymur',
-        name: 'Тимур',
-        avatar: '🤝',
-        role: 'Взаємодія з підрядниками',
-        department: 'Зовнішні комунікації',
-        status: 'active',
-        statusLabel: 'Готовий до роботи',
-        description: 'Відповідає за комунікацію з постачальниками, підрядниками та партнерами. ' +
-            'Формує запити, відстежує статуси замовлень, нагадує про дедлайни та веде архів контрактів.',
-        capabilities: [
-            'Автоматичні запити постачальникам',
-            'Відстеження статусів замовлень',
-            'Нагадування про дедлайни контрактів',
-            'Архів комунікацій з партнерами'
-        ],
-        integration: 'Telegram-бот. Підключається через Клешню — напишіть в чаті Клешні «Підключити Тимура».'
-    },
-    {
-        id: 'svitlana',
-        name: 'Світлана',
-        avatar: '📋',
-        role: 'Контроль виконання задач',
-        department: 'Операційний контроль',
-        status: 'planned',
-        statusLabel: 'В розробці',
-        description: 'Моніторить виконання задач працівниками, відстежує дедлайни, ' +
-            'надсилає нагадування та ескалює прострочені задачі. Формує щоденні звіти про продуктивність.',
-        capabilities: [
-            'Моніторинг дедлайнів задач',
-            'Автоматичні нагадування виконавцям',
-            'Ескалація прострочених задач',
-            'Щоденні звіти про продуктивність команди'
-        ],
-        integration: 'Буде інтегрована з системою задач та Telegram-сповіщеннями.'
-    },
-    {
-        id: 'taras',
-        name: 'Тарас',
-        avatar: '📊',
-        role: 'Звіти та аналітика',
-        department: 'Аналітичний відділ',
-        status: 'planned',
-        statusLabel: 'В розробці',
-        description: 'Приймає звіти від працівників, обробляє та структурує дані, ' +
-            'публікує результати на сайті. Автоматично генерує зведені звіти за період.',
-        capabilities: [
-            'Прийом та валідація звітів',
-            'Автоматична обробка даних',
-            'Генерація зведених звітів',
-            'Публікація результатів на сайт'
-        ],
-        integration: 'Буде інтегрований з модулями Фінанси, Аналітика та HR-звітами.'
+// AI workers loaded from API (no more hardcode)
+let AI_WORKERS = [];
+
+async function loadAIWorkers() {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const resp = await fetch('/api/ai-workers', { headers });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.success && data.data) {
+            AI_WORKERS = data.data.map(w => ({
+                id: w.id,
+                name: w.name,
+                avatar: w.avatar || '🤖',
+                role: w.role,
+                department: w.department,
+                status: w.status,
+                statusLabel: w.status_label || (w.status === 'active' ? 'Готовий до роботи' : 'В розробці'),
+                description: w.description || '',
+                capabilities: Array.isArray(w.capabilities) ? w.capabilities : [],
+                integration: w.integration || '',
+                hasTransport: w.has_transport
+            }));
+        }
+    } catch (err) {
+        console.error('Failed to load AI workers:', err);
     }
-];
+}
 
-// AI worker task journal (in-memory, per session)
-const aiJournal = { tymur: [], svitlana: [], taras: [] };
-
-function renderAITeam() {
+async function renderAITeam() {
     const list = document.getElementById('aiTeamList');
     if (!list) return;
+
+    // Load from API if not yet loaded
+    if (AI_WORKERS.length === 0) {
+        await loadAIWorkers();
+    }
+
+    if (AI_WORKERS.length === 0) {
+        list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400);">Немає цифрових співробітників</div>';
+        return;
+    }
 
     list.innerHTML = AI_WORKERS.map(w => {
         const badgeCls = w.status === 'active' ? 'active' : 'planned';
         const statusIcon = w.status === 'active' ? '●' : '◐';
         const capsList = w.capabilities.map(c => `<li>${escapeHtml(c)}</li>`).join('');
-        const journal = aiJournal[w.id] || [];
-        const journalHTML = journal.length > 0
-            ? journal.map(j => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-100);">
-                <span>${escapeHtml(j.task)}</span>
-                <span style="color:var(--gray-400);font-size:11px;white-space:nowrap;margin-left:12px;">${j.time}</span>
-              </div>`).join('')
-            : `<div class="ai-journal-empty">Ще немає записів</div>`;
+        const journalHTML = `<div class="ai-journal-empty">Натисніть щоб завантажити</div>`;
 
         return `
         <div class="ai-worker" id="ai-worker-${w.id}">
@@ -1056,10 +1031,15 @@ function toggleAIPanel(workerId, panel) {
         const panels = ['caps', 'integration', 'journal'];
         const idx = panels.indexOf(panel);
         if (idx >= 0 && btns[idx]) btns[idx].classList.add('open');
+
+        // Auto-load journal when opening journal panel
+        if (panel === 'journal') {
+            loadWorkerJournal(workerId);
+        }
     }
 }
 
-function sendAITask(workerId) {
+async function sendAITask(workerId) {
     const input = document.getElementById(`ai-task-input-${workerId}`);
     if (!input) return;
     const task = input.value.trim();
@@ -1068,30 +1048,69 @@ function sendAITask(workerId) {
         return;
     }
 
-    const now = new Date();
-    const time = now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
-    const date = now.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Kyiv' });
-
-    aiJournal[workerId].unshift({ task, time: `${date} ${time}`, status: 'sent' });
-    input.value = '';
-
-    // Refresh journal panel
-    const journalEl = document.getElementById(`ai-journal-${workerId}`);
-    if (journalEl) {
-        const journal = aiJournal[workerId];
-        journalEl.innerHTML = journal.map(j =>
-            `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-100);">
-                <span>${escapeHtml(j.task)}</span>
-                <span style="color:var(--gray-400);font-size:11px;white-space:nowrap;margin-left:12px;">${j.time}</span>
-            </div>`
-        ).join('');
-    }
-
-    // Open journal panel to show the result
-    toggleAIPanel(workerId, 'journal');
-
     const worker = AI_WORKERS.find(w => w.id === workerId);
-    showNotification(`Завдання відправлено ${worker ? worker.name : 'працівнику'}`, 'success');
+    const btn = input.nextElementSibling;
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const resp = await fetch(`/api/ai-workers/${workerId}/tasks`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ task })
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            input.value = '';
+            showNotification(`Завдання відправлено ${worker ? worker.name : 'працівнику'}`, 'success');
+            // Reload journal from API
+            await loadWorkerJournal(workerId);
+            toggleAIPanel(workerId, 'journal');
+        } else {
+            showNotification(data.error || 'Помилка відправки', 'error');
+        }
+    } catch (err) {
+        showNotification('Помилка мережі', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Відправити'; }
+    }
+}
+
+async function loadWorkerJournal(workerId) {
+    const journalEl = document.getElementById(`ai-journal-${workerId}`);
+    if (!journalEl) return;
+
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const resp = await fetch(`/api/ai-workers/${workerId}/tasks?limit=20`, { headers });
+        const data = await resp.json();
+
+        if (data.success && data.data && data.data.length > 0) {
+            const statusIcon = { sent: '📤', queued: '⏳', in_progress: '🔄', done: '✅', failed: '❌' };
+            journalEl.innerHTML = data.data.map(j => {
+                const icon = statusIcon[j.status] || '❓';
+                const time = new Date(j.created_at).toLocaleString('uk-UA', {
+                    timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit',
+                    hour: '2-digit', minute: '2-digit'
+                });
+                return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-100);">
+                    <span>${icon} ${escapeHtml(j.task)}</span>
+                    <span style="color:var(--gray-400);font-size:11px;white-space:nowrap;margin-left:12px;">${time}</span>
+                </div>`;
+            }).join('');
+        } else {
+            journalEl.innerHTML = '<div class="ai-journal-empty">Ще немає записів</div>';
+        }
+    } catch (err) {
+        journalEl.innerHTML = '<div class="ai-journal-empty">Помилка завантаження</div>';
+    }
 }
 
 // ==========================================

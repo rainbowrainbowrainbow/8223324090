@@ -411,6 +411,15 @@ const SKILLS = [
         keywords: ['аналітик', 'analytic', 'тренд', 'trend', 'порівня', 'compar', 'топ програм', 'статистик'],
         handler: handleAnalytics,
         examples: ['Топ програм', 'Порівняй з минулим місяцем']
+    },
+    {
+        id: 'ai_team',
+        name: 'AI Команда',
+        icon: '🤖',
+        description: 'Цифрові співробітники: статус, журнал, управління',
+        keywords: ['ai команд', 'цифров', 'тимур', 'світлан', 'тарас', 'робот', 'бот', 'підключити тимур', 'ai team', 'digital', 'воркер'],
+        handler: handleAITeam,
+        examples: ['AI Команда', 'Підключити Тимура', 'Журнал AI Команди']
     }
 ];
 
@@ -1257,6 +1266,79 @@ async function handleAnalytics(lower, username) {
     return {
         message: msg,
         suggestions: ['Топ програм', 'Виручка за тиждень', 'Бронювання', 'Команда']
+    };
+}
+
+// --- AI Team skill handler ---
+
+async function handleAITeam(lower, username) {
+    // Get workers from DB
+    const workersRes = await pool.query(
+        `SELECT id, name, avatar, role, department, status, status_label,
+                webhook_url IS NOT NULL OR bot_token IS NOT NULL AS has_transport
+         FROM ai_workers ORDER BY status DESC, name`
+    );
+
+    if (workersRes.rows.length === 0) {
+        return {
+            message: '🤖 AI Команда поки не налаштована. Зверніться до адміністратора.',
+            suggestions: ['Команда', 'Задачі', 'Допомога']
+        };
+    }
+
+    // Check if user wants to see task journal
+    const wantsJournal = lower.includes('журнал') || lower.includes('лог') || lower.includes('історі');
+    // Check if user wants to send task
+    const wantsSend = lower.includes('підключити') || lower.includes('відправ') || lower.includes('завдання тимур');
+
+    if (wantsJournal) {
+        const tasksRes = await pool.query(
+            `SELECT t.id, t.worker_id, w.name as worker_name, t.task, t.status, t.created_at
+             FROM ai_worker_tasks t
+             JOIN ai_workers w ON w.id = t.worker_id
+             ORDER BY t.created_at DESC LIMIT 10`
+        );
+
+        if (tasksRes.rows.length === 0) {
+            return {
+                message: '📋 Журнал AI Команди порожній — ще не було завдань.',
+                suggestions: ['AI Команда', 'Задачі', 'Допомога']
+            };
+        }
+
+        const statusIcon = { sent: '📤', queued: '⏳', in_progress: '🔄', done: '✅', failed: '❌' };
+        let msg = '📋 <b>Останні завдання AI Команди:</b>\n\n';
+        for (const t of tasksRes.rows) {
+            const icon = statusIcon[t.status] || '❓';
+            const time = new Date(t.created_at).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            msg += `${icon} <b>${t.worker_name}</b>: ${t.task}\n   ${t.status} • ${time}\n\n`;
+        }
+
+        return {
+            message: msg,
+            suggestions: ['AI Команда', 'Бронювання', 'Задачі']
+        };
+    }
+
+    // Default: show status of all workers
+    let msg = '🤖 <b>AI Команда — Цифрові Співробітники</b>\n\n';
+    for (const w of workersRes.rows) {
+        const statusIcon = w.status === 'active' ? '🟢' : w.status === 'planned' ? '🟡' : '⚫';
+        const transport = w.has_transport ? '🔗' : '';
+        msg += `${w.avatar} <b>${w.name}</b> ${statusIcon} ${transport}\n`;
+        msg += `   ${w.role} • ${w.department}\n`;
+        msg += `   ${w.status_label || w.status}\n\n`;
+    }
+
+    if (wantsSend) {
+        msg += '💡 Щоб відправити завдання, зайди в <b>HR → AI Команда</b> на сайті.';
+    } else {
+        msg += '💡 Керувати командою: HR → вкладка «AI Команда»';
+    }
+
+    return {
+        message: msg,
+        suggestions: ['Журнал AI Команди', 'Задачі', 'Команда', 'Бронювання']
     };
 }
 

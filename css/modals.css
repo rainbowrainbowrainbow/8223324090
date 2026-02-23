@@ -132,7 +132,7 @@
 
 .btn-danger {
     padding: 14px;
-    background: linear-gradient(135deg, var(--danger) 0%, #DC2626 100%);
+    background: linear-gradient(135deg, var(--danger) 0%, var(--danger-dark) 100%);
     color: var(--white);
     border: none;
     border-radius: var(--radius-sm);
@@ -199,7 +199,7 @@
 
 /* v5.31: Delete button — danger/red (destructive action) */
 .booking-actions .btn-delete-booking {
-    background: linear-gradient(135deg, var(--danger) 0%, #DC2626 100%);
+    background: linear-gradient(135deg, var(--danger) 0%, var(--danger-dark) 100%);
     color: var(--white);
 }
 
@@ -210,7 +210,7 @@
 
 /* v5.50: Duplicate button — blue/info */
 .booking-actions .btn-duplicate-booking {
-    background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%);
+    background: linear-gradient(135deg, var(--info) 0%, var(--info-dark) 100%);
     color: var(--white);
 }
 
@@ -599,7 +599,7 @@
     color: var(--white);
 }
 
-.catalog-category-title.animation { background: linear-gradient(135deg, var(--animation) 0%, #2563EB 100%); }
+.catalog-category-title.animation { background: linear-gradient(135deg, var(--animation) 0%, var(--animation-dark) 100%); }
 .catalog-category-title.show { background: linear-gradient(135deg, var(--show) 0%, #EA580C 100%); }
 .catalog-category-title.quest { background: linear-gradient(135deg, var(--quest) 0%, #7C3AED 100%); }
 .catalog-category-title.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }

@@ -45,7 +45,7 @@
 }
 
 .logo-text h1 {
-    font-size: 16px;
+    font-size: var(--font-input);
     font-weight: 900;
     color: var(--white);
     letter-spacing: -0.3px;
@@ -88,7 +88,7 @@
     border: 1px solid rgba(255,255,255,0.15);
     border-radius: var(--radius-xs);
     font-weight: 700;
-    font-size: 12px;
+    font-size: var(--font-caption);
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
@@ -96,7 +96,7 @@
 
 .btn-logout:hover {
     background: rgba(239,68,68,0.2);
-    color: #FCA5A5;
+    color: var(--status-cancelled-border);
     border-color: rgba(239,68,68,0.3);
 }
 
@@ -168,7 +168,7 @@
     background: linear-gradient(135deg, var(--gray-50) 0%, var(--white) 100%);
     border: 2px solid var(--gray-200);
     border-radius: var(--radius-sm);
-    font-size: 16px;
+    font-size: var(--font-input);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -264,7 +264,7 @@ input[type="date"] {
     border: 1px solid rgba(255,255,255,0.5);
     border-radius: var(--radius-sm);
     font-weight: 600;
-    font-size: 12px;
+    font-size: var(--font-caption);
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
@@ -310,7 +310,7 @@ input[type="date"] {
     border: 1px solid rgba(255,255,255,0.5);
     border-radius: var(--radius-sm);
     font-weight: 600;
-    font-size: 12px;
+    font-size: var(--font-caption);
     cursor: pointer;
     font-family: inherit;
     transition: all var(--speed-fast) var(--ease-smooth);
@@ -445,7 +445,7 @@ input[type="date"] {
 .kleshnya-fab:active { transform: scale(0.93); }
 
 .kleshnya-fab-icon {
-    font-size: 28px;
+    font-size: var(--font-3xl);
     line-height: 1;
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
     z-index: 2;
@@ -563,7 +563,7 @@ input[type="date"] {
 
 .kleshnya-popup-title {
     font-weight: 800;
-    font-size: 13px;
+    font-size: var(--font-sm);
     color: #FDBA74;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -571,13 +571,13 @@ input[type="date"] {
 }
 
 .kleshnya-version {
-    font-size: 10px;
+    font-size: var(--font-2xs);
     color: rgba(253, 186, 116, 0.5);
     font-weight: 400;
 }
 
 .kleshnya-status-text {
-    font-size: 10px;
+    font-size: var(--font-2xs);
     font-weight: 700;
     color: var(--success);
     letter-spacing: 1px;
@@ -588,7 +588,7 @@ input[type="date"] {
 .kleshnya-popup-close {
     background: none;
     border: 1px solid rgba(255,255,255,0.1);
-    font-size: 14px;
+    font-size: var(--font-base);
     color: rgba(253, 186, 116, 0.7);
     cursor: pointer;
     width: 26px;
@@ -625,14 +625,14 @@ input[type="date"] {
     color: var(--show-dark);
     font-family: 'Courier New', monospace;
     font-weight: 700;
-    font-size: 14px;
+    font-size: var(--font-base);
     line-height: 1.5;
     flex-shrink: 0;
     text-shadow: 0 0 8px rgba(234, 88, 12, 0.5);
 }
 
 .kleshnya-greeting {
-    font-size: 13px;
+    font-size: var(--font-sm);
     line-height: 1.6;
     color: rgba(253, 186, 116, 0.9);
     font-family: 'Courier New', monospace;
@@ -675,14 +675,14 @@ input[type="date"] {
     color: var(--success);
     font-family: 'Courier New', monospace;
     font-weight: 700;
-    font-size: 12px;
+    font-size: var(--font-caption);
     line-height: 1.6;
     flex-shrink: 0;
     text-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
 }
 
 .kleshnya-answer-text {
-    font-size: 12px;
+    font-size: var(--font-caption);
     line-height: 1.6;
     color: rgba(209, 213, 219, 0.9);
     font-family: 'Courier New', monospace;
@@ -705,7 +705,7 @@ input[type="date"] {
 }
 
 .kleshnya-divider-text {
-    font-size: 9px;
+    font-size: var(--font-3xs);
     font-weight: 700;
     letter-spacing: 1.5px;
     color: rgba(234, 88, 12, 0.4);
@@ -725,7 +725,7 @@ input[type="date"] {
     border: 1px solid rgba(234, 88, 12, 0.15);
     border-radius: var(--radius-md);
     padding: 9px 10px;
-    font-size: 12px;
+    font-size: var(--font-caption);
     font-weight: 600;
     color: rgba(253, 186, 116, 0.8);
     cursor: pointer;
@@ -740,14 +740,14 @@ input[type="date"] {
 }
 
 .kleshnya-q-icon {
-    font-size: 10px;
+    font-size: var(--font-2xs);
     color: var(--show-dark);
     text-shadow: 0 0 4px rgba(234, 88, 12, 0.6);
     transition: transform 0.2s;
 }
 
 .kleshnya-q-label {
-    font-size: 11px;
+    font-size: var(--font-xs);
     letter-spacing: 0.3px;
 }
 
@@ -806,7 +806,7 @@ input[type="date"] {
     gap: 6px;
     color: rgba(253, 186, 116, 0.7);
     text-decoration: none;
-    font-size: 12px;
+    font-size: var(--font-caption);
     font-weight: 600;
     padding: 6px 16px;
     border-radius: var(--radius-md);
@@ -817,7 +817,7 @@ input[type="date"] {
 }
 
 .kleshnya-chat-icon {
-    font-size: 14px;
+    font-size: var(--font-base);
     color: var(--show-dark);
     text-shadow: 0 0 4px rgba(234, 88, 12, 0.4);
 }
@@ -874,7 +874,7 @@ input[type="date"] {
 .btn-close-warning {
     background: none;
     border: none;
-    font-size: 20px;
+    font-size: var(--font-xl);
     cursor: pointer;
     color: inherit;
     opacity: 0.6;

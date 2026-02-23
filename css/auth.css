@@ -30,7 +30,7 @@
 
 .login-container {
     background: #12121a;
-    border-radius: 16px;
+    border-radius: var(--radius);
     padding: 48px 36px;
     width: 100%;
     max-width: 400px;
@@ -59,7 +59,7 @@
     object-fit: contain;
     display: block;
     margin: 0 auto;
-    border-radius: 20px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 4px 20px rgba(245,200,66,0.15);
 }
 
@@ -74,14 +74,14 @@
 .login-logo h1 {
     font-size: 28px;
     font-weight: 900;
-    color: #F5C842;
+    color: var(--brand-gold);
     margin-top: 14px;
     letter-spacing: -0.3px;
     font-family: 'Inter', sans-serif;
 }
 
 .tagline {
-    color: #888;
+    color: var(--gray-400);
     font-size: 13px;
     margin-top: 6px;
     font-weight: 600;
@@ -97,10 +97,10 @@
     margin-bottom: 20px;
     background: rgba(245,200,66,0.08);
     border: 1px solid rgba(245,200,66,0.2);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     font-weight: 700;
     font-size: 13px;
-    color: #F5C842;
+    color: var(--brand-gold);
     cursor: pointer;
     font-family: 'Inter', sans-serif;
     transition: all 0.2s ease;
@@ -137,7 +137,7 @@
 .changelog-section h4 {
     font-size: var(--font-base);
     font-weight: 800;
-    color: #F5C842;
+    color: var(--brand-gold);
     margin-bottom: 10px;
 }
 
@@ -163,7 +163,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #F5C842;
+    background: var(--brand-gold);
 }
 
 /* Login form */
@@ -174,7 +174,7 @@
     margin-bottom: 8px;
     font-weight: 700;
     font-size: 13px;
-    color: #888;
+    color: var(--gray-400);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     font-family: 'Inter', sans-serif;
@@ -184,7 +184,7 @@
     width: 100%;
     padding: 14px 18px;
     border: 1px solid #333;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     font-size: 16px;
     font-family: 'Inter', sans-serif;
     transition: all 0.2s ease;
@@ -193,12 +193,12 @@
 }
 
 .login-form input::placeholder {
-    color: #555;
+    color: var(--gray-500);
 }
 
 .login-form input:focus {
     outline: none;
-    border-color: #F5C842;
+    border-color: var(--brand-gold);
     box-shadow: 0 0 0 3px rgba(245,200,66,0.15);
     background: #1a1a25;
 }
@@ -206,10 +206,10 @@
 .btn-login {
     width: 100%;
     padding: 16px;
-    background: #F5C842;
+    background: var(--brand-gold);
     color: #0a0a0f;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     font-size: 16px;
     font-weight: 800;
     cursor: pointer;
@@ -222,7 +222,7 @@
 .btn-login:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 28px rgba(245,200,66,0.35);
-    background: #f7d15e;
+    background: var(--brand-gold-hover);
 }
 
 .btn-login:active {
@@ -233,7 +233,7 @@
 .login-footer {
     text-align: center;
     margin-top: 24px;
-    color: #555;
+    color: var(--gray-500);
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.05em;
@@ -246,14 +246,14 @@
     margin-top: 12px;
     padding: 8px 12px;
     background: rgba(245,200,66,0.1);
-    color: #F5C842;
-    border-radius: 8px;
+    color: var(--brand-gold);
+    border-radius: var(--radius-md);
     font-size: 12px;
     font-weight: 700;
 }
 
 .error-message {
-    color: #ef4444;
+    color: var(--danger);
     text-align: center;
     margin-top: 16px;
     font-weight: 600;
@@ -267,7 +267,7 @@
 @media (max-width: 480px) {
     .login-container {
         padding: 36px 24px;
-        border-radius: 12px;
+        border-radius: var(--radius-card);
     }
 
     .login-logo h1 {

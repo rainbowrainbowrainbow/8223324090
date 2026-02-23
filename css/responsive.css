@@ -89,7 +89,7 @@
     .logo-img-small {
         width: 28px;
         height: 28px;
-        border-radius: 6px;
+        border-radius: var(--radius-xs);
     }
 
     .header-nav {
@@ -113,7 +113,7 @@
     .nav-link {
         padding: 5px 12px;
         font-size: 1.3em;
-        border-radius: 6px;
+        border-radius: var(--radius-xs);
         line-height: 1;
         min-width: 48px;
         min-height: 44px;
@@ -398,7 +398,7 @@
     .program-icon {
         padding: 8px 4px;
         min-height: 64px;
-        border-radius: 10px;
+        border-radius: var(--radius-sm);
     }
 
     .program-icon .icon-circle {

@@ -14,7 +14,7 @@
 
 /* Header — emerald gradient */
 .header {
-    background: linear-gradient(135deg, #064E3B 0%, #065F46 40%, #047857 100%);
+    background: linear-gradient(135deg, var(--primary-700) 0%, var(--status-confirmed-color) 40%, var(--primary-700) 100%);
     border-bottom: none;
     position: sticky;
     top: 0;
@@ -39,7 +39,7 @@
     width: 36px;
     height: 36px;
     object-fit: contain;
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     border: 2px solid rgba(255,255,255,0.2);
 }
@@ -47,7 +47,7 @@
 .logo-text h1 {
     font-size: 16px;
     font-weight: 900;
-    color: #FFFFFF;
+    color: var(--white);
     letter-spacing: -0.3px;
     text-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
@@ -62,7 +62,7 @@
 .em-logo-title {
     font-size: 1.2em;
     font-weight: 900;
-    color: #F5C842;
+    color: var(--brand-gold);
     font-family: 'Inter', sans-serif;
 }
 
@@ -116,7 +116,7 @@
 .animators-management textarea:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 4px rgba(16,185,129,0.1);
+    box-shadow: var(--shadow-focus-primary);
 }
 
 .animators-management .btn-submit { margin-top: 16px; }
@@ -180,7 +180,7 @@
 
 .btn-nav:hover {
     border-color: var(--primary);
-    color: #FFFFFF;
+    color: var(--white);
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     box-shadow: var(--shadow-primary);
     transform: translateY(-1px);
@@ -207,7 +207,7 @@ input[type="date"] {
 .day-label {
     padding: 6px 16px;
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-    color: #FFFFFF;
+    color: var(--white);
     border-radius: var(--radius-full);
     font-weight: 800;
     font-size: var(--font-sm);
@@ -262,7 +262,7 @@ input[type="date"] {
     background: rgba(255,255,255,0.4);
     color: var(--gray-700);
     border: 1px solid rgba(255,255,255,0.5);
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     font-weight: 600;
     font-size: 12px;
     cursor: pointer;
@@ -283,8 +283,8 @@ input[type="date"] {
 
 /* Invite button */
 .btn-invite {
-    background: linear-gradient(135deg, #10B981 0%, #059669 100%) !important;
-    color: #FFFFFF !important;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
+    color: var(--white) !important;
     border: none !important;
     box-shadow: 0 2px 8px rgba(16,185,129,0.3);
 }
@@ -308,7 +308,7 @@ input[type="date"] {
     background: rgba(255,255,255,0.4);
     color: var(--gray-700);
     border: 1px solid rgba(255,255,255,0.5);
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     font-weight: 600;
     font-size: 12px;
     cursor: pointer;
@@ -335,7 +335,7 @@ input[type="date"] {
     backdrop-filter: blur(40px) saturate(200%);
     -webkit-backdrop-filter: blur(40px) saturate(200%);
     border: 1px solid rgba(255,255,255,0.5);
-    border-radius: 16px;
+    border-radius: var(--radius);
     box-shadow:
         0 8px 40px rgba(0,0,0,0.10),
         0 2px 12px rgba(0,0,0,0.06),
@@ -362,7 +362,7 @@ input[type="date"] {
     transition: all var(--speed-fast) var(--ease-smooth);
     position: relative;
     letter-spacing: 0.01em;
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     text-decoration: none;
     gap: 2px;
 }
@@ -387,7 +387,7 @@ input[type="date"] {
 
 .quick-stats-bar {
     background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
-    color: #166534;
+    color: var(--primary-text);
     padding: 10px 16px;
     border-radius: var(--radius-sm);
     margin-bottom: 12px;
@@ -419,7 +419,7 @@ input[type="date"] {
     height: 60px;
     border-radius: 50%;
     border: 2px solid rgba(234, 88, 12, 0.6);
-    background: radial-gradient(circle at 35% 35%, #FF6B2B 0%, #EA580C 40%, #9A3412 100%);
+    background: radial-gradient(circle at 35% 35%, #FF6B2B 0%, var(--show-dark) 40%, #9A3412 100%);
     box-shadow:
         0 0 20px rgba(234, 88, 12, 0.4),
         0 0 40px rgba(234, 88, 12, 0.15),
@@ -551,8 +551,8 @@ input[type="date"] {
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #22C55E;
-    box-shadow: 0 0 6px #22C55E, 0 0 12px rgba(34, 197, 94, 0.3);
+    background: var(--success);
+    box-shadow: 0 0 6px var(--success), 0 0 12px rgba(34, 197, 94, 0.3);
     animation: kleshnya-blink 2s ease-in-out infinite;
 }
 
@@ -579,7 +579,7 @@ input[type="date"] {
 .kleshnya-status-text {
     font-size: 10px;
     font-weight: 700;
-    color: #22C55E;
+    color: var(--success);
     letter-spacing: 1px;
     font-family: 'Courier New', monospace;
     text-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
@@ -593,7 +593,7 @@ input[type="date"] {
     cursor: pointer;
     width: 26px;
     height: 26px;
-    border-radius: 6px;
+    border-radius: var(--radius-xs);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -622,7 +622,7 @@ input[type="date"] {
 }
 
 .kleshnya-prompt {
-    color: #EA580C;
+    color: var(--show-dark);
     font-family: 'Courier New', monospace;
     font-weight: 700;
     font-size: 14px;
@@ -642,7 +642,7 @@ input[type="date"] {
 .kleshnya-greeting.typing::after {
     content: '█';
     animation: kleshnya-cursor 0.6s step-end infinite;
-    color: #EA580C;
+    color: var(--show-dark);
     margin-left: 1px;
 }
 
@@ -655,7 +655,7 @@ input[type="date"] {
 .kleshnya-answer {
     background: rgba(234, 88, 12, 0.06);
     border: 1px solid rgba(234, 88, 12, 0.15);
-    border-left: 3px solid #EA580C;
+    border-left: 3px solid var(--show-dark);
     border-radius: 0 8px 8px 0;
     padding: 10px 12px;
     margin-bottom: 12px;
@@ -672,7 +672,7 @@ input[type="date"] {
 }
 
 .kleshnya-answer-prompt {
-    color: #22C55E;
+    color: var(--success);
     font-family: 'Courier New', monospace;
     font-weight: 700;
     font-size: 12px;
@@ -723,7 +723,7 @@ input[type="date"] {
 .kleshnya-q-btn {
     background: rgba(255,255,255,0.03);
     border: 1px solid rgba(234, 88, 12, 0.15);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 9px 10px;
     font-size: 12px;
     font-weight: 600;
@@ -741,7 +741,7 @@ input[type="date"] {
 
 .kleshnya-q-icon {
     font-size: 10px;
-    color: #EA580C;
+    color: var(--show-dark);
     text-shadow: 0 0 4px rgba(234, 88, 12, 0.6);
     transition: transform 0.2s;
 }
@@ -766,7 +766,7 @@ input[type="date"] {
 
 .kleshnya-q-btn.active {
     background: rgba(234, 88, 12, 0.15);
-    border-color: #EA580C;
+    border-color: var(--show-dark);
     color: #FDBA74;
     box-shadow: 0 0 16px rgba(234, 88, 12, 0.25), inset 0 0 12px rgba(234, 88, 12, 0.05);
 }
@@ -809,7 +809,7 @@ input[type="date"] {
     font-size: 12px;
     font-weight: 600;
     padding: 6px 16px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     transition: all 0.2s;
     font-family: 'Courier New', monospace;
     letter-spacing: 0.5px;
@@ -818,7 +818,7 @@ input[type="date"] {
 
 .kleshnya-chat-icon {
     font-size: 14px;
-    color: #EA580C;
+    color: var(--show-dark);
     text-shadow: 0 0 4px rgba(234, 88, 12, 0.4);
 }
 
@@ -840,9 +840,9 @@ input[type="date"] {
     right: 4px;
     width: 6px;
     height: 6px;
-    background: #EA580C;
+    background: var(--show-dark);
     border-radius: 50%;
-    box-shadow: 0 0 4px #EA580C;
+    box-shadow: 0 0 4px var(--show-dark);
     opacity: 0.8;
 }
 
@@ -851,8 +851,8 @@ input[type="date"] {
    ========================================== */
 
 .warning-banner {
-    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
-    border: 1px solid #FCD34D;
+    background: linear-gradient(135deg, var(--status-preliminary-bg) 0%, var(--warning-light) 100%);
+    border: 1px solid var(--status-preliminary-border);
     border-radius: var(--radius-sm);
     padding: 14px 20px;
     margin-bottom: 20px;
@@ -861,13 +861,13 @@ input[type="date"] {
     justify-content: space-between;
     font-weight: 700;
     font-size: var(--font-sm);
-    color: #92400E;
+    color: var(--status-preliminary-color);
     box-shadow: var(--shadow-xs);
 }
 
 .warning-banner.danger {
-    background: linear-gradient(135deg, #FEF2F2 0%, #FECACA 100%);
-    border-color: #FCA5A5;
+    background: linear-gradient(135deg, var(--status-cancelled-bg) 0%, #FECACA 100%);
+    border-color: var(--status-cancelled-border);
     color: var(--danger);
 }
 

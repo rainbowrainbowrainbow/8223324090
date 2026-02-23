@@ -16,7 +16,7 @@
 .zoom-controls {
     display: flex;
     background: var(--white);
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     border: 1px solid var(--gray-200);
     box-shadow: var(--shadow-sm);
@@ -96,9 +96,9 @@
 }
 
 .btn-undo:hover {
-    background: #FFF7ED;
+    background: var(--show-bg);
     border-color: var(--warning);
-    color: #92400E;
+    color: var(--status-preliminary-color);
 }
 
 /* ==========================================
@@ -217,7 +217,7 @@
     padding: 10px 14px;
     min-height: 44px;
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-    color: #FFFFFF;
+    color: var(--white);
     border: none;
     border-radius: var(--radius-xs);
     font-weight: 700;
@@ -249,7 +249,7 @@
     display: flex;
     gap: 2px;
     background: var(--gray-100);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 2px;
     border: 1px solid var(--gray-200);
 }
@@ -258,7 +258,7 @@
     padding: 10px 14px;
     min-height: 44px;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-xs);
     background: transparent;
     font-size: var(--font-xs);
     font-weight: 700;
@@ -291,7 +291,7 @@
 .period-selector {
     display: flex;
     background: var(--gray-100);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 2px;
     gap: 2px;
     border: 1px solid var(--gray-200);
@@ -303,7 +303,7 @@
     font-size: 12px;
     font-weight: 700;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-xs);
     background: transparent;
     color: var(--gray-500);
     cursor: pointer;
@@ -319,7 +319,7 @@
 
 .period-btn.active {
     background: var(--primary);
-    color: #FFFFFF;
+    color: var(--white);
     box-shadow: 0 1px 3px rgba(16,185,129,0.3);
 }
 
@@ -332,7 +332,7 @@
     gap: 2px;
     width: 100%;
     background: var(--gray-100);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 2px;
     border: 1px solid var(--gray-200);
 }
@@ -353,7 +353,7 @@
     width: 100%;
     padding: 10px 14px;
     min-height: 44px;
-    border-radius: 6px;
+    border-radius: var(--radius-xs);
     font-weight: 700;
     font-size: var(--font-sm);
     text-align: center;
@@ -376,13 +376,13 @@
 
 .status-radio input:checked + .status-radio-label.confirmed {
     background: var(--primary);
-    color: #FFFFFF;
+    color: var(--white);
     box-shadow: 0 1px 3px rgba(16,185,129,0.3);
 }
 
 .status-radio input:checked + .status-radio-label.preliminary {
     background: var(--warning);
-    color: #FFFFFF;
+    color: var(--white);
     box-shadow: 0 1px 3px rgba(245,158,11,0.3);
 }
 
@@ -398,11 +398,11 @@
 .duration-badge {
     display: inline-block;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-2xs);
     font-size: 10px;
     font-weight: 800;
     margin-left: 4px;
 }
 
-.duration-badge.short { background: #DBEAFE; color: #1E40AF; }    /* <=60 min */
-.duration-badge.long { background: #FDE68A; color: #92400E; }     /* >60 min */
+.duration-badge.short { background: var(--info-light); color: var(--info-dark); }    /* <=60 min */
+.duration-badge.long { background: var(--warning-light); color: var(--status-preliminary-color); }     /* >60 min */

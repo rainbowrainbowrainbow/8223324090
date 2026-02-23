@@ -29,12 +29,12 @@
 }
 
 .nav-link:hover {
-    color: #FFFFFF;
+    color: var(--white);
     background: rgba(255,255,255,0.1);
 }
 
 .nav-link.active {
-    color: #FFFFFF;
+    color: var(--white);
     background: rgba(255,255,255,0.15);
 }
 
@@ -119,13 +119,13 @@
     align-items: center;
     gap: 4px;
     padding: 3px 10px;
-    border-radius: 20px;
+    border-radius: var(--radius-lg);
     font-size: 11px;
     font-weight: 700;
     white-space: nowrap;
 }
 
-.badge-done { background: #D1FAE5; color: #065F46; }
+.badge-done { background: var(--primary-light); color: var(--status-confirmed-color); }
 .badge-normal { background: var(--gray-100); color: var(--gray-600); }
 
 /* ==========================================
@@ -232,8 +232,8 @@
 }
 
 .btn-page-danger:hover {
-    color: #EF4444;
-    background: #FEE2E2;
+    color: var(--danger);
+    background: var(--danger-light);
 }
 
 /* ==========================================
@@ -246,7 +246,7 @@
 }
 
 .task-card[data-status="in_progress"] {
-    border-left-color: #F59E0B;
+    border-left-color: var(--warning);
 }
 
 .task-card[data-status="done"] {
@@ -260,7 +260,7 @@
 }
 
 .task-card[data-priority="high"] {
-    border-left-color: #EF4444;
+    border-left-color: var(--danger);
 }
 
 /* ==========================================
@@ -290,7 +290,7 @@
     color: var(--gray-500);
     background: var(--gray-50);
     padding: 2px 8px;
-    border-radius: 12px;
+    border-radius: var(--radius-card);
 }
 
 .program-card.inactive {

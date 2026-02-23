@@ -987,6 +987,29 @@ async function initDatabase() {
             log.info('AI worker seeded: 🦁 Лєо');
         }
 
+        // 011: Warehouse Bot seed (Клешня, 23.02.2026)
+        const whSeedVersion = '011_ai_worker_warehouse_v1';
+        const whExists = await pool.query('SELECT 1 FROM schema_migrations WHERE version = $1', [whSeedVersion]);
+        if (whExists.rows.length === 0) {
+            await pool.query(`
+                INSERT INTO ai_workers (id, name, avatar, role, department, status, status_label, description, capabilities, integration)
+                VALUES (
+                    'warehouse', '🏪 Склад', '🏪',
+                    'Складський робітник — облік товарів, фото-розпізнавання, залишки',
+                    'Склад', 'planned', '🔧 Налаштовується',
+                    'Цифровий співробітник складу. Розпізнає товари з фотографій (Gemini Vision), додає до складу, веде облік залишків, контролює критичні позиції. Майбутні функції: автосписання через камеру, планування закупок.',
+                    '[{"name":"📸 Фото → Склад","desc":"Gemini Vision розпізнає товар з фото"},{"name":"📦 Категорії","desc":"Майстер-клас, Реквізит, Декор, Призи"},{"name":"🔍 Пошук","desc":"Пошук по назві позиції"},{"name":"⚠️ Залишки","desc":"Контроль критичних залишків"},{"name":"➕ Додати","desc":"Ручне додавання та поповнення"},{"name":"📊 Статистика","desc":"Підсумок по складу"},{"name":"🎥 Камера (v2)","desc":"Автосписання з відео-камери"}]',
+                    'Telegram бот (токен очікується) | Gemini Vision + OpenAI fallback | CRM Warehouse API'
+                )
+                ON CONFLICT (id) DO UPDATE SET
+                    name = EXCLUDED.name, role = EXCLUDED.role,
+                    description = EXCLUDED.description, capabilities = EXCLUDED.capabilities,
+                    updated_at = NOW()
+            `);
+            await pool.query('INSERT INTO schema_migrations (version) VALUES ($1)', [whSeedVersion]);
+            log.info('AI worker seeded: 🏪 Склад');
+        }
+
         log.info('Database initialized');
     } catch (err) {
         log.error('Database init error', err);

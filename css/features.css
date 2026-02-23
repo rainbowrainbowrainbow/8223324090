@@ -1155,7 +1155,7 @@
 
 .invite-section {
     background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
-    border: 1px solid #FCD34D;
+    border: 1px solid var(--status-preliminary-border);
     border-radius: var(--radius-card);
     padding: 14px;
     margin: 16px 0;
@@ -1164,7 +1164,7 @@
 .invite-section-header {
     font-size: var(--font-sm);
     font-weight: 800;
-    color: #92400E;
+    color: var(--status-preliminary-color);
     margin-bottom: 10px;
 }
 
@@ -1270,7 +1270,7 @@
 }
 
 .btn-free-rooms:hover {
-    background: #DBEAFE;
+    background: var(--info-light);
     border-color: var(--info);
 }
 
@@ -1285,18 +1285,18 @@
 .free-room-chip {
     display: inline-block;
     padding: 4px 10px;
-    background: #ECFDF5;
-    border: 1px solid #6EE7B7;
+    background: var(--status-confirmed-bg);
+    border: 1px solid var(--status-confirmed-border);
     border-radius: var(--radius-xs);
     font-size: var(--font-caption);
     font-weight: 600;
-    color: #065F46;
+    color: var(--status-confirmed-color);
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .free-room-chip:hover {
-    background: #D1FAE5;
+    background: var(--primary-light);
     border-color: var(--primary);
     transform: translateY(-1px);
 }
@@ -1326,7 +1326,7 @@
     height: 56px;
     border-radius: 50%;
     border: none;
-    background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
+    background: linear-gradient(135deg, var(--photo) 0%, var(--photo-dark) 100%);
     color: var(--white);
     font-size: var(--font-2xl);
     cursor: pointer;
@@ -1460,11 +1460,11 @@
     white-space: nowrap;
 }
 
-.cert-badge-active { background: #ECFDF5; color: #065F46; }
-.cert-badge-used { background: #F3F4F6; color: #374151; }
-.cert-badge-expired { background: #FFFBEB; color: #92400E; }
-.cert-badge-revoked { background: #FEF2F2; color: #991B1B; }
-.cert-badge-blocked { background: #F3F4F6; color: #111827; }
+.cert-badge-active { background: var(--status-confirmed-bg); color: var(--status-confirmed-color); }
+.cert-badge-used { background: var(--gray-100); color: #374151; }
+.cert-badge-expired { background: var(--status-preliminary-bg); color: var(--status-preliminary-color); }
+.cert-badge-revoked { background: var(--danger-light); color: #991B1B; }
+.cert-badge-blocked { background: var(--gray-100); color: #111827; }
 
 .cert-panel-add-btn {
     line-height: 1.6;
@@ -1475,7 +1475,7 @@
 .filter-mode-banner {
     margin: 0 16px 8px;
     border-radius: var(--radius-card);
-    background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+    background: linear-gradient(135deg, #FEF3C7 0%, var(--warning-light) 100%);
     border: 2px solid var(--warning);
     padding: 12px 16px;
     animation: banner-slide-in 0.3s ease-out;
@@ -1488,7 +1488,7 @@
 }
 .filter-mode-banner-icon { font-size: var(--font-3xl); flex-shrink: 0; }
 .filter-mode-banner-text { flex: 1; }
-.filter-mode-banner-text strong { display: block; font-size: var(--font-md); color: #92400E; margin-bottom: 2px; }
+.filter-mode-banner-text strong { display: block; font-size: var(--font-md); color: var(--status-preliminary-color); margin-bottom: 2px; }
 .filter-mode-banner-text p { font-size: var(--font-sm); color: #A16207; margin: 0; }
 .filter-mode-banner-close {
     background: var(--warning);
@@ -1511,7 +1511,7 @@ body.dark-mode .filter-mode-banner {
     background: linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(217,119,6,0.1) 100%);
     border-color: rgba(245,158,11,0.5);
 }
-body.dark-mode .filter-mode-banner-text strong { color: #FCD34D; }
+body.dark-mode .filter-mode-banner-text strong { color: var(--status-preliminary-border); }
 body.dark-mode .filter-mode-banner-text p { color: #FBBF24; }
 
 .batch-qty-option {

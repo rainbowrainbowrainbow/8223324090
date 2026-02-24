@@ -976,6 +976,7 @@ function renderAITeam() {
         const badgeCls = w.status === 'active' ? 'active' : 'planned';
         const statusIcon = w.status === 'active' ? '●' : '◐';
         const capsList = w.capabilities.map(c => `<li>${escapeHtml(c)}</li>`).join('');
+        const isLeo = w.id === 'leo';
         const journal = aiJournal[w.id] || [];
         const journalHTML = journal.length > 0
             ? journal.map(j => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-100);">
@@ -1008,6 +1009,9 @@ function renderAITeam() {
                 <button class="ai-worker-toggle" onclick="toggleAIPanel('${w.id}','journal')">
                     Журнал
                 </button>
+                ${isLeo ? `<button class="ai-worker-toggle" onclick="toggleAIPanel('leo','leaderboard'); loadLeaderboard()">
+                    🏆 Рейтинг
+                </button>` : ''}
                 <button class="ai-worker-send-btn" onclick="toggleAIPanel('${w.id}','send')">
                     Відправити на завдання
                 </button>
@@ -1035,6 +1039,14 @@ function renderAITeam() {
                     <button onclick="sendAITask('${w.id}')">Відправити</button>
                 </div>
             </div>
+
+            ${isLeo ? `
+            <div class="ai-worker-panel" id="ai-panel-leo-leaderboard">
+                <h5>🏆 Рейтинг підрядників</h5>
+                <div id="leo-leaderboard-content">
+                    <div style="color:var(--gray-400);font-size:13px;padding:8px 0;">Завантаження...</div>
+                </div>
+            </div>` : ''}
         </div>`;
     }).join('');
 }
@@ -1053,9 +1065,56 @@ function toggleAIPanel(workerId, panel) {
         panelEl.classList.add('open');
         // Find the matching toggle button
         const btns = document.querySelectorAll(`#ai-worker-${workerId} .ai-worker-toggle`);
-        const panels = ['caps', 'integration', 'journal'];
+        const panels = workerId === 'leo'
+            ? ['caps', 'integration', 'journal', 'leaderboard']
+            : ['caps', 'integration', 'journal'];
         const idx = panels.indexOf(panel);
         if (idx >= 0 && btns[idx]) btns[idx].classList.add('open');
+    }
+}
+
+async function loadLeaderboard() {
+    const container = document.getElementById('leo-leaderboard-content');
+    if (!container) return;
+    container.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:8px 0;">Завантаження...</div>';
+    try {
+        const res = await fetch('https://tymur-bot-production.up.railway.app/vendors/leaderboard');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const vendors = data.leaderboard || [];
+        if (!vendors.length) {
+            container.innerHTML = '<div class="ai-journal-empty">Підрядників ще немає</div>';
+            return;
+        }
+        const stars = (r) => {
+            const full = Math.round(r);
+            return '★'.repeat(full) + '☆'.repeat(5 - full);
+        };
+        const rows = vendors.map(v => {
+            const resp = v.avg_response_min ? `${Math.round(v.avg_response_min)} хв` : '—';
+            const ontime = v.on_time_pct != null ? `${Math.round(v.on_time_pct)}%` : '—';
+            const badgeStyle = v.active
+                ? 'background:#d1fae5;color:#065f46;'
+                : 'background:#fee2e2;color:#991b1b;';
+            return `
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--gray-100);">
+                <div style="font-size:18px;font-weight:700;color:var(--gray-300);width:20px;">${v.rank}</div>
+                <div style="flex:1;">
+                    <div style="font-weight:600;font-size:13px;">${escapeHtml(v.name)}</div>
+                    <div style="font-size:11px;color:#f59e0b;">${stars(v.rating)} ${v.rating.toFixed(1)}</div>
+                </div>
+                <div style="text-align:right;font-size:11px;color:var(--gray-400);line-height:1.6;">
+                    <div>Виконано: <b>${v.completed_orders}</b></div>
+                    <div>Відповідь: <b>${resp}</b></div>
+                    <div>Вчасно: <b>${ontime}</b></div>
+                </div>
+                <span style="font-size:10px;padding:2px 6px;border-radius:4px;${badgeStyle}">${v.active ? 'Активний' : 'Вимкнений'}</span>
+            </div>`;
+        }).join('');
+        const updated = new Date(data.last_updated).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' });
+        container.innerHTML = rows + `<div style="font-size:10px;color:var(--gray-300);margin-top:8px;">Оновлено: ${updated}</div>`;
+    } catch (e) {
+        container.innerHTML = `<div style="color:#ef4444;font-size:12px;padding:8px 0;">⚠️ Не вдалося завантажити рейтинг</div>`;
     }
 }
 

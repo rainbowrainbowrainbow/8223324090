@@ -3,14 +3,249 @@
  */
 
 /* ==========================================
-   MAIN APP SHELL
+   MAIN APP SHELL — v17.5 Grid Layout
+   Структура: header (sticky) + app-body (sidebar | content)
    ========================================== */
 
 .main-app {
     min-height: 100vh;
+    display: grid;
+    grid-template-rows: var(--app-header-height) 1fr;
+}
+
+/* ==========================================
+   COMPACT APP HEADER (замінює старий .header)
+   ========================================== */
+
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+    height: var(--app-header-height);
+    background: linear-gradient(135deg, var(--primary-700) 0%, var(--status-confirmed-color) 40%, var(--primary-700) 100%);
+    box-shadow: 0 2px 16px rgba(0,0,0,0.15);
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+}
+
+.app-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sidebar-toggle-btn {
+    width: 36px;
+    height: 36px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: var(--radius-xs);
+    color: rgba(255,255,255,0.9);
+    font-size: 18px;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--speed-fast);
+    flex-shrink: 0;
+}
+
+.sidebar-toggle-btn:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+/* ==========================================
+   APP BODY — Sidebar + Content Grid
+   ========================================== */
+
+.app-body {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr;
+    min-height: 0; /* критично: дозволяє overflow в дітях */
+    overflow: hidden;
+}
+
+/* ==========================================
+   LEFT SIDEBAR
+   ========================================== */
+
+.sidebar {
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    height: calc(100vh - var(--app-header-height));
+    position: sticky;
+    top: var(--app-header-height);
+    padding: 16px 12px;
+}
+
+.sidebar-nav {
+    flex: 1;
     display: flex;
     flex-direction: column;
 }
+
+/* Група навігації */
+.sidebar-group {
+    margin-bottom: 4px;
+}
+
+.sidebar-group-title {
+    font-size: var(--font-xs);
+    font-weight: 800;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0 12px;
+    margin-top: 16px;
+    margin-bottom: 4px;
+}
+
+.sidebar-group:first-child .sidebar-group-title {
+    margin-top: 0;
+}
+
+/* Посилання в сайдбарі */
+.sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-sm);
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-decoration: none;
+    cursor: pointer;
+    background: none;
+    border: none;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    position: relative;
+    min-height: 44px; /* WCAG touch target */
+}
+
+.sidebar-link:hover {
+    background: var(--primary-50);
+    color: var(--primary-700);
+}
+
+.sidebar-link.active {
+    background: var(--primary-light);
+    color: var(--primary-700);
+    font-weight: 800;
+}
+
+/* Акцентна вертикальна смуга для активного пункту */
+.sidebar-link.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--accent-primary);
+}
+
+.sidebar-link-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+}
+
+.sidebar-link-label {
+    flex: 1;
+    line-height: 1.2;
+}
+
+/* Клешня — оранжевий акцент */
+.sidebar-link-kleshnya {
+    color: var(--show-dark);
+}
+
+.sidebar-link-kleshnya:hover {
+    background: rgba(234,88,12,0.08);
+    color: var(--show-dark);
+}
+
+/* Live-dot для Клешні */
+.sidebar-kleshnya-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 6px var(--success);
+    animation: kleshnya-blink 2s ease-in-out infinite;
+    flex-shrink: 0;
+}
+
+/* ==========================================
+   SIDEBAR FOOTER — Role Switcher
+   ========================================== */
+
+.sidebar-footer {
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    margin-top: auto;
+}
+
+.role-switcher-label {
+    font-size: var(--font-xs);
+    font-weight: 800;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0 4px;
+    margin-bottom: 8px;
+}
+
+.role-switcher-options {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.role-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: var(--radius-xs);
+    font-size: var(--font-xs);
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid transparent;
+    background: none;
+    color: var(--text-secondary);
+    text-align: left;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    min-height: 36px;
+}
+
+.role-btn:hover {
+    background: var(--primary-50);
+    color: var(--text-primary);
+}
+
+.role-btn.active {
+    background: var(--accent-primary);
+    color: var(--text-on-accent); /* ЗАВЖДИ білий */
+    border-color: var(--primary-dark);
+}
+
+/* ==========================================
+   MAIN CONTENT (в новому grid-контексті)
+   ========================================== */
 
 /* Header — emerald gradient */
 .header {
@@ -118,11 +353,9 @@
    ========================================== */
 
 .main-content {
-    flex: 1;
     padding: 20px 24px;
-    max-width: 1800px;
-    margin: 0 auto;
-    width: 100%;
+    overflow-y: auto;
+    height: calc(100vh - var(--app-header-height));
     transition: padding-right var(--speed-slow) var(--ease-smooth);
 }
 

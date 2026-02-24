@@ -3,6 +3,18 @@
  */
 
 body.dark-mode {
+    /* ==========================================
+       SEMANTIC SURFACE OVERRIDES — Style Guide v17.5
+       Тільки ці змінні потрібно міняти для dark теми.
+       ========================================== */
+    --bg-app:       #0f172a;
+    --bg-surface:   #1e293b;
+    --bg-surface-2: #273549;
+    --text-primary:   #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-on-accent: #ffffff; /* ЗАВЖДИ білий — не міняти! */
+    --border-color: #334155;
+
     /* Override design tokens for dark mode */
     --white: #1a1a2e;
     --dark: #E2E8F0;
@@ -1294,4 +1306,107 @@ body.dark-mode .booking-customer-info .customer-detail { color: #94A3B8; }
 /* Scrollbar improvement */
 body.dark-mode ::-webkit-scrollbar-track {
     background: #0f0f1a;
+}
+
+/* ==========================================
+   GLOBAL CONTRAST FIX — inputs/selects/textareas (v17.5)
+   Баг: темний текст на темному фоні в модалках.
+   Рішення: явно прописуємо semantic tokens для ВСІХ полів.
+   ========================================== */
+body.dark-mode input,
+body.dark-mode input[type="text"],
+body.dark-mode input[type="password"],
+body.dark-mode input[type="email"],
+body.dark-mode input[type="number"],
+body.dark-mode input[type="date"],
+body.dark-mode input[type="time"],
+body.dark-mode textarea,
+body.dark-mode select {
+    color: var(--text-primary) !important;
+    background: var(--bg-surface-2) !important;
+    border-color: var(--border-color) !important;
+}
+
+body.dark-mode input::placeholder,
+body.dark-mode textarea::placeholder {
+    color: var(--text-secondary) !important;
+    opacity: 1;
+}
+
+body.dark-mode input:focus,
+body.dark-mode textarea:focus,
+body.dark-mode select:focus {
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 3px rgba(16,185,129,0.15) !important;
+    outline: none;
+}
+
+/* Active buttons — text always white on accent */
+body.dark-mode .role-btn.active,
+body.dark-mode .status-filter-btn.active,
+body.dark-mode .period-btn.active,
+body.dark-mode .dash-tab.active,
+body.dark-mode .board-tab.active {
+    color: var(--text-on-accent) !important;
+}
+
+/* Sidebar dark mode */
+body.dark-mode .sidebar {
+    background: var(--bg-surface);
+    border-right-color: var(--border-color);
+}
+
+body.dark-mode .sidebar-group-title {
+    color: var(--text-secondary);
+}
+
+body.dark-mode .sidebar-link {
+    color: var(--text-secondary);
+}
+
+body.dark-mode .sidebar-link:hover {
+    background: rgba(16,185,129,0.1);
+    color: #6EE7B7;
+}
+
+body.dark-mode .sidebar-link.active {
+    background: rgba(16,185,129,0.15);
+    color: #6EE7B7;
+}
+
+body.dark-mode .sidebar-link.active::before {
+    background: var(--accent-primary);
+}
+
+body.dark-mode .sidebar-link-kleshnya:hover {
+    background: rgba(234,88,12,0.1);
+    color: #FDBA74;
+}
+
+body.dark-mode .sidebar-footer {
+    border-top-color: var(--border-color);
+}
+
+body.dark-mode .role-switcher-label {
+    color: var(--text-secondary);
+}
+
+body.dark-mode .role-btn {
+    color: var(--text-secondary);
+}
+
+body.dark-mode .role-btn:hover {
+    background: rgba(16,185,129,0.1);
+    color: var(--text-primary);
+}
+
+body.dark-mode .role-btn.active {
+    background: var(--accent-primary);
+    color: var(--text-on-accent);
+}
+
+/* App header dark */
+body.dark-mode .app-header {
+    background: linear-gradient(135deg, #0a1628 0%, #0f1f3a 40%, #0a2540 100%);
+    box-shadow: 0 2px 16px rgba(0,0,0,0.35);
 }

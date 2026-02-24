@@ -169,6 +169,32 @@
     --z-modal-confirm: 1050;
     --z-notification: 1100;
     --z-tooltip: 2000;
+
+    /* ==========================================
+       SEMANTIC SURFACE SYSTEM — Style Guide v17.5
+       Ці змінні — єдине джерело правди для кольорів.
+       Завжди використовуй їх замість хардкоду.
+       ========================================== */
+
+    /* Backgrounds — ніколи чистий білий/чорний */
+    --bg-app:       #f8fafc;   /* фон усього застосунку */
+    --bg-surface:   #ffffff;   /* картки, модалки, панелі */
+    --bg-surface-2: #f1f5f9;   /* вкладені поверхні, inputs */
+
+    /* Brand accent = той самий --primary, але семантичне ім'я */
+    --accent-primary: #10b981;
+
+    /* Text */
+    --text-primary:   #0f172a; /* основний текст */
+    --text-secondary: #64748b; /* підказки, мітки, muted */
+    --text-on-accent: #ffffff; /* текст НА зелених кнопках — ЗАВЖДИ білий */
+
+    /* Borders */
+    --border-color: #e2e8f0;   /* стандартна межа */
+
+    /* Sidebar dimensions */
+    --sidebar-width:       260px;
+    --app-header-height:    56px;
 }
 
 /* ==========================================
@@ -179,12 +205,12 @@
 
 body {
     font-family: var(--font-family);
-    background: #F0F4F8;
+    background: var(--bg-app);
     background-image:
         radial-gradient(ellipse at 20% 50%, rgba(16,185,129,0.08) 0%, transparent 50%),
         radial-gradient(ellipse at 80% 20%, rgba(59,130,246,0.06) 0%, transparent 50%),
         radial-gradient(ellipse at 50% 100%, rgba(139,92,246,0.04) 0%, transparent 50%);
-    color: var(--dark);
+    color: var(--text-primary);
     min-height: 100vh;
     font-size: var(--font-base);
     line-height: 1.6;

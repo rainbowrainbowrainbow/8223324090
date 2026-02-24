@@ -64,9 +64,11 @@
 
     <!-- Головний застосунок -->
     <div id="mainApp" class="main-app hidden">
-        <!-- Шапка -->
-        <header class="header">
-            <div class="header-content">
+
+        <!-- ===== КОМПАКТНА ШАПКА ===== -->
+        <header class="app-header">
+            <div class="app-header-left">
+                <button class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Відкрити/закрити меню" title="Меню">☰</button>
                 <div class="logo">
                     <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
                     <div class="em-logo">
@@ -74,27 +76,110 @@
                         <span class="em-logo-sub">AI First CRM</span>
                     </div>
                 </div>
-                <nav class="header-nav">
-                    <a href="/" class="nav-link active">📅 <span class="nav-text">Таймлайн</span></a>
-                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
-                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
-                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
-                    <a href="/hr" class="nav-link">🏢 <span class="nav-text">HR</span></a>
-                    <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
-                    <a href="/customers" class="nav-link">🗂 <span class="nav-text">Клієнти</span></a>
-                    <a href="/finance" class="nav-link">💰 <span class="nav-text">Фінанси</span></a>
-                    <a href="/analytics" class="nav-link">📊 <span class="nav-text">Аналітика</span></a>
-                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
-                </nav>
-                <div class="user-panel">
-                    <span id="currentUser" class="user-name user-name-clickable" role="button" tabindex="0" title="Особистий кабінет"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+            </div>
+            <div class="user-panel">
+                <div class="admin-dropdown" id="adminDropdown">
+                    <button class="btn-menu-toggle" id="menuToggle" type="button" aria-haspopup="true">⚙️ Меню</button>
+                    <div class="dropdown-content hidden" id="dropdownMenu">
+                        <button class="dropdown-item" id="inviteBtn">👥 Запросити</button>
+                        <button class="dropdown-item" id="exportBtn">📥 Експорт</button>
+                        <button class="dropdown-item" id="historyBtn">📋 Журнал</button>
+                        <button class="dropdown-item" id="settingsBtn">⚙️ Налаштування</button>
+                        <button class="dropdown-item" id="backupBtn">💾 Бекап</button>
+                    </div>
                 </div>
+                <span id="currentUser" class="user-name user-name-clickable" role="button" tabindex="0" title="Особистий кабінет"></span>
+                <button id="logoutBtn" class="btn-logout">Вийти</button>
             </div>
         </header>
 
-        <!-- Основний контент - Таймлайн -->
-        <main id="main-content" class="main-content">
+        <!-- ===== ОСНОВНЕ ТІЛО: САЙДБАР + КОНТЕНТ ===== -->
+        <div class="app-body">
+
+            <!-- LEFT SIDEBAR -->
+            <aside class="sidebar" id="sidebar" aria-label="Бічна навігація">
+                <nav class="sidebar-nav">
+
+                    <!-- Мій простір -->
+                    <div class="sidebar-group">
+                        <p class="sidebar-group-title">Мій простір</p>
+                        <a href="/" class="sidebar-link active" data-page="timeline">
+                            <span class="sidebar-link-icon">📅</span>
+                            <span class="sidebar-link-label">Таймлайн</span>
+                        </a>
+                        <a href="/staff" class="sidebar-link" data-page="staff">
+                            <span class="sidebar-link-icon">📆</span>
+                            <span class="sidebar-link-label">Графік</span>
+                        </a>
+                        <a href="/tasks" class="sidebar-link" data-page="tasks">
+                            <span class="sidebar-link-icon">📝</span>
+                            <span class="sidebar-link-label">Задачі</span>
+                        </a>
+                    </div>
+
+                    <!-- Робочі процеси -->
+                    <div class="sidebar-group">
+                        <p class="sidebar-group-title">Робочі процеси</p>
+                        <a href="/programs" class="sidebar-link" data-page="programs">
+                            <span class="sidebar-link-icon">📚</span>
+                            <span class="sidebar-link-label">Програми</span>
+                        </a>
+                        <a href="/designs" class="sidebar-link" data-page="designs">
+                            <span class="sidebar-link-icon">🎨</span>
+                            <span class="sidebar-link-label">Дизайнер</span>
+                        </a>
+                        <a href="/warehouse" class="sidebar-link" data-page="warehouse">
+                            <span class="sidebar-link-icon">🏪</span>
+                            <span class="sidebar-link-label">Склад</span>
+                        </a>
+                        <!-- Клешня — інтегрована в сайдбар (прибираємо floating FAB) -->
+                        <button class="sidebar-link sidebar-link-kleshnya" id="kleshnyaSidebarBtn" type="button" title="AI-помічник Клешня">
+                            <span class="sidebar-link-icon">🦀</span>
+                            <span class="sidebar-link-label">Клешня</span>
+                            <span class="sidebar-kleshnya-dot"></span>
+                        </button>
+                    </div>
+
+                    <!-- Управління -->
+                    <div class="sidebar-group">
+                        <p class="sidebar-group-title">Управління</p>
+                        <a href="/analytics" class="sidebar-link" data-page="analytics">
+                            <span class="sidebar-link-icon">📊</span>
+                            <span class="sidebar-link-label">Аналітика</span>
+                        </a>
+                        <a href="/customers" class="sidebar-link" data-page="customers">
+                            <span class="sidebar-link-icon">🗂</span>
+                            <span class="sidebar-link-label">Клієнти</span>
+                        </a>
+                    </div>
+
+                    <!-- Особисте -->
+                    <div class="sidebar-group">
+                        <p class="sidebar-group-title">Особисте</p>
+                        <a href="/finance" class="sidebar-link" data-page="finance">
+                            <span class="sidebar-link-icon">💰</span>
+                            <span class="sidebar-link-label">Фінанси</span>
+                        </a>
+                    </div>
+
+                </nav>
+
+                <!-- Role Switcher -->
+                <div class="sidebar-footer">
+                    <div class="role-switcher" id="roleSwitcher">
+                        <p class="role-switcher-label">Активна роль</p>
+                        <div class="role-switcher-options">
+                            <button class="role-btn active" data-role="animator" type="button">🎭 Аніматор</button>
+                            <button class="role-btn" data-role="waiter" type="button">🍽 Офіціант</button>
+                            <button class="role-btn" data-role="trampoline" type="button">🦘 Батут</button>
+                            <button class="role-btn" data-role="manager" type="button">👔 Менеджер</button>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- ОСНОВНИЙ КОНТЕНТ -->
+            <main id="main-content" class="main-content" tabindex="-1">
             <!-- Панель керування -->
             <div class="control-panel">
                 <div class="date-controls">
@@ -167,8 +252,9 @@
                 <span id="quickStatsContent"></span>
             </div>
 
-            <!-- Kleshnya Floating Widget — Futuristic Terminal v11.0.3 -->
-            <div id="kleshnyaWidget" class="kleshnya-widget hidden">
+            <!-- Kleshnya Floating Widget — переміщено в сайдбар (v17.5).
+                 Popup залишаємо для JS-сумісності, але FAB-кнопка прихована. -->
+            <div id="kleshnyaWidget" class="kleshnya-widget hidden" style="display:none!important">
                 <button type="button" id="kleshnyaFab" class="kleshnya-fab" title="Клешня — командний центр" aria-label="Відкрити Клешню">
                     <span class="kleshnya-fab-icon">🦀</span>
                     <span class="kleshnya-fab-ring"></span>
@@ -280,7 +366,8 @@
             <div id="minimapContainer" class="minimap-container hidden">
                 <canvas></canvas>
             </div>
-        </main>
+            </main>
+        </div><!-- /.app-body -->
 
         <!-- v5.35: Backdrop overlay for tablet/mobile panel -->
         <div id="panelBackdrop" class="panel-backdrop hidden"></div>
@@ -2792,6 +2879,7 @@
             </form>
         </div>
     </div>
+    </div><!-- /.main-app -->
 
     <div id="notification" class="notification hidden" role="status" aria-live="polite" aria-atomic="true">
         <span id="notificationText"></span>

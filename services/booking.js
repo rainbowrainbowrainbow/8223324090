@@ -43,7 +43,7 @@ const MIN_PAUSE = 15;
 
 const ALL_ROOMS = [
     'Marvel', 'Ninja', 'Minecraft', 'Monster High', 'Elsa',
-    'Растішка', 'Rock', 'Minion', 'Food Court', 'Жовтий стіл',
+    'Растішка', 'Rock', 'Minion', 'Pony', 'Food Court', 'Жовтий стіл',
     'Диван 1', 'Диван 2', 'Диван 3', 'Диван 4'
 ];
 

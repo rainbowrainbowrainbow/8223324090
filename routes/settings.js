@@ -167,4 +167,80 @@ router.delete('/automation-rules/:id', async (req, res) => {
     }
 });
 
+// v17.9.0: System status — admin-only comprehensive health dashboard
+router.get('/system-status', async (req, res) => {
+    if (!req.user || req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin only' });
+    }
+    try {
+        const startMs = Date.now();
+
+        // DB table counts for key entities
+        const tables = ['bookings', 'users', 'tasks', 'customers', 'finance_transactions', 'staff', 'certificates', 'contractors', 'warehouse_stock', 'procurement_lists'];
+        const counts = {};
+        await Promise.all(tables.map(async (t) => {
+            try {
+                const r = await pool.query(`SELECT COUNT(*)::int AS c FROM ${t}`);
+                counts[t] = r.rows[0].c;
+            } catch { counts[t] = null; }
+        }));
+
+        // Last backup — from settings or action log
+        let lastBackup = null;
+        try {
+            const bkpR = await pool.query(
+                "SELECT created_at FROM user_action_log WHERE action = 'api:POST' AND target LIKE '%backup%' ORDER BY created_at DESC LIMIT 1"
+            );
+            if (bkpR.rows.length > 0) lastBackup = bkpR.rows[0].created_at;
+        } catch { /* ignore */ }
+
+        // Active users in last 24h
+        let activeUsers24h = 0;
+        try {
+            const auR = await pool.query(
+                "SELECT COUNT(DISTINCT username)::int AS c FROM user_action_log WHERE created_at > NOW() - INTERVAL '24 hours'"
+            );
+            activeUsers24h = auR.rows[0].c;
+        } catch { /* ignore */ }
+
+        // Recent API errors (4xx/5xx in last hour)
+        let recentErrors = 0;
+        try {
+            const errR = await pool.query(
+                "SELECT COUNT(*)::int AS c FROM user_action_log WHERE created_at > NOW() - INTERVAL '1 hour' AND meta->>'status' >= '400'"
+            );
+            recentErrors = errR.rows[0].c;
+        } catch { /* ignore */ }
+
+        // Migrations
+        let migrations = [];
+        try {
+            const mgR = await pool.query('SELECT version, applied_at FROM schema_migrations ORDER BY applied_at DESC LIMIT 5');
+            migrations = mgR.rows;
+        } catch { /* ignore */ }
+
+        const mem = process.memoryUsage();
+
+        res.json({
+            ok: true,
+            checked_at: new Date().toISOString(),
+            elapsed_ms: Date.now() - startMs,
+            database: { connected: true, counts },
+            activity: { active_users_24h: activeUsers24h, recent_errors_1h: recentErrors },
+            backup: { last_triggered: lastBackup },
+            memory_mb: {
+                rss: Math.round(mem.rss / 1024 / 1024),
+                heap_used: Math.round(mem.heapUsed / 1024 / 1024),
+                heap_total: Math.round(mem.heapTotal / 1024 / 1024),
+            },
+            uptime_hours: Math.round(process.uptime() / 3600 * 10) / 10,
+            node_version: process.version,
+            migrations,
+        });
+    } catch (err) {
+        log.error(`System status error: ${err.message}`);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
 module.exports = router;

@@ -73,6 +73,72 @@ tests/ (3+1)       — api.test.js (288), certificates.test.js (82),
 swagger.js         — OpenAPI 3.0 spec (not yet integrated)
 ```
 
+## Multi-Agent Development
+
+**CRITICAL: This project is edited by multiple AI agents. Always check the current version before making changes.**
+
+### Agents in the System
+
+| Agent | Role | Workflow |
+|---|---|---|
+| **Claude Code** | Основна розробка фіч | Бранчі `claude/*` → PR → `main` |
+| **Клешня (OpenClaw)** | Координатор, деплой, дрібні правки | Напряму в `main`, тег `[kleshnya]` |
+| **Anthropic** | Додаткова розробка | Бранчі `anthropic/*` → PR → `main` |
+| **Human (Сергій)** | Approve, стратегія | Реакція :+1: = дозвіл на деплой |
+
+### Commit Convention (ОБОВ'ЯЗКОВО)
+
+Кожен коміт ПОВИНЕН включати тег автора:
+```
+feat: [claude-code] назва фічі
+fix: [kleshnya] що виправив
+feat: [anthropic] назва фічі
+chore: [human] ручне завантаження
+```
+
+Допустимі теги: `[claude-code]`, `[kleshnya]`, `[anthropic]`, `[human]`
+
+### Branches
+
+- `main` — staging, сюди мерджаться всі PR
+- `deployed` — production на Railway, ТІЛЬКИ Клешня деплоїть сюди
+- `claude/*` — Claude Code працює тут
+- `anthropic/*` — Anthropic працює тут
+
+**NEVER** push directly to `deployed`
+**NEVER** upload files via GitHub UI — breaks git history
+
+### Before Starting Work (ОБОВ'ЯЗКОВО)
+```bash
+git log --oneline -10 origin/main   # хто що робив
+cat package.json | grep '"version"' # поточна версія
+cat SNAPSHOT.md                     # що зараз в роботі
+git fetch origin && git rebase origin/main
+```
+Якщо бачиш незнайомі зміни — НЕ перезаписувай, а доповнюй.
+
+### Workflow
+1. Отримав завдання від Сергія
+2. Виконав чекліст вище
+3. Написав код у бранчі `claude/назва-XXXXX`
+4. Закомітив з тегом `[claude-code]`
+5. Відкрив PR в `main`
+6. Сергій ставить :+1: → Клешня мерджить і деплоїть
+
+### Version Conflict Resolution
+- Якщо версія в `main` більша за твою — завжди стартуй від більшої +0.1:
+  ```bash
+  git show origin/main:package.json | grep version
+  ```
+- Якщо версія в package.json не збігається зі SNAPSHOT.md — довіряй package.json
+- Якщо файл був змінений іншим агентом — прочитай актуальний перед редагуванням
+- НІКОЛИ не робити `git reset --hard` без підтвердження користувача
+
+### Communication
+- Оновлюй `SNAPSHOT.md` після кожної сесії — це спільна пам'ять між агентами
+- Сергій → всі агенти через Telegram
+- :+1: від Сергія = approve на деплой
+
 ## Versioning Workflow (5 steps)
 1. `package.json` — version bump
 2. `index.html` — all `?v=X.XX` on CSS/JS tags

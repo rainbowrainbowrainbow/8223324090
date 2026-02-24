@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v17.10.0**. ROADMAP Week 1 ✅ + Week 2 початок (Digital Worker Forge v1).
+Версія **v18.0.0**. Sidebar Navigation + ROADMAP Week 1 ✅ + Week 2 початок.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -34,14 +34,23 @@
 - v17.4.0: Світлана Task Bot live
 - v17.8.0: Multi-agent workflow rules (CLAUDE.md)
 - v17.9.0: ROADMAP Week 1 — API Audit + Backup Verify + System Status
-- **v17.10.0: Digital Worker Forge v1 + Backup failure alerts**
+- v17.10.0: Digital Worker Forge v1 + Backup failure alerts
+- **v18.0.0: Sidebar Navigation — вертикальне бокове меню на всіх сторінках**
 
 ## Що нове (поточна сесія)
+### UI / Navigation
+- **Sidebar Navigation** — горизонтальну шапку-навігацію замінено на вертикальну бокову панель (220px зліва)
+- **Role-based sidebar** — пункти меню відображаються залежно від ролі (admin/viewer)
+- **Мобільна адаптація sidebar** — off-canvas меню з кнопкою ☰ та overlay на ≤768px
+- **Sidebar на всіх сторінках** — навігацію додано на всі 10 standalone сторінок
+
+### Backend (v17.9–v17.10)
+- **API Audit Middleware** — автолог мутацій (POST/PUT/PATCH/DELETE) до user_action_log
+- **GET /api/backup/verify** — перевірка цілісності бекапу без відновлення
+- **GET /api/system-status** — адмін-дашборд стану системи
 - **Digital Worker Forge v1** — таблиця `worker_roles` (міграція 010), CRUD API `/api/workers`, 3 seed ролі
-- **Telegram-алерт при збої бекапу** — scheduler автоматично повідомляє в Telegram якщо backup не вдався
+- **Telegram-алерт при збої бекапу** — scheduler повідомляє в Telegram
 - **Бекап 51 таблиця** — додано `worker_roles`
-- **API Audit Middleware** (v17.9.0) — автолог мутацій
-- **Backup verify + System status** (v17.9.0) — ендпоінти перевірки
 
 ## Архітектура
 - **11 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse
@@ -69,4 +78,4 @@
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-24, v17.10.0*
+*Оновлено: 2026-02-24, v18.0.0*

@@ -74,6 +74,40 @@
    ========================================== */
 
 @media (max-width: 768px) {
+    /* v17.7: Sidebar — hidden by default on mobile, overlay when toggled */
+    .app-body {
+        grid-template-columns: 1fr !important;
+    }
+
+    .sidebar {
+        display: none;
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 280px;
+        height: 100vh;
+        z-index: 200;
+        box-shadow: 4px 0 24px rgba(0,0,0,0.2);
+        padding-top: 16px;
+    }
+
+    .sidebar.sidebar--mobile-open {
+        display: flex;
+    }
+
+    .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.4);
+        z-index: 199;
+        backdrop-filter: blur(2px);
+    }
+
+    .sidebar-backdrop.active {
+        display: block;
+    }
+
     /* v7.8.6: Prevent horizontal scroll on mobile */
     html, body {
         overflow-x: hidden;

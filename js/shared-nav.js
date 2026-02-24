@@ -114,10 +114,9 @@
         mainApp.classList.add('main-app', 'main-app--page');
 
         // -----------------------------------------
-        // 2. Додаємо app-header клас до існуючого header
-        //    (стилі .app-header + .header будуть діяти разом)
+        // 2. НЕ додаємо app-header (конфлікт з .header стилями)
+        //    .header вже має gradient + sticky + shadow
         // -----------------------------------------
-        header.classList.add('app-header');
 
         // Ховаємо старий горизонтальний nav
         const oldNav = header.querySelector('.header-nav');

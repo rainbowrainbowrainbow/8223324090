@@ -39,6 +39,12 @@
     overflow-y: auto;
 }
 
+/* Override page-container centering when inside sidebar layout */
+.app-body .page-container {
+    max-width: none;
+    margin: 0;
+}
+
 
 /* ==========================================
    COMPACT APP HEADER (замінює старий .header)
@@ -108,7 +114,7 @@
     height: calc(100vh - var(--app-header-height));
     position: sticky;
     top: var(--app-header-height);
-    padding: 16px 12px;
+    padding: 16px 12px 16px 16px;
 }
 
 .sidebar-nav {

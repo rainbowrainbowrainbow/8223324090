@@ -38,26 +38,60 @@ function initSidebar() {
 // TOGGLE (collapse / expand)
 // ==========================================
 
+function isMobile() {
+    return window.innerWidth <= 768;
+}
+
 function initSidebarToggle() {
     const btn = document.getElementById('sidebarToggle');
     if (!btn) return;
+
+    // Create backdrop for mobile overlay
+    let backdrop = document.querySelector('.sidebar-backdrop');
+    if (!backdrop) {
+        backdrop = document.createElement('div');
+        backdrop.className = 'sidebar-backdrop';
+        document.body.appendChild(backdrop);
+    }
+
     btn.addEventListener('click', () => {
-        SidebarState.isCollapsed = !SidebarState.isCollapsed;
         const sidebar = document.getElementById('sidebar');
         const appBody = document.querySelector('.app-body');
-        if (SidebarState.isCollapsed) {
-            sidebar.classList.add('sidebar--collapsed');
-            appBody.classList.add('app-body--no-sidebar');
-            localStorage.setItem('em_sidebar_collapsed', 'true');
+
+        if (isMobile()) {
+            // Mobile: toggle overlay
+            const isOpen = sidebar.classList.contains('sidebar--mobile-open');
+            sidebar.classList.toggle('sidebar--mobile-open', !isOpen);
+            backdrop.classList.toggle('active', !isOpen);
         } else {
-            sidebar.classList.remove('sidebar--collapsed');
-            appBody.classList.remove('app-body--no-sidebar');
-            localStorage.setItem('em_sidebar_collapsed', 'false');
+            // Desktop: collapse/expand
+            SidebarState.isCollapsed = !SidebarState.isCollapsed;
+            if (SidebarState.isCollapsed) {
+                sidebar.classList.add('sidebar--collapsed');
+                appBody.classList.add('app-body--no-sidebar');
+                localStorage.setItem('em_sidebar_collapsed', 'true');
+            } else {
+                sidebar.classList.remove('sidebar--collapsed');
+                appBody.classList.remove('app-body--no-sidebar');
+                localStorage.setItem('em_sidebar_collapsed', 'false');
+            }
         }
     });
+
+    // Close sidebar on backdrop click
+    backdrop.addEventListener('click', closeMobileSidebar);
+}
+
+function closeMobileSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.querySelector('.sidebar-backdrop');
+    if (sidebar) sidebar.classList.remove('sidebar--mobile-open');
+    if (backdrop) backdrop.classList.remove('active');
 }
 
 function restoreCollapsedState() {
+    // Only restore on desktop
+    if (isMobile()) return;
     if (localStorage.getItem('em_sidebar_collapsed') === 'true') {
         SidebarState.isCollapsed = true;
         document.getElementById('sidebar')?.classList.add('sidebar--collapsed');
@@ -98,6 +132,12 @@ function applyActiveLink() {
 }
 
 function initSidebarNavLinks() {
+    // Close mobile sidebar on link click
+    document.querySelectorAll('.sidebar-link[href]').forEach(link => {
+        link.addEventListener('click', () => {
+            if (isMobile()) closeMobileSidebar();
+        });
+    });
     // Синхронізуємо активний стан при навігації (SPA pushState)
     window.addEventListener('popstate', applyActiveLink);
 }

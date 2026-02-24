@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=17.5.0">
-    <link rel="stylesheet" href="css/auth.css?v=17.5.0">
-    <link rel="stylesheet" href="css/layout.css?v=17.5.0">
-    <link rel="stylesheet" href="css/timeline.css?v=17.5.0">
-    <link rel="stylesheet" href="css/panel.css?v=17.5.0">
-    <link rel="stylesheet" href="css/modals.css?v=17.5.0">
-    <link rel="stylesheet" href="css/controls.css?v=17.5.0">
-    <link rel="stylesheet" href="css/features.css?v=17.5.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=17.5.0">
-    <link rel="stylesheet" href="css/responsive.css?v=17.5.0">
-    <link rel="stylesheet" href="css/pages.css?v=17.5.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=17.5.0">
+    <link rel="stylesheet" href="css/base.css?v=17.6.0">
+    <link rel="stylesheet" href="css/auth.css?v=17.6.0">
+    <link rel="stylesheet" href="css/layout.css?v=17.6.0">
+    <link rel="stylesheet" href="css/timeline.css?v=17.6.0">
+    <link rel="stylesheet" href="css/panel.css?v=17.6.0">
+    <link rel="stylesheet" href="css/modals.css?v=17.6.0">
+    <link rel="stylesheet" href="css/controls.css?v=17.6.0">
+    <link rel="stylesheet" href="css/features.css?v=17.6.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=17.6.0">
+    <link rel="stylesheet" href="css/responsive.css?v=17.6.0">
+    <link rel="stylesheet" href="css/pages.css?v=17.6.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=17.6.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v17.5.0 — Тестова версія</p>
+                <p class="tagline">AI First CRM v17.6.0 — Sidebar & Role Switcher</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v17.5.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v17.6.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -78,16 +78,6 @@
                 </div>
             </div>
             <div class="user-panel">
-                <div class="admin-dropdown" id="adminDropdown">
-                    <button class="btn-menu-toggle" id="menuToggle" type="button" aria-haspopup="true">⚙️ Меню</button>
-                    <div class="dropdown-content hidden" id="dropdownMenu">
-                        <button class="dropdown-item" id="inviteBtn">👥 Запросити</button>
-                        <button class="dropdown-item" id="exportBtn">📥 Експорт</button>
-                        <button class="dropdown-item" id="historyBtn">📋 Журнал</button>
-                        <button class="dropdown-item" id="settingsBtn">⚙️ Налаштування</button>
-                        <button class="dropdown-item" id="backupBtn">💾 Бекап</button>
-                    </div>
-                </div>
                 <span id="currentUser" class="user-name user-name-clickable" role="button" tabindex="0" title="Особистий кабінет"></span>
                 <button id="logoutBtn" class="btn-logout">Вийти</button>
             </div>
@@ -1208,10 +1198,14 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v17.5.0 — Тестова версія (24.02.2026)</h4>
+                    <h4>v17.6.0 — Sidebar & Role Switcher (24.02.2026)</h4>
                     <ul>
-                        <li>🧪 Тестовий реліз для перевірки оновлень</li>
-                        <li>🔄 Оновлення кеш-версій усіх CSS/JS модулів</li>
+                        <li>🗂 <b>Left Sidebar</b> — нова архітектура навігації замість top-bar</li>
+                        <li>👔 <b>Role Switcher</b> — 4 ролі (Аніматор/Офіціант/Батут/Менеджер), фільтрують пункти меню</li>
+                        <li>🦀 <b>Клешня</b> — перенесена з floating FAB у бічну панель</li>
+                        <li>🎨 <b>Style Guide v17.5</b> — semantic CSS tokens (--bg-app, --text-primary тощо)</li>
+                        <li>🌙 <b>Dark mode фікс</b> — глобальний контраст інпутів у всіх модалках</li>
+                        <li>☰ <b>Collapse</b> — сайдбар згортається для більше простору</li>
                     </ul>
                 </div>
                                                                                                 <div class="changelog-section">
@@ -2886,22 +2880,23 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=17.5.0"></script>
-    <script src="js/api.js?v=17.5.0"></script>
-    <script src="js/ui.js?v=17.5.0"></script>
-    <script src="js/auth.js?v=17.5.0"></script>
-    <script src="js/timeline.js?v=17.5.0"></script>
-    <script src="js/booking.js?v=17.5.0"></script>
-    <script src="js/settings.js?v=17.5.0"></script>
-    <script src="js/booking-form.js?v=17.5.0"></script>
-    <script src="js/booking-linked.js?v=17.5.0"></script>
-    <script src="js/settings-dashboard.js?v=17.5.0"></script>
-    <script src="js/settings-history.js?v=17.5.0"></script>
-    <script src="js/settings-afisha.js?v=17.5.0"></script>
-    <script src="js/settings-certificates.js?v=17.5.0"></script>
-    <script src="js/offline.js?v=17.5.0"></script>
-    <script src="js/ws.js?v=17.5.0"></script>
-    <script src="js/app.js?v=17.5.0"></script>
-    <script src="js/kleshnya-widget.js?v=17.5.0"></script>
+    <script src="js/config.js?v=17.6.0"></script>
+    <script src="js/api.js?v=17.6.0"></script>
+    <script src="js/ui.js?v=17.6.0"></script>
+    <script src="js/auth.js?v=17.6.0"></script>
+    <script src="js/timeline.js?v=17.6.0"></script>
+    <script src="js/booking.js?v=17.6.0"></script>
+    <script src="js/settings.js?v=17.6.0"></script>
+    <script src="js/booking-form.js?v=17.6.0"></script>
+    <script src="js/booking-linked.js?v=17.6.0"></script>
+    <script src="js/settings-dashboard.js?v=17.6.0"></script>
+    <script src="js/settings-history.js?v=17.6.0"></script>
+    <script src="js/settings-afisha.js?v=17.6.0"></script>
+    <script src="js/settings-certificates.js?v=17.6.0"></script>
+    <script src="js/offline.js?v=17.6.0"></script>
+    <script src="js/ws.js?v=17.6.0"></script>
+    <script src="js/app.js?v=17.6.0"></script>
+    <script src="js/sidebar.js?v=17.6.0"></script>
+    <script src="js/kleshnya-widget.js?v=17.6.0"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 {
   "name": "event-maestro",
-  "version": "17.5.0",
+  "version": "17.6.0",
   "description": "Event Maestro — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
   "scripts": {

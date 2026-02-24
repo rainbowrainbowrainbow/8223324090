@@ -79,52 +79,33 @@
         overflow-x: hidden;
     }
 
-    /* v7.8.6: Compact mobile header */
-    .header-content {
-        padding: 6px 10px;
+    /* v17.10: Sidebar — off-canvas on mobile */
+    .sidebar-nav {
+        transform: translateX(-100%);
     }
 
-    .logo-text { display: none; }
-
-    .logo-img-small {
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
+    .sidebar-nav.open {
+        transform: translateX(0);
     }
 
-    .header-nav {
-        flex: 1;
-        justify-content: center;
-        gap: 2px;
-        overflow-x: auto;
-        overflow-y: hidden;
-        flex-wrap: nowrap;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-        position: relative;
-    }
-
-    .header-nav::-webkit-scrollbar {
-        display: none;
-    }
-
-    .nav-link .nav-text { display: none; }
-
-    .nav-link {
-        padding: 5px 12px;
-        font-size: 1.3em;
-        border-radius: 6px;
-        line-height: 1;
-        min-width: 48px;
-        min-height: 44px;
-        display: inline-flex;
+    .sidebar-toggle {
+        display: flex;
         align-items: center;
         justify-content: center;
-        flex-shrink: 0;
     }
 
-    .nav-link.active {
-        background: rgba(255,255,255,0.15);
+    .header {
+        margin-left: 0;
+    }
+
+    .header-content {
+        padding: 6px 10px;
+        justify-content: space-between;
+    }
+
+    .main-content {
+        margin-left: 0;
+        width: 100%;
     }
 
     .user-name { display: none; }

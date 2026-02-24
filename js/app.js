@@ -418,6 +418,37 @@ function initUIControlListeners() {
             if (content) content.classList.add('hidden');
         });
     });
+
+    // v17.10: Sidebar toggle (mobile)
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebar = document.getElementById('sidebarNav');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+    if (sidebarToggle && sidebar) {
+        sidebarToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+            if (sidebarOverlay) sidebarOverlay.classList.toggle('hidden');
+        });
+    }
+    if (sidebarOverlay && sidebar) {
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            sidebarOverlay.classList.add('hidden');
+        });
+    }
+
+    // v17.10: Sidebar action buttons → trigger original handlers
+    const sidebarActions = {
+        sidebarHistoryBtn: () => { if (typeof showHistory === 'function') showHistory(); },
+        sidebarAfishaBtn: () => { if (typeof showAfishaModal === 'function') showAfishaModal(); },
+        sidebarCertificatesBtn: () => { if (typeof openCertificatesPanel === 'function') openCertificatesPanel(); },
+        sidebarDashboardBtn: () => { if (typeof showDashboard === 'function') showDashboard(); },
+        sidebarSettingsBtn: () => { if (typeof showSettings === 'function') showSettings(); },
+        sidebarDigestBtn: () => { if (typeof sendDailyDigest === 'function') sendDailyDigest(); },
+    };
+    for (const [id, handler] of Object.entries(sidebarActions)) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', handler);
+    }
 }
 
 function initModalListeners() {

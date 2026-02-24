@@ -12,7 +12,114 @@
     flex-direction: column;
 }
 
-/* Header — emerald gradient */
+/* ==========================================
+   SIDEBAR NAVIGATION — v17.10.0
+   ========================================== */
+
+.sidebar-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 220px;
+    background: linear-gradient(180deg, #064E3B 0%, #065F46 40%, #047857 100%);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.15);
+    transition: transform var(--speed-normal) var(--ease-smooth);
+}
+
+.sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    flex-shrink: 0;
+}
+
+.sidebar-links {
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    gap: 2px;
+    flex: 1;
+}
+
+.sidebar-links .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    color: rgba(255,255,255,0.8);
+    text-decoration: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+    width: 100%;
+    text-align: left;
+}
+
+.sidebar-links .nav-link:hover {
+    background: rgba(255,255,255,0.1);
+    color: #FFFFFF;
+}
+
+.sidebar-links .nav-link.active {
+    background: rgba(255,255,255,0.15);
+    color: #F5C842;
+    font-weight: 800;
+}
+
+.sidebar-links .nav-link.hidden { display: none; }
+
+.sidebar-section-label {
+    font-size: 10px;
+    font-weight: 800;
+    color: rgba(255,255,255,0.35);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 12px 12px 4px;
+}
+
+.sidebar-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.1);
+    margin: 8px 0;
+}
+
+.sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 999;
+}
+
+.sidebar-overlay.hidden { display: none; }
+
+.sidebar-toggle {
+    display: none;
+    width: 44px;
+    height: 44px;
+    background: none;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    color: #FFFFFF;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all var(--speed-fast);
+}
+
+.sidebar-toggle:hover { background: rgba(255,255,255,0.1); }
+
+/* Header — slim top bar (sidebar takes the nav) */
 .header {
     background: linear-gradient(135deg, #064E3B 0%, #065F46 40%, #047857 100%);
     border-bottom: none;
@@ -21,12 +128,13 @@
     z-index: var(--z-sticky);
     transition: box-shadow var(--speed-normal);
     box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+    margin-left: 220px;
 }
 
 .header-content {
     padding: 10px 24px;
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
     max-width: 1800px;
     margin: 0 auto;
@@ -52,7 +160,7 @@
     text-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
-/* Event Maestro logo in header */
+/* Event Maestro logo in sidebar */
 .em-logo {
     display: flex;
     flex-direction: column;
@@ -60,22 +168,22 @@
 }
 
 .em-logo-title {
-    font-size: 1.2em;
+    font-size: 1.1em;
     font-weight: 900;
     color: #F5C842;
     font-family: 'Inter', sans-serif;
 }
 
 .em-logo-sub {
-    font-size: 0.65em;
+    font-size: 0.6em;
     color: rgba(245,200,66,0.5);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-family: 'Inter', sans-serif;
 }
 
-/* Header nav */
-.header-nav { display: flex; align-items: center; gap: 4px; }
+/* Header nav (legacy, hidden — sidebar replaces this) */
+.header-nav { display: none; }
 
 /* User panel */
 .user-panel { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
@@ -130,7 +238,8 @@
     padding: 20px 24px;
     max-width: 1800px;
     margin: 0 auto;
-    width: 100%;
+    margin-left: 220px;
+    width: calc(100% - 220px);
     transition: padding-right var(--speed-slow) var(--ease-smooth);
 }
 

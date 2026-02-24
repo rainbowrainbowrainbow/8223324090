@@ -23,6 +23,7 @@ const { createLogger } = require('./utils/logger');
 const { validateEnv } = require('./utils/validateEnv');
 const { initWebSocket, getWSS } = require('./services/websocket');
 const { runMigrations } = require('./db/migrate');
+const { apiAudit } = require('./middleware/apiAudit');
 const swaggerUi = require('swagger-ui-express');
 const { swaggerSpec } = require('./swagger');
 
@@ -80,6 +81,9 @@ app.use('/api', (req, res, next) => {
 
 // Login rate limiter (stricter: 5 attempts per minute)
 app.use('/api/auth/login', loginRateLimiter);
+
+// v17.9.0: API audit trail — log all mutating requests by authenticated users
+app.use('/api', apiAudit);
 
 // --- Mount route modules ---
 app.use('/api/auth', require('./routes/auth'));

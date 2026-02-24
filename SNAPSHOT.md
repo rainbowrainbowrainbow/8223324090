@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v17.8.0**. Multi-agent workflow rules + ROADMAP v1.1.
+Версія **v17.9.0**. ROADMAP Week 1: API Audit + Backup Verify + System Status.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -33,10 +33,12 @@
 - v17.1.0: AI Team редизайн — акордеон-панелі, журнал, відправка на завдання
 - v17.4.0: Світлана Task Bot live
 - **v17.8.0: Multi-agent workflow rules (CLAUDE.md)**
+- **v17.9.0: ROADMAP Week 1 — API Audit + Backup Verify + System Status**
 
 ## Що нове (поточна сесія)
-- **ROADMAP.md** — Improvement Playbook v1.1 (15 розділів, 30-денний план)
-- **Бекапи виправлено** — з 18 до 50 таблиць (критичний фікс: раніше не бекапились customers, finance, HR, warehouse, procurement, designs, contractors, chat_sessions)
+- **API Audit Middleware** (`middleware/apiAudit.js`) — автолог всіх POST/PUT/PATCH/DELETE у `user_action_log` (fire-and-forget після response)
+- **GET /api/backup/verify** — тест цілісності бекапу: кількість таблиць, рядків, розмір SQL, помилки читання
+- **GET /api/system-status** — адмін-дашборд: DB counts, active users 24h, recent errors, memory, uptime, migrations
 
 ## Архітектура
 - **11 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse
@@ -53,7 +55,7 @@
 - Ручний toggle зберігається в localStorage і перезаписує авто
 
 ## Що далі (ROADMAP.md)
-- **Week 1:** RBAC + аудит, бекапи + test restore, алерти
+- **Week 1 ✅:** API аудит ✅, backup verify ✅, system status ✅ | Залишилось: retention policy, Telegram-алерти при збоях
 - **Week 2:** Digital Worker Forge + Rule Engine
 - **Week 3:** Demo-режим + пакети/ліміти
 - **Week 4:** Boss v1 + Art Director v1
@@ -64,4 +66,4 @@
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-24, v17.8.0*
+*Оновлено: 2026-02-24, v17.9.0*

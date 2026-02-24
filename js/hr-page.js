@@ -962,11 +962,30 @@ const AI_WORKERS = [
             'Публікація результатів на сайт'
         ],
         integration: 'Буде інтегрований з модулями Фінанси, Аналітика та HR-звітами.'
+    },
+    {
+        id: 'sklad',
+        name: 'Склад',
+        avatar: '🏪',
+        role: 'Складський облік та Vision-аналіз',
+        department: 'Матеріально-технічне забезпечення',
+        status: 'active',
+        statusLabel: 'Готовий до роботи',
+        description: 'Веде облік матеріалів та реквізиту. Розпізнає товари на фото через Gemini Vision AI, ' +
+            'приймає прибуткові накладні, фіксує витрати та залишки. Сповіщає про критично низькі запаси.',
+        capabilities: [
+            'Vision-розпізнавання товарів через Gemini AI',
+            'Прийом та облік прибуткових накладних',
+            'Фіксація витрат матеріалів по заходах',
+            'Алерти про критично низькі залишки',
+            'Журнал складських операцій'
+        ],
+        integration: 'Telegram-бот на warehouse-bot-production-932b.up.railway.app. Gemini 2.5-flash Vision + GPT-4o-mini fallback.'
     }
 ];
 
 // AI worker task journal (in-memory, per session)
-const aiJournal = { leo: [], svitlana: [], taras: [] };
+const aiJournal = { leo: [], svitlana: [], taras: [], sklad: [] };
 
 function renderAITeam() {
     const list = document.getElementById('aiTeamList');

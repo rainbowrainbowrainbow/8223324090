@@ -64,28 +64,44 @@
 
     <!-- Головний застосунок -->
     <div id="mainApp" class="main-app hidden">
+        <!-- Бокове меню -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-logo">
+                <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                <div class="em-logo">
+                    <span class="em-logo-title">Event Maestro</span>
+                    <span class="em-logo-sub">AI First CRM</span>
+                </div>
+            </div>
+            <nav class="sidebar-links">
+                <span class="sidebar-section-label">Сторінки</span>
+                <a href="/" class="nav-link active">📅 <span class="nav-text">Таймлайн</span></a>
+                <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                <a href="/hr" class="nav-link sidebar-admin-only hidden">🏢 <span class="nav-text">HR</span></a>
+                <a href="/designs" class="nav-link sidebar-admin-only hidden">🎨 <span class="nav-text">Дизайни</span></a>
+                <a href="/customers" class="nav-link sidebar-admin-only hidden">🗂 <span class="nav-text">Клієнти</span></a>
+                <a href="/finance" class="nav-link sidebar-admin-only hidden">💰 <span class="nav-text">Фінанси</span></a>
+                <a href="/analytics" class="nav-link sidebar-no-viewer hidden">📊 <span class="nav-text">Аналітика</span></a>
+                <a href="/warehouse" class="nav-link sidebar-admin-only hidden">📦 <span class="nav-text">Склад</span></a>
+                <a href="/kleshnya" class="nav-link nav-link-kleshnya sidebar-admin-only hidden">🦀 <span class="nav-text">Клешня</span></a>
+                <div class="sidebar-divider"></div>
+                <span class="sidebar-section-label">Дії</span>
+                <button type="button" id="sidebarHistoryBtn" class="nav-link sidebar-action sidebar-admin-only hidden" title="Історія змін бронювань">📋 <span class="nav-text">Історія</span></button>
+                <button type="button" id="sidebarAfishaBtn" class="nav-link sidebar-action">🎭 <span class="nav-text">Афіша</span></button>
+                <button type="button" id="sidebarCertificatesBtn" class="nav-link sidebar-action hidden">📄 <span class="nav-text">Сертифікати</span></button>
+                <button type="button" id="sidebarDashboardBtn" class="nav-link sidebar-action sidebar-no-viewer hidden">📊 <span class="nav-text">Статистика</span></button>
+                <button type="button" id="sidebarSettingsBtn" class="nav-link sidebar-action sidebar-admin-only hidden">⚙️ <span class="nav-text">Налаштування</span></button>
+                <button type="button" id="sidebarDigestBtn" class="nav-link sidebar-action sidebar-admin-only hidden">📲 <span class="nav-text">Дайджест</span></button>
+            </nav>
+        </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+
         <!-- Шапка -->
         <header class="header">
             <div class="header-content">
-                <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
-                    <div class="em-logo">
-                        <span class="em-logo-title">Event Maestro</span>
-                        <span class="em-logo-sub">AI First CRM</span>
-                    </div>
-                </div>
-                <nav class="header-nav">
-                    <a href="/" class="nav-link active">📅 <span class="nav-text">Таймлайн</span></a>
-                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
-                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
-                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
-                    <a href="/hr" class="nav-link">🏢 <span class="nav-text">HR</span></a>
-                    <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
-                    <a href="/customers" class="nav-link">🗂 <span class="nav-text">Клієнти</span></a>
-                    <a href="/finance" class="nav-link">💰 <span class="nav-text">Фінанси</span></a>
-                    <a href="/analytics" class="nav-link">📊 <span class="nav-text">Аналітика</span></a>
-                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
-                </nav>
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name user-name-clickable" role="button" tabindex="0" title="Особистий кабінет"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>

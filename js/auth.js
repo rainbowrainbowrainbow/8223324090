@@ -108,6 +108,19 @@ function showMainApp() {
         programsTabBtn.classList.remove('hidden');
     }
 
+    // v17.10: Sidebar role-based visibility
+    const isAdmin = AppState.currentUser.role === 'admin';
+    const isViewerRole = isViewer();
+    document.querySelectorAll('.sidebar-admin-only').forEach(el => {
+        el.classList.toggle('hidden', !isAdmin);
+    });
+    document.querySelectorAll('.sidebar-no-viewer').forEach(el => {
+        el.classList.toggle('hidden', isViewerRole);
+    });
+    // Sidebar certificates — visible to all
+    const sidebarCerts = document.getElementById('sidebarCertificatesBtn');
+    if (sidebarCerts) sidebarCerts.classList.remove('hidden');
+
     // Viewer: сховати кнопки редагування
     if (isViewer()) {
         const addLineBtn = document.getElementById('addLineBtn');

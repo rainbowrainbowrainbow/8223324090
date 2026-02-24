@@ -1,9 +1,9 @@
 # SNAPSHOT — Park Booking System
 
-> Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
+> Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v17.1.0**. AI Team & Contractor Cards.
+Версія **v17.8.0**. Multi-agent workflow rules + ROADMAP v1.1.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -30,56 +30,38 @@
 - v16.1.0: Analytics v2 — єдиний дашборд (bookings + finance + HR + CRM)
 - v16.2.0: Swagger API Docs — /api-docs, OpenAPI 3.0, 136 ендпоінтів
 - v17.0.0: Export Excel/PDF + Бюджетне планування + Система закупок
-- **v17.1.0: AI Team редизайн — акордеон-панелі, журнал, відправка на завдання**
+- v17.1.0: AI Team редизайн — акордеон-панелі, журнал, відправка на завдання
+- v17.4.0: Світлана Task Bot live
+- **v17.8.0: Multi-agent workflow rules (CLAUDE.md)**
+
+## Що нове (поточна сесія)
+- **ROADMAP.md** — Improvement Playbook v1.1 (15 розділів, 30-денний план)
+- **Бекапи виправлено** — з 18 до 50 таблиць (критичний фікс: раніше не бекапились customers, finance, HR, warehouse, procurement, designs, contractors, chat_sessions)
 
 ## Архітектура
 - **11 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse
-- **Backend:** 21 routes, 13 services, 4 middleware
+- **Backend:** 26 routes, 16 services, 4 middleware
 - **Frontend:** 24 JS + 11 CSS модулів
-- **БД:** ~37 таблиць (budget_plans, procurement_lists, procurement_items — нові), 50+ індексів, 9 міграцій
+- **БД:** ~50 таблиць, 50+ індексів, 9 міграцій
 - **13 schedulers** (+ birthday greetings), WebSocket broadcast
 - **288 тестів** (3 файли + helpers)
 - ~54 000 рядків коду
-
-## v17.0 — Нові модулі
-
-### Export Excel
-- `exceljs` — server-side Excel generation
-- `/api/finance/export-xlsx` — фінансові транзакції
-- `/api/customers/export-xlsx` — клієнтська база
-- `/api/procurement/export-xlsx` — списки закупок
-- Print CSS для PDF через Ctrl+P
-
-### Бюджетне планування
-- `budget_plans` — план по категоріях × місяцях
-- `PUT /api/finance/budget` — upsert (ON CONFLICT)
-- `GET /api/finance/budget/comparison` — план vs факт з % виконання
-- Фронтенд: таб «Бюджет» у Фінансах
-
-### Система закупок
-- `procurement_lists` + `procurement_items`
-- 6 відділів: animators, cleaning, cafe, tech, admin, security
-- 6 статусів: draft → approved → in_progress → purchased → delivered / cancelled
-- Авто-поповнення з нестач (`suggestions/low-stock`)
-- Авто-реstock при завершенні закупки (`complete`)
-- Фронтенд: таб «Закупки» на сторінці Складу
-- Excel export для закупок
 
 ## Dark Mode (v12.1+)
 - `initDarkMode()` в config.js — єдина функція для всіх сторінок
 - Авто: темна 20:00–07:00, світла 07:00–20:00
 - Ручний toggle зберігається в localStorage і перезаписує авто
 
-## Що далі
-- Тестування Kleshnya Chat v2 з OpenClaw Bridge
-- Розширення тригерів Клешні
-- Інтеграція закупок з Telegram-сповіщеннями
-- Мобільна оптимізація закупок
+## Що далі (ROADMAP.md)
+- **Week 1:** RBAC + аудит, бекапи + test restore, алерти
+- **Week 2:** Digital Worker Forge + Rule Engine
+- **Week 3:** Demo-режим + пакети/ліміти
+- **Week 4:** Boss v1 + Art Director v1
 
 ## Технічний стан
-- Branch: `claude/bump-version-0.1-lj64Q`
+- Branch: `claude/review-project-setup-WkSgf`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-22, v17.0.0*
+*Оновлено: 2026-02-24, v17.8.0*

@@ -11,31 +11,61 @@ const log = createLogger('Backup');
 
 // Order matters for restore: parents before children (FK dependencies).
 // DELETE runs in reverse order (children first), INSERT in forward order (parents first).
-// The only FK: staff_schedule.staff_id → staff(id) ON DELETE CASCADE.
-// Note: scheduled_deletions is excluded (transient Telegram data, stale on restore).
+// Excluded: scheduled_deletions (transient), schema_migrations (deploy state only).
+// v17.9: Full backup — all 50 tables (was 18, now covers finance/CRM/HR/warehouse/procurement).
 const BACKUP_TABLES = [
     // === Independent tables (no FK dependencies) ===
     'users',
     'settings',
     'booking_counter',
     'certificate_counter',
-    'bookings',
     'lines_by_date',
     'history',
     'pending_animators',
     'telegram_known_chats',
     'telegram_known_threads',
-    'afisha',
     'afisha_templates',
     'products',
-    'tasks',
     'task_templates',
     'automation_rules',
-    'certificates',
+    'user_action_log',
+    'user_achievements',
+    'user_streaks',
+    'kleshnya_messages',
+    'user_points',
+    'point_transactions',
+    'recurring_templates',
+    'hr_shift_templates',
     // === Parent tables (referenced by FK) ===
+    'customers',
     'staff',
-    // === Child tables (have FK to parent) ===
+    'warehouse_stock',
+    'finance_categories',
+    'design_collections',
+    'contractors',
+    'chat_sessions',
+    // === Tables with FK to parents ===
+    'bookings',
+    'certificates',
+    'afisha',
+    'tasks',
+    'kleshnya_chat',
+    'hr_shifts',
+    'hr_time_records',
+    'hr_audit_log',
+    'recurring_booking_skips',
+    'warehouse_history',
+    'finance_transactions',
+    'budget_plans',
+    'procurement_lists',
     'staff_schedule',
+    'contractor_notifications',
+    'designs',
+    'kleshnya_media',
+    // === Deep children (FK to child tables) ===
+    'task_logs',
+    'design_tags',
+    'procurement_items',
 ];
 
 async function generateBackupSQL() {

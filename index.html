@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v17.9.0 — Аудит API + Verify Backup</p>
+                <p class="tagline">AI First CRM v17.10.0 — Digital Worker Forge</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v17.9.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v17.10.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1104,12 +1104,20 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v17.10.0 — Digital Worker Forge (Claude Code, 24.02.2026)</h4>
+                    <ul>
+                        <li><b>Worker Roles</b> — таблиця ролей цифрових воркерів: Kleshnya, Світлана, Warehouse Bot</li>
+                        <li><b>API /api/workers</b> — CRUD для створення/редагування/видалення ролей</li>
+                        <li><b>Telegram Alert</b> — автоповідомлення якщо щоденний бекап не вдався</li>
+                        <li><b>Бекап 51 таблиця</b> — додано worker_roles</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v17.9.0 — Аудит API + Verify Backup (Claude Code, 24.02.2026)</h4>
                     <ul>
                         <li><b>API Audit Middleware</b> — автоматичний лог всіх POST/PUT/PATCH/DELETE запитів до user_action_log</li>
                         <li><b>GET /api/backup/verify</b> — перевірка цілісності бекапу без реального відновлення (таблиці, рядки, розмір, помилки)</li>
                         <li><b>GET /api/system-status</b> — адмін-дашборд: стан БД, активні юзери, помилки, пам'ять, uptime</li>
-                        <li><b>ROADMAP Week 1</b> — RBAC + аудит ✅, бекап verify ✅, system health ✅</li>
                     </ul>
                 </div>
                 <div class="changelog-section">

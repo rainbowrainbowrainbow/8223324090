@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v17.9.0**. ROADMAP Week 1: API Audit + Backup Verify + System Status.
+Версія **v17.10.0**. ROADMAP Week 1 ✅ + Week 2 початок (Digital Worker Forge v1).
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -32,22 +32,25 @@
 - v17.0.0: Export Excel/PDF + Бюджетне планування + Система закупок
 - v17.1.0: AI Team редизайн — акордеон-панелі, журнал, відправка на завдання
 - v17.4.0: Світлана Task Bot live
-- **v17.8.0: Multi-agent workflow rules (CLAUDE.md)**
-- **v17.9.0: ROADMAP Week 1 — API Audit + Backup Verify + System Status**
+- v17.8.0: Multi-agent workflow rules (CLAUDE.md)
+- v17.9.0: ROADMAP Week 1 — API Audit + Backup Verify + System Status
+- **v17.10.0: Digital Worker Forge v1 + Backup failure alerts**
 
 ## Що нове (поточна сесія)
-- **API Audit Middleware** (`middleware/apiAudit.js`) — автолог всіх POST/PUT/PATCH/DELETE у `user_action_log` (fire-and-forget після response)
-- **GET /api/backup/verify** — тест цілісності бекапу: кількість таблиць, рядків, розмір SQL, помилки читання
-- **GET /api/system-status** — адмін-дашборд: DB counts, active users 24h, recent errors, memory, uptime, migrations
+- **Digital Worker Forge v1** — таблиця `worker_roles` (міграція 010), CRUD API `/api/workers`, 3 seed ролі
+- **Telegram-алерт при збої бекапу** — scheduler автоматично повідомляє в Telegram якщо backup не вдався
+- **Бекап 51 таблиця** — додано `worker_roles`
+- **API Audit Middleware** (v17.9.0) — автолог мутацій
+- **Backup verify + System status** (v17.9.0) — ендпоінти перевірки
 
 ## Архітектура
 - **11 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse
-- **Backend:** 26 routes, 16 services, 4 middleware
+- **Backend:** 27 routes, 16 services, 5 middleware
 - **Frontend:** 24 JS + 11 CSS модулів
-- **БД:** ~50 таблиць, 50+ індексів, 9 міграцій
+- **БД:** ~51 таблиць, 50+ індексів, 10 міграцій
 - **13 schedulers** (+ birthday greetings), WebSocket broadcast
 - **288 тестів** (3 файли + helpers)
-- ~54 000 рядків коду
+- ~55 000 рядків коду
 
 ## Dark Mode (v12.1+)
 - `initDarkMode()` в config.js — єдина функція для всіх сторінок
@@ -55,8 +58,8 @@
 - Ручний toggle зберігається в localStorage і перезаписує авто
 
 ## Що далі (ROADMAP.md)
-- **Week 1 ✅:** API аудит ✅, backup verify ✅, system status ✅ | Залишилось: retention policy, Telegram-алерти при збоях
-- **Week 2:** Digital Worker Forge + Rule Engine
+- **Week 1 ✅:** Повністю завершено (аудит, verify, status, алерти)
+- **Week 2 (в процесі):** ✅ Digital Worker Forge v1 | Далі: Rule Engine, enforce ролей
 - **Week 3:** Demo-режим + пакети/ліміти
 - **Week 4:** Boss v1 + Art Director v1
 
@@ -66,4 +69,4 @@
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-24, v17.9.0*
+*Оновлено: 2026-02-24, v17.10.0*

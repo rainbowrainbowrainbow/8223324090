@@ -352,9 +352,34 @@ async function checkAutoBackup() {
         backupSentToday = todayStr;
         await setLastSent('backup', todayStr);
         log.info(`Running daily backup at ${backupTime}`);
-        await sendBackupToTelegram();
+        const backupResult = await sendBackupToTelegram();
+
+        // v17.10.0: Alert on backup failure
+        if (!backupResult || !backupResult.success) {
+            const reason = backupResult?.reason || backupResult?.error || 'unknown';
+            log.error(`Backup FAILED: ${reason}`);
+            const chatId = await getConfiguredChatId();
+            if (chatId) {
+                await sendTelegramMessage(chatId,
+                    `🚨 <b>БЕКАП НЕ ВДАВСЯ</b>\n\n` +
+                    `📅 Дата: ${todayStr}\n` +
+                    `⏰ Час: ${backupTime}\n` +
+                    `❌ Причина: ${reason}\n\n` +
+                    `Перевірте: GET /api/backup/verify`
+                );
+            }
+        }
     } catch (err) {
         log.error('AutoBackup error', err);
+        // v17.10.0: Alert on unhandled backup error
+        try {
+            const chatId = await getConfiguredChatId();
+            if (chatId) {
+                await sendTelegramMessage(chatId,
+                    `🚨 <b>БЕКАП — КРИТИЧНА ПОМИЛКА</b>\n\n❌ ${err.message}`
+                );
+            }
+        } catch { /* prevent infinite loop */ }
     }
 }
 

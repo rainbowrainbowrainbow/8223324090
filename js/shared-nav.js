@@ -1,8 +1,8 @@
 /**
- * js/shared-nav.js — Universal Sidebar Injector (v17.6)
+ * js/shared-nav.js — Universal Sidebar Injector (v17.7)
  *
- * Трансформує будь-яку standalone HTML-сторінку:
- * <header class="header"> + <main> → app-header + app-body (sidebar | main)
+ * Простий підхід: додаємо класи до існуючих елементів,
+ * вставляємо sidebar — без innerHTML = '' і повної реструктуризації.
  *
  * Підключи в кінці <body> кожної сторінки + sidebar.js
  * ВАЖЛИВО: shared-nav.js має йти ДО sidebar.js
@@ -29,7 +29,8 @@
     };
 
     function getActivePage() {
-        return PATH_TO_PAGE[window.location.pathname] || '';
+        const path = window.location.pathname.replace(/\/$/, '') || '/';
+        return PATH_TO_PAGE[path] || '';
     }
 
     // ==========================================
@@ -90,72 +91,63 @@
     }
 
     // ==========================================
-    // ТРАНСФОРМАЦІЯ DOM
+    // ТРАНСФОРМАЦІЯ DOM (простий підхід)
     // ==========================================
     function transformPage() {
         const mainApp = document.getElementById('mainApp');
         if (!mainApp) return;
 
-        // Вже трансформовано (index.html)
-        if (mainApp.classList.contains('main-app')) return;
-        // Або вже є сайдбар
-        if (mainApp.querySelector('.sidebar')) return;
+        // index.html вже має sidebar — пропускаємо
+        if (mainApp.querySelector('#sidebar')) return;
 
-        const oldHeader = mainApp.querySelector('.header');
-        if (!oldHeader) return;
+        // Знаходимо існуючий header
+        const header = mainApp.querySelector('.header');
+        if (!header) return;
 
-        // Зберігаємо currentUser і logoutBtn (auth.js шукає ці ID)
-        const currentUserEl = oldHeader.querySelector('#currentUser');
-        const logoutBtnEl   = oldHeader.querySelector('#logoutBtn');
+        // Знаходимо основний контент
+        const mainContent = mainApp.querySelector('#main-content, .page-container, main');
+        if (!mainContent) return;
 
-        const activePage = getActivePage();
+        // -----------------------------------------
+        // 1. Перетворюємо mainApp в grid-контейнер
+        // -----------------------------------------
+        mainApp.classList.add('main-app', 'main-app--page');
 
-        // 1. Новий компактний header
-        const appHeader = document.createElement('header');
-        appHeader.className = 'app-header';
-        appHeader.innerHTML = `
-            <div class="app-header-left">
-                <button class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Меню">☰</button>
-                <div class="logo">
-                    <img src="/images/gear-logo.svg" alt="Event Maestro" class="logo-img-small"
-                         onerror="this.style.display='none'">
-                    <div class="em-logo">
-                        <span class="em-logo-title">Event Maestro</span>
-                        <span class="em-logo-sub">AI First CRM</span>
-                    </div>
-                </div>
-            </div>
-            <div class="user-panel" id="sharedUserPanel"></div>
-        `;
+        // -----------------------------------------
+        // 2. Додаємо app-header клас до існуючого header
+        //    (стилі .app-header + .header будуть діяти разом)
+        // -----------------------------------------
+        header.classList.add('app-header');
 
-        // Переносимо currentUser і logoutBtn у новий header
-        const newUserPanel = appHeader.querySelector('#sharedUserPanel');
-        if (currentUserEl) newUserPanel.appendChild(currentUserEl);
-        if (logoutBtnEl)   newUserPanel.appendChild(logoutBtnEl);
+        // Ховаємо старий горизонтальний nav
+        const oldNav = header.querySelector('.header-nav');
+        if (oldNav) oldNav.style.display = 'none';
 
-        // 2. Сайдбар
-        const sidebarWrapper = document.createElement('div');
-        sidebarWrapper.innerHTML = buildSidebarHTML(activePage);
-        const sidebar = sidebarWrapper.firstElementChild;
+        // Вставляємо кнопку toggle в header
+        const headerContent = header.querySelector('.header-content') || header;
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'sidebar-toggle-btn';
+        toggleBtn.id = 'sidebarToggle';
+        toggleBtn.setAttribute('aria-label', 'Меню');
+        toggleBtn.textContent = '☰';
+        headerContent.insertBefore(toggleBtn, headerContent.firstChild);
 
-        // 3. Обгортаємо контент після header в app-body
+        // -----------------------------------------
+        // 3. Обгортаємо mainContent в .app-body
+        // -----------------------------------------
         const appBody = document.createElement('div');
         appBody.className = 'app-body';
-        appBody.appendChild(sidebar);
 
-        // Переміщуємо все що є після старого header у app-body
-        const children = Array.from(mainApp.children);
-        children.forEach(child => {
-            if (child !== oldHeader) {
-                appBody.appendChild(child);
-            }
-        });
+        // Вставляємо appBody перед mainContent
+        mainApp.insertBefore(appBody, mainContent);
 
-        // 4. Збираємо нову структуру
-        mainApp.classList.add('main-app');
-        mainApp.innerHTML = '';
-        mainApp.appendChild(appHeader);
-        mainApp.appendChild(appBody);
+        // Переміщуємо mainContent всередину appBody
+        appBody.appendChild(mainContent);
+
+        // -----------------------------------------
+        // 4. Вставляємо sidebar першим дітком appBody
+        // -----------------------------------------
+        appBody.insertAdjacentHTML('afterbegin', buildSidebarHTML(getActivePage()));
     }
 
     // ==========================================

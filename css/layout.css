@@ -13,6 +13,33 @@
     grid-template-rows: var(--app-header-height) 1fr;
 }
 
+/* Standalone pages: header height is auto (old .header structure) */
+.main-app--page {
+    height: 100vh;
+    overflow: hidden;
+    grid-template-rows: auto 1fr;
+}
+
+.main-app--page .app-body {
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* On standalone pages sidebar uses full height of grid cell */
+.main-app--page .sidebar {
+    height: 100%;
+    position: relative;
+    top: auto;
+}
+
+/* Main content on standalone pages scrolls independently */
+.main-app--page .page-container,
+.main-app--page #main-content {
+    height: 100%;
+    overflow-y: auto;
+}
+
+
 /* ==========================================
    COMPACT APP HEADER (замінює старий .header)
    ========================================== */
@@ -196,6 +223,7 @@
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
     margin-top: auto;
+    flex-shrink: 0; /* prevents footer from being compressed when role items are hidden */
 }
 
 .role-switcher-label {

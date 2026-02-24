@@ -111,10 +111,12 @@
 ### 5.4 Ефект
 Швидке створення нових ролей, контроль якості, дешевший саппорт.
 
-### 5.5 Поточний стан (v17.8.0)
+### 5.5 Поточний стан (v17.10.0)
 - ✅ AI Workers відображаються на HR сторінці (Leo, Світлана, Warehouse Bot)
-- ❌ Немає стандартного шаблону ролі
-- ❌ Кожен worker — ad-hoc реалізація
+- ✅ **worker_roles** таблиця — стандартний шаблон ролі (Purpose/Inputs/Actions/Limits/Escalations/Timers/Logs/Fallback/Monitoring)
+- ✅ **3 ролі seed**: Kleshnya, Світлана Task Bot, Warehouse Bot
+- ✅ **CRUD API**: GET/POST/PUT/DELETE /api/workers
+- ❌ Ролі поки не enforce'ять реальну поведінку (етап 2)
 
 ---
 
@@ -263,16 +265,18 @@ Telegram clock-in — тимчасовий, легко маніпулюєтьс�
 - **Observability:** метрики/логи/алерти (down, queue stuck, print fail).
 - **SLA/ескалації** + статус-сторінка (внутрішня + спрощена для клієнтів).
 
-### Поточний стан (v17.8.0)
-- ✅ Щоденний бекап → Telegram (services/backup.js)
-- ⚠️ **КРИТИЧНО:** бекапиться 18 з 40 таблиць — customers, finance, HR, procurement НЕ бекапляться!
+### Поточний стан (v17.10.0)
+- ✅ Щоденний бекап → Telegram (services/backup.js) — **51 таблиця**
+- ✅ **GET /api/backup/verify** — тест цілісності бекапу (v17.9.0)
+- ✅ **Telegram-алерт при збої** бекапу (v17.10.0)
+- ✅ **API Audit middleware** — автолог всіх мутацій (v17.9.0)
+- ✅ **GET /api/system-status** — адмін-дашборд здоров'я системи (v17.9.0)
 - ✅ Rate limiting (middleware/rateLimit.js)
 - ✅ Security middleware (middleware/security.js)
 - ✅ Request ID tracking (middleware/requestId.js)
 - ✅ Structured logging (utils/logger.js)
-- ❌ Немає test restore
 - ❌ Немає retention policy
-- ❌ Немає статус-сторінки
+- ❌ Немає публічної статус-сторінки
 
 ---
 

@@ -12,7 +12,7 @@ const log = createLogger('Backup');
 // Order matters for restore: parents before children (FK dependencies).
 // DELETE runs in reverse order (children first), INSERT in forward order (parents first).
 // Excluded: scheduled_deletions (transient), schema_migrations (deploy state only).
-// v17.9: Full backup — all 50 tables (was 18, now covers finance/CRM/HR/warehouse/procurement).
+// v17.10: Full backup — 51 tables (added worker_roles for Digital Worker Forge).
 const BACKUP_TABLES = [
     // === Independent tables (no FK dependencies) ===
     'users',
@@ -36,6 +36,7 @@ const BACKUP_TABLES = [
     'point_transactions',
     'recurring_templates',
     'hr_shift_templates',
+    'worker_roles',
     // === Parent tables (referenced by FK) ===
     'customers',
     'staff',

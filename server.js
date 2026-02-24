@@ -101,6 +101,7 @@ app.use('/api/designs', require('./routes/designs'));
 app.use('/api/contractors', require('./routes/contractors'));
 app.use('/api/warehouse', require('./routes/warehouse'));
 app.use('/api/hr', require('./routes/hr'));
+app.use('/api/svitlana', require('./routes/svitlana'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/finance', require('./routes/finance'));
 app.use('/api/analytics', require('./routes/analytics'));

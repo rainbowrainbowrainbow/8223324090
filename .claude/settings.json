@@ -6,14 +6,30 @@
       "Bash(git *)",
       "Bash(node *)",
       "Bash(ls *)",
-      "Bash(mkdir *)"
+      "Bash(mkdir *)",
+      "Bash(cat *)",
+      "Bash(pg_ctlcluster *)",
+      "Bash(psql *)",
+      "Bash(curl *)",
+      "Read",
+      "Edit",
+      "Grep",
+      "Glob",
+      "WebFetch",
+      "Skill",
+      "Task"
     ],
     "deny": [
       "Bash(rm -rf /)",
       "Bash(rm -rf ~)",
       "Bash(* --force)",
       "Bash(DROP DATABASE *)",
-      "Bash(eval *)"
+      "Bash(DROP TABLE *)",
+      "Bash(TRUNCATE *)",
+      "Bash(eval *)",
+      "Edit(.env)",
+      "Edit(*.key)",
+      "Edit(*.pem)"
     ]
   },
   "hooks": {

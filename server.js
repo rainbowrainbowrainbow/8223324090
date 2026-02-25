@@ -73,7 +73,7 @@ app.use('/api', rateLimiter);
 
 // Auth middleware: protect all API endpoints except public ones
 app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path.startsWith('/telegram/webhook') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || req.path === '/demo/login' || req.path === '/demo/scenarios' || req.path === '/packages') {
+    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path.startsWith('/telegram/webhook') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || req.path === '/demo/login' || req.path === '/demo/scenarios' || req.path === '/packages' || req.path === '/status/public') {
         return next();
     }
     authenticateToken(req, res, next);
@@ -115,6 +115,7 @@ app.use('/api/center', require('./routes/center'));
 app.use('/api/art-director', require('./routes/art-director'));
 app.use('/api/demo', require('./routes/demo'));
 app.use('/api/packages', require('./routes/packages'));
+app.use('/api/status', require('./routes/status'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -210,6 +211,9 @@ app.get('/art-director', (req, res) => {
 });
 app.get('/demo', (req, res) => {
     res.sendFile(path.join(__dirname, 'demo.html'));
+});
+app.get('/status', (req, res) => {
+    res.sendFile(path.join(__dirname, 'status.html'));
 });
 
 // SPA fallback (must be last)

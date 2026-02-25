@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v18.3.0**. Demo-режим + Packages + ROADMAP 30-day plan 100% ✅.
+Версія **v18.4.0**. Leo v2 (Contractor Ratings) + Public Status Page.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -38,43 +38,41 @@
 - v18.0.0: Sidebar Navigation — вертикальне бокове меню на всіх сторінках
 - v18.1.0: Центр керування — Digital Workers, KPI, Price Matrix, задачі, звіт
 - v18.2.0: Art Director v1 — Brand Memory, 10 шаблонів, Content Pipeline, Approval Workflow
-- **v18.3.0: Demo-режим + Packages — 5 сценаріїв, 3 пакети, 15 feature flags**
+- v18.3.0: Demo-режим + Packages — 5 сценаріїв, 3 пакети, 15 feature flags
+- **v18.4.0: Leo v2 — рейтинг підрядників, ghost rate, ескалації + Публічна статус-сторінка**
 
 ## Що нове (поточна сесія)
-### Demo-режим & Packages — v18.3.0
-- **Нова сторінка /demo** — 3 вкладки: Демо-сценарії, Пакети, Feature Flags
-- **5 демо-сценаріїв** — booking_flow, print_cert, hr_shift, boss_kpi, art_content
-- **Scenario player** — покрокова навігація з progress tracking і рейтингом
-- **3 пакети** — Starter (2 990 ₴/міс, 200 бронювань, 3 workers), Business (7 990 ₴, безліміт, 10 workers), Lite (990 ₴, без AI)
-- **15 feature flags** — per-package контроль модулів (demo_mode, crab_chat, art_director, finance, hr, warehouse, ...)
-- **Demo login** — гостьовий JWT (viewer, 2h) з трекінгом сесій
-- **Міграція 013** — 4 таблиці: packages, feature_flags, demo_scenarios, demo_sessions
+### Leo v2 — Contractor Ratings & Escalations — v18.4.0
+- **Рейтинг підрядників** — reliability_score (1-5), quality_score (1-5), response_time_minutes, was_ghost
+- **Ghost Rate** — автоматичний розрахунок % ghosting, збереження в contractors
+- **Leaderboard** — ТОП-20 підрядників по рейтингу
+- **Завдання підрядникам** — assign/acknowledge/in_progress/completed/overdue/cancelled
+- **Ескалації** — no_response, late_delivery, quality_issue, overdue, ghosting з severity (minor/medium/high)
+- **Auto-escalation** — при статусі "overdue" автоматично створюється ескалація
+- **Auto-ghost rating** — при ескалації "ghosting" автоматичний рейтинг was_ghost=true
+- **Recalculate stats** — при кожному рейтингу перерахунок агрегованих метрик підрядника
+- **Overview dashboard** — загальна статистика по підрядниках/завданнях/ескалаціях/рейтингах
+- **Міграція 014** — 6 нових таблиць + 9 нових колонок у contractors
 
-### Art Director v1 — v18.2.0
-- **Нова сторінка /art-director** — контентний конвеєр з 4 вкладками
-- **Огляд** — стан конвеєра (draft/review/approved/rejected/published), останні зміни, терміновий контент
-- **Конвеєр (Kanban)** — дошка з колонками (чернетка → перевірка → затвердження → публікація), фільтри по категорії/пріоритету/пошуку
-- **Шаблони** — 10 seed шаблонів парку (poster_a4, ig_story, ig_post, tg_post, cert_birthday, cert_gift, banner_site, flyer_a5, menu_board, sticker_pack), фільтрація по категоріях
-- **Brand Book** — Brand Memory: кольори (#10B981, #059669, #6366F1, #F0FDF4, #EF4444), шрифти (Nunito), тон, правила логотипу/емоджі/цін
+### Public Status Page — v18.4.0
+- **Нова сторінка /status** — публічна, без авторизації
+- **10 системних компонентів** — API, Database, WebSocket, Telegram, Backup, Scheduler, Auth, Booking, Certificates, Kleshnya
+- **5 категорій** — Core, Integrations, Infrastructure, Business, AI
+- **Інциденти** — створення/оновлення, severity (minor/major/critical), auto-resolve
+- **Auto-refresh** — оновлення кожні 60 секунд
+- **Admin API** — управління компонентами та інцидентами
 
-### Backend
-- **routes/art-director.js** — 15 ендпоінтів (overview, brand CRUD, templates CRUD, content CRUD + status change + history)
-- **Міграція 012** — 4 таблиці: brand_guidelines, content_templates, content_items, content_approvals
-- **Approval workflow** — валідація переходів статусу (draft→review→approved→published), повний лог в content_approvals
-- **13 seed brand guidelines** — кольори, шрифти, тон, правила
-- **10 seed content templates** — з JSON fields схемою
-
-### Navigation
-- **Art Director у sidebar** — 🎬 додано на всі 13 сторінок (admin only)
+### Fix
+- **Фон логіну** — повернена фонова картинка slide1-baton.png у dark mode
 
 ## Архітектура
-- **15 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse, /center, /art-director, /demo
-- **Backend:** 31 routes, 16 services, 5 middleware
-- **Frontend:** 26 JS + 11 CSS модулів
-- **БД:** ~60 таблиць, 55+ індексів, 13 міграцій
+- **16 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse, /center, /art-director, /demo, /status
+- **Backend:** 32 routes, 16 services, 5 middleware
+- **Frontend:** 27 JS + 11 CSS модулів
+- **БД:** ~66 таблиць, 60+ індексів, 14 міграцій
 - **13 schedulers** (+ birthday greetings), WebSocket broadcast
-- **291 тестів** (3 файли + helpers)
-- ~58 000 рядків коду
+- **291+ тестів** (3 файли + helpers)
+- ~60 000 рядків коду
 
 ## Dark Mode (v12.1+)
 - `initDarkMode()` в config.js — єдина функція для всіх сторінок
@@ -82,11 +80,13 @@
 - Ручний toggle зберігається в localStorage і перезаписує авто
 
 ## Що далі (ROADMAP.md)
-- **Week 1 ✅:** Повністю завершено (аудит, verify, status, алерти)
-- **Week 2 ✅:** Digital Worker Forge v1
-- **Week 3 ✅:** Demo-режим + пакети/ліміти
-- **Week 4 ✅:** Boss v1 (Center) + Art Director v1
 - **30-day ROADMAP: 100% COMPLETE**
+- **Core:** Event Queue + Rule Engine + Idempotency
+- **Leo v2 ✅:** Рейтинги, ghost rate, ескалації
+- **Print & Assets:** Preflight validation, print routing
+- **Infrastructure ✅ (partial):** Public status page done, retention policy pending
+- **Employee mapping:** Telegram ↔ профіль ↔ роль ↔ доступи
+- **Support/SLA:** Ескалації + SLA правила
 
 ## Технічний стан
 - Branch: `claude/continue-deployment-v18-6LOJW`
@@ -94,4 +94,4 @@
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-25, v18.3.0*
+*Оновлено: 2026-02-25, v18.4.0*

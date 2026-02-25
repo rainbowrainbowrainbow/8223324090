@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Maestro | Status</title>
+    <meta name="description" content="Event Maestro — системний статус">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Nunito', sans-serif;
+            background: linear-gradient(160deg, #0a1628 0%, #0f1f3a 30%, #0a2540 60%, #112240 100%);
+            color: #E2E8F0;
+            min-height: 100vh;
+        }
+
+        .status-header {
+            text-align: center;
+            padding: 48px 20px 32px;
+        }
+        .status-header .logo-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .status-header .logo-img {
+            width: 44px; height: 44px;
+            border-radius: 12px;
+        }
+        .status-header h1 {
+            font-size: 22px;
+            font-weight: 900;
+            color: #F0FDF4;
+        }
+        .status-header .subtitle {
+            color: #94A3B8;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* Overall status banner */
+        .overall-banner {
+            max-width: 700px;
+            margin: 0 auto 32px;
+            padding: 20px 24px;
+            border-radius: 16px;
+            text-align: center;
+            font-weight: 800;
+            font-size: 18px;
+        }
+        .overall-banner.operational {
+            background: rgba(16,185,129,0.12);
+            border: 1px solid rgba(16,185,129,0.3);
+            color: #6EE7B7;
+        }
+        .overall-banner.degraded {
+            background: rgba(245,200,66,0.12);
+            border: 1px solid rgba(245,200,66,0.3);
+            color: #F5C842;
+        }
+        .overall-banner.partial_outage {
+            background: rgba(251,146,60,0.12);
+            border: 1px solid rgba(251,146,60,0.3);
+            color: #FB923C;
+        }
+        .overall-banner.major_outage {
+            background: rgba(239,68,68,0.12);
+            border: 1px solid rgba(239,68,68,0.3);
+            color: #F87171;
+        }
+        .overall-banner.maintenance {
+            background: rgba(99,102,241,0.12);
+            border: 1px solid rgba(99,102,241,0.3);
+            color: #A5B4FC;
+        }
+        .overall-banner .status-dot {
+            display: inline-block;
+            width: 12px; height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            vertical-align: middle;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        .overall-banner.operational .status-dot { background: #10B981; }
+        .overall-banner.degraded .status-dot { background: #F5C842; }
+        .overall-banner.partial_outage .status-dot { background: #FB923C; }
+        .overall-banner.major_outage .status-dot { background: #EF4444; }
+        .overall-banner.maintenance .status-dot { background: #6366F1; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 0 20px 60px;
+        }
+
+        /* Section */
+        .status-section {
+            margin-bottom: 28px;
+        }
+        .status-section-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: #64748B;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 12px;
+        }
+
+        /* Component rows */
+        .component-list {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            overflow: hidden;
+        }
+        .component-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .component-row:last-child { border-bottom: none; }
+
+        .component-name {
+            font-weight: 700;
+            font-size: 14px;
+            color: #E2E8F0;
+        }
+        .component-desc {
+            font-size: 12px;
+            color: #64748B;
+            margin-top: 2px;
+        }
+
+        .component-badge {
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 20px;
+            white-space: nowrap;
+        }
+        .component-badge.operational {
+            background: rgba(16,185,129,0.15);
+            color: #6EE7B7;
+        }
+        .component-badge.degraded {
+            background: rgba(245,200,66,0.15);
+            color: #F5C842;
+        }
+        .component-badge.partial_outage {
+            background: rgba(251,146,60,0.15);
+            color: #FB923C;
+        }
+        .component-badge.major_outage {
+            background: rgba(239,68,68,0.15);
+            color: #F87171;
+        }
+        .component-badge.maintenance {
+            background: rgba(99,102,241,0.15);
+            color: #A5B4FC;
+        }
+
+        /* Incidents */
+        .incident-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 16px 18px;
+            margin-bottom: 12px;
+        }
+        .incident-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .incident-severity {
+            font-size: 11px;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 6px;
+            text-transform: uppercase;
+        }
+        .incident-severity.minor {
+            background: rgba(245,200,66,0.15);
+            color: #F5C842;
+        }
+        .incident-severity.major {
+            background: rgba(251,146,60,0.15);
+            color: #FB923C;
+        }
+        .incident-severity.critical {
+            background: rgba(239,68,68,0.15);
+            color: #F87171;
+        }
+        .incident-title {
+            font-weight: 800;
+            font-size: 15px;
+            color: #F0FDF4;
+        }
+        .incident-meta {
+            font-size: 12px;
+            color: #64748B;
+            margin-bottom: 10px;
+        }
+        .incident-update {
+            padding: 8px 0 8px 16px;
+            border-left: 2px solid rgba(255,255,255,0.1);
+            margin-bottom: 6px;
+        }
+        .incident-update-status {
+            font-size: 11px;
+            font-weight: 700;
+            color: #94A3B8;
+            text-transform: uppercase;
+        }
+        .incident-update-msg {
+            font-size: 13px;
+            color: #CBD5E1;
+            margin-top: 2px;
+        }
+        .incident-update-time {
+            font-size: 11px;
+            color: #475569;
+            margin-top: 2px;
+        }
+
+        .no-incidents {
+            text-align: center;
+            padding: 32px;
+            color: #64748B;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* Footer */
+        .status-footer {
+            text-align: center;
+            padding: 24px;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-footer a {
+            color: #6EE7B7;
+            text-decoration: none;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #64748B;
+            font-size: 14px;
+        }
+
+        @media (max-width: 480px) {
+            .status-header { padding: 32px 16px 24px; }
+            .status-header h1 { font-size: 18px; }
+            .overall-banner { font-size: 15px; padding: 16px 18px; margin-bottom: 24px; }
+            .component-row { padding: 12px 14px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="status-header">
+        <div class="logo-row">
+            <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img">
+            <h1>Event Maestro</h1>
+        </div>
+        <p class="subtitle">System Status</p>
+    </div>
+
+    <div id="overallBanner" class="overall-banner operational">
+        <span class="status-dot"></span>
+        <span id="overallText">Завантаження...</span>
+    </div>
+
+    <div class="status-container">
+        <div id="componentsSections"></div>
+
+        <div class="status-section">
+            <div class="status-section-title">Останні інциденти</div>
+            <div id="incidentsList">
+                <div class="loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-footer">
+        <span id="checkedAt"></span><br>
+        <a href="/">Event Maestro</a> &middot; MagicGears &middot; 2026
+    </div>
+
+    <script src="js/status-page.js?v=18.40"></script>
+</body>
+</html>

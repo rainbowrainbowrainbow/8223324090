@@ -112,6 +112,7 @@ app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/procurement', require('./routes/procurement'));
 app.use('/api/workers', require('./routes/workers'));
 app.use('/api/center', require('./routes/center'));
+app.use('/api/art-director', require('./routes/art-director'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -201,6 +202,9 @@ app.get('/analytics', (req, res) => {
 });
 app.get('/center', (req, res) => {
     res.sendFile(path.join(__dirname, 'center.html'));
+});
+app.get('/art-director', (req, res) => {
+    res.sendFile(path.join(__dirname, 'art-director.html'));
 });
 
 // SPA fallback (must be last)

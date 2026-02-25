@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v18.1.0**. Центр керування бізнесом (Boss) + Sidebar Navigation + ROADMAP Week 1 ✅ + Week 4 початок.
+Версія **v18.2.0**. Art Director v1 + Центр керування + Sidebar Navigation + ROADMAP Week 4 ✅.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -36,36 +36,35 @@
 - v17.9.0: ROADMAP Week 1 — API Audit + Backup Verify + System Status
 - v17.10.0: Digital Worker Forge v1 + Backup failure alerts
 - v18.0.0: Sidebar Navigation — вертикальне бокове меню на всіх сторінках
-- **v18.1.0: Центр керування — Digital Workers, KPI, Price Matrix, задачі, звіт**
+- v18.1.0: Центр керування — Digital Workers, KPI, Price Matrix, задачі, звіт
+- **v18.2.0: Art Director v1 — Brand Memory, 10 шаблонів, Content Pipeline, Approval Workflow**
 
 ## Що нове (поточна сесія)
-### Центр керування (Boss) — v18.1.0
-- **Нова сторінка /center** — центр керування бізнесом з 5 блоками
-- **Digital Workers** — картки Клешні, Світлани, Складу з живим статусом (active/idle/offline)
-- **KPI дашборд** — виручка, бронювання, середній чек, топ програма (сьогодні/тиждень/місяць)
-- **Price Matrix** — централізовані ціни (CRUD) з inline-редагуванням, таблиця `price_rules`
-- **Задачі** — агреговані задачі по всій системі з фільтром по виконавцю
-- **Щоденний звіт** — секція останнього звіту від Клешні (зберігається в settings)
+### Art Director v1 — v18.2.0
+- **Нова сторінка /art-director** — контентний конвеєр з 4 вкладками
+- **Огляд** — стан конвеєра (draft/review/approved/rejected/published), останні зміни, терміновий контент
+- **Конвеєр (Kanban)** — дошка з колонками (чернетка → перевірка → затвердження → публікація), фільтри по категорії/пріоритету/пошуку
+- **Шаблони** — 10 seed шаблонів парку (poster_a4, ig_story, ig_post, tg_post, cert_birthday, cert_gift, banner_site, flyer_a5, menu_board, sticker_pack), фільтрація по категоріях
+- **Brand Book** — Brand Memory: кольори (#10B981, #059669, #6366F1, #F0FDF4, #EF4444), шрифти (Nunito), тон, правила логотипу/емоджі/цін
 
 ### Backend
-- **routes/center.js** — 8 ендпоінтів (overview, workers, prices CRUD, report, tasks)
-- **Міграція 011** — таблиця `price_rules` + 7 seed цін
-- **GET /api/center/overview** — зведені KPI + workers status
-- **GET/PUT/POST/DELETE /api/center/prices** — повний CRUD цінових правил
-- **GET /api/center/report** — останній щоденний звіт
+- **routes/art-director.js** — 15 ендпоінтів (overview, brand CRUD, templates CRUD, content CRUD + status change + history)
+- **Міграція 012** — 4 таблиці: brand_guidelines, content_templates, content_items, content_approvals
+- **Approval workflow** — валідація переходів статусу (draft→review→approved→published), повний лог в content_approvals
+- **13 seed brand guidelines** — кольори, шрифти, тон, правила
+- **10 seed content templates** — з JSON fields схемою
 
 ### Navigation
-- **Центр у sidebar** — 🧠 Центр додано на всі 12 сторінок
-- **Доступ** — admin only (sidebar-admin-only + JS перевірка)
+- **Art Director у sidebar** — 🎬 додано на всі 13 сторінок (admin only)
 
 ## Архітектура
-- **12 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse, /center
-- **Backend:** 28 routes, 16 services, 5 middleware
-- **Frontend:** 25 JS + 11 CSS модулів
-- **БД:** ~52 таблиць, 50+ індексів, 11 міграцій
+- **14 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse, /center, /art-director
+- **Backend:** 29 routes, 16 services, 5 middleware
+- **Frontend:** 26 JS + 11 CSS модулів
+- **БД:** ~56 таблиць, 50+ індексів, 12 міграцій
 - **13 schedulers** (+ birthday greetings), WebSocket broadcast
-- **288 тестів** (3 файли + helpers)
-- ~56 000 рядків коду
+- **291 тестів** (3 файли + helpers)
+- ~58 000 рядків коду
 
 ## Dark Mode (v12.1+)
 - `initDarkMode()` в config.js — єдина функція для всіх сторінок
@@ -76,12 +75,12 @@
 - **Week 1 ✅:** Повністю завершено (аудит, verify, status, алерти)
 - **Week 2 ✅:** Digital Worker Forge v1
 - **Week 3:** Demo-режим + пакети/ліміти
-- **Week 4 (в процесі):** ✅ Boss v1 (Center) | Далі: Art Director v1
+- **Week 4 ✅:** Boss v1 (Center) + Art Director v1
 
 ## Технічний стан
 - Branch: `claude/continue-deployment-v18-6LOJW`
-- Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
+- Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=127.0.0.1 PGPASSWORD=postgres`
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-25, v18.1.0*
+*Оновлено: 2026-02-25, v18.2.0*

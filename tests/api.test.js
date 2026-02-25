@@ -122,7 +122,7 @@ describe('Bookings CRUD', () => {
             date,
             time: '14:00',
             lineId: 'test_line_1',
-            room: 'Marvel',
+            room: 'Марвел',
             programCode: 'КВ1',
             label: 'КВ1(60)',
             duration: 60,
@@ -144,7 +144,7 @@ describe('Bookings CRUD', () => {
         assert.ok(Array.isArray(res.data));
         const found = res.data.find(b => b.id === createdBookingId);
         assert.ok(found, 'Created booking should be in the list');
-        assert.equal(found.room, 'Marvel');
+        assert.equal(found.room, 'Марвел');
     });
 
     it('PUT /api/bookings/:id — update booking', async () => {
@@ -153,7 +153,7 @@ describe('Bookings CRUD', () => {
             date,
             time: '15:00',
             lineId: 'test_line_1',
-            room: 'Ninja',
+            room: 'Ніндзя',
             programCode: 'КВ1',
             label: 'КВ1(60)',
             duration: 60,
@@ -213,7 +213,7 @@ describe('Validation', () => {
             date,
             time: '14:00',
             lineId: 'conflict_line',
-            room: 'Marvel',
+            room: 'Марвел',
             programCode: 'КВ1',
             label: 'КВ1(60)',
             duration: 60,
@@ -228,7 +228,7 @@ describe('Validation', () => {
             date,
             time: '14:30',
             lineId: 'conflict_line',
-            room: 'Ninja',
+            room: 'Ніндзя',
             programCode: 'АН',
             label: 'АН(60)',
             duration: 60,
@@ -265,7 +265,7 @@ describe('Bookings Full endpoint', () => {
                 date,
                 time: '16:00',
                 lineId: 'full_line_1',
-                room: 'Marvel',
+                room: 'Марвел',
                 programCode: 'КВ1',
                 label: 'КВ1(60)',
                 duration: 60,
@@ -291,7 +291,7 @@ describe('Bookings Full endpoint', () => {
                 date,
                 time: '17:00',
                 lineId: 'full_line_1',
-                room: 'Ninja',
+                room: 'Ніндзя',
                 programCode: 'КВ4',
                 label: 'КВ4(60)',
                 duration: 60,
@@ -304,7 +304,7 @@ describe('Bookings Full endpoint', () => {
                     date,
                     time: '17:00',
                     lineId: 'full_line_2',
-                    room: 'Ninja',
+                    room: 'Ніндзя',
                     programCode: 'КВ4',
                     label: 'КВ4(60)',
                     duration: 60,
@@ -343,7 +343,7 @@ describe('Soft Delete', () => {
 
     it('DELETE /api/bookings/:id — soft delete (default)', async () => {
         const create = await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'soft_line', room: 'Marvel',
+            date, time: '14:00', lineId: 'soft_line', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'confirmed'
         });
@@ -364,7 +364,7 @@ describe('Soft Delete', () => {
 
     it('POST /api/bookings — can book same time slot after soft delete', async () => {
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'soft_line', room: 'Ninja',
+            date, time: '14:00', lineId: 'soft_line', room: 'Ніндзя',
             programCode: 'АН', label: 'АН(60)', duration: 60, price: 1500,
             category: 'animation', status: 'confirmed'
         });
@@ -374,7 +374,7 @@ describe('Soft Delete', () => {
 
     it('DELETE /api/bookings/:id?permanent=true — hard delete', async () => {
         const create = await authRequest('POST', '/api/bookings', {
-            date, time: '16:00', lineId: 'soft_line', room: 'Marvel',
+            date, time: '16:00', lineId: 'soft_line', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'confirmed'
         });
@@ -425,7 +425,7 @@ describe('History', () => {
         const res = await authRequest('POST', '/api/history', {
             action: 'create',
             user: 'test_api_user',
-            data: { label: 'TEST', room: 'Marvel', date: '2099-01-01', time: '12:00' }
+            data: { label: 'TEST', room: 'Марвел', date: '2099-01-01', time: '12:00' }
         });
         assert.equal(res.status, 200);
         assert.ok(res.data.success);
@@ -448,7 +448,7 @@ describe('Status Change', () => {
             { id: 'status_line', name: 'Status Test', color: '#00FFFF' }
         ]);
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'status_line', room: 'Marvel',
+            date, time: '14:00', lineId: 'status_line', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'confirmed'
         });
@@ -457,7 +457,7 @@ describe('Status Change', () => {
 
     it('PUT /api/bookings/:id — change status to preliminary', async () => {
         const res = await authRequest('PUT', `/api/bookings/${bookingId}`, {
-            date, time: '14:00', lineId: 'status_line', room: 'Marvel',
+            date, time: '14:00', lineId: 'status_line', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'preliminary'
         });
@@ -661,18 +661,24 @@ describe('Settings', () => {
 // ==========================================
 
 describe('Free Rooms', () => {
-    const date = '2099-07-01';
+    const date = '2099-07-02';
+    let bookingId;
 
     before(async () => {
         // Create a line and a booking to occupy a room
         await authRequest('POST', `/api/lines/${date}`, [
-            { id: 'rooms_line', name: 'Rooms Test', color: '#AABB00' }
+            { id: 'rooms_line_ua', name: 'Rooms Test UA', color: '#AABB00' }
         ]);
-        await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'rooms_line', room: 'Marvel',
+        const res = await authRequest('POST', '/api/bookings', {
+            date, time: '14:00', lineId: 'rooms_line_ua', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'confirmed'
         });
+        bookingId = res.data?.booking?.id;
+    });
+
+    after(async () => {
+        if (bookingId) await authRequest('DELETE', `/api/bookings/${bookingId}?permanent=true`);
     });
 
     it('GET /api/rooms/free/:date/:time/:duration — should return free and occupied', async () => {
@@ -681,14 +687,14 @@ describe('Free Rooms', () => {
         assert.ok(Array.isArray(res.data.free), 'Should have free array');
         assert.ok(Array.isArray(res.data.occupied), 'Should have occupied array');
         assert.ok(typeof res.data.total === 'number', 'Should have total count');
-        assert.ok(res.data.occupied.includes('Marvel'), 'Marvel should be occupied');
-        assert.ok(!res.data.free.includes('Marvel'), 'Marvel should not be in free list');
+        assert.ok(res.data.occupied.includes('Марвел'), 'Marvel should be occupied');
+        assert.ok(!res.data.free.includes('Марвел'), 'Marvel should not be in free list');
     });
 
     it('GET /api/rooms/free/:date/:time/:duration — non-overlapping time shows all free', async () => {
         const res = await authRequest('GET', `/api/rooms/free/${date}/20:00/60`);
         assert.equal(res.status, 200);
-        assert.ok(res.data.free.includes('Marvel'), 'Marvel should be free at 20:00');
+        assert.ok(res.data.free.includes('Марвел'), 'Marvel should be free at 20:00');
         assert.equal(res.data.occupied.length, 0, 'No rooms should be occupied at 20:00');
     });
 
@@ -719,7 +725,7 @@ describe('Booking Response Contract', () => {
 
     it('POST /api/bookings — response should contain full booking object', async () => {
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'contract_line', room: 'Ninja',
+            date, time: '14:00', lineId: 'contract_line', room: 'Ніндзя',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'confirmed', notes: 'contract test'
         });
@@ -731,7 +737,7 @@ describe('Booking Response Contract', () => {
         assert.ok(booking.id, 'Booking must have id');
         assert.equal(booking.date, date, 'Booking date must match');
         assert.equal(booking.time, '14:00', 'Booking time must match');
-        assert.equal(booking.room, 'Ninja', 'Booking room must match');
+        assert.equal(booking.room, 'Ніндзя', 'Booking room must match');
         assert.equal(booking.lineId, 'contract_line', 'Booking lineId must match');
         assert.equal(booking.programCode, 'КВ1', 'Booking programCode must match');
         assert.equal(booking.duration, 60, 'Booking duration must match');
@@ -749,12 +755,12 @@ describe('Booking Response Contract', () => {
         ]);
         const res = await authRequest('POST', '/api/bookings/full', {
             main: {
-                date, time: '16:00', lineId: 'contract_line', room: 'Marvel',
+                date, time: '16:00', lineId: 'contract_line', room: 'Марвел',
                 programCode: 'КВ4', label: 'КВ4(60)', duration: 60, price: 2800,
                 category: 'quest', status: 'confirmed'
             },
             linked: [{
-                date, time: '16:00', lineId: 'contract_line_2', room: 'Marvel',
+                date, time: '16:00', lineId: 'contract_line_2', room: 'Марвел',
                 programCode: 'КВ4', label: 'КВ4(60)', duration: 60, price: 0,
                 category: 'quest', status: 'confirmed'
             }]
@@ -766,7 +772,7 @@ describe('Booking Response Contract', () => {
         assert.ok(main, 'Response must include mainBooking');
         assert.ok(main.id, 'mainBooking must have id');
         assert.equal(main.date, date);
-        assert.equal(main.room, 'Marvel');
+        assert.equal(main.room, 'Марвел');
 
         const linked = res.data.linkedBookings;
         assert.ok(Array.isArray(linked), 'linkedBookings must be array');
@@ -832,7 +838,7 @@ describe('Room Conflict', () => {
             { id: 'room_line_2', name: 'Room Test 2', color: '#00FF00' }
         ]);
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'room_line_1', room: 'Marvel',
+            date, time: '14:00', lineId: 'room_line_1', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'confirmed'
         });
@@ -841,17 +847,17 @@ describe('Room Conflict', () => {
 
     it('POST /api/bookings — same room same time on different line returns 409', async () => {
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '14:30', lineId: 'room_line_2', room: 'Marvel',
+            date, time: '14:30', lineId: 'room_line_2', room: 'Марвел',
             programCode: 'АН', label: 'АН(60)', duration: 60, price: 1500,
             category: 'animation', status: 'confirmed'
         });
         assert.equal(res.status, 409, `Expected 409, got ${res.status}: ${JSON.stringify(res.data)}`);
-        assert.ok(res.data.error.includes('Marvel'), 'Error should mention the room');
+        assert.ok(res.data.error.includes('Марвел'), 'Error should mention the room');
     });
 
     it('POST /api/bookings — same room non-overlapping time succeeds', async () => {
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '16:00', lineId: 'room_line_2', room: 'Marvel',
+            date, time: '16:00', lineId: 'room_line_2', room: 'Марвел',
             programCode: 'АН', label: 'АН(60)', duration: 60, price: 1500,
             category: 'animation', status: 'confirmed'
         });
@@ -861,7 +867,7 @@ describe('Room Conflict', () => {
 
     it('POST /api/bookings — different room same time succeeds', async () => {
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'room_line_2', room: 'Ninja',
+            date, time: '14:00', lineId: 'room_line_2', room: 'Ніндзя',
             programCode: 'АН', label: 'АН(60)', duration: 60, price: 1500,
             category: 'animation', status: 'confirmed'
         });
@@ -892,12 +898,12 @@ describe('Linked Booking Cascade', () => {
     it('soft delete main should cascade to linked bookings', async () => {
         const res = await authRequest('POST', '/api/bookings/full', {
             main: {
-                date, time: '14:00', lineId: 'cascade_line_1', room: 'Minecraft',
+                date, time: '14:00', lineId: 'cascade_line_1', room: 'Майнкрафт',
                 programCode: 'КВ4', label: 'КВ4(60)', duration: 60, price: 2800,
                 category: 'quest', status: 'confirmed'
             },
             linked: [{
-                date, time: '14:00', lineId: 'cascade_line_2', room: 'Minecraft',
+                date, time: '14:00', lineId: 'cascade_line_2', room: 'Майнкрафт',
                 programCode: 'КВ4', label: 'КВ4(60)', duration: 60, price: 0,
                 category: 'quest', status: 'confirmed'
             }]
@@ -1081,7 +1087,7 @@ describe('Stats Validation', () => {
 describe('Non-existent Booking', () => {
     it('PUT /api/bookings/:id — non-existent ID returns 404', async () => {
         const res = await authRequest('PUT', '/api/bookings/BK-9999-9999', {
-            date: '2099-01-01', time: '14:00', lineId: 'x', room: 'Marvel',
+            date: '2099-01-01', time: '14:00', lineId: 'x', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1', duration: 60, price: 0,
             category: 'quest', status: 'confirmed'
         });
@@ -1099,8 +1105,8 @@ describe('Non-existent Booking', () => {
 // ==========================================
 
 describe('History Search', () => {
-    it('GET /api/history?search=Marvel — should filter by data content', async () => {
-        const res = await authRequest('GET', '/api/history?search=Marvel');
+    it('GET /api/history?search=Марвел — should filter by data content', async () => {
+        const res = await authRequest('GET', '/api/history?search=Марвел');
         assert.equal(res.status, 200);
         assert.ok(Array.isArray(res.data.items));
     });
@@ -1255,7 +1261,7 @@ describe('Duplicate Program Detection', () => {
             { id: 'dup_line_2', name: 'Dup 2', color: '#00CC00' }
         ]);
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'dup_line_1', room: 'Marvel',
+            date, time: '14:00', lineId: 'dup_line_1', room: 'Марвел',
             programId: 'party_pack_1', programCode: 'КВ1', label: 'КВ1(60)',
             duration: 60, price: 2200, category: 'quest', status: 'confirmed'
         });
@@ -1264,7 +1270,7 @@ describe('Duplicate Program Detection', () => {
 
     it('same programId overlapping time returns 409', async () => {
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '14:30', lineId: 'dup_line_2', room: 'Ninja',
+            date, time: '14:30', lineId: 'dup_line_2', room: 'Ніндзя',
             programId: 'party_pack_1', programCode: 'КВ1', label: 'КВ1(60)',
             duration: 60, price: 2200, category: 'quest', status: 'confirmed'
         });
@@ -1273,7 +1279,7 @@ describe('Duplicate Program Detection', () => {
 
     it('animation category bypasses duplicate check', async () => {
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '14:30', lineId: 'dup_line_2', room: 'Ninja',
+            date, time: '14:30', lineId: 'dup_line_2', room: 'Ніндзя',
             programId: 'party_pack_1', programCode: 'АН', label: 'АН(60)',
             duration: 60, price: 1500, category: 'animation', status: 'confirmed'
         });
@@ -1323,7 +1329,7 @@ describe('Unauthenticated — extended', () => {
 
     it('PUT /api/bookings/:id — without token returns 401', async () => {
         const res = await request('PUT', '/api/bookings/BK-2099-0001', {
-            date: '2099-01-01', time: '14:00', lineId: 'x', room: 'Marvel',
+            date: '2099-01-01', time: '14:00', lineId: 'x', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1', duration: 60, price: 0,
             category: 'quest', status: 'confirmed'
         });
@@ -1408,14 +1414,14 @@ describe('Booking PUT Validation', () => {
 
     it('PUT /api/bookings/:id — room conflict on update returns 409', async () => {
         const other = await authRequest('POST', '/api/bookings', {
-            date, time: '16:00', lineId: 'put_val_line', room: 'Marvel',
+            date, time: '16:00', lineId: 'put_val_line', room: 'Марвел',
             programCode: 'АН', label: 'АН(60)', duration: 60, price: 1500,
             category: 'animation', status: 'confirmed'
         });
         assert.equal(other.status, 200);
 
         const res = await authRequest('PUT', `/api/bookings/${bookingId}`, {
-            date, time: '16:00', lineId: 'put_val_line', room: 'Marvel',
+            date, time: '16:00', lineId: 'put_val_line', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'confirmed'
         });
@@ -1430,7 +1436,7 @@ describe('Booking PUT Validation', () => {
             { id: 'put_val_line2', name: 'Put Val Test 2', color: '#445566' }
         ]);
         const other = await authRequest('POST', '/api/bookings', {
-            date, time: '18:00', lineId: 'put_val_line', room: 'Ninja',
+            date, time: '18:00', lineId: 'put_val_line', room: 'Ніндзя',
             programCode: 'АН', label: 'АН(60)', duration: 60, price: 1500,
             category: 'animation', status: 'confirmed'
         });
@@ -1492,7 +1498,7 @@ describe('Booking Full Validation', () => {
 
     it('POST /api/bookings/full — invalid main date returns 400', async () => {
         const res = await authRequest('POST', '/api/bookings/full', {
-            main: { date: 'bad', time: '14:00', lineId: 'full_val_1', room: 'Marvel',
+            main: { date: 'bad', time: '14:00', lineId: 'full_val_1', room: 'Марвел',
                 programCode: 'КВ1', label: 'КВ1', duration: 60, price: 0, category: 'quest' },
             linked: []
         });
@@ -1501,7 +1507,7 @@ describe('Booking Full Validation', () => {
 
     it('POST /api/bookings/full — invalid main time returns 400', async () => {
         const res = await authRequest('POST', '/api/bookings/full', {
-            main: { date, time: 'bad', lineId: 'full_val_1', room: 'Marvel',
+            main: { date, time: 'bad', lineId: 'full_val_1', room: 'Марвел',
                 programCode: 'КВ1', label: 'КВ1', duration: 60, price: 0, category: 'quest' },
             linked: []
         });
@@ -1529,7 +1535,7 @@ describe('Booking Full Validation', () => {
 
     it('POST /api/bookings/full — linked booking line conflict returns 409', async () => {
         const blocker = await authRequest('POST', '/api/bookings', {
-            date, time: '16:00', lineId: 'full_val_2', room: 'Ninja',
+            date, time: '16:00', lineId: 'full_val_2', room: 'Ніндзя',
             programCode: 'АН', label: 'АН(60)', duration: 60, price: 1500,
             category: 'animation', status: 'confirmed'
         });
@@ -1552,14 +1558,14 @@ describe('Booking Full Validation', () => {
 
     it('POST /api/bookings/full — multiple linked bookings', async () => {
         const res = await authRequest('POST', '/api/bookings/full', {
-            main: { date, time: '19:00', lineId: 'full_val_1', room: 'Minecraft',
+            main: { date, time: '19:00', lineId: 'full_val_1', room: 'Майнкрафт',
                 programCode: 'КВ4', label: 'КВ4(60)', duration: 60, price: 2800,
                 category: 'quest', status: 'confirmed' },
             linked: [
-                { date, time: '19:00', lineId: 'full_val_2', room: 'Minecraft',
+                { date, time: '19:00', lineId: 'full_val_2', room: 'Майнкрафт',
                     programCode: 'КВ4', label: 'КВ4(60)', duration: 60, price: 0,
                     category: 'quest', status: 'confirmed' },
-                { date, time: '19:00', lineId: 'full_val_3', room: 'Minecraft',
+                { date, time: '19:00', lineId: 'full_val_3', room: 'Майнкрафт',
                     programCode: 'КВ4', label: 'КВ4(60)', duration: 60, price: 0,
                     category: 'quest', status: 'confirmed' }
             ]
@@ -1590,7 +1596,7 @@ describe('Booking Optional Fields', () => {
 
     it('POST /api/bookings — all optional fields are preserved', async () => {
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'opt_line', room: 'Marvel',
+            date, time: '14:00', lineId: 'opt_line', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 90, price: 3500,
             category: 'quest', status: 'confirmed',
             hosts: 2,
@@ -1648,7 +1654,7 @@ describe('Booking Status Transitions', () => {
 
     it('create preliminary then confirm via PUT', async () => {
         const create = await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'trans_line', room: 'Marvel',
+            date, time: '14:00', lineId: 'trans_line', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'preliminary'
         });
@@ -1657,7 +1663,7 @@ describe('Booking Status Transitions', () => {
         assert.equal(create.data.booking.status, 'preliminary');
 
         const update = await authRequest('PUT', `/api/bookings/${bookingId}`, {
-            date, time: '14:00', lineId: 'trans_line', room: 'Marvel',
+            date, time: '14:00', lineId: 'trans_line', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'confirmed'
         });
@@ -1670,7 +1676,7 @@ describe('Booking Status Transitions', () => {
 
     it('preliminary booking included in stats (not cancelled)', async () => {
         const prelim = await authRequest('POST', '/api/bookings', {
-            date, time: '16:00', lineId: 'trans_line', room: 'Ninja',
+            date, time: '16:00', lineId: 'trans_line', room: 'Ніндзя',
             programCode: 'АН', label: 'АН(60)', duration: 60, price: 1500,
             category: 'animation', status: 'preliminary'
         });
@@ -1703,7 +1709,7 @@ describe('Telegram Digest', () => {
             { id: 'digest_line', name: 'Digest Test', color: '#FF0000' }
         ]);
         await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'digest_line', room: 'Marvel',
+            date, time: '14:00', lineId: 'digest_line', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'confirmed'
         });
@@ -1879,11 +1885,11 @@ describe('History Combined Filters', () => {
     before(async () => {
         await authRequest('POST', '/api/history', {
             action: 'edit', user: 'filter_test_user',
-            data: { label: 'FILTER_MARKER', room: 'Marvel', date: '2099-10-10' }
+            data: { label: 'FILTER_MARKER', room: 'Марвел', date: '2099-10-10' }
         });
         await authRequest('POST', '/api/history', {
             action: 'delete', user: 'filter_test_user',
-            data: { label: 'FILTER_MARKER_2', room: 'Ninja', date: '2099-10-10' }
+            data: { label: 'FILTER_MARKER_2', room: 'Ніндзя', date: '2099-10-10' }
         });
     });
 
@@ -1978,37 +1984,47 @@ describe('Afisha Edge Cases', () => {
 // ==========================================
 
 describe('Free Rooms Advanced', () => {
-    const date = '2099-10-15';
+    const date = '2099-10-16';
+    const bookingIds = [];
 
     before(async () => {
         await authRequest('POST', `/api/lines/${date}`, [
-            { id: 'fr_line_1', name: 'FreeRoom 1', color: '#FF0000' },
-            { id: 'fr_line_2', name: 'FreeRoom 2', color: '#00FF00' },
-            { id: 'fr_line_3', name: 'FreeRoom 3', color: '#0000FF' }
+            { id: 'fr_line_ua_1', name: 'FreeRoom UA 1', color: '#FF0000' },
+            { id: 'fr_line_ua_2', name: 'FreeRoom UA 2', color: '#00FF00' },
+            { id: 'fr_line_ua_3', name: 'FreeRoom UA 3', color: '#0000FF' }
         ]);
-        await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'fr_line_1', room: 'Marvel',
+        const b1 = await authRequest('POST', '/api/bookings', {
+            date, time: '14:00', lineId: 'fr_line_ua_1', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
             category: 'quest', status: 'confirmed'
         });
-        await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'fr_line_2', room: 'Ninja',
+        if (b1.data?.booking?.id) bookingIds.push(b1.data.booking.id);
+        const b2 = await authRequest('POST', '/api/bookings', {
+            date, time: '14:00', lineId: 'fr_line_ua_2', room: 'Ніндзя',
             programCode: 'АН', label: 'АН(60)', duration: 60, price: 1500,
             category: 'animation', status: 'confirmed'
         });
-        await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'fr_line_3', room: 'Minecraft',
+        if (b2.data?.booking?.id) bookingIds.push(b2.data.booking.id);
+        const b3 = await authRequest('POST', '/api/bookings', {
+            date, time: '14:00', lineId: 'fr_line_ua_3', room: 'Майнкрафт',
             programCode: 'АН2', label: 'АН2(60)', duration: 60, price: 1500,
             category: 'animation', status: 'confirmed'
         });
+        if (b3.data?.booking?.id) bookingIds.push(b3.data.booking.id);
+    });
+
+    after(async () => {
+        for (const id of bookingIds) {
+            await authRequest('DELETE', `/api/bookings/${id}?permanent=true`);
+        }
     });
 
     it('multiple rooms occupied at once', async () => {
         const res = await authRequest('GET', `/api/rooms/free/${date}/14:00/60`);
         assert.equal(res.status, 200);
-        assert.ok(res.data.occupied.includes('Marvel'));
-        assert.ok(res.data.occupied.includes('Ninja'));
-        assert.ok(res.data.occupied.includes('Minecraft'));
+        assert.ok(res.data.occupied.includes('Марвел'));
+        assert.ok(res.data.occupied.includes('Ніндзя'));
+        assert.ok(res.data.occupied.includes('Майнкрафт'));
         assert.equal(res.data.occupied.length, 3, 'Should have 3 occupied rooms');
         assert.equal(res.data.free.length, res.data.total - 3, 'Free should be total minus 3');
     });
@@ -2016,14 +2032,68 @@ describe('Free Rooms Advanced', () => {
     it('partial overlap still marks room as occupied', async () => {
         const res = await authRequest('GET', `/api/rooms/free/${date}/14:30/30`);
         assert.equal(res.status, 200);
-        assert.ok(res.data.occupied.includes('Marvel'), 'Marvel should be occupied at 14:30');
+        assert.ok(res.data.occupied.includes('Марвел'), 'Marvel should be occupied at 14:30');
     });
 
-    it('total rooms equals 14', async () => {
+    it('total rooms equals 15', async () => {
         const res = await authRequest('GET', `/api/rooms/free/${date}/20:00/60`);
         assert.equal(res.status, 200);
-        assert.equal(res.data.total, 14, 'Should have 14 total rooms');
-        assert.equal(res.data.free.length, 14, 'All 14 rooms should be free at 20:00');
+        assert.equal(res.data.total, 15, 'Should have 15 total rooms');
+        assert.equal(res.data.free.length, 15, 'All 15 rooms should be free at 20:00');
+    });
+});
+
+// ==========================================
+// UKRAINIAN ROOM NAMES (v18.0.1)
+// ==========================================
+
+describe('Ukrainian Room Names (v18.0.1)', () => {
+    const EXPECTED_ROOMS_UA = [
+        'Марвел', 'Ніндзя', 'Майнкрафт', 'Монстер Хай', 'Ельза',
+        'Растішка', 'Рок', 'Міньйон', 'Поні', 'Фудкорт', 'Жовтий стіл',
+        'Диван 1', 'Диван 2', 'Диван 3', 'Диван 4'
+    ];
+
+    it('free rooms endpoint returns Ukrainian room names', async () => {
+        const res = await authRequest('GET', '/api/rooms/free/2099-12-25/10:00/60');
+        assert.equal(res.status, 200);
+        assert.equal(res.data.total, EXPECTED_ROOMS_UA.length, `Total should be ${EXPECTED_ROOMS_UA.length}`);
+        for (const room of EXPECTED_ROOMS_UA) {
+            assert.ok(res.data.free.includes(room), `Room "${room}" should be in free list`);
+        }
+    });
+
+    it('no English room names in free list', async () => {
+        const res = await authRequest('GET', '/api/rooms/free/2099-12-25/10:00/60');
+        assert.equal(res.status, 200);
+        const OLD_ENGLISH = ['Marvel', 'Ninja', 'Minecraft', 'Monster High', 'Elsa', 'Rock', 'Minion', 'Pony', 'Food Court'];
+        for (const room of OLD_ENGLISH) {
+            assert.ok(!res.data.free.includes(room), `Old English name "${room}" should NOT be in free list`);
+        }
+    });
+
+    it('booking with Ukrainian room name shows in occupied', async () => {
+        const date = '2099-12-26';
+        await authRequest('POST', `/api/lines/${date}`, [
+            { id: 'ua_room_line', name: 'UA Room Test', color: '#FFAA00' }
+        ]);
+        const booking = await authRequest('POST', '/api/bookings', {
+            date, time: '14:00', lineId: 'ua_room_line', room: 'Марвел',
+            programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 2200,
+            category: 'quest', status: 'confirmed'
+        });
+        assert.equal(booking.status, 200);
+
+        const res = await authRequest('GET', `/api/rooms/free/${date}/14:00/60`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.occupied.includes('Марвел'), 'Марвел should be occupied');
+        assert.ok(!res.data.free.includes('Марвел'), 'Марвел should not be free');
+        assert.equal(res.data.free.length, EXPECTED_ROOMS_UA.length - 1, 'One room should be occupied');
+
+        // Cleanup
+        if (booking.data.booking) {
+            await authRequest('DELETE', `/api/bookings/${booking.data.booking.id}`);
+        }
     });
 });
 
@@ -2086,7 +2156,7 @@ describe('Booking Special Characters', () => {
     it('notes with Ukrainian text and special characters', async () => {
         const notes = "ДР Максима, мама Олена! Тел: +380671234567. Алергія: горіхи & шоколад. Замовлення: торт (кг) на 3'500 ₴";
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '14:00', lineId: 'special_line', room: 'Marvel',
+            date, time: '14:00', lineId: 'special_line', room: 'Марвел',
             programCode: 'КВ1', label: 'КВ1(60)', duration: 60, price: 3500,
             category: 'quest', status: 'confirmed',
             notes
@@ -2101,7 +2171,7 @@ describe('Booking Special Characters', () => {
 
     it('program name with Ukrainian characters', async () => {
         const res = await authRequest('POST', '/api/bookings', {
-            date, time: '16:00', lineId: 'special_line', room: 'Ninja',
+            date, time: '16:00', lineId: 'special_line', room: 'Ніндзя',
             programCode: 'СП', label: 'Спец(60)',
             programName: 'Супер-герої: Повернення Месників!',
             duration: 60, price: 2200,
@@ -2155,7 +2225,7 @@ describe('Static Pages', () => {
         const fetchRes = await fetch(`${require('./helpers').BASE_URL}/`);
         assert.equal(fetchRes.status, 200);
         const body = await fetchRes.text();
-        assert.ok(body.includes('Парк Закревського'), 'Should contain site name');
+        assert.ok(body.includes('Event Maestro'), 'Should contain site name');
     });
 });
 
@@ -2321,14 +2391,14 @@ describe('Digest with linked bookings (second animator)', () => {
     it('POST /api/bookings/full — creates main + linked booking', async () => {
         const res = await authRequest('POST', '/api/bookings/full', {
             main: {
-                date, time: '10:00', lineId: 'line_main_' + date, room: 'Marvel',
+                date, time: '10:00', lineId: 'line_main_' + date, room: 'Марвел',
                 programCode: 'КВ4', label: 'КВ4(60)', programName: 'Шпигунська історія',
                 category: 'quest', duration: 60, price: 2800, hosts: 2,
                 secondAnimator: 'Аніматор Другий', status: 'confirmed',
                 createdBy: 'admin'
             },
             linked: [{
-                date, time: '10:00', lineId: 'line_second_' + date, room: 'Marvel',
+                date, time: '10:00', lineId: 'line_second_' + date, room: 'Марвел',
                 programCode: 'КВ4', label: 'КВ4(60)', programName: 'Шпигунська історія',
                 category: 'quest', duration: 60, price: 2800, hosts: 2,
                 secondAnimator: 'Аніматор Другий', status: 'confirmed',
@@ -3065,7 +3135,7 @@ describe('CRM Booking Integration (v15.1)', () => {
             duration: 60,
             price: 2200,
             hosts: 1,
-            room: 'Marvel',
+            room: 'Марвел',
             createdBy: 'admin',
             customerId: customerId
         });

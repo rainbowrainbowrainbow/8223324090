@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Maestro | Центр</title>
+    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Maestro">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=18.1">
+    <link rel="stylesheet" href="css/layout.css?v=18.1">
+    <link rel="stylesheet" href="css/pages.css?v=18.1">
+    <link rel="stylesheet" href="css/modals.css?v=18.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=18.1">
+    <link rel="stylesheet" href="css/responsive.css?v=18.1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* Center page styles */
+        .center-page { padding: 16px; max-width: 1200px; margin: 0 auto; }
+        .center-page h1 { font-size: 22px; font-weight: 900; margin-bottom: 20px; }
+
+        /* Section blocks */
+        .center-section {
+            background: rgba(255,255,255,0.35);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            padding: 16px 18px;
+            margin-bottom: 20px;
+        }
+        .center-section-title {
+            font-size: 15px; font-weight: 800; margin-bottom: 12px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .center-section-title .section-icon { font-size: 18px; }
+
+        /* Workers grid */
+        .workers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 12px;
+        }
+        .worker-card {
+            background: rgba(255,255,255,0.5);
+            border-radius: 14px;
+            padding: 14px 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+        .worker-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+        .worker-card.expanded { border-color: var(--primary); }
+        .worker-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+        .worker-card-name { font-weight: 800; font-size: 14px; }
+        .worker-card-status { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
+        .worker-card-purpose { font-size: 12px; color: var(--gray-500); margin-bottom: 6px; }
+        .worker-card-activity { font-size: 11px; color: var(--gray-400); }
+        .worker-card-details {
+            display: none; margin-top: 10px; padding-top: 10px;
+            border-top: 1px solid var(--gray-200); font-size: 12px;
+        }
+        .worker-card.expanded .worker-card-details { display: block; }
+        .worker-detail-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .worker-detail-label { color: var(--gray-500); }
+        .worker-detail-value { font-weight: 700; }
+
+        /* KPI dashboard */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+        .kpi-card {
+            background: rgba(255,255,255,0.4);
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+        }
+        .kpi-card-label { font-size: 11px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px; }
+        .kpi-card-value { font-size: 18px; font-weight: 900; }
+        .kpi-card-value.revenue { color: #2E7D32; }
+
+        .kpi-period-tabs {
+            display: flex; gap: 4px; margin-bottom: 12px;
+        }
+        .kpi-period-tab {
+            padding: 6px 14px; border: none; border-radius: 10px;
+            font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+            background: rgba(255,255,255,0.3); color: var(--gray-600);
+            transition: all 0.2s;
+        }
+        .kpi-period-tab.active { background: var(--primary); color: #fff; }
+
+        /* Price rules table */
+        .prices-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .prices-table th {
+            text-align: left; padding: 8px 10px; font-weight: 800; font-size: 11px;
+            color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--gray-200);
+        }
+        .prices-table td {
+            padding: 8px 10px; border-bottom: 1px solid var(--gray-100);
+        }
+        .prices-table tr:hover { background: rgba(255,255,255,0.3); }
+        .price-category-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 6px;
+            font-size: 10px; font-weight: 700;
+            background: var(--gray-100); color: var(--gray-600);
+        }
+        .price-value-cell {
+            font-weight: 800; font-size: 14px; color: #2E7D32;
+        }
+        .price-inline-input {
+            width: 80px; padding: 4px 8px; border: 1.5px solid var(--gray-200);
+            border-radius: 6px; font-family: inherit; font-size: 14px;
+            font-weight: 800; text-align: right; background: rgba(255,255,255,0.8);
+        }
+        .price-inline-input:focus { border-color: var(--primary); outline: none; }
+        .price-unit { font-size: 11px; color: var(--gray-400); margin-left: 4px; }
+        .price-updated { font-size: 10px; color: var(--gray-400); }
+        .price-actions { display: flex; gap: 4px; }
+        .price-actions button {
+            padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px;
+            cursor: pointer; font-family: inherit; font-weight: 600;
+            transition: all 0.1s;
+        }
+        .btn-price-save { background: #E8F5E9; color: #2E7D32; }
+        .btn-price-save:hover { background: #C8E6C9; }
+        .btn-price-delete { background: #FFEBEE; color: #C62828; }
+        .btn-price-delete:hover { background: #FFCDD2; }
+        .price-add-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+        .price-add-row input, .price-add-row select {
+            padding: 6px 10px; border: 1.5px solid var(--gray-200); border-radius: 8px;
+            font-family: inherit; font-size: 13px; background: rgba(255,255,255,0.6);
+        }
+        .price-add-row input { flex: 1; min-width: 100px; }
+        .price-add-row button {
+            padding: 6px 14px; border: none; border-radius: 8px;
+            background: var(--primary); color: #fff; font-weight: 700;
+            font-family: inherit; cursor: pointer; white-space: nowrap;
+        }
+
+        /* Tasks section */
+        .center-tasks-list { display: flex; flex-direction: column; gap: 6px; }
+        .center-task-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 12px; border-radius: 10px;
+            background: rgba(255,255,255,0.4);
+            font-size: 13px;
+        }
+        .center-task-status {
+            width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+        }
+        .center-task-status.todo { background: var(--gray-400); }
+        .center-task-status.in_progress { background: #1565C0; }
+        .center-task-status.done { background: #2E7D32; }
+        .center-task-title { flex: 1; font-weight: 600; }
+        .center-task-assignee {
+            font-size: 11px; padding: 2px 8px; border-radius: 6px;
+            background: var(--gray-100); color: var(--gray-500); font-weight: 700;
+        }
+        .center-task-priority-high { border-left: 3px solid #E53935; }
+
+        /* Report section */
+        .report-content {
+            background: rgba(255,255,255,0.4);
+            border-radius: 12px;
+            padding: 14px 16px;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .report-meta { font-size: 11px; color: var(--gray-400); margin-top: 8px; }
+
+        /* Empty state */
+        .center-empty { text-align: center; padding: 30px; color: var(--gray-400); font-size: 13px; }
+        .center-empty span { font-size: 32px; display: block; margin-bottom: 8px; }
+
+        /* Loading */
+        .center-loading { text-align: center; padding: 40px; color: var(--gray-400); font-size: 14px; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .center-page { padding: 12px; }
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .workers-grid { grid-template-columns: 1fr; }
+            .prices-table { font-size: 12px; }
+            .prices-table th:nth-child(4),
+            .prices-table td:nth-child(4) { display: none; }
+            .price-add-row { flex-direction: column; }
+        }
+
+        /* Dark mode overrides */
+        .dark-mode .center-section { background: rgba(30,30,30,0.5); }
+        .dark-mode .worker-card { background: rgba(40,40,40,0.6); }
+        .dark-mode .kpi-card { background: rgba(40,40,40,0.5); }
+        .dark-mode .center-task-row { background: rgba(40,40,40,0.4); }
+        .dark-mode .report-content { background: rgba(40,40,40,0.4); }
+        .dark-mode .prices-table tr:hover { background: rgba(255,255,255,0.05); }
+        .dark-mode .price-inline-input { background: rgba(40,40,40,0.8); color: #e0e0e0; border-color: var(--gray-600); }
+    </style>
+</head>
+<body>
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <!-- Login overlay -->
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <!-- Бокове меню -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-logo">
+                <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                <div class="em-logo">
+                    <span class="em-logo-title">Event Maestro</span>
+                    <span class="em-logo-sub">AI First CRM</span>
+                </div>
+            </div>
+            <nav class="sidebar-links">
+                <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                <a href="/hr" class="nav-link sidebar-admin-only hidden">🏢 <span class="nav-text">HR</span></a>
+                <a href="/designs" class="nav-link sidebar-admin-only hidden">🎨 <span class="nav-text">Дизайни</span></a>
+                <a href="/customers" class="nav-link sidebar-admin-only hidden">🗂 <span class="nav-text">Клієнти</span></a>
+                <a href="/finance" class="nav-link sidebar-admin-only hidden">💰 <span class="nav-text">Фінанси</span></a>
+                <a href="/analytics" class="nav-link sidebar-no-viewer hidden">📊 <span class="nav-text">Аналітика</span></a>
+                <a href="/warehouse" class="nav-link sidebar-admin-only hidden">📦 <span class="nav-text">Склад</span></a>
+                <a href="/center" class="nav-link active sidebar-admin-only hidden">🧠 <span class="nav-text">Центр</span></a>
+                <a href="/kleshnya" class="nav-link nav-link-kleshnya sidebar-admin-only hidden">🦀 <span class="nav-text">Клешня</span></a>
+            </nav>
+        </aside>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="logo">
+                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Maestro</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                    <a href="/center" class="nav-link active">🧠 <span class="nav-text">Центр</span></a>
+                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container" style="margin-left: 220px;">
+            <div class="center-page">
+                <h1>🧠 Центр керування</h1>
+
+                <!-- Block 1: Digital Workers -->
+                <div class="center-section" id="workersSection">
+                    <div class="center-section-title">
+                        <span class="section-icon">🤖</span> Digital Workers
+                    </div>
+                    <div class="workers-grid" id="workersGrid">
+                        <div class="center-loading">Завантаження...</div>
+                    </div>
+                </div>
+
+                <!-- Block 2: KPI Dashboard -->
+                <div class="center-section" id="kpiSection">
+                    <div class="center-section-title">
+                        <span class="section-icon">📈</span> KPI
+                    </div>
+                    <div class="kpi-period-tabs" id="kpiTabs">
+                        <button class="kpi-period-tab active" data-period="today">Сьогодні</button>
+                        <button class="kpi-period-tab" data-period="week">Тиждень</button>
+                        <button class="kpi-period-tab" data-period="month">Місяць</button>
+                    </div>
+                    <div class="kpi-grid" id="kpiGrid">
+                        <div class="center-loading">Завантаження...</div>
+                    </div>
+                </div>
+
+                <!-- Block 3: Price Matrix -->
+                <div class="center-section" id="pricesSection">
+                    <div class="center-section-title">
+                        <span class="section-icon">💰</span> Централізовані ціни
+                    </div>
+                    <div id="pricesContent">
+                        <div class="center-loading">Завантаження...</div>
+                    </div>
+                </div>
+
+                <!-- Block 4: Tasks -->
+                <div class="center-section" id="tasksSection">
+                    <div class="center-section-title">
+                        <span class="section-icon">📋</span> Задачі
+                    </div>
+                    <div class="center-tasks-list" id="tasksList">
+                        <div class="center-loading">Завантаження...</div>
+                    </div>
+                </div>
+
+                <!-- Block 5: Daily Report -->
+                <div class="center-section" id="reportSection">
+                    <div class="center-section-title">
+                        <span class="section-icon">📊</span> Щоденний звіт
+                    </div>
+                    <div id="reportContent">
+                        <div class="center-loading">Завантаження...</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=18.1"></script>
+    <script src="js/api.js?v=18.1"></script>
+    <script src="js/auth.js?v=18.1"></script>
+    <script src="js/center-page.js?v=18.1"></script>
+</body>
+</html>

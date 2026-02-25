@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v18.0.0**. Sidebar Navigation + ROADMAP Week 1 ✅ + Week 2 початок.
+Версія **v18.1.0**. Центр керування бізнесом (Boss) + Sidebar Navigation + ROADMAP Week 1 ✅ + Week 4 початок.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -35,31 +35,37 @@
 - v17.8.0: Multi-agent workflow rules (CLAUDE.md)
 - v17.9.0: ROADMAP Week 1 — API Audit + Backup Verify + System Status
 - v17.10.0: Digital Worker Forge v1 + Backup failure alerts
-- **v18.0.0: Sidebar Navigation — вертикальне бокове меню на всіх сторінках**
+- v18.0.0: Sidebar Navigation — вертикальне бокове меню на всіх сторінках
+- **v18.1.0: Центр керування — Digital Workers, KPI, Price Matrix, задачі, звіт**
 
 ## Що нове (поточна сесія)
-### UI / Navigation
-- **Sidebar Navigation** — горизонтальну шапку-навігацію замінено на вертикальну бокову панель (220px зліва)
-- **Role-based sidebar** — пункти меню відображаються залежно від ролі (admin/viewer)
-- **Мобільна адаптація sidebar** — off-canvas меню з кнопкою ☰ та overlay на ≤768px
-- **Sidebar на всіх сторінках** — навігацію додано на всі 10 standalone сторінок
+### Центр керування (Boss) — v18.1.0
+- **Нова сторінка /center** — центр керування бізнесом з 5 блоками
+- **Digital Workers** — картки Клешні, Світлани, Складу з живим статусом (active/idle/offline)
+- **KPI дашборд** — виручка, бронювання, середній чек, топ програма (сьогодні/тиждень/місяць)
+- **Price Matrix** — централізовані ціни (CRUD) з inline-редагуванням, таблиця `price_rules`
+- **Задачі** — агреговані задачі по всій системі з фільтром по виконавцю
+- **Щоденний звіт** — секція останнього звіту від Клешні (зберігається в settings)
 
-### Backend (v17.9–v17.10)
-- **API Audit Middleware** — автолог мутацій (POST/PUT/PATCH/DELETE) до user_action_log
-- **GET /api/backup/verify** — перевірка цілісності бекапу без відновлення
-- **GET /api/system-status** — адмін-дашборд стану системи
-- **Digital Worker Forge v1** — таблиця `worker_roles` (міграція 010), CRUD API `/api/workers`, 3 seed ролі
-- **Telegram-алерт при збої бекапу** — scheduler повідомляє в Telegram
-- **Бекап 51 таблиця** — додано `worker_roles`
+### Backend
+- **routes/center.js** — 8 ендпоінтів (overview, workers, prices CRUD, report, tasks)
+- **Міграція 011** — таблиця `price_rules` + 7 seed цін
+- **GET /api/center/overview** — зведені KPI + workers status
+- **GET/PUT/POST/DELETE /api/center/prices** — повний CRUD цінових правил
+- **GET /api/center/report** — останній щоденний звіт
+
+### Navigation
+- **Центр у sidebar** — 🧠 Центр додано на всі 12 сторінок
+- **Доступ** — admin only (sidebar-admin-only + JS перевірка)
 
 ## Архітектура
-- **11 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse
-- **Backend:** 27 routes, 16 services, 5 middleware
-- **Frontend:** 24 JS + 11 CSS модулів
-- **БД:** ~51 таблиць, 50+ індексів, 10 міграцій
+- **12 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse, /center
+- **Backend:** 28 routes, 16 services, 5 middleware
+- **Frontend:** 25 JS + 11 CSS модулів
+- **БД:** ~52 таблиць, 50+ індексів, 11 міграцій
 - **13 schedulers** (+ birthday greetings), WebSocket broadcast
 - **288 тестів** (3 файли + helpers)
-- ~55 000 рядків коду
+- ~56 000 рядків коду
 
 ## Dark Mode (v12.1+)
 - `initDarkMode()` в config.js — єдина функція для всіх сторінок
@@ -68,14 +74,14 @@
 
 ## Що далі (ROADMAP.md)
 - **Week 1 ✅:** Повністю завершено (аудит, verify, status, алерти)
-- **Week 2 (в процесі):** ✅ Digital Worker Forge v1 | Далі: Rule Engine, enforce ролей
+- **Week 2 ✅:** Digital Worker Forge v1
 - **Week 3:** Demo-режим + пакети/ліміти
-- **Week 4:** Boss v1 + Art Director v1
+- **Week 4 (в процесі):** ✅ Boss v1 (Center) | Далі: Art Director v1
 
 ## Технічний стан
-- Branch: `claude/review-project-setup-WkSgf`
+- Branch: `claude/continue-deployment-v18-6LOJW`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-24, v18.0.0*
+*Оновлено: 2026-02-25, v18.1.0*

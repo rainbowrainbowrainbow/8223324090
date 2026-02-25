@@ -42,8 +42,8 @@ function minutesToTime(minutes) {
 const MIN_PAUSE = 15;
 
 const ALL_ROOMS = [
-    'Marvel', 'Ninja', 'Minecraft', 'Monster High', 'Elsa',
-    'Растішка', 'Rock', 'Minion', 'Pony', 'Food Court', 'Жовтий стіл',
+    'Марвел', 'Ніндзя', 'Майнкрафт', 'Монстер Хай', 'Ельза',
+    'Растішка', 'Рок', 'Міньйон', 'Поні', 'Фудкорт', 'Жовтий стіл',
     'Диван 1', 'Диван 2', 'Диван 3', 'Диван 4'
 ];
 

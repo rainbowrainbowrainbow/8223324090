@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v18.2.0**. Art Director v1 + Центр керування + Sidebar Navigation + ROADMAP Week 4 ✅.
+Версія **v18.3.0**. Demo-режим + Packages + ROADMAP 30-day plan 100% ✅.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -37,9 +37,19 @@
 - v17.10.0: Digital Worker Forge v1 + Backup failure alerts
 - v18.0.0: Sidebar Navigation — вертикальне бокове меню на всіх сторінках
 - v18.1.0: Центр керування — Digital Workers, KPI, Price Matrix, задачі, звіт
-- **v18.2.0: Art Director v1 — Brand Memory, 10 шаблонів, Content Pipeline, Approval Workflow**
+- v18.2.0: Art Director v1 — Brand Memory, 10 шаблонів, Content Pipeline, Approval Workflow
+- **v18.3.0: Demo-режим + Packages — 5 сценаріїв, 3 пакети, 15 feature flags**
 
 ## Що нове (поточна сесія)
+### Demo-режим & Packages — v18.3.0
+- **Нова сторінка /demo** — 3 вкладки: Демо-сценарії, Пакети, Feature Flags
+- **5 демо-сценаріїв** — booking_flow, print_cert, hr_shift, boss_kpi, art_content
+- **Scenario player** — покрокова навігація з progress tracking і рейтингом
+- **3 пакети** — Starter (2 990 ₴/міс, 200 бронювань, 3 workers), Business (7 990 ₴, безліміт, 10 workers), Lite (990 ₴, без AI)
+- **15 feature flags** — per-package контроль модулів (demo_mode, crab_chat, art_director, finance, hr, warehouse, ...)
+- **Demo login** — гостьовий JWT (viewer, 2h) з трекінгом сесій
+- **Міграція 013** — 4 таблиці: packages, feature_flags, demo_scenarios, demo_sessions
+
 ### Art Director v1 — v18.2.0
 - **Нова сторінка /art-director** — контентний конвеєр з 4 вкладками
 - **Огляд** — стан конвеєра (draft/review/approved/rejected/published), останні зміни, терміновий контент
@@ -58,10 +68,10 @@
 - **Art Director у sidebar** — 🎬 додано на всі 13 сторінок (admin only)
 
 ## Архітектура
-- **14 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse, /center, /art-director
-- **Backend:** 29 routes, 16 services, 5 middleware
+- **15 сторінок:** / (таймлайн), /tasks, /programs, /staff, /hr, /designs, /customers, /finance, /analytics, /invite, /kleshnya, /warehouse, /center, /art-director, /demo
+- **Backend:** 31 routes, 16 services, 5 middleware
 - **Frontend:** 26 JS + 11 CSS модулів
-- **БД:** ~56 таблиць, 50+ індексів, 12 міграцій
+- **БД:** ~60 таблиць, 55+ індексів, 13 міграцій
 - **13 schedulers** (+ birthday greetings), WebSocket broadcast
 - **291 тестів** (3 файли + helpers)
 - ~58 000 рядків коду
@@ -74,8 +84,9 @@
 ## Що далі (ROADMAP.md)
 - **Week 1 ✅:** Повністю завершено (аудит, verify, status, алерти)
 - **Week 2 ✅:** Digital Worker Forge v1
-- **Week 3:** Demo-режим + пакети/ліміти
+- **Week 3 ✅:** Demo-режим + пакети/ліміти
 - **Week 4 ✅:** Boss v1 (Center) + Art Director v1
+- **30-day ROADMAP: 100% COMPLETE**
 
 ## Технічний стан
 - Branch: `claude/continue-deployment-v18-6LOJW`
@@ -83,4 +94,4 @@
 - SessionStart hook: `.claude/hooks/session-start.sh`
 
 ---
-*Оновлено: 2026-02-25, v18.2.0*
+*Оновлено: 2026-02-25, v18.3.0*

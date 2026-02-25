@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Maestro | Demo & Packages</title>
+    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=18.3">
+    <link rel="stylesheet" href="css/layout.css?v=18.3">
+    <link rel="stylesheet" href="css/pages.css?v=18.3">
+    <link rel="stylesheet" href="css/modals.css?v=18.3">
+    <link rel="stylesheet" href="css/dark-mode.css?v=18.3">
+    <link rel="stylesheet" href="css/responsive.css?v=18.3">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        .demo-page { padding: 16px; max-width: 1400px; margin: 0 auto; }
+        .demo-page h1 { font-size: 22px; font-weight: 900; margin-bottom: 20px; }
+
+        /* Tabs */
+        .demo-tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+        .demo-tab {
+            padding: 8px 16px; border: none; border-radius: 12px;
+            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+            background: rgba(255,255,255,0.35); color: var(--gray-600);
+            transition: all 0.2s; backdrop-filter: blur(8px);
+        }
+        .demo-tab:hover { background: rgba(255,255,255,0.6); }
+        .demo-tab.active { background: var(--primary); color: #fff; }
+        .demo-tab-content { display: none; }
+        .demo-tab-content.active { display: block; }
+
+        /* Section */
+        .demo-section {
+            background: rgba(255,255,255,0.35); backdrop-filter: blur(12px);
+            border-radius: 16px; padding: 16px 18px; margin-bottom: 20px;
+        }
+        .demo-section-title {
+            font-size: 15px; font-weight: 800; margin-bottom: 12px;
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        /* Demo mode toggle */
+        .demo-toggle-bar {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+            padding: 12px 18px; border-radius: 14px;
+            background: rgba(255,255,255,0.4);
+        }
+        .demo-toggle-label { font-weight: 700; font-size: 14px; flex: 1; }
+        .demo-toggle-status { font-size: 13px; font-weight: 600; }
+        .demo-toggle-status.on { color: #2E7D32; }
+        .demo-toggle-status.off { color: var(--gray-400); }
+        .toggle-switch {
+            position: relative; width: 48px; height: 26px; cursor: pointer;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--gray-300); border-radius: 13px; transition: 0.3s;
+        }
+        .toggle-slider::before {
+            content: ''; position: absolute; height: 20px; width: 20px;
+            left: 3px; bottom: 3px; background: white; border-radius: 50%;
+            transition: 0.3s;
+        }
+        .toggle-switch input:checked + .toggle-slider { background: var(--primary); }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(22px); }
+
+        /* Overview stats */
+        .demo-stats {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px; margin-bottom: 16px;
+        }
+        .demo-stat {
+            background: rgba(255,255,255,0.4); border-radius: 12px;
+            padding: 12px; text-align: center;
+        }
+        .demo-stat-value { font-size: 22px; font-weight: 900; }
+        .demo-stat-label { font-size: 11px; color: var(--gray-500); font-weight: 600; margin-top: 2px; }
+
+        /* Scenarios grid */
+        .scenarios-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 14px;
+        }
+        .scenario-card {
+            background: rgba(255,255,255,0.5); border-radius: 14px;
+            padding: 16px 18px; cursor: pointer; transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+        .scenario-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+        .scenario-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .scenario-card-icon { font-size: 28px; }
+        .scenario-card-title { font-weight: 800; font-size: 15px; }
+        .scenario-card-desc { font-size: 12px; color: var(--gray-500); line-height: 1.5; margin-bottom: 8px; }
+        .scenario-card-meta { display: flex; gap: 10px; font-size: 11px; color: var(--gray-400); }
+        .scenario-card-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 6px;
+            font-size: 10px; font-weight: 700; background: var(--gray-100); color: var(--gray-500);
+        }
+        .scenario-card-runs { font-size: 11px; color: var(--gray-400); margin-top: 6px; }
+
+        /* Packages grid */
+        .packages-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        .package-card {
+            background: rgba(255,255,255,0.5); border-radius: 16px;
+            padding: 20px; border: 2px solid transparent; position: relative;
+            transition: all 0.2s;
+        }
+        .package-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .package-card.recommended { border-color: var(--primary); }
+        .package-badge-rec {
+            position: absolute; top: -8px; right: 16px;
+            padding: 2px 10px; border-radius: 6px; font-size: 10px;
+            font-weight: 800; background: var(--primary); color: #fff;
+        }
+        .package-name { font-size: 20px; font-weight: 900; margin-bottom: 4px; }
+        .package-price { font-size: 28px; font-weight: 900; color: var(--primary); margin-bottom: 4px; }
+        .package-price-period { font-size: 12px; color: var(--gray-400); font-weight: 600; }
+        .package-desc { font-size: 13px; color: var(--gray-500); margin-bottom: 12px; }
+        .package-features { display: flex; flex-direction: column; gap: 6px; }
+        .package-feature {
+            display: flex; align-items: center; gap: 8px; font-size: 13px;
+        }
+        .package-feature-check { color: #2E7D32; font-weight: 800; }
+        .package-feature-cross { color: var(--gray-300); }
+        .package-limits {
+            margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray-200);
+            display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--gray-500);
+        }
+
+        /* Feature flags */
+        .flags-list { display: flex; flex-direction: column; gap: 6px; }
+        .flag-row {
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 14px; border-radius: 12px;
+            background: rgba(255,255,255,0.4); font-size: 13px;
+        }
+        .flag-name { font-weight: 700; flex: 1; }
+        .flag-desc { font-size: 12px; color: var(--gray-500); flex: 2; }
+        .flag-pkg {
+            font-size: 10px; padding: 2px 8px; border-radius: 6px;
+            font-weight: 700; background: var(--gray-100); color: var(--gray-500);
+        }
+        .flag-status { font-size: 12px; font-weight: 700; }
+        .flag-status.on { color: #2E7D32; }
+        .flag-status.off { color: var(--gray-400); }
+
+        /* Scenario player modal */
+        .player-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+        .player-step {
+            display: flex; gap: 10px; padding: 10px 14px; border-radius: 12px;
+            background: rgba(255,255,255,0.3); font-size: 13px; transition: all 0.2s;
+        }
+        .player-step.active { background: rgba(16,185,129,0.1); border: 1.5px solid var(--primary); }
+        .player-step.done { opacity: 0.5; }
+        .player-step-num {
+            width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 800; background: var(--gray-100); color: var(--gray-500);
+        }
+        .player-step.active .player-step-num { background: var(--primary); color: #fff; }
+        .player-step.done .player-step-num { background: #E8F5E9; color: #2E7D32; }
+        .player-step-content { flex: 1; }
+        .player-step-title { font-weight: 700; margin-bottom: 2px; }
+        .player-step-desc { font-size: 12px; color: var(--gray-500); }
+        .player-controls {
+            display: flex; gap: 8px; margin-top: 14px; justify-content: center;
+        }
+        .player-controls button {
+            padding: 8px 20px; border: none; border-radius: 10px;
+            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+        }
+        .btn-player-next { background: var(--primary); color: #fff; }
+        .btn-player-next:hover { background: var(--primary-dark); }
+        .btn-player-back { background: var(--gray-100); color: var(--gray-600); }
+        .btn-player-open { background: #E3F2FD; color: #1565C0; }
+
+        /* Empty/Loading */
+        .demo-empty { text-align: center; padding: 30px; color: var(--gray-400); font-size: 13px; }
+        .demo-empty span { font-size: 32px; display: block; margin-bottom: 8px; }
+        .demo-loading { text-align: center; padding: 40px; color: var(--gray-400); font-size: 14px; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .demo-page { padding: 12px; }
+            .demo-stats { grid-template-columns: repeat(2, 1fr); }
+            .scenarios-grid { grid-template-columns: 1fr; }
+            .packages-grid { grid-template-columns: 1fr; }
+            .flag-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+        }
+
+        /* Dark mode */
+        .dark-mode .demo-section { background: rgba(30,30,30,0.5); }
+        .dark-mode .demo-toggle-bar { background: rgba(40,40,40,0.5); }
+        .dark-mode .demo-stat { background: rgba(40,40,40,0.5); }
+        .dark-mode .scenario-card { background: rgba(40,40,40,0.6); }
+        .dark-mode .package-card { background: rgba(40,40,40,0.6); }
+        .dark-mode .flag-row { background: rgba(40,40,40,0.4); }
+        .dark-mode .player-step { background: rgba(40,40,40,0.3); }
+    </style>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-logo">
+                <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                <div class="em-logo">
+                    <span class="em-logo-title">Event Maestro</span>
+                    <span class="em-logo-sub">AI First CRM</span>
+                </div>
+            </div>
+            <nav class="sidebar-links">
+                <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
+                <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
+                <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
+                <a href="/hr" class="nav-link sidebar-admin-only hidden">🏢 <span class="nav-text">HR</span></a>
+                <a href="/designs" class="nav-link sidebar-admin-only hidden">🎨 <span class="nav-text">Дизайни</span></a>
+                <a href="/customers" class="nav-link sidebar-admin-only hidden">🗂 <span class="nav-text">Клієнти</span></a>
+                <a href="/finance" class="nav-link sidebar-admin-only hidden">💰 <span class="nav-text">Фінанси</span></a>
+                <a href="/analytics" class="nav-link sidebar-no-viewer hidden">📊 <span class="nav-text">Аналітика</span></a>
+                <a href="/warehouse" class="nav-link sidebar-admin-only hidden">📦 <span class="nav-text">Склад</span></a>
+                <a href="/center" class="nav-link sidebar-admin-only hidden">🧠 <span class="nav-text">Центр</span></a>
+                <a href="/art-director" class="nav-link sidebar-admin-only hidden">🎬 <span class="nav-text">Art Director</span></a>
+                <a href="/demo" class="nav-link active sidebar-admin-only hidden">🎯 <span class="nav-text">Demo</span></a>
+                <a href="/kleshnya" class="nav-link nav-link-kleshnya sidebar-admin-only hidden">🦀 <span class="nav-text">Клешня</span></a>
+            </nav>
+        </aside>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="logo">
+                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Maestro</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
+                    <a href="/center" class="nav-link">🧠 <span class="nav-text">Центр</span></a>
+                    <a href="/demo" class="nav-link active">🎯 <span class="nav-text">Demo</span></a>
+                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container" style="margin-left: 220px;">
+            <div class="demo-page">
+                <h1>🎯 Demo & Packages</h1>
+
+                <div class="demo-tabs" id="demoTabs">
+                    <button class="demo-tab active" data-tab="scenarios">🎬 Демо-сценарії</button>
+                    <button class="demo-tab" data-tab="packages">📦 Пакети</button>
+                    <button class="demo-tab" data-tab="flags">🚩 Feature Flags</button>
+                </div>
+
+                <!-- Tab: Scenarios -->
+                <div class="demo-tab-content active" id="tab-scenarios">
+                    <div class="demo-toggle-bar" id="demoToggleBar">
+                        <span class="demo-toggle-label">🎯 Demo-режим (гостьовий вхід)</span>
+                        <span class="demo-toggle-status off" id="demoStatusText">Вимкнено</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="demoToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="demo-section">
+                        <div class="demo-section-title"><span class="section-icon">📊</span> Статистика</div>
+                        <div class="demo-stats" id="demoStats">
+                            <div class="demo-loading">Завантаження...</div>
+                        </div>
+                    </div>
+
+                    <div class="demo-section">
+                        <div class="demo-section-title"><span class="section-icon">🎬</span> Сценарії</div>
+                        <div class="scenarios-grid" id="scenariosGrid">
+                            <div class="demo-loading">Завантаження...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Packages -->
+                <div class="demo-tab-content" id="tab-packages">
+                    <div class="demo-section">
+                        <div class="demo-section-title"><span class="section-icon">📦</span> Тарифні пакети</div>
+                        <div class="packages-grid" id="packagesGrid">
+                            <div class="demo-loading">Завантаження...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Feature Flags -->
+                <div class="demo-tab-content" id="tab-flags">
+                    <div class="demo-section">
+                        <div class="demo-section-title"><span class="section-icon">🚩</span> Feature Flags</div>
+                        <div class="flags-list" id="flagsList">
+                            <div class="demo-loading">Завантаження...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scenario Player Modal -->
+    <div id="playerModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Сценарій">
+        <div class="modal-content modal-medium">
+            <span class="modal-close" id="playerModalClose">&times;</span>
+            <h3 id="playerTitle">Сценарій</h3>
+            <div id="playerContent"></div>
+        </div>
+    </div>
+
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content"><div class="profile-loading">Завантаження...</div></div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=18.3"></script>
+    <script src="js/api.js?v=18.3"></script>
+    <script src="js/auth.js?v=18.3"></script>
+    <script src="js/demo-page.js?v=18.3"></script>
+</body>
+</html>

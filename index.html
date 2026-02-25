@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=18.20">
-    <link rel="stylesheet" href="css/auth.css?v=18.20">
-    <link rel="stylesheet" href="css/layout.css?v=18.20">
-    <link rel="stylesheet" href="css/timeline.css?v=18.20">
-    <link rel="stylesheet" href="css/panel.css?v=18.20">
-    <link rel="stylesheet" href="css/modals.css?v=18.20">
-    <link rel="stylesheet" href="css/controls.css?v=18.20">
-    <link rel="stylesheet" href="css/features.css?v=18.20">
-    <link rel="stylesheet" href="css/dark-mode.css?v=18.20">
-    <link rel="stylesheet" href="css/responsive.css?v=18.20">
-    <link rel="stylesheet" href="css/pages.css?v=18.20">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=18.20">
+    <link rel="stylesheet" href="css/base.css?v=18.30">
+    <link rel="stylesheet" href="css/auth.css?v=18.30">
+    <link rel="stylesheet" href="css/layout.css?v=18.30">
+    <link rel="stylesheet" href="css/timeline.css?v=18.30">
+    <link rel="stylesheet" href="css/panel.css?v=18.30">
+    <link rel="stylesheet" href="css/modals.css?v=18.30">
+    <link rel="stylesheet" href="css/controls.css?v=18.30">
+    <link rel="stylesheet" href="css/features.css?v=18.30">
+    <link rel="stylesheet" href="css/dark-mode.css?v=18.30">
+    <link rel="stylesheet" href="css/responsive.css?v=18.30">
+    <link rel="stylesheet" href="css/pages.css?v=18.30">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=18.30">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v18.2.0 — Art Director</p>
+                <p class="tagline">AI First CRM v18.3.0 — Demo & Packages</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v18.2.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v18.3.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -87,6 +87,7 @@
                 <a href="/warehouse" class="nav-link sidebar-admin-only hidden">📦 <span class="nav-text">Склад</span></a>
                 <a href="/center" class="nav-link sidebar-admin-only hidden">🧠 <span class="nav-text">Центр</span></a>
                 <a href="/art-director" class="nav-link sidebar-admin-only hidden">🎬 <span class="nav-text">Art Director</span></a>
+                <a href="/demo" class="nav-link sidebar-admin-only hidden">🎯 <span class="nav-text">Demo</span></a>
                 <a href="/kleshnya" class="nav-link nav-link-kleshnya sidebar-admin-only hidden">🦀 <span class="nav-text">Клешня</span></a>
                 <div class="sidebar-divider"></div>
                 <span class="sidebar-section-label">Дії</span>
@@ -1121,6 +1122,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v18.3.0 — Demo-режим & Packages (Claude Code, 25.02.2026)</h4>
+                    <ul>
+                        <li><b>Нова сторінка /demo</b> — управління демо-сценаріями, пакетами, feature flags</li>
+                        <li><b>5 демо-сценаріїв</b> — Бронювання, Друк сертифікату, HR зміни, Центр керування, Art Director</li>
+                        <li><b>3 пакети</b> — Starter (2 990 ₴), Business (7 990 ₴), Lite (990 ₴) з лімітами модулів/AI/сховища</li>
+                        <li><b>15 Feature flags</b> — включення/виключення модулів по пакетах (demo_mode, crab_chat, finance, HR...)</li>
+                        <li><b>Demo login</b> — гостьовий JWT-вхід (viewer, 2 години) з трекінгом сесій</li>
+                        <li><b>Scenario player</b> — покрокова навігація з кнопками "Далі/Назад/Відкрити"</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v18.2.0 — Art Director v1 (Claude Code, 25.02.2026)</h4>
                     <ul>
@@ -2832,22 +2844,22 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=18.20"></script>
-    <script src="js/api.js?v=18.20"></script>
-    <script src="js/ui.js?v=18.20"></script>
-    <script src="js/auth.js?v=18.20"></script>
-    <script src="js/timeline.js?v=18.20"></script>
-    <script src="js/booking.js?v=18.20"></script>
-    <script src="js/settings.js?v=18.20"></script>
-    <script src="js/booking-form.js?v=18.20"></script>
-    <script src="js/booking-linked.js?v=18.20"></script>
-    <script src="js/settings-dashboard.js?v=18.20"></script>
-    <script src="js/settings-history.js?v=18.20"></script>
-    <script src="js/settings-afisha.js?v=18.20"></script>
-    <script src="js/settings-certificates.js?v=18.20"></script>
-    <script src="js/offline.js?v=18.20"></script>
-    <script src="js/ws.js?v=18.20"></script>
-    <script src="js/app.js?v=18.20"></script>
-    <script src="js/kleshnya-widget.js?v=18.20"></script>
+    <script src="js/config.js?v=18.30"></script>
+    <script src="js/api.js?v=18.30"></script>
+    <script src="js/ui.js?v=18.30"></script>
+    <script src="js/auth.js?v=18.30"></script>
+    <script src="js/timeline.js?v=18.30"></script>
+    <script src="js/booking.js?v=18.30"></script>
+    <script src="js/settings.js?v=18.30"></script>
+    <script src="js/booking-form.js?v=18.30"></script>
+    <script src="js/booking-linked.js?v=18.30"></script>
+    <script src="js/settings-dashboard.js?v=18.30"></script>
+    <script src="js/settings-history.js?v=18.30"></script>
+    <script src="js/settings-afisha.js?v=18.30"></script>
+    <script src="js/settings-certificates.js?v=18.30"></script>
+    <script src="js/offline.js?v=18.30"></script>
+    <script src="js/ws.js?v=18.30"></script>
+    <script src="js/app.js?v=18.30"></script>
+    <script src="js/kleshnya-widget.js?v=18.30"></script>
 </body>
 </html>

@@ -3,6 +3,7 @@
  */
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Auth');
@@ -20,6 +21,21 @@ function authenticateToken(req, res, next) {
     try {
         const user = jwt.verify(token, JWT_SECRET);
         req.user = user;
+
+        // v19.1: Update employee activity (fire-and-forget, throttled to 1/min per user)
+        if (user.id) {
+            const cacheKey = `activity_${user.id}`;
+            const now = Date.now();
+            if (!authenticateToken._activityCache) authenticateToken._activityCache = {};
+            if (!authenticateToken._activityCache[cacheKey] || now - authenticateToken._activityCache[cacheKey] > 60000) {
+                authenticateToken._activityCache[cacheKey] = now;
+                pool.query(
+                    'UPDATE employee_profiles SET last_activity_at = NOW() WHERE user_id = $1',
+                    [user.id]
+                ).catch(() => {});
+            }
+        }
+
         next();
     } catch (err) {
         return res.status(403).json({ error: 'Invalid or expired token' });

@@ -8,6 +8,7 @@ const { requireRole } = require('../middleware/auth');
 const { mapCertificateRow, calculateValidUntil, validateCertificateInput, getCurrentSeason, VALID_STATUSES, VALID_SEASONS } = require('../services/certificates');
 const { sendTelegramMessage, sendTelegramPhoto, getConfiguredChatId, getBotUsername } = require('../services/telegram');
 const { formatCertificateNotification, formatBatchCertificateNotification } = require('../services/templates');
+const { publish: publishEvent } = require('../services/eventBus');
 const { createLogger } = require('../utils/logger');
 const QRCode = require('qrcode');
 
@@ -171,6 +172,16 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const mapped = mapCertificateRow(cert);
 
         // Telegram alert is now sent from frontend via POST /:id/send-image (with certificate image)
+
+        // v19.1: Publish to event queue (triggers auto-print, logging rules)
+        publishEvent('certificate.created', {
+            cert_id: cert.id, cert_code: certCode,
+            display_mode: displayMode || 'fio',
+            display_value: (displayValue || '').trim(),
+            type_text: typeText || 'на одноразовий вхід',
+            valid_until: finalValidUntil,
+            issued_by: req.user.username, season: finalSeason
+        }, `cert_created_${certCode}`);
 
         log.info(`Certificate created: ${certCode} by ${req.user.username}`);
         res.status(201).json(mapped);
@@ -353,6 +364,13 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
                 log.error(`Telegram status alert failed: ${err.message}`);
             }
         })();
+
+        // v19.1: Publish status change event
+        publishEvent(`certificate.${status}`, {
+            cert_id: cert.id, cert_code: cert.cert_code,
+            old_status: cert.status, new_status: status,
+            reason: reason || null, changed_by: req.user.username
+        }, `cert_${status}_${cert.cert_code}_${Date.now()}`);
 
         log.info(`Certificate ${cert.cert_code} status: ${cert.status} → ${status} by ${req.user.username}`);
         res.json(mapped);

@@ -1,8 +1,9 @@
 /**
- * routes/event-queue.js — Event Queue + Rule Engine API (v19.0)
+ * routes/event-queue.js — Event Queue + Rule Engine API (v19.1)
  */
 const router = require('express').Router();
 const { pool } = require('../db');
+const { publish: publishEvent, processEventRules } = require('../services/eventBus');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('EventQueue');
@@ -11,7 +12,7 @@ const log = createLogger('EventQueue');
 // Event Queue
 // ============================================
 
-// POST /api/events/publish — publish event to queue
+// POST /api/events/publish — publish event to queue (uses eventBus)
 router.post('/publish', async (req, res) => {
     try {
         const { event_type, payload, idempotency_key } = req.body;
@@ -19,25 +20,12 @@ router.post('/publish', async (req, res) => {
             return res.status(400).json({ error: 'event_type обов\'язковий' });
         }
 
-        const key = idempotency_key || `${event_type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-        const result = await pool.query(
-            `INSERT INTO event_queue (event_type, payload, idempotency_key)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (idempotency_key) DO NOTHING
-             RETURNING *`,
-            [event_type, JSON.stringify(payload || {}), key]
-        );
-
-        if (result.rows.length === 0) {
+        const event = await publishEvent(event_type, payload, idempotency_key);
+        if (!event) {
             return res.json({ success: true, duplicate: true, message: 'Подія з таким ключем вже існує' });
         }
 
-        // Process matching rules immediately
-        const rulesApplied = await processEventRules(result.rows[0]);
-
-        log.info(`Event published: ${event_type} (key: ${key})`);
-        res.json({ success: true, event: result.rows[0], rules_applied: rulesApplied });
+        res.json({ success: true, event });
     } catch (err) {
         log.error('Publish event error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -214,56 +202,5 @@ router.get('/rules/log', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-
-// ============================================
-// Internal: Process rules for an event
-// ============================================
-async function processEventRules(event) {
-    let applied = 0;
-    try {
-        const rules = await pool.query(
-            `SELECT * FROM rule_definitions WHERE trigger_event = $1 AND is_active = true ORDER BY priority DESC`,
-            [event.event_type]
-        );
-
-        for (const rule of rules.rows) {
-            try {
-                // Simple condition matching (check payload fields)
-                if (rule.conditions && Object.keys(rule.conditions).length > 0) {
-                    const payload = event.payload || {};
-                    const match = Object.entries(rule.conditions).every(([k, v]) => payload[k] === v);
-                    if (!match) continue;
-                }
-
-                // Log execution
-                await pool.query(
-                    `INSERT INTO rule_execution_log (rule_id, trigger_event, status, actions_count, context)
-                     VALUES ($1, $2, 'success', $3, $4)`,
-                    [rule.id, event.event_type, (rule.actions || []).length, JSON.stringify({ event_id: event.id })]
-                );
-                applied++;
-            } catch (ruleErr) {
-                await pool.query(
-                    `INSERT INTO rule_execution_log (rule_id, trigger_event, status, error_message, context)
-                     VALUES ($1, $2, 'error', $3, $4)`,
-                    [rule.id, event.event_type, ruleErr.message, JSON.stringify({ event_id: event.id })]
-                );
-            }
-        }
-
-        // Mark event as processed
-        await pool.query(
-            `UPDATE event_queue SET status = 'processed', processed_at = NOW() WHERE id = $1`,
-            [event.id]
-        );
-    } catch (err) {
-        log.error('Process rules error', err);
-        await pool.query(
-            `UPDATE event_queue SET status = 'failed', last_error = $1, attempts = attempts + 1 WHERE id = $2`,
-            [err.message, event.id]
-        );
-    }
-    return applied;
-}
 
 module.exports = router;

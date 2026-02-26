@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v19.0.0**. Full Platform — всі модулі ROADMAP реалізовані.
+Версія **v19.1.0**. Deep Integration — модулі з'єднані через EventBus + Rule Engine v2.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -22,40 +22,50 @@
 - v16.0.0–v16.2.0: Finance, Analytics v2, Swagger
 - v17.0.0–v17.10.0: Export, Budget, Procurement, AI Team, Task Bot, Worker Forge
 - v18.0.0–v18.4.0: Sidebar Nav, Center, Art Director, Demo/Packages, Leo v2, Status Page
-- **v19.0.0: Event Queue, Rule Engine, Print & Assets, Employee Mapping, Support/SLA, Music Center**
+- v19.0.0: Event Queue, Rule Engine, Print & Assets, Employee Mapping, Support/SLA, Music Center
+- **v19.1.0: Deep Integration — EventBus, Rule Engine v2 (real actions), SLA auto-breach, Activity tracking**
 
-## Що нове (поточна сесія) — v19.0.0
+## Що нове (поточна сесія) — v19.1.0
 
-### 1. Event Queue + Rule Engine
-- **event_queue** — ідемпотентна черга подій, retry, dead letter queue
-- **rule_definitions** — 5 seed правил, condition matching, execution log
+### 1. EventBus — services/eventBus.js
+- Універсальний publisher: `publish(eventType, payload, idempotencyKey)`
+- Автоматичний виклик Rule Engine при публікації
+- Retry failed events з exponential backoff (2^n хвилин)
+- Dead letter queue для невідновлюваних подій
 
-### 2. Print & Assets
-- **print_templates** — 5 seed шаблонів, preflight API, auto-routing
-- **print_jobs** — черга друку з авто-маршрутизацією
+### 2. Rule Engine v2 — реальне виконання дій
+- **create_task** — створення задачі через правило з шаблонами `{key}`
+- **send_telegram** — відправка повідомлення з інтерполяцією payload
+- **create_print_job** — автоматичне створення друкованого завдання
+- **escalate** — ескалація з Telegram сповіщенням
+- **log** — логування подій
 
-### 3. Employee Mapping
-- **employee_profiles** — єдиний профіль (user + staff + telegram + access)
-- **auto-link** — автоматичне створення з існуючих staff
+### 3. Bookings → Event Queue
+- `booking.created` — при створенні бронювання
+- `booking.cancelled` — при скасуванні
+- `booking.confirmed` / `booking.status_changed` — при зміні статусу
 
-### 4. Support/SLA
-- **support_tickets** — TK-YYYY-NNNN, auto-SLA, messages, breach detection
-- **retention_policies** — 7 seed політик, runner для очистки
+### 4. Certificates → Event Queue
+- `certificate.created` — при створенні сертифікату
+- `certificate.used` / `certificate.revoked` — при зміні статусу
 
-### 5. Music Center
-- **announcements** — 3 seed, play tracking, scheduling
-- **playlists** — 3 seed (ранок/день/вечір), music_log
+### 5. Scheduler Integration
+- **checkEventQueue** — retry failed + move to DLQ (кожну хвилину)
+- **checkSLABreach** — виявлення порушень SLA, Telegram ескалація
+- **checkScheduledAnnouncements** — автоактивація запланованих оголошень
 
-### Migration 015 — 15 нових таблиць
+### 6. Employee Activity Tracking
+- `employee_profiles.last_activity_at` оновлюється при кожному API-запиті
+- Throttled: максимум 1 UPDATE на хвилину на користувача
 
 ## Архітектура
-- **16 сторінок**, **37 routes**, 16 services, 5 middleware
+- **16 сторінок**, **37 routes**, 17 services, 5 middleware
 - **~81 таблиць**, 75+ індексів, 15 міграцій
-- ~65 000 рядків коду
+- ~66 000 рядків коду
 
 ## Технічний стан
 - Branch: `claude/continue-deployment-v18-6LOJW`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=127.0.0.1 PGPASSWORD=postgres`
 
 ---
-*Оновлено: 2026-02-26, v19.0.0*
+*Оновлено: 2026-02-26, v19.1.0*

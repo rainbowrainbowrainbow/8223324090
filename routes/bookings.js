@@ -7,6 +7,7 @@ const { validateDate, validateTime, validateId, mapBookingRow, checkServerConfli
 const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
 const { broadcast } = require('../services/websocket');
+const { publish: publishEvent } = require('../services/eventBus');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Bookings');
@@ -162,6 +163,16 @@ router.post('/', async (req, res) => {
         // WebSocket: notify other clients
         broadcast('booking:created', booking, req.user?.id?.toString(), b.date);
 
+        // v19.1: Publish to event queue
+        if (!b.linkedTo) {
+            publishEvent('booking.created', {
+                booking_id: b.id, date: b.date, time: b.time, room: b.room,
+                program_code: b.programCode, program_name: b.programName,
+                status: b.status || 'confirmed', price: b.price || 0,
+                kids_count: b.kidsCount, created_by: b.createdBy
+            }, `booking_created_${b.id}`);
+        }
+
         res.json({ success: true, booking });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create)', rbErr));
@@ -295,6 +306,15 @@ router.post('/full', async (req, res) => {
         // WebSocket: notify other clients
         broadcast('booking:created', mainBooking, req.user?.id?.toString(), main.date);
 
+        // v19.1: Publish to event queue
+        publishEvent('booking.created', {
+            booking_id: main.id, date: main.date, time: main.time, room: main.room,
+            program_code: main.programCode, program_name: main.programName,
+            status: main.status || 'confirmed', price: main.price || 0,
+            kids_count: main.kidsCount, created_by: main.createdBy,
+            linked_count: linkedRows.length
+        }, `booking_created_${main.id}`);
+
         res.json({ success: true, mainBooking, linkedBookings });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create/full)', rbErr));
@@ -357,6 +377,13 @@ router.delete('/:id', async (req, res) => {
 
         // WebSocket: notify other clients
         broadcast('booking:deleted', { id, date: booking.date, permanent }, req.user?.id?.toString(), booking.date);
+
+        // v19.1: Publish to event queue
+        publishEvent('booking.cancelled', {
+            booking_id: id, date: booking.date, room: booking.room,
+            program_code: booking.program_code, permanent,
+            cancelled_by: req.user?.username
+        }, `booking_cancelled_${id}`);
 
         res.json({ success: true, permanent });
     } catch (err) {
@@ -584,6 +611,16 @@ router.put('/:id', async (req, res) => {
 
         // WebSocket: notify other clients
         broadcast('booking:updated', savedBooking, req.user?.id?.toString(), b.date);
+
+        // v19.1: Publish status change events to event queue
+        if (statusChanged) {
+            const eventType = newStatus === 'confirmed' ? 'booking.confirmed' : `booking.status_changed`;
+            publishEvent(eventType, {
+                booking_id: id, date: b.date, time: b.time, room: b.room,
+                program_code: b.programCode, old_status: oldBooking.status,
+                new_status: newStatus, updated_by: req.user?.username
+            }, `booking_status_${id}_${Date.now()}`);
+        }
 
         res.json({ success: true, booking: savedBooking });
     } catch (err) {

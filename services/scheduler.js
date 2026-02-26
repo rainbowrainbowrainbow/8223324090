@@ -928,11 +928,120 @@ async function checkBirthdayGreetings() {
     }
 }
 
+// v19.1: Event Queue processor — retry failed events + move to DLQ
+async function checkEventQueue() {
+    try {
+        const { processFailedEvents } = require('./eventBus');
+        await processFailedEvents();
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('checkEventQueue error', err);
+        }
+    }
+}
+
+// v19.1: SLA breach detection — check support tickets that exceeded SLA limits
+async function checkSLABreach() {
+    try {
+        // Find open tickets that have breached their SLA resolve time
+        const breached = await pool.query(
+            `SELECT st.id, st.ticket_number, st.subject, st.priority, st.category,
+                    st.assigned_to, st.sla_resolve_minutes, st.created_at
+             FROM support_tickets st
+             WHERE st.status NOT IN ('resolved', 'closed')
+               AND st.sla_breached = false
+               AND st.sla_resolve_minutes IS NOT NULL
+               AND st.created_at + (st.sla_resolve_minutes || ' minutes')::interval < NOW()`
+        );
+
+        if (breached.rows.length === 0) return;
+
+        for (const ticket of breached.rows) {
+            // Mark as breached
+            await pool.query(
+                'UPDATE support_tickets SET sla_breached = true WHERE id = $1',
+                [ticket.id]
+            );
+
+            // Find escalation target from SLA rules
+            const slaRule = await pool.query(
+                `SELECT escalation_to FROM sla_rules
+                 WHERE is_active = true AND (category = $1 OR category IS NULL) AND (priority = $2 OR priority IS NULL)
+                 ORDER BY CASE WHEN category IS NOT NULL AND priority IS NOT NULL THEN 1
+                               WHEN category IS NOT NULL THEN 2
+                               WHEN priority IS NOT NULL THEN 3
+                               ELSE 4 END
+                 LIMIT 1`,
+                [ticket.category, ticket.priority]
+            );
+
+            const escalateTo = slaRule.rows[0]?.escalation_to || 'admin';
+
+            // Send Telegram alert
+            const chatId = await getConfiguredChatId();
+            if (chatId) {
+                const elapsed = Math.round((Date.now() - new Date(ticket.created_at).getTime()) / 60000);
+                await sendTelegramMessage(chatId,
+                    `🚨 <b>SLA ПОРУШЕНО</b>\n\n` +
+                    `🎫 ${ticket.ticket_number}: ${ticket.subject}\n` +
+                    `⏱ Час: ${elapsed} хв (ліміт: ${ticket.sla_resolve_minutes} хв)\n` +
+                    `📌 Пріоритет: ${ticket.priority}\n` +
+                    `👤 Ескалація → ${escalateTo}`
+                );
+            }
+
+            // Publish event for rule engine
+            const { publish } = require('./eventBus');
+            publish('ticket.sla_breached', {
+                ticket_id: ticket.id, ticket_number: ticket.ticket_number,
+                priority: ticket.priority, category: ticket.category,
+                escalate_to: escalateTo
+            });
+        }
+
+        log.info(`SLA breach: ${breached.rows.length} tickets breached`);
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('checkSLABreach error', err);
+        }
+    }
+}
+
+// v19.1: Scheduled announcements — activate announcements that are due
+async function checkScheduledAnnouncements() {
+    try {
+        const now = new Date().toISOString();
+        const result = await pool.query(
+            `UPDATE announcements SET status = 'active'
+             WHERE status = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= $1
+             RETURNING id, title`,
+            [now]
+        );
+
+        if (result.rows.length > 0) {
+            log.info(`Announcements activated: ${result.rows.length} (${result.rows.map(r => r.title).join(', ')})`);
+
+            // Log to music_log
+            for (const ann of result.rows) {
+                await pool.query(
+                    `INSERT INTO music_log (action, announcement_id, details) VALUES ('auto_activate', $1, $2)`,
+                    [ann.id, JSON.stringify({ activated_at: now })]
+                );
+            }
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('checkScheduledAnnouncements error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
     checkScheduledDeletions, checkRecurringAfisha, ensureRecurringAfishaForDate,
     checkRecurringBookings, checkCertificateExpiry,
     checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset,
-    checkStreakUpdates, checkBirthdayGreetings
+    checkStreakUpdates, checkBirthdayGreetings,
+    checkEventQueue, checkSLABreach, checkScheduledAnnouncements
 };

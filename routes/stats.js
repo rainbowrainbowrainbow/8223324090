@@ -17,19 +17,29 @@ const log = createLogger('Stats');
 
 const statsCache = new Map();
 const STATS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const STATS_CACHE_MAX = 50;
 
 function getCached(key) {
     const entry = statsCache.get(key);
-    if (entry && Date.now() - entry.ts < STATS_CACHE_TTL) return entry.data;
+    if (!entry) return null;
+    if (Date.now() - entry.ts < STATS_CACHE_TTL) {
+        // v19.16: LRU — move to end (most recently used)
+        statsCache.delete(key);
+        statsCache.set(key, entry);
+        return entry.data;
+    }
+    // Expired — remove
+    statsCache.delete(key);
     return null;
 }
 
 function setCache(key, data) {
+    // v19.16: LRU eviction — Map preserves insertion order, oldest is first
+    if (statsCache.has(key)) statsCache.delete(key);
     statsCache.set(key, { data, ts: Date.now() });
-    // Cleanup: limit cache size to 50 entries
-    if (statsCache.size > 50) {
-        const oldest = [...statsCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
-        if (oldest) statsCache.delete(oldest[0]);
+    while (statsCache.size > STATS_CACHE_MAX) {
+        const firstKey = statsCache.keys().next().value;
+        statsCache.delete(firstKey);
     }
 }
 

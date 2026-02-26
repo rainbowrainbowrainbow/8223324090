@@ -23,10 +23,21 @@ function securityHeaders(req, res, next) {
 }
 
 function cacheControl(req, res, next) {
-    if (req.path.endsWith('.html') || req.path.endsWith('.js') || req.path.endsWith('.css') || req.path === '/') {
+    const p = req.path;
+    if (p.endsWith('.html') || p === '/') {
+        // HTML: always revalidate
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.set('Pragma', 'no-cache');
         res.set('Expires', '0');
+    } else if (p.endsWith('.js') || p.endsWith('.css')) {
+        // v19.16: JS/CSS have ?v= cache busters — cache for 7 days
+        res.set('Cache-Control', 'public, max-age=604800, immutable');
+    } else if (p.startsWith('/images/') || p.endsWith('.svg') || p.endsWith('.png') || p.endsWith('.ico') || p.endsWith('.webp')) {
+        // v19.16: Static images — cache for 30 days
+        res.set('Cache-Control', 'public, max-age=2592000, immutable');
+    } else if (p.endsWith('.woff2') || p.endsWith('.woff') || p.endsWith('.ttf')) {
+        // v19.16: Fonts — cache for 1 year
+        res.set('Cache-Control', 'public, max-age=31536000, immutable');
     }
     next();
 }

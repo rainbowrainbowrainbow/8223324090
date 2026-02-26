@@ -30,7 +30,10 @@
     overflow-y: auto;
     overflow-x: hidden;
     box-shadow: 1px 0 8px rgba(0,0,0,0.04);
-    transition: width var(--speed-normal) var(--ease-smooth), transform var(--speed-normal) var(--ease-smooth);
+    transition: width var(--speed-normal) var(--ease-smooth),
+                transform var(--speed-normal) var(--ease-smooth),
+                background-color var(--speed-theme) var(--ease-smooth),
+                border-color var(--speed-theme) var(--ease-smooth);
 }
 
 /* Collapsed state (desktop) — icon-only */
@@ -114,7 +117,12 @@
 .sidebar-links .nav-link:hover {
     background: var(--gray-50);
     color: var(--gray-800);
-    transform: translateX(2px);
+    transform: translateX(3px);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.sidebar-links .nav-link:active {
+    transform: translateX(1px) scale(0.98);
 }
 
 .sidebar-links .nav-link.active {
@@ -123,6 +131,7 @@
     font-weight: 800;
     border-left: 3px solid var(--primary);
     padding-left: 9px;
+    box-shadow: 0 1px 4px rgba(16,185,129,0.08);
 }
 
 .sidebar-links .nav-link.hidden { display: none; }
@@ -206,7 +215,10 @@
     position: sticky;
     top: 0;
     z-index: var(--z-sticky);
-    transition: box-shadow var(--speed-normal), margin-left var(--speed-normal) var(--ease-smooth);
+    transition: box-shadow var(--speed-normal),
+                margin-left var(--speed-normal) var(--ease-smooth),
+                background-color var(--speed-theme) var(--ease-smooth),
+                border-color var(--speed-theme) var(--ease-smooth);
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     margin-left: 220px;
 }
@@ -286,6 +298,11 @@
     background: rgba(239,68,68,0.06);
     color: var(--danger);
     border-color: rgba(239,68,68,0.2);
+    transform: translateY(-1px);
+}
+
+.btn-logout:active {
+    transform: translateY(0) scale(0.97);
 }
 
 /* Animators management */
@@ -343,6 +360,8 @@
     padding: 16px 20px;
     box-shadow: var(--shadow-xs);
     border: 1px solid var(--gray-100);
+    transition: box-shadow var(--speed-normal) var(--ease-smooth),
+                background-color var(--speed-theme) var(--ease-smooth);
 }
 
 .date-controls {
@@ -372,7 +391,12 @@
     color: #FFFFFF;
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     box-shadow: var(--shadow-primary);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+}
+
+.btn-nav:active {
+    transform: translateY(0) scale(0.95);
+    box-shadow: 0 1px 4px rgba(16,185,129,0.2);
 }
 
 input[type="date"] {
@@ -464,6 +488,14 @@ input[type="date"] {
     background: var(--gray-100);
     border-color: var(--gray-300);
     color: var(--gray-900);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-xs);
+}
+
+.btn-export:active,
+.btn-history:active {
+    transform: translateY(0) scale(0.97);
+    box-shadow: none;
 }
 
 /* Invite button */
@@ -505,6 +537,11 @@ input[type="date"] {
     background: var(--gray-100);
     border-color: var(--gray-300);
     color: var(--gray-900);
+    transform: translateY(-1px);
+}
+
+.btn-menu-toggle:active {
+    transform: translateY(0) scale(0.97);
 }
 
 /* v19.3: Dropdown — clean card */
@@ -520,6 +557,13 @@ input[type="date"] {
     z-index: 100;
     overflow: hidden;
     padding: 6px;
+    animation: dropdownIn 0.2s var(--ease-out-expo);
+    transform-origin: top right;
+}
+
+@keyframes dropdownIn {
+    from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 .dropdown-item {
@@ -580,11 +624,23 @@ input[type="date"] {
     display: flex;
     align-items: center;
     gap: 10px;
-    transition: box-shadow var(--speed-fast);
+    transition: all var(--speed-normal) var(--ease-smooth);
+    animation: fadeInUp 0.4s var(--ease-out-expo) both;
 }
 
+/* Stagger animation for each card */
+.qs-card:nth-child(1) { animation-delay: 0ms; }
+.qs-card:nth-child(2) { animation-delay: 50ms; }
+.qs-card:nth-child(3) { animation-delay: 100ms; }
+.qs-card:nth-child(4) { animation-delay: 150ms; }
+.qs-card:nth-child(5) { animation-delay: 200ms; }
+.qs-card:nth-child(6) { animation-delay: 250ms; }
+.qs-card:nth-child(7) { animation-delay: 300ms; }
+
 .qs-card:hover {
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow);
+    transform: translateY(-2px);
+    border-color: var(--gray-200);
 }
 
 .qs-icon {

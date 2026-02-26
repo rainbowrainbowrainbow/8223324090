@@ -855,4 +855,40 @@
     .kleshnya-popup { width: calc(100vw - 32px); right: -8px; bottom: 66px; }
     .kleshnya-q-label { font-size: 10px; }
     .kleshnya-popup-title { font-size: 11px; letter-spacing: 1px; }
+
+    /* Faster stagger on mobile — less wait */
+    .qs-card:nth-child(n) { animation-delay: 0ms; animation-duration: 0.25s; }
+}
+
+/* ==========================================
+   TOUCH DEVICES — ACTIVE FEEDBACK
+   ========================================== */
+
+@media (hover: none) and (pointer: coarse) {
+    /* Tap feedback: buttons scale down on touch */
+    .btn-nav:active,
+    .btn-today:active,
+    .btn-export:active,
+    .btn-history:active,
+    .btn-menu-toggle:active,
+    .zoom-btn:active,
+    .period-btn:active,
+    .status-filter-btn:active,
+    .sidebar-links .nav-link:active {
+        transform: scale(0.95);
+        transition-duration: 50ms;
+    }
+
+    /* Disable hover-only effects on touch */
+    .btn-nav:hover,
+    .btn-export:hover,
+    .btn-history:hover {
+        transform: none;
+        box-shadow: inherit;
+    }
+
+    /* Larger touch ripple area */
+    .sidebar-links .nav-link {
+        min-height: 48px;
+    }
 }

@@ -72,12 +72,15 @@
     border: 1px solid var(--gray-100);
     border-radius: var(--radius);
     padding: 20px;
-    transition: box-shadow var(--speed-fast) var(--ease-smooth);
+    transition: all var(--speed-normal) var(--ease-smooth);
     box-shadow: var(--shadow-xs);
+    animation: fadeInUp 0.35s var(--ease-out-expo) both;
 }
 
 .card:hover {
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow);
+    transform: translateY(-2px);
+    border-color: var(--gray-200);
 }
 
 .card-header {
@@ -196,7 +199,13 @@
 
 .btn-page-primary:hover {
     background: var(--primary-dark);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16,185,129,0.25);
+}
+
+.btn-page-primary:active {
+    transform: translateY(0) scale(0.97);
+    box-shadow: none;
 }
 
 .btn-page-secondary {
@@ -216,6 +225,11 @@
 .btn-page-secondary:hover {
     background: var(--gray-50);
     border-color: var(--gray-300);
+    transform: translateY(-1px);
+}
+
+.btn-page-secondary:active {
+    transform: translateY(0) scale(0.97);
 }
 
 .btn-page-danger {

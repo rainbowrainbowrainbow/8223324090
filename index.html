@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=19.30">
-    <link rel="stylesheet" href="css/auth.css?v=19.30">
-    <link rel="stylesheet" href="css/layout.css?v=19.30">
-    <link rel="stylesheet" href="css/timeline.css?v=19.30">
-    <link rel="stylesheet" href="css/panel.css?v=19.30">
-    <link rel="stylesheet" href="css/modals.css?v=19.30">
-    <link rel="stylesheet" href="css/controls.css?v=19.30">
-    <link rel="stylesheet" href="css/features.css?v=19.30">
-    <link rel="stylesheet" href="css/dark-mode.css?v=19.30">
-    <link rel="stylesheet" href="css/responsive.css?v=19.30">
-    <link rel="stylesheet" href="css/pages.css?v=19.30">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=19.30">
+    <link rel="stylesheet" href="css/base.css?v=19.40">
+    <link rel="stylesheet" href="css/auth.css?v=19.40">
+    <link rel="stylesheet" href="css/layout.css?v=19.40">
+    <link rel="stylesheet" href="css/timeline.css?v=19.40">
+    <link rel="stylesheet" href="css/panel.css?v=19.40">
+    <link rel="stylesheet" href="css/modals.css?v=19.40">
+    <link rel="stylesheet" href="css/controls.css?v=19.40">
+    <link rel="stylesheet" href="css/features.css?v=19.40">
+    <link rel="stylesheet" href="css/dark-mode.css?v=19.40">
+    <link rel="stylesheet" href="css/responsive.css?v=19.40">
+    <link rel="stylesheet" href="css/pages.css?v=19.40">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=19.40">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v19.3.0 — UI Polish</p>
+                <p class="tagline">AI First CRM v19.4.0 — Micro-Animations</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v19.3.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v19.4.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1124,6 +1124,21 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v19.4.0 — Micro-Animations (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>Stagger Animations</b> — quick-stats картки з'являються послідовно з ефектом fadeInUp</li>
+                        <li><b>Button Feedback</b> — всі кнопки мають :active ефект натискання (scale 0.95-0.97)</li>
+                        <li><b>Card Hover</b> — картки піднімаються з тінню при наведенні, плавний translateY(-2px)</li>
+                        <li><b>Dropdown Animation</b> — випадаюче меню з'являється з scale + fade ефектом</li>
+                        <li><b>Modal Entrance</b> — покращена анімація: overlay blur + spring-based slide-up</li>
+                        <li><b>Notification Polish</b> — gradient backgrounds, spring animation, backdrop-blur</li>
+                        <li><b>Theme Transition</b> — плавний перехід при зміні dark/light mode (400ms)</li>
+                        <li><b>Touch Feedback</b> — спеціальні :active стани для сенсорних пристроїв</li>
+                        <li><b>Skeleton Loader</b> — CSS shimmer анімація для loading стейтів</li>
+                        <li><b>Sidebar Depth</b> — hover з тінню, active з натисканням, smooth transitions</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v19.3.0 — UI Polish (Claude Code, 26.02.2026)</h4>
                     <ul>
@@ -2908,22 +2923,22 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=19.30"></script>
-    <script src="js/api.js?v=19.30"></script>
-    <script src="js/ui.js?v=19.30"></script>
-    <script src="js/auth.js?v=19.30"></script>
-    <script src="js/timeline.js?v=19.30"></script>
-    <script src="js/booking.js?v=19.30"></script>
-    <script src="js/settings.js?v=19.30"></script>
-    <script src="js/booking-form.js?v=19.30"></script>
-    <script src="js/booking-linked.js?v=19.30"></script>
-    <script src="js/settings-dashboard.js?v=19.30"></script>
-    <script src="js/settings-history.js?v=19.30"></script>
-    <script src="js/settings-afisha.js?v=19.30"></script>
-    <script src="js/settings-certificates.js?v=19.30"></script>
-    <script src="js/offline.js?v=19.30"></script>
-    <script src="js/ws.js?v=19.30"></script>
-    <script src="js/app.js?v=19.30"></script>
-    <script src="js/kleshnya-widget.js?v=19.30"></script>
+    <script src="js/config.js?v=19.40"></script>
+    <script src="js/api.js?v=19.40"></script>
+    <script src="js/ui.js?v=19.40"></script>
+    <script src="js/auth.js?v=19.40"></script>
+    <script src="js/timeline.js?v=19.40"></script>
+    <script src="js/booking.js?v=19.40"></script>
+    <script src="js/settings.js?v=19.40"></script>
+    <script src="js/booking-form.js?v=19.40"></script>
+    <script src="js/booking-linked.js?v=19.40"></script>
+    <script src="js/settings-dashboard.js?v=19.40"></script>
+    <script src="js/settings-history.js?v=19.40"></script>
+    <script src="js/settings-afisha.js?v=19.40"></script>
+    <script src="js/settings-certificates.js?v=19.40"></script>
+    <script src="js/offline.js?v=19.40"></script>
+    <script src="js/ws.js?v=19.40"></script>
+    <script src="js/app.js?v=19.40"></script>
+    <script src="js/kleshnya-widget.js?v=19.40"></script>
 </body>
 </html>

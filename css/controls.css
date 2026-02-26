@@ -41,11 +41,16 @@
 .zoom-btn.active {
     background: var(--primary);
     color: var(--white);
+    box-shadow: 0 1px 4px rgba(16,185,129,0.25);
 }
 
 .zoom-btn:hover:not(.active) {
     background: var(--primary-50);
     color: var(--primary-dark);
+}
+
+.zoom-btn:active {
+    transform: scale(0.96);
 }
 
 /* ==========================================
@@ -229,8 +234,13 @@
 }
 
 .btn-today:hover {
-    transform: translateY(-1px);
+    transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(16,185,129,0.4);
+}
+
+.btn-today:active:not(.is-today) {
+    transform: translateY(0) scale(0.95);
+    box-shadow: 0 1px 4px rgba(16,185,129,0.2);
 }
 
 .btn-today.is-today {

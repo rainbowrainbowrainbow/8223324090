@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v19.3.0**. UI Polish — гармонійний дизайн, виправлення dark mode, loading states, print styles.
+Версія **v19.4.0**. Micro-Animations — плавні анімації, touch feedback, stagger effects, theme transitions.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -25,31 +25,43 @@
 - v19.0.0: Event Queue, Rule Engine, Print & Assets, Employee Mapping, Support/SLA, Music Center
 - v19.1.0: Deep Integration — EventBus, Rule Engine v2 (real actions), SLA auto-breach, Activity tracking
 - v19.2.0: Light UI — collapsible sidebar, light design, dashboard widgets, task overdue, retention
-- **v19.3.0: UI Polish — white header, unified buttons, dark mode fixes, loading states, print styles**
+- v19.3.0: UI Polish — white header, unified buttons, dark mode fixes, loading states, print styles
+- **v19.4.0: Micro-Animations — stagger effects, touch feedback, theme transitions, skeleton loaders**
 
-## Що нове (поточна сесія) — v19.3.0
+## Що нове (поточна сесія) — v19.4.0
 
-### 1. Visual Harmony (Batch A)
-- Header: білий з тонким бордером замість зеленого градієнту
-- Buttons: 3 рівні (primary/secondary/ghost), видалено liquid glass
-- Sidebar: active стан з лівим бордером-акцентом, hover translateX(2px)
-- Dropdown: чистий білий фон + бордер замість backdrop-filter
+### 1. Animation Tokens (base.css)
+- Нові easing curves: ease-spring, ease-out-expo
+- Нові keyframes: fadeInUp, scaleIn, shimmer, livePulse, btnPress
+- Utility класи: .anim-fade-in, .skeleton (shimmer loader)
+- speed-theme (400ms) для переходу dark/light
 
-### 2. UX Fixes (Batch B)
-- Notifications: solid кольори замість градієнтів та backdrop-filter
-- Modals: спрощена анімація — тільки fade + slide-up, без scale
-- Loading states: спінери на tasks, programs, staff сторінках
-- Error handling: fetch помилки показуються через showNotification('error')
+### 2. Micro-Interactions
+- Кнопки: :active scale(0.95-0.97) натискання на всіх кнопках
+- Картки: hover translateY(-2px) + shadow-md, плавні transitions
+- Sidebar: hover shadow + translateX(3px), active натискання
+- Dropdown: scale+fade вхідна анімація (dropdownIn)
+- Notifications: spring animation + gradient backgrounds + backdrop-blur
 
-### 3. Dark Mode & Responsive (Batch C)
-- Dark mode: qs-value, qs-label, user-name, btn-logout, sidebar-toggle, dropdown
-- Ultra-small (≤360px): quick-stats 1 колонка
-- Touch targets: 44px мінімум на ≤480px
+### 3. Stagger Effects
+- Quick-stats cards: послідовна поява (50ms delay per card)
+- Standalone page cards: fadeInUp entrance animation
 
-### 4. Polish (Batch D)
-- Kleshnya FAB: видалено ring spin + scanline, залишено sonar pulse
-- Kleshnya page: sidebar тепер в темі Event Maestro (білий + зелений)
-- Print styles: @media print — сховано sidebar, header, FAB
+### 4. Theme Transition
+- body, sidebar, header, control-panel: плавний background-color/border-color при зміні теми
+- 400ms transition з ease-smooth
+
+### 5. Touch Feedback
+- @media (hover: none) and (pointer: coarse) — спеціальні :active стани
+- Scale(0.95) на тач при натисканні
+- Min-height 48px для sidebar nav links на тач
+- Вимкнено hover-only ефекти на мобільних
+
+### 6. Dark Mode Polish
+- Яскравіші icon backgrounds (opacity 0.15 замість 0.1)
+- Card hover з інвертованою тінню
+- Skeleton shimmer для dark mode
+- Notification backdrop-blur 12px
 
 ## Архітектура
 - **16 сторінок**, **37 routes**, 17 services, 5 middleware
@@ -61,4 +73,4 @@
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=127.0.0.1 PGPASSWORD=postgres`
 
 ---
-*Оновлено: 2026-02-26, v19.3.0*
+*Оновлено: 2026-02-26, v19.4.0*

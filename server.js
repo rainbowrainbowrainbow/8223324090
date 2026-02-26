@@ -274,8 +274,10 @@ process.on('uncaughtException', (err) => {
 let server;
 const schedulerIntervals = [];
 
-initDatabase().then(() => {
-    return runMigrations(pool);
+// v20.5.0: Run migrations FIRST (they create tables like warehouse_stock),
+// then initDatabase (which adds columns/indexes and seeds data).
+runMigrations(pool).then(() => {
+    return initDatabase();
 }).catch(err => {
     log.error('Failed to initialize database, exiting', err);
     process.exit(1);

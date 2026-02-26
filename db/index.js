@@ -578,6 +578,26 @@ async function initDatabase() {
         // v8.7: Season column for seasonal certificate backgrounds
         await pool.query(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS season VARCHAR(10) DEFAULT 'winter'`);
 
+        // v15.1: CRM — customers table (created early because certificates references it)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS customers (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                phone VARCHAR(30),
+                instagram VARCHAR(100),
+                child_name VARCHAR(200),
+                child_birthday DATE,
+                source VARCHAR(50),
+                notes TEXT,
+                total_bookings INTEGER DEFAULT 0,
+                total_spent INTEGER DEFAULT 0,
+                first_visit DATE,
+                last_visit DATE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
         // v15.1: Link certificates to customers
         await pool.query(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)`);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_certificates_customer_id ON certificates(customer_id)');

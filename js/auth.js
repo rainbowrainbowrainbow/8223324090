@@ -234,6 +234,9 @@ function showMainApp() {
     // v8.0: Show improvement suggestion FAB
     if (typeof showImprovementFab === 'function') showImprovementFab();
 
+    // v20.2.0: Initialize floating command panel
+    if (typeof CommandPanel !== 'undefined') CommandPanel.init();
+
     // v10.3: Personal cabinet — click on username
     const userNameEl = document.getElementById('currentUser');
     if (userNameEl) {

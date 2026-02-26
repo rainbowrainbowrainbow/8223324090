@@ -1178,8 +1178,7 @@ function sendAITask(workerId) {
 // ==========================================
 
 function initDarkMode() {
-    const saved = localStorage.getItem('pzp_dark_mode');
-    if (saved === 'true' || (saved === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    if (localStorage.getItem('pzp_dark_mode') === 'true') {
         document.body.classList.add('dark-mode');
     }
 }

@@ -873,7 +873,7 @@
 </head>
 <body>
     <script>
-    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    (function(){if(localStorage.getItem('pzp_dark_mode')==='true'){document.body.classList.add('dark-mode')}})();
     </script>
     <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <div id="loginOverlay" class="page-login-overlay hidden">

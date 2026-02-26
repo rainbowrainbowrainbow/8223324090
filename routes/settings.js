@@ -105,27 +105,38 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
     }
 });
 
-// Health check
+// Health check — v19.17: deep health check with DB pool, memory, uptime
 router.get('/health', async (req, res) => {
+    const checks = { database: 'unknown', uptime: process.uptime(), timestamp: new Date().toISOString() };
+    const mem = process.memoryUsage();
+    checks.memory = {
+        rss: Math.round(mem.rss / 1024 / 1024) + 'MB',
+        heap: Math.round(mem.heapUsed / 1024 / 1024) + '/' + Math.round(mem.heapTotal / 1024 / 1024) + 'MB'
+    };
+
     try {
+        const start = Date.now();
         await pool.query('SELECT 1');
-        // Check password reset migration status
-        let passwordReset = 'unknown';
-        let userCount = 0;
-        try {
-            const migCheck = await pool.query(
-                "SELECT version, applied_at FROM schema_migrations WHERE version LIKE '%password_reset%' ORDER BY applied_at DESC"
-            );
-            passwordReset = migCheck.rows.length > 0 ? migCheck.rows : 'not applied';
-        } catch { passwordReset = 'schema_migrations not found'; }
-        try {
-            const uc = await pool.query('SELECT COUNT(*)::int as c FROM users');
-            userCount = uc.rows[0].c;
-        } catch { /* ignore */ }
-        res.json({ status: 'ok', database: 'connected', passwordReset, userCount });
+        checks.database = 'connected';
+        checks.dbLatency = (Date.now() - start) + 'ms';
+        // Pool stats
+        checks.pool = { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount };
     } catch (err) {
-        res.json({ status: 'ok', database: 'not connected' });
+        checks.database = 'error: ' + err.message;
     }
+
+    let userCount = 0;
+    try {
+        const uc = await pool.query('SELECT COUNT(*)::int as c FROM users');
+        userCount = uc.rows[0].c;
+    } catch { /* ignore */ }
+    checks.userCount = userCount;
+
+    // Memory warning
+    const heapPct = Math.round((mem.heapUsed / mem.heapTotal) * 100);
+    checks.status = checks.database === 'connected' && heapPct < 90 ? 'ok' : 'degraded';
+
+    res.status(checks.status === 'ok' ? 200 : 503).json(checks);
 });
 
 // v8.3: Automation rules CRUD

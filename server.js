@@ -68,6 +68,16 @@ app.use((req, res, next) => {
     next();
 });
 
+// v19.17: Request timeout — 30s for API endpoints
+app.use('/api', (req, res, next) => {
+    req.setTimeout(30000, () => {
+        if (!res.headersSent) {
+            res.status(408).json({ error: 'Запит перевищив ліміт часу (30с)' });
+        }
+    });
+    next();
+});
+
 // Swagger UI — public, no auth required
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { customSiteTitle: 'Event Maestro API' }));
 app.get('/api-docs.json', (req, res) => res.json(swaggerSpec));

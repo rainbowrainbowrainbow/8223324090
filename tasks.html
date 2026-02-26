@@ -40,6 +40,16 @@
             background: var(--gray-100); color: var(--gray-600); transition: all 0.15s;
         }
         .cat-chip.active { border-color: currentColor; background: rgba(255,255,255,0.6); }
+        .cat-chip:not([data-cat="all"])::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            margin-right: 6px;
+            flex-shrink: 0;
+        }
         .cat-chip[data-cat="event"] { color: #E65100; }
         .cat-chip[data-cat="purchase"] { color: #2E7D32; }
         .cat-chip[data-cat="admin"] { color: #1565C0; }
@@ -195,21 +205,21 @@
                 </div>
             </div>
             <nav class="sidebar-links">
-                <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
-                <a href="/tasks" class="nav-link active">📝 <span class="nav-text">Задачі</span></a>
-                <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
-                <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
-                <a href="/hr" class="nav-link">🏢 <span class="nav-text">HR</span></a>
-                <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
-                <a href="/customers" class="nav-link">🗂 <span class="nav-text">Клієнти</span></a>
-                <a href="/finance" class="nav-link">💰 <span class="nav-text">Фінанси</span></a>
-                <a href="/analytics" class="nav-link">📊 <span class="nav-text">Аналітика</span></a>
-                <a href="/warehouse" class="nav-link">📦 <span class="nav-text">Склад</span></a>
-                <a href="/center" class="nav-link">🧠 <span class="nav-text">Центр</span></a>
-                <a href="/art-director" class="nav-link sidebar-admin-only hidden">🎬 <span class="nav-text">Art Director</span></a>
-                <a href="/demo" class="nav-link sidebar-admin-only hidden">🎯 <span class="nav-text">Demo</span></a>
-                <a href="/status" class="nav-link">📡 <span class="nav-text">Статус</span></a>
-                <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
+                <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
+                <a href="/tasks" class="nav-link active"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
+                <a href="/programs" class="nav-link"><span class="nav-icon">П</span> <span class="nav-text">Програми</span></a>
+                <a href="/staff" class="nav-link"><span class="nav-icon">Г</span> <span class="nav-text">Графік</span></a>
+                <a href="/hr" class="nav-link"><span class="nav-icon">H</span> <span class="nav-text">HR</span></a>
+                <a href="/designs" class="nav-link"><span class="nav-icon">Д</span> <span class="nav-text">Дизайни</span></a>
+                <a href="/customers" class="nav-link"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
+                <a href="/finance" class="nav-link"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
+                <a href="/analytics" class="nav-link"><span class="nav-icon">А</span> <span class="nav-text">Аналітика</span></a>
+                <a href="/warehouse" class="nav-link"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
+                <a href="/center" class="nav-link"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
+                <a href="/art-director" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
+                <a href="/demo" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
+                <a href="/status" class="nav-link"><span class="nav-icon nav-icon--status">St</span> <span class="nav-text">Статус</span></a>
+                <a href="/kleshnya" class="nav-link nav-link-kleshnya"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
             </nav>
         </aside>
         <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
@@ -227,7 +237,7 @@
         <main id="main-content" class="page-container">
             <!-- v10.0: Points bar -->
             <div class="points-bar" id="pointsBar" style="display:none">
-                <span class="points-label">🦀 Бали:</span>
+                <span class="points-label">Бали:</span>
                 <span class="points-value points-permanent" id="pointsPermanent" title="Постійні (накопичувальні)">0</span>
                 <span class="points-sep">/</span>
                 <span class="points-value points-monthly" id="pointsMonthly" title="Місячні (обнуляються 1-го)">0</span>
@@ -235,43 +245,43 @@
 
             <!-- Board view tabs -->
             <div class="board-tabs" id="boardTabs">
-                <button class="board-tab active" data-view="today">📅 Сьогодні <span class="tab-count" id="countToday">0</span></button>
-                <button class="board-tab" data-view="week">📆 Тиждень <span class="tab-count" id="countWeek">0</span></button>
-                <button class="board-tab" data-view="my">👤 Мої <span class="tab-count" id="countMy">0</span></button>
-                <button class="board-tab" data-view="board">📋 Канбан</button>
-                <button class="board-tab" data-view="templates">🔄 Шаблони</button>
+                <button class="board-tab active" data-view="today">Сьогодні <span class="tab-count" id="countToday">0</span></button>
+                <button class="board-tab" data-view="week">Тиждень <span class="tab-count" id="countWeek">0</span></button>
+                <button class="board-tab" data-view="my">Мої <span class="tab-count" id="countMy">0</span></button>
+                <button class="board-tab" data-view="board">Канбан</button>
+                <button class="board-tab" data-view="templates">Шаблони</button>
             </div>
 
             <!-- Category chips -->
             <div class="cat-filters" id="catFilters">
                 <button class="cat-chip active" data-cat="all">Всі</button>
-                <button class="cat-chip" data-cat="event">📅 Івенти</button>
-                <button class="cat-chip" data-cat="purchase">🛒 Закупівлі</button>
-                <button class="cat-chip" data-cat="admin">🏢 Адмін</button>
-                <button class="cat-chip" data-cat="trampoline">🤸 Батути</button>
-                <button class="cat-chip" data-cat="personal">👤 Особисті</button>
-                <button class="cat-chip" data-cat="improvement">💡 Покращення</button>
+                <button class="cat-chip" data-cat="event">Івенти</button>
+                <button class="cat-chip" data-cat="purchase">Закупівлі</button>
+                <button class="cat-chip" data-cat="admin">Адмін</button>
+                <button class="cat-chip" data-cat="trampoline">Батути</button>
+                <button class="cat-chip" data-cat="personal">Особисті</button>
+                <button class="cat-chip" data-cat="improvement">Покращення</button>
             </div>
 
             <!-- Quick add task -->
             <div class="quick-add" id="quickAdd">
                 <input type="text" id="taskTitle" placeholder="Нова задача...">
                 <select id="taskCategory">
-                    <option value="admin">🏢 Адмін</option>
-                    <option value="event">📅 Івент</option>
-                    <option value="purchase">🛒 Закупівлі</option>
-                    <option value="trampoline">🤸 Батути</option>
-                    <option value="personal">👤 Особисті</option>
-                    <option value="improvement">💡 Покращення</option>
+                    <option value="admin">Адмін</option>
+                    <option value="event">Івент</option>
+                    <option value="purchase">Закупівлі</option>
+                    <option value="trampoline">Батути</option>
+                    <option value="personal">Особисті</option>
+                    <option value="improvement">Покращення</option>
                 </select>
                 <select id="taskPriority">
                     <option value="normal">Звичайний</option>
-                    <option value="high">🔴 Високий</option>
-                    <option value="low">🔵 Низький</option>
+                    <option value="high">Високий</option>
+                    <option value="low">Низький</option>
                 </select>
                 <select id="taskType" title="Тип задачі">
-                    <option value="human">👤 Human</option>
-                    <option value="bot">🤖 Bot</option>
+                    <option value="human">Human</option>
+                    <option value="bot">Bot</option>
                 </select>
                 <input type="time" id="taskDeadlineTime" title="Дедлайн (час)" style="width:100px">
                 <button id="addTaskBtn">+ Додати</button>
@@ -292,15 +302,15 @@
                     </select>
                     <input type="text" id="tplDays" placeholder="1,3,5" style="width:80px; display:none;">
                     <select id="tplCategory">
-                        <option value="admin">🏢 Адмін</option>
-                        <option value="event">📅 Івент</option>
-                        <option value="purchase">🛒 Закупівлі</option>
-                        <option value="trampoline">🤸 Батути</option>
-                        <option value="personal">👤 Особисті</option>
+                        <option value="admin">Адмін</option>
+                        <option value="event">Івент</option>
+                        <option value="purchase">Закупівлі</option>
+                        <option value="trampoline">Батути</option>
+                        <option value="personal">Особисті</option>
                     </select>
                     <select id="tplPriority">
                         <option value="normal">Звичайний</option>
-                        <option value="high">🔴 Високий</option>
+                        <option value="high">Високий</option>
                     </select>
                     <input type="text" id="tplAssignedTo" placeholder="Відповідальний" style="width:120px">
                     <button id="addTemplateBtn">+ Шаблон</button>

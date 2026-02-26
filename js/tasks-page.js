@@ -9,18 +9,18 @@
 // ==========================================
 
 const CAT_LABELS = {
-    event: { icon: '📅', label: 'Івент', color: '#E65100' },
-    purchase: { icon: '🛒', label: 'Закупівлі', color: '#2E7D32' },
-    admin: { icon: '🏢', label: 'Адмін', color: '#1565C0' },
-    trampoline: { icon: '🤸', label: 'Батути', color: '#7B1FA2' },
-    personal: { icon: '👤', label: 'Особисті', color: '#455A64' },
-    improvement: { icon: '💡', label: 'Покращення', color: '#0891B2' }
+    event: { icon: '', label: 'Івент', color: '#E65100' },
+    purchase: { icon: '', label: 'Закупівлі', color: '#2E7D32' },
+    admin: { icon: '', label: 'Адмін', color: '#1565C0' },
+    trampoline: { icon: '', label: 'Батути', color: '#7B1FA2' },
+    personal: { icon: '', label: 'Особисті', color: '#455A64' },
+    improvement: { icon: '', label: 'Покращення', color: '#0891B2' }
 };
 
 const STATUS_CYCLE = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
-const STATUS_ICONS = { todo: '⬜', in_progress: '🔄', done: '✅' };
+const STATUS_ICONS = { todo: '', in_progress: '', done: '' };
 const STATUS_LABELS = { todo: 'Todo', in_progress: 'В роботі', done: 'Готово' };
-const PRIORITY_ICONS = { high: '🔴', normal: '', low: '🔵' };
+const PRIORITY_ICONS = { high: '', normal: '', low: '' };
 const PATTERN_LABELS = { daily: 'Щоденно', weekdays: 'Будні', weekly: 'Щотижня (пн)', custom: 'Обрані дні' };
 
 let currentView = 'today';
@@ -348,7 +348,7 @@ function renderWeekView(container) {
     tasks = filterByCategory(tasks);
 
     if (tasks.length === 0) {
-        container.innerHTML = '<div class="empty-state"><span>📆</span>Немає задач на цей тиждень!</div>';
+        container.innerHTML = '<div class="empty-state">Немає задач на цей тиждень!</div>';
         return;
     }
 
@@ -365,7 +365,7 @@ function renderWeekView(container) {
     for (const date of sortedDates) {
         const label = date === 'no-date' ? 'Без дати' : formatDateShort(date);
         const isToday = date === getTodayStr();
-        html += `<div class="group-header">${isToday ? '📌 ' : ''}${label} <span style="font-size:12px;color:var(--gray-400)">(${groups[date].length})</span></div>`;
+        html += `<div class="group-header">${isToday ? '<strong>' : ''}${label}${isToday ? '</strong>' : ''} <span style="font-size:12px;color:var(--gray-400)">(${groups[date].length})</span></div>`;
         html += groups[date].map(t => renderTaskCard(t)).join('');
     }
     container.innerHTML = html;
@@ -381,7 +381,7 @@ function renderMyView(container) {
     tasks = filterByCategory(tasks);
 
     if (tasks.length === 0) {
-        container.innerHTML = '<div class="empty-state"><span>👤</span>Немає задач, призначених вам!</div>';
+        container.innerHTML = '<div class="empty-state">Немає задач, призначених вам!</div>';
         return;
     }
 
@@ -403,21 +403,21 @@ function renderKanbanView(container) {
         <div class="kanban">
             <div class="kanban-col">
                 <div class="kanban-col-header">
-                    ⬜ Todo <span class="kanban-col-count">${todo.length}</span>
+                    Todo <span class="kanban-col-count">${todo.length}</span>
                 </div>
-                ${todo.length ? todo.map(t => renderTaskCard(t)).join('') : '<div class="empty-state"><span>📭</span>Порожньо</div>'}
+                ${todo.length ? todo.map(t => renderTaskCard(t)).join('') : '<div class="empty-state">Порожньо</div>'}
             </div>
             <div class="kanban-col">
                 <div class="kanban-col-header">
-                    🔄 В роботі <span class="kanban-col-count">${inProgress.length}</span>
+                    В роботі <span class="kanban-col-count">${inProgress.length}</span>
                 </div>
-                ${inProgress.length ? inProgress.map(t => renderTaskCard(t)).join('') : '<div class="empty-state"><span>📭</span>Порожньо</div>'}
+                ${inProgress.length ? inProgress.map(t => renderTaskCard(t)).join('') : '<div class="empty-state">Порожньо</div>'}
             </div>
             <div class="kanban-col">
                 <div class="kanban-col-header">
-                    ✅ Готово <span class="kanban-col-count">${done.length}</span>
+                    Готово <span class="kanban-col-count">${done.length}</span>
                 </div>
-                ${done.length ? done.map(t => renderTaskCard(t)).join('') : '<div class="empty-state"><span>📭</span>Порожньо</div>'}
+                ${done.length ? done.map(t => renderTaskCard(t)).join('') : '<div class="empty-state">Порожньо</div>'}
             </div>
         </div>`;
 }
@@ -438,7 +438,7 @@ function renderTaskCard(t) {
 
     // v10.0: Task type badge
     const taskType = t.task_type || 'human';
-    const typeBadge = `<span class="badge-type badge-${taskType}">${taskType === 'bot' ? '🤖 BOT' : '👤 HUMAN'}</span>`;
+    const typeBadge = `<span class="badge-type badge-${taskType}">${taskType === 'bot' ? 'BOT' : 'HUMAN'}</span>`;
 
     // v10.0: Deadline display
     let deadlineHtml = '';
@@ -451,7 +451,7 @@ function renderTaskCard(t) {
         else if (diffMin < 60) dlClass = 'deadline-soon';
         const dlTime = dl.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
         const dlDate = dl.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit' });
-        deadlineHtml = `<span class="task-card-deadline ${dlClass}">⏰ ${dlDate} ${dlTime}</span>`;
+        deadlineHtml = `<span class="task-card-deadline ${dlClass}">${dlDate} ${dlTime}</span>`;
     }
 
     // v10.0: Escalation indicator
@@ -459,7 +459,7 @@ function renderTaskCard(t) {
     const escHtml = escLevel > 0 ? `<span class="escalation-dot escalation-${escLevel}" title="Ескалація: рівень ${escLevel}"></span>` : '';
 
     // v10.0: Owner line
-    const ownerHtml = (t.owner && t.owner !== t.assigned_to) ? `<span class="task-card-owner">👔 ${escapeHtml(t.owner)}</span>` : '';
+    const ownerHtml = (t.owner && t.owner !== t.assigned_to) ? `<span class="task-card-owner">${escapeHtml(t.owner)}</span>` : '';
 
     return `
     <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''}">
@@ -467,12 +467,12 @@ function renderTaskCard(t) {
         <div class="task-card-meta">
             ${typeBadge}
             <span>${catInfo.icon} ${catInfo.label}</span>
-            ${t.date ? `<span>📅 ${formatDateShort(t.date)}</span>` : ''}
+            ${t.date ? `<span>${formatDateShort(t.date)}</span>` : ''}
             ${deadlineHtml}
-            ${t.assigned_to ? `<span>👤 ${escapeHtml(t.assigned_to)}</span>` : ''}
+            ${t.assigned_to ? `<span>${escapeHtml(t.assigned_to)}</span>` : ''}
             ${ownerHtml}
-            ${t.type === 'recurring' ? '<span>🔄</span>' : ''}
-            ${t.type === 'afisha' ? '<span>🎭</span>' : ''}
+            ${t.type === 'recurring' ? '<span class="badge badge-normal">Повтор</span>' : ''}
+            ${t.type === 'afisha' ? '<span class="badge badge-normal">Афіша</span>' : ''}
         </div>
         <div class="task-card-actions">
             <button class="${btnClass}" onclick="cycleStatus(${t.id}, '${nextStatus}')">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
@@ -557,7 +557,7 @@ function renderTemplates(templates) {
     const grid = document.getElementById('templatesList');
 
     if (templates.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><span>🔄</span>Немає шаблонів. Додайте перший!</div>';
+        grid.innerHTML = '<div class="empty-state">Немає шаблонів. Додайте перший!</div>';
         return;
     }
 
@@ -568,11 +568,11 @@ function renderTemplates(templates) {
 
         return `
         <div class="task-card cat-${t.category || 'admin'}">
-            <div class="task-card-title">🔄 ${escapeHtml(t.title)}</div>
+            <div class="task-card-title">${escapeHtml(t.title)}</div>
             <div class="task-card-meta">
-                <span>${cat.icon} ${cat.label}</span>
-                <span>📅 ${pattern}${days}</span>
-                ${t.assignedTo ? `<span>👤 ${escapeHtml(t.assignedTo)}</span>` : ''}
+                <span>${cat.label}</span>
+                <span>${pattern}${days}</span>
+                ${t.assignedTo ? `<span>${escapeHtml(t.assignedTo)}</span>` : ''}
                 <span class="badge ${t.isActive ? 'badge-done' : 'badge-normal'}">${t.isActive ? 'Активний' : 'Пауза'}</span>
             </div>
             <div class="task-card-actions">

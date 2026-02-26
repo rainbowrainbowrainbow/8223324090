@@ -73,6 +73,32 @@ body.dark-mode .sidebar-links .nav-link.active {
     color: #10B981;
 }
 
+/* Nav icon — dark mode */
+body.dark-mode .nav-icon {
+    background: rgba(255,255,255,0.08);
+    color: var(--gray-400);
+}
+
+body.dark-mode .nav-link:hover .nav-icon {
+    background: rgba(16,185,129,0.15);
+    color: #10B981;
+}
+
+body.dark-mode .nav-link.active .nav-icon {
+    background: #10B981;
+    color: #FFFFFF;
+}
+
+body.dark-mode .nav-icon--kleshnya {
+    background: rgba(225,29,72,0.15);
+    color: #FB7185;
+}
+
+body.dark-mode .nav-icon--status {
+    background: rgba(37,99,235,0.15);
+    color: #60A5FA;
+}
+
 body.dark-mode .sidebar-collapse-btn {
     color: var(--gray-500);
     border-color: var(--gray-200);

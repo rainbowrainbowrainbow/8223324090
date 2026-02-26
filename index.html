@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=19.40">
-    <link rel="stylesheet" href="css/auth.css?v=19.40">
-    <link rel="stylesheet" href="css/layout.css?v=19.40">
-    <link rel="stylesheet" href="css/timeline.css?v=19.40">
-    <link rel="stylesheet" href="css/panel.css?v=19.40">
-    <link rel="stylesheet" href="css/modals.css?v=19.40">
-    <link rel="stylesheet" href="css/controls.css?v=19.40">
-    <link rel="stylesheet" href="css/features.css?v=19.40">
-    <link rel="stylesheet" href="css/dark-mode.css?v=19.40">
-    <link rel="stylesheet" href="css/responsive.css?v=19.40">
-    <link rel="stylesheet" href="css/pages.css?v=19.40">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=19.40">
+    <link rel="stylesheet" href="css/base.css?v=19.50">
+    <link rel="stylesheet" href="css/auth.css?v=19.50">
+    <link rel="stylesheet" href="css/layout.css?v=19.50">
+    <link rel="stylesheet" href="css/timeline.css?v=19.50">
+    <link rel="stylesheet" href="css/panel.css?v=19.50">
+    <link rel="stylesheet" href="css/modals.css?v=19.50">
+    <link rel="stylesheet" href="css/controls.css?v=19.50">
+    <link rel="stylesheet" href="css/features.css?v=19.50">
+    <link rel="stylesheet" href="css/dark-mode.css?v=19.50">
+    <link rel="stylesheet" href="css/responsive.css?v=19.50">
+    <link rel="stylesheet" href="css/pages.css?v=19.50">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=19.50">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v19.4.0 — Micro-Animations</p>
+                <p class="tagline">AI First CRM v19.5.0 — Clean UI</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v19.4.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v19.5.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -75,29 +75,29 @@
             </div>
             <nav class="sidebar-links">
                 <span class="sidebar-section-label">Сторінки</span>
-                <a href="/" class="nav-link active">📅 <span class="nav-text">Таймлайн</span></a>
-                <a href="/tasks" class="nav-link">📝 <span class="nav-text">Задачі</span></a>
-                <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
-                <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
-                <a href="/hr" class="nav-link sidebar-admin-only hidden">🏢 <span class="nav-text">HR</span></a>
-                <a href="/designs" class="nav-link sidebar-admin-only hidden">🎨 <span class="nav-text">Дизайни</span></a>
-                <a href="/customers" class="nav-link sidebar-admin-only hidden">🗂 <span class="nav-text">Клієнти</span></a>
-                <a href="/finance" class="nav-link sidebar-admin-only hidden">💰 <span class="nav-text">Фінанси</span></a>
-                <a href="/analytics" class="nav-link sidebar-no-viewer hidden">📊 <span class="nav-text">Аналітика</span></a>
-                <a href="/warehouse" class="nav-link sidebar-admin-only hidden">📦 <span class="nav-text">Склад</span></a>
-                <a href="/center" class="nav-link sidebar-admin-only hidden">🧠 <span class="nav-text">Центр</span></a>
-                <a href="/art-director" class="nav-link sidebar-admin-only hidden">🎬 <span class="nav-text">Art Director</span></a>
-                <a href="/demo" class="nav-link sidebar-admin-only hidden">🎯 <span class="nav-text">Demo</span></a>
-                <a href="/status" class="nav-link">📡 <span class="nav-text">Статус</span></a>
-                <a href="/kleshnya" class="nav-link nav-link-kleshnya sidebar-admin-only hidden">🦀 <span class="nav-text">Клешня</span></a>
+                <a href="/" class="nav-link active"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
+                <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
+                <a href="/programs" class="nav-link"><span class="nav-icon">П</span> <span class="nav-text">Програми</span></a>
+                <a href="/staff" class="nav-link"><span class="nav-icon">Г</span> <span class="nav-text">Графік</span></a>
+                <a href="/hr" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">H</span> <span class="nav-text">HR</span></a>
+                <a href="/designs" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Д</span> <span class="nav-text">Дизайни</span></a>
+                <a href="/customers" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
+                <a href="/finance" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
+                <a href="/analytics" class="nav-link sidebar-no-viewer hidden"><span class="nav-icon">А</span> <span class="nav-text">Аналітика</span></a>
+                <a href="/warehouse" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
+                <a href="/center" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
+                <a href="/art-director" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
+                <a href="/demo" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
+                <a href="/status" class="nav-link"><span class="nav-icon nav-icon--status">St</span> <span class="nav-text">Статус</span></a>
+                <a href="/kleshnya" class="nav-link nav-link-kleshnya sidebar-admin-only hidden"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
                 <div class="sidebar-divider"></div>
                 <span class="sidebar-section-label">Дії</span>
-                <button type="button" id="sidebarHistoryBtn" class="nav-link sidebar-action sidebar-admin-only hidden" title="Історія змін бронювань">📋 <span class="nav-text">Історія</span></button>
-                <button type="button" id="sidebarAfishaBtn" class="nav-link sidebar-action">🎭 <span class="nav-text">Афіша</span></button>
-                <button type="button" id="sidebarCertificatesBtn" class="nav-link sidebar-action hidden">📄 <span class="nav-text">Сертифікати</span></button>
-                <button type="button" id="sidebarDashboardBtn" class="nav-link sidebar-action sidebar-no-viewer hidden">📊 <span class="nav-text">Статистика</span></button>
-                <button type="button" id="sidebarSettingsBtn" class="nav-link sidebar-action sidebar-admin-only hidden">⚙️ <span class="nav-text">Налаштування</span></button>
-                <button type="button" id="sidebarDigestBtn" class="nav-link sidebar-action sidebar-admin-only hidden">📲 <span class="nav-text">Дайджест</span></button>
+                <button type="button" id="sidebarHistoryBtn" class="nav-link sidebar-action sidebar-admin-only hidden" title="Історія змін бронювань"><span class="nav-icon">Іс</span> <span class="nav-text">Історія</span></button>
+                <button type="button" id="sidebarAfishaBtn" class="nav-link sidebar-action"><span class="nav-icon">Аф</span> <span class="nav-text">Афіша</span></button>
+                <button type="button" id="sidebarCertificatesBtn" class="nav-link sidebar-action hidden"><span class="nav-icon">Сф</span> <span class="nav-text">Сертифікати</span></button>
+                <button type="button" id="sidebarDashboardBtn" class="nav-link sidebar-action sidebar-no-viewer hidden"><span class="nav-icon">Ст</span> <span class="nav-text">Статистика</span></button>
+                <button type="button" id="sidebarSettingsBtn" class="nav-link sidebar-action sidebar-admin-only hidden"><span class="nav-icon">Нл</span> <span class="nav-text">Налаштування</span></button>
+                <button type="button" id="sidebarDigestBtn" class="nav-link sidebar-action sidebar-admin-only hidden"><span class="nav-icon">Дж</span> <span class="nav-text">Дайджест</span></button>
             </nav>
             <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
                 <span class="collapse-icon">◀</span>
@@ -129,12 +129,12 @@
                         <span id="workingHours" class="working-hours">12:00-20:00</span>
                     </div>
                     <button id="nextDay" class="btn-nav" title="Наступний день" aria-label="Наступний день">▶</button>
-                    <button id="todayBtn" class="btn-today" title="Перейти на сьогодні" aria-label="Перейти на сьогодні">📍 Зараз</button>
+                    <button id="todayBtn" class="btn-today" title="Перейти на сьогодні" aria-label="Перейти на сьогодні">Зараз</button>
                 </div>
                 <div class="status-filter-controls">
                     <button class="status-filter-btn active" data-filter="all" title="Показати всі бронювання">Всі</button>
-                    <button class="status-filter-btn" data-filter="confirmed" title="Тільки підтверджені">✅ Підтверджені</button>
-                    <button class="status-filter-btn" data-filter="preliminary" title="Тільки попередні">⏳ Попередні</button>
+                    <button class="status-filter-btn" data-filter="confirmed" title="Тільки підтверджені">Підтверджені</button>
+                    <button class="status-filter-btn" data-filter="preliminary" title="Тільки попередні">Попередні</button>
                 </div>
                 <div class="view-mode-controls">
                     <div class="period-selector" id="periodSelector">
@@ -169,7 +169,7 @@
                     <button id="undoBtn" class="btn-undo hidden" title="Скасувати останню дію">↩ Скасувати</button>
                 </div>
                 <div class="action-buttons">
-                    <button id="exportTimelineBtn" class="btn-export" title="Експортувати таймлайн як картинку">🖼️ Експорт</button>
+                    <button id="exportTimelineBtn" class="btn-export" title="Експортувати таймлайн як картинку">Експорт</button>
                     <div class="admin-dropdown" id="adminDropdown">
                         <button type="button" id="menuToggleBtn" class="btn-menu-toggle" title="Меню дій">☰ Меню</button>
                         <div class="dropdown-content hidden" id="dropdownContent" role="menu">
@@ -630,7 +630,7 @@
                     <p class="empty-state">Натисніть кнопку, щоб завантажити</p>
                 </div>
                 <button type="button" class="btn-submit cert-panel-add-btn cert-non-viewer" onclick="showCreateCertificateModal()">➕ Видати сертифікат</button>
-                <button type="button" class="btn-submit cert-panel-add-btn cert-non-viewer" style="background:linear-gradient(135deg,#8B5CF6,#6D28D9);margin-top:6px" onclick="showBatchCertificateModal()">📦 Пакет сертифікатів</button>
+                <button type="button" class="btn-submit cert-panel-add-btn cert-non-viewer" style="background:linear-gradient(135deg,#8B5CF6,#6D28D9);margin-top:6px" onclick="showBatchCertificateModal()">Пакет сертифікатів</button>
             </div>
         </aside>
     </div>
@@ -715,18 +715,18 @@
                         <div class="form-group">
                             <label>Знайдені чати (натисніть щоб обрати):</label>
                             <div id="settingsTelegramChats" class="telegram-chats"></div>
-                            <button type="button" class="btn-refresh-chats" onclick="fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats')" title="Оновити список чатів">🔄 Оновити список</button>
+                            <button type="button" class="btn-refresh-chats" onclick="fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats')" title="Оновити список чатів">Оновити список</button>
                         </div>
                         <button type="button" id="settingsSaveTelegramBtn" class="btn-submit">Зберегти та протестувати</button>
                     </div>
                     <!-- v5.17: Thread/Topic ID -->
                     <div class="telegram-setup tg-subsection">
-                        <h4>💬 Гілка (Topic) для сповіщень</h4>
+                        <h4>Гілка (Topic) для сповіщень</h4>
                         <p class="digest-hint">Оберіть гілку/тему групи, куди будуть надходити сповіщення. Якщо список порожній — напишіть щось у потрібну тему групи, щоб бот її побачив.</p>
                         <div class="form-group">
                             <label>Знайдені теми (натисніть щоб обрати):</label>
                             <div id="settingsTelegramThreads" class="telegram-chats"></div>
-                            <button type="button" class="btn-refresh-chats" onclick="fetchAndRenderThreads()" title="Оновити список тем">🔄 Оновити теми</button>
+                            <button type="button" class="btn-refresh-chats" onclick="fetchAndRenderThreads()" title="Оновити список тем">Оновити теми</button>
                         </div>
                         <div class="form-group">
                             <label>Thread ID:</label>
@@ -747,7 +747,7 @@
                             <input type="time" id="settingsDigestTimeWeekend" class="input-time">
                         </div>
                         <div class="tg-btn-row">
-                            <button type="button" id="sendTestDigestBtn" class="btn-submit btn-blue btn-flex">📲 Тест дайджест</button>
+                            <button type="button" id="sendTestDigestBtn" class="btn-submit btn-blue btn-flex">Тест дайджест</button>
                         </div>
                     </div>
                     <!-- A4b: Нагадування на завтра -->
@@ -759,7 +759,7 @@
                             <input type="time" id="settingsReminderTime" class="input-time">
                         </div>
                         <div class="tg-btn-row">
-                            <button type="button" id="sendTestReminderBtn" class="btn-submit btn-blue btn-flex">📲 Тест нагадування</button>
+                            <button type="button" id="sendTestReminderBtn" class="btn-submit btn-blue btn-flex">Тест нагадування</button>
                         </div>
                     </div>
                     <!-- A4c: Автовидалення повідомлень -->
@@ -841,7 +841,7 @@
                         </div>
                     </div>
                 </div>
-                <button type="submit" class="btn-submit btn-full">✅ Створити правило</button>
+                <button type="submit" class="btn-submit btn-full">Створити правило</button>
             </form>
         </div>
     </div>
@@ -887,7 +887,7 @@
     <div id="certificateModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Видати сертифікат">
         <div class="modal-content">
             <span class="modal-close">&times;</span>
-            <h3 id="certModalTitle">📄 Видати сертифікат</h3>
+            <h3 id="certModalTitle">Видати сертифікат</h3>
             <form id="certificateForm" onsubmit="handleCertificateSubmit(event)">
                 <div class="form-group">
                     <label for="certDisplayMode">Режим відображення</label>
@@ -931,7 +931,7 @@
                     <label for="certNotes">Примітка</label>
                     <textarea id="certNotes" rows="2" placeholder="Опціонально..."></textarea>
                 </div>
-                <button type="submit" class="btn-submit btn-full">📄 Видати сертифікат</button>
+                <button type="submit" class="btn-submit btn-full">Видати сертифікат</button>
             </form>
         </div>
     </div>
@@ -991,12 +991,12 @@
                     <input type="hidden" id="batchCertValidUntil">
                     <small class="form-hint">Автоматично: сьогодні + 45 днів</small>
                 </div>
-                <button type="submit" class="btn-submit btn-full" id="batchCertSubmitBtn">📦 Згенерувати</button>
+                <button type="submit" class="btn-submit btn-full" id="batchCertSubmitBtn">Згенерувати</button>
             </form>
             <div id="batchCertResult" class="hidden" style="margin-top:16px">
                 <h4 style="margin-bottom:8px">Згенеровані коди:</h4>
                 <div id="batchCertCodes" style="font-family:monospace;font-size:14px;background:var(--bg-secondary);padding:12px;border-radius:8px;max-height:200px;overflow-y:auto"></div>
-                <button type="button" class="btn-submit btn-full" style="margin-top:8px" onclick="copyBatchCodes()">📋 Копіювати всі коди</button>
+                <button type="button" class="btn-submit btn-full" style="margin-top:8px" onclick="copyBatchCodes()">Копіювати всі коди</button>
             </div>
         </div>
     </div>
@@ -1124,6 +1124,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v19.5.0 — Clean UI (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>Emoji Cleanup</b> — замінено всі emoji на чисті текстові лейбли по всьому інтерфейсу</li>
+                        <li><b>Nav Icons</b> — нова система іконок сайдбару: CSS-стилізовані літерні індикатори замість emoji</li>
+                        <li><b>Category Dots</b> — кольорові точки для фільтрів категорій задач</li>
+                        <li><b>Mobile Fix</b> — текст навігації завжди видимий на мобільних (раніше ховався при 480px)</li>
+                        <li><b>Dark Mode</b> — підтримка dark mode для нових nav-icon елементів</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v19.4.0 — Micro-Animations (Claude Code, 26.02.2026)</h4>
                     <ul>
@@ -2768,7 +2778,7 @@
                     </select>
                     <input type="date" id="afishaDate" class="afisha-input">
                     <input type="time" id="afishaTime" class="afisha-input" value="12:00">
-                    <button type="button" id="afishaAutoTimeBtn" class="btn-auto-time" title="Знайти вільний слот">🎯</button>
+                    <button type="button" id="afishaAutoTimeBtn" class="btn-auto-time" title="Знайти вільний слот">Авто</button>
                     <input type="text" id="afishaTitle" class="afisha-input" placeholder="Назва події">
                     <input type="number" id="afishaDuration" class="afisha-input" value="60" min="15" step="15" title="Тривалість (хв)">
                     <button type="button" id="addAfishaBtn" class="btn-afisha-add">Додати</button>
@@ -2923,22 +2933,22 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=19.40"></script>
-    <script src="js/api.js?v=19.40"></script>
-    <script src="js/ui.js?v=19.40"></script>
-    <script src="js/auth.js?v=19.40"></script>
-    <script src="js/timeline.js?v=19.40"></script>
-    <script src="js/booking.js?v=19.40"></script>
-    <script src="js/settings.js?v=19.40"></script>
-    <script src="js/booking-form.js?v=19.40"></script>
-    <script src="js/booking-linked.js?v=19.40"></script>
-    <script src="js/settings-dashboard.js?v=19.40"></script>
-    <script src="js/settings-history.js?v=19.40"></script>
-    <script src="js/settings-afisha.js?v=19.40"></script>
-    <script src="js/settings-certificates.js?v=19.40"></script>
-    <script src="js/offline.js?v=19.40"></script>
-    <script src="js/ws.js?v=19.40"></script>
-    <script src="js/app.js?v=19.40"></script>
-    <script src="js/kleshnya-widget.js?v=19.40"></script>
+    <script src="js/config.js?v=19.50"></script>
+    <script src="js/api.js?v=19.50"></script>
+    <script src="js/ui.js?v=19.50"></script>
+    <script src="js/auth.js?v=19.50"></script>
+    <script src="js/timeline.js?v=19.50"></script>
+    <script src="js/booking.js?v=19.50"></script>
+    <script src="js/settings.js?v=19.50"></script>
+    <script src="js/booking-form.js?v=19.50"></script>
+    <script src="js/booking-linked.js?v=19.50"></script>
+    <script src="js/settings-dashboard.js?v=19.50"></script>
+    <script src="js/settings-history.js?v=19.50"></script>
+    <script src="js/settings-afisha.js?v=19.50"></script>
+    <script src="js/settings-certificates.js?v=19.50"></script>
+    <script src="js/offline.js?v=19.50"></script>
+    <script src="js/ws.js?v=19.50"></script>
+    <script src="js/app.js?v=19.50"></script>
+    <script src="js/kleshnya-widget.js?v=19.50"></script>
 </body>
 </html>

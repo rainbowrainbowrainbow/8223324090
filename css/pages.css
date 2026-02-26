@@ -432,8 +432,4 @@
     }
 }
 
-@media (max-width: 480px) {
-    .nav-link span.nav-text {
-        display: none;
-    }
-}
+/* nav-text always visible — emoji-only mode removed in v19.5 */

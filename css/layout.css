@@ -54,8 +54,8 @@
 
 .sidebar-nav.collapsed .sidebar-links .nav-link {
     justify-content: center;
-    padding: 12px 8px;
-    font-size: 18px;
+    padding: 10px 8px;
+    gap: 0;
 }
 
 .sidebar-nav.collapsed .sidebar-collapse-btn {
@@ -135,6 +135,70 @@
 }
 
 .sidebar-links .nav-link.hidden { display: none; }
+
+/* Nav icon — letter-based mini icon replacing emoji */
+.nav-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    background: var(--gray-100);
+    color: var(--gray-600);
+    font-size: 11px;
+    font-weight: 800;
+    flex-shrink: 0;
+    letter-spacing: -0.5px;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    line-height: 1;
+}
+
+.nav-link.active .nav-icon {
+    background: var(--primary);
+    color: #FFFFFF;
+    box-shadow: 0 1px 4px rgba(16,185,129,0.25);
+}
+
+.nav-link:hover .nav-icon {
+    background: var(--primary-50);
+    color: var(--primary-dark);
+}
+
+.nav-link.active:hover .nav-icon {
+    background: var(--primary);
+    color: #FFFFFF;
+}
+
+/* Kleshnya icon variant */
+.nav-icon--kleshnya {
+    background: #FFF1F2;
+    color: #E11D48;
+}
+
+.nav-link.active .nav-icon--kleshnya {
+    background: #E11D48;
+    color: #FFFFFF;
+}
+
+/* Status icon variant */
+.nav-icon--status {
+    background: #EFF6FF;
+    color: #2563EB;
+}
+
+.nav-link.active .nav-icon--status {
+    background: #2563EB;
+    color: #FFFFFF;
+}
+
+/* Collapsed sidebar — larger icon */
+.sidebar-nav.collapsed .nav-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 13px;
+    border-radius: 8px;
+}
 
 .sidebar-section-label {
     font-size: 10px;

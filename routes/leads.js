@@ -27,7 +27,11 @@ router.get('/', async (req, res) => {
             conditions.push(`l.status = $${params.length}`);
         }
         if (assigned_to) {
-            params.push(parseInt(assigned_to));
+            const assignedId = parseInt(assigned_to);
+            if (isNaN(assignedId)) {
+                return res.status(400).json({ success: false, error: 'assigned_to повинен бути числом' });
+            }
+            params.push(assignedId);
             conditions.push(`l.assigned_to = $${params.length}`);
         }
 
@@ -108,9 +112,6 @@ router.patch('/:id', async (req, res) => {
             if (status === 'booked') {
                 updates.push(`booked_at = NOW()`);
             }
-            if (status === 'contacted') {
-                updates.push(`last_contact_at = COALESCE(last_contact_at, NOW())`);
-            }
         }
         if (notes !== undefined) {
             params.push(notes);
@@ -123,6 +124,8 @@ router.patch('/:id', async (req, res) => {
         if (last_contact_at) {
             params.push(last_contact_at);
             updates.push(`last_contact_at = $${params.length}`);
+        } else if (status === 'contacted') {
+            updates.push(`last_contact_at = COALESCE(last_contact_at, NOW())`);
         }
 
         if (updates.length === 0) {

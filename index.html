@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=20.70">
-    <link rel="stylesheet" href="css/auth.css?v=20.70">
-    <link rel="stylesheet" href="css/layout.css?v=20.70">
-    <link rel="stylesheet" href="css/timeline.css?v=20.70">
-    <link rel="stylesheet" href="css/panel.css?v=20.70">
-    <link rel="stylesheet" href="css/modals.css?v=20.70">
-    <link rel="stylesheet" href="css/controls.css?v=20.70">
-    <link rel="stylesheet" href="css/features.css?v=20.70">
-    <link rel="stylesheet" href="css/dark-mode.css?v=20.70">
-    <link rel="stylesheet" href="css/responsive.css?v=20.70">
-    <link rel="stylesheet" href="css/pages.css?v=20.70">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=20.70">
+    <link rel="stylesheet" href="css/base.css?v=20.71">
+    <link rel="stylesheet" href="css/auth.css?v=20.71">
+    <link rel="stylesheet" href="css/layout.css?v=20.71">
+    <link rel="stylesheet" href="css/timeline.css?v=20.71">
+    <link rel="stylesheet" href="css/panel.css?v=20.71">
+    <link rel="stylesheet" href="css/modals.css?v=20.71">
+    <link rel="stylesheet" href="css/controls.css?v=20.71">
+    <link rel="stylesheet" href="css/features.css?v=20.71">
+    <link rel="stylesheet" href="css/dark-mode.css?v=20.71">
+    <link rel="stylesheet" href="css/responsive.css?v=20.71">
+    <link rel="stylesheet" href="css/pages.css?v=20.71">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=20.71">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v20.7.0 — Status Badges + Sales Features</p>
+                <p class="tagline">AI First CRM v20.7.1 — Bugfix Patch</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v20.7.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v20.7.1</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1190,6 +1190,20 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v20.7.1 — Bugfix Patch (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>🔴 leads.program_id</b> — тип INT→VARCHAR(50), JOIN з products більше не падає</li>
+                        <li><b>🔴 await getConfiguredChatId()</b> — Telegram алерти гарячих лідів тепер працюють</li>
+                        <li><b>🛡️ XSS-захист</b> — escapeHtml() в звітах, лідах, конверсії менеджерів</li>
+                        <li><b>🔧 training.js</b> — транзакція для INSERT+UPDATE запобігає дублям</li>
+                        <li><b>🔧 leads.js</b> — фікс дублікату last_contact_at + валідація assigned_to</li>
+                        <li><b>🔧 page-statuses</b> — помилка DB більше не ховається за success:true</li>
+                        <li><b>🔧 command-panel</b> — revenue undefined перехоплюється коректно</li>
+                        <li><b>📄 HTML</b> — 7 незакритих &lt;/div&gt; в changelog + ?v= на 4 сторінках</li>
+                        <li><b>🗄️ telegram_id</b> — BIGINT→VARCHAR(20) в training таблицях</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v20.7.0 — Sales Features (Claude Code, 26.02.2026)</h4>
                     <ul>
                         <li><b>🔥 Гарячі ліди</b> — трекінг запитів, авто-задачі через 24 год, Telegram алерти, UI в Центрі</li>
@@ -1744,20 +1758,20 @@
                         <li>📊 <b>Stats API</b> — підключено /api/stats/revenue, programs, load, trends</li>
                         <li>🎨 FAB віджет — 6 кнопок швидких запитів (3x2 grid)</li>
                     </ul>
-
+                </div>
                 <div class="changelog-section">
                     <h4>v12.7.1 — CSS bugfixes</h4>
                     <ul>
                         <li>🐛 Виправлено білу рамку навколо заголовка у деталях бронювання (sticky h3 стилі протікали в кольоровий хедер)</li>
                         <li>🐛 Виправлено обрізану кнопку «Додати аніматора» внизу таймлайну (<code>overflow: hidden</code> → <code>overflow: clip</code>)</li>
                     </ul>
-
+                </div>
                 <div class="changelog-section">
                     <h4>v12.7.0</h4>
                     <ul>
                         <li>🔢 Version bump</li>
                     </ul>
-
+                </div>
                 <div class="changelog-section">
                     <h4>v12.6.0 — Cross-line drag & bugfix</h4>
                     <ul>
@@ -1766,14 +1780,14 @@
                         <li>🎯 Покращено cross-line drag & drop — блок візуально переміщується на цільову лінію під час перетягування</li>
                         <li>✨ Покращено ghost-превʼю: пульсуюча анімація + рамка для кращої видимості</li>
                     </ul>
-
+                </div>
                 <div class="changelog-section">
                     <h4>v12.5.0 — Автостворення юзерів</h4>
                     <ul>
                         <li>🐛 Виправлено: юзери не створювались на Railway — seed пропускався бо таблиця не порожня</li>
                         <li>🔄 UPSERT міграція — створює відсутніх юзерів + скидає паролі існуючих</li>
                     </ul>
-
+                </div>
                 <div class="changelog-section">
                     <h4>v12.4.0 — Діагностика логіну</h4>
                     <ul>
@@ -1782,14 +1796,14 @@
                         <li>🩺 Дебаг-ендпоінт /api/auth/debug-login — діагностика проблем авторизації</li>
                         <li>📊 /api/health показує статус міграцій і кількість юзерів</li>
                     </ul>
-
+                </div>
                 <div class="changelog-section">
                     <h4>v12.3.0 — Логін без регістру</h4>
                     <ul>
                         <li>🔓 Логін нечутливий до регістру — lera, LERA, Lera — все працює</li>
                         <li>🔑 Одноразовий скид паролів при деплої — виправлення проблем з авторизацією</li>
                     </ul>
-
+                </div>
                 <div class="changelog-section">
                     <h4>v12.2.0 — CSS Audit + Design Tokens</h4>
                     <ul>
@@ -3178,26 +3192,26 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=20.70"></script>
-    <script src="js/api.js?v=20.70"></script>
-    <script src="js/ui.js?v=20.70"></script>
-    <script src="js/auth.js?v=20.70"></script>
-    <script src="js/timeline.js?v=20.70"></script>
-    <script src="js/booking.js?v=20.70"></script>
-    <script src="js/settings.js?v=20.70"></script>
-    <script src="js/booking-form.js?v=20.70"></script>
-    <script src="js/booking-linked.js?v=20.70"></script>
-    <script src="js/settings-dashboard.js?v=20.70"></script>
-    <script src="js/settings-history.js?v=20.70"></script>
-    <script src="js/settings-afisha.js?v=20.70"></script>
-    <script src="js/settings-certificates.js?v=20.70"></script>
-    <script src="js/offline.js?v=20.70"></script>
-    <script src="js/search.js?v=20.70"></script>
-    <script src="js/ws.js?v=20.70"></script>
-    <script src="js/components/sidebar.js?v=20.70"></script>
-    <script src="js/sales-panel.js?v=20.70"></script>
-    <script src="js/command-panel.js?v=20.70"></script>
-    <script src="js/app.js?v=20.70"></script>
-    <script src="js/kleshnya-widget.js?v=20.70"></script>
+    <script src="js/config.js?v=20.71"></script>
+    <script src="js/api.js?v=20.71"></script>
+    <script src="js/ui.js?v=20.71"></script>
+    <script src="js/auth.js?v=20.71"></script>
+    <script src="js/timeline.js?v=20.71"></script>
+    <script src="js/booking.js?v=20.71"></script>
+    <script src="js/settings.js?v=20.71"></script>
+    <script src="js/booking-form.js?v=20.71"></script>
+    <script src="js/booking-linked.js?v=20.71"></script>
+    <script src="js/settings-dashboard.js?v=20.71"></script>
+    <script src="js/settings-history.js?v=20.71"></script>
+    <script src="js/settings-afisha.js?v=20.71"></script>
+    <script src="js/settings-certificates.js?v=20.71"></script>
+    <script src="js/offline.js?v=20.71"></script>
+    <script src="js/search.js?v=20.71"></script>
+    <script src="js/ws.js?v=20.71"></script>
+    <script src="js/components/sidebar.js?v=20.71"></script>
+    <script src="js/sales-panel.js?v=20.71"></script>
+    <script src="js/command-panel.js?v=20.71"></script>
+    <script src="js/app.js?v=20.71"></script>
+    <script src="js/kleshnya-widget.js?v=20.71"></script>
 </body>
 </html>

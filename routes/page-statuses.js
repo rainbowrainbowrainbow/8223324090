@@ -20,7 +20,8 @@ router.get('/', async (req, res) => {
         }
         res.json({ success: true, statuses });
     } catch (err) {
-        res.json({ success: true, statuses: {} });
+        console.error('GET /page-statuses error', err.message);
+        res.status(500).json({ success: false, error: 'Помилка завантаження статусів' });
     }
 });
 

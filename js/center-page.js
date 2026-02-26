@@ -553,8 +553,8 @@ function renderReport(report) {
     }) : '';
 
     container.innerHTML = `
-        <div class="report-content">${report.text}</div>
-        <div class="report-meta">${report.author ? `Автор: ${report.author}` : ''} ${date ? `| ${date}` : ''}</div>
+        <div class="report-content">${escapeHtml(report.text)}</div>
+        <div class="report-meta">${report.author ? `Автор: ${escapeHtml(report.author)}` : ''} ${date ? `| ${date}` : ''}</div>
     `;
 }
 
@@ -1963,8 +1963,8 @@ async function loadHotLeads() {
         container.innerHTML = data.leads.map(l => `
             <div class="hot-lead-card" data-id="${l.id}">
                 <div class="hot-lead-info">
-                    <strong>${l.client_name || 'Без імені'}</strong>
-                    ${l.program_name ? ' • ' + l.program_name : ''}
+                    <strong>${escapeHtml(l.client_name || 'Без імені')}</strong>
+                    ${l.program_name ? ' • ' + escapeHtml(l.program_name) : ''}
                     ${l.children_count ? ' • ' + l.children_count + ' дітей' : ''}
                     <div class="hot-lead-meta">
                         Запит: ${new Date(l.created_at).toLocaleString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -2037,7 +2037,7 @@ async function loadConversion() {
                 </tr></thead>
                 <tbody>${data.managers.map(m => `
                     <tr>
-                        <td><strong>${m.name}</strong></td>
+                        <td><strong>${escapeHtml(m.name)}</strong></td>
                         <td>${m.total_bookings}</td>
                         <td>${m.booked}</td>
                         <td>

@@ -221,7 +221,7 @@ const CommandPanel = (() => {
                         <span class="cmd-kpi-lbl">задач</span>
                     </div>
                 </div>
-                ${d.revenue !== null ? `<div class="cmd-kpi-revenue">${d.revenue.toLocaleString('uk-UA')} &#8372; сьогодні</div>` : ''}
+                ${d.revenue != null ? `<div class="cmd-kpi-revenue">${d.revenue.toLocaleString('uk-UA')} &#8372; сьогодні</div>` : ''}
             `;
         } catch { /* ignore */ }
     }

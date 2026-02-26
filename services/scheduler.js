@@ -1253,7 +1253,7 @@ async function checkHotLeads() {
 
         // Send Telegram alert if any hot leads
         if (hotLeads.rows.length > 0) {
-            const chatId = getConfiguredChatId();
+            const chatId = await getConfiguredChatId();
             const text = `🔥 <b>Гарячі ліди: ${hotLeads.rows.length}</b>\n` +
                 hotLeads.rows.slice(0, 5).map(l =>
                     `• ${l.client_name}${l.program_name ? ' — ' + l.program_name : ''}`

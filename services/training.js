@@ -142,19 +142,27 @@ async function handleTrainingResponse(telegramId, text) {
     );
     if (promptResult.rows.length === 0) return false;
 
-    // Save the training input
-    await pool.query(
-        `INSERT INTO staff_training_inputs (staff_id, staff_name, telegram_id, content, week_number, year)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [staff.id, staff.name, telegramId, text, week, year]
-    );
-
-    // Mark prompt as responded
-    await pool.query(
-        `UPDATE training_prompts_sent SET responded = true, responded_at = NOW()
-         WHERE staff_id = $1 AND week_number = $2 AND year = $3`,
-        [staff.id, week, year]
-    );
+    // Save input + mark prompt as responded in a transaction
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query(
+            `INSERT INTO staff_training_inputs (staff_id, staff_name, telegram_id, content, week_number, year)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [staff.id, staff.name, telegramId, text, week, year]
+        );
+        await client.query(
+            `UPDATE training_prompts_sent SET responded = true, responded_at = NOW()
+             WHERE staff_id = $1 AND week_number = $2 AND year = $3 AND responded = false`,
+            [staff.id, week, year]
+        );
+        await client.query('COMMIT');
+    } catch (txErr) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw txErr;
+    } finally {
+        client.release();
+    }
 
     log.info(`Training response from ${staff.name} (week ${week})`);
     return true;

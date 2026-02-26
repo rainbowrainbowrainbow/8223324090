@@ -17,6 +17,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { requireMinRole } = require('../middleware/auth');
 
 const log = createLogger('Center');
 
@@ -260,9 +261,8 @@ router.get('/prices/:code', async (req, res) => {
     }
 });
 
-// PUT /api/center/prices/:code — update price (admin only)
-router.put('/prices/:code', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ success: false, error: 'Тільки для адміністраторів' });
+// PUT /api/center/prices/:code — update price (senior_manager+)
+router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) => {
     try {
         const { value, name, unit, category, description } = req.body;
         if (value === undefined && !name) {
@@ -289,9 +289,8 @@ router.put('/prices/:code', async (req, res) => {
     }
 });
 
-// POST /api/center/prices — create new price rule (admin only)
-router.post('/prices', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ success: false, error: 'Тільки для адміністраторів' });
+// POST /api/center/prices — create new price rule (senior_manager+)
+router.post('/prices', requireMinRole('senior_manager'), async (req, res) => {
     try {
         const { code, name, value, unit, category, description } = req.body;
         if (!code || !name || value === undefined) {
@@ -311,9 +310,8 @@ router.post('/prices', async (req, res) => {
     }
 });
 
-// DELETE /api/center/prices/:code — delete price rule (admin only)
-router.delete('/prices/:code', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ success: false, error: 'Тільки для адміністраторів' });
+// DELETE /api/center/prices/:code — delete price rule (senior_manager+)
+router.delete('/prices/:code', requireMinRole('senior_manager'), async (req, res) => {
     try {
         const result = await pool.query('DELETE FROM price_rules WHERE code = $1 RETURNING code', [req.params.code]);
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Ціну не знайдено' });
@@ -476,8 +474,7 @@ router.get('/goals', async (req, res) => {
     }
 });
 
-router.post('/goals', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ success: false, error: 'Тільки для адмінів' });
+router.post('/goals', requireMinRole('senior_manager'), async (req, res) => {
     try {
         const { weeklyRevenue, weeklyBookings, monthlyRevenue, monthlyBookings } = req.body;
         const data = JSON.stringify({ weeklyRevenue, weeklyBookings, monthlyRevenue, monthlyBookings, updatedBy: req.user.username, updatedAt: new Date().toISOString() });

@@ -123,8 +123,21 @@ router.post('/debug-login', async (req, res) => {
     }
 });
 
-router.get('/verify', authenticateToken, (req, res) => {
-    res.json({ user: { username: req.user.username, role: req.user.role, name: req.user.name } });
+router.get('/verify', authenticateToken, async (req, res) => {
+    try {
+        // Read fresh role from DB (JWT may have stale role after role migration)
+        const result = await pool.query(
+            'SELECT role, name FROM users WHERE username = $1 AND is_active = true',
+            [req.user.username]
+        );
+        if (result.rows.length === 0) {
+            return res.status(403).json({ error: 'User not found or deactivated' });
+        }
+        const { role, name } = result.rows[0];
+        res.json({ user: { username: req.user.username, role, name } });
+    } catch (err) {
+        res.status(500).json({ error: 'Verification failed' });
+    }
 });
 
 // v10.6: Personal cabinet — comprehensive profile data with shift, achievements, team, deltas

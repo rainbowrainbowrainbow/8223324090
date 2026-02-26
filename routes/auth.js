@@ -24,7 +24,7 @@ router.post('/login', async (req, res) => {
         }
 
         const result = await pool.query(
-            'SELECT id, username, password_hash, role, name FROM users WHERE LOWER(username) = LOWER($1)',
+            'SELECT id, username, password_hash, role, name, is_active FROM users WHERE LOWER(username) = LOWER($1)',
             [username.trim()]
         );
 
@@ -34,6 +34,13 @@ router.post('/login', async (req, res) => {
         }
 
         const user = result.rows[0];
+
+        // v20.1.0: Check if user is deactivated
+        if (user.is_active === false) {
+            log.warn(`Login failed: user "${username}" is deactivated`);
+            return res.status(403).json({ error: 'Акаунт деактивовано. Зверніться до адміністратора.' });
+        }
+
         const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) {
             log.warn(`Login failed: wrong password for "${username}" (hash starts: ${user.password_hash.substring(0, 10)}...)`);
@@ -132,7 +139,8 @@ router.get('/profile', authenticateToken, async (req, res) => {
         );
         if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
         const user = userResult.rows[0];
-        const isAdminRole = user.role === 'admin';
+        const MANAGEMENT_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'admin'];
+        const isAdminRole = MANAGEMENT_ROLES.includes(user.role);
 
         const now = new Date();
         const today = now.toISOString().split('T')[0];

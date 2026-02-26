@@ -175,11 +175,14 @@ async function initDatabase() {
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
                 password_hash VARCHAR(255) NOT NULL,
-                role VARCHAR(20) NOT NULL DEFAULT 'user',
+                role VARCHAR(50) NOT NULL DEFAULT 'admin',
                 name VARCHAR(100) NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active)');
 
         // Seed default users if table is empty
         // LLM HINT: Test user is admin/admin123. Real users have Ukrainian names.
@@ -187,16 +190,16 @@ async function initDatabase() {
         const userCount = await pool.query('SELECT COUNT(*) FROM users');
         if (parseInt(userCount.rows[0].count) === 0) {
             const defaultUsers = [
-                { username: 'admin', password: 'admin123', role: 'admin', name: 'Адмін' },
-                { username: 'Vitalina', password: 'Vitalina109', role: 'admin', name: 'Віталіна' },
-                { username: 'Dasha', password: 'Dasha743', role: 'admin', name: 'Даша' },
-                { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
-                { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
-                { username: 'Animator', password: 'Animator612', role: 'admin', name: 'Аніматор' },
-                { username: 'Anli', password: 'Anli384', role: 'admin', name: 'Анлі' },
-                { username: 'Zhenya', password: 'Zhenya527', role: 'admin', name: 'Женя' },
-                { username: 'Lera', password: 'Lera691', role: 'admin', name: 'Лера' },
-                { username: 'Anna', password: 'Anna321', role: 'admin', name: 'Анна' },
+                { username: 'admin', password: 'admin123', role: 'creator', name: 'Адмін' },
+                { username: 'Vitalina', password: 'Vitalina109', role: 'director', name: 'Віталіна' },
+                { username: 'Dasha', password: 'Dasha743', role: 'manager', name: 'Даша' },
+                { username: 'Natalia', password: 'Natalia875', role: 'director', name: 'Наталія' },
+                { username: 'Sergey', password: 'Sergey232', role: 'creator', name: 'Сергій' },
+                { username: 'Animator', password: 'Animator612', role: 'animator', name: 'Аніматор' },
+                { username: 'Anli', password: 'Anli384', role: 'manager', name: 'Анлі' },
+                { username: 'Zhenya', password: 'Zhenya527', role: 'animator', name: 'Женя' },
+                { username: 'Lera', password: 'Lera691', role: 'animator', name: 'Лера' },
+                { username: 'Anna', password: 'Anna321', role: 'animator', name: 'Анна' },
                 { username: 'Artem', password: 'Arte529', role: 'admin', name: 'Артем' }
             ];
             for (const u of defaultUsers) {
@@ -224,15 +227,15 @@ async function initDatabase() {
         );
         if (resetCheck.rows.length === 0) {
             const defaultUsers = [
-                { username: 'admin', password: 'admin123', role: 'admin', name: 'Адмін' },
-                { username: 'Vitalina', password: 'Vitalina109', role: 'admin', name: 'Віталіна' },
-                { username: 'Dasha', password: 'Dasha743', role: 'admin', name: 'Даша' },
-                { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
-                { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
-                { username: 'Animator', password: 'Animator612', role: 'admin', name: 'Аніматор' },
-                { username: 'Anli', password: 'Anli384', role: 'admin', name: 'Анлі' },
-                { username: 'Zhenya', password: 'Zhenya527', role: 'admin', name: 'Женя' },
-                { username: 'Lera', password: 'Lera691', role: 'admin', name: 'Лера' }
+                { username: 'admin', password: 'admin123', role: 'creator', name: 'Адмін' },
+                { username: 'Vitalina', password: 'Vitalina109', role: 'director', name: 'Віталіна' },
+                { username: 'Dasha', password: 'Dasha743', role: 'manager', name: 'Даша' },
+                { username: 'Natalia', password: 'Natalia875', role: 'director', name: 'Наталія' },
+                { username: 'Sergey', password: 'Sergey232', role: 'creator', name: 'Сергій' },
+                { username: 'Animator', password: 'Animator612', role: 'animator', name: 'Аніматор' },
+                { username: 'Anli', password: 'Anli384', role: 'manager', name: 'Анлі' },
+                { username: 'Zhenya', password: 'Zhenya527', role: 'animator', name: 'Женя' },
+                { username: 'Lera', password: 'Lera691', role: 'animator', name: 'Лера' }
             ];
             let created = 0, updated = 0;
             for (const u of defaultUsers) {

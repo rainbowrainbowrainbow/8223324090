@@ -137,6 +137,7 @@ app.use('/api/support', require('./routes/support'));
 app.use('/api/music', require('./routes/music'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/loyalty', require('./routes/loyalty'));
+app.use('/api/users', require('./routes/users'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));

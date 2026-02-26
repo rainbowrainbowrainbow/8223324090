@@ -56,17 +56,85 @@ function showLoginScreen() {
     document.getElementById('mainApp').classList.add('hidden');
 }
 
-function isViewer() {
-    return AppState.currentUser && AppState.currentUser.role === 'viewer';
+// v20.1.0: Role hierarchy and access helpers
+const ROLE_HIERARCHY = ['waiter', 'animator', 'instructor', 'senior_instructor', 'admin', 'manager', 'senior_manager', 'vice_director', 'director', 'creator'];
+const ROLE_LEVEL = {};
+ROLE_HIERARCHY.forEach((r, i) => ROLE_LEVEL[r] = i);
+
+const ROLE_NAMES = {
+    creator: 'Творець', director: 'Директор', vice_director: 'Заст. директора',
+    senior_manager: 'Старший менеджер', manager: 'Менеджер', admin: 'Адміністратор',
+    senior_instructor: 'Старший інструктор', instructor: 'Інструктор',
+    animator: 'Аніматор', waiter: 'Офіціант'
+};
+
+const PAGE_ACCESS = {
+    '/':          ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
+    '/tasks':     ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
+    '/center':    ['creator', 'director', 'vice_director', 'senior_manager'],
+    '/art':       ['creator', 'director', 'vice_director', 'senior_manager'],
+    '/customers': ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
+    '/staff':     ['creator', 'director', 'vice_director', 'senior_manager'],
+    '/warehouse': ['creator', 'director', 'vice_director', 'senior_manager'],
+    '/designs':   ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
+    '/training':  ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
+    '/settings':  ['creator', 'director'],
+    '/demo':      ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
+    '/programs':  ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor'],
+    '/hr':        ['creator', 'director', 'vice_director', 'senior_manager'],
+    '/finance':   ['creator', 'director'],
+    '/analytics': ['creator', 'director', 'vice_director', 'senior_manager'],
+    '/status':    ['creator', 'director', 'vice_director', 'senior_manager'],
+};
+
+const ACTION_PERMISSIONS = {
+    create_booking:  ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
+    edit_booking:    ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
+    cancel_booking:  ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
+    delete_booking:  ['creator', 'director'],
+    manage_users:    ['creator', 'director'],
+    view_revenue:    ['creator', 'director', 'vice_director', 'senior_manager'],
+    manage_settings: ['creator', 'director'],
+    export_data:     ['creator', 'director', 'vice_director', 'senior_manager'],
+};
+
+function getUserRole() {
+    return AppState.currentUser ? AppState.currentUser.role : null;
 }
 
-// v7.1: Can manage products (admin or manager)
+function hasMinRole(minRole) {
+    const role = getUserRole();
+    return role && (ROLE_LEVEL[role] || 0) >= (ROLE_LEVEL[minRole] || 99);
+}
+
+function canAccess(action) {
+    const role = getUserRole();
+    const allowed = ACTION_PERMISSIONS[action];
+    return role && allowed && allowed.includes(role);
+}
+
+function canAccessPage(page) {
+    const role = getUserRole();
+    const allowed = PAGE_ACCESS[page];
+    if (!allowed) return true; // unknown page = allow
+    return role && allowed.includes(role);
+}
+
+function isViewer() {
+    const role = getUserRole();
+    return role === 'waiter' || role === 'animator' || role === 'instructor';
+}
+
 function canManageProducts() {
-    return AppState.currentUser && (AppState.currentUser.role === 'admin' || AppState.currentUser.role === 'manager');
+    return hasMinRole('manager');
 }
 
 function isAdmin() {
-    return AppState.currentUser && AppState.currentUser.role === 'admin';
+    return hasMinRole('admin');
+}
+
+function isManagement() {
+    return hasMinRole('senior_manager');
 }
 
 function showMainApp() {
@@ -84,10 +152,10 @@ function showMainApp() {
     const backdrop = document.getElementById('panelBackdrop');
     if (backdrop) backdrop.classList.add('hidden');
 
-    // Settings (gear) — тільки для адмінів
+    // Settings (gear) — тільки для creator/director
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) {
-        settingsBtn.classList.toggle('hidden', AppState.currentUser.role !== 'admin');
+        settingsBtn.classList.toggle('hidden', !canAccess('manage_settings'));
     }
 
     // Certificates — доступно всім ролям
@@ -108,21 +176,25 @@ function showMainApp() {
         programsTabBtn.classList.remove('hidden');
     }
 
-    // v17.10: Sidebar role-based visibility
-    const isAdmin = AppState.currentUser.role === 'admin';
-    const isViewerRole = isViewer();
+    // v20.1.0: Sidebar role-based visibility via page access matrix
+    const role = getUserRole();
+    document.querySelectorAll('[data-page-access]').forEach(el => {
+        const page = el.dataset.pageAccess;
+        el.classList.toggle('hidden', !canAccessPage(page));
+    });
+    // Legacy classes for backward compat
     document.querySelectorAll('.sidebar-admin-only').forEach(el => {
-        el.classList.toggle('hidden', !isAdmin);
+        el.classList.toggle('hidden', !canAccess('manage_settings'));
     });
     document.querySelectorAll('.sidebar-no-viewer').forEach(el => {
-        el.classList.toggle('hidden', isViewerRole);
+        el.classList.toggle('hidden', isViewer());
     });
     // Sidebar certificates — visible to all
     const sidebarCerts = document.getElementById('sidebarCertificatesBtn');
     if (sidebarCerts) sidebarCerts.classList.remove('hidden');
 
-    // Viewer: сховати кнопки редагування
-    if (isViewer()) {
+    // v20.1.0: Hide booking creation buttons for roles that can't create
+    if (!canAccess('create_booking')) {
         const addLineBtn = document.getElementById('addLineBtn');
         if (addLineBtn) addLineBtn.style.display = 'none';
         const exportBtn = document.getElementById('exportTimelineBtn');
@@ -255,8 +327,7 @@ async function openProfileModal() {
     // Store data globally for tab re-renders
     window._profileData = data;
 
-    const roleNames = { admin: 'Адміністратор', user: 'Користувач', viewer: 'Глядач', manager: 'Менеджер' };
-    const roleName = roleNames[data.user.role] || data.user.role;
+    const roleName = ROLE_NAMES[data.user.role] || data.user.role;
     const tgStatus = data.user.telegramConnected;
     const rank = data.leaderboard.rank ? `#${data.leaderboard.rank}` : '—';
 

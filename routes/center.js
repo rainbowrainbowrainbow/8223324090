@@ -166,23 +166,47 @@ router.get('/workers', async (req, res) => {
             'SELECT * FROM worker_roles ORDER BY created_at'
         ).catch(() => ({ rows: [] }));
 
-        // Get last task activity per worker-related category
-        const lastTasks = await pool.query(`
-            SELECT assigned_to, MAX(updated_at) AS last_activity
-            FROM tasks
-            WHERE assigned_to IS NOT NULL
-            GROUP BY assigned_to
-        `).catch(() => ({ rows: [] }));
+        // Check multiple activity sources for each worker
+        const [lastTasks, lastBookings, lastHistory] = await Promise.all([
+            pool.query(`
+                SELECT assigned_to AS name, MAX(updated_at) AS last_activity
+                FROM tasks WHERE assigned_to IS NOT NULL
+                GROUP BY assigned_to
+            `).catch(() => ({ rows: [] })),
+            pool.query(`
+                SELECT created_by AS name, MAX(created_at) AS last_activity
+                FROM bookings WHERE created_by IS NOT NULL
+                GROUP BY created_by
+            `).catch(() => ({ rows: [] })),
+            pool.query(`
+                SELECT changed_by AS name, MAX(changed_at) AS last_activity
+                FROM history WHERE changed_by IS NOT NULL
+                GROUP BY changed_by
+            `).catch(() => ({ rows: [] }))
+        ]);
 
-        const taskActivityMap = {};
-        for (const row of lastTasks.rows) {
-            taskActivityMap[row.assigned_to?.toLowerCase()] = row.last_activity;
+        // Build combined activity map (latest from any source)
+        const activityMap = {};
+        for (const source of [lastTasks.rows, lastBookings.rows, lastHistory.rows]) {
+            for (const row of source) {
+                const key = row.name?.toLowerCase();
+                if (!key) continue;
+                const ts = new Date(row.last_activity).getTime();
+                if (!activityMap[key] || ts > activityMap[key]) {
+                    activityMap[key] = ts;
+                }
+            }
         }
 
         const workers = workersResult.rows.map(w => {
-            // Try to find last activity from tasks assigned to this worker
-            const taskActivity = taskActivityMap[w.name?.toLowerCase()] || taskActivityMap[w.display_name?.toLowerCase()];
-            const lastActivity = taskActivity || w.updated_at;
+            const nameKey = w.name?.toLowerCase();
+            const displayKey = w.display_name?.toLowerCase();
+            const latestTs = Math.max(
+                activityMap[nameKey] || 0,
+                activityMap[displayKey] || 0,
+                new Date(w.updated_at).getTime() || 0
+            );
+            const lastActivity = latestTs > 0 ? new Date(latestTs) : w.updated_at;
             const statusInfo = computeWorkerStatus(lastActivity);
 
             return {

@@ -248,16 +248,25 @@ async function apiDeleteProposal(id) {
 
 async function apiChartsData() {
     try {
-        // Get stats for last 7 days
         const today = new Date();
         const weekAgo = new Date(today);
         weekAgo.setDate(weekAgo.getDate() - 7);
         const from = weekAgo.toISOString().split('T')[0];
         const to = today.toISOString().split('T')[0];
 
-        const response = await fetch(`${API_BASE}/stats/${from}/${to}`, { headers: getAuthHeaders(false) });
-        if (!response.ok) throw new Error('API error');
-        return await response.json();
+        const [revenueResp, programsResp] = await Promise.all([
+            fetch(`${API_BASE}/stats/revenue?from=${from}&to=${to}`, { headers: getAuthHeaders(false) }),
+            fetch(`${API_BASE}/stats/programs?from=${from}&to=${to}`, { headers: getAuthHeaders(false) })
+        ]);
+
+        if (!revenueResp.ok || !programsResp.ok) throw new Error('API error');
+        const revenue = await revenueResp.json();
+        const programs = await programsResp.json();
+
+        return {
+            daily: revenue.daily || [],
+            programs: (programs.byCount || []).map(p => ({ name: p.programName, count: p.count }))
+        };
     } catch (err) {
         console.error('API charts data error:', err);
         return null;
@@ -564,13 +573,14 @@ function renderCharts(statsData) {
 
     const defaultOptions = {
         responsive: true,
-        maintainAspectRatio: false,
+        maintainAspectRatio: true,
+        aspectRatio: 1.8,
         plugins: {
             legend: { display: false }
         },
         scales: {
-            x: { ticks: { color: textColor, font: { size: 11 } }, grid: { color: gridColor } },
-            y: { ticks: { color: textColor, font: { size: 11 } }, grid: { color: gridColor } }
+            x: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor } },
+            y: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor }, beginAtZero: true }
         }
     };
 
@@ -651,11 +661,12 @@ function renderCharts(statsData) {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
+                aspectRatio: 1.8,
                 plugins: {
                     legend: {
                         position: 'bottom',
-                        labels: { color: textColor, font: { size: 11 }, padding: 8 }
+                        labels: { color: textColor, font: { size: 10 }, padding: 6, boxWidth: 12 }
                     }
                 }
             }
@@ -1020,13 +1031,28 @@ async function sendReportToTelegram() {
 async function loadOverview() {
     const data = await apiCenterOverview();
     if (!data || !data.success) {
-        document.getElementById('workersGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
         document.getElementById('kpiGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
         return;
     }
     centerData = data;
-    renderWorkers(data.workers);
     renderKPI(data.kpi, currentPeriod);
+}
+
+async function loadWorkers() {
+    try {
+        const response = await fetch(`${API_BASE}/center/workers`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return;
+        if (!response.ok) throw new Error('API error');
+        const data = await response.json();
+        if (data.success) {
+            renderWorkers(data.workers);
+        } else {
+            document.getElementById('workersGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+        }
+    } catch (err) {
+        console.error('Load workers error:', err);
+        document.getElementById('workersGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+    }
 }
 
 async function loadPrices() {
@@ -1187,6 +1213,9 @@ async function initCenterPage() {
         return;
     }
 
+    // Restore collapsed sections from localStorage
+    restoreCollapsedState();
+
     // KPI period tabs
     document.querySelectorAll('.kpi-period-tab').forEach(tab => {
         tab.addEventListener('click', () => {
@@ -1200,6 +1229,7 @@ async function initCenterPage() {
     // Load all data in parallel
     await Promise.all([
         loadOverview(),
+        loadWorkers(),
         loadPrices(),
         loadTasks(),
         loadReport(),
@@ -1211,6 +1241,33 @@ async function initCenterPage() {
 
     // Profile handler
     if (typeof initProfileHandler === 'function') initProfileHandler();
+}
+
+// ==========================================
+// COLLAPSIBLE SECTIONS
+// ==========================================
+
+function toggleSection(titleEl) {
+    const section = titleEl.closest('.center-section');
+    if (!section) return;
+    section.classList.toggle('collapsed');
+    // Save state
+    const sectionId = section.id;
+    if (sectionId) {
+        const collapsed = JSON.parse(localStorage.getItem('center_collapsed') || '{}');
+        collapsed[sectionId] = section.classList.contains('collapsed');
+        localStorage.setItem('center_collapsed', JSON.stringify(collapsed));
+    }
+}
+
+function restoreCollapsedState() {
+    const collapsed = JSON.parse(localStorage.getItem('center_collapsed') || '{}');
+    for (const [id, isCollapsed] of Object.entries(collapsed)) {
+        if (isCollapsed) {
+            const section = document.getElementById(id);
+            if (section) section.classList.add('collapsed');
+        }
+    }
 }
 
 document.addEventListener('DOMContentLoaded', initCenterPage);

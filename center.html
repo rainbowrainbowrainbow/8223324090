@@ -31,8 +31,16 @@
         .center-section-title {
             font-size: 15px; font-weight: 800; margin-bottom: 12px;
             display: flex; align-items: center; gap: 8px;
+            cursor: pointer; user-select: none;
         }
         .center-section-title .section-icon { font-size: 18px; }
+        .center-section-title .collapse-arrow {
+            font-size: 12px; color: var(--gray-400);
+            transition: transform 0.2s; margin-right: 2px;
+        }
+        .center-section.collapsed .collapse-arrow { transform: rotate(-90deg); }
+        .center-section.collapsed .section-body { display: none; }
+        .center-section.collapsed .center-section-title { margin-bottom: 0; }
 
         /* Workers grid */
         .workers-grid {
@@ -190,6 +198,10 @@
             background: rgba(255,255,255,0.4);
             border-radius: 12px;
             padding: 14px;
+            position: relative;
+        }
+        .chart-card canvas {
+            width: 100% !important;
         }
         .chart-card-title {
             font-size: 12px; font-weight: 700; color: var(--gray-500);
@@ -221,10 +233,11 @@
 
         /* Discount codes */
         .discount-row {
-            display: flex; align-items: center; gap: 12px;
+            display: flex; align-items: center; gap: 10px;
             padding: 10px 14px; border-radius: 10px;
             background: rgba(255,255,255,0.4);
             margin-bottom: 6px; font-size: 13px;
+            flex-wrap: wrap;
         }
         .discount-row:hover { background: rgba(255,255,255,0.6); }
         .discount-code-badge {
@@ -296,7 +309,8 @@
 
         /* Responsive */
         @media (max-width: 768px) {
-            .center-page { padding: 12px; }
+            .center-page { padding: 10px; }
+            .center-page h1 { font-size: 18px; margin-bottom: 14px; }
             .kpi-grid { grid-template-columns: repeat(2, 1fr); }
             .workers-grid { grid-template-columns: 1fr; }
             .prices-table { font-size: 12px; }
@@ -306,6 +320,13 @@
             .charts-grid { grid-template-columns: 1fr; }
             .loyalty-tiers-grid { grid-template-columns: repeat(2, 1fr); }
             .discount-form-grid { grid-template-columns: 1fr; }
+            .discount-code-badge { font-size: 12px; padding: 3px 8px; }
+            .discount-value-badge { font-size: 12px; padding: 3px 8px; }
+            .discount-info-details { display: none; }
+            .discount-usage { font-size: 10px; }
+            .center-section { padding: 12px 14px; margin-bottom: 14px; }
+            .center-section-title { font-size: 14px; }
+            .proposal-card-meta { flex-wrap: wrap; }
         }
 
         /* Dark mode overrides */
@@ -392,123 +413,141 @@
             </div>
         </header>
 
-        <main id="main-content" class="page-container" style="margin-left: 220px;">
+        <main id="main-content" class="page-container">
             <div class="center-page">
                 <h1>Центр керування</h1>
 
-                <!-- Block 1: Digital Workers -->
-                <div class="center-section" id="workersSection">
-                    <div class="center-section-title">
-                        <span class="section-icon"></span> Digital Workers
-                    </div>
-                    <div class="workers-grid" id="workersGrid">
-                        <div class="center-loading">Завантаження...</div>
-                    </div>
-                </div>
-
-                <!-- Block 2: KPI Dashboard -->
+                <!-- Block 1: KPI Dashboard -->
                 <div class="center-section" id="kpiSection">
-                    <div class="center-section-title">
-                        <span class="section-icon"></span> KPI
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> KPI
                     </div>
-                    <div class="kpi-period-tabs" id="kpiTabs">
-                        <button class="kpi-period-tab active" data-period="today">Сьогодні</button>
-                        <button class="kpi-period-tab" data-period="week">Тиждень</button>
-                        <button class="kpi-period-tab" data-period="month">Місяць</button>
-                    </div>
-                    <div class="kpi-grid" id="kpiGrid">
-                        <div class="center-loading">Завантаження...</div>
+                    <div class="section-body">
+                        <div class="kpi-period-tabs" id="kpiTabs">
+                            <button class="kpi-period-tab active" data-period="today">Сьогодні</button>
+                            <button class="kpi-period-tab" data-period="week">Тиждень</button>
+                            <button class="kpi-period-tab" data-period="month">Місяць</button>
+                        </div>
+                        <div class="kpi-grid" id="kpiGrid">
+                            <div class="center-loading">Завантаження...</div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Block 3: Price Matrix -->
-                <div class="center-section" id="pricesSection">
-                    <div class="center-section-title">
-                        <span class="section-icon"></span> Централізовані ціни
+                <!-- Block 2: Charts (v19.8) -->
+                <div class="center-section" id="chartsSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Аналітика
                     </div>
-                    <div id="pricesContent">
-                        <div class="center-loading">Завантаження...</div>
+                    <div class="section-body">
+                        <div class="charts-grid">
+                            <div class="chart-card">
+                                <div class="chart-card-title">Виручка за тиждень</div>
+                                <canvas id="revenueChart"></canvas>
+                            </div>
+                            <div class="chart-card">
+                                <div class="chart-card-title">Бронювання за тиждень</div>
+                                <canvas id="bookingsChart"></canvas>
+                            </div>
+                            <div class="chart-card">
+                                <div class="chart-card-title">Топ програми</div>
+                                <canvas id="programsChart"></canvas>
+                            </div>
+                            <div class="chart-card">
+                                <div class="chart-card-title">Завантаженість по днях</div>
+                                <canvas id="loadChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Block 3: Digital Workers -->
+                <div class="center-section" id="workersSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Digital Workers
+                    </div>
+                    <div class="section-body">
+                        <div class="workers-grid" id="workersGrid">
+                            <div class="center-loading">Завантаження...</div>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Block 4: Tasks -->
                 <div class="center-section" id="tasksSection">
-                    <div class="center-section-title">
-                        <span class="section-icon"></span> Задачі
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Задачі
                     </div>
-                    <div class="center-tasks-list" id="tasksList">
-                        <div class="center-loading">Завантаження...</div>
-                    </div>
-                </div>
-
-                <!-- Block 5: Charts (v19.8) -->
-                <div class="center-section" id="chartsSection">
-                    <div class="center-section-title">
-                        <span class="section-icon"></span> Аналітика
-                    </div>
-                    <div class="charts-grid">
-                        <div class="chart-card">
-                            <div class="chart-card-title">Виручка за тиждень</div>
-                            <canvas id="revenueChart" height="200"></canvas>
-                        </div>
-                        <div class="chart-card">
-                            <div class="chart-card-title">Бронювання за тиждень</div>
-                            <canvas id="bookingsChart" height="200"></canvas>
-                        </div>
-                        <div class="chart-card">
-                            <div class="chart-card-title">Топ програми</div>
-                            <canvas id="programsChart" height="200"></canvas>
-                        </div>
-                        <div class="chart-card">
-                            <div class="chart-card-title">Завантаженість по днях</div>
-                            <canvas id="loadChart" height="200"></canvas>
+                    <div class="section-body">
+                        <div class="center-tasks-list" id="tasksList">
+                            <div class="center-loading">Завантаження...</div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Block 6: Loyalty Tiers (v19.7) -->
+                <!-- Block 5: Loyalty Tiers (v19.7) -->
                 <div class="center-section" id="loyaltySection">
-                    <div class="center-section-title">
-                        <span class="section-icon"></span> Програма лояльності
-                        <button class="btn-center-action" onclick="recalculateLoyalty()">Перерахувати</button>
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Програма лояльності
+                        <button class="btn-center-action" onclick="event.stopPropagation();recalculateLoyalty()">Перерахувати</button>
                     </div>
-                    <div class="loyalty-tiers-grid" id="loyaltyTiersGrid">
-                        <div class="center-loading">Завантаження...</div>
+                    <div class="section-body">
+                        <div class="loyalty-tiers-grid" id="loyaltyTiersGrid">
+                            <div class="center-loading">Завантаження...</div>
+                        </div>
+                        <div class="loyalty-stats" id="loyaltyStats"></div>
                     </div>
-                    <div class="loyalty-stats" id="loyaltyStats"></div>
                 </div>
 
-                <!-- Block 7: Discount Codes (v19.7) -->
+                <!-- Block 6: Discount Codes (v19.7) -->
                 <div class="center-section" id="discountsSection">
-                    <div class="center-section-title">
-                        <span class="section-icon"></span> Промокоди
-                        <button class="btn-center-action" onclick="showAddDiscountForm()">+ Додати</button>
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Промокоди
+                        <button class="btn-center-action" onclick="event.stopPropagation();showAddDiscountForm()">+ Додати</button>
                     </div>
-                    <div id="discountsList">
-                        <div class="center-loading">Завантаження...</div>
+                    <div class="section-body">
+                        <div id="discountsList">
+                            <div class="center-loading">Завантаження...</div>
+                        </div>
+                        <div id="addDiscountForm" class="discount-add-form hidden"></div>
                     </div>
-                    <div id="addDiscountForm" class="discount-add-form hidden"></div>
                 </div>
 
-                <!-- Block 8: Discount Proposals (v19.7) -->
+                <!-- Block 7: Discount Proposals (v19.7) -->
                 <div class="center-section" id="proposalsSection">
-                    <div class="center-section-title">
-                        <span class="section-icon"></span> Пропозиції зі знижками
-                        <button class="btn-center-action" onclick="showAddProposalForm()">+ Додати</button>
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Пропозиції зі знижками
+                        <button class="btn-center-action" onclick="event.stopPropagation();showAddProposalForm()">+ Додати</button>
                     </div>
-                    <div id="proposalsList">
-                        <div class="center-loading">Завантаження...</div>
+                    <div class="section-body">
+                        <div id="proposalsList">
+                            <div class="center-loading">Завантаження...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Block 8: Price Matrix -->
+                <div class="center-section" id="pricesSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Централізовані ціни
+                    </div>
+                    <div class="section-body">
+                        <div id="pricesContent">
+                            <div class="center-loading">Завантаження...</div>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Block 9: Daily Report -->
                 <div class="center-section" id="reportSection">
-                    <div class="center-section-title">
-                        <span class="section-icon"></span> Щоденний звіт
-                        <button class="btn-center-action" onclick="sendReportToTelegram()">Надіслати в Telegram</button>
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Щоденний звіт
+                        <button class="btn-center-action" onclick="event.stopPropagation();sendReportToTelegram()">Надіслати в Telegram</button>
                     </div>
-                    <div id="reportContent">
-                        <div class="center-loading">Завантаження...</div>
+                    <div class="section-body">
+                        <div id="reportContent">
+                            <div class="center-loading">Завантаження...</div>
+                        </div>
                     </div>
                 </div>
             </div>

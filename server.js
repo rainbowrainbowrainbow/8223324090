@@ -141,6 +141,7 @@ app.use('/api/loyalty', require('./routes/loyalty'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/board', require('./routes/board'));
 app.use('/api/training', require('./routes/training'));
+app.use('/api/sales', require('./routes/sales'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));

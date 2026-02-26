@@ -2394,3 +2394,70 @@ body:not(.dark-mode) .cmd-btn-min, body:not(.dark-mode) .cmd-btn-close { backgro
 @media (max-width: 480px) {
     .cmd-panel { width: calc(100vw - 24px); right: 12px; bottom: 60px; }
 }
+
+/* ==========================================
+   v20.5.0 SALES TECHNIQUES
+   ========================================== */
+
+/* Call script panel */
+.panel-header-actions { display: flex; align-items: center; gap: 8px; }
+.btn-call-script {
+    padding: 4px 10px; border: 1.5px solid var(--primary, #F5C842); border-radius: 6px;
+    background: transparent; color: var(--primary, #F5C842); font-size: 11px;
+    font-weight: 700; cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.btn-call-script:hover { background: var(--primary, #F5C842); color: #1a202c; }
+
+.call-script-panel {
+    background: rgba(245, 200, 66, 0.06); border-bottom: 1px solid rgba(245, 200, 66, 0.2);
+    padding: 12px; max-height: 300px; overflow-y: auto;
+}
+.call-script-panel.hidden { display: none; }
+
+.script-step {
+    display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start;
+}
+.script-step-num {
+    width: 24px; height: 24px; border-radius: 50%; background: var(--primary, #F5C842);
+    color: #1a202c; font-size: 12px; font-weight: 900; display: flex;
+    align-items: center; justify-content: center; flex-shrink: 0;
+}
+.script-step-body { flex: 1; }
+.script-step-title { font-size: 12px; font-weight: 800; margin-bottom: 2px; }
+.script-step-text { font-size: 12px; color: var(--gray-500, #A0AEC0); line-height: 1.4; }
+
+/* Upsell section */
+.upsell-section label { font-weight: 700; margin-bottom: 6px; display: block; }
+.upsell-list { display: flex; flex-direction: column; gap: 6px; }
+.upsell-item {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    background: rgba(0,0,0,0.02); border-radius: 8px; cursor: pointer; font-size: 13px;
+}
+.upsell-item:hover { background: rgba(0,0,0,0.04); }
+.upsell-check { margin: 0; accent-color: var(--primary, #F5C842); }
+.upsell-name { flex: 1; font-weight: 600; }
+.upsell-price { font-size: 12px; color: var(--gray-500, #A0AEC0); font-weight: 700; }
+
+/* Price per child */
+.price-per-child-info {
+    padding: 8px 12px; background: rgba(72, 187, 120, 0.08); border-radius: 8px;
+    font-size: 13px; color: var(--gray-700, #4A5568);
+}
+.per-child-label { font-weight: 600; }
+.per-child-value { font-weight: 900; color: #48BB78; }
+.per-child-total { font-size: 11px; color: var(--gray-400, #CBD5E0); }
+
+/* Free slots hint */
+.free-slots-hint {
+    padding: 8px 12px; background: rgba(245, 200, 66, 0.08); border-radius: 8px;
+    font-size: 12px; color: var(--gray-600, #718096); line-height: 1.5;
+}
+.free-slots-hint b { color: var(--primary-dark, #D4A800); }
+.free-slots-icon { font-size: 14px; }
+
+/* Dark mode overrides */
+.dark-mode .call-script-panel { background: rgba(245, 200, 66, 0.04); border-bottom-color: rgba(245, 200, 66, 0.1); }
+.dark-mode .upsell-item { background: rgba(255,255,255,0.04); }
+.dark-mode .upsell-item:hover { background: rgba(255,255,255,0.06); }
+.dark-mode .price-per-child-info { background: rgba(72, 187, 120, 0.06); color: var(--gray-300); }
+.dark-mode .free-slots-hint { background: rgba(245, 200, 66, 0.06); color: var(--gray-400); }

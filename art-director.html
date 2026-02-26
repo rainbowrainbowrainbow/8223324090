@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Event Maestro | Art Director</title>
+    <title>Event Maestro | Арт</title>
     <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Maestro">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=18.2">
-    <link rel="stylesheet" href="css/layout.css?v=18.2">
-    <link rel="stylesheet" href="css/pages.css?v=18.2">
-    <link rel="stylesheet" href="css/modals.css?v=18.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=18.2">
-    <link rel="stylesheet" href="css/responsive.css?v=18.2">
+    <link rel="stylesheet" href="css/base.css?v=20.80">
+    <link rel="stylesheet" href="css/layout.css?v=20.80">
+    <link rel="stylesheet" href="css/pages.css?v=20.80">
+    <link rel="stylesheet" href="css/modals.css?v=20.80">
+    <link rel="stylesheet" href="css/dark-mode.css?v=20.80">
+    <link rel="stylesheet" href="css/responsive.css?v=20.80">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -34,6 +34,7 @@
         .artdir-tab.active { background: var(--primary); color: #fff; }
         .artdir-tab-content { display: none; }
         .artdir-tab-content.active { display: block; }
+        .artdir-embed-frame { width: 100%; min-height: calc(100vh - 160px); border: none; border-radius: 12px; background: rgba(255,255,255,0.2); }
 
         /* Section blocks (reuse center pattern) */
         .artdir-section {
@@ -324,17 +325,11 @@
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="logo">
                     <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
-                    <div class="em-logo">
-                        <span class="em-logo-title">Event Maestro</span>
-                        <span class="em-logo-sub">AI First CRM</span>
-                    </div>
                 </div>
                 <nav class="header-nav">
                     <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                    <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
-                    <a href="/designs" class="nav-link"><span class="nav-icon">Д</span> <span class="nav-text">Дизайни</span></a>
-                    <a href="/art-director" class="nav-link active"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
-                    <a href="/kleshnya" class="nav-link nav-link-kleshnya"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
+                    <a href="/center" class="nav-link"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
+                    <a href="/art" class="nav-link active"><span class="nav-icon">А</span> <span class="nav-text">Арт</span></a>
                 </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
@@ -345,7 +340,7 @@
 
         <main id="main-content" class="page-container" style="margin-left: 220px;">
             <div class="artdir-page">
-                <h1>🎬 Art Director</h1>
+                <h1>Арт</h1>
 
                 <!-- Tabs -->
                 <div class="artdir-tabs" id="artdirTabs">
@@ -353,6 +348,18 @@
                     <button class="artdir-tab" data-tab="pipeline">Конвеєр</button>
                     <button class="artdir-tab" data-tab="templates">Шаблони</button>
                     <button class="artdir-tab" data-tab="brand">Brand Book</button>
+                    <button class="artdir-tab" data-tab="programs">Програми</button>
+                    <button class="artdir-tab" data-tab="designs">Дизайни</button>
+                </div>
+
+                <!-- Tab: Programs (read-only catalog) -->
+                <div class="artdir-tab-content" id="tab-programs">
+                    <iframe src="/programs?embedded=1" class="artdir-embed-frame" title="Каталог програм"></iframe>
+                </div>
+
+                <!-- Tab: Designs (full functionality) -->
+                <div class="artdir-tab-content" id="tab-designs">
+                    <iframe src="/designs?embedded=1" class="artdir-embed-frame" title="Дизайни"></iframe>
                 </div>
 
                 <!-- Tab: Overview -->
@@ -556,9 +563,10 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=18.2"></script>
-    <script src="js/api.js?v=20.51"></script>
-    <script src="js/auth.js?v=20.51"></script>
-    <script src="js/art-director-page.js?v=20.51"></script>
+    <script src="js/config.js?v=20.80"></script>
+    <script src="js/api.js?v=20.80"></script>
+    <script src="js/auth.js?v=20.80"></script>
+    <script src="js/components/sidebar.js?v=20.80"></script>
+    <script src="js/art-director-page.js?v=20.80"></script>
 </body>
 </html>

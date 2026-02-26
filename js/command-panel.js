@@ -1,20 +1,21 @@
 /**
- * js/command-panel.js — Floating Command Panel (v20.2.0)
- * KPI dashboard + quick notes, draggable, collapsible
+ * js/command-panel.js — Slide-in Command Panel (v20.8.0)
+ * KPI dashboard + quick notes, slide-in from right edge
+ * Always-visible FAB trigger accessible from any page
  */
 
 const CommandPanel = (() => {
     let panelEl = null;
-    let isDragging = false;
-    let dragOffset = { x: 0, y: 0 };
+    let fabEl = null;
     let refreshInterval = null;
-    let isMinimized = false;
+    let isOpen = false;
 
     const STORAGE_KEY = 'pzp_cmd_panel';
     const REFRESH_MS = 60000;
 
     function init() {
         if (panelEl) return;
+        createFab();
         createPanel();
         loadState();
         refresh();
@@ -24,19 +25,28 @@ const CommandPanel = (() => {
     function destroy() {
         if (refreshInterval) clearInterval(refreshInterval);
         if (panelEl) panelEl.remove();
+        if (fabEl) fabEl.remove();
         panelEl = null;
+        fabEl = null;
+    }
+
+    function createFab() {
+        fabEl = document.createElement('button');
+        fabEl.className = 'cmd-fab';
+        fabEl.innerHTML = '&#9776;';
+        fabEl.title = 'Командна панель';
+        fabEl.setAttribute('aria-label', 'Відкрити командну панель');
+        fabEl.addEventListener('click', show);
+        document.body.appendChild(fabEl);
     }
 
     function createPanel() {
         panelEl = document.createElement('div');
-        panelEl.className = 'cmd-panel';
+        panelEl.className = 'cmd-panel cmd-panel--closed';
         panelEl.innerHTML = `
-            <div class="cmd-panel-header" id="cmdPanelHeader">
+            <div class="cmd-panel-header">
                 <span class="cmd-panel-title">Командна панель</span>
-                <div class="cmd-panel-btns">
-                    <button class="cmd-btn-min" id="cmdMinBtn" title="Згорнути">&#8722;</button>
-                    <button class="cmd-btn-close" id="cmdCloseBtn" title="Сховати">&#10005;</button>
-                </div>
+                <button class="cmd-btn-close" id="cmdCloseBtn" title="Закрити">&#10005;</button>
             </div>
             <div class="cmd-panel-body" id="cmdPanelBody">
                 <div class="cmd-kpi" id="cmdKpi">
@@ -61,7 +71,6 @@ const CommandPanel = (() => {
         document.body.appendChild(panelEl);
 
         // Events
-        document.getElementById('cmdMinBtn').addEventListener('click', toggleMinimize);
         document.getElementById('cmdCloseBtn').addEventListener('click', hide);
         document.getElementById('cmdAddNote').addEventListener('click', toggleNoteForm);
         document.getElementById('cmdSaveNote').addEventListener('click', saveNote);
@@ -69,10 +78,10 @@ const CommandPanel = (() => {
             if (e.key === 'Enter') saveNote();
         });
 
-        // Drag
-        const header = document.getElementById('cmdPanelHeader');
-        header.addEventListener('mousedown', startDrag);
-        header.addEventListener('touchstart', startDragTouch, { passive: false });
+        // Close on backdrop click (outside panel)
+        panelEl.addEventListener('click', (e) => {
+            if (e.target === panelEl) hide();
+        });
 
         // Shared notes visibility by role
         const role = typeof getUserRole === 'function' ? getUserRole() : 'admin';
@@ -85,106 +94,37 @@ const CommandPanel = (() => {
     function loadState() {
         try {
             const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-            if (saved.x !== undefined && saved.y !== undefined) {
-                panelEl.style.left = saved.x + 'px';
-                panelEl.style.top = saved.y + 'px';
-                panelEl.style.right = 'auto';
-                panelEl.style.bottom = 'auto';
-            }
-            if (saved.minimized) toggleMinimize();
-            if (saved.hidden) panelEl.classList.add('hidden');
+            if (saved.open) show();
         } catch { /* ignore */ }
     }
 
     function saveState() {
         try {
-            const rect = panelEl.getBoundingClientRect();
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                x: rect.left, y: rect.top,
-                minimized: isMinimized,
-                hidden: panelEl.classList.contains('hidden')
-            }));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ open: isOpen }));
         } catch { /* ignore */ }
-    }
-
-    function toggleMinimize() {
-        isMinimized = !isMinimized;
-        const body = document.getElementById('cmdPanelBody');
-        body.classList.toggle('hidden', isMinimized);
-        document.getElementById('cmdMinBtn').innerHTML = isMinimized ? '&#9633;' : '&#8722;';
-        saveState();
-    }
-
-    function hide() {
-        panelEl.classList.add('hidden');
-        saveState();
     }
 
     function show() {
         if (!panelEl) init();
-        panelEl.classList.remove('hidden');
+        isOpen = true;
+        panelEl.classList.remove('cmd-panel--closed');
+        panelEl.classList.add('cmd-panel--open');
+        if (fabEl) fabEl.classList.add('hidden');
         saveState();
         refresh();
     }
 
-    // Drag handlers
-    function startDrag(e) {
-        if (e.target.tagName === 'BUTTON') return;
-        isDragging = true;
-        const rect = panelEl.getBoundingClientRect();
-        dragOffset.x = e.clientX - rect.left;
-        dragOffset.y = e.clientY - rect.top;
-        document.addEventListener('mousemove', onDrag);
-        document.addEventListener('mouseup', stopDrag);
-        panelEl.style.transition = 'none';
-    }
-
-    function startDragTouch(e) {
-        if (e.target.tagName === 'BUTTON') return;
-        isDragging = true;
-        const touch = e.touches[0];
-        const rect = panelEl.getBoundingClientRect();
-        dragOffset.x = touch.clientX - rect.left;
-        dragOffset.y = touch.clientY - rect.top;
-        document.addEventListener('touchmove', onDragTouch, { passive: false });
-        document.addEventListener('touchend', stopDrag);
-        panelEl.style.transition = 'none';
-    }
-
-    function onDrag(e) {
-        if (!isDragging) return;
-        moveTo(e.clientX - dragOffset.x, e.clientY - dragOffset.y);
-    }
-
-    function onDragTouch(e) {
-        if (!isDragging) return;
-        e.preventDefault();
-        const touch = e.touches[0];
-        moveTo(touch.clientX - dragOffset.x, touch.clientY - dragOffset.y);
-    }
-
-    function moveTo(x, y) {
-        const maxX = window.innerWidth - panelEl.offsetWidth;
-        const maxY = window.innerHeight - 40;
-        panelEl.style.left = Math.max(0, Math.min(x, maxX)) + 'px';
-        panelEl.style.top = Math.max(0, Math.min(y, maxY)) + 'px';
-        panelEl.style.right = 'auto';
-        panelEl.style.bottom = 'auto';
-    }
-
-    function stopDrag() {
-        isDragging = false;
-        document.removeEventListener('mousemove', onDrag);
-        document.removeEventListener('mouseup', stopDrag);
-        document.removeEventListener('touchmove', onDragTouch);
-        document.removeEventListener('touchend', stopDrag);
-        panelEl.style.transition = '';
+    function hide() {
+        isOpen = false;
+        panelEl.classList.remove('cmd-panel--open');
+        panelEl.classList.add('cmd-panel--closed');
+        if (fabEl) fabEl.classList.remove('hidden');
         saveState();
     }
 
     // Data refresh
     async function refresh() {
-        if (!panelEl || panelEl.classList.contains('hidden') || isMinimized) return;
+        if (!panelEl || !isOpen) return;
         await Promise.all([refreshKpi(), refreshNotes()]);
     }
 

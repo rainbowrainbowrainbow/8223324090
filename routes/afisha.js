@@ -493,6 +493,35 @@ router.patch('/:id/time', async (req, res) => {
     }
 });
 
+// v20.8.0: Move afisha to a different animator line
+router.patch('/:id/line', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { line_id } = req.body;
+
+        const event = await pool.query('SELECT * FROM afisha WHERE id = $1', [id]);
+        if (event.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+        const ev = event.rows[0];
+
+        // Allow null to unassign from line
+        const newLineId = line_id != null ? parseInt(line_id) : null;
+
+        await pool.query('UPDATE afisha SET line_id = $1 WHERE id = $2', [newLineId, id]);
+
+        const username = req.user?.username || 'system';
+        await pool.query(
+            'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+            ['afisha_move_line', username, JSON.stringify({ id: ev.id, title: ev.title, from_line: ev.line_id, to_line: newLineId })]
+        ).catch(err => log.error('History log error', err));
+
+        res.json({ success: true, lineId: newLineId });
+    } catch (err) {
+        log.error('Move line error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;

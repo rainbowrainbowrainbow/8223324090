@@ -39,8 +39,22 @@ async function initPage() {
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
 
+    // v20.8.0: Embedded mode — read-only (no edit/delete/add)
+    const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === '1';
+    if (isEmbedded) {
+        AppState.embedded = true;
+        const sidebar = document.getElementById('sidebarNav');
+        const header = document.querySelector('.header');
+        const loginOverlay = document.getElementById('loginOverlay');
+        if (sidebar) sidebar.style.display = 'none';
+        if (header) header.style.display = 'none';
+        if (loginOverlay) loginOverlay.style.display = 'none';
+        const main = document.querySelector('.page-container');
+        if (main) main.style.marginLeft = '0';
+    }
+
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
-    const canManage = MANAGE_ROLES.includes(user.role);
+    const canManage = !isEmbedded && MANAGE_ROLES.includes(user.role);
     const addBtn = document.getElementById('addProductBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 
@@ -121,7 +135,7 @@ function renderProducts() {
     }
 
     const MGMT_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
-    const canManage = AppState.currentUser && MGMT_ROLES.includes(AppState.currentUser.role);
+    const canManage = !AppState.embedded && AppState.currentUser && MGMT_ROLES.includes(AppState.currentUser.role);
 
     grid.innerHTML = filtered.map(p => `
         <div class="card program-card${p.isActive === false ? ' inactive' : ''}" data-id="${escapeHtml(p.id)}">

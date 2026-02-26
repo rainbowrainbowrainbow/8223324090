@@ -787,6 +787,14 @@ function createAfishaBlock(event, startHour) {
         block.addEventListener('click', () => editAfishaItem(event.id));
     }
 
+    // v20.8.0: Context menu for moving afisha between lines
+    if (!isViewer()) {
+        block.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            _showAfishaLineMenu(e, event);
+        });
+    }
+
     block.addEventListener('mouseenter', (e) => showAfishaTooltip(e, event));
     block.addEventListener('mousemove', (e) => { if (!_afishaDragState) moveTooltip(e); });
     block.addEventListener('mouseleave', hideTooltip);
@@ -1919,6 +1927,79 @@ async function _endAfishaDrag() {
     }
 
     _afishaDragState = null;
+}
+
+// v20.8.0: Context menu for moving afisha to another line
+function _showAfishaLineMenu(e, event) {
+    // Remove any existing menu
+    const old = document.querySelector('.afisha-line-menu');
+    if (old) old.remove();
+
+    // Get available lines from the timeline
+    const lineHeaders = document.querySelectorAll('.line-header[data-line-id]');
+    const lines = [];
+    lineHeaders.forEach(h => {
+        const lid = h.dataset.lineId;
+        if (lid === 'afisha') return;
+        const nameEl = h.querySelector('.line-name');
+        const name = nameEl ? nameEl.textContent : `Лінія ${lid}`;
+        lines.push({ id: parseInt(lid), name });
+    });
+
+    if (lines.length === 0) return;
+
+    const menu = document.createElement('div');
+    menu.className = 'afisha-line-menu';
+    menu.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:10000;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.15);padding:4px 0;min-width:180px;font-size:13px;font-family:inherit;`;
+
+    const title = document.createElement('div');
+    title.style.cssText = 'padding:6px 14px;font-weight:700;font-size:11px;color:#718096;text-transform:uppercase;border-bottom:1px solid #edf2f7;';
+    title.textContent = 'Перемістити на лінію';
+    menu.appendChild(title);
+
+    // Unassign option
+    const unassign = document.createElement('div');
+    unassign.style.cssText = 'padding:8px 14px;cursor:pointer;';
+    unassign.textContent = '— Без лінії (афіша)';
+    unassign.onmouseenter = () => unassign.style.background = '#f7fafc';
+    unassign.onmouseleave = () => unassign.style.background = '';
+    unassign.onclick = () => { _moveAfishaToLine(event.id, null); menu.remove(); };
+    if (event.line_id == null) unassign.style.fontWeight = '700';
+    menu.appendChild(unassign);
+
+    for (const line of lines) {
+        const item = document.createElement('div');
+        item.style.cssText = 'padding:8px 14px;cursor:pointer;';
+        item.textContent = line.name;
+        if (event.line_id === line.id) item.style.fontWeight = '700';
+        item.onmouseenter = () => item.style.background = '#f7fafc';
+        item.onmouseleave = () => item.style.background = '';
+        item.onclick = () => { _moveAfishaToLine(event.id, line.id); menu.remove(); };
+        menu.appendChild(item);
+    }
+
+    document.body.appendChild(menu);
+
+    // Close on click outside
+    const closeHandler = (ev) => {
+        if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', closeHandler, true); }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler, true), 0);
+}
+
+async function _moveAfishaToLine(afishaId, lineId) {
+    try {
+        const resp = await fetch(`${API_BASE}/afisha/${afishaId}/line`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ line_id: lineId })
+        });
+        if (!resp.ok) throw new Error('API error');
+        showNotification(lineId ? `Афіша переміщена на лінію` : 'Афіша повернута в загальний рядок');
+        loadTimeline();
+    } catch {
+        showNotification('Помилка переміщення', 'error');
+    }
 }
 
 document.addEventListener('mousemove', (e) => _moveAfishaDrag(e.clientX));

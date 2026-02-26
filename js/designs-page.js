@@ -53,6 +53,16 @@ let editTags = [];
         window.location.href = '/';
     });
 
+    // v20.8.0: Embedded mode — hide chrome when inside Art page
+    if (new URLSearchParams(window.location.search).get('embedded') === '1') {
+        const sidebar = document.getElementById('sidebarNav');
+        const header = document.querySelector('.header');
+        if (sidebar) sidebar.style.display = 'none';
+        if (header) header.style.display = 'none';
+        const main = document.querySelector('.page-container');
+        if (main) main.style.marginLeft = '0';
+    }
+
     initPage();
 })();
 
@@ -284,7 +294,7 @@ function downloadDesign(id) {
     const d = designs.find(x => x.id === id);
     if (!d) return;
     const a = document.createElement('a');
-    a.href = `/uploads/designs/${d.filename}`;
+    a.href = `/api/designs/${d.id}/download`;
     a.download = d.originalName || d.title;
     a.click();
 }
@@ -408,7 +418,9 @@ function openLightbox(id) {
     const d = designs.find(x => x.id === id);
     if (!d) return;
     const lb = document.getElementById('lightbox');
-    document.getElementById('lightboxImg').src = `/uploads/designs/${d.filename}`;
+    const img = document.getElementById('lightboxImg');
+    img.onerror = () => { img.src = '/images/favicon-512.png'; };
+    img.src = `/uploads/designs/${d.filename}`;
     document.getElementById('lightboxInfo').textContent = d.title || d.originalName;
     lb.classList.add('visible');
 }

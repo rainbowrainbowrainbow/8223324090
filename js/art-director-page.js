@@ -874,6 +874,13 @@ async function initArtDirectorPage() {
     setupTabs();
     setupModals();
 
+    // v20.8.0: Handle ?tab= URL parameter (for programs/designs deep-link)
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    if (urlTab) {
+        const tabBtn = document.querySelector(`.artdir-tab[data-tab="${urlTab}"]`);
+        if (tabBtn) tabBtn.click();
+    }
+
     // Load initial data
     const [_, templatesData] = await Promise.all([
         loadOverview(),

@@ -12,14 +12,11 @@ const Sidebar = (() => {
         { href: '/center',    icon: 'Ц',  label: 'Центр' },
         { href: '/tasks',     icon: 'З',  label: 'Задачі' },
         { href: '/art',       icon: 'А',  label: 'Арт' },
-        { href: '/programs',  icon: 'П',  label: 'Програми' },
         { href: '/customers', icon: 'К',  label: 'Клієнти' },
         { href: '/staff',     icon: 'Ш',  label: 'Персонал' },
         { href: '/warehouse', icon: 'С',  label: 'Склад' },
-        { href: '/designs',   icon: 'Д',  label: 'Дизайни' },
-        { href: '/hr',        icon: 'H',  label: 'HR' },
         { href: '/training',  icon: 'Н',  label: 'Навчання' },
-        { href: '/demo',      icon: 'Р',  label: 'Демо' },
+        { href: '/kleshnya',  icon: 'EM', label: 'Event Maestro' },
         { href: '/settings',  icon: 'Л',  label: 'Налаштування' },
     ];
 

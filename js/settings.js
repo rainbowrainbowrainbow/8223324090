@@ -686,9 +686,11 @@ async function showSettings() {
     const animatorsTextarea = document.getElementById('settingsAnimatorsList');
     if (animatorsTextarea) animatorsTextarea.value = animators.join('\n');
 
+    const SETTINGS_ADMIN_ROLES = ['creator', 'director'];
+    const isSettingsAdmin = SETTINGS_ADMIN_ROLES.includes(AppState.currentUser.role);
     const tgSection = document.getElementById('settingsTelegramSection');
     if (tgSection) {
-        tgSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
+        tgSection.style.display = isSettingsAdmin ? 'block' : 'none';
     }
 
     // Load chat ID into input (user can also type it manually)
@@ -726,15 +728,15 @@ async function showSettings() {
     // v12.6: Load contractors
     const contractorsSection = document.getElementById('settingsContractorsSection');
     if (contractorsSection) {
-        contractorsSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
-        if (AppState.currentUser.role === 'admin') renderContractors();
+        contractorsSection.style.display = isSettingsAdmin ? 'block' : 'none';
+        if (isSettingsAdmin) renderContractors();
     }
 
     // v8.3: Load automation rules
     const automationSection = document.getElementById('settingsAutomationSection');
     if (automationSection) {
-        automationSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
-        if (AppState.currentUser.role === 'admin') renderAutomationRules();
+        automationSection.style.display = isSettingsAdmin ? 'block' : 'none';
+        if (isSettingsAdmin) renderAutomationRules();
     }
 
     // v8.4: Certificates moved to timeline panel (see openCertificatesPanel)

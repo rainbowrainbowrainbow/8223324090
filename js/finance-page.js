@@ -771,7 +771,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('currentUser').textContent = user.name || user.username;
 
         // Role-based visibility
-        if (user.role === 'admin') {
+        const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+        if (MANAGE_ROLES.includes(user.role)) {
             const addBtn = document.getElementById('addTransactionBtn');
             if (addBtn) addBtn.style.display = '';
             const exportBtn = document.getElementById('exportCsvBtn');

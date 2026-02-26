@@ -72,7 +72,8 @@ async function initPage() {
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
 
-    canManage = user.role === 'admin' || user.role === 'manager';
+    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    canManage = MANAGE_ROLES.includes(user.role);
     const addBtn = document.getElementById('addItemBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 

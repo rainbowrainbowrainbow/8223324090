@@ -39,7 +39,8 @@ async function initPage() {
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
 
-    const canManage = user.role === 'admin' || user.role === 'manager';
+    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    const canManage = MANAGE_ROLES.includes(user.role);
     const addBtn = document.getElementById('addProductBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 
@@ -119,7 +120,8 @@ function renderProducts() {
         return;
     }
 
-    const canManage = AppState.currentUser && (AppState.currentUser.role === 'admin' || AppState.currentUser.role === 'manager');
+    const MGMT_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    const canManage = AppState.currentUser && MGMT_ROLES.includes(AppState.currentUser.role);
 
     grid.innerHTML = filtered.map(p => `
         <div class="card program-card${p.isActive === false ? ' inactive' : ''}" data-id="${escapeHtml(p.id)}">

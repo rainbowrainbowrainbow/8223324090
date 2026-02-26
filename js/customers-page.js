@@ -564,7 +564,8 @@ async function initPage() {
 
     document.getElementById('currentUser').textContent = user.name;
 
-    const canManage = user.role === 'admin' || user.role === 'manager';
+    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    const canManage = MANAGE_ROLES.includes(user.role);
     document.getElementById('addCustomerBtn').style.display = canManage ? '' : 'none';
     document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';
 

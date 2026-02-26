@@ -758,7 +758,8 @@ async function initAuth() {
     }
 
     AppState.currentUser = user;
-    isAdminUser = user.role === 'admin';
+    const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+    isAdminUser = ADMIN_ROLES.includes(user.role);
 
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;

@@ -7,12 +7,12 @@
     <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Maestro">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=18.0">
-    <link rel="stylesheet" href="css/layout.css?v=18.0">
-    <link rel="stylesheet" href="css/pages.css?v=18.0">
-    <link rel="stylesheet" href="css/modals.css?v=18.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=18.0">
-    <link rel="stylesheet" href="css/responsive.css?v=18.0">
+    <link rel="stylesheet" href="css/base.css?v=19.40">
+    <link rel="stylesheet" href="css/layout.css?v=19.40">
+    <link rel="stylesheet" href="css/pages.css?v=19.40">
+    <link rel="stylesheet" href="css/modals.css?v=19.40">
+    <link rel="stylesheet" href="css/dark-mode.css?v=19.40">
+    <link rel="stylesheet" href="css/responsive.css?v=19.40">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -212,28 +212,11 @@
                 <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
             </nav>
         </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <header class="header">
             <div class="header-content">
-                <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
-                    <div class="em-logo">
-                        <span class="em-logo-title">Event Maestro</span>
-                        <span class="em-logo-sub">AI First CRM</span>
-                    </div>
-                </div>
-                <nav class="header-nav">
-                    <a href="/" class="nav-link">📅 <span class="nav-text">Таймлайн</span></a>
-                    <a href="/tasks" class="nav-link active">📝 <span class="nav-text">Задачі</span></a>
-                    <a href="/programs" class="nav-link">📚 <span class="nav-text">Програми</span></a>
-                    <a href="/staff" class="nav-link">👥 <span class="nav-text">Графік</span></a>
-                    <a href="/hr" class="nav-link">🏢 <span class="nav-text">HR</span></a>
-                    <a href="/designs" class="nav-link">🎨 <span class="nav-text">Дизайни</span></a>
-                    <a href="/customers" class="nav-link">🗂 <span class="nav-text">Клієнти</span></a>
-                    <a href="/finance" class="nav-link">💰 <span class="nav-text">Фінанси</span></a>
-                    <a href="/analytics" class="nav-link">📊 <span class="nav-text">Аналітика</span></a>
-                    <a href="/kleshnya" class="nav-link nav-link-kleshnya">🦀 <span class="nav-text">Клешня</span></a>
-                </nav>
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
@@ -241,7 +224,7 @@
             </div>
         </header>
 
-        <main id="main-content" class="page-container" style="margin-left: 220px;">
+        <main id="main-content" class="page-container">
             <!-- v10.0: Points bar -->
             <div class="points-bar" id="pointsBar" style="display:none">
                 <span class="points-label">🦀 Бали:</span>
@@ -342,9 +325,17 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=18.0"></script>
-    <script src="js/api.js?v=18.0"></script>
-    <script src="js/auth.js?v=18.0"></script>
-    <script src="js/tasks-page.js?v=18.0"></script>
+    <script src="js/config.js?v=19.40"></script>
+    <script src="js/api.js?v=19.40"></script>
+    <script src="js/auth.js?v=19.40"></script>
+    <script src="js/tasks-page.js?v=19.40"></script>
+    <script>
+    // Sidebar toggle for mobile
+    (function(){
+        var t=document.getElementById('sidebarToggle'),s=document.getElementById('sidebarNav'),o=document.getElementById('sidebarOverlay');
+        if(t&&s){t.addEventListener('click',function(){s.classList.toggle('open');if(o)o.classList.toggle('hidden')})}
+        if(o&&s){o.addEventListener('click',function(){s.classList.remove('open');o.classList.add('hidden')})}
+    })();
+    </script>
 </body>
 </html>

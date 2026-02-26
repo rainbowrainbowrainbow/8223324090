@@ -130,7 +130,8 @@
         justify-content: space-between;
     }
 
-    .main-content {
+    .main-content,
+    .page-container {
         margin-left: 0 !important;
         width: 100% !important;
     }

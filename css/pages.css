@@ -9,8 +9,10 @@
 .page-container {
     max-width: 1200px;
     margin: 0 auto;
+    margin-left: 220px;
     padding: 24px;
     overflow-x: hidden;
+    transition: margin-left var(--speed-normal) var(--ease-smooth);
 }
 
 /* ==========================================

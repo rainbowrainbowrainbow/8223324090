@@ -1,18 +1,29 @@
 /**
  * routes/backup.js — Database backup & restore endpoints
  * v17.9.0: Added /verify endpoint for backup integrity testing.
+ * v19.10: Hardened restore — whitelist validation, selective restore, encryption.
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { generateBackupSQL, sendBackupToTelegram } = require('../services/backup');
+const { generateBackupSQL, sendBackupToTelegram, BACKUP_TABLES } = require('../services/backup');
 const { getKyivDateStr } = require('../services/booking');
 const { createLogger } = require('../utils/logger');
+const crypto = require('crypto');
 
+const { logAdminAction } = require('../services/adminAudit');
 const log = createLogger('Backup');
+
+// Whitelist of allowed table names for restore statements
+const ALLOWED_TABLES = new Set(BACKUP_TABLES);
 
 router.post('/create', async (req, res) => {
     try {
         const result = await sendBackupToTelegram();
+        logAdminAction('backup_create', 'backup', {
+            username: req.user?.username, ip: req.ip,
+            requestId: req.headers['x-request-id'],
+            details: { success: result.success, size: result.size }
+        });
         res.json(result);
     } catch (err) {
         log.error('Backup create error', err);
@@ -33,10 +44,41 @@ router.get('/download', async (req, res) => {
     }
 });
 
+/**
+ * Validate a SQL statement: must be INSERT INTO <table> or DELETE FROM <table>
+ * where <table> is in the ALLOWED_TABLES whitelist.
+ * Returns { ok, type, table } or { ok: false, reason }.
+ */
+function validateRestoreStatement(stmt) {
+    const upper = stmt.toUpperCase().replace(/\s+/g, ' ').trim();
+
+    // Match INSERT INTO <table>
+    const insertMatch = upper.match(/^INSERT\s+INTO\s+(\w+)/);
+    if (insertMatch) {
+        const table = insertMatch[1].toLowerCase();
+        if (!ALLOWED_TABLES.has(table)) {
+            return { ok: false, reason: `Table "${table}" not in allowed list` };
+        }
+        return { ok: true, type: 'INSERT', table };
+    }
+
+    // Match DELETE FROM <table>
+    const deleteMatch = upper.match(/^DELETE\s+FROM\s+(\w+)/);
+    if (deleteMatch) {
+        const table = deleteMatch[1].toLowerCase();
+        if (!ALLOWED_TABLES.has(table)) {
+            return { ok: false, reason: `Table "${table}" not in allowed list` };
+        }
+        return { ok: true, type: 'DELETE', table };
+    }
+
+    return { ok: false, reason: `Statement must be INSERT INTO or DELETE FROM, got: ${upper.slice(0, 50)}` };
+}
+
 router.post('/restore', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { sql } = req.body;
+        const { sql, tables: targetTables } = req.body;
         if (!sql || typeof sql !== 'string') {
             return res.status(400).json({ error: 'SQL body required' });
         }
@@ -45,28 +87,62 @@ router.post('/restore', async (req, res) => {
             .map(s => s.trim())
             .filter(s => s.length > 0 && !s.startsWith('--'));
 
-        const forbidden = statements.find(s =>
-            !s.toUpperCase().startsWith('INSERT') &&
-            !s.toUpperCase().startsWith('DELETE')
-        );
-        if (forbidden) {
-            return res.status(400).json({ error: 'Only INSERT and DELETE statements allowed' });
+        // Validate every statement against whitelist
+        const rejected = [];
+        const validated = [];
+        for (const stmt of statements) {
+            const result = validateRestoreStatement(stmt);
+            if (!result.ok) {
+                rejected.push(result.reason);
+            } else {
+                // Selective restore: skip tables not in targetTables (if specified)
+                if (Array.isArray(targetTables) && targetTables.length > 0) {
+                    if (!targetTables.includes(result.table)) continue;
+                }
+                validated.push(stmt);
+            }
+        }
+
+        if (rejected.length > 0) {
+            return res.status(400).json({
+                error: 'Invalid statements detected',
+                rejected: rejected.slice(0, 10)
+            });
         }
 
         await client.query('BEGIN');
+
+        // Reset sequence counters after restore for tables with serial PKs
+        const tablesWithData = new Set();
         let executed = 0;
-        for (const stmt of statements) {
+        for (const stmt of validated) {
             await client.query(stmt);
             executed++;
+            const m = stmt.toUpperCase().match(/^INSERT\s+INTO\s+(\w+)/);
+            if (m) tablesWithData.add(m[1].toLowerCase());
         }
+
+        // Fix serial counters for restored tables
+        for (const table of tablesWithData) {
+            try {
+                await client.query(
+                    `SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 0) + 1, false)`
+                );
+            } catch {
+                // Table may not have serial 'id' column — skip
+            }
+        }
+
         await client.query('COMMIT');
 
-        log.info(`Restore: executed ${executed} statements by ${req.user?.username}`);
-        res.json({ success: true, executed });
+        // Audit log
+        log.info(`Restore: executed ${executed} statements by ${req.user?.username}${targetTables ? ` (tables: ${targetTables.join(',')})` : ''}`);
+
+        res.json({ success: true, executed, tablesRestored: [...tablesWithData] });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error(`Restore error: ${err.message}`);
-        res.status(500).json({ error: 'Restore failed' });
+        res.status(500).json({ error: 'Restore failed', requestId: req.headers['x-request-id'] });
     } finally {
         client.release();
     }
@@ -115,6 +191,93 @@ router.get('/verify', async (req, res) => {
         log.error(`Backup verify error: ${err.message}`);
         res.status(500).json({ ok: false, error: err.message });
     }
+});
+
+// v19.10: Download encrypted backup
+router.get('/download-encrypted', async (req, res) => {
+    try {
+        const passphrase = req.query.key || process.env.BACKUP_ENCRYPTION_KEY;
+        if (!passphrase) {
+            return res.status(400).json({ error: 'Encryption key required (query param "key" or BACKUP_ENCRYPTION_KEY env)' });
+        }
+
+        const sql = await generateBackupSQL();
+        const dateStr = getKyivDateStr();
+
+        // AES-256-CBC encryption
+        const key = crypto.scryptSync(passphrase, 'park-booking-salt', 32);
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+        const encrypted = Buffer.concat([cipher.update(sql, 'utf8'), cipher.final()]);
+
+        // Prepend IV to encrypted data
+        const output = Buffer.concat([iv, encrypted]);
+
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="backup_${dateStr}.enc"`);
+        res.send(output);
+    } catch (err) {
+        log.error('Encrypted backup download error', err);
+        res.status(500).json({ error: 'Encrypted backup failed' });
+    }
+});
+
+// v19.10: Restore from encrypted backup
+router.post('/restore-encrypted', async (req, res) => {
+    try {
+        const passphrase = req.body.key || process.env.BACKUP_ENCRYPTION_KEY;
+        if (!passphrase || !req.body.data) {
+            return res.status(400).json({ error: 'Encryption key and data required' });
+        }
+
+        // Decrypt
+        const key = crypto.scryptSync(passphrase, 'park-booking-salt', 32);
+        const inputBuffer = Buffer.from(req.body.data, 'base64');
+        const iv = inputBuffer.subarray(0, 16);
+        const encrypted = inputBuffer.subarray(16);
+        const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+        const sql = decipher.update(encrypted, null, 'utf8') + decipher.final('utf8');
+
+        // Forward to the regular restore handler logic
+        req.body.sql = sql;
+        // Re-run through the same pipeline (redirect internally)
+        const statements = sql.split(';')
+            .map(s => s.trim())
+            .filter(s => s.length > 0 && !s.startsWith('--'));
+
+        for (const stmt of statements) {
+            const v = validateRestoreStatement(stmt);
+            if (!v.ok) {
+                return res.status(400).json({ error: 'Decrypted backup contains invalid statement', reason: v.reason });
+            }
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            let executed = 0;
+            for (const stmt of statements) {
+                await client.query(stmt);
+                executed++;
+            }
+            await client.query('COMMIT');
+            log.info(`Encrypted restore: executed ${executed} statements by ${req.user?.username}`);
+            res.json({ success: true, executed });
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        log.error(`Encrypted restore error: ${err.message}`);
+        res.status(500).json({ error: 'Encrypted restore failed' });
+    }
+});
+
+// v19.10: List available tables for selective restore
+router.get('/tables', (req, res) => {
+    res.json({ tables: BACKUP_TABLES });
 });
 
 module.exports = router;

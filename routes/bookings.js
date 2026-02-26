@@ -111,17 +111,15 @@ router.post('/', async (req, res) => {
             [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId, b.paymentMethod || null]
         );
 
-        // CRM: update customer aggregates
+        // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
+        // Update first_visit which is not covered by the trigger
         if (customerId) {
             await client.query(
                 `UPDATE customers SET
-                    total_bookings = total_bookings + 1,
-                    total_spent = total_spent + $1,
-                    last_visit = GREATEST(last_visit, $2::date),
-                    first_visit = LEAST(COALESCE(first_visit, $2::date), $2::date),
+                    first_visit = LEAST(COALESCE(first_visit, $1::date), $1::date),
                     updated_at = NOW()
-                 WHERE id = $3`,
-                [b.price || 0, b.date, customerId]
+                 WHERE id = $2`,
+                [b.date, customerId]
             );
         }
 
@@ -129,6 +127,20 @@ router.post('/', async (req, res) => {
             'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
             ['create', b.createdBy || req.user?.username, JSON.stringify(b)]
         );
+
+        // v19.10: Finance auto-record INSIDE transaction for consistency
+        if (!b.linkedTo && b.price > 0 && b.status !== 'preliminary') {
+            try {
+                await client.query(
+                    `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, created_by)
+                     VALUES ('income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' LIMIT 1),
+                             $1, $2, $3, $4, $5, $6)`,
+                    [b.price, `${b.programName || b.label || b.programCode} (${b.id})`, b.date, b.paymentMethod || null, b.id, b.createdBy || req.user?.username]
+                );
+            } catch (finErr) {
+                log.warn(`Finance auto-record failed (non-critical): ${finErr.message}`);
+            }
+        }
 
         await client.query('COMMIT');
 
@@ -146,16 +158,6 @@ router.post('/', async (req, res) => {
         if (!b.linkedTo) {
             processBookingAutomation(b)
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
-        }
-
-        // v16.0: Auto-record finance transaction for confirmed bookings
-        if (!b.linkedTo && b.price > 0 && b.status !== 'preliminary') {
-            pool.query(
-                `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, created_by)
-                 VALUES ('income', (SELECT id FROM finance_categories WHERE name = 'Бронювання' AND type = 'income' LIMIT 1),
-                         $1, $2, $3, $4, $5, $6)`,
-                [b.price, `${b.programName || b.label || b.programCode} (${b.id})`, b.date, b.paymentMethod || null, b.id, b.createdBy || req.user?.username]
-            ).catch(err => log.error(`Finance auto-record failed: ${err.message}`));
         }
 
         const booking = insertResult.rows[0] ? mapBookingRow(insertResult.rows[0]) : { id: b.id };
@@ -243,17 +245,14 @@ router.post('/full', async (req, res) => {
             [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId]
         );
 
-        // CRM: update customer aggregates
+        // v19.10: CRM aggregates now handled by DB trigger
         if (customerId) {
             await client.query(
                 `UPDATE customers SET
-                    total_bookings = total_bookings + 1,
-                    total_spent = total_spent + $1,
-                    last_visit = GREATEST(last_visit, $2::date),
-                    first_visit = LEAST(COALESCE(first_visit, $2::date), $2::date),
+                    first_visit = LEAST(COALESCE(first_visit, $1::date), $1::date),
                     updated_at = NOW()
-                 WHERE id = $3`,
-                [main.price || 0, main.date, customerId]
+                 WHERE id = $2`,
+                [main.date, customerId]
             );
         }
 
@@ -357,16 +356,18 @@ router.delete('/:id', async (req, res) => {
             );
         }
 
-        // CRM: decrement customer aggregates
-        if (booking.customer_id) {
-            await client.query(
-                `UPDATE customers SET
-                    total_bookings = GREATEST(0, total_bookings - 1),
-                    total_spent = GREATEST(0, total_spent - $1),
-                    updated_at = NOW()
-                 WHERE id = $2`,
-                [booking.price || 0, booking.customer_id]
-            );
+        // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
+
+        // v19.10: Remove auto-recorded finance transaction inside transaction
+        if (booking.price > 0 && !booking.linked_to) {
+            try {
+                await client.query(
+                    'DELETE FROM finance_transactions WHERE booking_id = $1',
+                    [id]
+                );
+            } catch (finErr) {
+                log.warn(`Finance auto-delete failed (non-critical): ${finErr.message}`);
+            }
         }
 
         await client.query('COMMIT');

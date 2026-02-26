@@ -1224,7 +1224,7 @@ describe('Backup Restore Validation', () => {
             sql: 'DROP TABLE bookings;'
         });
         assert.equal(res.status, 400);
-        assert.ok(res.data.error.includes('Only INSERT and DELETE'));
+        assert.ok(res.data.error.includes('Invalid statements'));
     });
 
     it('POST /api/backup/restore — forbidden statements (UPDATE) returns 400', async () => {

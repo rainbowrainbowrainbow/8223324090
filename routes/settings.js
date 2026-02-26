@@ -5,6 +5,8 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { validateDate, validateTime, validateSettingKey, mapBookingRow, timeToMinutes, ALL_ROOMS } = require('../services/booking');
 const { createLogger } = require('../utils/logger');
+const { logAdminAction } = require('../services/adminAudit');
+const { settingsCache } = require('../services/cache');
 
 const log = createLogger('Settings');
 
@@ -26,11 +28,18 @@ router.get('/stats/:dateFrom/:dateTo', async (req, res) => {
     }
 });
 
-// Settings CRUD
+// Settings CRUD — v19.10: with in-memory cache
 router.get('/settings/:key', async (req, res) => {
     try {
-        const result = await pool.query('SELECT value FROM settings WHERE key = $1', [req.params.key]);
-        res.json({ value: result.rows.length > 0 ? result.rows[0].value : null });
+        const key = req.params.key;
+        const cached = settingsCache.get(key);
+        if (cached !== null) {
+            return res.json({ value: cached });
+        }
+        const result = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
+        const value = result.rows.length > 0 ? result.rows[0].value : null;
+        settingsCache.set(key, value);
+        res.json({ value });
     } catch (err) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -49,6 +58,13 @@ router.post('/settings', async (req, res) => {
             `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
             [key, value]
         );
+        settingsCache.invalidate(key);
+        // v19.10: Audit trail for settings changes
+        logAdminAction('settings_update', 'settings', {
+            username: req.user?.username, target: key,
+            details: { value: value.length > 50 ? value.slice(0, 50) + '...' : value },
+            ip: req.ip, requestId: req.headers['x-request-id']
+        });
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Internal server error' });
@@ -176,14 +192,15 @@ router.get('/system-status', async (req, res) => {
         const startMs = Date.now();
 
         // DB table counts for key entities
-        const tables = ['bookings', 'users', 'tasks', 'customers', 'finance_transactions', 'staff', 'certificates', 'contractors', 'warehouse_stock', 'procurement_lists'];
+        // v19.10: Use hardcoded Set to ensure only known table names are used (prevent SQL injection)
+        const ALLOWED_STATUS_TABLES = new Set(['bookings', 'users', 'tasks', 'customers', 'finance_transactions', 'staff', 'certificates', 'contractors', 'warehouse_stock', 'procurement_lists']);
         const counts = {};
-        await Promise.all(tables.map(async (t) => {
+        for (const t of ALLOWED_STATUS_TABLES) {
             try {
-                const r = await pool.query(`SELECT COUNT(*)::int AS c FROM ${t}`);
+                const r = await pool.query(`SELECT COUNT(*)::int AS c FROM "${t}"`);
                 counts[t] = r.rows[0].c;
             } catch { counts[t] = null; }
-        }));
+        }
 
         // Last backup — from settings or action log
         let lastBackup = null;

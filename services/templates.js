@@ -179,4 +179,43 @@ function formatAfishaBlock(events) {
     return text;
 }
 
-module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock, certificateTemplates, formatCertificateNotification, formatBatchCertificateNotification };
+// v19.10: Task notification templates
+const taskTemplates = {
+    task_assigned(task, extra) {
+        const priorityIcon = { high: '🔴', normal: '🟡', low: '🟢' };
+        let text = `📋 <b>Призначено задачу</b>\n\n`;
+        text += `${priorityIcon[task.priority] || '🟡'} ${task.title}\n`;
+        if (task.date) text += `📅 ${task.date}\n`;
+        if (task.description) text += `📝 ${task.description.slice(0, 100)}\n`;
+        if (task.deadline) text += `⏰ Дедлайн: ${task.deadline}\n`;
+        text += `\n👤 Призначив: ${extra.username || '?'}`;
+        return text;
+    },
+
+    task_completed(task, extra) {
+        let text = `✅ <b>Задачу виконано</b>\n\n`;
+        text += `📋 ${task.title}\n`;
+        if (task.date) text += `📅 ${task.date}\n`;
+        text += `\n👤 Виконав: ${extra.username || '?'}`;
+        return text;
+    },
+
+    finance_alert(transaction, extra) {
+        const typeIcon = transaction.type === 'income' ? '💰' : '💸';
+        const typeText = transaction.type === 'income' ? 'Дохід' : 'Витрата';
+        let text = `${typeIcon} <b>Фінансова операція</b>\n\n`;
+        text += `📊 ${typeText}: ${transaction.amount} ₴\n`;
+        if (transaction.description) text += `📝 ${transaction.description}\n`;
+        text += `📅 ${transaction.date}\n`;
+        text += `\n👤 ${extra.username || '?'}`;
+        return text;
+    }
+};
+
+function formatTaskNotification(type, task, extra = {}) {
+    const template = taskTemplates[type];
+    if (!template) return '';
+    return template(task, extra);
+}
+
+module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock, certificateTemplates, formatCertificateNotification, formatBatchCertificateNotification, taskTemplates, formatTaskNotification };

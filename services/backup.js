@@ -185,4 +185,4 @@ async function sendBackupToTelegram() {
     }
 }
 
-module.exports = { generateBackupSQL, sendBackupToTelegram };
+module.exports = { generateBackupSQL, sendBackupToTelegram, BACKUP_TABLES };

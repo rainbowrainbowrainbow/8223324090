@@ -6,6 +6,8 @@ const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
+const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
+const { formatTaskNotification } = require('../services/templates');
 const log = createLogger('Tasks');
 
 // Lazy require to avoid circular dependency
@@ -13,15 +15,27 @@ function getKleshnya() {
     return require('../services/kleshnya');
 }
 
+// v19.10: Send task notification to Telegram (fire-and-forget)
+async function notifyTaskAssignment(task, username) {
+    try {
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+        const text = formatTaskNotification('task_assigned', task, { username });
+        if (text) await sendTelegramMessage(chatId, text);
+    } catch (err) {
+        log.error(`Task notification failed: ${err.message}`);
+    }
+}
+
 const VALID_STATUSES = ['todo', 'in_progress', 'done'];
 const VALID_PRIORITIES = ['low', 'normal', 'high'];
 const VALID_CATEGORIES = ['event', 'purchase', 'admin', 'trampoline', 'personal', 'improvement', 'operational', 'maintenance'];
 const VALID_TASK_TYPES = ['human', 'bot'];
 
-// GET /api/tasks — list with optional filters
+// GET /api/tasks — list with optional filters + pagination (v19.10)
 router.get('/', async (req, res) => {
     try {
-        const { status, date, assigned_to, owner, afisha_id, type, task_type, category, date_from, date_to } = req.query;
+        const { status, date, assigned_to, owner, afisha_id, type, task_type, category, date_from, date_to, page, limit: lim } = req.query;
         const conditions = [];
         const params = [];
         let idx = 1;
@@ -46,7 +60,6 @@ router.get('/', async (req, res) => {
             conditions.push(`assigned_to = $${idx++}`);
             params.push(assigned_to);
         }
-        // v10.0: Owner filter
         if (owner) {
             conditions.push(`owner = $${idx++}`);
             params.push(owner);
@@ -59,7 +72,6 @@ router.get('/', async (req, res) => {
             conditions.push(`type = $${idx++}`);
             params.push(type);
         }
-        // v10.0: Task type filter (human/bot)
         if (task_type && VALID_TASK_TYPES.includes(task_type)) {
             conditions.push(`task_type = $${idx++}`);
             params.push(task_type);
@@ -70,11 +82,18 @@ router.get('/', async (req, res) => {
         }
 
         const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        // Pagination (optional — backwards compatible: omit page/limit to get all)
+        const limit = Math.min(parseInt(lim) || 500, 500);
+        const offset = ((parseInt(page) || 1) - 1) * limit;
+        params.push(limit, offset);
+
         const result = await pool.query(
             `SELECT * FROM tasks ${where} ORDER BY
                 CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
                 CASE status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 END,
-                created_at DESC`,
+                created_at DESC
+            LIMIT $${idx++} OFFSET $${idx++}`,
             params
         );
         res.json(result.rows);
@@ -168,11 +187,11 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
 });
 
 // PUT /api/tasks/:id — full update — admin/user only
+// v19.10: Optimistic locking via version column
 router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
     try {
         const { id } = req.params;
         const b = req.body;
-        // Support both snake_case and camelCase (for external integrations like OpenClaw)
         const title = b.title;
         const description = b.description;
         const date = b.date;
@@ -185,6 +204,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const deadline = b.deadline;
         const time_window_start = b.time_window_start || b.timeWindowStart;
         const time_window_end = b.time_window_end || b.timeWindowEnd;
+        const clientVersion = b.version !== undefined ? parseInt(b.version) : null;
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
 
         const taskStatus = VALID_STATUSES.includes(status) ? status : 'todo';
@@ -193,7 +213,8 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const completedAt = taskStatus === 'done' ? 'NOW()' : 'NULL';
 
         const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
-            'assigned_to=$6', 'owner=$7', `updated_at=NOW()`, `completed_at=${completedAt}`];
+            'assigned_to=$6', 'owner=$7', `updated_at=NOW()`, `completed_at=${completedAt}`,
+            'version=COALESCE(version,1)+1'];
         const values = [title.trim(), description || null, date || null, taskStatus, taskPriority,
                         assigned_to || null, owner || null];
         let paramIdx = 8;
@@ -220,20 +241,42 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         }
 
         values.push(id);
-        await pool.query(
-            `UPDATE tasks SET ${setClauses.join(', ')} WHERE id=$${paramIdx}`,
+        let whereClause = `WHERE id=$${paramIdx}`;
+
+        // Optimistic locking: check version if client provides it
+        if (clientVersion !== null) {
+            values.push(clientVersion);
+            whereClause += ` AND COALESCE(version,1)=$${++paramIdx}`;
+        }
+
+        const result = await pool.query(
+            `UPDATE tasks SET ${setClauses.join(', ')} ${whereClause} RETURNING *`,
             values
         );
 
-        const updated = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
-        if (updated.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
+        if (result.rows.length === 0) {
+            const existing = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+            if (existing.rows.length === 0) {
+                return res.status(404).json({ error: 'Task not found' });
+            }
+            return res.status(409).json({
+                error: 'Задачу було змінено іншим користувачем',
+                conflict: true,
+                currentData: existing.rows[0]
+            });
+        }
 
         // Log update via Kleshnya
         const kleshnya = getKleshnya();
         const actor = req.user?.username || 'system';
         await kleshnya.logTaskAction(parseInt(id), 'updated', null, title, actor);
 
-        res.json({ success: true, task: updated.rows[0] });
+        // v19.10: Notify on task assignment
+        if (assigned_to) {
+            notifyTaskAssignment(result.rows[0], actor).catch(() => {});
+        }
+
+        res.json({ success: true, task: result.rows[0] });
     } catch (err) {
         log.error('Update error', err);
         res.status(500).json({ error: 'Internal server error' });

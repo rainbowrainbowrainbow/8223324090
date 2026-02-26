@@ -14,6 +14,7 @@ const { authenticateToken } = require('./middleware/auth');
 const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
+const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount } = require('./services/telegram');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
@@ -24,6 +25,7 @@ const { validateEnv } = require('./utils/validateEnv');
 const { initWebSocket, getWSS } = require('./services/websocket');
 const { runMigrations } = require('./db/migrate');
 const { apiAudit } = require('./middleware/apiAudit');
+const { guardScheduler } = require('./services/schedulerGuard');
 const swaggerUi = require('swagger-ui-express');
 const { swaggerSpec } = require('./swagger');
 
@@ -51,6 +53,8 @@ app.use(express.json({ limit: '1mb' }));
 app.use(requestIdMiddleware);
 app.use(securityHeaders);
 app.use(cacheControl);
+// v19.10: API versioning — /api/v1/* → /api/*
+app.use(apiVersionRewrite);
 app.use(express.static(path.join(__dirname)));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -228,10 +232,11 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Global error handler
+// Global error handler — v19.10: include requestId for tracing
 app.use((err, req, res, next) => {
     log.error('Unhandled express error', err);
-    res.status(500).json({ error: 'Internal server error' });
+    const requestId = res.getHeader('X-Request-ID') || req.headers['x-request-id'];
+    res.status(500).json({ error: 'Internal server error', requestId });
 });
 
 // Process-level error handlers
@@ -283,18 +288,17 @@ initDatabase().then(() => {
             registerBotCommands().catch(err => log.error('Bot commands registration error', err));
         } catch (e) { log.error('Failed to register bot commands', e); }
 
-        // Schedulers: digest + reminder + backup + recurring + auto-delete (check every 60s)
-        schedulerIntervals.push(setInterval(checkAutoDigest, 60000));
-        schedulerIntervals.push(setInterval(checkAutoReminder, 60000));
-        schedulerIntervals.push(setInterval(checkAutoBackup, 60000));
-        schedulerIntervals.push(setInterval(checkRecurringTasks, 60000));
-        schedulerIntervals.push(setInterval(checkRecurringAfisha, 60000));
-        schedulerIntervals.push(setInterval(checkScheduledDeletions, 60000));
-        schedulerIntervals.push(setInterval(checkCertificateExpiry, 60000));
-        // v10.0: Kleshnya schedulers
-        schedulerIntervals.push(setInterval(checkTaskReminders, 60000));
-        schedulerIntervals.push(setInterval(checkWorkDayTriggers, 60000));
-        schedulerIntervals.push(setInterval(checkMonthlyPointsReset, 60000));
+        // v19.10: Schedulers wrapped with guardScheduler for dedup + error tracking
+        schedulerIntervals.push(setInterval(guardScheduler('checkAutoDigest', checkAutoDigest, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkAutoReminder', checkAutoReminder, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkAutoBackup', checkAutoBackup, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkRecurringTasks', checkRecurringTasks, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkRecurringAfisha', checkRecurringAfisha, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkScheduledDeletions', checkScheduledDeletions, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkCertificateExpiry', checkCertificateExpiry, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkTaskReminders', checkTaskReminders, { dedup: 'hourly' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkWorkDayTriggers', checkWorkDayTriggers, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkMonthlyPointsReset', checkMonthlyPointsReset, { dedup: 'daily' }), 60000));
         // v13.1: OpenClaw bridge fallback — process stale pending messages (every 30s)
         if (OPENCLAW_BRIDGE) {
             const { generateChatResponse } = require('./services/kleshnya-chat');
@@ -305,25 +309,25 @@ initDatabase().then(() => {
                 30000
             ));
         }
-        // v15.0: HR cron jobs (auto-close at 23:55, no-show at 13:00)
-        schedulerIntervals.push(setInterval(checkHrAutoClose, 60000));
-        schedulerIntervals.push(setInterval(checkHrNoShow, 60000));
+        // v15.0: HR cron jobs
+        schedulerIntervals.push(setInterval(guardScheduler('checkHrAutoClose', checkHrAutoClose, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkHrNoShow', checkHrNoShow, { dedup: 'daily' }), 60000));
         // v11.0: Kleshnya greeting cache cleanup (every 30min)
         schedulerIntervals.push(setInterval(cleanupKleshnyaMessages, 30 * 60 * 1000));
         // v11.1: Streak auto-update (daily at 23:55)
-        schedulerIntervals.push(setInterval(checkStreakUpdates, 60000));
-        // v15.1: Birthday greetings (daily at 09:00)
-        schedulerIntervals.push(setInterval(checkBirthdayGreetings, 60000));
-        // v19.1: Event queue processor + SLA breach + announcements (every 60s)
-        schedulerIntervals.push(setInterval(checkEventQueue, 60000));
-        schedulerIntervals.push(setInterval(checkSLABreach, 60000));
-        schedulerIntervals.push(setInterval(checkScheduledAnnouncements, 60000));
-        // v19.2: Task overdue + customer retention (every 60s)
-        schedulerIntervals.push(setInterval(checkTaskOverdue, 60000));
-        schedulerIntervals.push(setInterval(checkCustomerRetention, 60000));
-        // v19.8: Auto-report to ClawClosed group (every 60s)
-        schedulerIntervals.push(setInterval(checkAutoReport, 60000));
-        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report');
+        schedulerIntervals.push(setInterval(guardScheduler('checkStreakUpdates', checkStreakUpdates, { dedup: 'daily' }), 60000));
+        // v15.1: Birthday greetings
+        schedulerIntervals.push(setInterval(guardScheduler('checkBirthdayGreetings', checkBirthdayGreetings, { dedup: 'daily' }), 60000));
+        // v19.1: Event queue processor + SLA breach + announcements
+        schedulerIntervals.push(setInterval(guardScheduler('checkEventQueue', checkEventQueue, { dedup: null }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkSLABreach', checkSLABreach, { dedup: 'hourly' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkScheduledAnnouncements', checkScheduledAnnouncements, { dedup: 'hourly' }), 60000));
+        // v19.2: Task overdue + customer retention
+        schedulerIntervals.push(setInterval(guardScheduler('checkTaskOverdue', checkTaskOverdue, { dedup: 'hourly' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkCustomerRetention', checkCustomerRetention, { dedup: 'daily' }), 60000));
+        // v19.8: Auto-report
+        schedulerIntervals.push(setInterval(guardScheduler('checkAutoReport', checkAutoReport, { dedup: 'daily' }), 60000));
+        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

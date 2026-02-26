@@ -95,8 +95,16 @@ function renderCategoryTabs() {
 // ==========================================
 
 async function loadProducts() {
-    allProducts = await apiGetProducts(false) || [];
-    renderProducts();
+    const grid = document.getElementById('productsGrid');
+    if (grid) grid.innerHTML = '<div class="loading-spinner">Завантаження програм…</div>';
+    try {
+        allProducts = await apiGetProducts(false) || [];
+        renderProducts();
+    } catch (err) {
+        console.error('loadProducts error:', err);
+        showNotification('Помилка завантаження програм', 'error');
+        if (grid) grid.innerHTML = '';
+    }
 }
 
 function renderProducts() {

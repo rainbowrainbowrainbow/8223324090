@@ -198,31 +198,29 @@ body {
     bottom: 24px;
     right: 24px;
     padding: 14px 24px;
-    border-radius: var(--radius-sm);
+    border-radius: 10px;
     z-index: var(--z-notification);
     font-weight: 700;
     font-size: var(--font-sm);
-    animation: notifSlideUp var(--speed-normal) var(--ease-bounce);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,0.1);
+    animation: notifSlideUp var(--speed-normal) var(--ease-smooth);
 }
 
 .notification.success {
-    background: linear-gradient(135deg, var(--success) 0%, var(--primary-dark) 100%);
-    color: var(--white);
-    box-shadow: 0 8px 24px rgba(16,185,129,0.3);
+    background: var(--success);
+    color: #FFFFFF;
+    box-shadow: 0 4px 12px rgba(16,185,129,0.2);
 }
 
 .notification.error {
-    background: linear-gradient(135deg, var(--danger) 0%, #DC2626 100%);
-    color: var(--white);
-    box-shadow: 0 8px 24px rgba(239,68,68,0.3);
+    background: var(--danger);
+    color: #FFFFFF;
+    box-shadow: 0 4px 12px rgba(239,68,68,0.2);
 }
 
 .notification.warning {
-    background: linear-gradient(135deg, var(--warning) 0%, #D97706 100%);
-    color: var(--white);
-    box-shadow: 0 8px 24px rgba(245,158,11,0.3);
+    background: var(--warning);
+    color: #FFFFFF;
+    box-shadow: 0 4px 12px rgba(245,158,11,0.2);
 }
 
 @keyframes notifSlideUp {
@@ -331,5 +329,40 @@ body {
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
+    }
+}
+
+/* ==========================================
+   PRINT STYLES
+   ========================================== */
+
+@media print {
+    .sidebar,
+    .header,
+    .kleshnya-widget,
+    .notification,
+    .btn-export,
+    .btn-history,
+    .btn-menu-toggle,
+    .dropdown-content,
+    .sidebar-toggle,
+    .skip-link {
+        display: none !important;
+    }
+
+    .main-content {
+        margin-left: 0 !important;
+        padding: 0 !important;
+        max-width: 100% !important;
+    }
+
+    body {
+        background: #fff !important;
+        color: #000 !important;
+        font-size: 12pt;
+    }
+
+    * {
+        box-shadow: none !important;
     }
 }

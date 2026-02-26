@@ -248,9 +248,17 @@ async function apiDeleteTemplate(id) {
 // ==========================================
 
 async function loadAllTasks() {
-    allTasks = await apiGetTasks();
-    updateCounts();
-    renderBoard();
+    const board = document.getElementById('boardContent');
+    if (board) board.innerHTML = '<div class="loading-spinner">Завантаження задач…</div>';
+    try {
+        allTasks = await apiGetTasks();
+        updateCounts();
+        renderBoard();
+    } catch (err) {
+        console.error('loadAllTasks error:', err);
+        showNotification('Помилка завантаження задач', 'error');
+        if (board) board.innerHTML = '';
+    }
 }
 
 // v10.0: Load user points

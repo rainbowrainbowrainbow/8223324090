@@ -97,31 +97,43 @@ function todayStr() {
 // ==========================================
 
 async function fetchStaff() {
-    const token = localStorage.getItem('pzp_token');
-    const res = await fetch('/api/staff?active=true', {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (data.success) {
-        StaffState.staff = data.data;
-        StaffState.departments = data.departments;
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch('/api/staff?active=true', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+            StaffState.staff = data.data;
+            StaffState.departments = data.departments;
+        }
+        return data;
+    } catch (err) {
+        console.error('fetchStaff error:', err);
+        showNotification('Помилка завантаження персоналу', 'error');
+        return { success: false };
     }
-    return data;
 }
 
 async function fetchSchedule(from, to) {
-    const token = localStorage.getItem('pzp_token');
-    const res = await fetch(`/api/staff/schedule?from=${from}&to=${to}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (data.success) {
-        StaffState.schedule = {};
-        for (const entry of data.data) {
-            StaffState.schedule[`${entry.staff_id}_${entry.date}`] = entry;
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch(`/api/staff/schedule?from=${from}&to=${to}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+            StaffState.schedule = {};
+            for (const entry of data.data) {
+                StaffState.schedule[`${entry.staff_id}_${entry.date}`] = entry;
+            }
         }
+        return data;
+    } catch (err) {
+        console.error('fetchSchedule error:', err);
+        showNotification('Помилка завантаження розкладу', 'error');
+        return { success: false };
     }
-    return data;
 }
 
 async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note) {

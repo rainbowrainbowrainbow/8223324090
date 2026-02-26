@@ -116,6 +116,11 @@ app.use('/api/art-director', require('./routes/art-director'));
 app.use('/api/demo', require('./routes/demo'));
 app.use('/api/packages', require('./routes/packages'));
 app.use('/api/status', require('./routes/status'));
+app.use('/api/events', require('./routes/event-queue'));
+app.use('/api/print', require('./routes/print'));
+app.use('/api/employees', require('./routes/employees'));
+app.use('/api/support', require('./routes/support'));
+app.use('/api/music', require('./routes/music'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));

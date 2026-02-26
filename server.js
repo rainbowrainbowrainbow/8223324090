@@ -15,7 +15,7 @@ const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
 const { processStaleMessages, BRIDGE_ENABLED: OPENCLAW_BRIDGE } = require('./services/kleshnya-bridge');
@@ -316,7 +316,10 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(checkEventQueue, 60000));
         schedulerIntervals.push(setInterval(checkSLABreach, 60000));
         schedulerIntervals.push(setInterval(checkScheduledAnnouncements, 60000));
-        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements');
+        // v19.2: Task overdue + customer retention (every 60s)
+        schedulerIntervals.push(setInterval(checkTaskOverdue, 60000));
+        schedulerIntervals.push(setInterval(checkCustomerRetention, 60000));
+        log.info('Schedulers started: digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

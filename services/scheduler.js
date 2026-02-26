@@ -1036,6 +1036,100 @@ async function checkScheduledAnnouncements() {
     }
 }
 
+// v19.2: Task overdue event — fires event for tasks past their due date
+async function checkTaskOverdue() {
+    try {
+        const todayStr = getKyivDateStr();
+        const result = await pool.query(
+            `UPDATE tasks SET status = 'overdue'
+             WHERE date < $1 AND status NOT IN ('done', 'overdue', 'cancelled')
+             RETURNING id, title, date, priority, assigned_to`,
+            [todayStr]
+        );
+        if (result.rows.length > 0) {
+            try {
+                const { publish } = require('./eventBus');
+                for (const task of result.rows) {
+                    await publish('task.overdue', {
+                        task_id: task.id,
+                        title: task.title,
+                        date: task.date,
+                        priority: task.priority,
+                        assigned_to: task.assigned_to
+                    }, `task_overdue_${task.id}_${todayStr}`);
+                }
+                log.info(`Task overdue: ${result.rows.length} task(s) marked overdue`);
+            } catch (e) {
+                // eventBus may not exist yet, that's ok
+            }
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('checkTaskOverdue error', err);
+        }
+    }
+}
+
+// v19.2: Customer retention — identify customers who haven't booked in 60+ days
+let retentionLastRun = null;
+
+async function checkCustomerRetention() {
+    try {
+        const todayStr = getKyivDateStr();
+        // Only run once per day
+        if (retentionLastRun === todayStr) return;
+
+        const kyiv = getKyivDate();
+        const nowTime = getKyivTimeStr();
+        // Run at 09:00 daily
+        if (nowTime !== '09:00') return;
+
+        retentionLastRun = todayStr;
+
+        const result = await pool.query(
+            `SELECT c.id, c.name, c.phone, c.last_visit_at,
+                    EXTRACT(DAY FROM NOW() - c.last_visit_at) as days_since
+             FROM customers c
+             WHERE c.last_visit_at IS NOT NULL
+               AND c.last_visit_at < NOW() - INTERVAL '60 days'
+               AND c.id NOT IN (
+                   SELECT DISTINCT customer_id FROM customer_retention_log
+                   WHERE created_at > NOW() - INTERVAL '30 days'
+               )
+             ORDER BY c.last_visit_at ASC
+             LIMIT 20`
+        );
+
+        if (result.rows.length > 0) {
+            // Log retention candidates
+            for (const customer of result.rows) {
+                try {
+                    await pool.query(
+                        `INSERT INTO customer_retention_log (customer_id, days_since_visit, created_at)
+                         VALUES ($1, $2, NOW())`,
+                        [customer.id, Math.floor(customer.days_since)]
+                    );
+                } catch (e) { /* table may not exist */ }
+
+                try {
+                    const { publish } = require('./eventBus');
+                    await publish('customer.retention', {
+                        customer_id: customer.id,
+                        name: customer.name,
+                        phone: customer.phone,
+                        days_since: Math.floor(customer.days_since)
+                    }, `retention_${customer.id}_${todayStr}`);
+                } catch (e) { /* eventBus may not exist */ }
+            }
+            log.info(`Retention check: ${result.rows.length} customer(s) flagged for follow-up`);
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('checkCustomerRetention error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
@@ -1043,5 +1137,6 @@ module.exports = {
     checkRecurringBookings, checkCertificateExpiry,
     checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset,
     checkStreakUpdates, checkBirthdayGreetings,
-    checkEventQueue, checkSLABreach, checkScheduledAnnouncements
+    checkEventQueue, checkSLABreach, checkScheduledAnnouncements,
+    checkTaskOverdue, checkCustomerRetention
 };

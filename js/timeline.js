@@ -53,11 +53,10 @@ function canViewHistory() {
 // v5.8: Quick Stats Bar — show summary for selected date
 // v5.11: Filter by existing lines + exclude linked bookings
 // v11.1: Stats-only bar + separate floating widget
+// v19.2: Rich widget cards
 function updateQuickStats(bookings, lineIds) {
     const bar = document.getElementById('quickStatsBar');
     if (!bar || isViewer()) return;
-    const content = document.getElementById('quickStatsContent');
-    if (!content) return;
 
     // Filter: only bookings on existing lines, exclude linked (extra hosts)
     const mainBookings = bookings.filter(b => !b.linkedTo && (!lineIds || lineIds.includes(b.lineId)));
@@ -65,16 +64,83 @@ function updateQuickStats(bookings, lineIds) {
     const confirmed = mainBookings.filter(b => b.status === 'confirmed');
     const total = mainBookings.reduce((sum, b) => sum + (b.price || 0), 0);
 
-    const parts = [`📊 ${mainBookings.length} бронювань`, formatPrice(total)];
-    if (confirmed.length > 0) parts.push(`✅ ${confirmed.length}`);
-    if (preliminary.length > 0) parts.push(`⏳ ${preliminary.length}`);
-    if (lineIds && lineIds.length > 0) parts.push(`👥 ${lineIds.length}`);
-    content.textContent = parts.join(' • ');
+    // Build widget cards
+    let html = '';
 
+    // 1. Bookings count
+    html += `<div class="qs-card">
+        <div class="qs-icon green">📅</div>
+        <div class="qs-info"><div class="qs-value">${mainBookings.length}</div><div class="qs-label">Бронювань</div></div>
+    </div>`;
+
+    // 2. Revenue
+    html += `<div class="qs-card">
+        <div class="qs-icon blue">💰</div>
+        <div class="qs-info"><div class="qs-value">${formatPrice(total)}</div><div class="qs-label">Дохід за день</div></div>
+    </div>`;
+
+    // 3. Confirmed
+    html += `<div class="qs-card">
+        <div class="qs-icon green">✅</div>
+        <div class="qs-info"><div class="qs-value">${confirmed.length}</div><div class="qs-label">Підтверджено</div></div>
+    </div>`;
+
+    // 4. Preliminary
+    html += `<div class="qs-card">
+        <div class="qs-icon amber">⏳</div>
+        <div class="qs-info"><div class="qs-value">${preliminary.length}</div><div class="qs-label">Попередніх</div></div>
+    </div>`;
+
+    // 5. Animators
+    if (lineIds && lineIds.length > 0) {
+        html += `<div class="qs-card">
+            <div class="qs-icon purple">👥</div>
+            <div class="qs-info"><div class="qs-value">${lineIds.length}</div><div class="qs-label">Аніматорів</div></div>
+        </div>`;
+    }
+
+    bar.innerHTML = html;
     bar.classList.remove('hidden');
+
+    // Load async extra widgets (tasks, certificates) — fire-and-forget
+    loadExtraWidgets(bar);
 
     // v11.1: Init floating Kleshnya widget (non-blocking)
     initKleshnyaWidget();
+}
+
+// v19.2: Load extra dashboard widgets asynchronously
+async function loadExtraWidgets(bar) {
+    try {
+        // Fetch today's tasks count
+        const dateStr = document.getElementById('timelineDate')?.value;
+        if (!dateStr) return;
+
+        const [tasksRes, certsRes] = await Promise.all([
+            fetch('/api/tasks?date=' + dateStr, { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') } }).then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch('/api/certificates?status=active', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') } }).then(r => r.ok ? r.json() : []).catch(() => [])
+        ]);
+
+        const tasks = Array.isArray(tasksRes) ? tasksRes : [];
+        const certs = Array.isArray(certsRes) ? certsRes : [];
+
+        if (tasks.length > 0) {
+            const done = tasks.filter(t => t.status === 'done').length;
+            bar.innerHTML += `<div class="qs-card">
+                <div class="qs-icon rose">📝</div>
+                <div class="qs-info"><div class="qs-value">${done}/${tasks.length}</div><div class="qs-label">Задач виконано</div></div>
+            </div>`;
+        }
+
+        if (certs.length > 0) {
+            bar.innerHTML += `<div class="qs-card">
+                <div class="qs-icon purple">📄</div>
+                <div class="qs-info"><div class="qs-value">${certs.length}</div><div class="qs-label">Сертифікатів</div></div>
+            </div>`;
+        }
+    } catch (e) {
+        // Non-critical, ignore errors
+    }
 }
 
 // ==========================================

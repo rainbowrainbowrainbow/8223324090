@@ -44,11 +44,62 @@ body.dark-mode {
     color: #E2E8F0;
 }
 
+/* Sidebar */
+body.dark-mode .sidebar-nav {
+    background: #1a1a2e;
+    border-right-color: var(--gray-200);
+    box-shadow: 1px 0 8px rgba(0,0,0,0.2);
+}
+
+body.dark-mode .sidebar-logo {
+    border-bottom-color: var(--gray-200);
+}
+
+body.dark-mode .em-logo-title {
+    color: #E2E8F0;
+}
+
+body.dark-mode .sidebar-links .nav-link {
+    color: var(--gray-500);
+}
+
+body.dark-mode .sidebar-links .nav-link:hover {
+    background: rgba(255,255,255,0.05);
+    color: #E2E8F0;
+}
+
+body.dark-mode .sidebar-links .nav-link.active {
+    background: rgba(16,185,129,0.1);
+    color: #10B981;
+}
+
+body.dark-mode .sidebar-collapse-btn {
+    color: var(--gray-500);
+    border-color: var(--gray-200);
+}
+
+body.dark-mode .sidebar-collapse-btn:hover {
+    background: rgba(255,255,255,0.05);
+    color: #E2E8F0;
+}
+
 /* Header */
 body.dark-mode .header {
     background: linear-gradient(135deg, #0a1628 0%, #0f1f3a 40%, #0a2540 100%);
     box-shadow: 0 4px 24px rgba(0,0,0,0.3);
 }
+
+/* Quick stats cards dark */
+body.dark-mode .qs-card {
+    background: var(--white);
+    border-color: var(--gray-200);
+}
+
+body.dark-mode .qs-icon.green { background: rgba(16,185,129,0.1); }
+body.dark-mode .qs-icon.blue { background: rgba(59,130,246,0.1); }
+body.dark-mode .qs-icon.amber { background: rgba(245,158,11,0.1); }
+body.dark-mode .qs-icon.purple { background: rgba(139,92,246,0.1); }
+body.dark-mode .qs-icon.rose { background: rgba(244,63,94,0.1); }
 
 /* Timeline */
 body.dark-mode .timeline-container {

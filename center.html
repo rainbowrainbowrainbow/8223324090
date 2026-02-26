@@ -35,12 +35,15 @@
         }
         .center-section-title .section-icon { font-size: 18px; }
         .center-section-title .collapse-arrow {
-            font-size: 12px; color: var(--gray-400);
-            transition: transform 0.2s; margin-right: 2px;
+            font-size: 14px; color: var(--gray-500);
+            transition: transform 0.25s ease, color 0.2s;
+            margin-right: 2px; display: inline-flex; width: 18px; justify-content: center;
         }
-        .center-section.collapsed .collapse-arrow { transform: rotate(-90deg); }
+        .center-section.collapsed .collapse-arrow { transform: rotate(-90deg); color: var(--primary); }
         .center-section.collapsed .section-body { display: none; }
         .center-section.collapsed .center-section-title { margin-bottom: 0; }
+        .center-section.collapsed { opacity: 0.75; transition: opacity 0.2s; }
+        .center-section.collapsed:hover { opacity: 1; background: rgba(255,255,255,0.45); }
 
         /* Workers grid */
         .workers-grid {
@@ -631,7 +634,8 @@
         }
 
         /* Dark mode overrides */
-        .dark-mode .center-section { background: rgba(30,30,30,0.5); }
+        .dark-mode .center-section { background: rgba(30,30,30,0.5); transition: opacity 0.2s; }
+        .dark-mode .center-section.collapsed:hover { background: rgba(40,40,40,0.6); }
         .dark-mode .worker-card { background: rgba(40,40,40,0.6); }
         .dark-mode .kpi-card { background: rgba(40,40,40,0.5); }
         .dark-mode .center-task-row { background: rgba(40,40,40,0.4); }

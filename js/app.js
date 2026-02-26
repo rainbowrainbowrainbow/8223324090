@@ -31,6 +31,8 @@ function initializeApp() {
     initializeEventListeners();
     // v15.1: CRM customer toggle + autocomplete
     if (typeof initCustomerCRM === 'function') initCustomerCRM();
+    // v19.11: Room Load Panel
+    if (typeof initRoomLoadPanel === 'function') initRoomLoadPanel();
     AppState.nowLineInterval = setInterval(renderNowLine, 60000);
 }
 

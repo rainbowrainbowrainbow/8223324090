@@ -377,6 +377,9 @@ async function renderTimeline() {
     const lineIds = lines.map(l => l.id);
     updateQuickStats(bookings, lineIds);
 
+    // v19.11: Update room load panel if open
+    updateRoomLoadPanel(bookings, selectedDate);
+
     const historyBtn = document.getElementById('historyBtn');
     if (historyBtn) {
         historyBtn.classList.toggle('hidden', !canViewHistory());
@@ -2124,6 +2127,114 @@ function changeDate(days) {
     AppState.selectedDate = newDate;
     document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
     renderTimeline();
+}
+
+// ==========================================
+// v19.11: ROOM LOAD PANEL
+// ==========================================
+
+const ALL_ROOMS_DISPLAY = [
+    'Марвел', 'Ніндзя', 'Майнкрафт', 'Монстер Хай', 'Ельза',
+    'Растішка', 'Рок', 'Міньйон', 'Поні', 'Фудкорт', 'Жовтий стіл',
+    'Диван 1', 'Диван 2', 'Диван 3', 'Диван 4'
+];
+
+function initRoomLoadPanel() {
+    const btn = document.getElementById('roomLoadBtn');
+    const panel = document.getElementById('roomLoadPanel');
+    const closeBtn = document.getElementById('roomLoadClose');
+    if (!btn || !panel) return;
+
+    btn.addEventListener('click', () => {
+        const isVisible = panel.classList.contains('visible');
+        if (isVisible) {
+            panel.classList.remove('visible');
+            btn.classList.remove('active');
+        } else {
+            panel.classList.remove('hidden');
+            // Force reflow before adding visible class for animation
+            panel.offsetHeight;
+            panel.classList.add('visible');
+            btn.classList.add('active');
+            // Trigger update with current bookings
+            const dateStr = formatDate(AppState.selectedDate);
+            const cached = AppState.cachedBookings[dateStr];
+            if (cached) updateRoomLoadPanel(cached.data, AppState.selectedDate);
+        }
+    });
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            panel.classList.remove('visible');
+            btn.classList.remove('active');
+        });
+    }
+}
+
+function getRoomLoadClass(pct) {
+    if (pct === 0) return 'load-free';
+    if (pct <= 40) return 'load-low';
+    if (pct <= 75) return 'load-medium';
+    if (pct < 100) return 'load-high';
+    return 'load-full';
+}
+
+function updateRoomLoadPanel(bookings, date) {
+    const panel = document.getElementById('roomLoadPanel');
+    const list = document.getElementById('roomLoadList');
+    const summary = document.getElementById('roomLoadSummary');
+    if (!panel || !list) return;
+
+    // Only update if panel is visible
+    if (!panel.classList.contains('visible')) return;
+
+    const { start, end } = getTimeRange(date);
+    const totalMinutes = (end - start) * 60;
+
+    // Calculate occupied minutes per room
+    const roomMinutes = {};
+    ALL_ROOMS_DISPLAY.forEach(r => { roomMinutes[r] = 0; });
+
+    const activeBookings = bookings.filter(b => b.status !== 'cancelled' && b.room && b.room !== 'Інше');
+    activeBookings.forEach(b => {
+        const room = b.room;
+        if (!(room in roomMinutes)) return;
+        const bStartMin = timeToMinutes(b.time);
+        const bEndMin = bStartMin + (b.duration || 60);
+        // Clamp to working hours
+        const dayStartMin = start * 60;
+        const dayEndMin = end * 60;
+        const overlapStart = Math.max(bStartMin, dayStartMin);
+        const overlapEnd = Math.min(bEndMin, dayEndMin);
+        if (overlapEnd > overlapStart) {
+            roomMinutes[room] += (overlapEnd - overlapStart);
+        }
+    });
+
+    let occupiedCount = 0;
+    let html = '';
+
+    ALL_ROOMS_DISPLAY.forEach(room => {
+        const mins = roomMinutes[room];
+        const pct = Math.min(100, Math.round((mins / totalMinutes) * 100));
+        const loadClass = getRoomLoadClass(pct);
+        const isFull = pct >= 100;
+        if (pct > 0) occupiedCount++;
+
+        html += `<div class="room-load-item${isFull ? ' is-full' : ''}">
+            <span class="room-load-name" title="${room}">${room}</span>
+            <div class="room-load-bar-wrap">
+                <div class="room-load-bar ${loadClass}" style="width: ${pct}%"></div>
+            </div>
+            <span class="room-load-pct ${loadClass}">${pct}%</span>
+        </div>`;
+    });
+
+    list.innerHTML = html;
+    if (summary) {
+        const freeCount = ALL_ROOMS_DISPLAY.length - occupiedCount;
+        summary.textContent = `${freeCount}/${ALL_ROOMS_DISPLAY.length} вільних`;
+    }
 }
 
 // v3.9: Cache with TTL

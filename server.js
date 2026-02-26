@@ -229,14 +229,21 @@ app.get('/analytics', (req, res) => {
 app.get('/center', (req, res) => {
     res.sendFile(path.join(__dirname, 'center.html'));
 });
-app.get('/art-director', (req, res) => {
+// v20.3.0: art-director → art rename
+app.get('/art', (req, res) => {
     res.sendFile(path.join(__dirname, 'art-director.html'));
 });
+app.get('/art-director', (req, res) => res.redirect(301, '/art'));
+app.get('/art-director.html', (req, res) => res.redirect(301, '/art'));
 app.get('/demo', (req, res) => {
     res.sendFile(path.join(__dirname, 'demo.html'));
 });
 app.get('/status', (req, res) => {
     res.sendFile(path.join(__dirname, 'status.html'));
+});
+// v20.3.0: training page
+app.get('/training', (req, res) => {
+    res.sendFile(path.join(__dirname, 'training.html'));
 });
 
 // SPA fallback (must be last)

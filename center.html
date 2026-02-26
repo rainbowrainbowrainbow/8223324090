@@ -18,7 +18,22 @@
     <style>
         /* Center page styles */
         .center-page { padding: 16px; max-width: 1200px; margin: 0 auto; }
-        .center-page h1 { font-size: 22px; font-weight: 900; margin-bottom: 20px; }
+        .center-page h1 { font-size: 22px; font-weight: 900; margin-bottom: 12px; }
+
+        /* v20.3.0: Center tabs */
+        .center-tabs { display: flex; gap: 4px; margin-bottom: 16px; overflow-x: auto; }
+        .center-tab-btn {
+            padding: 8px 16px; border: none; background: rgba(0,0,0,0.05);
+            border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer;
+            white-space: nowrap; transition: all 0.15s; color: var(--gray-600, #718096);
+        }
+        .center-tab-btn.active { background: var(--primary, #F5C842); color: #1a202c; }
+        .center-tab-btn:hover:not(.active) { background: rgba(0,0,0,0.08); }
+        .center-tab-panel { margin-top: 0; }
+        .center-tab-panel.hidden { display: none; }
+        .center-embed-frame { width: 100%; height: calc(100vh - 200px); border: none; border-radius: 12px; }
+        .dark-mode .center-tab-btn { background: rgba(255,255,255,0.06); color: #a0aec0; }
+        .dark-mode .center-tab-btn.active { background: var(--primary, #F5C842); color: #1a202c; }
 
         /* Section blocks */
         .center-section {
@@ -743,6 +758,27 @@
             <div class="center-page">
                 <h1>Центр керування</h1>
 
+                <!-- v20.3.0: Center tabs -->
+                <div class="center-tabs" id="centerTabs">
+                    <button class="center-tab-btn active" data-tab="overview">Огляд</button>
+                    <button class="center-tab-btn" data-tab="finance">Фінанси</button>
+                    <button class="center-tab-btn" data-tab="analytics">Аналітика</button>
+                    <button class="center-tab-btn" data-tab="status">Статус</button>
+                </div>
+
+                <!-- Tab: Finance (embedded iframe) -->
+                <div class="center-tab-panel hidden" id="tabFinance">
+                    <iframe src="/finance" class="center-embed-frame" title="Фінанси"></iframe>
+                </div>
+                <!-- Tab: Analytics (embedded iframe) -->
+                <div class="center-tab-panel hidden" id="tabAnalytics">
+                    <iframe src="/analytics" class="center-embed-frame" title="Аналітика"></iframe>
+                </div>
+                <!-- Tab: Status (embedded iframe) -->
+                <div class="center-tab-panel hidden" id="tabStatus">
+                    <iframe src="/status" class="center-embed-frame" title="Статус"></iframe>
+                </div>
+
                 <!-- Block 1: KPI Dashboard -->
                 <div class="center-section" id="kpiSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
@@ -1006,6 +1042,43 @@
     <script src="js/config.js?v=19.9"></script>
     <script src="js/api.js?v=19.9"></script>
     <script src="js/auth.js?v=19.9"></script>
-    <script src="js/center-page.js?v=19.9"></script>
+    <script src="js/components/sidebar.js?v=20.30"></script>
+    <script src="js/center-page.js?v=20.30"></script>
+    <script>
+    // v20.3.0: Center tabs
+    (function() {
+        const tabs = document.getElementById('centerTabs');
+        if (!tabs) return;
+        // Check URL param ?tab=
+        const urlTab = new URLSearchParams(window.location.search).get('tab');
+
+        tabs.addEventListener('click', (e) => {
+            const btn = e.target.closest('.center-tab-btn');
+            if (!btn) return;
+            switchCenterTab(btn.dataset.tab);
+        });
+
+        function switchCenterTab(tab) {
+            // Deactivate all tabs
+            tabs.querySelectorAll('.center-tab-btn').forEach(b => b.classList.remove('active'));
+            tabs.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+
+            // Show/hide sections
+            const overviewSections = document.querySelectorAll('.center-section');
+            const financePanel = document.getElementById('tabFinance');
+            const analyticsPanel = document.getElementById('tabAnalytics');
+            const statusPanel = document.getElementById('tabStatus');
+
+            overviewSections.forEach(s => s.style.display = tab === 'overview' ? '' : 'none');
+            if (financePanel) financePanel.classList.toggle('hidden', tab !== 'finance');
+            if (analyticsPanel) analyticsPanel.classList.toggle('hidden', tab !== 'analytics');
+            if (statusPanel) statusPanel.classList.toggle('hidden', tab !== 'status');
+        }
+
+        if (urlTab && ['finance', 'analytics', 'status'].includes(urlTab)) {
+            switchCenterTab(urlTab);
+        }
+    })();
+    </script>
 </body>
 </html>

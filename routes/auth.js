@@ -230,10 +230,16 @@ router.get('/profile', authenticateToken, async (req, res) => {
                  WHERE pt.username = $1 ORDER BY pt.created_at DESC LIMIT 5`,
                 [username]
             ),
-            // 13: Leaderboard rank
+            // 13: Leaderboard rank — v19.12: use RANK() instead of fetching all users
             pool.query(
-                `SELECT username, COALESCE(SUM(permanent_points), 0)::int as total
-                 FROM user_points GROUP BY username ORDER BY total DESC`
+                `SELECT rank, total, total_users FROM (
+                    SELECT username,
+                           COALESCE(SUM(permanent_points), 0)::int as total,
+                           RANK() OVER (ORDER BY COALESCE(SUM(permanent_points), 0) DESC) as rank,
+                           COUNT(*) OVER () as total_users
+                    FROM user_points GROUP BY username
+                 ) lb WHERE username = $1`,
+                [username]
             ),
             // 14: My tasks list (active, last 15)
             pool.query(
@@ -278,12 +284,19 @@ router.get('/profile', authenticateToken, async (req, res) => {
                  FROM bookings WHERE created_by = $1`,
                 [username, weekAgo.toISOString(), twoWeeksAgo.toISOString()]
             ),
-            // 20: Team overview (admin only) — who's working today, their task counts
+            // 20: Team overview (admin only) — v19.12: LEFT JOIN instead of correlated subqueries
             isAdminRole ? pool.query(
                 `SELECT u.username, u.name, u.role,
-                    (SELECT COUNT(*)::int FROM tasks WHERE assigned_to = u.username AND status != 'done') as open_tasks,
-                    (SELECT COUNT(*)::int FROM tasks WHERE assigned_to = u.username AND status != 'done' AND deadline IS NOT NULL AND deadline < NOW()) as overdue_tasks
-                 FROM users u WHERE u.role != 'viewer'
+                    COALESCE(t_agg.open_tasks, 0)::int as open_tasks,
+                    COALESCE(t_agg.overdue_tasks, 0)::int as overdue_tasks
+                 FROM users u
+                 LEFT JOIN (
+                    SELECT assigned_to,
+                           COUNT(*) FILTER (WHERE status != 'done') as open_tasks,
+                           COUNT(*) FILTER (WHERE status != 'done' AND deadline IS NOT NULL AND deadline < NOW()) as overdue_tasks
+                    FROM tasks GROUP BY assigned_to
+                 ) t_agg ON t_agg.assigned_to = u.username
+                 WHERE u.role != 'viewer'
                  ORDER BY u.name`
             ) : Promise.resolve({ rows: [] }),
             // 21: Today's bookings count (for day progress)
@@ -397,14 +410,13 @@ router.get('/profile', authenticateToken, async (req, res) => {
             taskId: r.task_id, taskTitle: r.task_title, created_at: r.created_at
         })) : [];
 
-        // Leaderboard rank
+        // Leaderboard rank — v19.12: optimized with RANK()
         let leaderboardRank = null;
         let leaderboardTotal = 0;
         const lbR = get(13);
-        if (lbR) {
-            leaderboardTotal = lbR.rows.length;
-            const idx = lbR.rows.findIndex(r => r.username === username);
-            leaderboardRank = idx >= 0 ? idx + 1 : null;
+        if (lbR && lbR.rows.length > 0) {
+            leaderboardRank = parseInt(lbR.rows[0].rank);
+            leaderboardTotal = parseInt(lbR.rows[0].total_users);
         }
 
         // My active tasks (with dependency blocking info)

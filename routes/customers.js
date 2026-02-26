@@ -84,10 +84,12 @@ router.get('/rfm', async (req, res) => {
 // v15.1: CSV export
 router.get('/export', async (req, res) => {
     try {
+        // v19.12: LEFT JOIN instead of correlated subquery for cert_count
         const result = await pool.query(`
-            SELECT c.*,
-                   (SELECT COUNT(*) FROM certificates cert WHERE cert.customer_id = c.id) AS cert_count
+            SELECT c.*, COALESCE(cert_agg.cnt, 0)::int AS cert_count
             FROM customers c
+            LEFT JOIN (SELECT customer_id, COUNT(*) AS cnt FROM certificates GROUP BY customer_id) cert_agg
+                ON cert_agg.customer_id = c.id
             ORDER BY c.name
         `);
 
@@ -130,10 +132,12 @@ router.get('/export', async (req, res) => {
 // v17.0: Excel export
 router.get('/export-xlsx', async (req, res) => {
     try {
+        // v19.12: LEFT JOIN instead of correlated subquery for cert_count
         const result = await pool.query(`
-            SELECT c.*,
-                   (SELECT COUNT(*) FROM certificates cert WHERE cert.customer_id = c.id) AS cert_count
+            SELECT c.*, COALESCE(cert_agg.cnt, 0)::int AS cert_count
             FROM customers c
+            LEFT JOIN (SELECT customer_id, COUNT(*) AS cnt FROM certificates GROUP BY customer_id) cert_agg
+                ON cert_agg.customer_id = c.id
             ORDER BY c.name
         `);
 

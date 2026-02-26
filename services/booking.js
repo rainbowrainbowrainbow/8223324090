@@ -102,8 +102,9 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
 async function checkServerDuplicate(client, date, programId, time, duration, excludeId = null) {
     if (!programId) return null;
     const params = excludeId ? [date, programId, excludeId] : [date, programId];
+    // v19.12: Include time+duration in initial SELECT to eliminate N+1 queries
     const result = await client.query(
-        "SELECT id, category FROM bookings WHERE date = $1 AND program_id = $2 AND status != 'cancelled'" +
+        "SELECT id, category, time, duration FROM bookings WHERE date = $1 AND program_id = $2 AND status != 'cancelled'" +
         (excludeId ? ' AND id != $3' : ''),
         params
     );
@@ -112,10 +113,8 @@ async function checkServerDuplicate(client, date, programId, time, duration, exc
 
     for (const b of result.rows) {
         if (b.category === 'animation') continue;
-        const bResult = await client.query('SELECT time, duration FROM bookings WHERE id = $1', [b.id]);
-        if (bResult.rows.length === 0) continue;
-        const bStart = timeToMinutes(bResult.rows[0].time);
-        const bEnd = bStart + (bResult.rows[0].duration || 0);
+        const bStart = timeToMinutes(b.time);
+        const bEnd = bStart + (b.duration || 0);
         if (newStart < bEnd && newEnd > bStart) {
             return b;
         }

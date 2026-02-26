@@ -1261,13 +1261,20 @@ function toggleSection(titleEl) {
 }
 
 function restoreCollapsedState() {
-    const collapsed = JSON.parse(localStorage.getItem('center_collapsed') || '{}');
-    for (const [id, isCollapsed] of Object.entries(collapsed)) {
-        if (isCollapsed) {
-            const section = document.getElementById(id);
-            if (section) section.classList.add('collapsed');
+    const saved = JSON.parse(localStorage.getItem('center_collapsed') || '{}');
+    // Default: all collapsed except KPI and Charts
+    const defaultOpen = ['kpiSection', 'chartsSection'];
+    document.querySelectorAll('.center-section').forEach(section => {
+        const id = section.id;
+        if (!id) return;
+        if (id in saved) {
+            // User has explicitly set this section
+            if (saved[id]) section.classList.add('collapsed');
+        } else {
+            // Default: collapse everything except KPI and Charts
+            if (!defaultOpen.includes(id)) section.classList.add('collapsed');
         }
-    }
+    });
 }
 
 document.addEventListener('DOMContentLoaded', initCenterPage);

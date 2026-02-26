@@ -18,6 +18,7 @@ const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
+const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
 const { processStaleMessages, BRIDGE_ENABLED: OPENCLAW_BRIDGE } = require('./services/kleshnya-bridge');
 const { createLogger } = require('./utils/logger');
@@ -139,6 +140,7 @@ app.use('/api/search', require('./routes/search'));
 app.use('/api/loyalty', require('./routes/loyalty'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/board', require('./routes/board'));
+app.use('/api/training', require('./routes/training'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -348,7 +350,26 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoReport', checkAutoReport, { dedup: 'daily' }), 60000));
         // v19.15: Telegram notification retry queue (every 30s)
         schedulerIntervals.push(setInterval(() => processRetryQueue().catch(err => log.error('Retry queue error', err)), 30000));
-        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry');
+        // v20.4.0: Training prompts (Mon 09:00 Kyiv) + summary (Fri 17:00 Kyiv)
+        async function checkTrainingPrompts() {
+            const { getKyivTimeStr, getKyivDate } = require('./services/booking');
+            const time = getKyivTimeStr();
+            const day = getKyivDate().getDay(); // 0=Sun, 1=Mon
+            if (day === 1 && time === '09:00') {
+                await sendWeeklyTrainingPrompts();
+            }
+        }
+        async function checkTrainingSummary() {
+            const { getKyivTimeStr, getKyivDate } = require('./services/booking');
+            const time = getKyivTimeStr();
+            const day = getKyivDate().getDay();
+            if (day === 5 && time === '17:00') {
+                await sendWeeklySummaryToDirector();
+            }
+        }
+        schedulerIntervals.push(setInterval(guardScheduler('checkTrainingPrompts', checkTrainingPrompts, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkTrainingSummary', checkTrainingSummary, { dedup: 'daily' }), 60000));
+        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

@@ -427,6 +427,71 @@ router.post('/webhook', async (req, res) => {
                     text: message.text + '\n\n❌ <b>Відхилено</b>',
                     parse_mode: 'HTML'
                 });
+            // v20.4.0: Training approve/reject callbacks
+            } else if (data.startsWith('training_approve_') || data.startsWith('training_reject_')) {
+                try {
+                    const inputId = safeParseInt(data.split('_')[2]);
+                    if (!inputId) {
+                        await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний ID' });
+                        return res.sendStatus(200);
+                    }
+                    const isApprove = data.startsWith('training_approve_');
+                    const { categorizeContent } = require('../services/training');
+
+                    if (isApprove) {
+                        const inputRes = await pool.query(
+                            'SELECT * FROM staff_training_inputs WHERE id = $1 AND status = $2',
+                            [inputId, 'pending']
+                        );
+                        if (inputRes.rows.length === 0) {
+                            await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Вже оброблено' });
+                            return res.sendStatus(200);
+                        }
+                        const input = inputRes.rows[0];
+                        const category = categorizeContent(input.content);
+                        const title = input.content.substring(0, 100);
+
+                        await pool.query(
+                            `INSERT INTO training_materials (category, title, content, source_input_id, source_staff_id, source_staff_name, week_number, year, approved_by_telegram_id)
+                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                            [category, title, input.content, input.id, input.staff_id, input.staff_name, input.week_number, input.year, update.callback_query.from?.id]
+                        );
+                        await pool.query('UPDATE staff_training_inputs SET status = $1, approved_at = NOW() WHERE id = $2', ['approved', inputId]);
+                        await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: '✅ Підтверджено' });
+                    } else {
+                        await pool.query('UPDATE staff_training_inputs SET status = $1, rejected_at = NOW() WHERE id = $2', ['rejected', inputId]);
+                        await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: '❌ Відхилено' });
+                    }
+
+                    const statusEmoji = isApprove ? '✅' : '❌';
+                    await telegramRequest('editMessageText', {
+                        chat_id: chatId,
+                        message_id: message.message_id,
+                        text: message.text + `\n\n${statusEmoji} <b>${isApprove ? 'Підтверджено' : 'Відхилено'}</b>`,
+                        parse_mode: 'HTML'
+                    });
+                } catch (err) {
+                    log.error('training callback error', err);
+                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Помилка', show_alert: true });
+                }
+            }
+        }
+
+        // v20.4.0: Handle non-command private messages as potential training responses
+        if (update.message && update.message.text && !update.message.text.startsWith('/') && update.message.chat?.type === 'private') {
+            try {
+                const { handleTrainingResponse } = require('../services/training');
+                const fromId = update.message.from?.id;
+                if (fromId) {
+                    const handled = await handleTrainingResponse(fromId, update.message.text);
+                    if (handled) {
+                        await sendTelegramMessage(update.message.chat.id,
+                            '✅ <b>Дякую!</b> Твою відповідь збережено. Сергій розгляне її на цьому тижні.',
+                            { parse_mode: 'HTML' });
+                    }
+                }
+            } catch (err) {
+                log.error('training response handler error', err);
             }
         }
 

@@ -7,12 +7,12 @@
     <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Maestro">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=19.8">
-    <link rel="stylesheet" href="css/layout.css?v=19.8">
-    <link rel="stylesheet" href="css/pages.css?v=19.8">
-    <link rel="stylesheet" href="css/modals.css?v=19.8">
-    <link rel="stylesheet" href="css/dark-mode.css?v=19.8">
-    <link rel="stylesheet" href="css/responsive.css?v=19.8">
+    <link rel="stylesheet" href="css/base.css?v=19.9">
+    <link rel="stylesheet" href="css/layout.css?v=19.9">
+    <link rel="stylesheet" href="css/pages.css?v=19.9">
+    <link rel="stylesheet" href="css/modals.css?v=19.9">
+    <link rel="stylesheet" href="css/dark-mode.css?v=19.9">
+    <link rel="stylesheet" href="css/responsive.css?v=19.9">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -307,6 +307,294 @@
         /* Loading */
         .center-loading { text-align: center; padding: 40px; color: var(--gray-400); font-size: 14px; }
 
+        /* ======== GOALS (v19.9) ======== */
+        .goals-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+        }
+        .goal-card {
+            background: rgba(255,255,255,0.4); border-radius: 12px; padding: 14px;
+        }
+        .goal-card-label { font-size: 11px; color: var(--gray-500); font-weight: 600; margin-bottom: 6px; }
+        .goal-progress-bar {
+            height: 20px; background: var(--gray-100); border-radius: 10px; overflow: hidden;
+            position: relative;
+        }
+        .goal-progress-fill {
+            height: 100%; border-radius: 10px; transition: width 0.6s ease;
+            min-width: 2px;
+        }
+        .goal-progress-fill.green { background: linear-gradient(90deg, #10B981, #34D399); }
+        .goal-progress-fill.yellow { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
+        .goal-progress-fill.red { background: linear-gradient(90deg, #EF4444, #F87171); }
+        .goal-progress-text {
+            position: absolute; inset: 0; display: flex; align-items: center;
+            justify-content: center; font-size: 10px; font-weight: 800;
+        }
+        .goal-values { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: var(--gray-500); }
+        .goal-values strong { color: var(--gray-800); font-weight: 800; }
+        .goals-form { display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; margin-top: 10px; }
+        .goals-form input {
+            padding: 8px 10px; border: 1.5px solid var(--gray-200); border-radius: 8px;
+            font-family: inherit; font-size: 13px; background: rgba(255,255,255,0.6);
+        }
+        .goals-form-actions { grid-column: 1/-1; display: flex; gap: 8px; margin-top: 4px; }
+        .goals-form-actions button {
+            padding: 8px 16px; border: none; border-radius: 8px;
+            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+        }
+
+        /* ======== BRIEFING (v19.9) ======== */
+        .briefing-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;
+        }
+        .briefing-card {
+            background: rgba(255,255,255,0.4); border-radius: 12px; padding: 14px;
+        }
+        .briefing-card-title {
+            font-size: 12px; font-weight: 800; color: var(--gray-600);
+            margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .briefing-day-row {
+            display: flex; justify-content: space-between; padding: 4px 0;
+            border-bottom: 1px solid var(--gray-100); font-size: 12px;
+        }
+        .briefing-day-row:last-child { border-bottom: none; }
+        .briefing-day-name { font-weight: 700; }
+        .briefing-day-count { color: var(--primary); font-weight: 800; }
+        .briefing-alert {
+            display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+            border-radius: 8px; font-size: 12px; font-weight: 600; margin-bottom: 4px;
+        }
+        .briefing-alert.warning { background: #FEF3C7; color: #92400E; }
+        .briefing-alert.info { background: #DBEAFE; color: #1E40AF; }
+        .briefing-staff-row {
+            display: flex; justify-content: space-between; padding: 3px 0;
+            font-size: 12px; border-bottom: 1px solid var(--gray-100);
+        }
+
+        /* ======== WORKLOAD (v19.9) ======== */
+        .workload-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;
+        }
+        .workload-card {
+            background: rgba(255,255,255,0.4); border-radius: 12px; padding: 14px;
+            border-left: 4px solid var(--gray-300);
+        }
+        .workload-card-name { font-weight: 800; font-size: 14px; margin-bottom: 6px; }
+        .workload-card-stats { font-size: 12px; color: var(--gray-500); }
+        .workload-card-stats div { margin-bottom: 3px; }
+        .workload-bar {
+            height: 6px; background: var(--gray-100); border-radius: 3px; margin-top: 8px;
+        }
+        .workload-bar-fill { height: 100%; border-radius: 3px; }
+
+        /* ======== PROGRAM PERFORMANCE (v19.9) ======== */
+        .perf-table {
+            width: 100%; border-collapse: collapse; font-size: 12px;
+        }
+        .perf-table th {
+            text-align: left; padding: 8px 10px; font-weight: 800; font-size: 10px;
+            color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--gray-200);
+        }
+        .perf-table td { padding: 8px 10px; border-bottom: 1px solid var(--gray-100); }
+        .perf-table tr:hover { background: rgba(255,255,255,0.3); }
+        .perf-conversion {
+            display: inline-block; padding: 2px 6px; border-radius: 4px;
+            font-weight: 700; font-size: 10px;
+        }
+        .perf-conversion.high { background: #D1FAE5; color: #065F46; }
+        .perf-conversion.medium { background: #FEF3C7; color: #92400E; }
+        .perf-conversion.low { background: #FEE2E2; color: #991B1B; }
+
+        /* ======== HEATMAP (v19.9) ======== */
+        .heatmap-container {
+            overflow-x: auto; padding-bottom: 8px;
+        }
+        .heatmap-grid {
+            display: flex; gap: 2px; min-width: fit-content;
+        }
+        .heatmap-week { display: flex; flex-direction: column; gap: 2px; }
+        .heatmap-cell {
+            width: 14px; height: 14px; border-radius: 3px;
+            background: var(--gray-100);
+        }
+        .heatmap-cell[title] { cursor: pointer; }
+        .heatmap-cell.level-1 { background: #D1FAE5; }
+        .heatmap-cell.level-2 { background: #6EE7B7; }
+        .heatmap-cell.level-3 { background: #10B981; }
+        .heatmap-cell.level-4 { background: #047857; }
+        .heatmap-legend {
+            display: flex; align-items: center; gap: 4px; margin-top: 8px;
+            font-size: 10px; color: var(--gray-400);
+        }
+        .heatmap-legend-cell {
+            width: 12px; height: 12px; border-radius: 2px;
+        }
+        .heatmap-months {
+            display: flex; font-size: 10px; color: var(--gray-400);
+            margin-bottom: 4px; gap: 2px;
+        }
+        .heatmap-month-label { font-weight: 600; }
+
+        /* ======== CLIENTS (v19.9) ======== */
+        .client-search-bar {
+            display: flex; gap: 8px; margin-bottom: 12px;
+        }
+        .client-search-input {
+            flex: 1; padding: 8px 12px; border: 1.5px solid var(--gray-200);
+            border-radius: 10px; font-family: inherit; font-size: 14px;
+            background: rgba(255,255,255,0.6);
+        }
+        .client-search-input:focus { border-color: var(--primary); outline: none; }
+        .client-card {
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 14px; border-radius: 10px;
+            background: rgba(255,255,255,0.4); margin-bottom: 6px;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .client-card:hover { background: rgba(255,255,255,0.6); transform: translateX(2px); }
+        .client-card-avatar {
+            width: 36px; height: 36px; border-radius: 50%;
+            background: var(--primary-50); color: var(--primary);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 900; font-size: 14px; flex-shrink: 0;
+        }
+        .client-card-info { flex: 1; }
+        .client-card-name { font-weight: 700; font-size: 13px; }
+        .client-card-meta { font-size: 11px; color: var(--gray-400); }
+        .client-card-stats { text-align: right; font-size: 12px; }
+        .client-card-stats .revenue { font-weight: 800; color: #2E7D32; }
+
+        .client-profile {
+            background: rgba(255,255,255,0.4); border-radius: 12px;
+            padding: 16px; margin-bottom: 10px;
+        }
+        .client-profile-header {
+            display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;
+        }
+        .client-profile-name { font-size: 16px; font-weight: 900; }
+        .client-profile-tier {
+            padding: 3px 10px; border-radius: 8px; font-size: 11px; font-weight: 700;
+        }
+        .client-profile-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px;
+        }
+        .client-profile-stat { font-size: 12px; }
+        .client-profile-stat-label { color: var(--gray-500); font-size: 10px; }
+        .client-profile-stat-value { font-weight: 800; font-size: 14px; }
+
+        .client-booking-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 12px; border-radius: 8px;
+            background: rgba(255,255,255,0.3); margin-bottom: 4px;
+            font-size: 12px;
+        }
+        .client-booking-date { font-weight: 700; white-space: nowrap; }
+        .client-booking-program { flex: 1; font-weight: 600; }
+        .client-booking-price { font-weight: 800; color: #2E7D32; }
+        .client-booking-status {
+            font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700;
+        }
+        .client-booking-status.confirmed { background: #D1FAE5; color: #065F46; }
+        .client-booking-status.preliminary { background: #FEF3C7; color: #92400E; }
+
+        /* ======== CROSS-SELL (v19.9) ======== */
+        .cross-sell-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;
+        }
+        .combo-card {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 14px; border-radius: 10px;
+            background: rgba(255,255,255,0.4); font-size: 13px;
+        }
+        .combo-count {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: var(--primary-50); color: var(--primary);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 900; font-size: 13px; flex-shrink: 0;
+        }
+        .combo-programs { flex: 1; }
+        .combo-plus { color: var(--gray-400); font-weight: 700; margin: 0 4px; }
+        .addon-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 6px 12px; border-radius: 8px; background: rgba(255,255,255,0.3);
+            font-size: 12px; margin-bottom: 4px;
+        }
+        .addon-row-name { font-weight: 700; }
+        .addon-row-stats { color: var(--gray-500); }
+        .addon-row-revenue { font-weight: 800; color: #2E7D32; }
+
+        /* ======== CATALOG (v19.9) ======== */
+        .catalog-filter-tabs {
+            display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap;
+        }
+        .catalog-filter-tab {
+            padding: 5px 12px; border: none; border-radius: 8px;
+            font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
+            background: rgba(255,255,255,0.3); color: var(--gray-600);
+            transition: all 0.15s;
+        }
+        .catalog-filter-tab.active { background: var(--primary); color: #fff; }
+        .catalog-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px;
+        }
+        .catalog-card {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 10px 14px; border-radius: 10px;
+            background: rgba(255,255,255,0.4); font-size: 12px;
+        }
+        .catalog-card-icon { font-size: 22px; line-height: 1; }
+        .catalog-card-info { flex: 1; }
+        .catalog-card-name { font-weight: 700; font-size: 13px; }
+        .catalog-card-meta { color: var(--gray-400); font-size: 11px; margin-top: 2px; }
+        .catalog-card-price { font-weight: 900; font-size: 15px; color: #2E7D32; white-space: nowrap; }
+
+        /* ======== RECONCILIATION (v19.9) ======== */
+        .recon-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+        }
+        .recon-card {
+            background: rgba(255,255,255,0.4); border-radius: 12px; padding: 14px;
+            text-align: center;
+        }
+        .recon-card-label { font-size: 11px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px; }
+        .recon-card-value { font-size: 20px; font-weight: 900; }
+        .recon-card-value.positive { color: #2E7D32; }
+        .recon-card-value.negative { color: #C62828; }
+        .recon-card-value.neutral { color: var(--gray-700); }
+        .recon-card-sub { font-size: 10px; color: var(--gray-400); margin-top: 2px; }
+        .recon-gap-bar {
+            margin-top: 12px; padding: 12px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: space-between;
+            font-size: 13px;
+        }
+        .recon-gap-bar.ok { background: #D1FAE5; color: #065F46; }
+        .recon-gap-bar.warn { background: #FEF3C7; color: #92400E; }
+        .recon-gap-bar.danger { background: #FEE2E2; color: #991B1B; }
+
+        /* ======== EVENT LOG (v19.9) ======== */
+        .event-timeline { display: flex; flex-direction: column; gap: 4px; }
+        .event-row {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 8px 12px; border-radius: 8px;
+            background: rgba(255,255,255,0.35); font-size: 12px;
+        }
+        .event-row:hover { background: rgba(255,255,255,0.5); }
+        .event-icon {
+            width: 28px; height: 28px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; flex-shrink: 0;
+        }
+        .event-icon.create { background: #D1FAE5; }
+        .event-icon.edit { background: #DBEAFE; }
+        .event-icon.delete { background: #FEE2E2; }
+        .event-info { flex: 1; }
+        .event-info-action { font-weight: 700; }
+        .event-info-details { color: var(--gray-500); font-size: 11px; margin-top: 1px; }
+        .event-time { font-size: 10px; color: var(--gray-400); white-space: nowrap; }
+
         /* Responsive */
         @media (max-width: 768px) {
             .center-page { padding: 10px; }
@@ -329,6 +617,19 @@
             .proposal-card-meta { flex-wrap: wrap; }
         }
 
+        @media (max-width: 768px) {
+            .goals-grid { grid-template-columns: 1fr; }
+            .briefing-grid { grid-template-columns: 1fr; }
+            .workload-grid { grid-template-columns: 1fr; }
+            .perf-table { font-size: 11px; }
+            .perf-table th:nth-child(n+5), .perf-table td:nth-child(n+5) { display: none; }
+            .heatmap-cell { width: 10px; height: 10px; }
+            .client-search-bar { flex-direction: column; }
+            .cross-sell-grid { grid-template-columns: 1fr; }
+            .catalog-grid { grid-template-columns: 1fr; }
+            .recon-grid { grid-template-columns: 1fr; }
+        }
+
         /* Dark mode overrides */
         .dark-mode .center-section { background: rgba(30,30,30,0.5); }
         .dark-mode .worker-card { background: rgba(40,40,40,0.6); }
@@ -346,6 +647,27 @@
             background: rgba(40,40,40,0.8); color: #e0e0e0; border-color: var(--gray-600);
         }
         .dark-mode .proposal-card { background: rgba(40,40,40,0.4); }
+        .dark-mode .goal-card { background: rgba(40,40,40,0.5); }
+        .dark-mode .goal-progress-bar { background: rgba(60,60,60,0.6); }
+        .dark-mode .briefing-card { background: rgba(40,40,40,0.5); }
+        .dark-mode .briefing-day-row { border-color: rgba(255,255,255,0.06); }
+        .dark-mode .workload-card { background: rgba(40,40,40,0.5); }
+        .dark-mode .workload-bar { background: rgba(60,60,60,0.6); }
+        .dark-mode .perf-table tr:hover { background: rgba(255,255,255,0.05); }
+        .dark-mode .heatmap-cell { background: rgba(60,60,60,0.4); }
+        .dark-mode .client-card { background: rgba(40,40,40,0.4); }
+        .dark-mode .client-card:hover { background: rgba(40,40,40,0.6); }
+        .dark-mode .client-profile { background: rgba(40,40,40,0.5); }
+        .dark-mode .client-search-input { background: rgba(40,40,40,0.8); color: #e0e0e0; border-color: var(--gray-600); }
+        .dark-mode .client-booking-row { background: rgba(40,40,40,0.3); }
+        .dark-mode .combo-card { background: rgba(40,40,40,0.4); }
+        .dark-mode .addon-row { background: rgba(40,40,40,0.3); }
+        .dark-mode .catalog-card { background: rgba(40,40,40,0.4); }
+        .dark-mode .recon-card { background: rgba(40,40,40,0.5); }
+        .dark-mode .event-row { background: rgba(40,40,40,0.35); }
+        .dark-mode .event-row:hover { background: rgba(40,40,40,0.5); }
+        .dark-mode .goals-form input { background: rgba(40,40,40,0.8); color: #e0e0e0; border-color: var(--gray-600); }
+        .dark-mode .briefing-staff-row { border-color: rgba(255,255,255,0.06); }
         .dark-mode .loyalty-tier-card { background: rgba(40,40,40,0.4); }
         .dark-mode .loyalty-stats { color: var(--gray-400); }
         .dark-mode .loyalty-stats strong { color: var(--gray-200); }
@@ -461,6 +783,27 @@
                     </div>
                 </div>
 
+                <!-- Block: Revenue Goals (v19.9) -->
+                <div class="center-section" id="goalsSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Цілі
+                        <button class="btn-center-action" onclick="event.stopPropagation();showGoalsForm()">Налаштувати</button>
+                    </div>
+                    <div class="section-body">
+                        <div id="goalsContent"><div class="center-loading">Завантаження...</div></div>
+                    </div>
+                </div>
+
+                <!-- Block: Weekly Briefing (v19.9) -->
+                <div class="center-section" id="briefingSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Тижневий брифінг
+                    </div>
+                    <div class="section-body">
+                        <div id="briefingContent"><div class="center-loading">Завантаження...</div></div>
+                    </div>
+                </div>
+
                 <!-- Block 3: Digital Workers -->
                 <div class="center-section" id="workersSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
@@ -473,6 +816,16 @@
                     </div>
                 </div>
 
+                <!-- Block: Animator Workload (v19.9) -->
+                <div class="center-section" id="workloadSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Навантаження аніматорів
+                    </div>
+                    <div class="section-body">
+                        <div id="workloadContent"><div class="center-loading">Завантаження...</div></div>
+                    </div>
+                </div>
+
                 <!-- Block 4: Tasks -->
                 <div class="center-section" id="tasksSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
@@ -482,6 +835,51 @@
                         <div class="center-tasks-list" id="tasksList">
                             <div class="center-loading">Завантаження...</div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Block: Program Performance (v19.9) -->
+                <div class="center-section" id="perfSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Ефективність програм
+                    </div>
+                    <div class="section-body">
+                        <div id="perfContent"><div class="center-loading">Завантаження...</div></div>
+                    </div>
+                </div>
+
+                <!-- Block: Seasonal Heatmap (v19.9) -->
+                <div class="center-section" id="heatmapSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Сезонна карта
+                    </div>
+                    <div class="section-body">
+                        <div id="heatmapContent"><div class="center-loading">Завантаження...</div></div>
+                    </div>
+                </div>
+
+                <!-- Block: Client Profile + History (v19.9) -->
+                <div class="center-section" id="clientsSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Клієнти та історія
+                    </div>
+                    <div class="section-body">
+                        <div class="client-search-bar">
+                            <input type="text" id="clientSearchInput" placeholder="Пошук клієнта (ім'я, телефон, дитина)..." class="client-search-input" onkeydown="if(event.key==='Enter')searchClients()">
+                            <button class="btn-center-action" onclick="searchClients()" style="margin-left:0">Знайти</button>
+                        </div>
+                        <div id="clientsContent"></div>
+                        <div id="clientBookingsContent" class="hidden"></div>
+                    </div>
+                </div>
+
+                <!-- Block: Cross-sell Insights (v19.9) -->
+                <div class="center-section" id="crossSellSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Cross-sell аналітика
+                    </div>
+                    <div class="section-body">
+                        <div id="crossSellContent"><div class="center-loading">Завантаження...</div></div>
                     </div>
                 </div>
 
@@ -538,6 +936,37 @@
                     </div>
                 </div>
 
+                <!-- Block: Full Price Catalog (v19.9) -->
+                <div class="center-section" id="catalogSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Каталог програм і цін
+                    </div>
+                    <div class="section-body">
+                        <div class="catalog-filter-tabs" id="catalogTabs"></div>
+                        <div id="catalogContent"><div class="center-loading">Завантаження...</div></div>
+                    </div>
+                </div>
+
+                <!-- Block: Financial Reconciliation (v19.9) -->
+                <div class="center-section" id="reconciliationSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Фінансова звірка
+                    </div>
+                    <div class="section-body">
+                        <div id="reconciliationContent"><div class="center-loading">Завантаження...</div></div>
+                    </div>
+                </div>
+
+                <!-- Block: Event Timeline (v19.9) -->
+                <div class="center-section" id="eventLogSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> Стрічка подій
+                    </div>
+                    <div class="section-body">
+                        <div id="eventLogContent"><div class="center-loading">Завантаження...</div></div>
+                    </div>
+                </div>
+
                 <!-- Block 9: Daily Report -->
                 <div class="center-section" id="reportSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
@@ -570,9 +999,9 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="js/config.js?v=19.8"></script>
-    <script src="js/api.js?v=19.8"></script>
-    <script src="js/auth.js?v=19.8"></script>
-    <script src="js/center-page.js?v=19.8"></script>
+    <script src="js/config.js?v=19.9"></script>
+    <script src="js/api.js?v=19.9"></script>
+    <script src="js/auth.js?v=19.9"></script>
+    <script src="js/center-page.js?v=19.9"></script>
 </body>
 </html>

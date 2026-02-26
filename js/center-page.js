@@ -1,6 +1,6 @@
 /**
  * center-page.js — Center (Boss) management page
- * v19.8.0: Digital Workers, KPI, Price Rules, Tasks, Charts, Loyalty, Discounts, Proposals, Report
+ * v19.9.0: + Goals, Briefing, Workload, Catalog, CrossSell, Reconciliation, PerfMatrix, Heatmap, Clients, EventLog
  */
 
 // Page name constant — easy to rename
@@ -15,6 +15,8 @@ let chartsInstances = {};
 let loyaltyTiers = [];
 let discountCodes = [];
 let proposals = [];
+let catalogProducts = [];
+let catalogFilter = 'all';
 
 // ==========================================
 // NOTIFICATIONS
@@ -1004,6 +1006,754 @@ async function deleteProposal(id) {
 }
 
 // ==========================================
+// API CALLS — New features (v19.9)
+// ==========================================
+
+async function apiCenterGoals() {
+    try {
+        const r = await fetch(`${API_BASE}/center/goals`, { headers: getAuthHeaders(false) });
+        if (!r.ok) throw new Error('API error');
+        return await r.json();
+    } catch (err) { console.error('API goals error:', err); return { success: false }; }
+}
+
+async function apiSaveGoals(data) {
+    try {
+        const r = await fetch(`${API_BASE}/center/goals`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
+        return await r.json();
+    } catch (err) { console.error('API save goals error:', err); return { success: false }; }
+}
+
+async function apiCenterBriefing() {
+    try {
+        const r = await fetch(`${API_BASE}/center/briefing`, { headers: getAuthHeaders(false) });
+        if (!r.ok) throw new Error('API error');
+        return await r.json();
+    } catch (err) { console.error('API briefing error:', err); return { success: false }; }
+}
+
+async function apiAnimatorWorkload() {
+    try {
+        const r = await fetch(`${API_BASE}/stats/load?period=month`, { headers: getAuthHeaders(false) });
+        if (!r.ok) throw new Error('API error');
+        return await r.json();
+    } catch (err) { console.error('API workload error:', err); return null; }
+}
+
+async function apiProgramPerformance() {
+    try {
+        const r = await fetch(`${API_BASE}/center/program-performance`, { headers: getAuthHeaders(false) });
+        if (!r.ok) throw new Error('API error');
+        return await r.json();
+    } catch (err) { console.error('API program-performance error:', err); return { success: false }; }
+}
+
+async function apiSeasonalHeatmap() {
+    try {
+        const r = await fetch(`${API_BASE}/center/heatmap?months=6`, { headers: getAuthHeaders(false) });
+        if (!r.ok) throw new Error('API error');
+        return await r.json();
+    } catch (err) { console.error('API heatmap error:', err); return { success: false }; }
+}
+
+async function apiSearchClients(search) {
+    try {
+        const url = search ? `${API_BASE}/center/clients?search=${encodeURIComponent(search)}` : `${API_BASE}/center/clients`;
+        const r = await fetch(url, { headers: getAuthHeaders(false) });
+        if (!r.ok) throw new Error('API error');
+        return await r.json();
+    } catch (err) { console.error('API clients error:', err); return { success: false, clients: [] }; }
+}
+
+async function apiClientBookings(clientId) {
+    try {
+        const r = await fetch(`${API_BASE}/center/clients/${clientId}/bookings`, { headers: getAuthHeaders(false) });
+        if (!r.ok) throw new Error('API error');
+        return await r.json();
+    } catch (err) { console.error('API client bookings error:', err); return { success: false, bookings: [] }; }
+}
+
+async function apiCrossSell() {
+    try {
+        const r = await fetch(`${API_BASE}/center/cross-sell`, { headers: getAuthHeaders(false) });
+        if (!r.ok) throw new Error('API error');
+        return await r.json();
+    } catch (err) { console.error('API cross-sell error:', err); return { success: false }; }
+}
+
+async function apiProducts() {
+    try {
+        const r = await fetch(`${API_BASE}/products?active=true`, { headers: getAuthHeaders(false) });
+        if (!r.ok) throw new Error('API error');
+        const data = await r.json();
+        return Array.isArray(data) ? data : (data.products || data.data || []);
+    } catch (err) { console.error('API products error:', err); return []; }
+}
+
+async function apiReconciliation() {
+    try {
+        const r = await fetch(`${API_BASE}/center/reconciliation`, { headers: getAuthHeaders(false) });
+        if (!r.ok) throw new Error('API error');
+        return await r.json();
+    } catch (err) { console.error('API reconciliation error:', err); return { success: false }; }
+}
+
+async function apiEventLog() {
+    try {
+        const r = await fetch(`${API_BASE}/center/event-log?limit=50`, { headers: getAuthHeaders(false) });
+        if (!r.ok) throw new Error('API error');
+        return await r.json();
+    } catch (err) { console.error('API event-log error:', err); return { success: false, events: [] }; }
+}
+
+// ==========================================
+// RENDER: REVENUE GOALS (v19.9)
+// ==========================================
+
+function renderGoals(goals, kpi) {
+    const el = document.getElementById('goalsContent');
+    if (!el) return;
+
+    if (!goals) {
+        el.innerHTML = '<div class="center-empty">Цілі не налаштовано. Натисніть "Налаштувати".</div>';
+        return;
+    }
+
+    const weekData = kpi ? kpi.week : { revenue: 0, bookings: 0 };
+    const monthData = kpi ? kpi.month : { revenue: 0, bookings: 0 };
+
+    const items = [
+        { label: 'Виручка за тиждень', current: weekData.revenue, target: goals.weeklyRevenue, format: 'money' },
+        { label: 'Бронювань за тиждень', current: weekData.bookings, target: goals.weeklyBookings, format: 'count' },
+        { label: 'Виручка за місяць', current: monthData.revenue, target: goals.monthlyRevenue, format: 'money' },
+        { label: 'Бронювань за місяць', current: monthData.bookings, target: goals.monthlyBookings, format: 'count' }
+    ];
+
+    el.innerHTML = '<div class="goals-grid">' + items.map(item => {
+        if (!item.target || item.target <= 0) return '';
+        const pct = Math.min(Math.round(item.current / item.target * 100), 100);
+        const color = pct >= 80 ? 'green' : pct >= 50 ? 'yellow' : 'red';
+        const currentFmt = item.format === 'money' ? formatPrice(item.current) : item.current;
+        const targetFmt = item.format === 'money' ? formatPrice(item.target) : item.target;
+        return `
+        <div class="goal-card">
+            <div class="goal-card-label">${item.label}</div>
+            <div class="goal-progress-bar">
+                <div class="goal-progress-fill ${color}" style="width:${pct}%"></div>
+                <div class="goal-progress-text">${pct}%</div>
+            </div>
+            <div class="goal-values"><span>${currentFmt}</span><strong>${targetFmt}</strong></div>
+        </div>`;
+    }).filter(Boolean).join('') + '</div>';
+}
+
+function showGoalsForm() {
+    const el = document.getElementById('goalsContent');
+    if (!el) return;
+    if (document.getElementById('goalsFormInline')) {
+        document.getElementById('goalsFormInline').remove();
+        return;
+    }
+    const html = `
+    <div id="goalsFormInline" class="goals-form" style="margin-top:12px">
+        <input type="number" id="goalWeekRev" placeholder="Виручка/тиждень (₴)">
+        <input type="number" id="goalWeekBook" placeholder="Бронювань/тиждень">
+        <input type="number" id="goalMonthRev" placeholder="Виручка/місяць (₴)">
+        <input type="number" id="goalMonthBook" placeholder="Бронювань/місяць">
+        <div class="goals-form-actions">
+            <button onclick="saveGoals()" style="background:var(--primary);color:#fff">Зберегти</button>
+            <button onclick="document.getElementById('goalsFormInline').remove()" style="background:var(--gray-100);color:var(--gray-600)">Скасувати</button>
+        </div>
+    </div>`;
+    el.insertAdjacentHTML('beforeend', html);
+}
+
+async function saveGoals() {
+    const data = {
+        weeklyRevenue: parseInt(document.getElementById('goalWeekRev').value) || 0,
+        weeklyBookings: parseInt(document.getElementById('goalWeekBook').value) || 0,
+        monthlyRevenue: parseInt(document.getElementById('goalMonthRev').value) || 0,
+        monthlyBookings: parseInt(document.getElementById('goalMonthBook').value) || 0
+    };
+    const result = await apiSaveGoals(data);
+    if (result.success) {
+        showNotification('Цілі збережено', 'success');
+        document.getElementById('goalsFormInline')?.remove();
+        loadGoals();
+    } else {
+        showNotification('Помилка збереження', 'error');
+    }
+}
+
+// ==========================================
+// RENDER: WEEKLY BRIEFING (v19.9)
+// ==========================================
+
+function renderBriefing(briefing) {
+    const el = document.getElementById('briefingContent');
+    if (!el) return;
+
+    if (!briefing) {
+        el.innerHTML = '<div class="center-empty">Немає даних для брифінгу</div>';
+        return;
+    }
+
+    const dayNames = { 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб', 0: 'Нд' };
+    const b = briefing.bookings;
+    const t = briefing.tasks;
+
+    // Schedule by day
+    let scheduleHtml = '';
+    if (b.byDay) {
+        for (const [date, bookings] of Object.entries(b.byDay)) {
+            const d = new Date(date + 'T12:00:00');
+            const dayName = dayNames[d.getDay()] || '';
+            const dayNum = d.getDate();
+            const rev = bookings.filter(x => x.status === 'confirmed').reduce((s, x) => s + (x.price || 0), 0);
+            scheduleHtml += `
+            <div class="briefing-day-row">
+                <span class="briefing-day-name">${dayName} ${dayNum}</span>
+                <span>${bookings.length} бронювань</span>
+                <span class="briefing-day-count">${formatPrice(rev)}</span>
+            </div>`;
+        }
+    }
+
+    // Alerts
+    let alertsHtml = '';
+    if (t.highPriority && t.highPriority.length > 0) {
+        alertsHtml += `<div class="briefing-alert warning">&#9888; ${t.highPriority.length} терміново${t.highPriority.length > 1 ? 'х задач' : 'а задача'}</div>`;
+    }
+    if (briefing.expiringDiscounts && briefing.expiringDiscounts.length > 0) {
+        alertsHtml += `<div class="briefing-alert info">&#128276; ${briefing.expiringDiscounts.length} промокод${briefing.expiringDiscounts.length > 1 ? 'ів закінчуються' : ' закінчується'} цього тижня</div>`;
+    }
+    if (b.preliminary > 0) {
+        alertsHtml += `<div class="briefing-alert warning">&#128221; ${b.preliminary} попередн${b.preliminary > 1 ? 'іх бронювань' : 'є бронювання'} очікує підтвердження</div>`;
+    }
+
+    // Staff schedule
+    let staffHtml = '';
+    if (briefing.staff && briefing.staff.length > 0) {
+        const staffByDay = {};
+        for (const s of briefing.staff) {
+            const d = typeof s.date === 'string' ? s.date : s.date?.toISOString().split('T')[0];
+            if (!staffByDay[d]) staffByDay[d] = [];
+            staffByDay[d].push(s);
+        }
+        for (const [date, staff] of Object.entries(staffByDay).slice(0, 7)) {
+            const d = new Date(date + 'T12:00:00');
+            const dayName = dayNames[d.getDay()];
+            staffHtml += `<div class="briefing-staff-row">
+                <span style="font-weight:700">${dayName} ${d.getDate()}</span>
+                <span>${staff.map(s => s.name).join(', ')}</span>
+            </div>`;
+        }
+    }
+
+    el.innerHTML = `
+    <div class="briefing-grid">
+        <div class="briefing-card">
+            <div class="briefing-card-title">Бронювання тижня</div>
+            <div style="display:flex;gap:16px;margin-bottom:8px;font-size:13px">
+                <span><strong style="font-size:18px;color:#2E7D32">${b.total}</strong> бронювань</span>
+                <span><strong style="font-size:18px;color:#2E7D32">${formatPrice(b.revenue)}</strong></span>
+            </div>
+            ${scheduleHtml || '<div style="color:var(--gray-400);font-size:12px">Немає бронювань</div>'}
+        </div>
+        <div class="briefing-card">
+            <div class="briefing-card-title">Сповіщення</div>
+            ${alertsHtml || '<div style="color:var(--gray-400);font-size:12px">Все добре!</div>'}
+            <div style="margin-top:10px;font-size:12px;color:var(--gray-500)">
+                Задачі: <strong>${t.open}</strong> відкритих з <strong>${t.total}</strong>
+            </div>
+        </div>
+        ${staffHtml ? `<div class="briefing-card">
+            <div class="briefing-card-title">Аніматори на тижні</div>
+            ${staffHtml}
+        </div>` : ''}
+    </div>`;
+}
+
+// ==========================================
+// RENDER: ANIMATOR WORKLOAD (v19.9)
+// ==========================================
+
+function renderWorkload(loadData) {
+    const el = document.getElementById('workloadContent');
+    if (!el) return;
+
+    const animators = loadData?.animatorWorkload || [];
+    if (!animators.length) {
+        el.innerHTML = '<div class="center-empty">Немає даних про навантаження</div>';
+        return;
+    }
+
+    const maxMins = Math.max(...animators.map(a => a.totalMinutes), 1);
+
+    el.innerHTML = '<div class="workload-grid">' + animators.map(a => {
+        const hours = Math.round(a.totalMinutes / 60 * 10) / 10;
+        const pct = Math.round(a.totalMinutes / maxMins * 100);
+        const color = pct >= 80 ? '#EF4444' : pct >= 50 ? '#F59E0B' : '#10B981';
+        return `
+        <div class="workload-card" style="border-left-color:${color}">
+            <div class="workload-card-name">${escapeHtml(a.animatorName)}</div>
+            <div class="workload-card-stats">
+                <div><strong>${a.bookingCount}</strong> бронювань</div>
+                <div><strong>${hours}</strong> годин</div>
+            </div>
+            <div class="workload-bar">
+                <div class="workload-bar-fill" style="width:${pct}%;background:${color}"></div>
+            </div>
+        </div>`;
+    }).join('') + '</div>';
+}
+
+// ==========================================
+// RENDER: PROGRAM PERFORMANCE (v19.9)
+// ==========================================
+
+function renderProgramPerformance(data) {
+    const el = document.getElementById('perfContent');
+    if (!el) return;
+
+    const programs = data?.programs || [];
+    if (!programs.length) {
+        el.innerHTML = '<div class="center-empty">Немає даних</div>';
+        return;
+    }
+
+    const catNames = { quest: 'Квест', animation: 'Анімація', show: 'Шоу', photo: 'Фото', masterclass: 'МК', pinata: 'Піньята', custom: 'Інше' };
+
+    el.innerHTML = `<table class="perf-table">
+        <thead><tr>
+            <th>Програма</th>
+            <th>Категорія</th>
+            <th>Бронювань</th>
+            <th>Виручка</th>
+            <th>Сер. чек</th>
+            <th>Сер. дітей</th>
+            <th>Конверсія</th>
+        </tr></thead>
+        <tbody>${programs.map(p => {
+            const conversionPct = p.total > 0 ? Math.round(p.confirmed / p.total * 100) : 0;
+            const convClass = conversionPct >= 80 ? 'high' : conversionPct >= 50 ? 'medium' : 'low';
+            return `<tr>
+                <td style="font-weight:700">${escapeHtml(p.program_name)}</td>
+                <td><span class="price-category-badge">${catNames[p.category] || p.category || '—'}</span></td>
+                <td>${p.total} <span style="font-size:10px;color:var(--gray-400)">(${p.confirmed}✓)</span></td>
+                <td style="font-weight:800;color:#2E7D32">${formatPrice(p.revenue)}</td>
+                <td>${formatPrice(p.avg_price)}</td>
+                <td>${p.avg_kids || '—'}</td>
+                <td><span class="perf-conversion ${convClass}">${conversionPct}%</span></td>
+            </tr>`;
+        }).join('')}</tbody>
+    </table>`;
+}
+
+// ==========================================
+// RENDER: SEASONAL HEATMAP (v19.9)
+// ==========================================
+
+function renderHeatmap(data) {
+    const el = document.getElementById('heatmapContent');
+    if (!el) return;
+
+    const entries = data?.heatmap || [];
+    if (!entries.length) {
+        el.innerHTML = '<div class="center-empty">Немає даних</div>';
+        return;
+    }
+
+    // Build a map of date -> count
+    const countMap = {};
+    let maxCount = 0;
+    for (const e of entries) {
+        const d = typeof e.date === 'string' ? e.date : e.date?.toISOString().split('T')[0];
+        countMap[d] = e.count;
+        if (e.count > maxCount) maxCount = e.count;
+    }
+
+    // Generate weeks grid covering the period
+    const from = new Date(data.period.from + 'T12:00:00');
+    const to = new Date(data.period.to + 'T12:00:00');
+
+    // Start from Monday of the first week
+    const startDate = new Date(from);
+    const dow = startDate.getDay() || 7;
+    startDate.setDate(startDate.getDate() - (dow - 1));
+
+    const weeks = [];
+    let currentWeek = [];
+    const d = new Date(startDate);
+    const monthLabels = [];
+    let lastMonth = -1;
+
+    while (d <= to || currentWeek.length > 0) {
+        if (currentWeek.length === 7) {
+            weeks.push(currentWeek);
+            currentWeek = [];
+        }
+        if (d > to && currentWeek.length === 0) break;
+
+        const dateStr = d.toISOString().split('T')[0];
+        const count = countMap[dateStr] || 0;
+        const level = count === 0 ? 0 : count <= maxCount * 0.25 ? 1 : count <= maxCount * 0.5 ? 2 : count <= maxCount * 0.75 ? 3 : 4;
+
+        // Track month labels
+        if (d.getMonth() !== lastMonth && d <= to) {
+            monthLabels.push({ weekIdx: weeks.length, name: d.toLocaleString('uk-UA', { month: 'short' }) });
+            lastMonth = d.getMonth();
+        }
+
+        const inRange = d >= from && d <= to;
+        const rev = entries.find(e => {
+            const ed = typeof e.date === 'string' ? e.date : e.date?.toISOString().split('T')[0];
+            return ed === dateStr;
+        });
+        const revStr = rev ? ` | ${formatPrice(rev.revenue)}` : '';
+
+        currentWeek.push(inRange
+            ? `<div class="heatmap-cell level-${level}" title="${dateStr}: ${count} бронювань${revStr}"></div>`
+            : `<div class="heatmap-cell" style="opacity:0.15"></div>`
+        );
+        d.setDate(d.getDate() + 1);
+    }
+    if (currentWeek.length > 0) {
+        while (currentWeek.length < 7) currentWeek.push('<div class="heatmap-cell" style="opacity:0.15"></div>');
+        weeks.push(currentWeek);
+    }
+
+    // Month labels row
+    let monthHtml = '<div class="heatmap-months">';
+    let labelPositions = monthLabels.map((ml, i) => {
+        const nextIdx = i + 1 < monthLabels.length ? monthLabels[i + 1].weekIdx : weeks.length;
+        const span = nextIdx - ml.weekIdx;
+        return `<span class="heatmap-month-label" style="width:${span * 16}px">${ml.name}</span>`;
+    });
+    monthHtml += labelPositions.join('') + '</div>';
+
+    el.innerHTML = `
+    <div class="heatmap-container">
+        ${monthHtml}
+        <div class="heatmap-grid">
+            ${weeks.map(w => `<div class="heatmap-week">${w.join('')}</div>`).join('')}
+        </div>
+    </div>
+    <div class="heatmap-legend">
+        <span>Менше</span>
+        <div class="heatmap-legend-cell" style="background:var(--gray-100)"></div>
+        <div class="heatmap-legend-cell" style="background:#D1FAE5"></div>
+        <div class="heatmap-legend-cell" style="background:#6EE7B7"></div>
+        <div class="heatmap-legend-cell" style="background:#10B981"></div>
+        <div class="heatmap-legend-cell" style="background:#047857"></div>
+        <span>Більше</span>
+    </div>`;
+}
+
+// ==========================================
+// RENDER: CLIENTS + HISTORY (v19.9)
+// ==========================================
+
+function renderClients(clients) {
+    const el = document.getElementById('clientsContent');
+    if (!el) return;
+
+    if (!clients || !clients.length) {
+        el.innerHTML = '<div class="center-empty" style="padding:20px">Введіть ім\'я або телефон для пошуку</div>';
+        return;
+    }
+
+    el.innerHTML = clients.map(c => {
+        const initials = (c.name || '?').substring(0, 2).toUpperCase();
+        const lastVisit = c.last_visit ? new Date(c.last_visit).toLocaleDateString('uk-UA') : '—';
+        return `
+        <div class="client-card" onclick="showClientProfile(${c.id})">
+            <div class="client-card-avatar">${initials}</div>
+            <div class="client-card-info">
+                <div class="client-card-name">${escapeHtml(c.name || '—')}</div>
+                <div class="client-card-meta">${escapeHtml(c.phone || '')} ${c.child_name ? '| Дитина: ' + escapeHtml(c.child_name) : ''}</div>
+            </div>
+            <div class="client-card-stats">
+                <div class="revenue">${formatPrice(c.total_spent)}</div>
+                <div>${c.total_bookings || 0} бронювань</div>
+                <div style="font-size:10px;color:var(--gray-400)">Останній: ${lastVisit}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function searchClients() {
+    const input = document.getElementById('clientSearchInput');
+    const query = input ? input.value.trim() : '';
+    const data = await apiSearchClients(query);
+    renderClients(data.clients || []);
+    document.getElementById('clientBookingsContent')?.classList.add('hidden');
+}
+
+async function showClientProfile(clientId) {
+    const el = document.getElementById('clientBookingsContent');
+    if (!el) return;
+    el.classList.remove('hidden');
+    el.innerHTML = '<div class="center-loading">Завантаження...</div>';
+
+    const [clientsData, bookingsData] = await Promise.all([
+        apiSearchClients(''),
+        apiClientBookings(clientId)
+    ]);
+
+    const client = (clientsData.clients || []).find(c => c.id === clientId);
+    const bookings = bookingsData.bookings || [];
+
+    if (!client) {
+        el.innerHTML = '<div class="center-empty">Клієнта не знайдено</div>';
+        return;
+    }
+
+    const tierColor = { 'VIP': '#8B5CF6', 'Premium': '#F59E0B', 'Standard': '#3B82F6' };
+    const tc = tierColor[client.loyalty_tier] || '#6B7280';
+
+    let html = `
+    <div class="client-profile">
+        <div class="client-profile-header">
+            <div class="client-profile-name">${escapeHtml(client.name)}</div>
+            ${client.loyalty_tier ? `<span class="client-profile-tier" style="background:${tc}15;color:${tc}">${escapeHtml(client.loyalty_tier)}</span>` : ''}
+        </div>
+        <div class="client-profile-grid">
+            <div class="client-profile-stat">
+                <div class="client-profile-stat-label">Телефон</div>
+                <div class="client-profile-stat-value">${escapeHtml(client.phone || '—')}</div>
+            </div>
+            <div class="client-profile-stat">
+                <div class="client-profile-stat-label">Дитина</div>
+                <div class="client-profile-stat-value">${escapeHtml(client.child_name || '—')}</div>
+            </div>
+            <div class="client-profile-stat">
+                <div class="client-profile-stat-label">Бронювань</div>
+                <div class="client-profile-stat-value">${client.total_bookings || 0}</div>
+            </div>
+            <div class="client-profile-stat">
+                <div class="client-profile-stat-label">Витрачено</div>
+                <div class="client-profile-stat-value" style="color:#2E7D32">${formatPrice(client.total_spent)}</div>
+            </div>
+            <div class="client-profile-stat">
+                <div class="client-profile-stat-label">Перший візит</div>
+                <div class="client-profile-stat-value">${client.first_visit ? new Date(client.first_visit).toLocaleDateString('uk-UA') : '—'}</div>
+            </div>
+            <div class="client-profile-stat">
+                <div class="client-profile-stat-label">Останній візит</div>
+                <div class="client-profile-stat-value">${client.last_visit ? new Date(client.last_visit).toLocaleDateString('uk-UA') : '—'}</div>
+            </div>
+        </div>
+    </div>`;
+
+    if (bookings.length > 0) {
+        html += '<div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--gray-600)">Історія бронювань</div>';
+        html += bookings.map(b => {
+            const dateStr = b.date ? new Date(b.date).toLocaleDateString('uk-UA') : '';
+            return `
+            <div class="client-booking-row">
+                <span class="client-booking-date">${dateStr} ${b.time || ''}</span>
+                <span class="client-booking-program">${escapeHtml(b.program_name)}</span>
+                <span class="client-booking-price">${formatPrice(b.price)}</span>
+                <span class="client-booking-status ${b.status}">${b.status === 'confirmed' ? '✓' : '~'}</span>
+            </div>`;
+        }).join('');
+    } else {
+        html += '<div class="center-empty" style="padding:12px">Немає бронювань</div>';
+    }
+
+    el.innerHTML = html;
+}
+
+// ==========================================
+// RENDER: CROSS-SELL (v19.9)
+// ==========================================
+
+function renderCrossSell(data) {
+    const el = document.getElementById('crossSellContent');
+    if (!el) return;
+
+    const combos = data?.combos || [];
+    const addons = data?.addons || [];
+
+    if (!combos.length && !addons.length) {
+        el.innerHTML = '<div class="center-empty">Недостатньо даних для аналізу</div>';
+        return;
+    }
+
+    let html = '<div class="cross-sell-grid">';
+
+    if (combos.length) {
+        html += '<div><div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--gray-600)">Популярні комбінації</div>';
+        html += combos.slice(0, 8).map(c => `
+        <div class="combo-card">
+            <div class="combo-count">${c.combo_count}</div>
+            <div class="combo-programs">
+                <span style="font-weight:700">${escapeHtml(c.program_a)}</span>
+                <span class="combo-plus">+</span>
+                <span style="font-weight:700">${escapeHtml(c.program_b)}</span>
+            </div>
+        </div>`).join('');
+        html += '</div>';
+    }
+
+    if (addons.length) {
+        html += '<div><div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--gray-600)">Топ додаткові послуги</div>';
+        html += addons.map(a => `
+        <div class="addon-row">
+            <span class="addon-row-name">${escapeHtml(a.program_name)}</span>
+            <span class="addon-row-stats">${a.count} разів</span>
+            <span class="addon-row-revenue">${formatPrice(a.revenue)}</span>
+        </div>`).join('');
+        html += '</div>';
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+// ==========================================
+// RENDER: FULL CATALOG (v19.9)
+// ==========================================
+
+function renderCatalog(products) {
+    const el = document.getElementById('catalogContent');
+    const tabsEl = document.getElementById('catalogTabs');
+    if (!el) return;
+
+    catalogProducts = products || [];
+    if (!catalogProducts.length) {
+        el.innerHTML = '<div class="center-empty">Немає активних програм</div>';
+        return;
+    }
+
+    // Build category tabs
+    const categories = [...new Set(catalogProducts.map(p => p.category))].filter(Boolean);
+    const catNames = { quest: 'Квести', animation: 'Анімація', show: 'Шоу', photo: 'Фото', masterclass: 'Майстер-класи', pinata: 'Піньяти', custom: 'Інше' };
+
+    if (tabsEl) {
+        tabsEl.innerHTML = `
+            <button class="catalog-filter-tab ${catalogFilter === 'all' ? 'active' : ''}" onclick="filterCatalog('all')">Всі</button>
+            ${categories.map(c => `<button class="catalog-filter-tab ${catalogFilter === c ? 'active' : ''}" onclick="filterCatalog('${c}')">${catNames[c] || c}</button>`).join('')}
+        `;
+    }
+
+    const filtered = catalogFilter === 'all' ? catalogProducts : catalogProducts.filter(p => p.category === catalogFilter);
+
+    el.innerHTML = '<div class="catalog-grid">' + filtered.map(p => {
+        const icon = p.icon || (catNames[p.category] ? '' : '');
+        const dur = p.duration ? `${p.duration} хв` : '';
+        const hosts = p.hosts ? `${p.hosts} анім.` : '';
+        const kids = p.kidsCapacity || p.kids_capacity || '';
+        const age = p.ageRange || p.age_range || '';
+        const meta = [dur, hosts, kids, age].filter(Boolean).join(' | ');
+        const priceVal = p.isPerChild || p.is_per_child ? `${formatPrice(p.price)}/дит` : formatPrice(p.price);
+        return `
+        <div class="catalog-card">
+            <div class="catalog-card-icon">${icon}</div>
+            <div class="catalog-card-info">
+                <div class="catalog-card-name">${escapeHtml(p.name)}</div>
+                <div class="catalog-card-meta">${meta}</div>
+            </div>
+            <div class="catalog-card-price">${priceVal}</div>
+        </div>`;
+    }).join('') + '</div>';
+}
+
+function filterCatalog(cat) {
+    catalogFilter = cat;
+    renderCatalog(catalogProducts);
+}
+
+// ==========================================
+// RENDER: FINANCIAL RECONCILIATION (v19.9)
+// ==========================================
+
+function renderReconciliation(data) {
+    const el = document.getElementById('reconciliationContent');
+    if (!el) return;
+
+    if (!data || !data.reconciliation) {
+        el.innerHTML = '<div class="center-empty">Немає даних для звірки</div>';
+        return;
+    }
+
+    const r = data.reconciliation;
+    const b = r.bookings;
+    const p = r.payments;
+    const gapClass = Math.abs(r.gapPercent) <= 5 ? 'ok' : Math.abs(r.gapPercent) <= 20 ? 'warn' : 'danger';
+    const gapIcon = gapClass === 'ok' ? '&#10004;' : gapClass === 'warn' ? '&#9888;' : '&#10060;';
+
+    el.innerHTML = `
+    <div class="recon-grid">
+        <div class="recon-card">
+            <div class="recon-card-label">Бронювання (підтверджені)</div>
+            <div class="recon-card-value positive">${formatPrice(b.confirmed_revenue)}</div>
+            <div class="recon-card-sub">${b.confirmed} з ${b.total_bookings} бронювань</div>
+        </div>
+        <div class="recon-card">
+            <div class="recon-card-label">Фактичні надходження</div>
+            <div class="recon-card-value positive">${formatPrice(p.total_income)}</div>
+            <div class="recon-card-sub">${p.income_count} транзакцій</div>
+        </div>
+        <div class="recon-card">
+            <div class="recon-card-label">Витрати</div>
+            <div class="recon-card-value negative">${formatPrice(p.total_expense)}</div>
+            <div class="recon-card-sub">${p.expense_count} транзакцій</div>
+        </div>
+    </div>
+    <div class="recon-gap-bar ${gapClass}">
+        <span>${gapIcon} Різниця: <strong>${formatPrice(Math.abs(r.gap))}</strong> (${r.gapPercent}%)</span>
+        <span style="font-size:11px">${r.gap > 0 ? 'Не зібрано' : r.gap < 0 ? 'Зібрано більше' : 'Збігається'}</span>
+    </div>`;
+}
+
+// ==========================================
+// RENDER: EVENT TIMELINE (v19.9)
+// ==========================================
+
+function renderEventLog(data) {
+    const el = document.getElementById('eventLogContent');
+    if (!el) return;
+
+    const events = data?.events || [];
+    if (!events.length) {
+        el.innerHTML = '<div class="center-empty">Немає записів</div>';
+        return;
+    }
+
+    const actionLabels = { create: 'Створено', edit: 'Змінено', delete: 'Видалено', status_change: 'Статус' };
+    const actionIcons = { create: '&#43;', edit: '&#9998;', delete: '&#10005;', status_change: '&#8634;' };
+    const actionClasses = { create: 'create', edit: 'edit', delete: 'delete', status_change: 'edit' };
+
+    el.innerHTML = '<div class="event-timeline">' + events.slice(0, 50).map(e => {
+        const label = actionLabels[e.action] || e.action;
+        const icon = actionIcons[e.action] || '&#8226;';
+        const cls = actionClasses[e.action] || 'edit';
+        const time = e.timestamp ? new Date(e.timestamp).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+
+        let details = '';
+        if (e.data) {
+            if (e.data.id) details += `#${e.data.id} `;
+            if (e.data.program_name) details += escapeHtml(e.data.program_name) + ' ';
+            else if (e.data.programName) details += escapeHtml(e.data.programName) + ' ';
+            if (e.data.date) details += `(${e.data.date}) `;
+            if (e.data.status) details += `→ ${e.data.status}`;
+        }
+
+        return `
+        <div class="event-row">
+            <div class="event-icon ${cls}">${icon}</div>
+            <div class="event-info">
+                <div class="event-info-action">${label} <span style="font-weight:400;color:var(--gray-500)">— ${escapeHtml(e.user || '')}</span></div>
+                ${details ? `<div class="event-info-details">${details}</div>` : ''}
+            </div>
+            <div class="event-time">${time}</div>
+        </div>`;
+    }).join('') + '</div>';
+}
+
+// ==========================================
 // SEND REPORT TO TELEGRAM (v19.8)
 // ==========================================
 
@@ -1125,6 +1875,75 @@ async function loadProposals() {
 }
 
 // ==========================================
+// DATA LOADING — New features (v19.9)
+// ==========================================
+
+async function loadGoals() {
+    const data = await apiCenterGoals();
+    if (data.success) {
+        renderGoals(data.goals, centerData?.kpi);
+    } else {
+        document.getElementById('goalsContent').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+    }
+}
+
+async function loadBriefing() {
+    const data = await apiCenterBriefing();
+    if (data.success) {
+        renderBriefing(data.briefing);
+    } else {
+        document.getElementById('briefingContent').innerHTML = '<div class="center-empty">Помилка</div>';
+    }
+}
+
+async function loadWorkload() {
+    const data = await apiAnimatorWorkload();
+    renderWorkload(data);
+}
+
+async function loadProgramPerformance() {
+    const data = await apiProgramPerformance();
+    if (data.success) {
+        renderProgramPerformance(data);
+    } else {
+        document.getElementById('perfContent').innerHTML = '<div class="center-empty">Помилка</div>';
+    }
+}
+
+async function loadHeatmap() {
+    const data = await apiSeasonalHeatmap();
+    if (data.success) {
+        renderHeatmap(data);
+    } else {
+        document.getElementById('heatmapContent').innerHTML = '<div class="center-empty">Помилка</div>';
+    }
+}
+
+async function loadCrossSell() {
+    const data = await apiCrossSell();
+    if (data.success) {
+        renderCrossSell(data);
+    } else {
+        document.getElementById('crossSellContent').innerHTML = '<div class="center-empty">Помилка</div>';
+    }
+}
+
+async function loadCatalog() {
+    const data = await apiProducts();
+    renderCatalog(data);
+}
+
+async function loadReconciliation() {
+    const data = await apiReconciliation();
+    renderReconciliation(data);
+}
+
+async function loadEventLog() {
+    const data = await apiEventLog();
+    renderEventLog(data);
+}
+
+// ==========================================
 // SIDEBAR + AUTH
 // ==========================================
 
@@ -1236,8 +2055,19 @@ async function initCenterPage() {
         loadCharts(),
         loadLoyalty(),
         loadDiscounts(),
-        loadProposals()
+        loadProposals(),
+        loadBriefing(),
+        loadWorkload(),
+        loadProgramPerformance(),
+        loadHeatmap(),
+        loadCrossSell(),
+        loadCatalog(),
+        loadReconciliation(),
+        loadEventLog()
     ]);
+
+    // Load goals after overview (needs KPI data)
+    await loadGoals();
 
     // Profile handler
     if (typeof initProfileHandler === 'function') initProfileHandler();

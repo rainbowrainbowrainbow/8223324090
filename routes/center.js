@@ -409,4 +409,361 @@ router.get('/tasks', async (req, res) => {
     }
 });
 
+// ==========================================
+// CLIENT SEARCH + PROFILE (v19.9)
+// ==========================================
+
+router.get('/clients', async (req, res) => {
+    try {
+        const { search } = req.query;
+        const lim = Math.min(parseInt(req.query.limit) || 20, 50);
+
+        let query, params;
+        if (search && search.trim()) {
+            query = `SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
+                c.total_bookings, c.total_spent, c.first_visit, c.last_visit,
+                c.loyalty_tier
+                FROM customers c
+                WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.child_name ILIKE $1 OR c.instagram ILIKE $1
+                ORDER BY c.last_visit DESC NULLS LAST
+                LIMIT $2`;
+            params = [`%${search.trim()}%`, lim];
+        } else {
+            query = `SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
+                c.total_bookings, c.total_spent, c.first_visit, c.last_visit,
+                c.loyalty_tier
+                FROM customers c
+                ORDER BY c.last_visit DESC NULLS LAST
+                LIMIT $1`;
+            params = [lim];
+        }
+        const result = await pool.query(query, params);
+        res.json({ success: true, clients: result.rows });
+    } catch (err) {
+        log.error('GET /center/clients error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження клієнтів' });
+    }
+});
+
+router.get('/clients/:id/bookings', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, date, time, program_name, category, duration, price, status, room, kids_count
+            FROM bookings
+            WHERE customer_id = $1 AND status != 'cancelled'
+            ORDER BY date DESC, time DESC
+            LIMIT 50
+        `, [req.params.id]);
+        res.json({ success: true, bookings: result.rows });
+    } catch (err) {
+        log.error('GET /center/clients/:id/bookings error', err);
+        res.status(500).json({ success: false, error: 'Помилка' });
+    }
+});
+
+// ==========================================
+// REVENUE GOALS (v19.9)
+// ==========================================
+
+router.get('/goals', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT value FROM settings WHERE key = 'center_revenue_goals'");
+        if (result.rows.length === 0) return res.json({ success: true, goals: null });
+        res.json({ success: true, goals: JSON.parse(result.rows[0].value) });
+    } catch (err) {
+        log.error('GET /center/goals error', err);
+        res.status(500).json({ success: false, error: 'Помилка' });
+    }
+});
+
+router.post('/goals', async (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, error: 'Тільки для адмінів' });
+    try {
+        const { weeklyRevenue, weeklyBookings, monthlyRevenue, monthlyBookings } = req.body;
+        const data = JSON.stringify({ weeklyRevenue, weeklyBookings, monthlyRevenue, monthlyBookings, updatedBy: req.user.username, updatedAt: new Date().toISOString() });
+        await pool.query(
+            `INSERT INTO settings (key, value) VALUES ('center_revenue_goals', $1)
+             ON CONFLICT (key) DO UPDATE SET value = $1`,
+            [data]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        log.error('POST /center/goals error', err);
+        res.status(500).json({ success: false, error: 'Помилка збереження' });
+    }
+});
+
+// ==========================================
+// WEEKLY BRIEFING (v19.9)
+// ==========================================
+
+router.get('/briefing', async (req, res) => {
+    try {
+        const now = getKyivNow();
+        const weekStart = getWeekStart(now);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        const from = formatDateISO(weekStart);
+        const to = formatDateISO(weekEnd);
+
+        const [bookingsRes, tasksRes, expiringDiscounts, staffRes] = await Promise.all([
+            pool.query(`
+                SELECT date, time, program_name, category, price, status, room, kids_count, customer_id
+                FROM bookings
+                WHERE date >= $1 AND date <= $2 AND status != 'cancelled' AND linked_to IS NULL
+                ORDER BY date, time
+            `, [from, to]),
+            pool.query(`
+                SELECT id, title, status, priority, assigned_to, date, deadline
+                FROM tasks
+                WHERE (date >= $1 AND date <= $2) OR (deadline >= $1 AND deadline <= $2) OR (status IN ('todo', 'in_progress'))
+                ORDER BY priority DESC, date
+            `, [from, to]),
+            pool.query(`
+                SELECT code, name, valid_until
+                FROM discount_codes
+                WHERE is_active = true AND valid_until IS NOT NULL AND valid_until >= $1 AND valid_until <= $2
+                ORDER BY valid_until
+            `, [from, to]).catch(() => ({ rows: [] })),
+            pool.query(`
+                SELECT ss.date, s.name, ss.shift_start, ss.shift_end, ss.status
+                FROM staff_schedule ss
+                JOIN staff s ON ss.staff_id = s.id
+                WHERE ss.date >= $1 AND ss.date <= $2 AND s.department = 'animators'
+                ORDER BY ss.date, ss.shift_start
+            `, [from, to]).catch(() => ({ rows: [] }))
+        ]);
+
+        const bookings = bookingsRes.rows;
+        const totalRevenue = bookings.filter(b => b.status === 'confirmed').reduce((s, b) => s + (b.price || 0), 0);
+        const totalBookings = bookings.length;
+        const confirmedCount = bookings.filter(b => b.status === 'confirmed').length;
+        const preliminaryCount = bookings.filter(b => b.status === 'preliminary').length;
+
+        // Group bookings by day
+        const byDay = {};
+        for (const b of bookings) {
+            const d = typeof b.date === 'string' ? b.date : (b.date ? b.date.toISOString().split('T')[0] : '');
+            if (!byDay[d]) byDay[d] = [];
+            byDay[d].push(b);
+        }
+
+        const tasks = tasksRes.rows;
+        const openTasks = tasks.filter(t => t.status !== 'done').length;
+        const highPriorityTasks = tasks.filter(t => t.priority === 'high' && t.status !== 'done');
+
+        res.json({
+            success: true,
+            briefing: {
+                period: { from, to },
+                bookings: { total: totalBookings, confirmed: confirmedCount, preliminary: preliminaryCount, revenue: totalRevenue, byDay },
+                tasks: { total: tasks.length, open: openTasks, highPriority: highPriorityTasks },
+                expiringDiscounts: expiringDiscounts.rows,
+                staff: staffRes.rows
+            }
+        });
+    } catch (err) {
+        log.error('GET /center/briefing error', err);
+        res.status(500).json({ success: false, error: 'Помилка компіляції брифінгу' });
+    }
+});
+
+// ==========================================
+// FINANCIAL RECONCILIATION (v19.9)
+// ==========================================
+
+router.get('/reconciliation', async (req, res) => {
+    try {
+        const now = getKyivNow();
+        const monthStart = formatDateISO(getMonthStart(now));
+        const today = formatDateISO(now);
+        const from = req.query.from || monthStart;
+        const to = req.query.to || today;
+
+        const [bookingsRes, paymentsRes] = await Promise.all([
+            pool.query(`
+                SELECT
+                    COUNT(*)::int AS total_bookings,
+                    COALESCE(SUM(price), 0)::int AS total_price,
+                    COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
+                    COALESCE(SUM(CASE WHEN status = 'confirmed' THEN price ELSE 0 END), 0)::int AS confirmed_revenue,
+                    COUNT(*) FILTER (WHERE status = 'preliminary')::int AS preliminary,
+                    COALESCE(SUM(CASE WHEN status = 'preliminary' THEN price ELSE 0 END), 0)::int AS preliminary_revenue
+                FROM bookings
+                WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != 'cancelled'
+            `, [from, to]),
+            pool.query(`
+                SELECT
+                    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS total_income,
+                    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::int AS total_expense,
+                    COUNT(*) FILTER (WHERE type = 'income')::int AS income_count,
+                    COUNT(*) FILTER (WHERE type = 'expense')::int AS expense_count
+                FROM finance_transactions
+                WHERE date >= $1 AND date <= $2
+            `, [from, to]).catch(() => ({ rows: [{ total_income: 0, total_expense: 0, income_count: 0, expense_count: 0 }] }))
+        ]);
+
+        const b = bookingsRes.rows[0];
+        const p = paymentsRes.rows[0];
+        const gap = b.confirmed_revenue - p.total_income;
+
+        res.json({
+            success: true,
+            reconciliation: {
+                period: { from, to },
+                bookings: b,
+                payments: p,
+                gap,
+                gapPercent: b.confirmed_revenue > 0 ? Math.round(gap / b.confirmed_revenue * 100) : 0
+            }
+        });
+    } catch (err) {
+        log.error('GET /center/reconciliation error', err);
+        res.status(500).json({ success: false, error: 'Помилка звірки' });
+    }
+});
+
+// ==========================================
+// SEASONAL HEATMAP (v19.9)
+// ==========================================
+
+router.get('/heatmap', async (req, res) => {
+    try {
+        const months = Math.min(parseInt(req.query.months) || 6, 12);
+        const now = getKyivNow();
+        const fromDate = new Date(now);
+        fromDate.setMonth(fromDate.getMonth() - months);
+        const from = formatDateISO(fromDate);
+        const to = formatDateISO(now);
+
+        const result = await pool.query(`
+            SELECT date,
+                COUNT(*)::int AS count,
+                COALESCE(SUM(price), 0)::int AS revenue
+            FROM bookings
+            WHERE date >= $1 AND date <= $2 AND status != 'cancelled' AND linked_to IS NULL
+            GROUP BY date
+            ORDER BY date
+        `, [from, to]);
+
+        res.json({ success: true, heatmap: result.rows, period: { from, to } });
+    } catch (err) {
+        log.error('GET /center/heatmap error', err);
+        res.status(500).json({ success: false, error: 'Помилка' });
+    }
+});
+
+// ==========================================
+// PROGRAM PERFORMANCE MATRIX (v19.9)
+// ==========================================
+
+router.get('/program-performance', async (req, res) => {
+    try {
+        const now = getKyivNow();
+        const monthStart = formatDateISO(getMonthStart(now));
+        const today = formatDateISO(now);
+        const from = req.query.from || monthStart;
+        const to = req.query.to || today;
+
+        const result = await pool.query(`
+            SELECT
+                program_id, program_name, category,
+                COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
+                COUNT(*) FILTER (WHERE status = 'preliminary')::int AS preliminary,
+                COALESCE(SUM(CASE WHEN status = 'confirmed' THEN price ELSE 0 END), 0)::int AS revenue,
+                COALESCE(ROUND(AVG(CASE WHEN status = 'confirmed' THEN price END)), 0)::int AS avg_price,
+                COALESCE(ROUND(AVG(kids_count)), 0)::int AS avg_kids
+            FROM bookings
+            WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != 'cancelled'
+            GROUP BY program_id, program_name, category
+            ORDER BY revenue DESC
+        `, [from, to]);
+
+        res.json({ success: true, programs: result.rows, period: { from, to } });
+    } catch (err) {
+        log.error('GET /center/program-performance error', err);
+        res.status(500).json({ success: false, error: 'Помилка' });
+    }
+});
+
+// ==========================================
+// CROSS-SELL INSIGHTS (v19.9)
+// ==========================================
+
+router.get('/cross-sell', async (req, res) => {
+    try {
+        const now = getKyivNow();
+        const monthStart = formatDateISO(new Date(now.getFullYear(), now.getMonth() - 3, 1));
+        const today = formatDateISO(now);
+
+        // Find programs frequently booked together on the same date by the same customer
+        const result = await pool.query(`
+            SELECT
+                b1.program_name AS program_a,
+                b2.program_name AS program_b,
+                COUNT(*)::int AS combo_count
+            FROM bookings b1
+            JOIN bookings b2 ON b1.date = b2.date
+                AND b1.customer_id = b2.customer_id
+                AND b1.id < b2.id
+                AND b1.linked_to IS NULL AND b2.linked_to IS NULL
+            WHERE b1.date >= $1 AND b1.date <= $2
+                AND b1.status != 'cancelled' AND b2.status != 'cancelled'
+            GROUP BY b1.program_name, b2.program_name
+            HAVING COUNT(*) >= 2
+            ORDER BY combo_count DESC
+            LIMIT 15
+        `, [monthStart, today]);
+
+        // Top add-ons (linked bookings)
+        const addons = await pool.query(`
+            SELECT program_name, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
+            FROM bookings
+            WHERE date >= $1 AND date <= $2 AND linked_to IS NOT NULL AND status != 'cancelled'
+            GROUP BY program_name
+            ORDER BY count DESC
+            LIMIT 10
+        `, [monthStart, today]);
+
+        res.json({
+            success: true,
+            combos: result.rows,
+            addons: addons.rows
+        });
+    } catch (err) {
+        log.error('GET /center/cross-sell error', err);
+        res.status(500).json({ success: false, error: 'Помилка' });
+    }
+});
+
+// ==========================================
+// EVENT TIMELINE (v19.9)
+// ==========================================
+
+router.get('/event-log', async (req, res) => {
+    try {
+        const lim = Math.min(parseInt(req.query.limit) || 50, 200);
+        const result = await pool.query(`
+            SELECT id, action, username, data, created_at
+            FROM history
+            ORDER BY created_at DESC
+            LIMIT $1
+        `, [lim]);
+
+        const events = result.rows.map(r => ({
+            id: r.id,
+            action: r.action,
+            user: r.username,
+            data: typeof r.data === 'string' ? JSON.parse(r.data) : r.data,
+            timestamp: r.created_at
+        }));
+
+        res.json({ success: true, events });
+    } catch (err) {
+        log.error('GET /center/event-log error', err);
+        res.status(500).json({ success: false, error: 'Помилка' });
+    }
+});
+
 module.exports = router;

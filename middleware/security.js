@@ -6,6 +6,16 @@ function securityHeaders(req, res, next) {
     res.set('X-Frame-Options', 'DENY');
     res.set('X-XSS-Protection', '1; mode=block');
     res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // v19.14: Content-Security-Policy
+    res.set('Content-Security-Policy', [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data: blob:",
+        "connect-src 'self' ws: wss:",
+        "frame-ancestors 'none'"
+    ].join('; '));
     if (req.secure || req.get('x-forwarded-proto') === 'https') {
         res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     }

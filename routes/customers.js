@@ -5,6 +5,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { exportLimiter } = require('../middleware/rateLimit');
 
 const log = createLogger('Customers');
 
@@ -81,8 +82,8 @@ router.get('/rfm', async (req, res) => {
     }
 });
 
-// v15.1: CSV export
-router.get('/export', async (req, res) => {
+// v15.1: CSV export — v19.14: rate limited
+router.get('/export', exportLimiter, async (req, res) => {
     try {
         // v19.12: LEFT JOIN instead of correlated subquery for cert_count
         const result = await pool.query(`
@@ -129,8 +130,8 @@ router.get('/export', async (req, res) => {
     }
 });
 
-// v17.0: Excel export
-router.get('/export-xlsx', async (req, res) => {
+// v17.0: Excel export — v19.14: rate limited
+router.get('/export-xlsx', exportLimiter, async (req, res) => {
     try {
         // v19.12: LEFT JOIN instead of correlated subquery for cert_count
         const result = await pool.query(`

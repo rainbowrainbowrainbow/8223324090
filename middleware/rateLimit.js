@@ -126,6 +126,13 @@ setInterval(() => {
     }
 }, 300000);
 
+// v19.14: Export endpoints: 5 requests per 15 minutes per IP
+const exportLimiter = createWriteRateLimiter('export', {
+    windowMs: 900000,
+    max: 5,
+    methods: ['GET']
+});
+
 module.exports = {
     rateLimiter,
     loginRateLimiter,
@@ -133,5 +140,6 @@ module.exports = {
     bookingUpdateLimiter,
     certCreateLimiter,
     certBatchLimiter,
-    createWriteRateLimiter
+    createWriteRateLimiter,
+    exportLimiter
 };

@@ -57,6 +57,14 @@ router.post('/', async (req, res) => {
         if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
 
+        // v19.14: Input length validation
+        if (b.notes && b.notes.length > 2000) { return res.status(400).json({ error: 'Нотатки: макс. 2000 символів' }); }
+        if (b.label && b.label.length > 200) { return res.status(400).json({ error: 'Назва: макс. 200 символів' }); }
+        if (b.room && b.room.length > 100) { return res.status(400).json({ error: 'Кімната: макс. 100 символів' }); }
+        if (b.groupName && b.groupName.length > 200) { return res.status(400).json({ error: 'Група: макс. 200 символів' }); }
+        const dur = parseInt(b.duration) || 0;
+        if (dur < 0 || dur > 1440) { return res.status(400).json({ error: 'Тривалість: 0-1440 хвилин' }); }
+
         // [FIX] Заборона бронювання в минулому
         if (!b.linkedTo) {
             const bookingDateTime = new Date(`${b.date}T${b.time}:00`);
@@ -411,6 +419,14 @@ router.put('/:id', async (req, res) => {
         if (!validateId(id)) { return res.status(400).json({ error: 'Invalid booking ID' }); }
         if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
+
+        // v19.14: Input length validation
+        if (b.notes && b.notes.length > 2000) { return res.status(400).json({ error: 'Нотатки: макс. 2000 символів' }); }
+        if (b.label && b.label.length > 200) { return res.status(400).json({ error: 'Назва: макс. 200 символів' }); }
+        if (b.room && b.room.length > 100) { return res.status(400).json({ error: 'Кімната: макс. 100 символів' }); }
+        if (b.groupName && b.groupName.length > 200) { return res.status(400).json({ error: 'Група: макс. 200 символів' }); }
+        const dur = parseInt(b.duration) || 0;
+        if (dur < 0 || dur > 1440) { return res.status(400).json({ error: 'Тривалість: 0-1440 хвилин' }); }
 
         await client.query('BEGIN');
 

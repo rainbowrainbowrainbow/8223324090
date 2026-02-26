@@ -1,6 +1,6 @@
 /**
  * center-page.js — Center (Boss) management page
- * v18.1.0: Digital Workers, KPI, Price Rules, Tasks, Daily Report
+ * v19.8.0: Digital Workers, KPI, Price Rules, Tasks, Charts, Loyalty, Discounts, Proposals, Report
  */
 
 // Page name constant — easy to rename
@@ -11,6 +11,10 @@ let pricesData = [];
 let tasksData = [];
 let currentPeriod = 'today';
 let isAdminUser = false;
+let chartsInstances = {};
+let loyaltyTiers = [];
+let discountCodes = [];
+let proposals = [];
 
 // ==========================================
 // NOTIFICATIONS
@@ -26,7 +30,7 @@ function showNotification(message, type = '') {
 }
 
 // ==========================================
-// API CALLS
+// API CALLS — existing
 // ==========================================
 
 async function apiCenterOverview() {
@@ -122,6 +126,145 @@ async function apiCenterReport() {
 }
 
 // ==========================================
+// API CALLS — Loyalty & Discounts (v19.7)
+// ==========================================
+
+async function apiLoyaltyTiers() {
+    try {
+        const response = await fetch(`${API_BASE}/loyalty/tiers`, { headers: getAuthHeaders(false) });
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API loyalty tiers error:', err);
+        return [];
+    }
+}
+
+async function apiLoyaltyCustomers(segment) {
+    try {
+        const url = segment ? `${API_BASE}/loyalty/customers?segment=${segment}&limit=100` : `${API_BASE}/loyalty/customers?limit=100`;
+        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API loyalty customers error:', err);
+        return { items: [], total: 0 };
+    }
+}
+
+async function apiRecalculateLoyalty() {
+    try {
+        const response = await fetch(`${API_BASE}/loyalty/recalculate`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API recalculate loyalty error:', err);
+        return { success: false };
+    }
+}
+
+async function apiGetDiscounts() {
+    try {
+        const response = await fetch(`${API_BASE}/loyalty/discounts`, { headers: getAuthHeaders(false) });
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API get discounts error:', err);
+        return [];
+    }
+}
+
+async function apiCreateDiscount(data) {
+    try {
+        const response = await fetch(`${API_BASE}/loyalty/discounts`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('API create discount error:', err);
+        return { error: err.message };
+    }
+}
+
+async function apiDeleteDiscount(id) {
+    try {
+        const response = await fetch(`${API_BASE}/loyalty/discounts/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('API delete discount error:', err);
+        return { error: err.message };
+    }
+}
+
+async function apiGetProposals() {
+    try {
+        const response = await fetch(`${API_BASE}/loyalty/proposals`, { headers: getAuthHeaders(false) });
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API get proposals error:', err);
+        return [];
+    }
+}
+
+async function apiCreateProposal(data) {
+    try {
+        const response = await fetch(`${API_BASE}/loyalty/proposals`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('API create proposal error:', err);
+        return { error: err.message };
+    }
+}
+
+async function apiDeleteProposal(id) {
+    try {
+        const response = await fetch(`${API_BASE}/loyalty/proposals/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('API delete proposal error:', err);
+        return { error: err.message };
+    }
+}
+
+// ==========================================
+// API CALLS — Charts (v19.8)
+// ==========================================
+
+async function apiChartsData() {
+    try {
+        // Get stats for last 7 days
+        const today = new Date();
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const from = weekAgo.toISOString().split('T')[0];
+        const to = today.toISOString().split('T')[0];
+
+        const response = await fetch(`${API_BASE}/stats/${from}/${to}`, { headers: getAuthHeaders(false) });
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API charts data error:', err);
+        return null;
+    }
+}
+
+// ==========================================
 // TIME HELPERS
 // ==========================================
 
@@ -142,6 +285,11 @@ function formatPrice(amount) {
     return Number(amount).toLocaleString('uk-UA') + ' ₴';
 }
 
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ==========================================
 // RENDER: WORKERS
 // ==========================================
@@ -151,7 +299,7 @@ function renderWorkers(workers) {
     if (!grid) return;
 
     if (!workers || workers.length === 0) {
-        grid.innerHTML = '<div class="center-empty"><span>🤖</span>Немає зареєстрованих воркерів</div>';
+        grid.innerHTML = '<div class="center-empty">Немає зареєстрованих воркерів</div>';
         return;
     }
 
@@ -232,17 +380,9 @@ function renderPrices(prices) {
     if (!container) return;
 
     if (!prices || prices.length === 0) {
-        container.innerHTML = '<div class="center-empty"><span>💰</span>Немає цінових правил</div>';
+        container.innerHTML = '<div class="center-empty">Немає цінових правил</div>';
         appendPriceAddRow(container);
         return;
-    }
-
-    // Group by category
-    const categories = {};
-    for (const p of prices) {
-        const cat = p.category || 'Інше';
-        if (!categories[cat]) categories[cat] = [];
-        categories[cat].push(p);
     }
 
     let html = `<table class="prices-table">
@@ -264,22 +404,22 @@ function renderPrices(prices) {
 
         html += `<tr data-code="${p.code}">
             <td>
-                <div style="font-weight:700">${p.name}</div>
-                <div style="font-size:10px;color:var(--gray-400)">${p.code}</div>
+                <div style="font-weight:700">${escapeHtml(p.name)}</div>
+                <div style="font-size:10px;color:var(--gray-400)">${escapeHtml(p.code)}</div>
             </td>
-            <td><span class="price-category-badge">${p.category || '—'}</span></td>
+            <td><span class="price-category-badge">${escapeHtml(p.category) || '—'}</span></td>
             <td>
                 ${isAdminUser
-                    ? `<input type="number" class="price-inline-input" value="${p.value}" data-code="${p.code}" data-original="${p.value}"
+                    ? `<input type="number" class="price-inline-input" value="${p.value}" data-code="${escapeHtml(p.code)}" data-original="${p.value}"
                         onkeydown="if(event.key==='Enter')savePriceInline(this)"
                         onblur="savePriceInline(this)">
-                       <span class="price-unit">${p.unit || ''}</span>`
-                    : `<span class="price-value-cell">${p.value}</span><span class="price-unit">${p.unit || ''}</span>`
+                       <span class="price-unit">${escapeHtml(p.unit) || ''}</span>`
+                    : `<span class="price-value-cell">${p.value}</span><span class="price-unit">${escapeHtml(p.unit) || ''}</span>`
                 }
             </td>
             <td><span class="price-updated">${updatedInfo}</span></td>
             ${isAdminUser ? `<td class="price-actions">
-                <button class="btn-price-delete" onclick="deletePrice('${p.code}')" title="Видалити">✕</button>
+                <button class="btn-price-delete" onclick="deletePrice('${escapeHtml(p.code)}')" title="Видалити">✕</button>
             </td>` : ''}
         </tr>`;
     }
@@ -365,18 +505,19 @@ function renderTasks(tasks) {
     if (!container) return;
 
     if (!tasks || tasks.length === 0) {
-        container.innerHTML = '<div class="center-empty"><span>📋</span>Немає активних задач</div>';
+        container.innerHTML = '<div class="center-empty">Немає активних задач</div>';
         return;
     }
 
     container.innerHTML = tasks.slice(0, 30).map(t => {
         const priorityClass = t.priority === 'high' ? ' center-task-priority-high' : '';
+        const statusIcon = t.status === 'done' ? '✅' : t.status === 'in_progress' ? '🔄' : '⬜';
         return `
         <div class="center-task-row${priorityClass}">
             <div class="center-task-status ${t.status}"></div>
-            <div class="center-task-title">${t.title}</div>
-            ${t.assigned_to ? `<span class="center-task-assignee">${t.assigned_to}</span>` : ''}
-            <span style="font-size:11px;color:var(--gray-400)">${t.status === 'done' ? '✅' : t.status === 'in_progress' ? '🔄' : '⬜'}</span>
+            <div class="center-task-title">${escapeHtml(t.title)}</div>
+            ${t.assigned_to ? `<span class="center-task-assignee">${escapeHtml(t.assigned_to)}</span>` : ''}
+            <span style="font-size:11px;color:var(--gray-400)">${statusIcon}</span>
         </div>`;
     }).join('');
 }
@@ -390,7 +531,7 @@ function renderReport(report) {
     if (!container) return;
 
     if (!report) {
-        container.innerHTML = '<div class="center-empty"><span>📊</span>Звіт ще не згенеровано</div>';
+        container.innerHTML = '<div class="center-empty">Звіт ще не згенеровано</div>';
         return;
     }
 
@@ -404,6 +545,472 @@ function renderReport(report) {
         <div class="report-content">${report.text}</div>
         <div class="report-meta">${report.author ? `Автор: ${report.author}` : ''} ${date ? `| ${date}` : ''}</div>
     `;
+}
+
+// ==========================================
+// RENDER: CHARTS (v19.8)
+// ==========================================
+
+function renderCharts(statsData) {
+    if (!statsData || typeof Chart === 'undefined') {
+        document.getElementById('chartsSection').querySelector('.charts-grid').innerHTML =
+            '<div class="center-empty">Дані для графіків недоступні</div>';
+        return;
+    }
+
+    const isDark = document.body.classList.contains('dark-mode');
+    const textColor = isDark ? '#9CA3AF' : '#6B7280';
+    const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+
+    const defaultOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: false }
+        },
+        scales: {
+            x: { ticks: { color: textColor, font: { size: 11 } }, grid: { color: gridColor } },
+            y: { ticks: { color: textColor, font: { size: 11 } }, grid: { color: gridColor } }
+        }
+    };
+
+    // Prepare data from stats
+    const dailyData = statsData.daily || [];
+    const labels = dailyData.map(d => {
+        const date = new Date(d.date);
+        return `${date.getDate()}.${String(date.getMonth() + 1).padStart(2, '0')}`;
+    });
+    const revenues = dailyData.map(d => d.revenue || 0);
+    const bookingCounts = dailyData.map(d => d.count || 0);
+
+    // 1. Revenue chart
+    if (chartsInstances.revenue) chartsInstances.revenue.destroy();
+    const revenueCtx = document.getElementById('revenueChart');
+    if (revenueCtx) {
+        chartsInstances.revenue = new Chart(revenueCtx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    data: revenues,
+                    backgroundColor: 'rgba(16, 185, 129, 0.6)',
+                    borderColor: '#10B981',
+                    borderWidth: 1,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                ...defaultOptions,
+                scales: {
+                    ...defaultOptions.scales,
+                    y: { ...defaultOptions.scales.y, ticks: { ...defaultOptions.scales.y.ticks, callback: v => v.toLocaleString() + ' ₴' } }
+                }
+            }
+        });
+    }
+
+    // 2. Bookings chart
+    if (chartsInstances.bookings) chartsInstances.bookings.destroy();
+    const bookingsCtx = document.getElementById('bookingsChart');
+    if (bookingsCtx) {
+        chartsInstances.bookings = new Chart(bookingsCtx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    data: bookingCounts,
+                    borderColor: '#3B82F6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#3B82F6'
+                }]
+            },
+            options: defaultOptions
+        });
+    }
+
+    // 3. Top programs chart
+    if (chartsInstances.programs) chartsInstances.programs.destroy();
+    const programsCtx = document.getElementById('programsChart');
+    if (programsCtx) {
+        const programs = statsData.programs || [];
+        const topPrograms = programs.slice(0, 6);
+        const programColors = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#EC4899'];
+
+        chartsInstances.programs = new Chart(programsCtx, {
+            type: 'doughnut',
+            data: {
+                labels: topPrograms.map(p => p.name || 'Інше'),
+                datasets: [{
+                    data: topPrograms.map(p => p.count || 0),
+                    backgroundColor: programColors.slice(0, topPrograms.length),
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: textColor, font: { size: 11 }, padding: 8 }
+                    }
+                }
+            }
+        });
+    }
+
+    // 4. Load by day of week
+    if (chartsInstances.load) chartsInstances.load.destroy();
+    const loadCtx = document.getElementById('loadChart');
+    if (loadCtx) {
+        const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+        const loadByDay = new Array(7).fill(0);
+        for (const d of dailyData) {
+            const date = new Date(d.date);
+            const dayIdx = (date.getDay() + 6) % 7; // Monday=0
+            loadByDay[dayIdx] += d.count || 0;
+        }
+
+        chartsInstances.load = new Chart(loadCtx, {
+            type: 'bar',
+            data: {
+                labels: dayNames,
+                datasets: [{
+                    data: loadByDay,
+                    backgroundColor: dayNames.map((_, i) => i >= 5 ? 'rgba(245, 158, 11, 0.6)' : 'rgba(59, 130, 246, 0.5)'),
+                    borderRadius: 6
+                }]
+            },
+            options: defaultOptions
+        });
+    }
+}
+
+// ==========================================
+// RENDER: LOYALTY (v19.7)
+// ==========================================
+
+function renderLoyaltyTiers(tiers, customerCounts) {
+    const grid = document.getElementById('loyaltyTiersGrid');
+    if (!grid) return;
+
+    if (!tiers || tiers.length === 0) {
+        grid.innerHTML = '<div class="center-empty">Немає рівнів лояльності</div>';
+        return;
+    }
+
+    grid.innerHTML = tiers.map(t => {
+        const count = customerCounts ? (customerCounts[t.name] || 0) : 0;
+        return `
+        <div class="loyalty-tier-card" style="background: ${t.color}15; border-color: ${t.color}40">
+            <div class="loyalty-tier-name" style="color: ${t.color}">${escapeHtml(t.name)}</div>
+            <div class="loyalty-tier-discount" style="color: ${t.color}">${t.discount_percent}%</div>
+            <div class="loyalty-tier-reqs">від ${t.min_bookings} броней / ${formatPrice(t.min_spent)}</div>
+            <div class="loyalty-tier-count">${count} клієнтів</div>
+        </div>`;
+    }).join('');
+
+    // Stats
+    const statsEl = document.getElementById('loyaltyStats');
+    if (statsEl && customerCounts) {
+        const total = Object.values(customerCounts).reduce((s, v) => s + v, 0);
+        statsEl.innerHTML = `<span>Всього клієнтів: <strong>${total}</strong></span>`;
+    }
+}
+
+async function recalculateLoyalty() {
+    showNotification('Перерахунок лояльності...', '');
+    const result = await apiRecalculateLoyalty();
+    if (result.success) {
+        showNotification(`Оновлено ${result.updated} клієнтів`, 'success');
+        loadLoyalty();
+    } else {
+        showNotification('Помилка перерахунку', 'error');
+    }
+}
+
+// ==========================================
+// RENDER: DISCOUNTS (v19.7)
+// ==========================================
+
+function renderDiscounts(codes) {
+    const container = document.getElementById('discountsList');
+    if (!container) return;
+
+    if (!codes || codes.length === 0) {
+        container.innerHTML = '<div class="center-empty">Немає промокодів</div>';
+        return;
+    }
+
+    const now = new Date();
+
+    container.innerHTML = codes.map(d => {
+        const isExpired = d.valid_until && new Date(d.valid_until) < now;
+        const isActive = d.is_active && !isExpired;
+        const statusClass = isActive ? 'active' : isExpired ? 'expired' : 'inactive';
+        const statusText = isActive ? 'Активний' : isExpired ? 'Закінчився' : 'Неактивний';
+
+        const valueText = d.type === 'percent' ? `${d.value}%` : `${d.value} ₴`;
+        const usageText = d.max_uses ? `${d.usage_count || 0}/${d.max_uses}` : `${d.usage_count || 0}`;
+
+        let dateRange = '';
+        if (d.valid_from || d.valid_until) {
+            const from = d.valid_from ? new Date(d.valid_from).toLocaleDateString('uk-UA') : '...';
+            const to = d.valid_until ? new Date(d.valid_until).toLocaleDateString('uk-UA') : '...';
+            dateRange = `${from} — ${to}`;
+        }
+
+        return `
+        <div class="discount-row">
+            <span class="discount-code-badge">${escapeHtml(d.code)}</span>
+            <div class="discount-info">
+                <div class="discount-info-name">${escapeHtml(d.name)}</div>
+                <div class="discount-info-details">
+                    ${dateRange ? dateRange + ' | ' : ''}
+                    ${d.min_order > 0 ? 'мін. ' + formatPrice(d.min_order) + ' | ' : ''}
+                    ${d.category ? 'категорія: ' + escapeHtml(d.category) : ''}
+                </div>
+            </div>
+            <span class="discount-value-badge">${valueText}</span>
+            <span class="discount-usage">Використань: ${usageText}</span>
+            <span class="discount-status ${statusClass}">${statusText}</span>
+            <div class="discount-actions">
+                <button class="btn-price-delete" onclick="deleteDiscount(${d.id})" title="Деактивувати">✕</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function showAddDiscountForm() {
+    const form = document.getElementById('addDiscountForm');
+    if (!form) return;
+
+    if (!form.classList.contains('hidden')) {
+        form.classList.add('hidden');
+        return;
+    }
+
+    form.classList.remove('hidden');
+    form.innerHTML = `
+        <div class="discount-form-grid">
+            <input type="text" id="dcCode" placeholder="Код (напр. SPRING25)" style="text-transform:uppercase">
+            <input type="text" id="dcName" placeholder="Назва знижки">
+            <select id="dcType">
+                <option value="percent">Відсоток (%)</option>
+                <option value="fixed">Фіксована (₴)</option>
+            </select>
+            <input type="number" id="dcValue" placeholder="Значення (5-100 або сума)">
+            <input type="number" id="dcMinOrder" placeholder="Мін. замовлення (₴)">
+            <input type="number" id="dcMaxUses" placeholder="Макс. використань">
+            <input type="date" id="dcFrom" placeholder="Дійсний з">
+            <input type="date" id="dcUntil" placeholder="Дійсний до">
+            <input type="text" id="dcCategory" placeholder="Категорія (необ.)">
+        </div>
+        <div class="discount-form-actions">
+            <button onclick="submitNewDiscount()" style="background:var(--primary);color:#fff">Створити</button>
+            <button onclick="document.getElementById('addDiscountForm').classList.add('hidden')" style="background:var(--gray-100);color:var(--gray-600)">Скасувати</button>
+        </div>
+    `;
+}
+
+async function submitNewDiscount() {
+    const code = document.getElementById('dcCode').value.trim();
+    const name = document.getElementById('dcName').value.trim();
+    const type = document.getElementById('dcType').value;
+    const value = parseInt(document.getElementById('dcValue').value);
+    const min_order = parseInt(document.getElementById('dcMinOrder').value) || 0;
+    const max_uses = parseInt(document.getElementById('dcMaxUses').value) || null;
+    const valid_from = document.getElementById('dcFrom').value || null;
+    const valid_until = document.getElementById('dcUntil').value || null;
+    const category = document.getElementById('dcCategory').value.trim() || null;
+
+    if (!code || !name || isNaN(value)) {
+        showNotification('Заповніть код, назву та значення', 'error');
+        return;
+    }
+
+    const result = await apiCreateDiscount({ code, name, type, value, min_order, max_uses, valid_from, valid_until, category });
+    if (result.id) {
+        showNotification(`Промокод ${code.toUpperCase()} створено`, 'success');
+        document.getElementById('addDiscountForm').classList.add('hidden');
+        loadDiscounts();
+    } else {
+        showNotification(result.error || 'Помилка створення', 'error');
+    }
+}
+
+async function deleteDiscount(id) {
+    if (!confirm('Деактивувати цей промокод?')) return;
+    const result = await apiDeleteDiscount(id);
+    if (result.success) {
+        showNotification('Промокод деактивовано', 'success');
+        loadDiscounts();
+    } else {
+        showNotification(result.error || 'Помилка', 'error');
+    }
+}
+
+// ==========================================
+// RENDER: PROPOSALS (v19.7)
+// ==========================================
+
+function renderProposals(items) {
+    const container = document.getElementById('proposalsList');
+    if (!container) return;
+
+    if (!items || items.length === 0) {
+        container.innerHTML = '<div class="center-empty">Немає пропозицій зі знижками</div>';
+        return;
+    }
+
+    const segmentLabels = {
+        all: 'Всі',
+        new: 'Нові клієнти',
+        loyal: 'Постійні',
+        at_risk: 'Під ризиком',
+        birthday: 'Іменинники',
+        vip: 'VIP'
+    };
+
+    container.innerHTML = items.map(p => {
+        const isActive = p.is_active !== false;
+        const now = new Date();
+        const isExpired = p.end_date && new Date(p.end_date) < now;
+
+        let dateRange = '';
+        if (p.start_date || p.end_date) {
+            const from = p.start_date ? new Date(p.start_date).toLocaleDateString('uk-UA') : '...';
+            const to = p.end_date ? new Date(p.end_date).toLocaleDateString('uk-UA') : '...';
+            dateRange = `${from} — ${to}`;
+        }
+
+        const discountInfo = p.discount_code
+            ? `Промокод: ${p.discount_code} (${p.discount_type === 'percent' ? p.discount_value + '%' : p.discount_value + ' ₴'})`
+            : '';
+
+        return `
+        <div class="proposal-card" style="border-color: ${p.banner_color || '#10B981'}; background: ${p.banner_color || '#10B981'}08; ${isExpired ? 'opacity:0.5' : ''}">
+            <div class="proposal-card-header">
+                <div class="proposal-card-title">${escapeHtml(p.title)}</div>
+                <span class="proposal-card-segment">${segmentLabels[p.target_segment] || p.target_segment || 'Всі'}</span>
+            </div>
+            ${p.description ? `<div class="proposal-card-desc">${escapeHtml(p.description)}</div>` : ''}
+            <div class="proposal-card-meta">
+                ${discountInfo ? `<span>${discountInfo}</span>` : ''}
+                ${dateRange ? `<span>${dateRange}</span>` : ''}
+                <span>${isExpired ? 'Закінчилась' : isActive ? 'Активна' : 'Неактивна'}</span>
+            </div>
+            <div class="proposal-card-actions">
+                <button class="btn-price-delete" onclick="deleteProposal(${p.id})" title="Видалити">✕</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function showAddProposalForm() {
+    const container = document.getElementById('proposalsList');
+    if (!container) return;
+
+    // Check if form already exists
+    if (document.getElementById('proposalFormInline')) {
+        document.getElementById('proposalFormInline').remove();
+        return;
+    }
+
+    // Build options for discount codes select
+    const codeOptions = discountCodes
+        .filter(d => d.is_active)
+        .map(d => `<option value="${d.id}">${d.code} — ${d.name}</option>`)
+        .join('');
+
+    const formHtml = `
+    <div id="proposalFormInline" class="discount-add-form" style="margin-bottom:10px">
+        <div class="discount-form-grid">
+            <input type="text" id="propTitle" placeholder="Назва пропозиції">
+            <input type="text" id="propDesc" placeholder="Опис (необ.)">
+            <select id="propCodeId">
+                <option value="">Без промокоду</option>
+                ${codeOptions}
+            </select>
+            <select id="propSegment">
+                <option value="all">Всі клієнти</option>
+                <option value="new">Нові клієнти</option>
+                <option value="loyal">Постійні</option>
+                <option value="vip">VIP</option>
+                <option value="at_risk">Під ризиком</option>
+                <option value="birthday">Іменинники</option>
+            </select>
+            <input type="date" id="propStart" placeholder="Початок">
+            <input type="date" id="propEnd" placeholder="Кінець">
+            <input type="color" id="propColor" value="#10B981" style="height:38px">
+        </div>
+        <div class="discount-form-actions">
+            <button onclick="submitNewProposal()" style="background:var(--primary);color:#fff">Створити</button>
+            <button onclick="document.getElementById('proposalFormInline').remove()" style="background:var(--gray-100);color:var(--gray-600)">Скасувати</button>
+        </div>
+    </div>`;
+
+    container.insertAdjacentHTML('beforebegin', formHtml);
+}
+
+async function submitNewProposal() {
+    const title = document.getElementById('propTitle').value.trim();
+    const description = document.getElementById('propDesc').value.trim() || null;
+    const discount_code_id = parseInt(document.getElementById('propCodeId').value) || null;
+    const target_segment = document.getElementById('propSegment').value;
+    const start_date = document.getElementById('propStart').value || null;
+    const end_date = document.getElementById('propEnd').value || null;
+    const banner_color = document.getElementById('propColor').value;
+
+    if (!title) {
+        showNotification('Введіть назву пропозиції', 'error');
+        return;
+    }
+
+    const result = await apiCreateProposal({ title, description, discount_code_id, target_segment, start_date, end_date, banner_color });
+    if (result.id) {
+        showNotification('Пропозицію створено', 'success');
+        const form = document.getElementById('proposalFormInline');
+        if (form) form.remove();
+        loadProposals();
+    } else {
+        showNotification(result.error || 'Помилка створення', 'error');
+    }
+}
+
+async function deleteProposal(id) {
+    if (!confirm('Видалити цю пропозицію?')) return;
+    const result = await apiDeleteProposal(id);
+    if (result.success) {
+        showNotification('Пропозицію видалено', 'success');
+        loadProposals();
+    } else {
+        showNotification(result.error || 'Помилка', 'error');
+    }
+}
+
+// ==========================================
+// SEND REPORT TO TELEGRAM (v19.8)
+// ==========================================
+
+async function sendReportToTelegram() {
+    try {
+        showNotification('Надсилання звіту в Telegram...', '');
+        const response = await fetch(`${API_BASE}/shifts/daily-digest`, { headers: getAuthHeaders(false) });
+        if (!response.ok) throw new Error('API error');
+        const data = await response.json();
+        if (data.success) {
+            showNotification(`Звіт надіслано! Бронювань: ${data.bookings}, задач: ${data.tasks}`, 'success');
+        } else {
+            showNotification('Не вдалось надіслати звіт', 'error');
+        }
+    } catch (err) {
+        console.error('Send report error:', err);
+        showNotification('Помилка надсилання звіту', 'error');
+    }
 }
 
 // ==========================================
@@ -449,6 +1056,46 @@ async function loadReport() {
         return;
     }
     renderReport(data.report);
+}
+
+async function loadCharts() {
+    const data = await apiChartsData();
+    if (data) {
+        renderCharts(data);
+    } else {
+        const section = document.getElementById('chartsSection');
+        if (section) section.querySelector('.charts-grid').innerHTML = '<div class="center-empty">Немає даних для графіків</div>';
+    }
+}
+
+async function loadLoyalty() {
+    const [tiers, customersData] = await Promise.all([
+        apiLoyaltyTiers(),
+        apiLoyaltyCustomers()
+    ]);
+
+    loyaltyTiers = tiers || [];
+
+    // Count customers per tier
+    const customerCounts = {};
+    if (customersData && customersData.items) {
+        for (const c of customersData.items) {
+            const tierName = c.tier_name || 'Без рівня';
+            customerCounts[tierName] = (customerCounts[tierName] || 0) + 1;
+        }
+    }
+
+    renderLoyaltyTiers(loyaltyTiers, customerCounts);
+}
+
+async function loadDiscounts() {
+    discountCodes = await apiGetDiscounts();
+    renderDiscounts(discountCodes);
+}
+
+async function loadProposals() {
+    proposals = await apiGetProposals();
+    renderProposals(proposals);
 }
 
 // ==========================================
@@ -555,7 +1202,11 @@ async function initCenterPage() {
         loadOverview(),
         loadPrices(),
         loadTasks(),
-        loadReport()
+        loadReport(),
+        loadCharts(),
+        loadLoyalty(),
+        loadDiscounts(),
+        loadProposals()
     ]);
 
     // Profile handler

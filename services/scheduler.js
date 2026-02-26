@@ -1130,6 +1130,82 @@ async function checkCustomerRetention() {
     }
 }
 
+// v19.8: Auto-report — sends daily summary to a configured group (e.g., ClawClosed)
+let autoReportSentToday = null;
+
+async function checkAutoReport() {
+    try {
+        const result = await pool.query(
+            "SELECT key, value FROM settings WHERE key IN ('auto_report_time', 'auto_report_chat_id')"
+        );
+        const settings = {};
+        result.rows.forEach(r => { settings[r.key] = r.value; });
+
+        const reportTime = settings.auto_report_time || '20:00';
+        const reportChatId = settings.auto_report_chat_id;
+        if (!reportChatId) return;
+        if (!/^\d{2}:\d{2}$/.test(reportTime)) return;
+
+        const nowTime = getKyivTimeStr();
+        const todayStr = getKyivDateStr();
+
+        if (autoReportSentToday === todayStr) return;
+        if (nowTime !== reportTime) return;
+        const dbLast = await getLastSent('auto_report');
+        if (dbLast === todayStr) { autoReportSentToday = todayStr; return; }
+
+        autoReportSentToday = todayStr;
+        await setLastSent('auto_report', todayStr);
+        log.info(`Sending auto-report for ${todayStr} to chat ${reportChatId}`);
+
+        // Build report
+        const [y, m, d] = todayStr.split('-');
+        const dateFormatted = `${d}.${m}.${y}`;
+
+        const bookingsResult = await pool.query(
+            "SELECT COUNT(*)::int AS total, SUM(CASE WHEN status='confirmed' THEN 1 ELSE 0 END)::int AS confirmed, " +
+            "COALESCE(SUM(price),0)::numeric AS revenue, COALESCE(AVG(price),0)::numeric AS avg_check " +
+            "FROM bookings WHERE date = $1 AND status != 'cancelled'",
+            [todayStr]
+        );
+        const stats = bookingsResult.rows[0];
+
+        const tasksResult = await pool.query(
+            "SELECT COUNT(*)::int AS total, SUM(CASE WHEN status='done' THEN 1 ELSE 0 END)::int AS done " +
+            "FROM tasks WHERE date = $1",
+            [todayStr]
+        );
+        const taskStats = tasksResult.rows[0];
+
+        const topProgramResult = await pool.query(
+            "SELECT program, COUNT(*)::int AS cnt FROM bookings WHERE date = $1 AND status != 'cancelled' GROUP BY program ORDER BY cnt DESC LIMIT 3",
+            [todayStr]
+        );
+
+        let text = `📊 <b>ЩОДЕННИЙ ЗВІТ — ${dateFormatted}</b>\n`;
+        text += `━━━━━━━━━━━━━━━━━\n\n`;
+        text += `📅 Бронювань: <b>${stats.total}</b> (підтверджено: ${stats.confirmed})\n`;
+        text += `💰 Виручка: <b>${Number(stats.revenue).toLocaleString()} ₴</b>\n`;
+        text += `📈 Сер. чек: <b>${Math.round(stats.avg_check).toLocaleString()} ₴</b>\n\n`;
+
+        if (topProgramResult.rows.length > 0) {
+            text += `🏆 <b>Топ програми:</b>\n`;
+            for (const p of topProgramResult.rows) {
+                text += `  • ${p.program || 'Інше'} — ${p.cnt}\n`;
+            }
+            text += '\n';
+        }
+
+        text += `📋 Задачі: <b>${taskStats.done}/${taskStats.total}</b> виконано\n\n`;
+        text += `🤖 <i>Event Maestro — автозвіт</i>`;
+
+        await sendTelegramMessage(reportChatId, text, { silent: false });
+        log.info('Auto-report sent successfully');
+    } catch (err) {
+        log.error('checkAutoReport error', err);
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
@@ -1138,5 +1214,5 @@ module.exports = {
     checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset,
     checkStreakUpdates, checkBirthdayGreetings,
     checkEventQueue, checkSLABreach, checkScheduledAnnouncements,
-    checkTaskOverdue, checkCustomerRetention
+    checkTaskOverdue, checkCustomerRetention, checkAutoReport
 };

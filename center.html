@@ -7,12 +7,12 @@
     <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Maestro">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=18.1">
-    <link rel="stylesheet" href="css/layout.css?v=18.1">
-    <link rel="stylesheet" href="css/pages.css?v=18.1">
-    <link rel="stylesheet" href="css/modals.css?v=18.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=18.1">
-    <link rel="stylesheet" href="css/responsive.css?v=18.1">
+    <link rel="stylesheet" href="css/base.css?v=19.8">
+    <link rel="stylesheet" href="css/layout.css?v=19.8">
+    <link rel="stylesheet" href="css/pages.css?v=19.8">
+    <link rel="stylesheet" href="css/modals.css?v=19.8">
+    <link rel="stylesheet" href="css/dark-mode.css?v=19.8">
+    <link rel="stylesheet" href="css/responsive.css?v=19.8">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -180,6 +180,117 @@
         .center-empty { text-align: center; padding: 30px; color: var(--gray-400); font-size: 13px; }
         .center-empty span { font-size: 32px; display: block; margin-bottom: 8px; }
 
+        /* Charts grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        .chart-card {
+            background: rgba(255,255,255,0.4);
+            border-radius: 12px;
+            padding: 14px;
+        }
+        .chart-card-title {
+            font-size: 12px; font-weight: 700; color: var(--gray-500);
+            margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.3px;
+        }
+
+        /* Loyalty tiers */
+        .loyalty-tiers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        .loyalty-tier-card {
+            border-radius: 12px;
+            padding: 14px;
+            text-align: center;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .loyalty-tier-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .loyalty-tier-name { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+        .loyalty-tier-discount { font-size: 22px; font-weight: 900; }
+        .loyalty-tier-reqs { font-size: 11px; color: var(--gray-500); margin-top: 6px; }
+        .loyalty-tier-count { font-size: 12px; font-weight: 700; margin-top: 8px; }
+        .loyalty-stats {
+            display: flex; gap: 16px; margin-top: 12px; font-size: 13px; color: var(--gray-500);
+        }
+        .loyalty-stats strong { color: var(--gray-700); }
+
+        /* Discount codes */
+        .discount-row {
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 14px; border-radius: 10px;
+            background: rgba(255,255,255,0.4);
+            margin-bottom: 6px; font-size: 13px;
+        }
+        .discount-row:hover { background: rgba(255,255,255,0.6); }
+        .discount-code-badge {
+            font-family: monospace; font-weight: 800; font-size: 14px;
+            padding: 4px 10px; border-radius: 8px;
+            background: var(--primary-50); color: var(--primary);
+        }
+        .discount-info { flex: 1; }
+        .discount-info-name { font-weight: 700; }
+        .discount-info-details { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+        .discount-value-badge {
+            font-weight: 800; font-size: 14px; padding: 4px 10px;
+            border-radius: 8px; background: #E8F5E9; color: #2E7D32;
+        }
+        .discount-status { font-size: 11px; font-weight: 700; }
+        .discount-status.active { color: #2E7D32; }
+        .discount-status.expired { color: #C62828; }
+        .discount-status.inactive { color: var(--gray-400); }
+        .discount-usage { font-size: 11px; color: var(--gray-400); }
+        .discount-actions { display: flex; gap: 4px; }
+        .discount-actions button {
+            padding: 4px 8px; border: none; border-radius: 6px;
+            font-size: 11px; cursor: pointer; font-family: inherit; font-weight: 600;
+        }
+        .discount-add-form {
+            background: rgba(255,255,255,0.5); border-radius: 12px;
+            padding: 14px; margin-top: 10px;
+        }
+        .discount-form-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 8px; margin-bottom: 10px;
+        }
+        .discount-form-grid input, .discount-form-grid select {
+            padding: 8px 10px; border: 1.5px solid var(--gray-200); border-radius: 8px;
+            font-family: inherit; font-size: 13px; background: rgba(255,255,255,0.8);
+        }
+        .discount-form-actions { display: flex; gap: 8px; }
+        .discount-form-actions button {
+            padding: 8px 16px; border: none; border-radius: 8px;
+            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+        }
+
+        /* Proposals */
+        .proposal-card {
+            border-radius: 12px; padding: 14px 16px;
+            margin-bottom: 8px; border-left: 4px solid;
+        }
+        .proposal-card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+        .proposal-card-title { font-weight: 800; font-size: 14px; }
+        .proposal-card-segment {
+            font-size: 10px; font-weight: 700; padding: 2px 8px;
+            border-radius: 6px; background: var(--gray-100); color: var(--gray-600);
+        }
+        .proposal-card-desc { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+        .proposal-card-meta { font-size: 11px; color: var(--gray-400); margin-top: 8px; display: flex; gap: 12px; }
+        .proposal-card-actions { margin-top: 8px; display: flex; gap: 4px; }
+
+        /* Center action button */
+        .btn-center-action {
+            margin-left: auto; padding: 4px 12px; border: 1.5px solid var(--primary);
+            border-radius: 8px; background: transparent; color: var(--primary);
+            font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-center-action:hover { background: var(--primary); color: #fff; }
+
         /* Loading */
         .center-loading { text-align: center; padding: 40px; color: var(--gray-400); font-size: 14px; }
 
@@ -192,6 +303,9 @@
             .prices-table th:nth-child(4),
             .prices-table td:nth-child(4) { display: none; }
             .price-add-row { flex-direction: column; }
+            .charts-grid { grid-template-columns: 1fr; }
+            .loyalty-tiers-grid { grid-template-columns: repeat(2, 1fr); }
+            .discount-form-grid { grid-template-columns: 1fr; }
         }
 
         /* Dark mode overrides */
@@ -202,6 +316,18 @@
         .dark-mode .report-content { background: rgba(40,40,40,0.4); }
         .dark-mode .prices-table tr:hover { background: rgba(255,255,255,0.05); }
         .dark-mode .price-inline-input { background: rgba(40,40,40,0.8); color: #e0e0e0; border-color: var(--gray-600); }
+        .dark-mode .chart-card { background: rgba(40,40,40,0.5); }
+        .dark-mode .discount-row { background: rgba(40,40,40,0.4); }
+        .dark-mode .discount-row:hover { background: rgba(40,40,40,0.6); }
+        .dark-mode .discount-code-badge { background: rgba(16,185,129,0.15); }
+        .dark-mode .discount-add-form { background: rgba(40,40,40,0.5); }
+        .dark-mode .discount-form-grid input, .dark-mode .discount-form-grid select {
+            background: rgba(40,40,40,0.8); color: #e0e0e0; border-color: var(--gray-600);
+        }
+        .dark-mode .proposal-card { background: rgba(40,40,40,0.4); }
+        .dark-mode .loyalty-tier-card { background: rgba(40,40,40,0.4); }
+        .dark-mode .loyalty-stats { color: var(--gray-400); }
+        .dark-mode .loyalty-stats strong { color: var(--gray-200); }
     </style>
 </head>
 <body>
@@ -315,10 +441,71 @@
                     </div>
                 </div>
 
-                <!-- Block 5: Daily Report -->
+                <!-- Block 5: Charts (v19.8) -->
+                <div class="center-section" id="chartsSection">
+                    <div class="center-section-title">
+                        <span class="section-icon"></span> Аналітика
+                    </div>
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <div class="chart-card-title">Виручка за тиждень</div>
+                            <canvas id="revenueChart" height="200"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-card-title">Бронювання за тиждень</div>
+                            <canvas id="bookingsChart" height="200"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-card-title">Топ програми</div>
+                            <canvas id="programsChart" height="200"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-card-title">Завантаженість по днях</div>
+                            <canvas id="loadChart" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Block 6: Loyalty Tiers (v19.7) -->
+                <div class="center-section" id="loyaltySection">
+                    <div class="center-section-title">
+                        <span class="section-icon"></span> Програма лояльності
+                        <button class="btn-center-action" onclick="recalculateLoyalty()">Перерахувати</button>
+                    </div>
+                    <div class="loyalty-tiers-grid" id="loyaltyTiersGrid">
+                        <div class="center-loading">Завантаження...</div>
+                    </div>
+                    <div class="loyalty-stats" id="loyaltyStats"></div>
+                </div>
+
+                <!-- Block 7: Discount Codes (v19.7) -->
+                <div class="center-section" id="discountsSection">
+                    <div class="center-section-title">
+                        <span class="section-icon"></span> Промокоди
+                        <button class="btn-center-action" onclick="showAddDiscountForm()">+ Додати</button>
+                    </div>
+                    <div id="discountsList">
+                        <div class="center-loading">Завантаження...</div>
+                    </div>
+                    <div id="addDiscountForm" class="discount-add-form hidden"></div>
+                </div>
+
+                <!-- Block 8: Discount Proposals (v19.7) -->
+                <div class="center-section" id="proposalsSection">
+                    <div class="center-section-title">
+                        <span class="section-icon"></span> Пропозиції зі знижками
+                        <button class="btn-center-action" onclick="showAddProposalForm()">+ Додати</button>
+                    </div>
+                    <div id="proposalsList">
+                        <div class="center-loading">Завантаження...</div>
+                    </div>
+                </div>
+
+                <!-- Block 9: Daily Report -->
                 <div class="center-section" id="reportSection">
                     <div class="center-section-title">
                         <span class="section-icon"></span> Щоденний звіт
+                        <button class="btn-center-action" onclick="sendReportToTelegram()">Надіслати в Telegram</button>
                     </div>
                     <div id="reportContent">
                         <div class="center-loading">Завантаження...</div>
@@ -343,9 +530,10 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=18.1"></script>
-    <script src="js/api.js?v=18.1"></script>
-    <script src="js/auth.js?v=18.1"></script>
-    <script src="js/center-page.js?v=18.1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="js/config.js?v=19.8"></script>
+    <script src="js/api.js?v=19.8"></script>
+    <script src="js/auth.js?v=19.8"></script>
+    <script src="js/center-page.js?v=19.8"></script>
 </body>
 </html>

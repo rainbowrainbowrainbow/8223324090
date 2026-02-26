@@ -82,16 +82,19 @@
     /* v17.10: Sidebar — off-canvas on mobile */
     .sidebar-nav {
         transform: translateX(-100%);
-        width: 220px !important;
+        width: 280px !important;
         background: var(--white);
+        transition: transform 0.3s var(--ease-smooth);
+        box-shadow: none;
     }
 
     .sidebar-nav.open {
         transform: translateX(0);
+        box-shadow: 8px 0 32px rgba(0,0,0,0.15);
     }
 
     .sidebar-nav.collapsed {
-        width: 220px !important;
+        width: 280px !important;
     }
 
     .sidebar-nav.collapsed .nav-text,

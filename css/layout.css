@@ -187,8 +187,16 @@
 .sidebar-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.4);
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     z-index: 999;
+    animation: overlayFadeIn 0.25s var(--ease-smooth);
+}
+
+@keyframes overlayFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 .sidebar-overlay.hidden { display: none; }
@@ -197,16 +205,17 @@
     display: none;
     width: 44px;
     height: 44px;
-    background: none;
+    background: var(--gray-50);
     border: 1px solid var(--gray-200);
     border-radius: 8px;
-    color: var(--gray-600);
+    color: var(--gray-700);
     font-size: 20px;
     cursor: pointer;
     transition: all var(--speed-fast);
 }
 
-.sidebar-toggle:hover { background: var(--gray-50); color: var(--gray-900); }
+.sidebar-toggle:hover { background: var(--gray-100); color: var(--gray-900); }
+.sidebar-toggle:active { transform: scale(0.95); }
 
 /* Header — slim top bar (sidebar takes the nav) */
 .header {

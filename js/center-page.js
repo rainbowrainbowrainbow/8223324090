@@ -1944,6 +1944,119 @@ async function loadEventLog() {
 }
 
 // ==========================================
+// v20.7.0: HOT LEADS
+// ==========================================
+
+async function loadHotLeads() {
+    const container = document.getElementById('hotLeadsList');
+    if (!container) return;
+    try {
+        const resp = await fetch('/api/leads/hot', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') } });
+        const data = await resp.json();
+        if (!data.success || !data.leads.length) {
+            container.innerHTML = '<div class="center-empty-mini">Немає гарячих лідів — все під контролем 👍</div>';
+            return;
+        }
+        const badge = document.getElementById('hotLeadsCount');
+        if (badge) { badge.textContent = data.leads.length; badge.style.display = ''; }
+
+        container.innerHTML = data.leads.map(l => `
+            <div class="hot-lead-card" data-id="${l.id}">
+                <div class="hot-lead-info">
+                    <strong>${l.client_name || 'Без імені'}</strong>
+                    ${l.program_name ? ' • ' + l.program_name : ''}
+                    ${l.children_count ? ' • ' + l.children_count + ' дітей' : ''}
+                    <div class="hot-lead-meta">
+                        Запит: ${new Date(l.created_at).toLocaleString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        • Без відповіді ${Math.round(l.hours_waiting)} год
+                    </div>
+                </div>
+                <div class="hot-lead-actions">
+                    ${l.phone ? `<a href="tel:${l.phone}" class="btn-lead-action">📞</a>` : ''}
+                    <button class="btn-lead-action" onclick="updateLeadStatus(${l.id}, 'contacted')" title="Зв'язались">✅</button>
+                    <button class="btn-lead-action" onclick="updateLeadStatus(${l.id}, 'lost')" title="Закрити">✖</button>
+                </div>
+            </div>
+        `).join('');
+    } catch {
+        container.innerHTML = '<div class="center-empty-mini">Помилка завантаження</div>';
+    }
+}
+
+async function updateLeadStatus(id, status) {
+    try {
+        await fetch('/api/leads/' + id, {
+            method: 'PATCH',
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        });
+        loadHotLeads();
+    } catch { /* silent */ }
+}
+
+// Add Lead modal (simple prompt-based)
+function initAddLeadBtn() {
+    const btn = document.getElementById('addLeadBtn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+        const name = prompt("Ім'я клієнта:");
+        if (!name) return;
+        const phone = prompt('Телефон (необов\'язково):');
+        try {
+            await fetch('/api/leads', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_name: name, phone: phone || null })
+            });
+            loadHotLeads();
+        } catch { /* silent */ }
+    });
+}
+
+// ==========================================
+// v20.7.0: MANAGER CONVERSION
+// ==========================================
+
+async function loadConversion() {
+    const container = document.getElementById('conversionGrid');
+    if (!container) return;
+    try {
+        const now = new Date();
+        const resp = await fetch(`/api/analytics/conversion?period=month&year=${now.getFullYear()}&month=${now.getMonth() + 1}`, {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+        });
+        const data = await resp.json();
+        if (!data.success || !data.managers.length) {
+            container.innerHTML = '<div class="center-empty-mini">Немає даних за цей місяць</div>';
+            return;
+        }
+        container.innerHTML = `
+            <table class="conversion-table">
+                <thead><tr>
+                    <th>Менеджер</th><th>Бронювань</th><th>Підтверджено</th><th>Конверсія</th><th>Середній чек</th><th>Виручка</th>
+                </tr></thead>
+                <tbody>${data.managers.map(m => `
+                    <tr>
+                        <td><strong>${m.name}</strong></td>
+                        <td>${m.total_bookings}</td>
+                        <td>${m.booked}</td>
+                        <td>
+                            <div class="conversion-bar-wrap">
+                                <div class="conversion-bar" style="width:${m.conversion}%;background:${m.conversion >= 70 ? '#38A169' : m.conversion >= 50 ? '#D69E2E' : '#E53E3E'}"></div>
+                                <span>${m.conversion}%</span>
+                            </div>
+                        </td>
+                        <td>${m.avg_check.toLocaleString('uk-UA')} ₴</td>
+                        <td><strong>${m.revenue.toLocaleString('uk-UA')} ₴</strong></td>
+                    </tr>
+                `).join('')}</tbody>
+            </table>`;
+    } catch {
+        container.innerHTML = '<div class="center-empty-mini">Помилка завантаження</div>';
+    }
+}
+
+// ==========================================
 // SIDEBAR + AUTH
 // ==========================================
 
@@ -2064,8 +2177,11 @@ async function initCenterPage() {
         loadCrossSell(),
         loadCatalog(),
         loadReconciliation(),
-        loadEventLog()
+        loadEventLog(),
+        loadHotLeads(),
+        loadConversion()
     ]);
+    initAddLeadBtn();
 
     // Load goals after overview (needs KPI data)
     await loadGoals();

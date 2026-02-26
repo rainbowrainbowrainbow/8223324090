@@ -1,8 +1,9 @@
 /**
- * js/components/sidebar.js — Unified sidebar navigation (v20.3.0)
+ * js/components/sidebar.js — Unified sidebar navigation (v20.6.0)
  * Single source of truth for sidebar on ALL pages.
  * Determines active page from window.location.pathname.
  * Applies role-based visibility using PAGE_ACCESS from auth.js.
+ * v20.6.0: Status badges (building/testing/updated/in_tests/ready)
  */
 
 const Sidebar = (() => {
@@ -21,6 +22,60 @@ const Sidebar = (() => {
         { href: '/demo',      icon: 'Р',  label: 'Демо' },
         { href: '/settings',  icon: 'Л',  label: 'Налаштування' },
     ];
+
+    // v20.6.0: Status badge config
+    const STATUS_CONFIG = {
+        building: { color: '#E53E3E', short: 'build' },
+        testing:  { color: '#DD6B20', short: 'test' },
+        updated:  { color: '#D69E2E', short: 'upd' },
+        in_tests: { color: '#3182CE', short: 'live' },
+        ready:    { color: '#38A169', short: '' }
+    };
+
+    let _pageStatuses = {};
+
+    // Fetch page statuses from API (fire-and-forget, updates badges after load)
+    async function fetchStatuses() {
+        try {
+            const token = localStorage.getItem('pzp_token');
+            if (!token) return;
+            const resp = await fetch('/api/page-statuses', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.success && data.statuses) {
+                _pageStatuses = data.statuses;
+                applyBadges();
+            }
+        } catch { /* silent */ }
+    }
+
+    // Apply badges to already-rendered nav links
+    function applyBadges() {
+        document.querySelectorAll('.nav-link[data-page-access]').forEach(link => {
+            const path = link.getAttribute('data-page-access');
+            const status = _pageStatuses[path];
+            // Remove existing badge
+            const old = link.querySelector('.nav-status-badge');
+            if (old) old.remove();
+
+            if (!status || status === 'ready') return;
+            const cfg = STATUS_CONFIG[status];
+            if (!cfg) return;
+
+            const badge = document.createElement('span');
+            badge.className = 'nav-status-badge';
+            badge.style.cssText = `background:${cfg.color}`;
+            badge.title = status.replace('_', ' ');
+            if (cfg.short && !link.closest('.collapsed')) {
+                badge.textContent = cfg.short;
+                badge.className = 'nav-status-pill';
+                badge.style.cssText = `background:${cfg.color};color:#fff`;
+            }
+            link.appendChild(badge);
+        });
+    }
 
     function render(containerSelector) {
         const container = document.querySelector(containerSelector || '#sidebarNav .sidebar-links');
@@ -48,6 +103,8 @@ const Sidebar = (() => {
         }
 
         container.innerHTML = html;
+        // Fetch and apply status badges
+        fetchStatuses();
     }
 
     // Initialize sidebar toggle, overlay, collapse

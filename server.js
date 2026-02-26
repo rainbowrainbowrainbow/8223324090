@@ -16,7 +16,7 @@ const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
@@ -142,6 +142,9 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/board', require('./routes/board'));
 app.use('/api/training', require('./routes/training'));
 app.use('/api/sales', require('./routes/sales'));
+app.use('/api/page-statuses', require('./routes/page-statuses'));
+app.use('/api/leads', require('./routes/leads'));
+app.use('/api/scripts', require('./routes/scripts'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -351,6 +354,8 @@ runMigrations(pool).then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkCustomerRetention', checkCustomerRetention, { dedup: 'daily' }), 60000));
         // v19.8: Auto-report
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoReport', checkAutoReport, { dedup: 'daily' }), 60000));
+        // v20.7.0: Hot leads checker (every 2 hours check)
+        schedulerIntervals.push(setInterval(guardScheduler('checkHotLeads', checkHotLeads, { dedup: 'hourly' }), 60000));
         // v19.15: Telegram notification retry queue (every 30s)
         schedulerIntervals.push(setInterval(() => processRetryQueue().catch(err => log.error('Retry queue error', err)), 30000));
         // v20.4.0: Training prompts (Mon 09:00 Kyiv) + summary (Fri 17:00 Kyiv)

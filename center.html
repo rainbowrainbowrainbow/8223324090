@@ -613,6 +613,58 @@
         .event-info-details { color: var(--gray-500); font-size: 11px; margin-top: 1px; }
         .event-time { font-size: 10px; color: var(--gray-400); white-space: nowrap; }
 
+        /* v20.7.0: Hot Leads */
+        .hot-lead-card {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 12px; border-radius: 10px;
+            background: rgba(255,255,255,0.5); margin-bottom: 6px;
+            border-left: 3px solid #E53E3E;
+        }
+        .hot-lead-info { flex: 1; font-size: 13px; }
+        .hot-lead-info strong { font-weight: 700; }
+        .hot-lead-meta { font-size: 11px; color: var(--gray-500); margin-top: 2px; }
+        .hot-lead-actions { display: flex; gap: 4px; }
+        .btn-lead-action {
+            width: 32px; height: 32px; border-radius: 8px; border: none;
+            background: var(--gray-100); cursor: pointer; font-size: 14px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .btn-lead-action:hover { background: var(--gray-200); }
+        .btn-add-lead {
+            background: none; border: 1px dashed var(--gray-300); color: var(--gray-500);
+            padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
+            font-weight: 600; width: 100%;
+        }
+        .btn-add-lead:hover { border-color: var(--primary); color: var(--primary); }
+        .center-empty-mini {
+            text-align: center; padding: 16px; color: var(--gray-400);
+            font-size: 13px; font-weight: 600;
+        }
+        .section-badge {
+            background: #E53E3E; color: #fff; font-size: 10px;
+            padding: 1px 6px; border-radius: 10px; font-weight: 700;
+            margin-left: 6px;
+        }
+
+        /* v20.7.0: Conversion table */
+        .conversion-table {
+            width: 100%; border-collapse: collapse; font-size: 13px;
+        }
+        .conversion-table th {
+            text-align: left; font-weight: 700; padding: 8px 6px;
+            border-bottom: 2px solid var(--gray-200); font-size: 11px;
+            color: var(--gray-500); text-transform: uppercase;
+        }
+        .conversion-table td { padding: 8px 6px; border-bottom: 1px solid var(--gray-100); }
+        .conversion-bar-wrap {
+            display: flex; align-items: center; gap: 6px;
+        }
+        .conversion-bar {
+            height: 6px; border-radius: 3px; min-width: 4px;
+            transition: width 0.3s ease;
+        }
+        .conversion-bar-wrap span { font-size: 12px; font-weight: 700; white-space: nowrap; }
+
         /* Responsive */
         @media (max-width: 768px) {
             .center-page { padding: 10px; }
@@ -791,6 +843,32 @@
                             <button class="kpi-period-tab" data-period="month">Місяць</button>
                         </div>
                         <div class="kpi-grid" id="kpiGrid">
+                            <div class="center-loading">Завантаження...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Block: Hot Leads (v20.7.0) -->
+                <div class="center-section" id="hotLeadsSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> 🔥 Гарячі ліди
+                        <span class="section-badge" id="hotLeadsCount" style="display:none"></span>
+                    </div>
+                    <div class="section-body">
+                        <div id="hotLeadsList" class="hot-leads-list">
+                            <div class="center-loading">Перевірка...</div>
+                        </div>
+                        <button type="button" id="addLeadBtn" class="btn-add-lead" style="margin-top:8px">+ Додати лід</button>
+                    </div>
+                </div>
+
+                <!-- Block: Manager Conversion (v20.7.0) -->
+                <div class="center-section" id="conversionSection">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> 📊 Ефективність менеджерів
+                    </div>
+                    <div class="section-body">
+                        <div id="conversionGrid" class="conversion-grid">
                             <div class="center-loading">Завантаження...</div>
                         </div>
                     </div>
@@ -1039,11 +1117,11 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="js/config.js?v=20.51"></script>
-    <script src="js/api.js?v=20.51"></script>
-    <script src="js/auth.js?v=20.51"></script>
-    <script src="js/components/sidebar.js?v=20.51"></script>
-    <script src="js/center-page.js?v=20.51"></script>
+    <script src="js/config.js?v=20.70"></script>
+    <script src="js/api.js?v=20.70"></script>
+    <script src="js/auth.js?v=20.70"></script>
+    <script src="js/components/sidebar.js?v=20.70"></script>
+    <script src="js/center-page.js?v=20.70"></script>
     <script>
     // v20.3.0: Center tabs
     (function() {

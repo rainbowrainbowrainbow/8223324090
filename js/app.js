@@ -236,6 +236,12 @@ function initBookingFormListeners() {
     if (freeRoomsBtn) {
         freeRoomsBtn.addEventListener('click', showFreeRooms);
     }
+
+    // v20.7.0: Age recommendations listener
+    if (typeof initAgeRecoListener === 'function') initAgeRecoListener();
+
+    // v20.7.0: Sales scripts quick-access
+    if (typeof initScriptsQuickAccess === 'function') initScriptsQuickAccess();
 }
 
 function initSettingsListeners() {

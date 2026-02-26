@@ -1206,6 +1206,66 @@ async function checkAutoReport() {
     }
 }
 
+// v20.7.0: Hot leads checker — create follow-up tasks for leads without response 24h+
+async function checkHotLeads() {
+    try {
+        const timeStr = getKyivTimeStr();
+        const hour = parseInt(timeStr.split(':')[0]);
+        // Run at 09:00 and 15:00 Kyiv time
+        if (hour !== 9 && hour !== 15) return;
+        if (timeStr.split(':')[1] !== '00') return;
+
+        const hotLeads = await pool.query(`
+            SELECT l.id, l.client_name, l.phone, p.label AS program_name,
+                   l.children_count, l.event_date
+            FROM leads l
+            LEFT JOIN products p ON l.program_id = p.id
+            WHERE l.status = 'new'
+              AND l.created_at < NOW() - INTERVAL '24 hours'
+        `);
+
+        if (hotLeads.rows.length === 0) return;
+
+        for (const lead of hotLeads.rows) {
+            // Check if task already exists for this lead
+            const existing = await pool.query(
+                `SELECT id FROM tasks WHERE source_type = 'lead' AND source_id = $1`,
+                [String(lead.id)]
+            );
+            if (existing.rows.length > 0) continue;
+
+            const title = `🔥 Зателефонувати: ${lead.client_name}`;
+            const desc = [
+                lead.program_name ? `Програма: ${lead.program_name}` : null,
+                lead.children_count ? `Дітей: ${lead.children_count}` : null,
+                lead.phone ? `Тел: ${lead.phone}` : null,
+                lead.event_date ? `Дата: ${lead.event_date}` : null,
+                'Лід без відповіді 24+ годин'
+            ].filter(Boolean).join('\n');
+
+            await pool.query(`
+                INSERT INTO tasks (title, description, priority, category, source_type, source_id, date)
+                VALUES ($1, $2, 'high', 'sales', 'lead', $3, $4)
+            `, [title, desc, String(lead.id), getKyivDateStr()]);
+
+            log.info(`Hot lead task created for: ${lead.client_name} (lead #${lead.id})`);
+        }
+
+        // Send Telegram alert if any hot leads
+        if (hotLeads.rows.length > 0) {
+            const chatId = getConfiguredChatId();
+            const text = `🔥 <b>Гарячі ліди: ${hotLeads.rows.length}</b>\n` +
+                hotLeads.rows.slice(0, 5).map(l =>
+                    `• ${l.client_name}${l.program_name ? ' — ' + l.program_name : ''}`
+                ).join('\n') +
+                (hotLeads.rows.length > 5 ? `\n... та ще ${hotLeads.rows.length - 5}` : '');
+            await sendTelegramMessage(chatId, text, { silent: true }).catch(() => {});
+        }
+    } catch (err) {
+        log.error('checkHotLeads error', err);
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
@@ -1214,5 +1274,6 @@ module.exports = {
     checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset,
     checkStreakUpdates, checkBirthdayGreetings,
     checkEventQueue, checkSLABreach, checkScheduledAnnouncements,
-    checkTaskOverdue, checkCustomerRetention, checkAutoReport
+    checkTaskOverdue, checkCustomerRetention, checkAutoReport,
+    checkHotLeads
 };

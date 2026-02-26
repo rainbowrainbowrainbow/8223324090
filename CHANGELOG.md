@@ -4,6 +4,60 @@
 
 ---
 
+## v20.7.0 — Sales Features (2026-02-26)
+
+**Продажні фічі за Якубою ч.2 — ліди, конверсія, рекомендації, скрипти**
+
+### Hot Leads (Гарячі ліди)
+- Таблиця `leads` — трекінг запитів від клієнтів
+- API: GET/POST/PATCH/DELETE `/api/leads`, GET `/api/leads/hot`
+- Крон 09:00 та 15:00 — автоматичне створення задач для лідів без відповіді 24+ год
+- Telegram алерт при наявності гарячих лідів
+- UI блок "🔥 Гарячі ліди" в /center Overview
+
+### Manager Conversion (Конверсія менеджерів)
+- GET `/api/analytics/conversion` — бронювань/підтверджено/конверсія%/середній чек по менеджерах
+- Таблиця з прогрес-барами конверсії в /center Overview
+
+### Age Recommendations (Рекомендації по віку)
+- AGE_RECOMMENDATIONS: 3-5 / 6-8 / 9-12 / 12+ → відповідні програми
+- Показуються в модалці бронювання після введення дати народження дитини
+- Клік на рекомендовану програму → автоматичний вибір
+
+### Sales Scripts (Скрипти продажів)
+- Таблиця `sales_scripts` (7 seed фраз: заперечення, закриття, апсейл)
+- API: GET/POST/PUT/DELETE `/api/scripts`
+- Quick-access в модалці бронювання — вкладки по категоріях + кнопка "Копіювати"
+
+### Auto Follow-up Tasks
+- При створенні бронювання автоматично створюється задача
+- Дедлайн: за 2 дні до події
+- Текст: "Підтвердити свято: [клієнт] [дата]"
+
+### Other
+- `bookings.source` — нова колонка для джерела бронювання
+- Міграція: 024_page_statuses_leads_scripts.sql
+
+## v20.6.0 — Status Badges + Menu Refactor (2026-02-26)
+
+**Статус-бейджики на sidebar + рефакторинг timeline menu**
+
+### Status Badges
+- Таблиця `page_statuses` — 5 статусів: building (🔴), testing (🟠), updated (🟡), in_tests (🔵), ready (🟢)
+- API: GET `/api/page-statuses`, PATCH `/api/page-statuses/:path`
+- sidebar.js автоматично завантажує статуси і рендерить бейджики
+- CSS: крапка (collapsed) або pill з текстом (expanded)
+
+### Menu Refactor
+- Видалено дублюючі навігаційні посилання з timeline dropdown (Програми, Задачі — вже є в sidebar)
+
+### Bugfixes
+- `/auth/verify` тепер читає роль з БД а не з JWT (фікс для кешованих ролей після міграції)
+- `routes/center.js` — замінено hardcoded `role !== 'admin'` на `requireMinRole('senior_manager')`
+- Cache-busting: всі HTML `?v=` бампнуті до 20.70
+
+---
+
 ## v17.1.0 — AI Team & Contractor Cards (2026-02-22)
 
 **Редизайн AI-команди: акордеон-панелі, журнал, відправка на завдання**

@@ -173,6 +173,24 @@ router.post('/', async (req, res) => {
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         }
 
+        // v20.7.0: Auto follow-up task (2 days before event)
+        if (!b.linkedTo && b.date) {
+            const eventDate = new Date(b.date);
+            const deadline = new Date(eventDate.getTime() - 2 * 24 * 60 * 60 * 1000);
+            const deadlineStr = deadline.toISOString().split('T')[0];
+            const clientName = b.programName || b.label || b.programCode;
+            pool.query(`
+                INSERT INTO tasks (title, description, priority, category, source_type, source_id, date, deadline)
+                VALUES ($1, $2, 'normal', 'sales', 'booking', $3, $4, $5)
+            `, [
+                `Підтвердити свято: ${clientName} ${b.date}`,
+                'Зателефонувати, уточнити кількість дітей, чи потрібен торт/декор',
+                b.id,
+                deadlineStr,
+                deadlineStr
+            ]).catch(err => log.warn(`Follow-up task creation failed: ${err.message}`));
+        }
+
         const booking = insertResult.rows[0] ? mapBookingRow(insertResult.rows[0]) : { id: b.id };
 
         // WebSocket: notify other clients

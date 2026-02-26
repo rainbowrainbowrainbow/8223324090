@@ -411,6 +411,104 @@ function selectProgram(programId) {
             tshirtSection.classList.add('hidden');
         }
     }
+
+    // v20.7.0: Show age recommendations
+    showAgeRecommendations();
+}
+
+// v20.7.0: Age-based program recommendations
+const AGE_RECOMMENDATIONS = {
+    '3-5':  ['Ельза', 'Поні', 'Міньйон'],
+    '6-8':  ['Minecraft', 'Monster High', 'Ніндзя'],
+    '9-12': ['Squid Game', 'Марвел', 'Рок'],
+    '12+':  ['Мафія', 'Рок', 'Марвел'],
+};
+
+function showAgeRecommendations() {
+    const section = document.getElementById('ageRecommendationsSection');
+    if (!section) return;
+
+    const birthdayInput = document.getElementById('customerChildBirthday');
+    const birthday = birthdayInput ? birthdayInput.value : null;
+    if (!birthday) { section.classList.add('hidden'); return; }
+
+    const age = Math.floor((Date.now() - new Date(birthday).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    if (age < 1 || age > 18) { section.classList.add('hidden'); return; }
+
+    let bracket = null;
+    if (age >= 3 && age <= 5) bracket = '3-5';
+    else if (age >= 6 && age <= 8) bracket = '6-8';
+    else if (age >= 9 && age <= 12) bracket = '9-12';
+    else if (age > 12) bracket = '12+';
+    if (!bracket) { section.classList.add('hidden'); return; }
+
+    const recs = AGE_RECOMMENDATIONS[bracket];
+    const products = typeof getProductsSync === 'function' ? getProductsSync() : [];
+    const matching = products.filter(p => recs.some(r => (p.label || p.name || '').toLowerCase().includes(r.toLowerCase())));
+
+    document.getElementById('ageRecoText').textContent = `Вік: ${age} р. → Рекомендовані:`;
+    const container = document.getElementById('ageRecoPrograms');
+    container.innerHTML = matching.length
+        ? matching.map(p => `<button type="button" class="age-reco-btn" onclick="selectProgram(${typeof p.id === 'number' ? p.id : "'" + p.id + "'"})">
+            ${p.icon || '🎯'} ${p.label || p.name}
+          </button>`).join('')
+        : recs.map(r => `<span class="age-reco-tag">${r}</span>`).join('');
+
+    section.classList.remove('hidden');
+}
+
+function initAgeRecoListener() {
+    const birthdayInput = document.getElementById('customerChildBirthday');
+    if (birthdayInput) {
+        birthdayInput.addEventListener('change', showAgeRecommendations);
+    }
+}
+
+// v20.7.0: Sales scripts quick-access in booking modal
+let _cachedScripts = null;
+
+async function initScriptsQuickAccess() {
+    const container = document.getElementById('scriptsQuickAccess');
+    if (!container) return;
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const resp = await fetch('/api/scripts', { headers: { 'Authorization': 'Bearer ' + token } });
+        const data = await resp.json();
+        if (!data.success || !data.grouped) return;
+        _cachedScripts = data.grouped;
+        const categories = Object.keys(data.grouped);
+        if (!categories.length) return;
+
+        const tabs = document.getElementById('scriptsTabs');
+        tabs.innerHTML = categories.map((cat, i) =>
+            `<button type="button" class="scripts-tab-btn${i === 0 ? ' active' : ''}" data-cat="${cat}">${cat}</button>`
+        ).join('');
+
+        tabs.addEventListener('click', (e) => {
+            const btn = e.target.closest('.scripts-tab-btn');
+            if (!btn) return;
+            tabs.querySelectorAll('.scripts-tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderScriptCategory(btn.dataset.cat);
+        });
+
+        renderScriptCategory(categories[0]);
+        container.classList.remove('hidden');
+    } catch { /* silent */ }
+}
+
+function renderScriptCategory(category) {
+    const content = document.getElementById('scriptsContent');
+    if (!content || !_cachedScripts || !_cachedScripts[category]) return;
+    const scripts = _cachedScripts[category];
+    content.innerHTML = scripts.map(s => `
+        <div style="margin-bottom:8px">
+            ${s.trigger_phrase ? `<div class="scripts-trigger">${s.trigger_phrase}</div>` : ''}
+            <div style="font-size:12px;line-height:1.5">${s.response_text}</div>
+            <button type="button" class="scripts-copy-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim());this.textContent='Скопійовано ✓';setTimeout(()=>this.textContent='Копіювати',1500)">Копіювати</button>
+        </div>
+    `).join('<hr style="border:none;border-top:1px solid var(--gray-200);margin:6px 0">');
+    content.classList.add('visible');
 }
 
 async function populateAnimatorSelectById(selectId, placeholder) {

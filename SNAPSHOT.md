@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v20.5.0**. Master TZ виконано повністю (v20.1.0–v20.5.0).
+Версія **v20.7.0**. Master TZ v20.1.0–v20.7.0 виконано повністю.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -30,44 +30,33 @@
 - **v20.3.0: Navigation — unified sidebar, Center tabs (Finance/Analytics/Status), Art rename**
 - **v20.4.0: Staff Trainer — Telegram weekly prompts, review system, training.html**
 - **v20.5.0: Sales Techniques — call script, upsells, free slots, price-per-child, reviews**
+- **v20.6.0: Status Badges — sidebar page status indicators (building/testing/updated/in_tests/ready) + timeline menu refactor**
+- **v20.7.0: Sales Features — hot leads, manager conversion, age recommendations, sales scripts, auto follow-up tasks**
 
-## Що нове (поточна сесія) — v20.1.0–v20.5.0
+## Що нове (поточна сесія) — v20.6.0–v20.7.0
 
-### v20.1.0 — Role System
-- 10 ролей: creator, director, vice_director, senior_manager, manager, admin, senior_instructor, instructor, animator, waiter
-- PAGE_ACCESS + ACTION_PERMISSIONS матриця
-- LEGACY_ROLE_MAP для зворотної сумісності
-- /api/users — CRUD для керування користувачами
+### v20.6.0 — Status Badges + Menu Refactor
+- Таблиця page_statuses — статус кожної сторінки (building/testing/updated/in_tests/ready)
+- API: GET /api/page-statuses, PATCH /api/page-statuses/:path
+- sidebar.js: автоматичний fetch статусів і рендер бейджиків (крапка або pill)
+- CSS: .nav-status-badge, .nav-status-pill з 5 кольорами
+- Timeline dropdown: видалено дублюючі навігаційні посилання (Програми, Задачі)
+- /auth/verify — тепер читає роль з БД а не з JWT (фікс кешованих ролей)
+- routes/center.js — замінено hardcoded role checks на requireMinRole()
+- Cache-busting: всі HTML ?v= бампнуті
 
-### v20.2.0 — Floating Command Panel
-- Плаваюча панель з KPI (бронювання, персонал, задачі, виручка)
-- Quick Notes CRUD
-- Draggable, collapsible, позиція в localStorage
-
-### v20.3.0 — Navigation
-- js/components/sidebar.js — єдиний компонент навігації
-- Center поглинає Finance, Analytics, Status як вкладки
-- /art-director → /art з 301 redirect
-- program_price_rules таблиця
-
-### v20.4.0 — Staff Trainer
-- 3 таблиці: staff_training_inputs, training_materials, training_prompts_sent
-- Щопонеділка 09:00 Kyiv — Telegram prompt усім staff
-- Щоп'ятниці 17:00 Kyiv — зведення Сергію
-- training.html — UI з матеріалами, фільтрами, pending review
-- Авто-категоризація за ключовими словами
-
-### v20.5.0 — Sales Techniques (Якуба)
-- Скрипт дзвінка (7 кроків) у формі бронювання
-- Каталог апсейлів (торт, фото, декор, аніматор, сувеніри)
-- Лічильник вільних вихідних
-- Ціна за дитину
-- Відгуки по програмах (з notes бронювань)
+### v20.7.0 — Sales Features (Якуба ч.2)
+- **Гарячі ліди** — таблиця leads, API CRUD, hot leads cron (09:00/15:00 Kyiv), алерт в Telegram, UI в /center
+- **Конверсія менеджерів** — GET /api/analytics/conversion, таблиця з прогрес-барами в /center Overview
+- **Рекомендації по віку** — AGE_RECOMMENDATIONS в booking.js, показуються при введенні дати народження дитини
+- **Скрипти продажів** — таблиця sales_scripts (7 seed фраз), API CRUD, quick-access в модалці бронювання
+- **Auto follow-up** — автоматична задача при створенні бронювання (дедлайн за 2 дні до події)
+- **bookings.source** — нова колонка для відстеження джерела бронювання
 
 ## Архітектура
 - **16+ сторінок**, **40+ routes**, 18+ services, 5 middleware
-- **~90+ таблиць**, 80+ індексів, 23 міграцій
-- ~73 000+ рядків коду
+- **~95+ таблиць**, 80+ індексів, 24 міграцій
+- ~75 000+ рядків коду
 - 291 тестів, 0 fail
 
 ## Технічний стан
@@ -75,4 +64,4 @@
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
 
 ---
-*Оновлено: 2026-02-26, v20.5.0*
+*Оновлено: 2026-02-26, v20.7.0*

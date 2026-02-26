@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=20.50">
-    <link rel="stylesheet" href="css/auth.css?v=20.50">
-    <link rel="stylesheet" href="css/layout.css?v=20.50">
-    <link rel="stylesheet" href="css/timeline.css?v=20.50">
-    <link rel="stylesheet" href="css/panel.css?v=20.50">
-    <link rel="stylesheet" href="css/modals.css?v=20.50">
-    <link rel="stylesheet" href="css/controls.css?v=20.50">
-    <link rel="stylesheet" href="css/features.css?v=20.50">
-    <link rel="stylesheet" href="css/dark-mode.css?v=20.50">
-    <link rel="stylesheet" href="css/responsive.css?v=20.50">
-    <link rel="stylesheet" href="css/pages.css?v=20.50">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=20.50">
+    <link rel="stylesheet" href="css/base.css?v=20.70">
+    <link rel="stylesheet" href="css/auth.css?v=20.70">
+    <link rel="stylesheet" href="css/layout.css?v=20.70">
+    <link rel="stylesheet" href="css/timeline.css?v=20.70">
+    <link rel="stylesheet" href="css/panel.css?v=20.70">
+    <link rel="stylesheet" href="css/modals.css?v=20.70">
+    <link rel="stylesheet" href="css/controls.css?v=20.70">
+    <link rel="stylesheet" href="css/features.css?v=20.70">
+    <link rel="stylesheet" href="css/dark-mode.css?v=20.70">
+    <link rel="stylesheet" href="css/responsive.css?v=20.70">
+    <link rel="stylesheet" href="css/pages.css?v=20.70">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=20.70">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -178,8 +178,6 @@
                             <button type="button" id="historyBtn" class="dropdown-item hidden" role="menuitem" title="Історія змін бронювань">📋 Історія</button>
                             <button type="button" id="digestBtn" class="dropdown-item hidden" role="menuitem" title="Надіслати дайджест в Telegram">📲 Дайджест</button>
                             <button type="button" id="afishaBtn" class="dropdown-item" role="menuitem" title="Управління подіями афіші">🎭 Афіша</button>
-                            <a href="/programs" class="dropdown-item" role="menuitem" title="Каталог розважальних програм">📚 Програми</a>
-                            <a href="/tasks" class="dropdown-item" role="menuitem" title="Задачник — завдання на день/тиждень">📝 Задачі</a>
                             <button type="button" id="dashboardBtn" class="dropdown-item hidden" role="menuitem" title="Фінансова статистика та аналітика">📊 Статистика</button>
                             <button type="button" id="settingsBtn" class="dropdown-item hidden" role="menuitem" title="Налаштування системи та Telegram">⚙️ Налаштування</button>
                             <button type="button" id="certificatesBtn" class="dropdown-item hidden" role="menuitem" title="Реєстр сертифікатів на вхід">📄 Сертифікати</button>
@@ -584,6 +582,15 @@
                     <input type="number" id="kidsCountInput" min="1" max="50" placeholder="Введіть к-кість дітей">
                 </div>
 
+                <!-- v20.7.0: Age-based recommendations -->
+                <div id="ageRecommendationsSection" class="form-section age-reco-section hidden">
+                    <div class="age-reco-hint">
+                        <span class="age-reco-icon">💡</span>
+                        <span id="ageRecoText">Рекомендовані програми</span>
+                    </div>
+                    <div id="ageRecoPrograms" class="age-reco-programs"></div>
+                </div>
+
                 <!-- v8.3.1: Розміри футболок (для МК Футболок) -->
                 <div id="tshirtSizesSection" class="form-section tshirt-sizes-section hidden">
                     <label>👕 Розміри футболок</label>
@@ -633,6 +640,13 @@
 
                 <!-- v20.5.0: Free slots hint -->
                 <div id="freeSlotsHint" class="form-section free-slots-hint hidden"></div>
+
+                <!-- v20.7.0: Sales scripts quick-access -->
+                <div id="scriptsQuickAccess" class="scripts-quick-access hidden">
+                    <div style="font-size:12px;font-weight:700;margin-bottom:6px">📋 Скрипти продажів</div>
+                    <div id="scriptsTabs" class="scripts-tabs"></div>
+                    <div id="scriptsContent" class="scripts-response"></div>
+                </div>
 
                 <button type="submit" id="bookingSubmitBtn" class="btn-submit">Додати бронювання</button>
             </form>
@@ -3146,26 +3160,26 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=20.50"></script>
-    <script src="js/api.js?v=20.50"></script>
-    <script src="js/ui.js?v=20.50"></script>
-    <script src="js/auth.js?v=20.50"></script>
-    <script src="js/timeline.js?v=20.50"></script>
-    <script src="js/booking.js?v=20.50"></script>
-    <script src="js/settings.js?v=20.51"></script>
-    <script src="js/booking-form.js?v=20.50"></script>
-    <script src="js/booking-linked.js?v=20.50"></script>
-    <script src="js/settings-dashboard.js?v=20.50"></script>
-    <script src="js/settings-history.js?v=20.50"></script>
-    <script src="js/settings-afisha.js?v=20.50"></script>
-    <script src="js/settings-certificates.js?v=20.50"></script>
-    <script src="js/offline.js?v=20.50"></script>
-    <script src="js/search.js?v=20.50"></script>
-    <script src="js/ws.js?v=20.50"></script>
-    <script src="js/components/sidebar.js?v=20.50"></script>
-    <script src="js/sales-panel.js?v=20.50"></script>
-    <script src="js/command-panel.js?v=20.50"></script>
-    <script src="js/app.js?v=20.50"></script>
-    <script src="js/kleshnya-widget.js?v=20.50"></script>
+    <script src="js/config.js?v=20.70"></script>
+    <script src="js/api.js?v=20.70"></script>
+    <script src="js/ui.js?v=20.70"></script>
+    <script src="js/auth.js?v=20.70"></script>
+    <script src="js/timeline.js?v=20.70"></script>
+    <script src="js/booking.js?v=20.70"></script>
+    <script src="js/settings.js?v=20.70"></script>
+    <script src="js/booking-form.js?v=20.70"></script>
+    <script src="js/booking-linked.js?v=20.70"></script>
+    <script src="js/settings-dashboard.js?v=20.70"></script>
+    <script src="js/settings-history.js?v=20.70"></script>
+    <script src="js/settings-afisha.js?v=20.70"></script>
+    <script src="js/settings-certificates.js?v=20.70"></script>
+    <script src="js/offline.js?v=20.70"></script>
+    <script src="js/search.js?v=20.70"></script>
+    <script src="js/ws.js?v=20.70"></script>
+    <script src="js/components/sidebar.js?v=20.70"></script>
+    <script src="js/sales-panel.js?v=20.70"></script>
+    <script src="js/command-panel.js?v=20.70"></script>
+    <script src="js/app.js?v=20.70"></script>
+    <script src="js/kleshnya-widget.js?v=20.70"></script>
 </body>
 </html>

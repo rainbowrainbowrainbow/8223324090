@@ -356,4 +356,85 @@ router.get('/comparison', async (req, res) => {
     }
 });
 
+// ==========================================
+// v20.7.0: Manager Conversion Analytics
+// ==========================================
+
+router.get('/conversion', async (req, res) => {
+    try {
+        const { period, year, month } = req.query;
+        const y = parseInt(year) || new Date().getFullYear();
+        const m = parseInt(month) || (new Date().getMonth() + 1);
+
+        let fromDate, toDate;
+        if (period === 'week') {
+            const now = new Date();
+            const dayOfWeek = now.getDay() || 7;
+            const monday = new Date(now);
+            monday.setDate(now.getDate() - (dayOfWeek - 1));
+            fromDate = monday.toISOString().split('T')[0];
+            toDate = now.toISOString().split('T')[0];
+        } else {
+            fromDate = `${y}-${String(m).padStart(2, '0')}-01`;
+            const lastDay = new Date(y, m, 0).getDate();
+            toDate = `${y}-${String(m).padStart(2, '0')}-${lastDay}`;
+        }
+
+        // Bookings per manager (created_by)
+        const result = await pool.query(`
+            SELECT
+                b.created_by AS manager,
+                COUNT(*)::int AS total_bookings,
+                COUNT(*) FILTER (WHERE b.status = 'confirmed')::int AS confirmed,
+                COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.price ELSE 0 END), 0)::int AS revenue,
+                COALESCE(ROUND(AVG(CASE WHEN b.status = 'confirmed' THEN b.price END)), 0)::int AS avg_check
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.created_by IS NOT NULL
+              AND b.linked_to IS NULL
+              AND b.status != 'cancelled'
+            GROUP BY b.created_by
+            ORDER BY revenue DESC
+        `, [fromDate, toDate]);
+
+        // Leads per manager
+        const leadsResult = await pool.query(`
+            SELECT
+                u.name AS manager,
+                u.username,
+                COUNT(*)::int AS total_leads,
+                COUNT(*) FILTER (WHERE l.status = 'booked')::int AS converted
+            FROM leads l
+            JOIN users u ON l.assigned_to = u.id
+            WHERE l.created_at >= $1 AND l.created_at <= ($2::date + INTERVAL '1 day')
+            GROUP BY u.name, u.username
+        `, [fromDate, toDate]).catch(() => ({ rows: [] }));
+
+        // Combine data
+        const leadsMap = {};
+        for (const r of leadsResult.rows) {
+            leadsMap[r.username] = { leads: r.total_leads, converted: r.converted };
+        }
+
+        const managers = result.rows.map(r => {
+            const leadData = leadsMap[r.manager] || { leads: 0, converted: 0 };
+            const totalLeads = Math.max(leadData.leads, r.total_bookings);
+            return {
+                name: r.manager,
+                leads: totalLeads,
+                booked: r.confirmed,
+                conversion: totalLeads > 0 ? Math.round(r.confirmed / totalLeads * 100) : 0,
+                avg_check: r.avg_check,
+                revenue: r.revenue,
+                total_bookings: r.total_bookings
+            };
+        });
+
+        res.json({ success: true, managers, period: { from: fromDate, to: toDate } });
+    } catch (err) {
+        log.error('GET /conversion error', err);
+        res.status(500).json({ success: false, error: 'Помилка аналітики конверсії' });
+    }
+});
+
 module.exports = router;

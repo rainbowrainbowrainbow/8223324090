@@ -30,8 +30,13 @@ router.get('/:date', async (req, res) => {
     try {
         const { date } = req.params;
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
+        // v19.13: Explicit column list instead of SELECT *
         const result = await pool.query(
-            "SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time",
+            `SELECT id, date, time, line_id, program_id, program_code, label, program_name,
+                    category, duration, price, hosts, second_animator, pinata_filler, costume,
+                    room, notes, created_by, created_at, linked_to, status, kids_count,
+                    updated_at, group_name, extra_data, skip_notification, customer_id, payment_method
+             FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time`,
             [date]
         );
         res.json(result.rows.map(mapBookingRow));
@@ -417,25 +422,31 @@ router.put('/:id', async (req, res) => {
         const oldBooking = oldResult.rows[0];
 
         if (!b.linkedTo) {
-            const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0, id);
-            if (conflict.overlap) {
-                await client.query('ROLLBACK');
-                return res.status(409).json({
-                    success: false,
-                    error: `Час зайнятий: ${conflict.conflictWith.label || conflict.conflictWith.program_code} о ${conflict.conflictWith.time}`
-                });
+            // v19.13: Skip conflict checks if date/time/line/duration unchanged
+            const timeSlotChanged = oldBooking.date !== b.date || oldBooking.time !== b.time
+                || oldBooking.line_id !== b.lineId || (oldBooking.duration || 0) !== (b.duration || 0);
+            const roomChanged = oldBooking.room !== b.room || timeSlotChanged;
+
+            if (timeSlotChanged) {
+                const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0, id);
+                if (conflict.overlap) {
+                    await client.query('ROLLBACK');
+                    return res.status(409).json({
+                        success: false,
+                        error: `Час зайнятий: ${conflict.conflictWith.label || conflict.conflictWith.program_code} о ${conflict.conflictWith.time}`
+                    });
+                }
             }
 
-            // v12.6: Exclude linked bookings of this booking from room conflict check
-            // (they will be deleted/recreated in the same transaction)
-            const linkedIds = await client.query('SELECT id FROM bookings WHERE linked_to = $1', [id]);
-            const excludeIds = [id, ...linkedIds.rows.map(r => r.id)];
-            let roomConflict = null;
-            const roomResult = await client.query(
-                "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND status != 'cancelled' AND id != ALL($3::text[])",
-                [b.date, b.room, excludeIds]
-            );
-            if (b.room && b.room !== 'Інше') {
+            if (roomChanged && b.room && b.room !== 'Інше') {
+                // v12.6: Exclude linked bookings of this booking from room conflict check
+                const linkedIds = await client.query('SELECT id FROM bookings WHERE linked_to = $1', [id]);
+                const excludeIds = [id, ...linkedIds.rows.map(r => r.id)];
+                let roomConflict = null;
+                const roomResult = await client.query(
+                    "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND status != 'cancelled' AND id != ALL($3::text[])",
+                    [b.date, b.room, excludeIds]
+                );
                 const newStart = timeToMinutes(b.time);
                 const newEnd = newStart + (b.duration || 0);
                 for (const rc of roomResult.rows) {
@@ -446,13 +457,13 @@ router.put('/:id', async (req, res) => {
                         break;
                     }
                 }
-            }
-            if (roomConflict) {
-                await client.query('ROLLBACK');
-                return res.status(409).json({
-                    success: false,
-                    error: `Кімната "${b.room}" зайнята: ${roomConflict.label || roomConflict.program_code} о ${roomConflict.time}`
-                });
+                if (roomConflict) {
+                    await client.query('ROLLBACK');
+                    return res.status(409).json({
+                        success: false,
+                        error: `Кімната "${b.room}" зайнята: ${roomConflict.label || roomConflict.program_code} о ${roomConflict.time}`
+                    });
+                }
             }
         }
 

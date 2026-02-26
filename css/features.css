@@ -2208,7 +2208,7 @@ body.dark-mode .room-load-close:hover {
 .cmd-fab {
     position: fixed;
     right: 16px;
-    bottom: 20px;
+    bottom: 80px;
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -2417,7 +2417,7 @@ body:not(.dark-mode) .cmd-btn-close { background: rgba(0, 0, 0, 0.05); color: #7
 
 @media (max-width: 480px) {
     .cmd-panel { width: 100vw; }
-    .cmd-fab { right: 12px; bottom: 16px; }
+    .cmd-fab { right: 12px; bottom: 72px; }
 }
 
 /* ==========================================

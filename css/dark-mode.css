@@ -148,25 +148,7 @@ body.dark-mode .sidebar-overlay {
     background: rgba(0,0,0,0.65);
 }
 
-/* Quick stats cards dark */
-body.dark-mode .qs-card {
-    background: var(--white);
-    border-color: var(--gray-200);
-}
-
-body.dark-mode .qs-value { color: #F3F4F6; }
-body.dark-mode .qs-label { color: #9CA3AF; }
-
-body.dark-mode .qs-icon.green { background: rgba(16,185,129,0.15); }
-body.dark-mode .qs-icon.blue { background: rgba(59,130,246,0.15); }
-body.dark-mode .qs-icon.amber { background: rgba(245,158,11,0.15); }
-body.dark-mode .qs-icon.purple { background: rgba(139,92,246,0.15); }
-body.dark-mode .qs-icon.rose { background: rgba(244,63,94,0.15); }
-
-body.dark-mode .qs-card:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.04);
-    border-color: var(--gray-300);
-}
+/* Quick stats cards removed in v20.9.1 (redundant with dashboard) */
 
 /* Skeleton dark */
 body.dark-mode .skeleton {
@@ -745,12 +727,7 @@ body.dark-mode .status-badge--cancelled {
     border-color: rgba(239,68,68,0.3);
 }
 
-/* Quick stats bar in dark */
-body.dark-mode .quick-stats-bar {
-    border-color: rgba(16,185,129,0.2);
-    background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.05) 100%);
-    color: #6EE7B7;
-}
+/* Quick stats bar removed in v20.9.1 */
 
 /* Kleshnya futuristic terminal in dark — enhanced glow */
 body.dark-mode .kleshnya-fab {
@@ -830,6 +807,10 @@ body.dark-mode .btn-status-toggle {
 body.dark-mode .day-label {
     background: linear-gradient(135deg, #10B981 0%, #059669 100%);
     color: #FFFFFF;
+}
+
+body.dark-mode .working-hours {
+    color: #9CA3AF;
 }
 
 /* Toggle slider */

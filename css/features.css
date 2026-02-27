@@ -2142,15 +2142,15 @@ body.dark-mode .search-group-label {
 
 /* Dark mode */
 body.dark-mode .btn-room-load {
-    background: var(--gray-800);
-    border-color: var(--gray-600);
-    color: var(--gray-300);
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.85);
 }
 
 body.dark-mode .btn-room-load:hover {
-    background: rgba(33, 150, 243, 0.15);
+    background: rgba(16,185,129,0.15);
     border-color: var(--primary);
-    color: var(--primary-200, #90caf9);
+    color: #6EE7B7;
 }
 
 body.dark-mode .btn-room-load.active {

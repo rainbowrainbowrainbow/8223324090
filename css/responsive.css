@@ -775,9 +775,6 @@
 @media (max-width: 360px) {
     .main-content { padding: 4px; }
 
-    /* v19.3: Quick stats single column on ultra-small */
-    .quick-stats-bar { grid-template-columns: 1fr; gap: 4px; }
-
     .header-content { padding: 4px 6px; }
     .logo-img-small { width: 24px; height: 24px; }
     .nav-link { padding: 3px 8px; font-size: 13px; }
@@ -858,12 +855,6 @@
    ========================================== */
 
 @media (max-width: 480px) {
-    .quick-stats-bar { grid-template-columns: repeat(2, 1fr); gap: 6px; }
-    .qs-card { padding: 8px 10px; }
-    .qs-icon { width: 30px; height: 30px; font-size: 15px; }
-    .qs-value { font-size: 14px; }
-    .qs-label { font-size: 10px; }
-
     .kleshnya-widget { bottom: 16px; right: 16px; }
     .kleshnya-fab { width: 52px; height: 52px; }
     .kleshnya-fab-icon { font-size: 24px; }
@@ -873,8 +864,6 @@
     .kleshnya-q-label { font-size: 10px; }
     .kleshnya-popup-title { font-size: 11px; letter-spacing: 1px; }
 
-    /* Faster stagger on mobile — less wait */
-    .qs-card:nth-child(n) { animation-delay: 0ms; animation-duration: 0.25s; }
 }
 
 /* ==========================================

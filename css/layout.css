@@ -745,85 +745,8 @@ input[type="date"] {
 }
 
 /* ==========================================
-   QUICK STATS BAR (v11.1)
+   QUICK STATS BAR — removed in v20.9.1 (redundant with dashboard)
    ========================================== */
-
-.quick-stats-bar {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 10px;
-    margin-bottom: 12px;
-}
-
-.quick-stats-bar.hidden {
-    display: none;
-}
-
-.qs-card {
-    background: var(--white);
-    border: 1px solid var(--gray-100);
-    border-radius: var(--radius-sm);
-    padding: 12px 14px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    transition: all var(--speed-normal) var(--ease-smooth);
-    animation: fadeInUp 0.4s var(--ease-out-expo) both;
-}
-
-/* Stagger animation for each card */
-.qs-card:nth-child(1) { animation-delay: 0ms; }
-.qs-card:nth-child(2) { animation-delay: 50ms; }
-.qs-card:nth-child(3) { animation-delay: 100ms; }
-.qs-card:nth-child(4) { animation-delay: 150ms; }
-.qs-card:nth-child(5) { animation-delay: 200ms; }
-.qs-card:nth-child(6) { animation-delay: 250ms; }
-.qs-card:nth-child(7) { animation-delay: 300ms; }
-
-.qs-card:hover {
-    box-shadow: var(--shadow);
-    transform: translateY(-2px);
-    border-color: var(--gray-200);
-}
-
-.qs-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    flex-shrink: 0;
-}
-
-.qs-icon.green { background: #ECFDF5; }
-.qs-icon.blue { background: #EFF6FF; }
-.qs-icon.amber { background: #FFFBEB; }
-.qs-icon.purple { background: #F5F3FF; }
-.qs-icon.rose { background: #FFF1F2; }
-
-.qs-info {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.qs-value {
-    font-size: 16px;
-    font-weight: 800;
-    color: var(--gray-800);
-    line-height: 1.2;
-}
-
-.qs-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--gray-400);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
 
 /* ==========================================
    KLESHNYA FLOATING WIDGET — Futuristic Terminal v11.0.3

@@ -13,8 +13,8 @@ body.dark-mode {
     --gray-100: #252540;
     --gray-200: #333350;
     --gray-300: #444466;
-    --gray-400: #6B7280;
-    --gray-500: #9CA3AF;
+    --gray-400: #9CA3AF;
+    --gray-500: #D1D5DB;
     --gray-600: #D1D5DB;
     --gray-700: #E5E7EB;
     --gray-800: #F3F4F6;
@@ -406,7 +406,12 @@ body.dark-mode .toggle-mini:hover {
 }
 
 body.dark-mode .toggle-mini-label {
-    color: #D1D5DB;
+    color: #F3F4F6;
+}
+
+/* Ensure toggle-mini emoji/icon is also visible */
+body.dark-mode .toggle-mini span {
+    color: #F3F4F6;
 }
 
 body.dark-mode .btn-undo {
@@ -648,6 +653,7 @@ body.dark-mode .pf-check {
 body.dark-mode .btn-nav {
     background: var(--gray-100);
     border-color: var(--gray-300);
+    color: #E2E8F0;
 }
 
 /* v7.8.5: Glass buttons in dark mode */
@@ -1404,6 +1410,15 @@ body.dark-mode .cert-stat-chip.used { background: rgba(100,116,139,0.1); border-
 body.dark-mode .cert-stat-chip.expired { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.3); color: #FBBF24; }
 body.dark-mode .dash-trend-up { color: #34D399; background: rgba(16,185,129,0.15); }
 body.dark-mode .dash-trend-down { color: #F87171; background: rgba(239,68,68,0.15); }
+
+/* Tasks page badges — dark mode */
+body.dark-mode .badge-human { background: rgba(21,101,192,0.2); color: #64B5F6; }
+body.dark-mode .badge-bot { background: rgba(123,31,162,0.2); color: #CE93D8; }
+body.dark-mode .deadline-ok { background: rgba(46,125,50,0.2); color: #81C784; }
+body.dark-mode .deadline-soon { background: rgba(230,81,0,0.2); color: #FFB74D; }
+body.dark-mode .deadline-overdue { background: rgba(198,40,40,0.2); color: #EF9A9A; }
+body.dark-mode .points-permanent { background: rgba(245,127,23,0.2); color: #FFD54F; }
+body.dark-mode .points-monthly { background: rgba(46,125,50,0.2); color: #81C784; }
 
 /* v15.1: CRM Customer section */
 body.dark-mode .customer-data-section {

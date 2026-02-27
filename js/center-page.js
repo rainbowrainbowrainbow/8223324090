@@ -1150,6 +1150,11 @@ function renderGoals(goals, kpi) {
 function showGoalsForm() {
     const el = document.getElementById('goalsContent');
     if (!el) return;
+    // Ensure section is expanded so the form is visible
+    const section = el.closest('.center-section');
+    if (section && section.classList.contains('collapsed')) {
+        section.classList.remove('collapsed');
+    }
     if (document.getElementById('goalsFormInline')) {
         document.getElementById('goalsFormInline').remove();
         return;
@@ -1722,35 +1727,111 @@ function renderEventLog(data) {
         return;
     }
 
-    const actionLabels = { create: 'Створено', edit: 'Змінено', delete: 'Видалено', status_change: 'Статус' };
-    const actionIcons = { create: '&#43;', edit: '&#9998;', delete: '&#10005;', status_change: '&#8634;' };
-    const actionClasses = { create: 'create', edit: 'edit', delete: 'delete', status_change: 'edit' };
+    const actionLabels = {
+        create: '📅 Створено бронювання', edit: '✏️ Змінено бронювання',
+        delete: '🗑️ Видалено', permanent_delete: '💥 Видалено назавжди',
+        shift: '🔄 Перенесено', status_change: '📊 Статус змінено',
+        undo_create: '↩️ Скасовано створення', undo_delete: '↩️ Відновлено',
+        undo_edit: '↩️ Скасовано зміну', undo_shift: '↩️ Скасовано перенос',
+        afisha_create: '🎭 Афіша створена', afisha_edit: '🎭 Афіша змінена',
+        afisha_move: '🎭 Афіша перенесена', afisha_delete: '🎭 Афіша видалена',
+        tasks_generated: '📋 Завдання створені', automation_triggered: '🤖 Автоматизація',
+        certificate_create: '📄 Сертифікат видано', certificate_batch: '📦 Пакет сертифікатів',
+        certificate_used: '✅ Сертифікат використано', certificate_revoked: '❌ Сертифікат анульовано',
+        certificate_edit: '✏️ Сертифікат змінено', certificate_deleted: '🗑️ Сертифікат видалено',
+        certificate_delete: '🗑️ Сертифікат видалено', certificate_blocked: '🔒 Сертифікат заблоковано',
+        certificate_expired: '⏰ Сертифікат прострочено',
+        contractor_response: '🤝 Відповідь підрядника',
+        line_create: '➕ Аніматор доданий', line_delete: '➖ Аніматор видалений',
+        line_rename: '✏️ Аніматор перейменований'
+    };
+    const actionClasses = {
+        create: 'create', edit: 'edit', delete: 'delete', permanent_delete: 'delete',
+        shift: 'edit', status_change: 'edit',
+        undo_create: 'edit', undo_delete: 'create', undo_edit: 'edit', undo_shift: 'edit',
+        afisha_create: 'create', afisha_edit: 'edit', afisha_move: 'edit', afisha_delete: 'delete',
+        certificate_create: 'create', certificate_used: 'create',
+        certificate_revoked: 'delete', certificate_deleted: 'delete', certificate_delete: 'delete'
+    };
 
     el.innerHTML = '<div class="event-timeline">' + events.slice(0, 50).map(e => {
         const label = actionLabels[e.action] || e.action;
-        const icon = actionIcons[e.action] || '&#8226;';
         const cls = actionClasses[e.action] || 'edit';
         const time = e.timestamp ? new Date(e.timestamp).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
 
-        let details = '';
-        if (e.data) {
-            if (e.data.id) details += `#${e.data.id} `;
-            if (e.data.program_name) details += escapeHtml(e.data.program_name) + ' ';
-            else if (e.data.programName) details += escapeHtml(e.data.programName) + ' ';
-            if (e.data.date) details += `(${e.data.date}) `;
-            if (e.data.status) details += `→ ${e.data.status}`;
-        }
+        const details = buildEventDetails(e);
 
         return `
         <div class="event-row">
-            <div class="event-icon ${cls}">${icon}</div>
+            <div class="event-dot ${cls}"></div>
             <div class="event-info">
-                <div class="event-info-action">${label} <span style="font-weight:400;color:var(--gray-500)">— ${escapeHtml(e.user || '')}</span></div>
+                <div class="event-info-action">${label} <span style="font-weight:400;opacity:0.7">— ${escapeHtml(e.user || 'система')}</span></div>
                 ${details ? `<div class="event-info-details">${details}</div>` : ''}
             </div>
             <div class="event-time">${time}</div>
         </div>`;
     }).join('') + '</div>';
+}
+
+function buildEventDetails(e) {
+    const d = e.data || {};
+    const action = e.action;
+
+    // Booking actions
+    if (['create', 'edit', 'delete', 'permanent_delete', 'shift', 'status_change',
+         'undo_create', 'undo_delete', 'undo_edit', 'undo_shift'].includes(action)) {
+        const parts = [];
+        const name = d.label || d.programName || d.program_name || d.programCode || '';
+        if (d.id) parts.push(`<b>${escapeHtml(d.id)}</b>`);
+        if (name) parts.push(escapeHtml(name));
+        if (d.room) parts.push(escapeHtml(d.room));
+        if (d.date && d.time) parts.push(`${d.date} ${d.time}`);
+        else if (d.date) parts.push(d.date);
+        if (action === 'status_change' && d.status) {
+            parts.push(d.status === 'confirmed' ? '→ Підтверджено' : '→ Попереднє');
+        }
+        if (action === 'shift' && d.newDate) parts.push(`→ ${d.newDate} ${d.newTime || ''}`);
+        return parts.join(' · ');
+    }
+
+    // Afisha actions
+    if (action.startsWith('afisha_')) {
+        const parts = [];
+        if (d.title) parts.push(`<b>${escapeHtml(d.title)}</b>`);
+        if (d.type) parts.push(d.type);
+        if (d.date && d.time) parts.push(`${d.date} ${d.time}`);
+        else if (d.date) parts.push(d.date);
+        if (action === 'afisha_move' && d.from && d.to) {
+            parts.push(`${escapeHtml(d.from)} → ${escapeHtml(d.to)}`);
+        }
+        return parts.join(' · ');
+    }
+
+    // Certificate actions
+    if (action.startsWith('certificate_')) {
+        const parts = [];
+        if (d.certCode) parts.push(`<b>${escapeHtml(d.certCode)}</b>`);
+        if (d.displayValue) parts.push(escapeHtml(d.displayValue));
+        if (d.typeText) parts.push(escapeHtml(d.typeText));
+        if (action === 'certificate_batch' && d.quantity) parts.push(`${d.quantity} шт.`);
+        return parts.join(' · ');
+    }
+
+    // Automation/tasks
+    if (action === 'automation_triggered') {
+        return `${escapeHtml(d.rule_name || '')} → ${escapeHtml(d.booking_id || '')}`;
+    }
+    if (action === 'tasks_generated') {
+        return `${escapeHtml(d.title || '')} — ${d.count || 0} завдань`;
+    }
+
+    // Fallback — show all meaningful fields
+    const parts = [];
+    if (d.id) parts.push(`#${d.id}`);
+    if (d.label || d.title || d.name) parts.push(escapeHtml(d.label || d.title || d.name));
+    if (d.room) parts.push(d.room);
+    if (d.date) parts.push(d.date);
+    return parts.join(' · ');
 }
 
 // ==========================================

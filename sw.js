@@ -1,5 +1,5 @@
 /**
- * sw.js — Service Worker for Genix
+ * sw.js — Service Worker for Event Genix
  * Feature #9: Offline support with App Shell caching and API data caching
  *
  * Integration: In index.html, add before </body>:
@@ -16,8 +16,8 @@
  *   <script src="js/ws.js"></script>
  */
 
-const CACHE_NAME = 'genix-v10';
-const API_CACHE_NAME = 'genix-api-v10';
+const CACHE_NAME = 'event-genix-v10';
+const API_CACHE_NAME = 'event-genix-api-v10';
 
 // App Shell — static assets to pre-cache on install
 const APP_SHELL = [

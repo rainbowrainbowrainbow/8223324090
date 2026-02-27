@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v20.9.0**. Rebranding: Event Maestro → Genix.
+Версія **v20.9.0**. Rebranding: Event Maestro → Event Genix.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -34,12 +34,12 @@
 - **v20.7.0: Sales Features — hot leads, manager conversion, age recommendations, sales scripts, auto follow-up tasks**
 - **v20.7.1: Bugfix Patch — 13 fixes (XSS, type mismatches, transactions, HTML)**
 - **v20.8.0: Navigation Cleanup + UX — command panel redesign, sidebar final, art page, afisha cross-lane, header cleanup**
-- **v20.9.0: Rebranding — Event Maestro → Genix, Space Grotesk + Inter, нова палітра**
+- **v20.9.0: Rebranding — Event Maestro → Event Genix, Space Grotesk + Inter, нова палітра**
 
 ## Що нове (поточна сесія) — v20.9.0
 
-### v20.9.0 — Rebranding: Event Maestro → Genix
-- **Genix** — повний ребрендинг у 35+ файлах (HTML, JS, CSS, routes, services, configs)
+### v20.9.0 — Rebranding: Event Maestro → Event Genix
+- **Event Genix** — повний ребрендинг у 35+ файлах (HTML, JS, CSS, routes, services, configs)
 - **Абревіатура** — EM → GX у sidebar навігації
 - **Space Grotesk** — новий шрифт для заголовків (Brand Guide v0.1)
 - **Inter** — основний шрифт замість Nunito

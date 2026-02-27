@@ -1,7 +1,7 @@
 {
-  "name": "Genix — AI First CRM",
-  "short_name": "Genix",
-  "description": "Genix — AI First CRM для дитячих розважальних центрів",
+  "name": "Event Genix — AI First CRM",
+  "short_name": "Event Genix",
+  "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0D0D0D",

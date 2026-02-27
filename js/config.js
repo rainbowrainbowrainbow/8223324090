@@ -1,5 +1,5 @@
 /**
- * Genix — AI First CRM
+ * Event Genix — AI First CRM
  * config.js - Константи, конфігурація та глобальний стан
  */
 

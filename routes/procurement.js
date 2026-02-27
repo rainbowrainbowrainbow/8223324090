@@ -482,7 +482,7 @@ router.get('/export-xlsx', async (req, res) => {
 
         const ExcelJS = require('exceljs');
         const workbook = new ExcelJS.Workbook();
-        workbook.creator = 'Genix';
+        workbook.creator = 'Event Genix';
         const sheet = workbook.addWorksheet('Закупки');
 
         sheet.columns = [

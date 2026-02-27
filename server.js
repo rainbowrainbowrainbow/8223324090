@@ -80,7 +80,7 @@ app.use('/api', (req, res, next) => {
 });
 
 // Swagger UI — public, no auth required
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { customSiteTitle: 'Genix API' }));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { customSiteTitle: 'Event Genix API' }));
 app.get('/api-docs.json', (req, res) => res.json(swaggerSpec));
 
 // Rate limiter for all API routes

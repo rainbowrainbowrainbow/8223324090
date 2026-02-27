@@ -1197,7 +1197,7 @@ async function checkAutoReport() {
         }
 
         text += `📋 Задачі: <b>${taskStats.done}/${taskStats.total}</b> виконано\n\n`;
-        text += `🤖 <i>Genix — автозвіт</i>`;
+        text += `🤖 <i>Event Genix — автозвіт</i>`;
 
         await sendTelegramMessage(reportChatId, text, { silent: false });
         log.info('Auto-report sent successfully');

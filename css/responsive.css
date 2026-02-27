@@ -712,11 +712,11 @@
     }
 
     .improvement-fab {
-        bottom: 20px;
-        right: 16px;
-        width: 44px;
-        height: 44px;
-        font-size: 18px;
+        bottom: 12px;
+        right: 12px;
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
     }
 }
 

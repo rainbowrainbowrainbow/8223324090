@@ -2427,11 +2427,11 @@ body:not(.dark-mode) .cmd-btn-close { background: rgba(0, 0, 0, 0.05); color: #7
 /* Call script panel */
 .panel-header-actions { display: flex; align-items: center; gap: 8px; }
 .btn-call-script {
-    padding: 4px 10px; border: 1.5px solid var(--primary, #F5C842); border-radius: 6px;
-    background: transparent; color: var(--primary, #F5C842); font-size: 11px;
+    padding: 4px 10px; border: 1.5px solid var(--primary, #C9A84C); border-radius: 6px;
+    background: transparent; color: var(--primary, #C9A84C); font-size: 11px;
     font-weight: 700; cursor: pointer; font-family: inherit; transition: all 0.15s;
 }
-.btn-call-script:hover { background: var(--primary, #F5C842); color: #1a202c; }
+.btn-call-script:hover { background: var(--primary, #C9A84C); color: #1a202c; }
 
 .call-script-panel {
     background: rgba(245, 200, 66, 0.06); border-bottom: 1px solid rgba(245, 200, 66, 0.2);
@@ -2443,7 +2443,7 @@ body:not(.dark-mode) .cmd-btn-close { background: rgba(0, 0, 0, 0.05); color: #7
     display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start;
 }
 .script-step-num {
-    width: 24px; height: 24px; border-radius: 50%; background: var(--primary, #F5C842);
+    width: 24px; height: 24px; border-radius: 50%; background: var(--primary, #C9A84C);
     color: #1a202c; font-size: 12px; font-weight: 900; display: flex;
     align-items: center; justify-content: center; flex-shrink: 0;
 }
@@ -2459,7 +2459,7 @@ body:not(.dark-mode) .cmd-btn-close { background: rgba(0, 0, 0, 0.05); color: #7
     background: rgba(0,0,0,0.02); border-radius: 8px; cursor: pointer; font-size: 13px;
 }
 .upsell-item:hover { background: rgba(0,0,0,0.04); }
-.upsell-check { margin: 0; accent-color: var(--primary, #F5C842); }
+.upsell-check { margin: 0; accent-color: var(--primary, #C9A84C); }
 .upsell-name { flex: 1; font-weight: 600; }
 .upsell-price { font-size: 12px; color: var(--gray-500, #A0AEC0); font-weight: 700; }
 

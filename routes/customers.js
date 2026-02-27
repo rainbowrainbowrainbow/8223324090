@@ -144,7 +144,7 @@ router.get('/export-xlsx', exportLimiter, async (req, res) => {
 
         const ExcelJS = require('exceljs');
         const workbook = new ExcelJS.Workbook();
-        workbook.creator = 'Event Maestro';
+        workbook.creator = 'Genix';
         const sheet = workbook.addWorksheet('Клієнти');
 
         sheet.columns = [

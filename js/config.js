@@ -1,5 +1,5 @@
 /**
- * Event Maestro — AI First CRM
+ * Genix — AI First CRM
  * config.js - Константи, конфігурація та глобальний стан
  */
 

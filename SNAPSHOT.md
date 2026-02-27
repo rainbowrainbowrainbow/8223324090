@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v20.8.0**. Master TZ v20.1.0–v20.8.0 виконано повністю.
+Версія **v20.9.0**. Rebranding: Event Maestro → Genix.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -34,18 +34,18 @@
 - **v20.7.0: Sales Features — hot leads, manager conversion, age recommendations, sales scripts, auto follow-up tasks**
 - **v20.7.1: Bugfix Patch — 13 fixes (XSS, type mismatches, transactions, HTML)**
 - **v20.8.0: Navigation Cleanup + UX — command panel redesign, sidebar final, art page, afisha cross-lane, header cleanup**
+- **v20.9.0: Rebranding — Event Maestro → Genix, Space Grotesk + Inter, нова палітра**
 
-## Що нове (поточна сесія) — v20.8.0
+## Що нове (поточна сесія) — v20.9.0
 
-### v20.8.0 — Navigation Cleanup + UX
-- **Командна панель** — повний редизайн: slide-in з правого краю, FAB-кнопка завжди видима
-- **Sidebar** — фінальний набір: Таймлайн, Центр, Задачі, Арт, Клієнти, Персонал, Склад, Навчання, Event Maestro, Налаштування
-- **Арт-сторінка** — перейменовано з "Art Director", додано вкладки "Програми" (iframe read-only) та "Дизайни" (iframe)
-- **Дизайни** — onerror fallback для зображень, API endpoint для завантаження файлів
-- **Афіша** — контекстне меню для переміщення між лінійками (PATCH /api/afisha/:id/line)
-- **Event Maestro логотип** — видалено дублікати з хедерів 9 сторінок
-- **Status** — кнопка "Назад до Центру", лого як посилання
-- **Центр** — видалено посилання на Клешню з навігації
+### v20.9.0 — Rebranding: Event Maestro → Genix
+- **Genix** — повний ребрендинг у 35+ файлах (HTML, JS, CSS, routes, services, configs)
+- **Абревіатура** — EM → GX у sidebar навігації
+- **Space Grotesk** — новий шрифт для заголовків (Brand Guide v0.1)
+- **Inter** — основний шрифт замість Nunito
+- **Палітра** — gold accent #C9A84C, dark background #0D0D0D
+- **Конфіги** — package.json (genix), manifest.json, sw.js cache name
+- **Тести** — оновлено перевірку назви сайту
 
 ## Архітектура
 - **16+ сторінок**, **40+ routes**, 18+ services, 5 middleware
@@ -58,4 +58,4 @@
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
 
 ---
-*Оновлено: 2026-02-26, v20.8.0*
+*Оновлено: 2026-02-27, v20.9.0*

@@ -16,7 +16,7 @@ const Sidebar = (() => {
         { href: '/staff',     icon: 'Ш',  label: 'Персонал' },
         { href: '/warehouse', icon: 'С',  label: 'Склад' },
         { href: '/training',  icon: 'Н',  label: 'Навчання' },
-        { href: '/kleshnya',  icon: 'EM', label: 'Event Maestro' },
+        { href: '/kleshnya',  icon: 'GX', label: 'Genix' },
         { href: '/settings',  icon: 'Л',  label: 'Налаштування' },
     ];
 

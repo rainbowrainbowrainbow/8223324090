@@ -2943,14 +2943,14 @@ function drawCertDynamicContent(ctx, cert, W, H) {
 
     // Park name
     ctx.fillStyle = '#5A9ECF';
-    ctx.font = '700 14px Nunito, sans-serif';
+    ctx.font = '700 14px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Парк Закревського Періоду', centerX, y);
     y += 52;
 
     // СЕРТИФІКАТ title
     ctx.fillStyle = '#19468B';
-    ctx.font = '900 46px Nunito, sans-serif';
+    ctx.font = '900 46px Inter, sans-serif';
     ctx.fillText('СЕРТИФІКАТ', centerX, y);
     y += 22;
 
@@ -2978,7 +2978,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
         let nameFontSize = 34;
         ctx.fillStyle = '#0D2E5C';
         while (nameFontSize >= 20) {
-            ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
+            ctx.font = `900 ${nameFontSize}px Inter, sans-serif`;
             if (ctx.measureText(nameText).width <= maxTextW) break;
             nameFontSize -= 2;
         }
@@ -2988,7 +2988,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
 
     // Certificate type
     ctx.fillStyle = '#2E5090';
-    ctx.font = '700 16px Nunito, sans-serif';
+    ctx.font = '700 16px Inter, sans-serif';
     ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), centerX, y);
     y += 34;
 
@@ -3002,7 +3002,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
 
     // Cert code
     ctx.fillStyle = '#2E5090';
-    ctx.font = '700 15px Nunito, sans-serif';
+    ctx.font = '700 15px Inter, sans-serif';
     ctx.fillText(cert.certCode || '', centerX, y + 22);
 
     // Valid date
@@ -3010,13 +3010,13 @@ function drawCertDynamicContent(ctx, cert, W, H) {
         ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '—';
     ctx.fillStyle = '#6A8FBF';
-    ctx.font = '600 12px Nunito, sans-serif';
+    ctx.font = '600 12px Inter, sans-serif';
     ctx.fillText(`Дійсний до ${validDate}  •  Будні та вихідні`, centerX, y + 44);
     y += infoH + 20;
 
     // Phone at bottom of card
     ctx.fillStyle = '#6A8FBF';
-    ctx.font = '600 13px Nunito, sans-serif';
+    ctx.font = '600 13px Inter, sans-serif';
     ctx.fillText('+38 (0800) 75-35-53', centerX, cardY + cardH - 24);
 
     ctx.textAlign = 'left';
@@ -3063,7 +3063,7 @@ async function drawCertQRCode(ctx, cert, W, H, layout) {
 
                 // Label under QR
                 ctx.fillStyle = '#5A7FAA';
-                ctx.font = '600 11px Nunito, sans-serif';
+                ctx.font = '600 11px Inter, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText('Сканувати для перевірки', centerX, qrY + qrSize + 18);
                 ctx.textAlign = 'left';

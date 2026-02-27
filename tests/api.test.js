@@ -2225,7 +2225,7 @@ describe('Static Pages', () => {
         const fetchRes = await fetch(`${require('./helpers').BASE_URL}/`);
         assert.equal(fetchRes.status, 200);
         const body = await fetchRes.text();
-        assert.ok(body.includes('Event Maestro'), 'Should contain site name');
+        assert.ok(body.includes('Genix'), 'Should contain site name');
     });
 });
 

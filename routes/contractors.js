@@ -242,7 +242,7 @@ router.post('/:id/test-message', async (req, res) => {
         }
 
         const text = `🔔 <b>Тестове повідомлення</b>\n\n`
-            + `Привіт, ${contractor.name}! Це тестове повідомлення від Event Maestro.\n`
+            + `Привіт, ${contractor.name}! Це тестове повідомлення від Genix.\n`
             + `Ваш зв'язок працює коректно ✅`;
 
         const tgResult = await sendTelegramMessage(contractor.telegram_chat_id, text, { parse_mode: 'HTML' });

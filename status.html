@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Event Maestro | Status</title>
-    <meta name="description" content="Event Maestro — системний статус">
+    <title>Genix | Status</title>
+    <meta name="description" content="Genix — системний статус">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: 'Nunito', sans-serif;
+            font-family: 'Inter', sans-serif;
             background: linear-gradient(160deg, #0a1628 0%, #0f1f3a 30%, #0a2540 60%, #112240 100%);
             color: #E2E8F0;
             min-height: 100vh;
@@ -60,9 +60,9 @@
             color: #6EE7B7;
         }
         .overall-banner.degraded {
-            background: rgba(245,200,66,0.12);
-            border: 1px solid rgba(245,200,66,0.3);
-            color: #F5C842;
+            background: rgba(201,168,76,0.12);
+            border: 1px solid rgba(201,168,76,0.3);
+            color: #C9A84C;
         }
         .overall-banner.partial_outage {
             background: rgba(251,146,60,0.12);
@@ -88,7 +88,7 @@
             animation: pulse 2s ease-in-out infinite;
         }
         .overall-banner.operational .status-dot { background: #10B981; }
-        .overall-banner.degraded .status-dot { background: #F5C842; }
+        .overall-banner.degraded .status-dot { background: #C9A84C; }
         .overall-banner.partial_outage .status-dot { background: #FB923C; }
         .overall-banner.major_outage .status-dot { background: #EF4444; }
         .overall-banner.maintenance .status-dot { background: #6366F1; }
@@ -156,8 +156,8 @@
             color: #6EE7B7;
         }
         .component-badge.degraded {
-            background: rgba(245,200,66,0.15);
-            color: #F5C842;
+            background: rgba(201,168,76,0.15);
+            color: #C9A84C;
         }
         .component-badge.partial_outage {
             background: rgba(251,146,60,0.15);
@@ -194,8 +194,8 @@
             text-transform: uppercase;
         }
         .incident-severity.minor {
-            background: rgba(245,200,66,0.15);
-            color: #F5C842;
+            background: rgba(201,168,76,0.15);
+            color: #C9A84C;
         }
         .incident-severity.major {
             background: rgba(251,146,60,0.15);
@@ -278,8 +278,8 @@
     <div class="status-header">
         <div class="logo-row">
             <a href="/" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:inherit;">
-                <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img">
-                <h1>Event Maestro</h1>
+                <img src="images/gear-logo.svg" alt="Genix" class="logo-img">
+                <h1>Genix</h1>
             </a>
         </div>
         <p class="subtitle">System Status</p>
@@ -304,7 +304,7 @@
 
     <div class="status-footer">
         <span id="checkedAt"></span><br>
-        <a href="/">Event Maestro</a> &middot; MagicGears &middot; 2026
+        <a href="/">Genix</a> &middot; MagicGears &middot; 2026
     </div>
 
     <script src="js/status-page.js?v=20.71"></script>

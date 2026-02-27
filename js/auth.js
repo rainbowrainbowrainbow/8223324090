@@ -237,6 +237,9 @@ function showMainApp() {
     // v20.2.0: Initialize floating command panel
     if (typeof CommandPanel !== 'undefined') CommandPanel.init();
 
+    // Idle hint bubbles near cmd-fab
+    if (typeof IdleHints !== 'undefined') IdleHints.init();
+
     // v10.3: Personal cabinet — click on username
     const userNameEl = document.getElementById('currentUser');
     if (userNameEl) {

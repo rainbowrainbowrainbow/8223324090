@@ -1321,14 +1321,14 @@
 .improvement-fab {
     position: fixed;
     bottom: 24px;
-    right: 24px;
-    width: 56px;
-    height: 56px;
+    right: 20px;
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
     border: none;
     background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%);
     color: #fff;
-    font-size: 24px;
+    font-size: 20px;
     cursor: pointer;
     box-shadow: 0 4px 16px rgba(8,145,178,0.4);
     z-index: 900;
@@ -2207,8 +2207,8 @@ body.dark-mode .room-load-close:hover {
 /* FAB trigger — always visible when panel is closed */
 .cmd-fab {
     position: fixed;
-    right: 16px;
-    bottom: 80px;
+    right: 20px;
+    bottom: 84px;
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -2417,7 +2417,7 @@ body:not(.dark-mode) .cmd-btn-close { background: rgba(0, 0, 0, 0.05); color: #7
 
 @media (max-width: 480px) {
     .cmd-panel { width: 100vw; }
-    .cmd-fab { right: 12px; bottom: 72px; }
+    .cmd-fab { right: 16px; bottom: 80px; }
 }
 
 /* ==========================================

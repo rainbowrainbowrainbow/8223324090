@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v20.9.0**. Rebranding: Event Maestro → Event Genix.
+Версія **v20.9.3**. Event Feed + Dark Mode Polish.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -35,27 +35,55 @@
 - **v20.7.1: Bugfix Patch — 13 fixes (XSS, type mismatches, transactions, HTML)**
 - **v20.8.0: Navigation Cleanup + UX — command panel redesign, sidebar final, art page, afisha cross-lane, header cleanup**
 - **v20.9.0: Rebranding — Event Maestro → Event Genix, Space Grotesk + Inter, нова палітра**
+- **v20.9.1: FAB Fix + Idle Hints — touch targets 44px, підказки при бездіяльності**
+- **v20.9.2: UI Cleanup — видалено Quick Stats Bar, dark mode btn-room-load fix**
+- **v20.9.3: Event Feed + Dark Mode Polish — 25+ action types, gray token contrast fix, badges dark mode**
 
-## Що нове (поточна сесія) — v20.9.0
+## Що нове (поточна сесія) — v20.9.1–v20.9.3
+
+### v20.9.3 — Event Feed + Dark Mode Polish
+- **Стрічка подій** — renderEventLog() переписано: 25+ типів дій, emoji labels, buildEventDetails() для бронювань/афіш/сертифікатів
+- **Цілі** — виправлено кнопку налаштувань (auto-expand collapsed section)
+- **Dark Mode глобально** — gray-400 (#6B7280→#9CA3AF), gray-500 (#9CA3AF→#D1D5DB), toggle labels, btn-nav
+- **center.html** — dark mode: price buttons, hot leads, event timeline, event-dot CSS
+- **tasks.html** — dark mode: badges (deadline-ok/soon/overdue, points, badge-human/bot)
+- **Тести**: 291 pass, 0 fail
+
+### v20.9.2 — UI Cleanup + Dark Mode Fix
+- **Quick Stats Bar** — видалено (дублювало дашборд), updateQuickStats() → stub
+- **btn-room-load** — dark mode фікс: var(--gray-800) → rgba(255,255,255,0.08)
+- **working-hours** — dark mode color: #9CA3AF
+
+### v20.9.1 — FAB Fix + Idle Hints
+- **FAB кнопки** — 44px touch targets, вертикальний стек 8px
+- **Idle Hints** — підказки біля ☰ при бездіяльності 3-5 хв
 
 ### v20.9.0 — Rebranding: Event Maestro → Event Genix
-- **Event Genix** — повний ребрендинг у 35+ файлах (HTML, JS, CSS, routes, services, configs)
-- **Абревіатура** — EM → GX у sidebar навігації
-- **Space Grotesk** — новий шрифт для заголовків (Brand Guide v0.1)
-- **Inter** — основний шрифт замість Nunito
-- **Палітра** — gold accent #C9A84C, dark background #0D0D0D
-- **Конфіги** — package.json (genix), manifest.json, sw.js cache name
-- **Тести** — оновлено перевірку назви сайту
+- Повний ребрендинг у 35+ файлах, Space Grotesk + Inter, палітра #C9A84C
 
 ## Архітектура
 - **16+ сторінок**, **40+ routes**, 18+ services, 5 middleware
 - **~95+ таблиць**, 80+ індексів, 24 міграцій
 - ~75 000+ рядків коду
-- 291 тестів, 0 fail
+- 291 тест, 0 fail
 
 ## Технічний стан
 - Branch: `claude/event-maestro-crm-m3Jlp`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
 
+## Відомі проблеми / пастки для нової сесії
+- **Dark mode gray inversion**: В dark-mode.css сірі токени інвертовані (gray-800 = #F3F4F6 = БІЛИЙ!). Ніколи не використовувати var(--gray-800) для фону в dark mode — тільки rgba(255,255,255,0.08)
+- **Версіонування 5 кроків**: package.json → index.html ?v=X.XX (32+ тегів) → tagline → changelog button → changelog entry
+- **center.html standalone**: Має свої inline `<style>` + імпортує dark-mode.css. Dark mode overrides потрібно дублювати в inline стилях center.html
+- **Два системи нотифікацій**: templates.js (прямі) та eventBus.js (rule-based). Перевіряй обидві при змінах
+- **automation.test.js**: 28 тестів ЗАВЖДИ фейляться (pre-existing) — це НЕ наші баги
+- **Rate limit в тестах**: Використовувати RATE_LIMIT_MAX=10000 при запуску тестів
+- **Multi-agent**: Завжди git fetch + перевіряй чи хтось не змінив файли. Коміти з тегом [claude-code]
+
+## Деплой
+- `main` — staging (PR мерджаться сюди)
+- `deployed` — production Railway (ТІЛЬКИ Клешня деплоїть)
+- НІКОЛИ не push в `deployed` напряму
+
 ---
-*Оновлено: 2026-02-27, v20.9.0*
+*Оновлено: 2026-03-01, v20.9.3*

@@ -2004,9 +2004,10 @@ body.dark-mode .search-group-label {
 }
 
 .btn-room-load.active {
-    background: var(--primary);
-    color: white;
+    background: var(--primary-50);
+    color: var(--primary);
     border-color: var(--primary);
+    font-weight: 700;
 }
 
 .room-load-panel {

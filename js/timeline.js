@@ -2193,6 +2193,14 @@ function updateRoomLoadPanel(bookings, date) {
     activeBookings.forEach(b => {
         const room = b.room;
         if (!(room in roomMinutes)) return;
+        // v20.9.5: Оренда кімнати = 100% на весь день
+        const isRental = b.category === 'rental' || b.programCode === 'ОРЕНДА' ||
+            (b.label || '').toLowerCase().includes('оренд') ||
+            (b.programName || '').toLowerCase().includes('оренд');
+        if (isRental) {
+            roomMinutes[room] = totalMinutes; // 100%
+            return;
+        }
         const bStartMin = timeToMinutes(b.time);
         const bEndMin = bStartMin + (b.duration || 60);
         // Clamp to working hours

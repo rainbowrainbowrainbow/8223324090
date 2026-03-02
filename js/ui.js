@@ -14,13 +14,17 @@ function formatDate(date) {
 }
 
 function timeToMinutes(time) {
+    if (!time || typeof time !== 'string' || !time.includes(':')) return 0;
     const [h, m] = time.split(':').map(Number);
+    if (isNaN(h) || isNaN(m)) return 0;
     return h * 60 + m;
 }
 
 function minutesToTime(totalMinutes) {
-    const h = Math.floor(totalMinutes / 60);
-    const m = totalMinutes % 60;
+    if (isNaN(totalMinutes) || totalMinutes === null || totalMinutes === undefined) return '00:00';
+    const clamped = Math.max(0, Math.min(1439, totalMinutes));
+    const h = Math.floor(clamped / 60);
+    const m = clamped % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 

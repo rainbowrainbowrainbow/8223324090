@@ -412,12 +412,12 @@ router.delete('/:id', async (req, res) => {
 
         // v19.1: Publish to event queue
         publishEvent('booking.cancelled', {
-            booking_id: id, booking_number: id,
+            booking_id: id, booking_number: booking.booking_number || id,
             date: booking.date, room: booking.room,
             program_code: booking.program_code,
             program_name: booking.program_name,
-            label: booking.label,
-            time: booking.time,
+            label: booking.label || booking.program_code || '',
+            time: booking.time || '',
             permanent,
             cancelled_by: req.user?.username
         }, `booking_cancelled_${id}`);

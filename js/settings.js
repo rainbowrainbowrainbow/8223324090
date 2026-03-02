@@ -2871,11 +2871,14 @@ function certRoundRect(ctx, x, y, w, h, r) {
 }
 
 async function generateCertificateCanvas(cert) {
-    const W = 1200, H = 800;
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const W = isMobile ? 800 : 1200;
+    const H = isMobile ? 533 : 800;
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
+    if (!ctx) { console.warn('Canvas 2d context unavailable'); return canvas; }
 
     // === DRAW BACKGROUND (seasonal, full image, no crop) ===
     const bgImg = await loadCertBg(cert.season || 'winter');

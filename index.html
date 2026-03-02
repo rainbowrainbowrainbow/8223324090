@@ -1122,7 +1122,36 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <div class="changelog-section">
+                    <h4>v20.9.9 — Stability & Security (Клешня, 02.03.2026)</h4>
+                    <ul>
+                        <li><b>Стабільність</b> — null guard для getElementById в таймлайні (5 місць), усуває рідкісні крашi</li>
+                        <li><b>Безпека</b> — прибрано X-Powered-By заголовок (не розкриває стек)</li>
+                        <li><b>Аудит</b> — перевірка синтаксису всіх JS/routes/services — чисто ✅</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.8 — Dark Mode Fix (Клешня, 02.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — в темній темі кнопка "Тема" мала чорний текст — тепер білий</li>
+                        <li><b>Фікс</b> — активний стан toggle-mini в dark mode: текст/емодзі білі (!important)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.7 — Room 100% + iOS Touch (Клешня, 02.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — будь-яке бронювання в кімнаті = 100% заповненість на весь день</li>
+                        <li><b>Фікс</b> — iOS/Chrome: touch-action manipulation на кнопках сертифіката</li>
+                        <li><b>Фікс</b> — глобальний фікс 300ms tap delay для всіх кнопок на iOS</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.6 — Room Style Fix (Клешня, 02.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — snake_case/camelCase для program_code при визначенні оренди кімнати</li>
+                        <li><b>Фікс</b> — стиль кнопки кімнати (сірий фон, не зелений при активному стані)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v20.9.5 — UI Bugfix (Клешня, 02.03.2026)</h4>
                     <ul>
                         <li><b>Фікс</b> — кнопка "Кімнати": стиль активного стану виправлено (без зеленого заповнення)</li>

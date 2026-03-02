@@ -422,3 +422,9 @@ body {
         box-shadow: none !important;
     }
 }
+
+/* v20.9.7: iOS Safari/Chrome touch fix — prevent 300ms tap delay */
+button, [role="button"], a, input[type="submit"], input[type="button"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}

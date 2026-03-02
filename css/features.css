@@ -1469,6 +1469,13 @@
 .cert-panel-add-btn {
     line-height: 1.6;
     overflow: visible;
+    /* v20.9.7: iOS touch fix */
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 44px;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 /* v8.6: Filter mode warning banner */

@@ -2189,31 +2189,12 @@ function updateRoomLoadPanel(bookings, date) {
     const roomMinutes = {};
     ALL_ROOMS_DISPLAY.forEach(r => { roomMinutes[r] = 0; });
 
+    // v20.9.7: Будь-яке бронювання в кімнаті = 100% на весь день
     const activeBookings = bookings.filter(b => b.status !== 'cancelled' && b.room && b.room !== 'Інше');
     activeBookings.forEach(b => {
         const room = b.room;
         if (!(room in roomMinutes)) return;
-        // v20.9.5: Оренда кімнати = 100% на весь день
-        const bCode = b.programCode || b.program_code || '';
-        const bName = b.programName || b.program_name || '';
-        const isRental = b.category === 'rental' || 
-            bCode === 'ОРЕНДА' || bCode.toLowerCase().includes('оренд') ||
-            (b.label || '').toLowerCase().includes('оренд') ||
-            bName.toLowerCase().includes('оренд');
-        if (isRental) {
-            roomMinutes[room] = totalMinutes; // 100%
-            return;
-        }
-        const bStartMin = timeToMinutes(b.time);
-        const bEndMin = bStartMin + (b.duration || 60);
-        // Clamp to working hours
-        const dayStartMin = start * 60;
-        const dayEndMin = end * 60;
-        const overlapStart = Math.max(bStartMin, dayStartMin);
-        const overlapEnd = Math.min(bEndMin, dayEndMin);
-        if (overlapEnd > overlapStart) {
-            roomMinutes[room] += (overlapEnd - overlapStart);
-        }
+        roomMinutes[room] = totalMinutes; // 100% — будь-яка активність = весь день зайнятий
     });
 
     let occupiedCount = 0;

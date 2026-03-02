@@ -12,6 +12,8 @@
     right: 0;
     width: 340px;
     height: 100vh;
+    height: -webkit-fill-available; /* v20.2.0: iOS Safari fix */
+    height: 100dvh; /* v20.2.0: dynamic viewport height */
     background: var(--white);
     box-shadow: -4px 0 24px rgba(0,0,0,0.08);
     z-index: var(--z-panel);

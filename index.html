@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v20.0.0 — Milestone Release</p>
+                <p class="tagline">AI First CRM v20.2.0 — Milestone Release</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v20.0.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v20.2.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1154,8 +1154,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
-                <div class="changelog-section">
-                    <h4>v20.0.0 — Milestone Release (Claude Code, 26.02.2026)</h4>
+                                <div class="changelog-section">
+                    <h4>v20.2.0 — Bugfix Release (Клешня, 02.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — інтерполяція змінних в повідомленнях скасування бронювань ({booking_number}, {label}, {time})</li>
+                        <li><b>Фікс</b> — захист від NaN в timeToMinutes/minutesToTime (усуває дублювання в 00:00)</li>
+                        <li><b>Фікс</b> — сумісність з iPhone 11 Safari: canvas null guard, dynamic viewport height</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
+                    <h4>v20.2.0 — Milestone Release (Claude Code, 26.02.2026)</h4>
                     <ul>
                         <li><b>Room Load Panel</b> — навантаження кімнат на таймлайні (15 кімнат)</li>
                         <li><b>8 оптимізацій бекенду</b> — N+1 fix, CSP, retry queue, LRU cache, timeouts</li>

@@ -2666,7 +2666,7 @@ async function handleCertificateSubmit(event) {
         showCertDetail(result.certificate.id);
 
         // Fire-and-forget: generate image and send to Telegram
-        sendCertImageToTelegram(result.certificate);
+        try { sendCertImageToTelegram(result.certificate); } catch(e) { console.warn('cert img:', e); }
     } else {
         showNotification(result.error || 'Помилка видачі', 'error');
     }
@@ -2869,11 +2869,19 @@ function certRoundRect(ctx, x, y, w, h, r) {
 }
 
 async function generateCertificateCanvas(cert) {
-    const W = 1200, H = 800;
+    // v20.2.0: Reduce canvas size on iOS/mobile to prevent getContext null on iPhone 11
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const W = isMobile ? 800 : 1200;
+    const H = isMobile ? 533 : 800;
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
+    // v20.2.0: Guard against null context (iOS memory pressure)
+    if (!ctx) {
+        console.warn('Canvas 2d context unavailable, skipping certificate render');
+        return canvas;
+    }
 
     // === DRAW BACKGROUND (seasonal, full image, no crop) ===
     const bgImg = await loadCertBg(cert.season || 'winter');

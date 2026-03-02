@@ -414,6 +414,16 @@ body.dark-mode .toggle-mini span {
     color: #F3F4F6;
 }
 
+/* v20.9.8: Active toggle-mini in dark mode — keep white text */
+body.dark-mode .toggle-mini:has(input:checked) {
+    background: var(--primary);
+    border-color: var(--primary-dark);
+}
+body.dark-mode .toggle-mini:has(input:checked) .toggle-mini-label,
+body.dark-mode .toggle-mini:has(input:checked) span {
+    color: #ffffff !important;
+}
+
 body.dark-mode .btn-undo {
     background: var(--gray-100);
     border-color: var(--gray-300);

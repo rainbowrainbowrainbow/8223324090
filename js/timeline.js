@@ -2194,9 +2194,12 @@ function updateRoomLoadPanel(bookings, date) {
         const room = b.room;
         if (!(room in roomMinutes)) return;
         // v20.9.5: Оренда кімнати = 100% на весь день
-        const isRental = b.category === 'rental' || b.programCode === 'ОРЕНДА' ||
+        const bCode = b.programCode || b.program_code || '';
+        const bName = b.programName || b.program_name || '';
+        const isRental = b.category === 'rental' || 
+            bCode === 'ОРЕНДА' || bCode.toLowerCase().includes('оренд') ||
             (b.label || '').toLowerCase().includes('оренд') ||
-            (b.programName || '').toLowerCase().includes('оренд');
+            bName.toLowerCase().includes('оренд');
         if (isRental) {
             roomMinutes[room] = totalMinutes; // 100%
             return;

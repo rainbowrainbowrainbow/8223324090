@@ -207,7 +207,7 @@ function getTimeRange(date) {
 
 function initializeTimeline() {
     AppState.selectedDate = new Date();
-    document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
+    const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
     renderTimeline();
 }
 
@@ -307,8 +307,8 @@ async function renderTimeline() {
     // [FIX] Показуємо день тижня + дату — зручно на мобільному (вертикальний режим)
     const dd = String(selectedDate.getDate()).padStart(2, '0');
     const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
-    document.getElementById('dayOfWeekLabel').textContent = `${DAYS[dayOfWeek]}, ${dd}.${mm}`;
-    document.getElementById('workingHours').textContent = isWeekend ? '10:00-20:00' : '12:00-20:00';
+    const _dowEl = document.getElementById('dayOfWeekLabel'); if (_dowEl) _dowEl.textContent = `${DAYS[dayOfWeek]}, ${dd}.${mm}`;
+    const _whEl = document.getElementById('workingHours'); if (_whEl) _whEl.textContent = isWeekend ? '10:00-20:00' : '12:00-20:00';
 
     container.innerHTML = '';
 
@@ -2043,8 +2043,8 @@ async function renderMultiDayTimeline() {
 
     const dates = buildMultiDayDates();
 
-    document.getElementById('dayOfWeekLabel').textContent = `${AppState.daysToShow} днів`;
-    document.getElementById('workingHours').textContent = `${formatDate(dates[0])} - ${formatDate(dates[dates.length - 1])}`;
+    const _dowEl2 = document.getElementById('dayOfWeekLabel'); if (_dowEl2) _dowEl2.textContent = `${AppState.daysToShow} днів`;
+    const _whEl2 = document.getElementById('workingHours'); if (_whEl2) _whEl2.textContent = `${formatDate(dates[0])} - ${formatDate(dates[dates.length - 1])}`;
 
     let multiDayHtml = '<div class="multi-day-container">';
     for (const date of dates) {
@@ -2119,7 +2119,7 @@ function changeDate(days) {
     const newDate = new Date(AppState.selectedDate);
     newDate.setDate(newDate.getDate() + days);
     AppState.selectedDate = newDate;
-    document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
+    const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
     renderTimeline();
 }
 

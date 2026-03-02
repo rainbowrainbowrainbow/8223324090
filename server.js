@@ -37,6 +37,7 @@ validateEnv();
 
 // --- Express app setup ---
 const app = express();
+app.disable('x-powered-by'); // v20.9.9: Don't expose Express version
 const PORT = process.env.PORT || 3000;
 
 // Global middleware

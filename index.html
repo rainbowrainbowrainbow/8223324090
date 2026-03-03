@@ -362,11 +362,11 @@
                     <input type="text" id="bookingGroupName" placeholder="Напр: День народження Олі" title="Об'єднує бронювання в одну подію">
                 </div>
 
-                <!-- v15.1: CRM — Дані клієнта (toggle) -->
+                <!-- v15.1: CRM — Дані клієнта (toggle) | v17.4.2: cross-platform checkbox fix -->
                 <div class="form-section">
-                    <label class="toggle-label crm-toggle-label">
-                        <input type="checkbox" id="customerDataToggle">
-                        <span class="toggle-text">Дані клієнта</span>
+                    <label class="toggle-label crm-toggle-label" style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;font-size:14px;text-transform:uppercase;letter-spacing:.5px;">
+                        <input type="checkbox" id="customerDataToggle" style="-webkit-appearance:checkbox;appearance:checkbox;width:20px;height:20px;min-width:20px;cursor:pointer;accent-color:#4caf50;">
+                        <span class="toggle-text">ДАНІ КЛІЄНТА</span>
                     </label>
                 </div>
 
@@ -1121,6 +1121,13 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v17.4.2 — Mac Safari чекбокс fix (Клешня, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — чекбокс "ДАНІ КЛІЄНТА" не відображався на Mac Safari/Chrome (cross-platform fix)</li>
+                        <li><b>UX</b> — явний розмір, accent-color, uppercase стиль — однаково на всіх платформах</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v20.9.9 — Stability & Security (Клешня, 02.03.2026)</h4>
                     <ul>

@@ -351,6 +351,16 @@ function selectProgram(programId) {
         document.getElementById('secondAnimatorSection').classList.add('hidden');
     }
 
+    // v20.9.14: Banquet fields visibility
+    const banquetFields = document.getElementById('banquetFields');
+    if (banquetFields) {
+        if (program.category === 'banquet') {
+            banquetFields.classList.remove('hidden');
+        } else {
+            banquetFields.classList.add('hidden');
+        }
+    }
+
     // v5.9: Focus mode — collapse unselected categories (Progressive Disclosure)
     const allHeaders = document.querySelectorAll('#programsIcons .category-header');
     const allGrids = document.querySelectorAll('#programsIcons .category-grid');
@@ -689,6 +699,13 @@ function buildBookingObject(formData, program) {
         extraData: buildExtraData(formData.programId),
         skipNotification: document.getElementById('skipNotificationToggle')?.checked || false
     };
+
+    // v20.9.14: Banquet fields
+    if (program.category === 'banquet') {
+        obj.banquetGuests = parseInt(document.getElementById('banquetGuests')?.value) || null;
+        obj.banquetTables = parseInt(document.getElementById('banquetTables')?.value) || null;
+        obj.banquetMenu = document.getElementById('banquetMenu')?.value?.trim() || null;
+    }
 
     // v15.1: CRM — attach customer data
     const customerToggle = document.getElementById('customerDataToggle');

@@ -252,6 +252,10 @@ app.get('/status', (req, res) => {
 app.get('/training', (req, res) => {
     res.sendFile(path.join(__dirname, 'training.html'));
 });
+// v20.9.13: leads page
+app.get('/leads', (req, res) => {
+    res.sendFile(path.join(__dirname, 'leads.html'));
+});
 
 // SPA fallback (must be last)
 app.get('*', (req, res) => {

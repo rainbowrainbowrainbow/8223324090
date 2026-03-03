@@ -1,6 +1,6 @@
 {
   "name": "event-genix",
-  "version": "20.9.3",
+  "version": "20.9.15",
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
   "scripts": {
@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.75.0",
+    "@supabase/supabase-js": "^2.98.0",
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",
     "cors": "^2.8.5",

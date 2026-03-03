@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v20.9.3**. Event Feed + Dark Mode Polish.
+Версія **v20.9.15**. CRM Big Sprint: Supabase Customers, Leads Page, Banquet Booking, Staff Extension.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -38,32 +38,37 @@
 - **v20.9.1: FAB Fix + Idle Hints — touch targets 44px, підказки при бездіяльності**
 - **v20.9.2: UI Cleanup — видалено Quick Stats Bar, dark mode btn-room-load fix**
 - **v20.9.3: Event Feed + Dark Mode Polish — 25+ action types, gray token contrast fix, badges dark mode**
+- **v20.9.12: Supabase Customers — міграція customers на Supabase з fallback**
+- **v20.9.13: Leads Page — standalone /leads з воронкою, фільтрами, конверсією**
+- **v20.9.14: Banquet Booking — банкетні поля, amber стиль на таймлайні**
+- **v20.9.15: Staff Extension — contract_type, skills, telegram в HR модалці**
 
-## Що нове (поточна сесія) — v20.9.1–v20.9.3
+## Що нове (поточна сесія) — v20.9.12–v20.9.15
 
-### v20.9.3 — Event Feed + Dark Mode Polish
-- **Стрічка подій** — renderEventLog() переписано: 25+ типів дій, emoji labels, buildEventDetails() для бронювань/афіш/сертифікатів
-- **Цілі** — виправлено кнопку налаштувань (auto-expand collapsed section)
-- **Dark Mode глобально** — gray-400 (#6B7280→#9CA3AF), gray-500 (#9CA3AF→#D1D5DB), toggle labels, btn-nav
-- **center.html** — dark mode: price buttons, hot leads, event timeline, event-dot CSS
-- **tasks.html** — dark mode: badges (deadline-ok/soon/overdue, points, badge-human/bot)
-- **Тести**: 291 pass, 0 fail
+### v20.9.15 — Staff Extension
+- **HR** — нові поля: telegram_username, contract_type (fulltime/parttime/contract), skills (TEXT[])
+- **Модалка** — edit modal розширено новими полями
+- **Міграція** — 026_leads_banquet_staff.sql (26.3)
 
-### v20.9.2 — UI Cleanup + Dark Mode Fix
-- **Quick Stats Bar** — видалено (дублювало дашборд), updateQuickStats() → stub
-- **btn-room-load** — dark mode фікс: var(--gray-800) → rgba(255,255,255,0.08)
-- **working-hours** — dark mode color: #9CA3AF
+### v20.9.14 — Banquet Booking
+- **Бронювання** — banquet_menu, banquet_guests, banquet_tables в POST/PUT
+- **Форма** — банкетні поля з'являються при category=banquet
+- **Таймлайн** — .banquet-block стиль (amber gradient)
 
-### v20.9.1 — FAB Fix + Idle Hints
-- **FAB кнопки** — 44px touch targets, вертикальний стек 8px
-- **Idle Hints** — підказки біля ☰ при бездіяльності 3-5 хв
+### v20.9.13 — Leads Page
+- **Сторінка** — leads.html + js/leads-page.js: повний CRUD, фільтри, пошук
+- **API** — instagram, source, lost_reason, booking_id + /api/leads/stats
+- **Конверсія** — кнопка "Конвертувати" → перехід на бронювання з pre-fill
+- **Sidebar** — додано "Ліди" в навігацію
 
-### v20.9.0 — Rebranding: Event Maestro → Event Genix
-- Повний ребрендинг у 35+ файлах, Space Grotesk + Inter, палітра #C9A84C
+### v20.9.12 — Supabase Customers
+- **db/supabase.js** — Supabase клієнт (lazy init, fallback)
+- **routes/customers.js** — повний CRUD через Supabase
+- **Міграція** — POST /api/customers/migrate-to-supabase
 
 ## Архітектура
-- **16+ сторінок**, **40+ routes**, 18+ services, 5 middleware
-- **~95+ таблиць**, 80+ індексів, 24 міграцій
+- **17+ сторінок**, **40+ routes**, 18+ services, 5 middleware
+- **~95+ таблиць**, 80+ індексів, 26 міграцій
 - ~75 000+ рядків коду
 - 291 тест, 0 fail
 
@@ -86,4 +91,4 @@
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-01, v20.9.3*
+*Оновлено: 2026-03-03, v20.9.15*

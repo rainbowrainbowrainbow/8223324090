@@ -60,7 +60,7 @@ router.get('/staff', async (req, res) => {
         const { active, role_type } = req.query;
         let sql = `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
                     role_type, hire_date, birth_date, is_active, hourly_rate, photo_url, notes,
-                    telegram_id, telegram_username, color
+                    telegram_id, telegram_username, color, contract_type, skills
                     FROM staff`;
         const params = [];
         const conds = [];
@@ -88,7 +88,7 @@ router.get('/staff/:id', async (req, res) => {
         const staff = await pool.query(
             `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
                     role_type, hire_date, birth_date, is_active, hourly_rate, photo_url, notes,
-                    telegram_id, telegram_username, color
+                    telegram_id, telegram_username, color, contract_type, skills
              FROM staff WHERE id = $1`, [req.params.id]
         );
         if (staff.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
@@ -102,7 +102,7 @@ router.get('/staff/:id', async (req, res) => {
 // PUT /api/hr/staff/:id — update HR fields
 router.put('/staff/:id', async (req, res) => {
     try {
-        const { phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, notes, telegram_id } = req.body;
+        const { phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, notes, telegram_id, telegram_username, contract_type, skills } = req.body;
         const result = await pool.query(
             `UPDATE staff SET
                 phone = COALESCE($1, phone),
@@ -112,9 +112,12 @@ router.put('/staff/:id', async (req, res) => {
                 hourly_rate = COALESCE($5, hourly_rate),
                 birth_date = COALESCE($6, birth_date),
                 notes = COALESCE($7, notes),
-                telegram_id = COALESCE($8, telegram_id)
-             WHERE id = $9 RETURNING *`,
-            [phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, notes, telegram_id, req.params.id]
+                telegram_id = COALESCE($8, telegram_id),
+                telegram_username = COALESCE($9, telegram_username),
+                contract_type = COALESCE($10, contract_type),
+                skills = COALESCE($11, skills)
+             WHERE id = $12 RETURNING *`,
+            [phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, notes, telegram_id, telegram_username, contract_type, skills ? (Array.isArray(skills) ? skills : [skills]) : null, req.params.id]
         );
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         await auditLog('staff_update', parseInt(req.params.id), req.user?.username, req.body, req.ip);

@@ -726,6 +726,9 @@ function openStaffEdit(staffId) {
     document.getElementById('editEmergencyPhone').value = s.emergency_phone || '';
     document.getElementById('editHourlyRate').value = s.hourly_rate || 0;
     document.getElementById('editTelegramId').value = s.telegram_id || '';
+    document.getElementById('editTelegramUsername').value = s.telegram_username || '';
+    document.getElementById('editContractType').value = s.contract_type || 'parttime';
+    document.getElementById('editSkills').value = (s.skills || []).join(', ');
     document.getElementById('editNotes').value = s.notes || '';
 
     document.getElementById('staffEditModal').style.display = 'flex';
@@ -741,6 +744,9 @@ async function saveStaffEdit() {
         emergency_phone: document.getElementById('editEmergencyPhone').value || null,
         hourly_rate: parseFloat(document.getElementById('editHourlyRate').value) || 0,
         telegram_id: document.getElementById('editTelegramId').value || null,
+        telegram_username: document.getElementById('editTelegramUsername').value || null,
+        contract_type: document.getElementById('editContractType').value || 'parttime',
+        skills: document.getElementById('editSkills').value ? document.getElementById('editSkills').value.split(',').map(s => s.trim()).filter(Boolean) : null,
         notes: document.getElementById('editNotes').value || null
     };
 

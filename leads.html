@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Ліди</title>
+    <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=20.913">
+    <link rel="stylesheet" href="css/layout.css?v=20.913">
+    <link rel="stylesheet" href="css/pages.css?v=20.913">
+    <link rel="stylesheet" href="css/modals.css?v=20.913">
+    <link rel="stylesheet" href="css/dark-mode.css?v=20.913">
+    <link rel="stylesheet" href="css/responsive.css?v=20.913">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* Leads page styles */
+        .leads-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .leads-stat {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 14px;
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-xs);
+            text-align: center;
+        }
+        .leads-stat .stat-val { font-size: 24px; font-weight: 900; line-height: 1.2; }
+        .leads-stat .stat-lbl { font-size: 11px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: .5px; }
+        .leads-stat.new .stat-val { color: #3B82F6; }
+        .leads-stat.contact .stat-val { color: #F59E0B; }
+        .leads-stat.proposal .stat-val { color: #F97316; }
+        .leads-stat.booked .stat-val { color: #10B981; }
+        .leads-stat.lost .stat-val { color: #EF4444; }
+
+        .leads-toolbar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .leads-toolbar .btn-add {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--radius);
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 14px;
+            min-height: 44px;
+        }
+        .leads-toolbar .btn-add:hover { opacity: .9; }
+        .leads-toolbar .filter-btns {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .leads-toolbar .filter-btn {
+            padding: 8px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            min-height: 44px;
+            transition: all .15s;
+        }
+        .leads-toolbar .filter-btn.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+        .leads-toolbar .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 14px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            font-size: 14px;
+            min-height: 44px;
+        }
+
+        .leads-table-wrap {
+            overflow-x: auto;
+            background: var(--white);
+            border-radius: var(--radius);
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-sm);
+        }
+        .leads-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .leads-table th {
+            text-align: left;
+            padding: 12px 14px;
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: var(--gray-500);
+            border-bottom: 2px solid var(--gray-100);
+            white-space: nowrap;
+        }
+        .leads-table td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--gray-50);
+            vertical-align: middle;
+        }
+        .leads-table tr:hover { background: rgba(0,0,0,.02); }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .status-badge.new { background: #DBEAFE; color: #1D4ED8; }
+        .status-badge.contact { background: #FEF3C7; color: #92400E; }
+        .status-badge.proposal { background: #FFEDD5; color: #9A3412; }
+        .status-badge.booked { background: #D1FAE5; color: #065F46; }
+        .status-badge.completed { background: #D1FAE5; color: #065F46; }
+        .status-badge.lost { background: #FEE2E2; color: #991B1B; }
+
+        .lead-actions { display: flex; gap: 6px; }
+        .lead-actions button {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            min-height: 36px;
+            white-space: nowrap;
+            transition: all .15s;
+        }
+        .lead-actions .btn-convert {
+            background: #10B981;
+            color: #fff;
+            border-color: #10B981;
+        }
+        .lead-actions .btn-convert:hover { background: #059669; }
+        .lead-actions .btn-edit:hover { background: var(--gray-50); }
+        .lead-actions .btn-delete { color: #EF4444; border-color: #FCA5A5; }
+        .lead-actions .btn-delete:hover { background: #FEE2E2; }
+
+        /* Modal */
+        .lead-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .lead-modal-overlay.active { display: flex; }
+        .lead-modal {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 28px;
+            width: min(90vw, 500px);
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+        }
+        .lead-modal h2 {
+            font-size: 18px;
+            font-weight: 800;
+            margin: 0 0 20px;
+        }
+        .lead-modal .form-group {
+            margin-bottom: 14px;
+        }
+        .lead-modal label {
+            display: block;
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: var(--gray-600);
+            margin-bottom: 6px;
+        }
+        .lead-modal input,
+        .lead-modal select,
+        .lead-modal textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            font-size: 14px;
+            min-height: 44px;
+            box-sizing: border-box;
+        }
+        .lead-modal textarea { min-height: 70px; resize: vertical; }
+        .lead-modal .modal-btns {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: flex-end;
+        }
+        .lead-modal .btn-save {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 10px 24px;
+            border-radius: var(--radius);
+            font-weight: 700;
+            cursor: pointer;
+            min-height: 44px;
+        }
+        .lead-modal .btn-cancel {
+            background: var(--gray-100);
+            color: var(--gray-700);
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--radius);
+            font-weight: 600;
+            cursor: pointer;
+            min-height: 44px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--gray-400);
+            font-size: 15px;
+        }
+
+        /* Dark mode overrides */
+        [data-theme="dark"] .leads-stat,
+        [data-theme="dark"] .leads-table-wrap {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.08);
+        }
+        [data-theme="dark"] .leads-table th { border-color: rgba(255,255,255,0.08); }
+        [data-theme="dark"] .leads-table td { border-color: rgba(255,255,255,0.04); }
+        [data-theme="dark"] .leads-table tr:hover { background: rgba(255,255,255,0.04); }
+        [data-theme="dark"] .leads-toolbar .filter-btn { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); color: var(--gray-300); }
+        [data-theme="dark"] .leads-toolbar .filter-btn.active { background: var(--primary); color: #fff; }
+        [data-theme="dark"] .lead-modal { background: var(--gray-900); }
+        [data-theme="dark"] .lead-actions button { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+    </style>
+</head>
+<body>
+    <div class="standalone-page">
+        <header class="standalone-header">
+            <a href="/" class="back-link">← Таймлайн</a>
+            <h1>Ліди</h1>
+        </header>
+
+        <main class="standalone-content" id="leadsApp">
+            <!-- Stats -->
+            <div class="leads-stats" id="leadsStats"></div>
+
+            <!-- Toolbar -->
+            <div class="leads-toolbar">
+                <button class="btn-add" id="addLeadBtn">+ Новий лід</button>
+                <div class="filter-btns" id="filterBtns">
+                    <button class="filter-btn active" data-status="">Всі</button>
+                    <button class="filter-btn" data-status="new">Нові</button>
+                    <button class="filter-btn" data-status="contact">В роботі</button>
+                    <button class="filter-btn" data-status="proposal">Пропозиція</button>
+                    <button class="filter-btn" data-status="booked">Заброньовано</button>
+                    <button class="filter-btn" data-status="lost">Втрачено</button>
+                </div>
+                <input type="text" class="search-input" id="leadsSearch" placeholder="Пошук за ім'ям, телефоном...">
+            </div>
+
+            <!-- Table -->
+            <div class="leads-table-wrap">
+                <table class="leads-table">
+                    <thead>
+                        <tr>
+                            <th>Ім'я</th>
+                            <th>Телефон</th>
+                            <th>Джерело</th>
+                            <th>Статус</th>
+                            <th>Дата запиту</th>
+                            <th>Відповідальний</th>
+                            <th>Дії</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leadsTableBody">
+                        <tr><td colspan="7" class="empty-state">Завантаження...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add/Edit Lead Modal -->
+    <div class="lead-modal-overlay" id="leadModal">
+        <div class="lead-modal">
+            <h2 id="leadModalTitle">Новий лід</h2>
+            <input type="hidden" id="leadEditId">
+            <div class="form-group">
+                <label>Ім'я *</label>
+                <input type="text" id="leadName" placeholder="Ім'я клієнта">
+            </div>
+            <div class="form-group">
+                <label>Телефон</label>
+                <input type="tel" id="leadPhone" placeholder="+380..." inputmode="tel">
+            </div>
+            <div class="form-group">
+                <label>Instagram</label>
+                <input type="text" id="leadInstagram" placeholder="@username">
+            </div>
+            <div class="form-group">
+                <label>Джерело</label>
+                <select id="leadSource">
+                    <option value="">— не вказано —</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="google">Google</option>
+                    <option value="recommendation">Рекомендація</option>
+                    <option value="site">Сайт</option>
+                    <option value="phone">Телефон</option>
+                    <option value="walk-in">Прийшли</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Бажана дата</label>
+                <input type="date" id="leadEventDate">
+            </div>
+            <div class="form-group">
+                <label>Кількість дітей</label>
+                <input type="number" id="leadChildrenCount" min="1" max="100" placeholder="10">
+            </div>
+            <div class="form-group">
+                <label>Нотатки</label>
+                <textarea id="leadNotes" rows="3" placeholder="Додаткова інформація..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Відповідальний</label>
+                <select id="leadAssignedTo">
+                    <option value="">— не призначено —</option>
+                </select>
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancel" id="leadModalCancel">Скасувати</button>
+                <button class="btn-save" id="leadModalSave">Зберегти</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js?v=20.913"></script>
+    <script src="js/auth.js?v=20.913"></script>
+    <script src="js/leads-page.js?v=20.913"></script>
+</body>
+</html>

@@ -35,7 +35,8 @@ router.get('/:date', async (req, res) => {
             `SELECT id, date, time, line_id, program_id, program_code, label, program_name,
                     category, duration, price, hosts, second_animator, pinata_filler, costume,
                     room, notes, created_by, created_at, linked_to, status, kids_count,
-                    updated_at, group_name, extra_data, skip_notification, customer_id, payment_method
+                    updated_at, group_name, extra_data, skip_notification, customer_id, payment_method,
+                    banquet_guests, banquet_tables, banquet_menu
              FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time`,
             [date]
         );
@@ -101,16 +102,29 @@ router.post('/', async (req, res) => {
             }
         }
 
-        // CRM: resolve or create customer
+        // CRM: resolve or create customer (v20.9.12: Supabase with Railway fallback)
         let customerId = b.customerId ? parseInt(b.customerId) : null;
         if (b.customer && b.customer.name && !customerId) {
             const c = b.customer;
-            const custResult = await client.query(
-                `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
-                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-                [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
-            );
-            customerId = custResult.rows[0].id;
+            const { getSupabase } = require('../db/supabase');
+            const sb = getSupabase();
+            if (sb) {
+                try {
+                    const { data: sbCust, error: sbErr } = await sb.from('customers').insert({
+                        name: c.name.trim(), phone: c.phone || null, instagram: c.instagram || null,
+                        child_name: c.childName || null, child_birthday: c.childBirthday || null, source: c.source || null
+                    }).select('id').single();
+                    if (!sbErr && sbCust) customerId = sbCust.id;
+                } catch (sbEx) { log.warn(`Supabase customer create failed: ${sbEx.message}`); }
+            }
+            if (!customerId) {
+                const custResult = await client.query(
+                    `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
+                     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                    [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+                );
+                customerId = custResult.rows[0].id;
+            }
         }
 
         if (!b.id || !/^BK-\d{4}-\d{4,}$/.test(b.id)) {
@@ -118,10 +132,10 @@ router.post('/', async (req, res) => {
         }
 
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_tables, banquet_menu)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
              RETURNING *`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId, b.paymentMethod || null]
+            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId, b.paymentMethod || null, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
         );
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
@@ -519,14 +533,16 @@ router.put('/:id', async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25,
+                 banquet_guests=$26, banquet_tables=$27, banquet_menu=$28
                  WHERE id=$23 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
                  b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null,
-                 id, clientUpdatedAt, updateCustomerId]
+                 id, clientUpdatedAt, updateCustomerId,
+                 b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
             );
         } else {
             // Legacy: no optimistic locking (backward compatibility)
@@ -534,13 +550,15 @@ router.put('/:id', async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24,
+                 banquet_guests=$25, banquet_tables=$26, banquet_menu=$27
                  WHERE id=$23
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
-                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId]
+                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId,
+                 b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
             );
         }
 

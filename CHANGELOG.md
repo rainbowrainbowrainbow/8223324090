@@ -4,6 +4,37 @@
 
 ---
 
+## v20.9.12–v20.9.15 — CRM Big Sprint (2026-03-03)
+
+**Supabase міграція, Ліди, Банкети, Staff Extension**
+
+### v20.9.15 — Staff Extension
+- `staff.contract_type` VARCHAR(20) — fulltime/parttime/contract
+- `staff.skills` TEXT[] — масив навичок
+- HR модалка: telegram_username, тип контракту, навички
+- Міграція: 026_leads_banquet_staff.sql (частина 26.3)
+
+### v20.9.14 — Banquet Booking
+- `bookings.banquet_menu` TEXT, `banquet_guests` INT, `banquet_tables` INT
+- Форма бронювання: автоматичне показ/приховання банкетних полів при category=banquet
+- Таймлайн: банкетні блоки з amber стилем (border-left #F59E0B, gradient)
+- POST/PUT бронювань включають банкетні дані
+
+### v20.9.13 — Leads Page
+- Standalone сторінка `/leads` з воронкою, фільтрами, пошуком
+- `leads.instagram`, `leads.source`, `leads.lost_reason`, `leads.booking_id` (FK)
+- GET `/api/leads/stats` — статистика по статусах
+- Кнопка "Конвертувати в бронювання" з pre-fill
+- Sidebar: додано навігацію "Ліди"
+
+### v20.9.12 — Supabase Customers
+- `db/supabase.js` — Supabase клієнт з lazy init та fallback
+- `routes/customers.js` — повний CRUD через Supabase (fallback на Railway DB)
+- POST `/api/customers/migrate-to-supabase` — ендпоінт для міграції існуючих клієнтів
+- Inline створення клієнтів у бронюваннях — також через Supabase
+
+---
+
 ## v20.7.0 — Sales Features (2026-02-26)
 
 **Продажні фічі за Якубою ч.2 — ліди, конверсія, рекомендації, скрипти**

@@ -51,4 +51,8 @@ function resetToken() {
     cachedToken = null;
 }
 
-module.exports = { BASE_URL, TEST_USER, TEST_PASS, getToken, request, authRequest, testDate, resetToken };
+async function publicRequest(method, path, body) {
+    return request(method, path, body, null);
+}
+
+module.exports = { BASE_URL, TEST_USER, TEST_PASS, getToken, request, authRequest, publicRequest, testDate, resetToken };

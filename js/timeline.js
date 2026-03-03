@@ -625,22 +625,8 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
         });
     }
 
-    // Click on header → open afisha modal
-    lineEl.querySelector('.line-header').addEventListener('click', (e) => {
-        if (e.target.closest('.afisha-dist-btn')) return;
-        openAfishaModalAt(formatDate(date), null);
-    });
-
-    // Click on empty cells → open afisha modal with pre-filled time
-    if (!isViewer()) {
-        lineEl.querySelectorAll('.grid-cell').forEach(cell => {
-            cell.addEventListener('click', (e) => {
-                if (e.target === cell) {
-                    openAfishaModalAt(formatDate(date), cell.dataset.time);
-                }
-            });
-        });
-    }
+    // v20.9.11: Click on afisha header/cells no longer opens modal (moved to Settings → Afisha)
+    // openAfishaModalAt is still accessible via afishaBtn in the menu
 }
 
 function createAfishaBlock(event, startHour) {

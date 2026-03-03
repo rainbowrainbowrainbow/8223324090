@@ -420,7 +420,7 @@ router.get('/clients', async (req, res) => {
         if (search && search.trim()) {
             query = `SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
                 c.total_bookings, c.total_spent, c.first_visit, c.last_visit,
-                c.loyalty_tier
+                c.loyalty_tier_id
                 FROM customers c
                 WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.child_name ILIKE $1 OR c.instagram ILIKE $1
                 ORDER BY c.last_visit DESC NULLS LAST
@@ -429,7 +429,7 @@ router.get('/clients', async (req, res) => {
         } else {
             query = `SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
                 c.total_bookings, c.total_spent, c.first_visit, c.last_visit,
-                c.loyalty_tier
+                c.loyalty_tier_id
                 FROM customers c
                 ORDER BY c.last_visit DESC NULLS LAST
                 LIMIT $1`;
@@ -513,7 +513,7 @@ router.get('/briefing', async (req, res) => {
             pool.query(`
                 SELECT id, title, status, priority, assigned_to, date, deadline
                 FROM tasks
-                WHERE (date >= $1 AND date <= $2) OR (deadline >= $1 AND deadline <= $2) OR (status IN ('todo', 'in_progress'))
+                WHERE (date >= $1 AND date <= $2) OR (deadline >= $1::date AND deadline <= $2::date) OR (status IN ('todo', 'in_progress'))
                 ORDER BY priority DESC, date
             `, [from, to]),
             pool.query(`

@@ -46,9 +46,11 @@ describe('Center', () => {
         assert.ok(Array.isArray(res.data.tasks));
     });
 
-    it('GET /api/center/clients — client search responds', async () => {
+    it('GET /api/center/clients — client search', async () => {
         const res = await authRequest('GET', '/api/center/clients');
-        assert.ok([200, 500].includes(res.status), 'Should respond');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(Array.isArray(res.data.clients));
     });
 
     it('GET /api/center/goals — revenue goals', async () => {
@@ -57,9 +59,14 @@ describe('Center', () => {
         assert.ok(res.data.success);
     });
 
-    it('GET /api/center/briefing — weekly briefing responds', async () => {
+    it('GET /api/center/briefing — weekly briefing', async () => {
         const res = await authRequest('GET', '/api/center/briefing');
-        assert.ok([200, 500].includes(res.status), 'Should respond');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(res.data.briefing);
+        assert.ok(res.data.briefing.period);
+        assert.ok(res.data.briefing.bookings);
+        assert.ok(res.data.briefing.tasks);
     });
 
     it('GET /api/center/reconciliation — financial reconciliation', async () => {

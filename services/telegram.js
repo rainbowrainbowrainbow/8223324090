@@ -169,6 +169,10 @@ async function getConfiguredThreadId() {
     } catch (e) {
         log.warn(`DB error getting telegram_thread_id: ${e.message}`);
     }
+    // Fallback to env variable
+    if (process.env.TELEGRAM_THREAD_ID) {
+        return parseInt(process.env.TELEGRAM_THREAD_ID) || null;
+    }
     return null;
 }
 

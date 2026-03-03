@@ -51,9 +51,11 @@ describe('Event Queue', () => {
         assert.ok(Array.isArray(res.data));
     });
 
-    it('GET /api/events/overview — queue dashboard responds', async () => {
+    it('GET /api/events/overview — queue dashboard', async () => {
         const res = await authRequest('GET', '/api/events/overview');
-        assert.ok([200, 500].includes(res.status), 'Should respond');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.queue);
+        assert.ok(res.data.rules);
     });
 
     it('GET /api/events/dead-letter — dead letter queue', async () => {

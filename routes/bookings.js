@@ -417,9 +417,8 @@ router.delete('/:id', async (req, res) => {
 
         await client.query('COMMIT');
 
-        getLineName(booking.line_id, booking.date).then(lineName =>
-            notifyTelegram('delete', booking, { username: req.user?.username, lineName }))
-            .catch(err => log.error(`Telegram notify failed (delete): ${err.message}`));
+        // Note: Telegram notification handled by rule engine (booking_cancelled_notify rule)
+        // via publishEvent('booking.cancelled') below — no direct notifyTelegram needed
 
         // WebSocket: notify other clients
         broadcast('booking:deleted', { id, date: booking.date, permanent }, req.user?.id?.toString(), booking.date);

@@ -26,6 +26,7 @@ const PATTERN_LABELS = { daily: 'Щоденно', weekdays: 'Будні', weekly
 let currentView = 'today';
 let currentCategory = 'all';
 let allTasks = [];
+let userPermissions = null; // v20.9.16: loaded from /api/tasks/permissions
 
 // ==========================================
 // UTILITIES
@@ -152,8 +153,27 @@ async function initPage() {
         document.getElementById('tplDays').style.display = e.target.value === 'custom' ? '' : 'none';
     });
 
+    // v20.9.16: Load permissions and apply UI restrictions
+    const permsResult = await apiGetTaskPermissions();
+    if (permsResult && permsResult.permissions) {
+        userPermissions = permsResult.permissions;
+        applyPermissionsUI(userPermissions);
+    }
+
     await loadAllTasks();
     await loadMyPoints();
+}
+
+// v20.9.16: Hide/show UI elements based on role permissions
+function applyPermissionsUI(perms) {
+    // Hide quick-add form if user cannot create tasks
+    if (!perms.canCreateTasks) {
+        const quickAdd = document.getElementById('quickAdd');
+        if (quickAdd) quickAdd.style.display = 'none';
+        // Also hide templates tab (only creators can add templates)
+        const templatesTab = document.querySelector('[data-view="templates"]');
+        if (templatesTab) templatesTab.style.display = 'none';
+    }
 }
 
 // ==========================================
@@ -241,6 +261,16 @@ async function apiDeleteTemplate(id) {
         if (handleAuthError(response)) return null;
         return await response.json();
     } catch (err) { console.error('API deleteTemplate error:', err); return null; }
+}
+
+// v20.9.16: Permissions API
+async function apiGetTaskPermissions() {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/permissions`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) { console.error('API getTaskPermissions error:', err); return null; }
 }
 
 // ==========================================
@@ -476,7 +506,7 @@ function renderTaskCard(t) {
         </div>
         <div class="task-card-actions">
             <button class="${btnClass}" onclick="cycleStatus(${t.id}, '${nextStatus}')">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
-            <button class="btn-delete" onclick="deleteTask(${t.id})">✕</button>
+            ${!userPermissions || userPermissions.canDeleteTasks ? `<button class="btn-delete" onclick="deleteTask(${t.id})">✕</button>` : ''}
         </div>
     </div>`;
 }

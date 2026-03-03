@@ -5,6 +5,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const { getPermissions } = require('../config/roles');
 
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { formatTaskNotification } = require('../services/templates');
@@ -81,6 +82,29 @@ router.get('/', async (req, res) => {
             params.push(category);
         }
 
+        // v20.9.16: Role-based visibility filter
+        if (req.user) {
+            const perms = getPermissions(req.user.role);
+            if (perms.taskVisibility === 'own') {
+                conditions.push(`assigned_to = $${idx++}`);
+                params.push(req.user.name);
+            } else if (perms.taskVisibility === 'department') {
+                // See own tasks + tasks of department colleagues (via employee_profiles)
+                // Fallback to 'own' if user has no employee_profile/department
+                conditions.push(`(assigned_to = $${idx++} OR assigned_to IN (
+                    SELECT u.name FROM users u
+                    JOIN employee_profiles ep ON ep.user_id = u.id
+                    WHERE ep.department IS NOT NULL
+                    AND ep.department = (
+                        SELECT ep2.department FROM employee_profiles ep2
+                        WHERE ep2.user_id = $${idx++} LIMIT 1
+                    )
+                ))`);
+                params.push(req.user.name, req.user.id);
+            }
+            // 'all' — no filter added
+        }
+
         const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
         // Pagination (optional — backwards compatible: omit page/limit to get all)
@@ -101,6 +125,12 @@ router.get('/', async (req, res) => {
         log.error('Get error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+// v20.9.16: GET /api/tasks/permissions — current user's task permissions
+router.get('/permissions', (req, res) => {
+    const perms = getPermissions(req.user?.role);
+    res.json({ success: true, permissions: perms, role: req.user?.role });
 });
 
 // GET /api/tasks/:id — single task

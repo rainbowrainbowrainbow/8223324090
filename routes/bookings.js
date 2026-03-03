@@ -417,23 +417,8 @@ router.delete('/:id', async (req, res) => {
 
         await client.query('COMMIT');
 
-        // Note: Telegram notification handled by rule engine (booking_cancelled_notify rule)
-        // via publishEvent('booking.cancelled') below — no direct notifyTelegram needed
-
         // WebSocket: notify other clients
         broadcast('booking:deleted', { id, date: booking.date, permanent }, req.user?.id?.toString(), booking.date);
-
-        // v19.1: Publish to event queue
-        publishEvent('booking.cancelled', {
-            booking_id: id, booking_number: booking.booking_number || id,
-            date: booking.date, room: booking.room,
-            program_code: booking.program_code,
-            program_name: booking.program_name,
-            label: booking.label || booking.program_code || '',
-            time: booking.time || '',
-            permanent,
-            cancelled_by: req.user?.username
-        }, `booking_cancelled_${id}`);
 
         res.json({ success: true, permanent });
     } catch (err) {

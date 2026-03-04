@@ -13,7 +13,8 @@ function securityHeaders(req, res, next) {
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data: blob:",
-        "connect-src 'self' ws: wss:",
+        "connect-src 'self' ws: wss: https://*.up.railway.app https://docs.google.com",
+        "frame-src 'self'",
         "frame-ancestors 'self'"
     ].join('; '));
     if (req.secure || req.get('x-forwarded-proto') === 'https') {

@@ -523,6 +523,13 @@
             .design-filters { flex-wrap: wrap; }
             .design-filters input[type="search"] { min-width: 100%; }
         }
+        /* Embed mode: hide chrome when loaded in iframe */
+        .embed-mode .sidebar-nav,
+        .embed-mode .header,
+        .embed-mode .sidebar-overlay,
+        .embed-mode .skip-link,
+        .embed-mode .page-login-overlay { display: none !important; }
+        .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
     </style>
 </head>
 <body>
@@ -695,6 +702,11 @@
         <span id="notificationText"></span>
     </div>
 
+    <script>
+    if (new URLSearchParams(window.location.search).get('embedded') === '1' || new URLSearchParams(window.location.search).get('embed') === '1' || window.self !== window.top) {
+        document.body.classList.add('embed-mode');
+    }
+    </script>
     <script src="js/config.js?v=18.0"></script>
     <script src="js/api.js?v=18.0"></script>
     <script src="js/auth.js?v=18.0"></script>

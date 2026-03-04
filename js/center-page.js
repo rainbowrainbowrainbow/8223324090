@@ -537,6 +537,10 @@ function confirmPriceChange(input) {
             setTimeout(() => { input.style.borderColor = ''; }, 1500);
             const syncMsg = result.productSynced ? ' (ціна в каталозі оновлена!)' : '';
             showNotification(`Ціну ${code} оновлено: ${newValue} ₴${syncMsg}`, 'success');
+            // v20.9.25: Reload catalog if product was synced
+            if (result.productSynced && typeof loadCatalog === 'function') {
+                loadCatalog();
+            }
         } else {
             input.value = original;
             showNotification(result.error || 'Помилка оновлення', 'error');

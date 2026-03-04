@@ -270,6 +270,18 @@ router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) =
         if (value === undefined && !name) {
             return res.status(400).json({ success: false, error: 'Вкажіть value або name' });
         }
+
+        // v20.9.25: Block past effective dates
+        if (effectiveFrom) {
+            const effectiveDate = new Date(effectiveFrom);
+            const now = new Date();
+            // Allow a 5-minute grace period for slight clock differences
+            now.setMinutes(now.getMinutes() - 5);
+            if (effectiveDate < now) {
+                return res.status(400).json({ success: false, error: 'Дата введення в дію не може бути в минулому' });
+            }
+        }
+
         await client.query('BEGIN');
 
         // Update product_id if provided (one-time link)

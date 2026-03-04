@@ -140,12 +140,25 @@
         .price-value-cell {
             font-weight: 800; font-size: 14px; color: #2E7D32;
         }
+        .price-inline-wrap {
+            display: flex; align-items: center; gap: 4px;
+        }
         .price-inline-input {
             width: 80px; padding: 4px 8px; border: 1.5px solid var(--gray-200);
             border-radius: 6px; font-family: inherit; font-size: 14px;
             font-weight: 800; text-align: right; background: rgba(255,255,255,0.8);
         }
         .price-inline-input:focus { border-color: var(--primary); outline: none; }
+        .price-save-btn {
+            width: 32px; height: 32px; border: 1.5px solid var(--gray-200);
+            border-radius: 8px; background: transparent; cursor: pointer;
+            font-size: 16px; font-weight: 700; color: var(--gray-400);
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+        }
+        .price-save-btn:hover { background: #E8F5E9; border-color: #2E7D32; color: #2E7D32; }
+        .price-save-btn.changed { background: #2E7D32; color: #fff; border-color: #2E7D32; animation: pulse-save 1s ease-in-out infinite; }
+        @keyframes pulse-save { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
         .price-unit { font-size: 11px; color: var(--gray-400); margin-left: 4px; }
         .price-updated { font-size: 10px; color: var(--gray-400); }
         .price-effective { font-size: 11px; color: var(--gray-500); }
@@ -177,9 +190,16 @@
             cursor: pointer; min-height: 36px;
         }
         .price-date-btn.active { background: var(--primary, #C9A84C); color: #fff; border-color: var(--primary, #C9A84C); }
-        .price-date-input {
+        .price-date-options { display: flex; gap: 8px; align-items: center; }
+        .price-date-custom { margin-top: 10px; }
+        .price-date-fields { display: flex; gap: 8px; align-items: center; }
+        .price-date-input, .price-time-input {
             padding: 6px 10px; border: 1.5px solid var(--gray-200); border-radius: 8px;
             font-family: inherit; font-size: 16px; min-height: 36px;
+        }
+        .price-time-input { width: 100px; }
+        .price-date-hint {
+            display: block; font-size: 11px; color: var(--gray-400); margin-top: 4px;
         }
         .price-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
         .btn-confirm-cancel {
@@ -193,7 +213,9 @@
         .btn-confirm-save:hover { background: #1B5E20; }
         .dark-mode .price-confirm-dialog { background: #1a202c; color: #e0e0e0; }
         .dark-mode .price-date-btn { border-color: var(--gray-600); color: #a0aec0; }
-        .dark-mode .price-date-input { background: #2d3748; color: #e0e0e0; border-color: var(--gray-600); }
+        .dark-mode .price-date-input, .dark-mode .price-time-input { background: #2d3748; color: #e0e0e0; border-color: var(--gray-600); }
+        .dark-mode .price-save-btn { border-color: var(--gray-600); color: #a0aec0; }
+        .dark-mode .price-save-btn:hover { background: rgba(46,125,50,0.3); color: #4caf50; border-color: #4caf50; }
         .dark-mode .btn-confirm-cancel { border-color: var(--gray-600); color: #a0aec0; }
         .dark-mode .price-linked-badge { background: rgba(46,125,50,0.2); }
         .price-actions { display: flex; gap: 4px; }

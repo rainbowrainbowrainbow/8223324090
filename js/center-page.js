@@ -429,9 +429,13 @@ function renderPrices(prices) {
             <td><span class="price-category-badge">${escapeHtml(p.category) || '—'}</span></td>
             <td>
                 ${isAdminUser
-                    ? `<input type="number" class="price-inline-input" value="${p.value}" data-code="${escapeHtml(p.code)}" data-original="${p.value}" data-product-id="${p.product_id || ''}"
-                        onkeydown="if(event.key==='Enter')confirmPriceChange(this)">
-                       <span class="price-unit">${escapeHtml(p.unit) || ''}</span>`
+                    ? `<div class="price-inline-wrap">
+                        <input type="number" class="price-inline-input" value="${p.value}" data-code="${escapeHtml(p.code)}" data-original="${p.value}" data-product-id="${p.product_id || ''}"
+                            onkeydown="if(event.key==='Enter')confirmPriceChange(this)"
+                            oninput="this.parentElement.querySelector('.price-save-btn').classList.toggle('changed', this.value!=this.dataset.original)">
+                        <span class="price-unit">${escapeHtml(p.unit) || ''}</span>
+                        <button class="price-save-btn" onclick="confirmPriceChange(this.parentElement.querySelector('.price-inline-input'))" title="Зберегти">✓</button>
+                       </div>`
                     : `<span class="price-value-cell">${p.value}</span><span class="price-unit">${escapeHtml(p.unit) || ''}</span>`
                 }
             </td>
@@ -479,6 +483,7 @@ function confirmPriceChange(input) {
     const linkedText = productId ? `\n\nЦіна автоматично оновиться в каталозі програм (${productId}).` : '\n\n⚠ Ціна НЕ прив\'язана до програми — бронювання не зміниться.';
 
     // Build confirmation dialog
+    const todayStr = new Date().toISOString().split('T')[0];
     const overlay = document.createElement('div');
     overlay.className = 'price-confirm-overlay';
     overlay.innerHTML = `
@@ -487,11 +492,17 @@ function confirmPriceChange(input) {
             <p><b>${code}</b>: ${original} → ${newValue} ₴ (${diffText} ₴)</p>
             <p style="font-size:12px;color:var(--gray-500)">${linkedText.replace(/\n/g, '<br>')}</p>
             <div class="price-confirm-date">
-                <label>Дата введення в дію:</label>
-                <div style="display:flex;gap:8px;align-items:center">
-                    <button class="price-date-btn active" data-date="">Зараз</button>
-                    <input type="date" class="price-date-input" min="${new Date().toISOString().split('T')[0]}" style="display:none">
-                    <button class="price-date-btn" data-date="custom">Інший день</button>
+                <label>Коли вступає в дію:</label>
+                <div class="price-date-options">
+                    <button class="price-date-btn active" data-date="now">Прямо зараз</button>
+                    <button class="price-date-btn" data-date="custom">З певної дати</button>
+                </div>
+                <div class="price-date-custom" style="display:none">
+                    <div class="price-date-fields">
+                        <input type="date" class="price-date-input" value="${todayStr}" min="${todayStr}">
+                        <input type="time" class="price-time-input" value="08:00">
+                    </div>
+                    <span class="price-date-hint">Мінімум — сьогодні. Заднім числом не можна.</span>
                 </div>
             </div>
             <div class="price-confirm-actions">
@@ -504,40 +515,53 @@ function confirmPriceChange(input) {
     document.body.appendChild(overlay);
 
     const dateInput = overlay.querySelector('.price-date-input');
+    const timeInput = overlay.querySelector('.price-time-input');
+    const customBlock = overlay.querySelector('.price-date-custom');
     const dateBtns = overlay.querySelectorAll('.price-date-btn');
-    let effectiveFrom = null;
+    let useCustomDate = false;
 
     dateBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             dateBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            if (btn.dataset.date === 'custom') {
-                dateInput.style.display = '';
-                dateInput.focus();
-            } else {
-                dateInput.style.display = 'none';
-                effectiveFrom = null;
-            }
+            useCustomDate = btn.dataset.date === 'custom';
+            customBlock.style.display = useCustomDate ? '' : 'none';
         });
     });
-    dateInput.addEventListener('change', () => { effectiveFrom = dateInput.value; });
 
     overlay.querySelector('.btn-confirm-cancel').addEventListener('click', () => {
         input.value = original;
         overlay.remove();
     });
     overlay.querySelector('.btn-confirm-save').addEventListener('click', async () => {
+        let effectiveFrom = undefined;
+        if (useCustomDate) {
+            const dateVal = dateInput.value;
+            const timeVal = timeInput.value || '08:00';
+            if (!dateVal) {
+                showNotification('Оберіть дату введення в дію', 'error');
+                return;
+            }
+            // Validate not in the past
+            const chosen = new Date(`${dateVal}T${timeVal}`);
+            if (chosen < new Date()) {
+                showNotification('Дата не може бути в минулому', 'error');
+                return;
+            }
+            effectiveFrom = `${dateVal}T${timeVal}`;
+        }
+
         overlay.querySelector('.btn-confirm-save').disabled = true;
         overlay.querySelector('.btn-confirm-save').textContent = 'Збереження...';
-        const result = await apiUpdatePrice(code, { value: newValue, effectiveFrom: effectiveFrom || undefined });
+        const result = await apiUpdatePrice(code, { value: newValue, effectiveFrom });
         overlay.remove();
         if (result.success) {
             input.dataset.original = newValue;
             input.style.borderColor = '#2E7D32';
             setTimeout(() => { input.style.borderColor = ''; }, 1500);
             const syncMsg = result.productSynced ? ' (ціна в каталозі оновлена!)' : '';
-            showNotification(`Ціну ${code} оновлено: ${newValue} ₴${syncMsg}`, 'success');
-            // v20.9.25: Reload catalog if product was synced
+            const dateMsg = effectiveFrom ? ` з ${new Date(effectiveFrom).toLocaleString('uk-UA')}` : '';
+            showNotification(`Ціну ${code} оновлено: ${newValue} ₴${dateMsg}${syncMsg}`, 'success');
             if (result.productSynced && typeof loadCatalog === 'function') {
                 loadCatalog();
             }

@@ -262,30 +262,63 @@ router.get('/prices/:code', async (req, res) => {
 });
 
 // PUT /api/center/prices/:code — update price (senior_manager+)
+// v20.9.25: syncs price to products table if product_id is linked
 router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) => {
+    const client = await pool.connect();
     try {
-        const { value, name, unit, category, description } = req.body;
+        const { value, name, unit, category, description, effectiveFrom, productId } = req.body;
         if (value === undefined && !name) {
             return res.status(400).json({ success: false, error: 'Вкажіть value або name' });
         }
-        const result = await pool.query(
+        await client.query('BEGIN');
+
+        // Update product_id if provided (one-time link)
+        if (productId !== undefined) {
+            await client.query('UPDATE price_rules SET product_id = $1 WHERE code = $2', [productId || null, req.params.code]);
+        }
+
+        const result = await client.query(
             `UPDATE price_rules SET
                 value = COALESCE($1, value),
                 name = COALESCE($2, name),
                 unit = COALESCE($3, unit),
                 category = COALESCE($4, category),
                 description = COALESCE($5, description),
+                effective_from = $6,
                 updated_at = NOW(),
-                updated_by = $6
-             WHERE code = $7 RETURNING *`,
-            [value !== undefined ? value : null, name || null, unit || null, category || null, description || null, req.user.username, req.params.code]
+                updated_by = $7
+             WHERE code = $8 RETURNING *`,
+            [value !== undefined ? value : null, name || null, unit || null, category || null, description || null, effectiveFrom || null, req.user.username, req.params.code]
         );
-        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Ціну не знайдено' });
-        log.info(`Price ${req.params.code} updated to ${value} by ${req.user.username}`);
-        res.json({ success: true, price: result.rows[0] });
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Ціну не знайдено' });
+        }
+
+        const priceRule = result.rows[0];
+        let productSynced = false;
+
+        // v20.9.25: Sync price to products table if linked and effective now
+        if (value !== undefined && priceRule.product_id) {
+            const isEffectiveNow = !effectiveFrom || new Date(effectiveFrom) <= new Date();
+            if (isEffectiveNow) {
+                const syncResult = await client.query(
+                    'UPDATE products SET price = $1, updated_by = $2 WHERE id = $3 RETURNING id',
+                    [value, req.user.username, priceRule.product_id]
+                );
+                productSynced = syncResult.rowCount > 0;
+            }
+        }
+
+        await client.query('COMMIT');
+        log.info(`Price ${req.params.code} updated to ${value} by ${req.user.username}${productSynced ? ' (synced to product)' : ''}`);
+        res.json({ success: true, price: priceRule, productSynced });
     } catch (err) {
+        await client.query('ROLLBACK');
         log.error('PUT /center/prices/:code error', err);
         res.status(500).json({ success: false, error: 'Помилка оновлення ціни' });
+    } finally {
+        client.release();
     }
 });
 

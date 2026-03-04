@@ -402,6 +402,8 @@ function renderPrices(prices) {
                 <th>Назва</th>
                 <th>Категорія</th>
                 <th>Ціна</th>
+                <th>З дати</th>
+                <th>Програма</th>
                 <th>Оновлено</th>
                 ${isAdminUser ? '<th>Дії</th>' : ''}
             </tr>
@@ -412,6 +414,12 @@ function renderPrices(prices) {
         const updatedInfo = p.updated_by
             ? `${p.updated_by}, ${new Date(p.updated_at).toLocaleDateString('uk-UA')}`
             : '';
+        const linkedBadge = p.product_id
+            ? `<span class="price-linked-badge" title="Прив'язано до ${p.product_id}">🔗 ${p.product_id}</span>`
+            : (isAdminUser ? `<button class="price-link-btn" onclick="linkPriceToProduct('${escapeHtml(p.code)}')" title="Прив'язати до програми">🔗 Прив'язати</button>` : `<span class="price-unlinked-badge">—</span>`);
+        const effectiveDate = p.effective_from
+            ? new Date(p.effective_from).toLocaleDateString('uk-UA')
+            : 'зараз';
 
         html += `<tr data-code="${p.code}">
             <td>
@@ -421,13 +429,14 @@ function renderPrices(prices) {
             <td><span class="price-category-badge">${escapeHtml(p.category) || '—'}</span></td>
             <td>
                 ${isAdminUser
-                    ? `<input type="number" class="price-inline-input" value="${p.value}" data-code="${escapeHtml(p.code)}" data-original="${p.value}"
-                        onkeydown="if(event.key==='Enter')savePriceInline(this)"
-                        onblur="savePriceInline(this)">
+                    ? `<input type="number" class="price-inline-input" value="${p.value}" data-code="${escapeHtml(p.code)}" data-original="${p.value}" data-product-id="${p.product_id || ''}"
+                        onkeydown="if(event.key==='Enter')confirmPriceChange(this)">
                        <span class="price-unit">${escapeHtml(p.unit) || ''}</span>`
                     : `<span class="price-value-cell">${p.value}</span><span class="price-unit">${escapeHtml(p.unit) || ''}</span>`
                 }
             </td>
+            <td><span class="price-effective">${effectiveDate}</span></td>
+            <td>${linkedBadge}</td>
             <td><span class="price-updated">${updatedInfo}</span></td>
             ${isAdminUser ? `<td class="price-actions">
                 <button class="btn-price-delete" onclick="deletePrice('${escapeHtml(p.code)}')" title="Видалити">✕</button>
@@ -456,22 +465,135 @@ function appendPriceAddRow(container) {
     container.insertAdjacentHTML('beforeend', addHtml);
 }
 
-async function savePriceInline(input) {
+// v20.9.25: Price change with confirmation dialog
+function confirmPriceChange(input) {
     const code = input.dataset.code;
     const newValue = parseInt(input.value);
     const original = parseInt(input.dataset.original);
+    const productId = input.dataset.productId;
 
     if (isNaN(newValue) || newValue === original) return;
 
-    const result = await apiUpdatePrice(code, { value: newValue });
-    if (result.success) {
-        input.dataset.original = newValue;
-        input.style.borderColor = '#2E7D32';
-        setTimeout(() => { input.style.borderColor = ''; }, 1000);
-        showNotification(`Ціну ${code} оновлено: ${newValue}`, 'success');
-    } else {
+    const diff = newValue - original;
+    const diffText = diff > 0 ? `+${diff}` : `${diff}`;
+    const linkedText = productId ? `\n\nЦіна автоматично оновиться в каталозі програм (${productId}).` : '\n\n⚠ Ціна НЕ прив\'язана до програми — бронювання не зміниться.';
+
+    // Build confirmation dialog
+    const overlay = document.createElement('div');
+    overlay.className = 'price-confirm-overlay';
+    overlay.innerHTML = `
+        <div class="price-confirm-dialog">
+            <h3>Підтвердження зміни ціни</h3>
+            <p><b>${code}</b>: ${original} → ${newValue} ₴ (${diffText} ₴)</p>
+            <p style="font-size:12px;color:var(--gray-500)">${linkedText.replace(/\n/g, '<br>')}</p>
+            <div class="price-confirm-date">
+                <label>Дата введення в дію:</label>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button class="price-date-btn active" data-date="">Зараз</button>
+                    <input type="date" class="price-date-input" min="${new Date().toISOString().split('T')[0]}" style="display:none">
+                    <button class="price-date-btn" data-date="custom">Інший день</button>
+                </div>
+            </div>
+            <div class="price-confirm-actions">
+                <button class="btn-confirm-cancel">Скасувати</button>
+                <button class="btn-confirm-save">Зберегти</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const dateInput = overlay.querySelector('.price-date-input');
+    const dateBtns = overlay.querySelectorAll('.price-date-btn');
+    let effectiveFrom = null;
+
+    dateBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            dateBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            if (btn.dataset.date === 'custom') {
+                dateInput.style.display = '';
+                dateInput.focus();
+            } else {
+                dateInput.style.display = 'none';
+                effectiveFrom = null;
+            }
+        });
+    });
+    dateInput.addEventListener('change', () => { effectiveFrom = dateInput.value; });
+
+    overlay.querySelector('.btn-confirm-cancel').addEventListener('click', () => {
         input.value = original;
-        showNotification(result.error || 'Помилка оновлення', 'error');
+        overlay.remove();
+    });
+    overlay.querySelector('.btn-confirm-save').addEventListener('click', async () => {
+        overlay.querySelector('.btn-confirm-save').disabled = true;
+        overlay.querySelector('.btn-confirm-save').textContent = 'Збереження...';
+        const result = await apiUpdatePrice(code, { value: newValue, effectiveFrom: effectiveFrom || undefined });
+        overlay.remove();
+        if (result.success) {
+            input.dataset.original = newValue;
+            input.style.borderColor = '#2E7D32';
+            setTimeout(() => { input.style.borderColor = ''; }, 1500);
+            const syncMsg = result.productSynced ? ' (ціна в каталозі оновлена!)' : '';
+            showNotification(`Ціну ${code} оновлено: ${newValue} ₴${syncMsg}`, 'success');
+        } else {
+            input.value = original;
+            showNotification(result.error || 'Помилка оновлення', 'error');
+        }
+    });
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) { input.value = original; overlay.remove(); }
+    });
+}
+
+// Legacy compat
+async function savePriceInline(input) { confirmPriceChange(input); }
+
+// v20.9.25: Link price_rule to a product
+async function linkPriceToProduct(code) {
+    try {
+        const resp = await fetch(`${API_BASE}/products?active=true`, { headers: getAuthHeaders() });
+        if (!resp.ok) throw new Error('Помилка завантаження програм');
+        const data = await resp.json();
+        const products = data.products || data || [];
+        if (!products.length) { showNotification('Немає програм для прив\'язки', 'error'); return; }
+
+        const select = products.map(p => `<option value="${p.id}">${p.name} (${p.id}) — ${p.price} ₴</option>`).join('');
+        const overlay = document.createElement('div');
+        overlay.className = 'price-confirm-overlay';
+        overlay.innerHTML = `
+            <div class="price-confirm-dialog">
+                <h3>Прив'язати до програми</h3>
+                <p>Ціна <b>${code}</b> буде автоматично оновлюватись у каталозі.</p>
+                <select id="linkProductSelect" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-family:inherit;font-size:14px;min-height:44px">
+                    <option value="">— Оберіть програму —</option>
+                    ${select}
+                </select>
+                <div class="price-confirm-actions">
+                    <button class="btn-confirm-cancel">Скасувати</button>
+                    <button class="btn-confirm-save">Прив'язати</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('.btn-confirm-cancel').addEventListener('click', () => overlay.remove());
+        overlay.querySelector('.btn-confirm-save').addEventListener('click', async () => {
+            const productId = document.getElementById('linkProductSelect').value;
+            if (!productId) { showNotification('Оберіть програму', 'error'); return; }
+            const result = await apiUpdatePrice(code, { productId });
+            overlay.remove();
+            if (result.success) {
+                showNotification(`Ціну ${code} прив'язано до ${productId}`, 'success');
+                loadPrices();
+            } else {
+                showNotification(result.error || 'Помилка', 'error');
+            }
+        });
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    } catch (err) {
+        showNotification(err.message, 'error');
     }
 }
 

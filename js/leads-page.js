@@ -24,6 +24,7 @@ const SOURCE_MAP = {
 let currentFilter = '';
 let leadsData = [];
 let usersData = [];
+let modalInitialState = '';
 
 // Auth helpers (same pattern as other standalone pages)
 function getToken() { return localStorage.getItem('pzp_token'); }
@@ -49,10 +50,10 @@ async function apiFetch(url, opts = {}) {
 document.addEventListener('DOMContentLoaded', async () => {
     if (!getToken()) { window.location.href = '/'; return; }
 
-    // Dark mode
+    // Dark mode — use body.dark-mode class (consistent with dark-mode.css)
     const saved = localStorage.getItem('darkMode');
     if (saved === 'true' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-        document.documentElement.setAttribute('data-theme', 'dark');
+        document.body.classList.add('dark-mode');
     }
 
     await loadUsers();
@@ -188,6 +189,7 @@ function openAddModal() {
     document.getElementById('leadChildrenCount').value = '';
     document.getElementById('leadNotes').value = '';
     document.getElementById('leadAssignedTo').value = '';
+    modalInitialState = getModalState();
     document.getElementById('leadModal').classList.add('active');
 }
 
@@ -205,10 +207,31 @@ function editLead(id) {
     document.getElementById('leadChildrenCount').value = lead.children_count || '';
     document.getElementById('leadNotes').value = lead.notes || '';
     document.getElementById('leadAssignedTo').value = lead.assigned_to || '';
+    modalInitialState = getModalState();
     document.getElementById('leadModal').classList.add('active');
 }
 
-function closeModal() {
+function getModalState() {
+    return [
+        document.getElementById('leadName').value,
+        document.getElementById('leadPhone').value,
+        document.getElementById('leadInstagram').value,
+        document.getElementById('leadSource').value,
+        document.getElementById('leadEventDate').value,
+        document.getElementById('leadChildrenCount').value,
+        document.getElementById('leadNotes').value,
+        document.getElementById('leadAssignedTo').value
+    ].join('|');
+}
+
+function isModalDirty() {
+    return getModalState() !== modalInitialState;
+}
+
+function closeModal(force = false) {
+    if (!force && isModalDirty()) {
+        if (!confirm('Є незбережені дані. Закрити?')) return;
+    }
     document.getElementById('leadModal').classList.remove('active');
 }
 
@@ -237,7 +260,7 @@ async function saveLead() {
         }
         const data = await res.json();
         if (!data.success) { alert(data.error || 'Помилка'); return; }
-        closeModal();
+        closeModal(true);
         await loadLeads();
     } catch (err) {
         console.error('Save lead error', err);

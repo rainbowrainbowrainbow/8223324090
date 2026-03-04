@@ -334,6 +334,13 @@
             .an-bar-label { font-size: 8px; }
             .an-kpi-value { font-size: 22px; }
         }
+        /* Embed mode: hide chrome when loaded in iframe */
+        .embed-mode .sidebar-nav,
+        .embed-mode .header,
+        .embed-mode .sidebar-overlay,
+        .embed-mode .skip-link,
+        .embed-mode .page-login-overlay { display: none !important; }
+        .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
     </style>
 </head>
 <body>
@@ -361,12 +368,10 @@
                 <a href="/designs" class="nav-link"><span class="nav-icon">Д</span> <span class="nav-text">Дизайни</span></a>
                 <a href="/customers" class="nav-link"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
                 <a href="/finance" class="nav-link"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
-                <a href="/analytics" class="nav-link active"><span class="nav-icon">А</span> <span class="nav-text">Аналітика</span></a>
                 <a href="/warehouse" class="nav-link"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
                 <a href="/center" class="nav-link"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
                 <a href="/art-director" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
                 <a href="/demo" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
-                <a href="/status" class="nav-link"><span class="nav-icon nav-icon--status">St</span> <span class="nav-text">Статус</span></a>
                 <a href="/kleshnya" class="nav-link nav-link-kleshnya"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
             </nav>
         </aside>
@@ -382,7 +387,7 @@
                     <a href="/staff" class="nav-link"><span class="nav-icon">Г</span> <span class="nav-text">Графік</span></a>
                     <a href="/customers" class="nav-link"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
                     <a href="/finance" class="nav-link"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
-                    <a href="/analytics" class="nav-link active"><span class="nav-icon">А</span> <span class="nav-text">Аналітика</span></a>
+                    <a href="/center?tab=analytics" class="nav-link active"><span class="nav-icon">А</span> <span class="nav-text">Аналітика</span></a>
                 </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
@@ -440,6 +445,12 @@
         <span id="notificationText"></span>
     </div>
 
+    <script>
+    // Embed mode detection for iframe usage in Center page
+    if (new URLSearchParams(window.location.search).get('embed') === '1' || window.self !== window.top) {
+        document.body.classList.add('embed-mode');
+    }
+    </script>
     <script src="js/config.js?v=18.0"></script>
     <script src="js/api.js?v=18.0"></script>
     <script src="js/auth.js?v=18.0"></script>

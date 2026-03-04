@@ -786,12 +786,10 @@
                 <a href="/designs" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Д</span> <span class="nav-text">Дизайни</span></a>
                 <a href="/customers" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
                 <a href="/finance" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
-                <a href="/analytics" class="nav-link sidebar-no-viewer hidden"><span class="nav-icon">А</span> <span class="nav-text">Аналітика</span></a>
                 <a href="/warehouse" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
                 <a href="/center" class="nav-link active sidebar-admin-only hidden"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
                 <a href="/art-director" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
                 <a href="/demo" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
-                <a href="/status" class="nav-link"><span class="nav-icon nav-icon--status">St</span> <span class="nav-text">Статус</span></a>
             </nav>
         </aside>
 
@@ -823,20 +821,15 @@
                     <button class="center-tab-btn active" data-tab="overview">Огляд</button>
                     <button class="center-tab-btn" data-tab="finance">Фінанси</button>
                     <button class="center-tab-btn" data-tab="analytics">Аналітика</button>
-                    <button class="center-tab-btn" data-tab="status">Статус</button>
                 </div>
 
                 <!-- Tab: Finance (embedded iframe) -->
                 <div class="center-tab-panel hidden" id="tabFinance">
-                    <iframe src="/finance" class="center-embed-frame" title="Фінанси"></iframe>
+                    <iframe src="/finance?embed=1" class="center-embed-frame" title="Фінанси"></iframe>
                 </div>
                 <!-- Tab: Analytics (embedded iframe) -->
                 <div class="center-tab-panel hidden" id="tabAnalytics">
-                    <iframe src="/analytics" class="center-embed-frame" title="Аналітика"></iframe>
-                </div>
-                <!-- Tab: Status (embedded iframe) -->
-                <div class="center-tab-panel hidden" id="tabStatus">
-                    <iframe src="/status" class="center-embed-frame" title="Статус"></iframe>
+                    <iframe src="/analytics?embed=1" class="center-embed-frame" title="Аналітика"></iframe>
                 </div>
 
                 <!-- Block 1: KPI Dashboard -->
@@ -1153,15 +1146,13 @@
             const overviewSections = document.querySelectorAll('.center-section');
             const financePanel = document.getElementById('tabFinance');
             const analyticsPanel = document.getElementById('tabAnalytics');
-            const statusPanel = document.getElementById('tabStatus');
 
             overviewSections.forEach(s => s.style.display = tab === 'overview' ? '' : 'none');
             if (financePanel) financePanel.classList.toggle('hidden', tab !== 'finance');
             if (analyticsPanel) analyticsPanel.classList.toggle('hidden', tab !== 'analytics');
-            if (statusPanel) statusPanel.classList.toggle('hidden', tab !== 'status');
         }
 
-        if (urlTab && ['finance', 'analytics', 'status'].includes(urlTab)) {
+        if (urlTab && ['finance', 'analytics'].includes(urlTab)) {
             switchCenterTab(urlTab);
         }
     })();

@@ -294,15 +294,19 @@ function showTooltip(e, booking) {
         tooltip.className = 'booking-tooltip hidden';
         document.body.appendChild(tooltip);
     }
-    const endTime = addMinutesToTime(booking.time, booking.duration);
-    const statusBadge = `<span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>`;
-    tooltip.innerHTML = `
-        <strong>${escapeHtml(booking.label)}: ${escapeHtml(booking.programName)}</strong><br>
-        🕐 ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}<br>
-        🏠 ${escapeHtml(booking.room)} · ${statusBadge}
-        ${booking.kidsCount ? '<br>👶 ' + escapeHtml(String(booking.kidsCount)) + ' дітей' : ''}
-        ${booking.notes ? '<br>📝 ' + escapeHtml(booking.notes) : ''}
-    `;
+    if (tooltip._lastBookingId !== booking.id || tooltip._lastStatus !== booking.status) {
+        tooltip._lastBookingId = booking.id;
+        tooltip._lastStatus = booking.status;
+        const endTime = addMinutesToTime(booking.time, booking.duration);
+        const statusBadge = `<span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>`;
+        tooltip.innerHTML = `
+            <strong>${escapeHtml(booking.label)}: ${escapeHtml(booking.programName)}</strong><br>
+            🕐 ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}<br>
+            🏠 ${escapeHtml(booking.room)} · ${statusBadge}
+            ${booking.kidsCount ? '<br>👶 ' + escapeHtml(String(booking.kidsCount)) + ' дітей' : ''}
+            ${booking.notes ? '<br>📝 ' + escapeHtml(booking.notes) : ''}
+        `;
+    }
     tooltip.style.left = `${e.pageX + 12}px`;
     tooltip.style.top = `${e.pageY - 10}px`;
     tooltip.classList.remove('hidden');
@@ -318,7 +322,10 @@ function moveTooltip(e) {
 
 function hideTooltip() {
     const tooltip = document.getElementById('bookingTooltip');
-    if (tooltip) tooltip.classList.add('hidden');
+    if (tooltip) {
+        tooltip.classList.add('hidden');
+        tooltip._lastBookingId = null;
+    }
 }
 
 // ==========================================
@@ -484,6 +491,8 @@ function setupSwipe() {
 // MINIMAP
 // ==========================================
 
+let _minimapHash = null;
+
 function renderMinimap(snapshotDate) {
     const minimap = document.getElementById('minimapContainer');
     if (!minimap || AppState.multiDayMode) {
@@ -508,6 +517,12 @@ async function renderMinimapAsync(container, snapshotDate) {
 
     const bookings = await getBookingsForDate(date);
     const lines = await getLinesForDate(date);
+
+    // Memoize: skip redraw if data hasn't changed
+    const hash = date + ':' + bookings.length + ':' + bookings.map(b => b.id + b.status).join(',');
+    if (hash === _minimapHash) return;
+    _minimapHash = hash;
+
     const { start, end } = getTimeRange(date);
     const totalMin = (end - start) * 60;
     const lh = Math.max(6, (canvas.height - 4) / Math.max(lines.length, 1));
@@ -641,7 +656,21 @@ function drawExportLines(ctx, lines, bookings, start, padding, timeWidth, header
 
             ctx.fillStyle = CATEGORY_COLORS[booking.category] || '#607D8B';
             ctx.beginPath();
-            ctx.roundRect(bx, by, bw, bh, 6);
+            if (ctx.roundRect) {
+                ctx.roundRect(bx, by, bw, bh, 6);
+            } else {
+                const r = 6;
+                ctx.moveTo(bx + r, by);
+                ctx.lineTo(bx + bw - r, by);
+                ctx.arcTo(bx + bw, by, bx + bw, by + r, r);
+                ctx.lineTo(bx + bw, by + bh - r);
+                ctx.arcTo(bx + bw, by + bh, bx + bw - r, by + bh, r);
+                ctx.lineTo(bx + r, by + bh);
+                ctx.arcTo(bx, by + bh, bx, by + bh - r, r);
+                ctx.lineTo(bx, by + r);
+                ctx.arcTo(bx, by, bx + r, by, r);
+                ctx.closePath();
+            }
             ctx.fill();
 
             ctx.fillStyle = '#FFFFFF';

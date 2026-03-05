@@ -7,6 +7,7 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
+const compression = require('compression');
 
 // --- Core modules ---
 const { pool, initDatabase } = require('./db');
@@ -51,6 +52,7 @@ app.use(cors({
         } catch { cb(null, false); }
     }
 }));
+app.use(compression());
 app.use(express.json({ limit: '1mb' }));
 app.use(requestIdMiddleware);
 app.use(securityHeaders);

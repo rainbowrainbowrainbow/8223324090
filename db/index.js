@@ -501,6 +501,12 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_lines_by_date_date ON lines_by_date(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)');
 
+        // v20.9.26: Performance indexes
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_program_id ON bookings(program_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_history_action ON history(action)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_lines_by_date_line_date ON lines_by_date(line_id, date)');
+
         // v8.3: Booking automation rules
         await pool.query(`
             CREATE TABLE IF NOT EXISTS automation_rules (

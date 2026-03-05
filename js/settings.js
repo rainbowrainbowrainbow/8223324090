@@ -2405,12 +2405,7 @@ function toggleContractorSelect() {
 // ==========================================
 // v8.4: CERTIFICATES
 // ==========================================
-let certSearchTimeout = null;
-
-function debounceCertSearch() {
-    clearTimeout(certSearchTimeout);
-    certSearchTimeout = setTimeout(loadCertificates, 400);
-}
+const debounceCertSearch = debounce(loadCertificates, 400);
 
 function openCertificatesPanel() {
     const panel = document.getElementById('certificatesPanel');

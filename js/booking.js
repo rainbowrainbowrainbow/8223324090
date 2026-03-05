@@ -158,18 +158,17 @@ function initCustomerCRM() {
     });
 
     // Autocomplete search with debounce
-    let customerSearchTimeout;
+    const debouncedCustomerSearch = debounce(async (q) => {
+        const results = await apiSearchCustomers(q);
+        renderCustomerSearchResults(results);
+    }, 300);
     document.getElementById('customerSearch')?.addEventListener('input', (e) => {
-        clearTimeout(customerSearchTimeout);
         const q = e.target.value.trim();
         if (q.length < 2) {
             document.getElementById('customerSearchResults')?.classList.add('hidden');
             return;
         }
-        customerSearchTimeout = setTimeout(async () => {
-            const results = await apiSearchCustomers(q);
-            renderCustomerSearchResults(results);
-        }, 300);
+        debouncedCustomerSearch(q);
     });
 
     // Close dropdown on outside click
@@ -237,12 +236,19 @@ function closeBookingPanel() {
     }
 }
 
+let _programIconsHash = null;
+
 async function renderProgramIcons() {
     const container = document.getElementById('programsIcons');
 
     // v7.0: Load products from API (with fallback to PROGRAMS)
     // Don't clear DOM until data is ready — prevents blank flash
     const allProducts = await getProducts();
+
+    // Cache: skip rebuild if products haven't changed
+    const hash = allProducts.length + ':' + allProducts.map(p => p.id).join(',');
+    if (hash === _programIconsHash && container.children.length > 0) return;
+    _programIconsHash = hash;
 
     container.innerHTML = '';
 
@@ -278,11 +284,12 @@ async function renderProgramIcons() {
         container.appendChild(grid);
     });
 
-    // v5.49: Bind search input (remove old listener to avoid duplicates)
+    // v5.49: Bind search input with debounce
     const searchInput = document.getElementById('programSearch');
     if (searchInput) {
-        searchInput.removeEventListener('input', filterPrograms);
-        searchInput.addEventListener('input', filterPrograms);
+        searchInput.removeEventListener('input', searchInput._debouncedFilter);
+        searchInput._debouncedFilter = debounce(filterPrograms, 150);
+        searchInput.addEventListener('input', searchInput._debouncedFilter);
     }
 }
 

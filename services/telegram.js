@@ -9,8 +9,11 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Telegram');
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8068946683:AAFz0osjzV2DxlPP65DoAZNJ9NjI5LMHrhM';
-const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '-1001805304620';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_DEFAULT_CHAT_ID = process.env.TELEGRAM_DEFAULT_CHAT_ID || '';
+if (!TELEGRAM_BOT_TOKEN) {
+    log.warn('TELEGRAM_BOT_TOKEN not set. Telegram notifications disabled.');
+}
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || crypto.randomBytes(32).toString('hex');
 
 // --- Timeout constants ---
@@ -74,6 +77,10 @@ let webhookSet = false;
 let cachedBotUsername = null;
 
 function telegramRequest(method, body) {
+    // Skip if no token configured
+    if (!TELEGRAM_BOT_TOKEN) {
+        return Promise.resolve({ ok: false, description: 'No bot token configured' });
+    }
     // Circuit breaker check
     if (isCircuitOpen()) {
         const err = new Error(`Telegram circuit breaker is OPEN (${consecutiveFailures} consecutive failures). Request blocked.`);

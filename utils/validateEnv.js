@@ -24,11 +24,18 @@ function validateEnv() {
     // Used in: middleware/auth.js
     // Falls back to crypto.randomBytes(64) which changes on every restart
     if (!process.env.JWT_SECRET) {
-        warnings.push(
-            'JWT_SECRET not set. Auto-generating random secret. ' +
-            'User sessions will be lost on restart. ' +
-            'Set JWT_SECRET to a random string (64+ characters) for stable sessions.'
-        );
+        if (isProduction) {
+            errors.push(
+                'JWT_SECRET not set in production! Sessions will be lost on restart. ' +
+                'Set JWT_SECRET to a random string (64+ characters).'
+            );
+        } else {
+            warnings.push(
+                'JWT_SECRET not set. Auto-generating random secret. ' +
+                'User sessions will be lost on restart. ' +
+                'Set JWT_SECRET to a random string (64+ characters) for stable sessions.'
+            );
+        }
     }
 
     // --- Database connectivity ---
@@ -48,8 +55,8 @@ function validateEnv() {
     // Used in: services/telegram.js
     if (!process.env.TELEGRAM_BOT_TOKEN) {
         warnings.push(
-            'TELEGRAM_BOT_TOKEN not set. Using hardcoded fallback. ' +
-            'Set TELEGRAM_BOT_TOKEN for your own bot.'
+            'TELEGRAM_BOT_TOKEN not set. Telegram notifications disabled. ' +
+            'Set TELEGRAM_BOT_TOKEN to enable bot messaging.'
         );
     }
 

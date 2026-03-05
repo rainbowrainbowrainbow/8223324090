@@ -39,6 +39,7 @@ validateEnv();
 // --- Express app setup ---
 const app = express();
 app.disable('x-powered-by'); // v20.9.9: Don't expose Express version
+app.set('trust proxy', 1);   // v20.9.27: Trust first proxy (Railway) — req.ip returns real client IP
 const PORT = process.env.PORT || 3000;
 
 // Global middleware

@@ -61,68 +61,6 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// v12.4: Temporary debug endpoint — shows why login fails (remove after fixing)
-router.post('/debug-login', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        if (!username || !password) {
-            return res.json({ error: 'Need username and password' });
-        }
-
-        // 1. Check if user exists
-        const result = await pool.query(
-            'SELECT id, username, password_hash, role, name FROM users WHERE LOWER(username) = LOWER($1)',
-            [username.trim()]
-        );
-
-        if (result.rows.length === 0) {
-            // List all usernames for comparison
-            const allUsers = await pool.query('SELECT username, name, role FROM users ORDER BY id');
-            return res.json({
-                found: false,
-                searchedFor: username.trim(),
-                allUsers: allUsers.rows.map(u => ({ username: u.username, name: u.name, role: u.role }))
-            });
-        }
-
-        const user = result.rows[0];
-        const hashPrefix = user.password_hash.substring(0, 20);
-        const hashLength = user.password_hash.length;
-
-        // 2. Try bcrypt compare
-        const valid = await bcrypt.compare(password, user.password_hash);
-
-        // 3. Generate fresh hash and compare
-        const freshHash = await bcrypt.hash(password, 10);
-        const freshValid = await bcrypt.compare(password, freshHash);
-
-        // 4. Check migration status
-        let migrationStatus = 'unknown';
-        try {
-            const migCheck = await pool.query(
-                "SELECT version, applied_at FROM schema_migrations WHERE version LIKE '%password_reset%' ORDER BY applied_at DESC"
-            );
-            migrationStatus = migCheck.rows;
-        } catch (e) { migrationStatus = 'table not found: ' + e.message; }
-
-        res.json({
-            found: true,
-            dbUsername: user.username,
-            dbName: user.name,
-            dbRole: user.role,
-            hashPrefix,
-            hashLength,
-            passwordProvided: password,
-            bcryptCompareResult: valid,
-            freshHashWorks: freshValid,
-            bcryptjsVersion: bcrypt.version || 'unknown',
-            migrationStatus
-        });
-    } catch (err) {
-        res.json({ error: err.message, stack: err.stack });
-    }
-});
-
 router.get('/verify', authenticateToken, async (req, res) => {
     try {
         // Read fresh role from DB (JWT may have stale role after role migration)

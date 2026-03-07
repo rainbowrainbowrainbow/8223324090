@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v20.9.27**. Security Hardening + Test Coverage + Price Sync + UI Polish.
+Версія **v20.12.0**. Swagger updated, form validation, accessibility, UX polish, frontend logger.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -53,6 +53,9 @@
 - **v20.9.25: Price Sync — централізовані ціни оновлюють каталог бронювань**
 - **v20.9.26: Performance + Compatibility**
 - **v20.9.27: Security Hardening — CSP, input validation, JWT audit**
+- **v20.10.0: UX Polish — WS status dot, offline badge, toast stack, CSV export, console cleanup**
+- **v20.11.0: Accessibility — real-time validation, keyboard timeline nav, aria attrs, unsaved changes**
+- **v20.12.0: Swagger DX — spec v16→v20.12, frontend logger, global JWT auth**
 
 ## Що нове (поточна сесія) — v20.9.16–v20.9.27
 
@@ -100,4 +103,4 @@
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-07, v20.9.27*
+*Оновлено: 2026-03-07, v20.12.0*

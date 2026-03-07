@@ -1,5 +1,6 @@
 /**
- * js/chat-page.js — Team messenger frontend logic (Phase 1 MVP)
+ * js/chat-page.js — Team messenger frontend logic v2.0
+ * Telegram-inspired UX: channels, @mentions, reactions, reply-to, typing, sounds
  */
 (function () {
     'use strict';
@@ -17,6 +18,15 @@
     var _currentUsername = null;
     var _offlineQueue = [];
     var _soundsEnabled = true;
+
+    // Color palette for avatars and usernames
+    var COLORS = 8;
+    function _colorIdx(id) {
+        return (parseInt(id, 10) || 0) % COLORS;
+    }
+    function _channelColorIdx(idx) {
+        return idx % 6;
+    }
 
     // Sound preloading
     var _sounds = {};
@@ -78,10 +88,6 @@
     }
 
     // ==========================================
-    // INITIALIZATION
-    // ==========================================
-
-    // ==========================================
     // AUTH + INIT (direct execution, kleshnya pattern)
     // ==========================================
 
@@ -94,7 +100,7 @@
             document.body.classList.add('dark-mode');
         }
 
-        // Auth check (standalone page pattern — like kleshnya)
+        // Auth check (standalone page pattern)
         var token = localStorage.getItem('pzp_token');
         if (!token) {
             window.location.href = '/';
@@ -125,13 +131,16 @@
     }
 
     // Logout handler
-    document.getElementById('logoutBtn').addEventListener('click', function () {
-        if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
-        localStorage.removeItem('pzp_token');
-        localStorage.removeItem('pzp_current_user');
-        localStorage.removeItem('pzp_session');
-        window.location.href = '/';
-    });
+    var _logoutBtn = document.getElementById('logoutBtn');
+    if (_logoutBtn) {
+        _logoutBtn.addEventListener('click', function () {
+            if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
+            localStorage.removeItem('pzp_token');
+            localStorage.removeItem('pzp_current_user');
+            localStorage.removeItem('pzp_session');
+            window.location.href = '/';
+        });
+    }
 
     // Sidebar toggle (mobile)
     var _toggleBtn = document.getElementById('chatToggleSidebar');
@@ -150,6 +159,18 @@
         });
     }
 
+    // Channel search
+    var _searchInput = document.getElementById('chatSearchInput');
+    if (_searchInput) {
+        _searchInput.addEventListener('input', function () {
+            var q = this.value.toLowerCase().trim();
+            document.querySelectorAll('.chat-channel-item').forEach(function (el) {
+                var name = (el.querySelector('.chat-channel-name') || {}).textContent || '';
+                el.style.display = name.toLowerCase().includes(q) ? '' : 'none';
+            });
+        });
+    }
+
     // Input handlers
     var _input = document.getElementById('chatInput');
     var _sendBtn = document.getElementById('chatSendBtn');
@@ -157,7 +178,7 @@
     if (_input) {
         _input.addEventListener('input', function () {
             _autoGrow(this);
-            if (_currentChannel) {
+            if (_currentChannel && typeof ParkWS !== 'undefined') {
                 ParkWS.sendChatTyping(_currentChannel.id);
             }
             _handleMentionInput(this);
@@ -199,45 +220,71 @@
         _replyCloseBtn.addEventListener('click', _cancelReply);
     }
 
+    // Attach button (placeholder — show coming soon)
+    var _attachBtn = document.getElementById('chatAttachBtn');
+    if (_attachBtn) {
+        _attachBtn.addEventListener('click', function () {
+            alert('Функція обміну файлами буде у v21.1 🚀');
+        });
+    }
+
+    // Scroll to bottom button
+    var _scrollBottomBtn = document.getElementById('chatScrollBottom');
+    var _messagesEl = document.getElementById('chatMessages');
+    if (_scrollBottomBtn && _messagesEl) {
+        _scrollBottomBtn.addEventListener('click', function () {
+            _messagesEl.scrollTop = _messagesEl.scrollHeight;
+            _scrollBottomBtn.classList.remove('visible');
+        });
+    }
+
     // WebSocket chat events
     window.addEventListener('ws:chat', function (e) {
         _handleChatEvent(e.detail);
     });
 
-    // Infinite scroll
-    var _messagesEl = document.getElementById('chatMessages');
+    // Infinite scroll + scroll-to-bottom visibility
     if (_messagesEl) {
         _messagesEl.addEventListener('scroll', function () {
+            // Infinite scroll up
             if (this.scrollTop < 100 && !_loadingMore && _currentChannel && _oldestSeq > 1) {
                 _loadOlderMessages();
+            }
+            // Show/hide scroll-to-bottom button
+            var distFromBottom = this.scrollHeight - this.scrollTop - this.clientHeight;
+            if (_scrollBottomBtn) {
+                _scrollBottomBtn.classList.toggle('visible', distFromBottom > 200);
             }
         });
     }
 
     // Reconnect: drain offline queue
     window.addEventListener('wsStatusChange', function (e) {
-        if (e.detail.connected) {
+        if (e.detail && e.detail.connected) {
             _drainOfflineQueue();
-            if (_currentChannel) {
+            if (_currentChannel && typeof ParkWS !== 'undefined') {
                 ParkWS.joinChannel(_currentChannel.id);
             }
         }
     });
 
-    // Keyboard shortcut: Escape closes modals/sidebar
+    // Keyboard shortcut: Escape
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') {
-            _sidebar.classList.remove('open');
-            _overlay.classList.remove('visible');
+            if (_sidebar) _sidebar.classList.remove('open');
+            if (_overlay) _overlay.classList.remove('visible');
         }
     });
 
     // Init
     _checkAuthAndInit();
 
+    // ==========================================
+    // INITIALIZATION
+    // ==========================================
+
     async function _init() {
         try {
-            // Load channels and users in parallel
             var results = await Promise.all([
                 _api('GET', '/channels'),
                 _api('GET', '/users')
@@ -262,25 +309,43 @@
 
     function _renderChannels() {
         var list = document.getElementById('chatChannelsList');
+        if (!list) return;
         list.innerHTML = '';
 
-        _channels.forEach(function (ch) {
+        _channels.forEach(function (ch, idx) {
             var el = document.createElement('div');
-            el.className = 'chat-channel-item' + (_currentChannel && _currentChannel.id === ch.id ? ' active' : '');
+            var isActive = _currentChannel && _currentChannel.id === ch.id;
+            var hasUnread = ch.unreadCount > 0;
+            el.className = 'chat-channel-item' + (isActive ? ' active' : '') + (hasUnread ? ' has-unread' : '');
             el.dataset.channelId = ch.id;
 
+            var colorClass = 'chat-channel-color-' + _channelColorIdx(idx);
             var icon = ch.name.charAt(1).toUpperCase();
             var preview = ch.lastMessageContent
                 ? (ch.lastMessageUsername ? ch.lastMessageUsername + ': ' : '') + ch.lastMessageContent
                 : ch.description || 'Ще немає повідомлень';
 
+            var timeStr = '';
+            if (ch.lastMessageAt) {
+                var d = new Date(ch.lastMessageAt);
+                var now = new Date();
+                timeStr = d.toDateString() === now.toDateString()
+                    ? d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
+                    : d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
+            }
+
             el.innerHTML =
-                '<div class="chat-channel-icon">' + icon + '</div>' +
+                '<div class="chat-channel-icon ' + colorClass + '">' + icon + '</div>' +
                 '<div class="chat-channel-info">' +
-                    '<div class="chat-channel-name">' + _esc(ch.name) + '</div>' +
-                    '<div class="chat-channel-preview">' + _esc(_truncate(preview, 40)) + '</div>' +
-                '</div>' +
-                (ch.unreadCount > 0 ? '<div class="chat-channel-badge">' + ch.unreadCount + '</div>' : '');
+                    '<div class="chat-channel-name-row">' +
+                        '<div class="chat-channel-name">' + _esc(ch.name) + '</div>' +
+                        (timeStr ? '<span class="chat-channel-time">' + timeStr + '</span>' : '') +
+                    '</div>' +
+                    '<div class="chat-channel-preview-row">' +
+                        '<div class="chat-channel-preview">' + _esc(_truncate(preview, 35)) + '</div>' +
+                        (hasUnread ? '<div class="chat-channel-badge">' + ch.unreadCount + '</div>' : '') +
+                    '</div>' +
+                '</div>';
 
             el.addEventListener('click', function () {
                 _selectChannel(ch);
@@ -291,7 +356,7 @@
 
     async function _selectChannel(channel) {
         // Leave previous
-        if (_currentChannel) {
+        if (_currentChannel && typeof ParkWS !== 'undefined') {
             ParkWS.leaveChannel(_currentChannel.id);
         }
 
@@ -299,11 +364,22 @@
         _replyTo = null;
         _cancelReply();
 
-        // Update UI
+        // Update header
         document.getElementById('chatHeaderName').textContent = channel.name;
         document.getElementById('chatHeaderDesc').textContent = channel.description || '';
-        document.getElementById('chatInput').disabled = false;
-        document.getElementById('chatSendBtn').disabled = false;
+        var meta = document.getElementById('chatHeaderMeta');
+        var membersEl = document.getElementById('chatHeaderMembers');
+        if (meta && membersEl) {
+            meta.style.display = 'flex';
+            var memberCount = channel.memberCount || _chatUsers.length;
+            membersEl.textContent = memberCount + ' ' + _pluralize(memberCount, 'учасник', 'учасники', 'учасників');
+        }
+
+        // Enable input
+        var inputEl = document.getElementById('chatInput');
+        var sendBtnEl = document.getElementById('chatSendBtn');
+        if (inputEl) inputEl.disabled = false;
+        if (sendBtnEl) sendBtnEl.disabled = false;
 
         // Mark active in sidebar
         document.querySelectorAll('.chat-channel-item').forEach(function (el) {
@@ -311,11 +387,11 @@
         });
 
         // Close mobile sidebar
-        document.getElementById('chatSidebar').classList.remove('open');
-        document.getElementById('chatSidebarOverlay').classList.remove('visible');
+        if (_sidebar) _sidebar.classList.remove('open');
+        if (_overlay) _overlay.classList.remove('visible');
 
         // Join WS channel
-        ParkWS.joinChannel(channel.id);
+        if (typeof ParkWS !== 'undefined') ParkWS.joinChannel(channel.id);
 
         // Load messages
         try {
@@ -339,7 +415,7 @@
         }
 
         // Focus input
-        document.getElementById('chatInput').focus();
+        if (inputEl) inputEl.focus();
     }
 
     // ==========================================
@@ -348,40 +424,59 @@
 
     function _renderMessages(messages) {
         var container = document.getElementById('chatMessages');
+        if (!container) return;
         container.innerHTML = '';
 
         if (messages.length === 0) {
-            container.innerHTML = '<div class="chat-empty"><div class="chat-empty-icon">💬</div><div>Почніть спілкування!</div></div>';
+            container.innerHTML =
+                '<div class="chat-empty">' +
+                    '<div class="chat-empty-icon">💬</div>' +
+                    '<div class="chat-empty-title">Почніть спілкування!</div>' +
+                    '<div class="chat-empty-hint">Напишіть перше повідомлення у канал ' + _esc(_currentChannel ? _currentChannel.name : '') + '</div>' +
+                '</div>';
             return;
         }
 
         var lastDate = null;
+        var lastUserId = null;
         messages.forEach(function (msg) {
-            var msgDate = new Date(msg.createdAt).toLocaleDateString('uk-UA');
+            var msgDate = new Date(msg.createdAt).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
             if (msgDate !== lastDate) {
                 lastDate = msgDate;
+                lastUserId = null; // Reset grouping on new date
                 var divider = document.createElement('div');
                 divider.className = 'chat-date-divider';
                 divider.innerHTML = '<span>' + msgDate + '</span>';
                 container.appendChild(divider);
             }
-            container.appendChild(_createMessageEl(msg));
+
+            // Message grouping: same user within 3 minutes
+            var isGrouped = false;
+            if (lastUserId === String(msg.userId) && !msg.replyTo) {
+                isGrouped = true;
+            }
+            lastUserId = String(msg.userId);
+
+            container.appendChild(_createMessageEl(msg, isGrouped));
         });
 
         // Scroll to bottom
         container.scrollTop = container.scrollHeight;
     }
 
-    function _createMessageEl(msg) {
+    function _createMessageEl(msg, isGrouped) {
         var isOwn = String(msg.userId) === _currentUserId;
         var el = document.createElement('div');
-        el.className = 'chat-message' + (isOwn ? ' own' : '');
+        el.className = 'chat-message' + (isOwn ? ' own' : '') + (isGrouped ? ' grouped' : '');
         el.dataset.messageId = msg.id;
         el.dataset.seq = msg.seq;
 
         var initial = (msg.displayName || msg.username || '?').charAt(0).toUpperCase();
         var time = new Date(msg.createdAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
         var content = msg.deletedAt ? '<em style="color:var(--gray-400)">Повідомлення видалено</em>' : _formatContent(msg.content);
+
+        var avatarColorClass = 'chat-avatar-color-' + _colorIdx(msg.userId);
+        var usernameColorClass = 'chat-username-color-' + _colorIdx(msg.userId);
 
         var replyHtml = '';
         if (msg.replyTo && msg.replyContent) {
@@ -394,10 +489,10 @@
         var reactionsHtml = _renderReactions(msg);
 
         el.innerHTML =
-            '<div class="chat-avatar">' + initial + '</div>' +
+            '<div class="chat-avatar ' + avatarColorClass + '">' + initial + '</div>' +
             '<div class="chat-bubble">' +
                 '<div class="chat-bubble-header">' +
-                    '<span class="chat-bubble-username">' + _esc(msg.displayName || msg.username) + '</span>' +
+                    '<span class="chat-bubble-username ' + usernameColorClass + '">' + _esc(msg.displayName || msg.username) + '</span>' +
                     '<span class="chat-bubble-time">' + time + '</span>' +
                 '</div>' +
                 replyHtml +
@@ -410,12 +505,18 @@
             '</div>';
 
         // Action handlers
-        el.querySelector('[data-action="reply"]').addEventListener('click', function () {
-            _startReply(msg);
-        });
-        el.querySelector('[data-action="react"]').addEventListener('click', function (e) {
-            _showEmojiPicker(msg, e.target);
-        });
+        var replyBtn = el.querySelector('[data-action="reply"]');
+        if (replyBtn) {
+            replyBtn.addEventListener('click', function () {
+                _startReply(msg);
+            });
+        }
+        var reactBtn = el.querySelector('[data-action="react"]');
+        if (reactBtn) {
+            reactBtn.addEventListener('click', function (e) {
+                _showEmojiPicker(msg, e.target);
+            });
+        }
 
         // Reaction chip clicks
         el.querySelectorAll('.chat-reaction-chip').forEach(function (chip) {
@@ -430,7 +531,6 @@
     function _renderReactions(msg) {
         if (!msg.reactions || msg.reactions.length === 0) return '';
 
-        // Group by emoji
         var groups = {};
         msg.reactions.forEach(function (r) {
             if (!groups[r.emoji]) groups[r.emoji] = [];
@@ -448,10 +548,11 @@
     }
 
     function _formatContent(text) {
-        // Escape HTML first
         var safe = _esc(text);
         // Format @mentions
         safe = safe.replace(/\B@(\w+)/g, '<span class="chat-mention">@$1</span>');
+        // Format URLs
+        safe = safe.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary-dark);text-decoration:underline">$1</a>');
         return safe;
     }
 
@@ -461,6 +562,7 @@
 
     async function _sendMessage() {
         var input = document.getElementById('chatInput');
+        if (!input) return;
         var content = input.value.trim();
         if (!content || !_currentChannel) return;
 
@@ -477,10 +579,9 @@
         _cancelReply();
 
         // Check if online
-        if (!ParkWS.isConnected()) {
+        if (typeof ParkWS !== 'undefined' && !ParkWS.isConnected()) {
             _offlineQueue.push({ channelId: _currentChannel.id, data: msgData });
             _saveOfflineQueue();
-            // Show optimistic message
             _appendOptimisticMessage(content);
             return;
         }
@@ -493,7 +594,6 @@
             }
         } catch (err) {
             console.error('[Chat] Send error:', err);
-            // Put content back
             input.value = content;
             _autoGrow(input);
         }
@@ -501,11 +601,25 @@
 
     function _appendMessage(msg) {
         var container = document.getElementById('chatMessages');
+        if (!container) return;
         // Remove empty state
         var empty = container.querySelector('.chat-empty');
         if (empty) empty.remove();
 
-        container.appendChild(_createMessageEl(msg));
+        // Check grouping with last message
+        var lastMsg = container.querySelector('.chat-message:last-child');
+        var isGrouped = false;
+        if (lastMsg && lastMsg.dataset.messageId) {
+            var lastUserId = lastMsg.classList.contains('own') ? _currentUserId : (lastMsg.querySelector('.chat-avatar') || {}).dataset ? null : null;
+            // Simplified: group if same user class
+            var newIsOwn = String(msg.userId) === _currentUserId;
+            var lastIsOwn = lastMsg.classList.contains('own');
+            if (newIsOwn === lastIsOwn && !msg.replyTo) {
+                isGrouped = true;
+            }
+        }
+
+        container.appendChild(_createMessageEl(msg, isGrouped));
         container.scrollTop = container.scrollHeight;
     }
 
@@ -534,15 +648,19 @@
     function _startReply(msg) {
         _replyTo = msg;
         var preview = document.getElementById('chatReplyPreview');
-        preview.classList.add('visible');
-        document.getElementById('chatReplyUser').textContent = msg.displayName || msg.username;
-        document.getElementById('chatReplyContent').textContent = _truncate(msg.content, 100);
-        document.getElementById('chatInput').focus();
+        if (preview) preview.classList.add('visible');
+        var replyUser = document.getElementById('chatReplyUser');
+        if (replyUser) replyUser.textContent = msg.displayName || msg.username;
+        var replyContent = document.getElementById('chatReplyContent');
+        if (replyContent) replyContent.textContent = _truncate(msg.content, 100);
+        var input = document.getElementById('chatInput');
+        if (input) input.focus();
     }
 
     function _cancelReply() {
         _replyTo = null;
-        document.getElementById('chatReplyPreview').classList.remove('visible');
+        var preview = document.getElementById('chatReplyPreview');
+        if (preview) preview.classList.remove('visible');
     }
 
     // ==========================================
@@ -550,7 +668,6 @@
     // ==========================================
 
     function _showEmojiPicker(msg, target) {
-        // Remove existing picker
         document.querySelectorAll('.chat-emoji-picker').forEach(function (el) { el.remove(); });
 
         var picker = document.createElement('div');
@@ -568,21 +685,19 @@
         });
 
         var bubble = target.closest('.chat-bubble');
-        bubble.appendChild(picker);
+        if (bubble) bubble.appendChild(picker);
 
-        // Auto-close
-        setTimeout(function () { picker.remove(); }, 5000);
+        setTimeout(function () { if (picker.parentNode) picker.remove(); }, 5000);
         document.addEventListener('click', function handler(e) {
-            if (!picker.contains(e.target)) {
+            if (!picker.contains(e.target) && e.target !== target) {
                 picker.remove();
                 document.removeEventListener('click', handler);
             }
-        }, { once: false });
+        });
     }
 
     async function _toggleReaction(messageId, emoji) {
         try {
-            // Check if own reaction exists
             var msgEl = document.querySelector('[data-message-id="' + messageId + '"]');
             var existingChip = msgEl ? msgEl.querySelector('.chat-reaction-chip.own[data-emoji="' + emoji + '"]') : null;
 
@@ -608,7 +723,6 @@
         var cursorPos = input.selectionStart;
         var beforeCursor = val.substring(0, cursorPos);
 
-        // Find @ trigger
         var atIdx = beforeCursor.lastIndexOf('@');
         if (atIdx === -1 || (atIdx > 0 && /\w/.test(beforeCursor[atIdx - 1]))) {
             _closeMentionPopup();
@@ -618,7 +732,6 @@
         var query = beforeCursor.substring(atIdx + 1).toLowerCase();
         _mentionStart = atIdx;
 
-        // Filter users
         var filtered = _chatUsers.filter(function (u) {
             return u.username.toLowerCase().startsWith(query) ||
                    (u.displayName && u.displayName.toLowerCase().startsWith(query));
@@ -635,7 +748,8 @@
 
     function _renderMentionPopup(users) {
         var popup = document.getElementById('chatMentionPopup');
-        popup.innerHTML = '';
+        if (!popup) return;
+        popup.innerHTML = '<div class="chat-mention-popup-header">Учасники</div>';
         popup.classList.add('visible');
 
         users.forEach(function (u, idx) {
@@ -643,8 +757,9 @@
             item.className = 'chat-mention-item' + (idx === _mentionActiveIdx ? ' active' : '');
             item.dataset.username = u.username;
             var initial = (u.displayName || u.username).charAt(0).toUpperCase();
+            var avatarColor = 'chat-avatar-color-' + _colorIdx(u.id || idx);
             item.innerHTML =
-                '<div class="chat-mention-item-avatar">' + initial + '</div>' +
+                '<div class="chat-mention-item-avatar ' + avatarColor + '">' + initial + '</div>' +
                 '<div>' +
                     '<div class="chat-mention-item-name">' + _esc(u.displayName || u.username) + '</div>' +
                     '<div class="chat-mention-item-role">@' + _esc(u.username) + '</div>' +
@@ -673,6 +788,7 @@
 
     function _insertMention(username) {
         var input = document.getElementById('chatInput');
+        if (!input) return;
         var val = input.value;
         var before = val.substring(0, _mentionStart);
         var after = val.substring(input.selectionStart);
@@ -685,8 +801,10 @@
 
     function _closeMentionPopup() {
         var popup = document.getElementById('chatMentionPopup');
-        popup.classList.remove('visible');
-        popup.innerHTML = '';
+        if (popup) {
+            popup.classList.remove('visible');
+            popup.innerHTML = '';
+        }
         _mentionStart = -1;
     }
 
@@ -709,7 +827,6 @@
                 _onReaction(payload);
                 break;
             case 'chat:read':
-                // Could show read indicators in future
                 break;
             case 'chat:mention':
                 _playSound('mention');
@@ -721,18 +838,18 @@
         var msg = payload.message;
         if (!msg) return;
 
-        // If it's for the active channel, show it
         if (_currentChannel && msg.channelId === _currentChannel.id) {
+            // Don't show our own messages twice (already shown optimistically by _sendMessage)
+            if (String(msg.userId) === _currentUserId) return;
             _appendMessage(msg);
-            // Mark as read
             _api('PUT', '/channels/' + msg.channelId + '/read', { seq: msg.seq });
         } else {
-            // Increment unread for that channel
             var ch = _channels.find(function (c) { return c.id === msg.channelId; });
             if (ch) {
                 ch.unreadCount = (ch.unreadCount || 0) + 1;
                 ch.lastMessageContent = msg.content;
                 ch.lastMessageUsername = msg.username;
+                ch.lastMessageAt = msg.createdAt;
                 _renderChannels();
             }
         }
@@ -748,7 +865,6 @@
         _typingUsers[username] = true;
         _renderTyping();
 
-        // Clear after 4 seconds
         if (_typingTimers[username]) clearTimeout(_typingTimers[username]);
         _typingTimers[username] = setTimeout(function () {
             delete _typingUsers[username];
@@ -759,6 +875,7 @@
 
     function _renderTyping() {
         var el = document.getElementById('chatTyping');
+        if (!el) return;
         var names = Object.keys(_typingUsers);
         if (names.length === 0) {
             el.innerHTML = '';
@@ -775,7 +892,6 @@
         var msgEl = document.querySelector('[data-message-id="' + payload.messageId + '"]');
         if (!msgEl) return;
 
-        // Update reactions in DOM
         var existingReactions = msgEl.querySelector('.chat-reactions');
         var fakeMsg = { reactions: payload.reactions };
         var newHtml = _renderReactions(fakeMsg);
@@ -787,7 +903,6 @@
             if (content) content.insertAdjacentHTML('afterend', newHtml);
         }
 
-        // Re-bind reaction chip clicks
         msgEl.querySelectorAll('.chat-reaction-chip').forEach(function (chip) {
             chip.addEventListener('click', function () {
                 _toggleReaction(payload.messageId, chip.dataset.emoji);
@@ -806,15 +921,15 @@
         try {
             var messages = await _api('GET', '/channels/' + _currentChannel.id + '/messages?before=' + _oldestSeq + '&limit=30');
             if (!messages || messages.length === 0) {
-                _oldestSeq = 0; // No more messages
+                _oldestSeq = 0;
                 return;
             }
 
             _oldestSeq = messages[0].seq;
             var container = document.getElementById('chatMessages');
+            if (!container) return;
             var prevHeight = container.scrollHeight;
 
-            // Prepend messages (they come oldest-first)
             var lastDate = null;
             var frag = document.createDocumentFragment();
             messages.forEach(function (msg) {
@@ -826,11 +941,10 @@
                     divider.innerHTML = '<span>' + msgDate + '</span>';
                     frag.appendChild(divider);
                 }
-                frag.appendChild(_createMessageEl(msg));
+                frag.appendChild(_createMessageEl(msg, false));
             });
             container.insertBefore(frag, container.firstChild);
 
-            // Maintain scroll position
             container.scrollTop = container.scrollHeight - prevHeight;
         } catch (err) {
             console.error('[Chat] Load older error:', err);
@@ -862,9 +976,9 @@
         _offlineQueue = [];
         _saveOfflineQueue();
 
-        for (var item of queue) {
+        for (var i = 0; i < queue.length; i++) {
             try {
-                await _api('POST', '/channels/' + item.channelId + '/messages', item.data);
+                await _api('POST', '/channels/' + queue[i].channelId + '/messages', queue[i].data);
             } catch (err) {
                 console.error('[Chat] Offline drain error:', err);
             }
@@ -876,6 +990,7 @@
     // ==========================================
 
     function _autoGrow(textarea) {
+        if (!textarea) return;
         textarea.style.height = 'auto';
         textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
     }
@@ -890,5 +1005,14 @@
     function _truncate(str, max) {
         if (!str) return '';
         return str.length > max ? str.substring(0, max) + '...' : str;
+    }
+
+    function _pluralize(n, one, few, many) {
+        var abs = Math.abs(n) % 100;
+        var last = abs % 10;
+        if (abs > 10 && abs < 20) return many;
+        if (last > 1 && last < 5) return few;
+        if (last === 1) return one;
+        return many;
     }
 })();

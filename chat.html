@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Event Genix | Чат</title>
+    <title>Event Genix | Командний чат</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
     <link rel="stylesheet" href="css/base.css?v=21.0.0">
@@ -71,7 +71,16 @@
                 <!-- Chat channels sidebar -->
                 <div class="chat-sidebar" id="chatSidebar">
                     <div class="chat-sidebar-header">
-                        <h2 class="chat-sidebar-title">Канали</h2>
+                        <div class="chat-sidebar-top">
+                            <h2 class="chat-sidebar-title">Чат команди</h2>
+                            <div class="chat-sidebar-actions">
+                                <button class="chat-sidebar-action-btn" id="chatNewChannel" title="Новий канал">+</button>
+                            </div>
+                        </div>
+                        <div class="chat-search">
+                            <span class="chat-search-icon">🔍</span>
+                            <input type="text" class="chat-search-input" id="chatSearchInput" placeholder="Пошук каналів...">
+                        </div>
                     </div>
                     <div class="chat-channels-list" id="chatChannelsList"></div>
                 </div>
@@ -81,23 +90,36 @@
                 <div class="chat-main">
                     <div class="chat-header">
                         <button class="chat-header-toggle" id="chatToggleSidebar">☰</button>
-                        <div>
+                        <div class="chat-header-info">
                             <div class="chat-header-name" id="chatHeaderName">Оберіть канал</div>
                             <div class="chat-header-desc" id="chatHeaderDesc"></div>
+                        </div>
+                        <div class="chat-header-meta" id="chatHeaderMeta" style="display:none">
+                            <span class="chat-header-meta-dot"></span>
+                            <span id="chatHeaderMembers"></span>
+                        </div>
+                        <div class="chat-header-actions">
+                            <button class="chat-header-action-btn" id="chatSearchMsgBtn" title="Пошук повідомлень">🔍</button>
+                            <button class="chat-header-action-btn" id="chatPinBtn" title="Закріплені">📌</button>
+                            <button class="chat-header-action-btn" id="chatInfoBtn" title="Інформація">ℹ️</button>
                         </div>
                     </div>
 
                     <div class="chat-messages" id="chatMessages">
                         <div class="chat-empty">
                             <div class="chat-empty-icon">💬</div>
-                            <div>Оберіть канал для спілкування</div>
+                            <div class="chat-empty-title">Командний чат</div>
+                            <div class="chat-empty-hint">Оберіть канал зліва, щоб почати спілкування з командою</div>
                         </div>
                     </div>
+
+                    <button class="chat-scroll-bottom" id="chatScrollBottom" title="Донизу">↓</button>
 
                     <div class="chat-typing" id="chatTyping"></div>
 
                     <div class="chat-input-area" style="position: relative;">
                         <div class="chat-reply-preview" id="chatReplyPreview">
+                            <span class="chat-reply-preview-icon">↩</span>
                             <div class="chat-reply-preview-text">
                                 <div class="chat-reply-preview-user" id="chatReplyUser"></div>
                                 <div class="chat-reply-preview-content" id="chatReplyContent"></div>
@@ -106,8 +128,11 @@
                         </div>
                         <div class="chat-mention-popup" id="chatMentionPopup"></div>
                         <div class="chat-input-row">
+                            <button class="chat-input-attach-btn" id="chatAttachBtn" title="Вкласти файл">📎</button>
                             <textarea class="chat-input" id="chatInput" placeholder="Написати повідомлення..." rows="1" disabled></textarea>
-                            <button class="chat-send-btn" id="chatSendBtn" disabled title="Надіслати">▶</button>
+                            <button class="chat-send-btn" id="chatSendBtn" disabled title="Надіслати">
+                                <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                            </button>
                         </div>
                     </div>
                 </div>

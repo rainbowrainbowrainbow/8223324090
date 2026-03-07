@@ -46,6 +46,7 @@ const PAGE_ACCESS = {
     '/demo':      ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
     '/programs':  ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor'],
     '/hr':        ['creator', 'director', 'vice_director', 'senior_manager'],
+    '/chat':      ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
     '/finance':   ['creator', 'director'],
     '/analytics': ['creator', 'director', 'vice_director', 'senior_manager'],
     '/status':    ['creator', 'director', 'vice_director', 'senior_manager'],

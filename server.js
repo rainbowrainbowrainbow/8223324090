@@ -149,6 +149,7 @@ app.use('/api/sales', require('./routes/sales'));
 app.use('/api/page-statuses', require('./routes/page-statuses'));
 app.use('/api/leads', require('./routes/leads'));
 app.use('/api/scripts', require('./routes/scripts'));
+app.use('/api/chat', require('./routes/chat'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -258,6 +259,10 @@ app.get('/training', (req, res) => {
 // v20.9.13: leads page
 app.get('/leads', (req, res) => {
     res.sendFile(path.join(__dirname, 'leads.html'));
+});
+// v20.13: Team messenger
+app.get('/chat', (req, res) => {
+    res.sendFile(path.join(__dirname, 'chat.html'));
 });
 
 // SPA fallback (must be last)

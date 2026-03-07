@@ -40,6 +40,12 @@ var ParkWS = (function () {
     // Currently subscribed dates
     var _subscribedDates = new Set();
 
+    // Currently subscribed chat channels
+    var _subscribedChannels = new Set();
+
+    // Typing debounce timer
+    var _typingTimer = null;
+
     // ==========================================
     // CONNECT
     // ==========================================
@@ -137,6 +143,7 @@ var ParkWS = (function () {
         _connected = false;
         _reconnectAttempts = 0;
         _subscribedDates.clear();
+        _subscribedChannels.clear();
 
         if (_reconnectTimer) {
             clearTimeout(_reconnectTimer);
@@ -219,6 +226,8 @@ var ParkWS = (function () {
                 _dispatchStatus(true);
                 // Re-subscribe to previously subscribed dates
                 _resubscribeDates();
+                // Fetch chat unread badge
+                _updateChatBadge();
                 break;
 
             case 'error':
@@ -247,6 +256,26 @@ var ParkWS = (function () {
             // Settings events
             case 'settings:updated':
                 _handleSettingsEvent(message);
+                break;
+
+            // Chat events
+            case 'chat:message':
+                window.dispatchEvent(new CustomEvent('ws:chat', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
+                // Update unread badge on non-chat pages
+                if (window.location.pathname !== '/chat') {
+                    _incrementChatBadge();
+                }
+                break;
+            case 'chat:typing':
+            case 'chat:typing_stop':
+            case 'chat:reaction':
+            case 'chat:read':
+            case 'chat:mention':
+                window.dispatchEvent(new CustomEvent('ws:chat', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
                 break;
 
             default:
@@ -384,6 +413,39 @@ var ParkWS = (function () {
         for (var dateStr of _subscribedDates) {
             _send({ type: 'JOIN_DATE', date: dateStr });
         }
+        // Also re-subscribe to chat channels
+        for (var channelId of _subscribedChannels) {
+            _send({ type: 'CHAT_JOIN', channelId: channelId });
+        }
+    }
+
+    // ==========================================
+    // CHAT CHANNEL SUBSCRIPTION
+    // ==========================================
+
+    function joinChannel(channelId) {
+        _subscribedChannels.add(channelId);
+        if (isConnected()) {
+            _send({ type: 'CHAT_JOIN', channelId: channelId });
+        }
+    }
+
+    function leaveChannel(channelId) {
+        _subscribedChannels.delete(channelId);
+        if (isConnected()) {
+            _send({ type: 'CHAT_LEAVE', channelId: channelId });
+        }
+    }
+
+    function sendChatTyping(channelId) {
+        if (!isConnected()) return;
+        if (_typingTimer) return; // Already sent recently
+        _send({ type: 'CHAT_TYPING', channelId: channelId });
+        _typingTimer = setTimeout(function () { _typingTimer = null; }, 3000);
+    }
+
+    function send(obj) {
+        _send(obj);
     }
 
     // ==========================================
@@ -428,6 +490,38 @@ var ParkWS = (function () {
     }
 
     /**
+     * Fetch chat unread count and update the sidebar badge.
+     */
+    function _updateChatBadge() {
+        var token = localStorage.getItem('pzp_token');
+        if (!token) return;
+        fetch('/api/chat/unread', { headers: { 'Authorization': 'Bearer ' + token } })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (data) _setChatBadge(data.total || 0);
+            })
+            .catch(function () {});
+    }
+
+    function _incrementChatBadge() {
+        var badge = document.getElementById('chatUnreadBadge');
+        if (!badge) return;
+        var current = parseInt(badge.textContent || '0', 10);
+        _setChatBadge(current + 1);
+    }
+
+    function _setChatBadge(count) {
+        var badge = document.getElementById('chatUnreadBadge');
+        if (!badge) return;
+        if (count > 0) {
+            badge.textContent = count > 99 ? '99+' : String(count);
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    /**
      * Dispatch a custom event to notify UI about connection status changes.
      */
     function _dispatchStatus(connected) {
@@ -457,6 +551,10 @@ var ParkWS = (function () {
         disconnect: disconnect,
         isConnected: isConnected,
         subscribeDate: subscribeDate,
-        unsubscribeDate: unsubscribeDate
+        unsubscribeDate: unsubscribeDate,
+        joinChannel: joinChannel,
+        leaveChannel: leaveChannel,
+        sendChatTyping: sendChatTyping,
+        send: send
     };
 })();

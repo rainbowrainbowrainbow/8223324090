@@ -20,6 +20,29 @@
     var _currentUsername = null;
     var _offlineQueue = [];
     var _soundsEnabled = true;
+    var _emojiPanelOpen = false;
+    var _emojiFrequent = [];
+    var _channelMembers = [];
+
+    // Emoji data (Telegram categories)
+    var EMOJI_CATEGORIES = [
+        { icon: '\u{1F554}', name: 'Часті', key: 'frequent' },
+        { icon: '\u{1F600}', name: 'Смайли', key: 'smileys' },
+        { icon: '\u{1F44D}', name: 'Жести', key: 'gestures' },
+        { icon: '\u{2764}\uFE0F', name: 'Символи', key: 'symbols' },
+        { icon: '\u{1F436}', name: 'Тварини', key: 'animals' },
+        { icon: '\u{1F34E}', name: 'Їжа', key: 'food' },
+        { icon: '\u{26BD}', name: 'Активності', key: 'activities' }
+    ];
+
+    var EMOJI_DATA = {
+        smileys: ['\u{1F600}','\u{1F603}','\u{1F604}','\u{1F601}','\u{1F606}','\u{1F605}','\u{1F602}','\u{1F923}','\u{1F642}','\u{1F643}','\u{1F609}','\u{1F60A}','\u{1F607}','\u{1F970}','\u{1F60D}','\u{1F929}','\u{1F618}','\u{1F617}','\u{1F61A}','\u{1F619}','\u{1F60B}','\u{1F61B}','\u{1F61C}','\u{1F92A}','\u{1F61D}','\u{1F911}','\u{1F917}','\u{1F92D}','\u{1F92B}','\u{1F914}','\u{1F910}','\u{1F928}','\u{1F610}','\u{1F611}','\u{1F636}','\u{1F60F}','\u{1F612}','\u{1F644}','\u{1F62C}','\u{1F925}','\u{1F60C}','\u{1F614}','\u{1F62A}','\u{1F924}','\u{1F634}','\u{1F637}','\u{1F912}','\u{1F915}','\u{1F922}','\u{1F92E}','\u{1F927}','\u{1F975}','\u{1F976}','\u{1F974}','\u{1F635}','\u{1F92F}','\u{1F920}','\u{1F973}','\u{1F60E}','\u{1F913}','\u{1F9D0}','\u{1F615}','\u{1F61F}','\u{1F641}','\u{2639}\uFE0F','\u{1F62E}','\u{1F62F}','\u{1F632}','\u{1F633}','\u{1F97A}','\u{1F626}','\u{1F627}','\u{1F628}','\u{1F630}','\u{1F625}','\u{1F622}','\u{1F62D}','\u{1F631}','\u{1F616}','\u{1F623}','\u{1F61E}','\u{1F613}','\u{1F629}','\u{1F62B}','\u{1F971}','\u{1F624}','\u{1F621}','\u{1F620}','\u{1F92C}','\u{1F608}','\u{1F47F}','\u{1F480}','\u{2620}\uFE0F','\u{1F4A9}','\u{1F921}','\u{1F479}','\u{1F47A}','\u{1F47B}','\u{1F47D}','\u{1F47E}','\u{1F916}'],
+        gestures: ['\u{1F44D}','\u{1F44E}','\u{1F44A}','\u{270A}','\u{1F91B}','\u{1F91C}','\u{1F44F}','\u{1F64C}','\u{1F450}','\u{1F932}','\u{1F91D}','\u{1F64F}','\u{270D}\uFE0F','\u{1F485}','\u{1F933}','\u{1F4AA}','\u{1F9BE}','\u{1F9BF}','\u{1F448}','\u{1F449}','\u{261D}\uFE0F','\u{1F446}','\u{1F595}','\u{1F447}','\u{270C}\uFE0F','\u{1F91E}','\u{1F596}','\u{1F918}','\u{1F919}','\u{1F590}\uFE0F','\u{270B}','\u{1F44B}','\u{1F44C}','\u{1F90F}','\u{1F90C}','\u{1F90D}','\u{1F9E1}','\u{1F49B}','\u{1F49A}','\u{1F499}','\u{1F49C}','\u{1F5A4}','\u{1F90E}','\u{1F494}','\u{2764}\uFE0F','\u{1F495}','\u{1F496}','\u{1F497}','\u{1F498}','\u{1F49D}'],
+        symbols: ['\u{2705}','\u{274C}','\u{2753}','\u{2757}','\u{1F4AF}','\u{1F525}','\u{2B50}','\u{1F31F}','\u{1F4A5}','\u{1F4A2}','\u{1F4AB}','\u{1F4A6}','\u{1F4A8}','\u{1F4A3}','\u{1F389}','\u{1F38A}','\u{1F3AF}','\u{1F3C6}','\u{1F3C5}','\u{1F947}','\u{1F948}','\u{1F949}','\u{26A0}\uFE0F','\u{1F6AB}','\u{267B}\uFE0F','\u{1F504}','\u{1F4CC}','\u{1F4DD}','\u{1F4CB}','\u{1F4C8}','\u{1F4C9}','\u{1F4CA}','\u{1F512}','\u{1F513}','\u{1F514}','\u{1F515}'],
+        animals: ['\u{1F436}','\u{1F431}','\u{1F42D}','\u{1F439}','\u{1F430}','\u{1F98A}','\u{1F43B}','\u{1F43C}','\u{1F428}','\u{1F42F}','\u{1F981}','\u{1F42E}','\u{1F437}','\u{1F438}','\u{1F435}','\u{1F412}','\u{1F414}','\u{1F427}','\u{1F426}','\u{1F985}','\u{1F989}','\u{1F987}','\u{1F43A}','\u{1F417}','\u{1F434}','\u{1F984}','\u{1F41D}','\u{1F41B}','\u{1F98B}','\u{1F40C}','\u{1F41A}','\u{1F41E}','\u{1F41C}','\u{1F997}','\u{1F577}\uFE0F','\u{1F982}','\u{1F422}','\u{1F40D}','\u{1F98E}','\u{1F9E6}'],
+        food: ['\u{1F34E}','\u{1F34F}','\u{1F34A}','\u{1F34B}','\u{1F34C}','\u{1F349}','\u{1F347}','\u{1F353}','\u{1F348}','\u{1F352}','\u{1F351}','\u{1F34D}','\u{1F965}','\u{1F95D}','\u{1F345}','\u{1F346}','\u{1F951}','\u{1F955}','\u{1F33D}','\u{1F336}\uFE0F','\u{1F954}','\u{1F360}','\u{1F950}','\u{1F35E}','\u{1F956}','\u{1F968}','\u{1F96F}','\u{1F9C0}','\u{1F356}','\u{1F357}','\u{1F969}','\u{1F953}','\u{1F354}','\u{1F35F}','\u{1F355}','\u{1F32D}','\u{1F96A}','\u{1F32E}','\u{1F32F}','\u{1F959}'],
+        activities: ['\u{26BD}','\u{1F3C0}','\u{1F3C8}','\u{26BE}','\u{1F94E}','\u{1F3BE}','\u{1F3D0}','\u{1F3C9}','\u{1F94F}','\u{1F3B1}','\u{1F3D3}','\u{1F3F8}','\u{1F3D2}','\u{1F94C}','\u{1F3D1}','\u{1F94D}','\u{26F3}','\u{1F3CB}\uFE0F','\u{1F6B4}','\u{1F3AE}','\u{1F3B2}','\u{1F3AD}','\u{1F3A8}','\u{1F3B5}','\u{1F3B6}','\u{1F3A4}','\u{1F3A7}','\u{1F3B8}','\u{1F3B9}','\u{1F3BA}']
+    };
 
     // Color palette for avatars and usernames
     var COLORS = 8;
@@ -217,6 +240,120 @@
         _sendBtn.addEventListener('click', _sendMessage);
     }
 
+    // Emoji panel toggle
+    var _emojiToggle = document.getElementById('chatEmojiToggle');
+    if (_emojiToggle) {
+        _emojiToggle.addEventListener('click', function () {
+            _toggleEmojiPanel();
+        });
+    }
+
+    function _loadEmojiFrequent() {
+        try {
+            _emojiFrequent = JSON.parse(localStorage.getItem('pzp_emoji_freq') || '[]');
+        } catch (e) { _emojiFrequent = []; }
+    }
+    function _saveEmojiFrequent(emoji) {
+        _emojiFrequent = _emojiFrequent.filter(function (e) { return e !== emoji; });
+        _emojiFrequent.unshift(emoji);
+        if (_emojiFrequent.length > 30) _emojiFrequent = _emojiFrequent.slice(0, 30);
+        localStorage.setItem('pzp_emoji_freq', JSON.stringify(_emojiFrequent));
+    }
+    _loadEmojiFrequent();
+
+    function _toggleEmojiPanel() {
+        var panel = document.getElementById('chatEmojiPanel');
+        if (!panel) return;
+        _emojiPanelOpen = !_emojiPanelOpen;
+        panel.style.display = _emojiPanelOpen ? 'flex' : 'none';
+        if (_emojiToggle) _emojiToggle.classList.toggle('active', _emojiPanelOpen);
+        if (_emojiPanelOpen) _buildEmojiPanel(panel);
+    }
+
+    function _buildEmojiPanel(panel) {
+        var activeCategory = 'frequent';
+        panel.innerHTML = '';
+
+        // Tabs
+        var tabs = document.createElement('div');
+        tabs.className = 'chat-emoji-panel-tabs';
+        EMOJI_CATEGORIES.forEach(function (cat) {
+            var btn = document.createElement('button');
+            btn.className = 'chat-emoji-panel-tab' + (cat.key === activeCategory ? ' active' : '');
+            btn.textContent = cat.icon;
+            btn.title = cat.name;
+            btn.addEventListener('click', function () {
+                activeCategory = cat.key;
+                tabs.querySelectorAll('.chat-emoji-panel-tab').forEach(function (t) { t.classList.remove('active'); });
+                btn.classList.add('active');
+                _renderEmojiGrid(grid, cat.key, searchInput.value.trim());
+            });
+            tabs.appendChild(btn);
+        });
+        panel.appendChild(tabs);
+
+        // Search
+        var searchWrap = document.createElement('div');
+        searchWrap.className = 'chat-emoji-panel-search';
+        searchWrap.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+        var searchInput = document.createElement('input');
+        searchInput.placeholder = 'Пошук...';
+        searchInput.addEventListener('input', _debounce(function () {
+            _renderEmojiGrid(grid, activeCategory, searchInput.value.trim());
+        }, 150));
+        searchWrap.appendChild(searchInput);
+        panel.appendChild(searchWrap);
+
+        // Grid
+        var grid = document.createElement('div');
+        grid.className = 'chat-emoji-panel-grid';
+        _renderEmojiGrid(grid, activeCategory, '');
+        panel.appendChild(grid);
+    }
+
+    function _renderEmojiGrid(grid, category, search) {
+        grid.innerHTML = '';
+        var emojis = [];
+        if (category === 'frequent') {
+            emojis = _emojiFrequent.length > 0 ? _emojiFrequent : EMOJI_DATA.smileys.slice(0, 20);
+        } else {
+            emojis = EMOJI_DATA[category] || [];
+        }
+        if (search) {
+            // Simple search: just show all matching across categories
+            emojis = [];
+            Object.keys(EMOJI_DATA).forEach(function (k) {
+                emojis = emojis.concat(EMOJI_DATA[k]);
+            });
+        }
+        var row = document.createElement('div');
+        row.className = 'chat-emoji-panel-row';
+        emojis.forEach(function (e) {
+            var btn = document.createElement('button');
+            btn.className = 'chat-emoji-panel-btn';
+            btn.textContent = e;
+            btn.addEventListener('click', function () {
+                _insertEmojiIntoInput(e);
+                _saveEmojiFrequent(e);
+            });
+            row.appendChild(btn);
+        });
+        grid.appendChild(row);
+    }
+
+    function _insertEmojiIntoInput(emoji) {
+        var input = document.getElementById('chatInput');
+        if (!input) return;
+        var start = input.selectionStart || input.value.length;
+        var before = input.value.substring(0, start);
+        var after = input.value.substring(start);
+        input.value = before + emoji + after;
+        var newPos = start + emoji.length;
+        input.setSelectionRange(newPos, newPos);
+        input.focus();
+        _autoGrow(input);
+    }
+
     // Reply close
     var _replyCloseBtn = document.getElementById('chatReplyClose');
     if (_replyCloseBtn) {
@@ -277,6 +414,219 @@
             if (e.key === 'Enter') _newChannelCreate.click();
             if (e.key === 'Escape') _newChannelOverlay.style.display = 'none';
         });
+    }
+
+    // ==========================================
+    // DM MODAL
+    // ==========================================
+    var _dmBtn = document.getElementById('chatNewDm');
+    var _dmOverlay = document.getElementById('chatDmOverlay');
+    var _dmCancel = document.getElementById('chatDmCancel');
+    var _dmSearch = document.getElementById('chatDmSearch');
+    var _dmUserList = document.getElementById('chatDmUserList');
+
+    if (_dmBtn) {
+        _dmBtn.addEventListener('click', function () {
+            _dmOverlay.style.display = 'flex';
+            _dmSearch.value = '';
+            _renderDmUserList('');
+            _dmSearch.focus();
+        });
+    }
+    if (_dmCancel) {
+        _dmCancel.addEventListener('click', function () { _dmOverlay.style.display = 'none'; });
+    }
+    if (_dmOverlay) {
+        _dmOverlay.addEventListener('click', function (e) { if (e.target === _dmOverlay) _dmOverlay.style.display = 'none'; });
+    }
+    if (_dmSearch) {
+        _dmSearch.addEventListener('input', function () { _renderDmUserList(this.value.trim()); });
+    }
+
+    function _renderDmUserList(query) {
+        if (!_dmUserList) return;
+        var q = query.toLowerCase();
+        var filtered = _chatUsers.filter(function (u) {
+            if (String(u.id) === _currentUserId) return false;
+            if (!q) return true;
+            return (u.username || '').toLowerCase().includes(q) || (u.displayName || '').toLowerCase().includes(q);
+        });
+        _dmUserList.innerHTML = '';
+        filtered.forEach(function (u) {
+            var initial = (u.displayName || u.username || '?').charAt(0).toUpperCase();
+            var colorClass = 'chat-avatar-color-' + _colorIdx(u.id || 0);
+            var item = document.createElement('div');
+            item.className = 'chat-dm-user-item';
+            item.innerHTML =
+                '<div class="chat-dm-user-item-avatar ' + colorClass + '">' + initial + '</div>' +
+                '<div class="chat-dm-user-item-info">' +
+                    '<div class="chat-dm-user-item-name">' + _esc(u.displayName || u.username) + '</div>' +
+                    '<div class="chat-dm-user-item-role">@' + _esc(u.username) + ' · ' + _esc(_roleLabel(u.role)) + '</div>' +
+                '</div>';
+            item.addEventListener('click', function () {
+                _startDm(u.id);
+                _dmOverlay.style.display = 'none';
+            });
+            _dmUserList.appendChild(item);
+        });
+        if (filtered.length === 0) {
+            _dmUserList.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Нікого не знайдено</div>';
+        }
+    }
+
+    async function _startDm(targetUserId) {
+        try {
+            var channel = await _api('POST', '/dm', { targetUserId: targetUserId });
+            if (channel) {
+                // Check if already in channels list
+                var exists = _channels.find(function (c) { return c.id === channel.id; });
+                if (!exists) {
+                    _channels.unshift(channel);
+                }
+                _renderChannels();
+                _selectChannel(channel);
+            }
+        } catch (err) {
+            console.error('[Chat] DM error:', err);
+        }
+    }
+
+    function _roleLabel(role) {
+        if (role === 'admin') return 'Адмін';
+        if (role === 'manager') return 'Менеджер';
+        if (role === 'animator') return 'Аніматор';
+        return 'Користувач';
+    }
+
+    // ==========================================
+    // ADD MEMBER MODAL
+    // ==========================================
+    var _addMemberOverlay = document.getElementById('chatAddMemberOverlay');
+    var _addMemberCancel = document.getElementById('chatAddMemberCancel');
+    var _addMemberSearch = document.getElementById('chatAddMemberSearch');
+    var _addMemberList = document.getElementById('chatAddMemberList');
+
+    if (_addMemberCancel) {
+        _addMemberCancel.addEventListener('click', function () { _addMemberOverlay.style.display = 'none'; });
+    }
+    if (_addMemberOverlay) {
+        _addMemberOverlay.addEventListener('click', function (e) { if (e.target === _addMemberOverlay) _addMemberOverlay.style.display = 'none'; });
+    }
+    if (_addMemberSearch) {
+        _addMemberSearch.addEventListener('input', function () { _renderAddMemberList(this.value.trim()); });
+    }
+
+    function _openAddMemberModal() {
+        if (!_addMemberOverlay) return;
+        _addMemberOverlay.style.display = 'flex';
+        _addMemberSearch.value = '';
+        _renderAddMemberList('');
+        _addMemberSearch.focus();
+    }
+
+    function _renderAddMemberList(query) {
+        if (!_addMemberList || !_currentChannel) return;
+        var q = query.toLowerCase();
+        var memberIds = _channelMembers.map(function (m) { return String(m.id); });
+        var filtered = _chatUsers.filter(function (u) {
+            if (memberIds.indexOf(String(u.id)) >= 0) return false;
+            if (!q) return true;
+            return (u.username || '').toLowerCase().includes(q) || (u.displayName || '').toLowerCase().includes(q);
+        });
+        _addMemberList.innerHTML = '';
+        filtered.forEach(function (u) {
+            var initial = (u.displayName || u.username || '?').charAt(0).toUpperCase();
+            var colorClass = 'chat-avatar-color-' + _colorIdx(u.id || 0);
+            var item = document.createElement('div');
+            item.className = 'chat-dm-user-item';
+            item.innerHTML =
+                '<div class="chat-dm-user-item-avatar ' + colorClass + '">' + initial + '</div>' +
+                '<div class="chat-dm-user-item-info">' +
+                    '<div class="chat-dm-user-item-name">' + _esc(u.displayName || u.username) + '</div>' +
+                    '<div class="chat-dm-user-item-role">@' + _esc(u.username) + '</div>' +
+                '</div>';
+            item.addEventListener('click', async function () {
+                try {
+                    await _api('POST', '/channels/' + _currentChannel.id + '/members', { userId: u.id });
+                    _channelMembers.push({ id: u.id, username: u.username, displayName: u.displayName || u.username, role: u.role });
+                    _renderAddMemberList(query);
+                    _renderInfoPanel();
+                } catch (err) {
+                    console.error('[Chat] Add member error:', err);
+                }
+            });
+            _addMemberList.appendChild(item);
+        });
+        if (filtered.length === 0) {
+            _addMemberList.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Всі вже додані</div>';
+        }
+    }
+
+    // ==========================================
+    // USER PROFILE PANEL
+    // ==========================================
+    async function _showUserProfile(userId) {
+        if (!_infoPanel) return;
+        try {
+            var profile = await _api('GET', '/users/' + userId + '/profile');
+            if (!profile) return;
+            _infoBtn.classList.remove('active');
+            _pinBtn.classList.remove('active');
+            document.getElementById('chatInfoPanelTitle').textContent = 'Профіль';
+            var body = document.getElementById('chatInfoPanelBody');
+            var initial = (profile.displayName || profile.username || '?').charAt(0).toUpperCase();
+            var colorClass = 'chat-avatar-color-' + _colorIdx(profile.id);
+            var roleLabel = _roleLabel(profile.role);
+
+            var fields = '';
+            if (profile.department) {
+                fields += '<div class="chat-profile-field"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><div><span class="chat-profile-field-label">Відділ</span>' + _esc(profile.department) + '</div></div>';
+            }
+            if (profile.position) {
+                fields += '<div class="chat-profile-field"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg><div><span class="chat-profile-field-label">Посада</span>' + _esc(profile.position) + '</div></div>';
+            }
+            if (profile.phone) {
+                fields += '<div class="chat-profile-field"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"/></svg><div><span class="chat-profile-field-label">Телефон</span>' + _esc(profile.phone) + '</div></div>';
+            }
+            if (profile.telegram) {
+                fields += '<div class="chat-profile-field"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><div><span class="chat-profile-field-label">Telegram</span>@' + _esc(profile.telegram) + '</div></div>';
+            }
+            var joinDate = new Date(profile.joinedAt).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
+            fields += '<div class="chat-profile-field"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><div><span class="chat-profile-field-label">В системі з</span>' + joinDate + '</div></div>';
+
+            body.innerHTML =
+                '<div class="chat-profile-card">' +
+                    '<div class="chat-profile-avatar ' + colorClass + '">' + initial + '</div>' +
+                    '<div class="chat-profile-name">' + _esc(profile.displayName) + '</div>' +
+                    '<div class="chat-profile-username">@' + _esc(profile.username) + '</div>' +
+                    '<div class="chat-profile-role-badge">' + roleLabel + '</div>' +
+                    '<div class="chat-profile-fields">' + fields + '</div>' +
+                    '<div class="chat-profile-actions">' +
+                        '<button class="chat-profile-action-btn" data-dm-user="' + profile.id + '"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Написати</button>' +
+                        '<button class="chat-profile-action-btn" data-tasks-user="' + profile.username + '"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Задачі</button>' +
+                    '</div>' +
+                '</div>';
+
+            // DM button handler
+            var dmBtn = body.querySelector('[data-dm-user]');
+            if (dmBtn) {
+                dmBtn.addEventListener('click', function () {
+                    _startDm(parseInt(dmBtn.dataset.dmUser, 10));
+                    _infoPanel.classList.remove('open');
+                });
+            }
+            // Tasks button handler
+            var tasksBtn = body.querySelector('[data-tasks-user]');
+            if (tasksBtn) {
+                tasksBtn.addEventListener('click', function () {
+                    window.open('/tasks?assignee=' + encodeURIComponent(tasksBtn.dataset.tasksUser), '_blank');
+                });
+            }
+
+            _infoPanel.classList.add('open');
+        } catch (err) {
+            console.error('[Chat] Profile error:', err);
+        }
     }
 
     // Pin button — show pinned messages in right panel
@@ -358,8 +708,9 @@
         e.preventDefault();
 
         var msgId = msgEl.dataset.messageId;
+        var msgUserId = msgEl.dataset.userId;
         var isOwn = msgEl.classList.contains('own');
-        _contextMsg = { id: msgId, isOwn: isOwn, el: msgEl };
+        _contextMsg = { id: msgId, isOwn: isOwn, el: msgEl, userId: msgUserId };
 
         // Show/hide edit option (only own messages)
         var editItem = _contextMenu.querySelector('[data-action="edit"]');
@@ -368,6 +719,12 @@
         // Show/hide delete option (own messages)
         var deleteItem = _contextMenu.querySelector('[data-action="delete"]');
         if (deleteItem) deleteItem.style.display = isOwn ? 'flex' : 'none';
+
+        // Show/hide profile and DM (only for other users' messages)
+        var profileItem = _contextMenu.querySelector('[data-action="profile"]');
+        if (profileItem) profileItem.style.display = isOwn ? 'none' : 'flex';
+        var dmItem = _contextMenu.querySelector('[data-action="dm"]');
+        if (dmItem) dmItem.style.display = isOwn ? 'none' : 'flex';
 
         // Position context menu
         var x = e.clientX;
@@ -407,6 +764,16 @@
                     break;
                 case 'delete':
                     _deleteFromContext();
+                    break;
+                case 'profile':
+                    if (_contextMsg && _contextMsg.userId) {
+                        _showUserProfile(parseInt(_contextMsg.userId, 10));
+                    }
+                    break;
+                case 'dm':
+                    if (_contextMsg && _contextMsg.userId) {
+                        _startDm(parseInt(_contextMsg.userId, 10));
+                    }
                     break;
             }
             _contextMenu.style.display = 'none';
@@ -586,22 +953,46 @@
         });
     }
 
-    function _renderInfoPanel() {
+    async function _renderInfoPanel() {
         var body = document.getElementById('chatInfoPanelBody');
-        if (!body) return;
-        var html = '<div class="chat-info-section-label">' + _chatUsers.length + ' ' + _pluralize(_chatUsers.length, 'учасник', 'учасники', 'учасників') + '</div>';
-        _chatUsers.forEach(function (u) {
+        if (!body || !_currentChannel) return;
+        body.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Завантаження...</div>';
+        try {
+            var members = await _api('GET', '/channels/' + _currentChannel.id + '/members');
+            _channelMembers = members || [];
+        } catch (err) {
+            _channelMembers = _chatUsers;
+        }
+        var count = _channelMembers.length;
+        var html = '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px 8px">' +
+            '<div class="chat-info-section-label" style="padding:0">' + count + ' ' + _pluralize(count, 'учасник', 'учасники', 'учасників') + '</div>' +
+            '<button class="chat-sidebar-action-btn" id="chatAddMemberBtn" title="Додати учасника"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>' +
+            '</div>';
+        _channelMembers.forEach(function (u) {
             var initial = (u.displayName || u.username || '?').charAt(0).toUpperCase();
             var colorClass = 'chat-avatar-color-' + _colorIdx(u.id || 0);
-            html += '<div class="chat-info-member">' +
+            html += '<div class="chat-info-member" data-user-id="' + u.id + '" style="cursor:pointer">' +
                 '<div class="chat-info-member-avatar ' + colorClass + '">' + initial + '</div>' +
                 '<div>' +
                     '<div class="chat-info-member-name">' + _esc(u.displayName || u.username) + '</div>' +
-                    '<div class="chat-info-member-role">@' + _esc(u.username) + '</div>' +
+                    '<div class="chat-info-member-role">@' + _esc(u.username) + ' · ' + _esc(_roleLabel(u.role)) + '</div>' +
                 '</div>' +
             '</div>';
         });
         body.innerHTML = html;
+
+        // Add member button
+        var addBtn = body.querySelector('#chatAddMemberBtn');
+        if (addBtn) {
+            addBtn.addEventListener('click', function () { _openAddMemberModal(); });
+        }
+
+        // Click member → profile
+        body.querySelectorAll('.chat-info-member[data-user-id]').forEach(function (el) {
+            el.addEventListener('click', function () {
+                _showUserProfile(parseInt(el.dataset.userId, 10));
+            });
+        });
     }
 
     // Scroll to bottom button
@@ -695,8 +1086,10 @@
             el.className = 'chat-channel-item' + (isActive ? ' active' : '') + (hasUnread ? ' has-unread' : '');
             el.dataset.channelId = ch.id;
 
-            var colorClass = 'chat-channel-color-' + _channelColorIdx(idx);
-            var icon = ch.name.charAt(1).toUpperCase();
+            var isDm = ch.isDm || false;
+            var colorClass = isDm ? 'chat-avatar-color-' + _colorIdx(ch.dmOtherUserId || idx) : 'chat-channel-color-' + _channelColorIdx(idx);
+            var iconClass = isDm ? 'chat-channel-dm-icon' : 'chat-channel-icon';
+            var icon = isDm ? (ch.name || '?').charAt(0).toUpperCase() : ch.name.charAt(1).toUpperCase();
             var preview = ch.lastMessageContent
                 ? (ch.lastMessageUsername ? ch.lastMessageUsername + ': ' : '') + ch.lastMessageContent
                 : ch.description || 'Ще немає повідомлень';
@@ -711,7 +1104,7 @@
             }
 
             el.innerHTML =
-                '<div class="chat-channel-icon ' + colorClass + '">' + icon + '</div>' +
+                '<div class="' + iconClass + ' ' + colorClass + '">' + icon + '</div>' +
                 '<div class="chat-channel-info">' +
                     '<div class="chat-channel-name-row">' +
                         '<div class="chat-channel-name">' + _esc(ch.name) + '</div>' +
@@ -751,8 +1144,11 @@
             if (_pinBtn) _pinBtn.classList.remove('active');
         }
 
-        // Reset mute button state
-        if (_muteBtn) _muteBtn.classList.remove('active');
+        // Set mute button state from channel data
+        if (_muteBtn) {
+            _muteBtn.classList.toggle('active', !!channel.muted);
+            _muteBtn.title = channel.muted ? 'Увімкнути сповіщення' : 'Вимкнути сповіщення';
+        }
 
         // Enable input
         var inputEl = document.getElementById('chatInput');
@@ -849,6 +1245,7 @@
         el.className = 'chat-message' + (isOwn ? ' own' : '') + (isGrouped ? ' grouped' : '');
         el.dataset.messageId = msg.id;
         el.dataset.seq = msg.seq;
+        el.dataset.userId = msg.userId;
 
         var initial = (msg.displayName || msg.username || '?').charAt(0).toUpperCase();
         var time = new Date(msg.createdAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
@@ -906,6 +1303,24 @@
             });
         });
 
+        // Avatar click → profile
+        var avatarEl = el.querySelector('.chat-avatar');
+        if (avatarEl && !isOwn) {
+            avatarEl.style.cursor = 'pointer';
+            avatarEl.addEventListener('click', function () {
+                _showUserProfile(msg.userId);
+            });
+        }
+
+        // Username click → profile
+        var usernameEl = el.querySelector('.chat-bubble-username');
+        if (usernameEl && !isOwn) {
+            usernameEl.style.cursor = 'pointer';
+            usernameEl.addEventListener('click', function () {
+                _showUserProfile(msg.userId);
+            });
+        }
+
         return el;
     }
 
@@ -946,6 +1361,18 @@
         if (!input) return;
         var content = input.value.trim();
         if (!content || !_currentChannel) return;
+
+        // Close emoji panel on send
+        if (_emojiPanelOpen) _toggleEmojiPanel();
+
+        // Handle /task command
+        if (content.startsWith('/task ') || content.startsWith('/задача ')) {
+            var taskText = content.replace(/^\/(?:task|задача)\s+/, '');
+            input.value = '';
+            _autoGrow(input);
+            _sendTaskFromChat(taskText);
+            return;
+        }
 
         // Handle edit mode
         if (_editingMsg) {
@@ -1419,6 +1846,35 @@
             } catch (err) {
                 console.error('[Chat] Offline drain error:', err);
             }
+        }
+    }
+
+    // ==========================================
+    // TASK FROM CHAT
+    // ==========================================
+
+    async function _sendTaskFromChat(taskText) {
+        try {
+            var token = localStorage.getItem('pzp_token');
+            var resp = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ title: taskText, priority: 'normal' })
+            });
+            if (resp.ok) {
+                var task = await resp.json();
+                // Send confirmation message to channel
+                await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
+                    content: '\u{1F4CB} Задачу створено: «' + taskText + '» (ID: ' + (task.id || '?') + ')'
+                });
+                var msg = await _api('GET', '/channels/' + _currentChannel.id + '/messages?limit=1');
+                if (msg && msg.length > 0) _appendMessage(msg[msg.length - 1]);
+            } else {
+                alert('Помилка створення задачі');
+            }
+        } catch (err) {
+            console.error('[Chat] Task creation error:', err);
+            alert('Помилка: ' + err.message);
         }
     }
 

@@ -6,13 +6,13 @@
     <title>Event Genix | Командний чат</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=21.2.0">
-    <link rel="stylesheet" href="css/layout.css?v=21.2.0">
-    <link rel="stylesheet" href="css/pages.css?v=21.2.0">
-    <link rel="stylesheet" href="css/modals.css?v=21.2.0">
-    <link rel="stylesheet" href="css/chat.css?v=21.2.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=21.2.0">
-    <link rel="stylesheet" href="css/responsive.css?v=21.2.0">
+    <link rel="stylesheet" href="css/base.css?v=21.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=21.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=21.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=21.3.0">
+    <link rel="stylesheet" href="css/chat.css?v=21.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=21.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=21.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -73,9 +73,14 @@
                     <div class="chat-sidebar-header">
                         <div class="chat-sidebar-top">
                             <h2 class="chat-sidebar-title">Канали</h2>
-                            <button class="chat-sidebar-action-btn" id="chatNewChannel" title="Новий канал">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            </button>
+                            <div class="chat-sidebar-top-actions">
+                                <button class="chat-sidebar-action-btn" id="chatNewDm" title="Особисте повідомлення">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                </button>
+                                <button class="chat-sidebar-action-btn" id="chatNewChannel" title="Новий канал">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                </button>
+                            </div>
                         </div>
                         <div class="chat-search">
                             <svg class="chat-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -155,7 +160,12 @@
                             <button class="chat-reply-close" id="chatEditClose">&times;</button>
                         </div>
                         <div class="chat-mention-popup" id="chatMentionPopup"></div>
+                        <!-- Full emoji picker popup -->
+                        <div class="chat-emoji-panel" id="chatEmojiPanel" style="display:none"></div>
                         <div class="chat-input-row">
+                            <button class="chat-input-icon-btn" id="chatEmojiToggle" title="Емоджі">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                            </button>
                             <textarea class="chat-input" id="chatInput" placeholder="Написати повідомлення..." rows="1" disabled></textarea>
                             <button class="chat-send-btn" id="chatSendBtn" disabled title="Надіслати">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
@@ -164,7 +174,7 @@
                     </div>
                 </div>
 
-                <!-- Right panel (info / pinned) -->
+                <!-- Right panel (info / pinned / profile) -->
                 <div class="chat-info-panel" id="chatInfoPanel">
                     <div class="chat-info-panel-header">
                         <h3 class="chat-info-panel-title" id="chatInfoPanelTitle">Учасники</h3>
@@ -193,6 +203,14 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
                 Реакція
             </button>
+            <button class="chat-context-item" data-action="profile">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Профіль
+            </button>
+            <button class="chat-context-item" data-action="dm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Написати особисто
+            </button>
             <div class="chat-context-divider"></div>
             <button class="chat-context-item chat-context-danger" data-action="delete">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -218,12 +236,42 @@
                 </div>
             </div>
         </div>
+
+        <!-- DM user picker modal -->
+        <div class="chat-modal-overlay" id="chatDmOverlay" style="display:none">
+            <div class="chat-modal">
+                <h3 class="chat-modal-title">Особисте повідомлення</h3>
+                <div class="chat-modal-field">
+                    <label>Оберіть користувача</label>
+                    <input type="text" id="chatDmSearch" placeholder="Пошук..." maxlength="40">
+                </div>
+                <div class="chat-dm-user-list" id="chatDmUserList"></div>
+                <div class="chat-modal-actions">
+                    <button class="chat-modal-btn chat-modal-btn-cancel" id="chatDmCancel">Скасувати</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add member to channel modal -->
+        <div class="chat-modal-overlay" id="chatAddMemberOverlay" style="display:none">
+            <div class="chat-modal">
+                <h3 class="chat-modal-title">Додати учасника</h3>
+                <div class="chat-modal-field">
+                    <label>Оберіть користувача</label>
+                    <input type="text" id="chatAddMemberSearch" placeholder="Пошук..." maxlength="40">
+                </div>
+                <div class="chat-dm-user-list" id="chatAddMemberList"></div>
+                <div class="chat-modal-actions">
+                    <button class="chat-modal-btn chat-modal-btn-cancel" id="chatAddMemberCancel">Скасувати</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script src="js/config.js?v=21.2.0"></script>
-    <script src="js/api.js?v=21.2.0"></script>
-    <script src="js/auth.js?v=21.2.0"></script>
-    <script src="js/ws.js?v=21.2.0"></script>
-    <script src="js/chat-page.js?v=21.2.0"></script>
+    <script src="js/config.js?v=21.3.0"></script>
+    <script src="js/api.js?v=21.3.0"></script>
+    <script src="js/auth.js?v=21.3.0"></script>
+    <script src="js/ws.js?v=21.3.0"></script>
+    <script src="js/chat-page.js?v=21.3.0"></script>
 </body>
 </html>

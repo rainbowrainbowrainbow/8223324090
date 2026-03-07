@@ -44,7 +44,7 @@ function mapChannelRow(row) {
  */
 async function getChannels(userId) {
     const result = await pool.query(`
-        SELECT c.*, m.last_read_seq,
+        SELECT c.*, m.last_read_seq, m.muted,
             COALESCE((SELECT MAX(seq) FROM chat_messages WHERE channel_id = c.id), 0) - COALESCE(m.last_read_seq, 0) AS unread_count,
             (SELECT created_at FROM chat_messages WHERE channel_id = c.id ORDER BY seq DESC LIMIT 1) AS last_message_at,
             (SELECT content FROM chat_messages WHERE channel_id = c.id AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1) AS last_message_content,
@@ -53,7 +53,27 @@ async function getChannels(userId) {
         JOIN chat_channel_members m ON m.channel_id = c.id AND m.user_id = $1
         ORDER BY last_message_at DESC NULLS LAST, c.name
     `, [userId]);
-    return result.rows.map(mapChannelRow);
+
+    // For DM channels, resolve the other user's name
+    const channels = result.rows.map(mapChannelRow);
+    for (const ch of channels) {
+        const row = result.rows.find(r => r.id === ch.id);
+        ch.isDm = row.is_dm || false;
+        ch.dmUserIds = row.dm_user_ids || null;
+        ch.muted = row.muted || false;
+        if (ch.isDm && ch.dmUserIds) {
+            const otherId = ch.dmUserIds.find(id => id !== userId);
+            if (otherId) {
+                const uRes = await pool.query('SELECT username, name FROM users WHERE id = $1', [otherId]);
+                if (uRes.rows[0]) {
+                    ch.name = uRes.rows[0].name || uRes.rows[0].username;
+                    ch.dmOtherUserId = otherId;
+                    ch.dmOtherUsername = uRes.rows[0].username;
+                }
+            }
+        }
+    }
+    return channels;
 }
 
 /**
@@ -436,6 +456,81 @@ async function joinChannel(channelId, userId) {
     );
 }
 
+/**
+ * Get or create a DM channel between two users.
+ */
+async function getOrCreateDM(userId1, userId2) {
+    const ids = [Math.min(userId1, userId2), Math.max(userId1, userId2)];
+    // Check if DM already exists
+    const existing = await pool.query(
+        `SELECT * FROM chat_channels WHERE is_dm = true AND dm_user_ids = $1`,
+        [ids]
+    );
+    if (existing.rows.length > 0) {
+        return mapChannelRow({ ...existing.rows[0], unread_count: '0' });
+    }
+    // Create DM channel
+    const slug = 'dm-' + ids[0] + '-' + ids[1];
+    const result = await pool.query(`
+        INSERT INTO chat_channels (slug, name, description, is_default, is_dm, dm_user_ids, created_by)
+        VALUES ($1, $2, '', false, true, $3, $4)
+        RETURNING *
+    `, [slug, 'DM', '', ids, userId1]);
+    const ch = result.rows[0];
+    // Auto-join both users
+    await pool.query(
+        'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2), ($1, $3) ON CONFLICT DO NOTHING',
+        [ch.id, ids[0], ids[1]]
+    );
+    return mapChannelRow({ ...ch, unread_count: '0' });
+}
+
+/**
+ * Add a member to a channel.
+ */
+async function addMember(channelId, userId) {
+    await pool.query(
+        'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [channelId, userId]
+    );
+}
+
+/**
+ * Remove a member from a channel.
+ */
+async function removeMember(channelId, userId) {
+    await pool.query(
+        'DELETE FROM chat_channel_members WHERE channel_id = $1 AND user_id = $2',
+        [channelId, userId]
+    );
+}
+
+/**
+ * Get user profile (linked to users table).
+ */
+async function getUserProfile(userId) {
+    const result = await pool.query(`
+        SELECT u.id, u.username, u.name, u.role, u.created_at,
+            s.department, s.position, s.phone, s.telegram_username
+        FROM users u
+        LEFT JOIN staff s ON lower(s.name) = lower(u.name) AND s.is_active = true
+        WHERE u.id = $1
+    `, [userId]);
+    if (result.rows.length === 0) return null;
+    const r = result.rows[0];
+    return {
+        id: r.id,
+        username: r.username,
+        displayName: r.name || r.username,
+        role: r.role,
+        department: r.department || null,
+        position: r.position || null,
+        phone: r.phone || null,
+        telegram: r.telegram_username || null,
+        joinedAt: r.created_at
+    };
+}
+
 module.exports = {
     getChannels,
     getChannelMessages,
@@ -458,5 +553,9 @@ module.exports = {
     getPinnedMessages,
     toggleMute,
     getChannelMembers,
-    joinChannel
+    joinChannel,
+    getOrCreateDM,
+    addMember,
+    removeMember,
+    getUserProfile
 };

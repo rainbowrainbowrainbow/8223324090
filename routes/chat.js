@@ -357,4 +357,72 @@ router.post('/channels/:id/join', async (req, res) => {
     }
 });
 
+// POST /api/chat/dm — get or create DM with another user
+router.post('/dm', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const { targetUserId } = req.body;
+        if (!targetUserId || targetUserId === userId) {
+            return res.status(400).json({ error: 'Invalid target user' });
+        }
+        const channel = await chat.getOrCreateDM(userId, parseInt(targetUserId, 10));
+        res.json(channel);
+    } catch (err) {
+        log.error('Error creating DM', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/chat/channels/:id/members — add member to channel
+router.post('/channels/:id/members', async (req, res) => {
+    try {
+        const channelId = parseInt(req.params.id, 10);
+        const { userId: targetUserId } = req.body;
+        if (isNaN(channelId) || !targetUserId) {
+            return res.status(400).json({ error: 'Invalid channel or user ID' });
+        }
+        await chat.addMember(channelId, parseInt(targetUserId, 10));
+
+        broadcastToChannel(channelId, 'chat:member-added', {
+            channelId,
+            userId: targetUserId
+        });
+
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Error adding member', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// DELETE /api/chat/channels/:id/members/:userId — remove member from channel
+router.delete('/channels/:id/members/:userId', async (req, res) => {
+    try {
+        const channelId = parseInt(req.params.id, 10);
+        const targetUserId = parseInt(req.params.userId, 10);
+        if (isNaN(channelId) || isNaN(targetUserId)) {
+            return res.status(400).json({ error: 'Invalid IDs' });
+        }
+        await chat.removeMember(channelId, targetUserId);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Error removing member', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/chat/users/:id/profile — get user profile
+router.get('/users/:id/profile', async (req, res) => {
+    try {
+        const userId = parseInt(req.params.id, 10);
+        if (isNaN(userId)) return res.status(400).json({ error: 'Invalid user ID' });
+        const profile = await chat.getUserProfile(userId);
+        if (!profile) return res.status(404).json({ error: 'User not found' });
+        res.json(profile);
+    } catch (err) {
+        log.error('Error fetching user profile', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

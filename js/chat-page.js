@@ -90,14 +90,39 @@
             document.body.classList.add('dark-mode');
         }
 
-        // Wait for auth
-        window.addEventListener('pzpAuthReady', function (e) {
-            var user = e.detail;
-            _currentUserId = String(user.id || user.userId);
-            _currentUsername = user.username;
-            ParkWS.connect();
-            _init();
-        });
+        // Auth check (standalone page pattern — like kleshnya)
+        var token = localStorage.getItem('pzp_token');
+        if (!token) {
+            window.location.href = '/';
+            return;
+        }
+
+        var savedUser = localStorage.getItem('pzp_current_user');
+        if (savedUser) {
+            try {
+                var parsed = JSON.parse(savedUser);
+                _currentUserId = String(parsed.id || parsed.userId);
+                _currentUsername = parsed.username;
+                var userEl = document.getElementById('currentUser');
+                if (userEl) userEl.textContent = parsed.name || parsed.username || '';
+            } catch (e) {}
+        }
+
+        document.getElementById('mainApp').classList.remove('hidden');
+        if (typeof ParkWS !== 'undefined') ParkWS.connect();
+        _init();
+
+        // Logout handler
+        var logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', function () {
+                if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
+                localStorage.removeItem('pzp_token');
+                localStorage.removeItem('pzp_current_user');
+                localStorage.removeItem('pzp_session');
+                window.location.href = '/';
+            });
+        }
 
         // Sidebar toggle (mobile)
         var toggleBtn = document.getElementById('chatToggleSidebar');

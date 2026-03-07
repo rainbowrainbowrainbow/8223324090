@@ -24,6 +24,11 @@ const OfflineQueue = (function () {
     const DB_VERSION = 1;
     const MAX_RETRIES = 5;
 
+    // v20.10.0: Debug logging
+    function _debug(...args) {
+        if (localStorage.getItem('pzp_debug') === 'true') console.log(...args);
+    }
+
     let _db = null;
     let _syncing = false;
 
@@ -47,7 +52,7 @@ const OfflineQueue = (function () {
                     const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
                     store.createIndex('timestamp', 'timestamp', { unique: false });
                     store.createIndex('status', 'status', { unique: false });
-                    console.log('[OfflineQueue] Created IndexedDB store:', STORE_NAME);
+                    _debug('[OfflineQueue] Created IndexedDB store:', STORE_NAME);
                 }
             };
 
@@ -104,7 +109,7 @@ const OfflineQueue = (function () {
                 const request = store.add(mutation);
 
                 request.onsuccess = function () {
-                    console.log('[OfflineQueue] Queued mutation:', method, url, '(id:', id, ')');
+                    _debug('[OfflineQueue] Queued mutation:', method, url, '(id:', id, ')');
                     _notifyCountChange();
                     resolve(id);
                 };
@@ -131,7 +136,7 @@ const OfflineQueue = (function () {
      */
     async function syncPending() {
         if (_syncing) {
-            console.log('[OfflineQueue] Sync already in progress, skipping');
+            _debug('[OfflineQueue] Sync already in progress, skipping');
             return { synced: 0, failed: 0, conflicts: 0 };
         }
 
@@ -144,12 +149,12 @@ const OfflineQueue = (function () {
             const mutations = await _getAllPending();
 
             if (mutations.length === 0) {
-                console.log('[OfflineQueue] No pending mutations to sync');
+                _debug('[OfflineQueue] No pending mutations to sync');
                 _syncing = false;
                 return { synced: 0, failed: 0, conflicts: 0 };
             }
 
-            console.log('[OfflineQueue] Syncing', mutations.length, 'pending mutations...');
+            _debug('[OfflineQueue] Syncing', mutations.length, 'pending mutations...');
 
             // Process sequentially in FIFO order
             for (const mutation of mutations) {
@@ -167,7 +172,7 @@ const OfflineQueue = (function () {
                         // Success — remove from queue
                         await _removeMutation(mutation.id);
                         synced++;
-                        console.log('[OfflineQueue] Synced:', mutation.method, mutation.url);
+                        _debug('[OfflineQueue] Synced:', mutation.method, mutation.url);
                     } else if (response.status === 409) {
                         // Conflict — mark for user resolution
                         await _updateMutationStatus(mutation.id, 'conflict');
@@ -202,7 +207,7 @@ const OfflineQueue = (function () {
         _syncing = false;
         _notifyCountChange();
 
-        console.log('[OfflineQueue] Sync complete:', { synced, failed, conflicts });
+        _debug('[OfflineQueue] Sync complete:', { synced, failed, conflicts });
         return { synced, failed, conflicts };
     }
 
@@ -253,7 +258,7 @@ const OfflineQueue = (function () {
                 const store = tx.objectStore(STORE_NAME);
                 const request = store.clear();
                 request.onsuccess = () => {
-                    console.log('[OfflineQueue] Queue cleared');
+                    _debug('[OfflineQueue] Queue cleared');
                     _notifyCountChange();
                     resolve();
                 };
@@ -398,7 +403,7 @@ const OfflineQueue = (function () {
 
     // Sync when coming back online
     window.addEventListener('online', function () {
-        console.log('[OfflineQueue] Browser is online — syncing pending mutations');
+        _debug('[OfflineQueue] Browser is online — syncing pending mutations');
         // Small delay to let network stabilize
         setTimeout(function () {
             syncPending();

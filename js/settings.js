@@ -9,6 +9,7 @@
 // v5.16: History with filters and pagination
 const HISTORY_PAGE_SIZE = 50;
 let historyCurrentOffset = 0;
+let _lastHistoryItems = []; // v20.10.0: store for CSV export
 
 async function showHistory() {
     if (!canViewHistory()) return;
@@ -34,6 +35,7 @@ async function loadHistoryPage() {
         offset: historyCurrentOffset
     });
     const { items, total } = result;
+    _lastHistoryItems = items; // v20.10.0: store for CSV export
 
     // Stats
     const statsEl = document.getElementById('historyStats');

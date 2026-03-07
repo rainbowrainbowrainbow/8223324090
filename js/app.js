@@ -89,6 +89,27 @@ function initializeEventListeners() {
     initSettingsListeners();
     initUIControlListeners();
     initModalListeners();
+    initConnectionStatusListeners();
+}
+
+// v20.10.0: WS connection status + offline queue badge
+function initConnectionStatusListeners() {
+    const dot = document.getElementById('wsStatusDot');
+    const badge = document.getElementById('offlineBadge');
+
+    window.addEventListener('wsStatusChange', (e) => {
+        if (!dot) return;
+        dot.classList.toggle('ws-connected', e.detail.connected);
+        dot.classList.toggle('ws-disconnected', !e.detail.connected);
+        dot.title = e.detail.connected ? 'Підключено' : 'Відключено';
+    });
+
+    window.addEventListener('offlineQueueChange', (e) => {
+        if (!badge) return;
+        const count = e.detail?.count || 0;
+        badge.textContent = count;
+        badge.classList.toggle('hidden', count === 0);
+    });
 }
 
 function initAuthListeners() {
@@ -171,6 +192,16 @@ function initTimelineListeners() {
 
     const historyBtnEl = document.getElementById('historyBtn');
     if (historyBtnEl) historyBtnEl.addEventListener('click', showHistory);
+
+    // v20.10.0: History CSV export
+    const historyExportBtn = document.getElementById('historyExportBtn');
+    if (historyExportBtn) historyExportBtn.addEventListener('click', () => {
+        if (typeof SettingsHistory !== 'undefined' && _lastHistoryItems.length > 0) {
+            SettingsHistory.exportCSV(_lastHistoryItems);
+        } else {
+            showNotification('Немає даних для експорту', 'error');
+        }
+    });
 
     // v5.16: History filter buttons
     const historyFilterApply = document.getElementById('historyFilterApply');

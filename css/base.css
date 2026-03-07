@@ -199,18 +199,33 @@ body {
    NOTIFICATIONS
    ========================================== */
 
-.notification {
+.toast-container {
     position: fixed;
     bottom: 24px;
     right: 24px;
+    z-index: var(--z-notification);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.toast {
     padding: 14px 24px;
     border-radius: 12px;
-    z-index: var(--z-notification);
     font-weight: 700;
     font-size: var(--font-sm);
     animation: notifEnter 0.35s var(--ease-spring) both;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+    pointer-events: auto;
+    background: linear-gradient(135deg, #374151 0%, #1F2937 100%);
+    color: #FFFFFF;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.toast-exit {
+    animation: notifExit 0.3s ease-in forwards;
 }
 
 @keyframes notifEnter {
@@ -218,23 +233,31 @@ body {
     100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 
-.notification.success {
+@keyframes notifExit {
+    0% { transform: translateY(0) scale(1); opacity: 1; }
+    100% { transform: translateY(-10px) scale(0.95); opacity: 0; }
+}
+
+.toast.success {
     background: linear-gradient(135deg, #10B981 0%, #059669 100%);
     color: #FFFFFF;
     box-shadow: 0 8px 24px rgba(16,185,129,0.3), 0 2px 8px rgba(0,0,0,0.08);
 }
 
-.notification.error {
+.toast.error {
     background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
     color: #FFFFFF;
     box-shadow: 0 8px 24px rgba(239,68,68,0.3), 0 2px 8px rgba(0,0,0,0.08);
 }
 
-.notification.warning {
+.toast.warning {
     background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
     color: #FFFFFF;
     box-shadow: 0 8px 24px rgba(245,158,11,0.3), 0 2px 8px rgba(0,0,0,0.08);
 }
+
+/* Backward compat: keep .notification class working */
+.notification { display: none; }
 
 /* Loading spinner */
 .loading-spinner {

@@ -278,7 +278,7 @@ async function renderTimeline() {
             delete AppState.cachedLines[retryDateStr];
             // Only retry if still on the same date
             if (formatDate(AppState.selectedDate) === retryDateStr) {
-                console.log('[Timeline] Retrying render — lines were empty');
+                // Retrying render — lines were empty
                 renderTimeline();
             }
         }, 2000);

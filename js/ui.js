@@ -202,19 +202,30 @@ function customConfirm(message, title = 'Підтвердження') {
     });
 }
 
-let _notificationTimer = null;
+const _toastMaxVisible = 3;
 function showNotification(message, type = '') {
-    const el = document.getElementById('notification');
-    document.getElementById('notificationText').textContent = message;
-    el.className = 'notification' + (type ? ` ${type}` : '');
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
 
-    // ARIA live region: assertive for errors (interrupts screen reader), polite for rest
-    el.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
-    el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    // Remove oldest if at max
+    const existing = container.querySelectorAll('.toast');
+    if (existing.length >= _toastMaxVisible) {
+        existing[0].remove();
+    }
 
-    el.classList.remove('hidden');
-    if (_notificationTimer) clearTimeout(_notificationTimer);
-    _notificationTimer = setTimeout(() => el.classList.add('hidden'), 3000);
+    const toast = document.createElement('div');
+    toast.className = 'toast' + (type ? ` ${type}` : '');
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    toast.textContent = message;
+
+    container.appendChild(toast);
+
+    // Auto-dismiss after 3s
+    setTimeout(() => {
+        toast.classList.add('toast-exit');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
 function handleError(context, error) {

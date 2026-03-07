@@ -156,8 +156,8 @@ body.dark-mode .skeleton {
     background-size: 200% 100%;
 }
 
-/* Notification dark — slightly transparent */
-body.dark-mode .notification {
+/* Toast dark — slightly transparent */
+body.dark-mode .toast {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
 }

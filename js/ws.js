@@ -22,6 +22,11 @@
 var ParkWS = (function () {
     'use strict';
 
+    // v20.10.0: Debug logging (only when localStorage.pzp_debug = 'true')
+    function _debug(...args) {
+        if (localStorage.getItem('pzp_debug') === 'true') console.log(...args);
+    }
+
     // Connection state
     var _ws = null;
     var _connected = false;
@@ -51,13 +56,13 @@ var ParkWS = (function () {
 
         var token = localStorage.getItem('pzp_token');
         if (!token) {
-            console.log('[WS] No auth token, skipping WebSocket connection');
+            _debug('[WS] No auth token, skipping WebSocket connection');
             return;
         }
 
         // Don't connect when offline
         if (!navigator.onLine) {
-            console.log('[WS] Browser is offline, deferring WebSocket connection');
+            _debug('[WS] Browser is offline, deferring WebSocket connection');
             return;
         }
 
@@ -67,7 +72,7 @@ var ParkWS = (function () {
         var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         var wsUrl = protocol + '//' + window.location.host + '/ws';
 
-        console.log('[WS] Connecting to:', wsUrl);
+        _debug('[WS] Connecting to:', wsUrl);
 
         try {
             _ws = new WebSocket(wsUrl);
@@ -78,7 +83,7 @@ var ParkWS = (function () {
         }
 
         _ws.onopen = function () {
-            console.log('[WS] Connection opened, authenticating...');
+            _debug('[WS] Connection opened, authenticating...');
             // Send auth token as first message
             _send({
                 type: 'auth',
@@ -95,7 +100,7 @@ var ParkWS = (function () {
             _connected = false;
             _ws = null;
 
-            console.log('[WS] Connection closed (code:', event.code, ', reason:', event.reason || 'none', ')');
+            _debug('[WS] Connection closed (code:', event.code, ', reason:', event.reason || 'none', ')');
 
             // Notify UI about disconnection
             _dispatchStatus(false);
@@ -148,7 +153,7 @@ var ParkWS = (function () {
         }
 
         _dispatchStatus(false);
-        console.log('[WS] Disconnected intentionally');
+        _debug('[WS] Disconnected intentionally');
     }
 
     // ==========================================
@@ -209,7 +214,7 @@ var ParkWS = (function () {
             case 'auth:success':
                 _connected = true;
                 _reconnectAttempts = 0;
-                console.log('[WS] Authenticated as:', message.payload.username,
+                _debug('[WS] Authenticated as:', message.payload.username,
                     '(clients:', message.payload.connectedClients, ')');
                 _dispatchStatus(true);
                 // Re-subscribe to previously subscribed dates
@@ -245,7 +250,7 @@ var ParkWS = (function () {
                 break;
 
             default:
-                console.log('[WS] Unknown event:', message.type);
+                _debug('[WS] Unknown event:', message.type);
                 break;
         }
     }
@@ -255,7 +260,7 @@ var ParkWS = (function () {
      * Invalidates the booking cache and triggers timeline re-render.
      */
     function _handleBookingEvent(message) {
-        console.log('[WS] Booking event:', message.type, message.payload);
+        _debug('[WS] Booking event:', message.type, message.payload);
 
         // Invalidate booking cache for the affected date
         var affectedDate = _extractDateFromPayload(message.payload);
@@ -280,7 +285,7 @@ var ParkWS = (function () {
      * Invalidates the lines cache and triggers timeline re-render.
      */
     function _handleLineEvent(message) {
-        console.log('[WS] Line event:', message.type, message.payload);
+        _debug('[WS] Line event:', message.type, message.payload);
 
         // Invalidate lines cache for the affected date
         var affectedDate = _extractDateFromPayload(message.payload);
@@ -304,7 +309,7 @@ var ParkWS = (function () {
      * Handle settings-related events.
      */
     function _handleSettingsEvent(message) {
-        console.log('[WS] Settings event:', message.type, message.payload);
+        _debug('[WS] Settings event:', message.type, message.payload);
 
         // Dispatch custom event for settings panel to pick up
         window.dispatchEvent(new CustomEvent('ws:settings', {
@@ -329,7 +334,7 @@ var ParkWS = (function () {
         _refreshTimer = setTimeout(function () {
             _refreshTimer = null;
             if (typeof renderTimeline === 'function') {
-                console.log('[WS] Triggering timeline refresh');
+                _debug('[WS] Triggering timeline refresh');
                 renderTimeline();
             }
         }, 300); // 300ms debounce
@@ -357,14 +362,14 @@ var ParkWS = (function () {
 
         // Don't reconnect when offline — wait for online event
         if (!navigator.onLine) {
-            console.log('[WS] Offline — will reconnect when online');
+            _debug('[WS] Offline — will reconnect when online');
             return;
         }
 
         var delay = _reconnectDelays[Math.min(_reconnectAttempts, _reconnectDelays.length - 1)];
         _reconnectAttempts++;
 
-        console.log('[WS] Reconnecting in', delay / 1000, 's (attempt', _reconnectAttempts, ')');
+        _debug('[WS] Reconnecting in', delay / 1000, 's (attempt', _reconnectAttempts, ')');
 
         _reconnectTimer = setTimeout(function () {
             _reconnectTimer = null;
@@ -387,7 +392,7 @@ var ParkWS = (function () {
 
     // Resume reconnection when browser goes back online
     window.addEventListener('online', function () {
-        console.log('[WS] Browser is online');
+        _debug('[WS] Browser is online');
         if (!_connected && !_intentionalClose && localStorage.getItem('pzp_token')) {
             // Wait for offline queue sync to complete first, then reconnect
             setTimeout(function () {
@@ -398,7 +403,7 @@ var ParkWS = (function () {
 
     // Pause reconnection when browser goes offline
     window.addEventListener('offline', function () {
-        console.log('[WS] Browser is offline, pausing reconnection');
+        _debug('[WS] Browser is offline, pausing reconnection');
         if (_reconnectTimer) {
             clearTimeout(_reconnectTimer);
             _reconnectTimer = null;

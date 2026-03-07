@@ -705,7 +705,7 @@
     .dash-bar-label { width: 60px; font-size: 11px; }
     .dash-bar-value { width: 60px; font-size: 11px; }
 
-    .notification {
+    .toast-container {
         bottom: 12px;
         right: 12px;
         left: 12px;

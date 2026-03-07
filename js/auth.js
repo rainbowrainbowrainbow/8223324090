@@ -54,6 +54,11 @@ function logout() {
 function showLoginScreen() {
     document.getElementById('loginScreen').classList.remove('hidden');
     document.getElementById('mainApp').classList.add('hidden');
+    // Hide floating buttons that are outside mainApp
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const improvementFab = document.getElementById('improvementFab');
+    if (sidebarToggle) sidebarToggle.classList.add('hidden');
+    if (improvementFab) improvementFab.classList.add('hidden');
 }
 
 // v20.1.0: Role hierarchy and access helpers
@@ -141,6 +146,9 @@ function showMainApp() {
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('mainApp').classList.remove('hidden');
     document.getElementById('currentUser').textContent = AppState.currentUser.name;
+    // Show floating buttons hidden during logout
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    if (sidebarToggle) sidebarToggle.classList.remove('hidden');
 
     // v8.6: Close all panels/modals on page load to prevent stale empty views
     document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));

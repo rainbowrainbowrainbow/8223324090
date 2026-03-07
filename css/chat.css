@@ -592,6 +592,19 @@
     color: rgba(0,80,40,0.4);
 }
 
+/* Read receipts */
+.chat-read-check {
+    font-size: 12px;
+    margin-left: 3px;
+    letter-spacing: -2px;
+}
+.chat-read-check.sent {
+    color: var(--gray-400);
+}
+.chat-read-check.read {
+    color: #10B981;
+}
+
 .chat-bubble-content {
     font-size: 14px;
     line-height: 1.45;

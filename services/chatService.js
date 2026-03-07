@@ -126,10 +126,31 @@ async function getChannelMessages(channelId, userId, { before, limit = 50 } = {}
 /**
  * Send a message in a channel. Uses transaction for seq atomicity.
  */
-async function sendMessage(channelId, userId, { content, replyTo }) {
+async function sendMessage(channelId, userId, { content, replyTo, clientMessageId }) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+
+        // Deduplication: check client_message_id
+        if (clientMessageId) {
+            const dup = await client.query(
+                'SELECT id FROM chat_messages WHERE client_message_id = $1 AND channel_id = $2',
+                [clientMessageId, channelId]
+            );
+            if (dup.rows.length > 0) {
+                await client.query('ROLLBACK');
+                const fullMsg = await pool.query(`
+                    SELECT cm.*, u.username, u.name AS display_name,
+                        rm.content AS reply_content, ru.username AS reply_username
+                    FROM chat_messages cm
+                    JOIN users u ON u.id = cm.user_id
+                    LEFT JOIN chat_messages rm ON rm.id = cm.reply_to
+                    LEFT JOIN users ru ON ru.id = rm.user_id
+                    WHERE cm.id = $1
+                `, [dup.rows[0].id]);
+                return { message: mapMessageRow(fullMsg.rows[0]), mentionedUserIds: [] };
+            }
+        }
 
         // Get next seq (within transaction, UNIQUE constraint prevents dupes)
         const seqResult = await client.query(
@@ -139,10 +160,10 @@ async function sendMessage(channelId, userId, { content, replyTo }) {
 
         // Insert message
         const msgResult = await client.query(`
-            INSERT INTO chat_messages (channel_id, user_id, seq, content, reply_to)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO chat_messages (channel_id, user_id, seq, content, reply_to, client_message_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
-        `, [channelId, userId, seq, content, replyTo || null]);
+        `, [channelId, userId, seq, content, replyTo || null, clientMessageId || null]);
         const msg = msgResult.rows[0];
 
         // Parse @mentions
@@ -466,23 +487,37 @@ async function getOrCreateDM(userId1, userId2) {
         `SELECT * FROM chat_channels WHERE is_dm = true AND dm_user_ids = $1`,
         [ids]
     );
+    let ch;
     if (existing.rows.length > 0) {
-        return mapChannelRow({ ...existing.rows[0], unread_count: '0' });
+        ch = existing.rows[0];
+    } else {
+        // Create DM channel
+        const slug = 'dm-' + ids[0] + '-' + ids[1];
+        const result = await pool.query(`
+            INSERT INTO chat_channels (slug, name, description, is_default, is_dm, dm_user_ids, created_by)
+            VALUES ($1, $2, '', false, true, $3, $4)
+            RETURNING *
+        `, [slug, 'DM', ids, userId1]);
+        ch = result.rows[0];
+        // Auto-join both users
+        await pool.query(
+            'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2), ($1, $3) ON CONFLICT DO NOTHING',
+            [ch.id, ids[0], ids[1]]
+        );
     }
-    // Create DM channel
-    const slug = 'dm-' + ids[0] + '-' + ids[1];
-    const result = await pool.query(`
-        INSERT INTO chat_channels (slug, name, description, is_default, is_dm, dm_user_ids, created_by)
-        VALUES ($1, $2, '', false, true, $3, $4)
-        RETURNING *
-    `, [slug, 'DM', '', ids, userId1]);
-    const ch = result.rows[0];
-    // Auto-join both users
-    await pool.query(
-        'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2), ($1, $3) ON CONFLICT DO NOTHING',
-        [ch.id, ids[0], ids[1]]
-    );
-    return mapChannelRow({ ...ch, unread_count: '0' });
+
+    // Resolve other user's name for the DM channel
+    const otherId = ids[0] === userId1 ? ids[1] : ids[0];
+    const uRes = await pool.query('SELECT id, username, name FROM users WHERE id = $1', [otherId]);
+    const mapped = mapChannelRow({ ...ch, unread_count: '0' });
+    mapped.isDm = true;
+    mapped.dmUserIds = ch.dm_user_ids;
+    mapped.dmOtherUserId = otherId;
+    if (uRes.rows[0]) {
+        mapped.name = uRes.rows[0].name || uRes.rows[0].username;
+        mapped.dmOtherUsername = uRes.rows[0].username;
+    }
+    return mapped;
 }
 
 /**
@@ -531,6 +566,189 @@ async function getUserProfile(userId) {
     };
 }
 
+/**
+ * Update channel name/description.
+ */
+async function updateChannel(channelId, { name, description }) {
+    const fields = [];
+    const params = [];
+    let idx = 1;
+    if (name !== undefined) { fields.push(`name = $${idx++}`); params.push(name); }
+    if (description !== undefined) { fields.push(`description = $${idx++}`); params.push(description); }
+    if (fields.length === 0) return null;
+    fields.push(`updated_at = NOW()`);
+    params.push(channelId);
+    const result = await pool.query(
+        `UPDATE chat_channels SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+        params
+    );
+    return result.rows[0] ? mapChannelRow({ ...result.rows[0], unread_count: '0' }) : null;
+}
+
+/**
+ * Archive a channel (soft delete).
+ */
+async function archiveChannel(channelId) {
+    await pool.query(
+        'UPDATE chat_channels SET is_archived = true, updated_at = NOW() WHERE id = $1',
+        [channelId]
+    );
+}
+
+/**
+ * Search messages across channels the user has access to.
+ */
+async function searchMessages(userId, query, channelId) {
+    const params = [userId, '%' + query.replace(/[%_]/g, '\\$&') + '%'];
+    let channelFilter = '';
+    if (channelId) {
+        channelFilter = ' AND cm.channel_id = $3';
+        params.push(channelId);
+    }
+    const result = await pool.query(`
+        SELECT cm.*, u.username, u.name AS display_name, c.name AS channel_name, c.slug AS channel_slug
+        FROM chat_messages cm
+        JOIN users u ON u.id = cm.user_id
+        JOIN chat_channels c ON c.id = cm.channel_id
+        JOIN chat_channel_members ccm ON ccm.channel_id = cm.channel_id AND ccm.user_id = $1
+        WHERE cm.deleted_at IS NULL AND cm.content ILIKE $2${channelFilter}
+        ORDER BY cm.created_at DESC
+        LIMIT 50
+    `, params);
+    return result.rows.map(row => ({
+        ...mapMessageRow(row),
+        channelName: row.channel_name,
+        channelSlug: row.channel_slug
+    }));
+}
+
+/**
+ * Send a system/bot message (no user auth needed).
+ */
+async function sendBotMessage(channelId, content, { contentType = 'system', metadata = null } = {}) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
+        const seq = seqResult.rows[0].seq;
+        // Use first admin user as sender for bot messages (or null if we add nullable user_id later)
+        const botUser = await client.query("SELECT id FROM users WHERE username = 'openclaw' OR role = 'admin' ORDER BY id LIMIT 1");
+        const botUserId = botUser.rows[0]?.id || 1;
+        const result = await client.query(`
+            INSERT INTO chat_messages (channel_id, user_id, seq, content, is_bot, content_type, metadata)
+            VALUES ($1, $2, $3, $4, true, $5, $6)
+            RETURNING *
+        `, [channelId, botUserId, seq, content, contentType, metadata ? JSON.stringify(metadata) : null]);
+        await client.query('COMMIT');
+        const msg = result.rows[0];
+        const full = await pool.query(`
+            SELECT cm.*, u.username, u.name AS display_name
+            FROM chat_messages cm JOIN users u ON u.id = cm.user_id
+            WHERE cm.id = $1
+        `, [msg.id]);
+        return mapMessageRow(full.rows[0]);
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+// ==========================================
+// CHAT TASKS
+// ==========================================
+
+/**
+ * Create a task from chat.
+ */
+async function createTask({ channelId, messageId, assignedTo, assignedBy, title, deadline }) {
+    const result = await pool.query(`
+        INSERT INTO chat_tasks (channel_id, message_id, assigned_to, assigned_by, title, deadline)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+    `, [channelId, messageId || null, assignedTo || null, assignedBy, title, deadline || null]);
+    return result.rows[0];
+}
+
+/**
+ * Get tasks for a user.
+ */
+async function getTasks(userId) {
+    const result = await pool.query(`
+        SELECT t.*,
+            au.username AS assigned_to_username, au.name AS assigned_to_name,
+            bu.username AS assigned_by_username, bu.name AS assigned_by_name,
+            c.name AS channel_name
+        FROM chat_tasks t
+        LEFT JOIN users au ON au.id = t.assigned_to
+        LEFT JOIN users bu ON bu.id = t.assigned_by
+        LEFT JOIN chat_channels c ON c.id = t.channel_id
+        WHERE t.assigned_to = $1 OR t.assigned_by = $1
+        ORDER BY CASE t.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END, t.created_at DESC
+    `, [userId]);
+    return result.rows;
+}
+
+/**
+ * Update task status.
+ */
+async function updateTask(taskId, userId, { status }) {
+    const updates = ['status = $2'];
+    const params = [taskId, status];
+    if (status === 'done') {
+        updates.push('completed_at = NOW()');
+    }
+    const result = await pool.query(
+        `UPDATE chat_tasks SET ${updates.join(', ')} WHERE id = $1 RETURNING *`,
+        params
+    );
+    return result.rows[0] || null;
+}
+
+/**
+ * Find channel by linked entity (for CRM integration).
+ */
+async function findChannelByEntity(entityType, entityId) {
+    const result = await pool.query(
+        'SELECT * FROM chat_channels WHERE linked_entity_type = $1 AND linked_entity_id = $2 AND is_archived = false',
+        [entityType, entityId]
+    );
+    return result.rows[0] || null;
+}
+
+/**
+ * Create a booking event channel.
+ */
+async function createBookingChannel(bookingId, bookingDate, memberIds) {
+    const slug = 'event-' + bookingDate + '-' + bookingId;
+    const name = '#event-' + bookingDate + '-' + bookingId;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await client.query(`
+            INSERT INTO chat_channels (slug, name, description, is_default, type, linked_entity_type, linked_entity_id, created_by)
+            VALUES ($1, $2, '', false, 'booking', 'booking', $3, $4)
+            ON CONFLICT (slug) DO UPDATE SET updated_at = NOW()
+            RETURNING *
+        `, [slug, name, bookingId, memberIds[0] || 1]);
+        const ch = result.rows[0];
+        for (const uid of memberIds) {
+            await client.query(
+                'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [ch.id, uid]
+            );
+        }
+        await client.query('COMMIT');
+        return mapChannelRow({ ...ch, unread_count: '0' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     getChannels,
     getChannelMessages,
@@ -557,5 +775,14 @@ module.exports = {
     getOrCreateDM,
     addMember,
     removeMember,
-    getUserProfile
+    getUserProfile,
+    updateChannel,
+    archiveChannel,
+    searchMessages,
+    sendBotMessage,
+    createTask,
+    getTasks,
+    updateTask,
+    findChannelByEntity,
+    createBookingChannel
 };

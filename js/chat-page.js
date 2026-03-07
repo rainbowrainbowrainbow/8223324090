@@ -1251,6 +1251,10 @@
         var time = new Date(msg.createdAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
         var content = msg.deletedAt ? '<em style="color:var(--gray-400)">Повідомлення видалено</em>' : _formatContent(msg.content);
         var editedHtml = msg.editedAt && !msg.deletedAt ? '<span class="chat-bubble-edited">(ред.)</span>' : '';
+        var readCheckHtml = '';
+        if (isOwn && !msg.deletedAt) {
+            readCheckHtml = '<span class="chat-read-check sent" title="Відправлено">✓</span>';
+        }
 
         var avatarColorClass = 'chat-avatar-color-' + _colorIdx(msg.userId);
         var usernameColorClass = 'chat-username-color-' + _colorIdx(msg.userId);
@@ -1271,7 +1275,7 @@
                 '<div class="chat-bubble-header">' +
                     '<span class="chat-bubble-username ' + usernameColorClass + '">' + _esc(msg.displayName || msg.username) + '</span>' +
                     editedHtml +
-                    '<span class="chat-bubble-time">' + time + '</span>' +
+                    '<span class="chat-bubble-time">' + time + readCheckHtml + '</span>' +
                 '</div>' +
                 replyHtml +
                 '<div class="chat-bubble-content">' + content + '</div>' +
@@ -1407,7 +1411,8 @@
 
         var msgData = {
             content: content,
-            replyTo: _replyTo ? _replyTo.id : null
+            replyTo: _replyTo ? _replyTo.id : null,
+            clientMessageId: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
         };
 
         _cancelReply();
@@ -1667,6 +1672,7 @@
                 _onDeleteMessage(payload);
                 break;
             case 'chat:read':
+                _onReadReceipt(payload);
                 break;
             case 'chat:mention':
                 _playSoundAlways('mention');
@@ -1725,6 +1731,25 @@
             ? names[0] + ' пише'
             : names.slice(0, 2).join(', ') + ' пишуть';
         el.innerHTML = text + ' <span class="chat-typing-dots"><span></span><span></span><span></span></span>';
+    }
+
+    function _onReadReceipt(payload) {
+        if (!_currentChannel || payload.channelId !== _currentChannel.id) return;
+        // When someone reads up to seq X, mark all own messages with seq <= X as read (✓✓)
+        var readSeq = payload.seq;
+        if (!readSeq) return;
+        document.querySelectorAll('.chat-message.own').forEach(function (el) {
+            var msgSeq = parseInt(el.dataset.seq, 10);
+            if (msgSeq <= readSeq) {
+                var check = el.querySelector('.chat-read-check');
+                if (check && !check.classList.contains('read')) {
+                    check.classList.remove('sent');
+                    check.classList.add('read');
+                    check.textContent = '✓✓';
+                    check.title = 'Прочитано';
+                }
+            }
+        });
     }
 
     function _onReaction(payload) {
@@ -1855,22 +1880,39 @@
 
     async function _sendTaskFromChat(taskText) {
         try {
-            var token = localStorage.getItem('pzp_token');
-            var resp = await fetch('/api/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify({ title: taskText, priority: 'normal' })
+            // Parse @username from task text: /task @username description
+            var assignedTo = null;
+            var title = taskText;
+            var mentionMatch = taskText.match(/^@(\w+)\s+(.+)/);
+            if (mentionMatch) {
+                var targetUsername = mentionMatch[1];
+                title = mentionMatch[2];
+                var targetUser = _chatUsers.find(function (u) { return u.username.toLowerCase() === targetUsername.toLowerCase(); });
+                if (targetUser) assignedTo = targetUser.id;
+            }
+
+            // Create task via chat tasks API
+            var task = await _api('POST', '/tasks', {
+                channelId: _currentChannel.id,
+                assignedTo: assignedTo,
+                title: title
             });
-            if (resp.ok) {
-                var task = await resp.json();
-                // Send confirmation message to channel
-                await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
-                    content: '\u{1F4CB} Задачу створено: «' + taskText + '» (ID: ' + (task.id || '?') + ')'
+
+            if (task) {
+                // Also create in main tasks system
+                var token = localStorage.getItem('pzp_token');
+                fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ title: title, priority: 'normal' })
+                }).catch(function () {});
+
+                // Send confirmation message
+                var assignText = assignedTo ? ' → @' + mentionMatch[1] : '';
+                var confirmMsg = await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
+                    content: '\u{1F4CB} Задачу створено: «' + title + '»' + assignText
                 });
-                var msg = await _api('GET', '/channels/' + _currentChannel.id + '/messages?limit=1');
-                if (msg && msg.length > 0) _appendMessage(msg[msg.length - 1]);
-            } else {
-                alert('Помилка створення задачі');
+                if (confirmMsg) _appendMessage(confirmMsg);
             }
         } catch (err) {
             console.error('[Chat] Task creation error:', err);

@@ -1461,11 +1461,11 @@ body.dark-mode .booking-customer-info .customer-detail { color: #94A3B8; }
    CHAT — Dark Mode
    ========================================== */
 body.dark-mode {
-    --chat-bubble-own: #2b5e3a;
+    --chat-bubble-own: #5c3d99;
     --chat-bubble-other: #2a2a3e;
-    --chat-mention-bg: rgba(16, 185, 129, 0.2);
-    --chat-mention-color: #6EE7B7;
-    --chat-bg: #1a1a2e;
+    --chat-mention-bg: rgba(124, 92, 191, 0.2);
+    --chat-mention-color: #C4B5FD;
+    --chat-bg: #0f0f1a;
 }
 
 body.dark-mode .chat-sidebar {
@@ -1484,7 +1484,7 @@ body.dark-mode .chat-channel-item:hover {
     background: #2a2a3e;
 }
 body.dark-mode .chat-channel-item.active {
-    background: rgba(16, 185, 129, 0.12);
+    background: rgba(124, 92, 191, 0.15);
 }
 body.dark-mode .chat-header {
     background: #1e1e30;
@@ -1510,7 +1510,22 @@ body.dark-mode .chat-bubble {
     box-shadow: none;
 }
 body.dark-mode .chat-bubble-content {
-    color: #e0e0e0;
+    color: #e8e8f0;
+}
+body.dark-mode .chat-message.own .chat-bubble-content {
+    color: #f0f0f8;
+}
+body.dark-mode .chat-message.own .chat-bubble-time {
+    color: rgba(255, 255, 255, 0.5);
+}
+body.dark-mode .chat-message.own .chat-bubble-username {
+    color: rgba(255, 255, 255, 0.7);
+}
+body.dark-mode .chat-read-check.sent {
+    color: rgba(255, 255, 255, 0.4);
+}
+body.dark-mode .chat-read-check.read {
+    color: #7c5cbf;
 }
 body.dark-mode .chat-msg-actions {
     background: #2a2a3e;

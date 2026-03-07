@@ -50,7 +50,7 @@ router.post('/channels/:id/messages', async (req, res) => {
         const channelId = parseInt(req.params.id, 10);
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
 
-        const { content, replyTo } = req.body;
+        const { content, replyTo, clientMessageId } = req.body;
         if (!content || !content.trim()) {
             return res.status(400).json({ error: 'Message content is required' });
         }
@@ -64,7 +64,8 @@ router.post('/channels/:id/messages', async (req, res) => {
 
         const { message, mentionedUserIds } = await chat.sendMessage(channelId, userId, {
             content: content.trim(),
-            replyTo: replyTo || null
+            replyTo: replyTo || null,
+            clientMessageId: clientMessageId || null
         });
 
         // Broadcast to channel members via WebSocket (fire-and-forget after commit)
@@ -421,6 +422,111 @@ router.get('/users/:id/profile', async (req, res) => {
         res.json(profile);
     } catch (err) {
         log.error('Error fetching user profile', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PATCH /api/chat/channels/:id — update channel name/description
+router.patch('/channels/:id', async (req, res) => {
+    try {
+        const channelId = parseInt(req.params.id, 10);
+        if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
+        const { name, description } = req.body;
+        const updated = await chat.updateChannel(channelId, { name, description });
+        if (!updated) return res.status(404).json({ error: 'Channel not found' });
+        res.json(updated);
+    } catch (err) {
+        log.error('Error updating channel', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// DELETE /api/chat/channels/:id — archive channel
+router.delete('/channels/:id', async (req, res) => {
+    try {
+        const channelId = parseInt(req.params.id, 10);
+        if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
+        await chat.archiveChannel(channelId);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Error archiving channel', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/chat/search — search messages
+router.get('/search', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const q = req.query.q;
+        if (!q || q.trim().length < 2) {
+            return res.status(400).json({ error: 'Query must be at least 2 characters' });
+        }
+        const channelId = req.query.channel_id ? parseInt(req.query.channel_id, 10) : null;
+        const results = await chat.searchMessages(userId, q.trim(), channelId);
+        res.json(results);
+    } catch (err) {
+        log.error('Error searching messages', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/chat/tasks — get user's tasks
+router.get('/tasks', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const tasks = await chat.getTasks(userId);
+        res.json(tasks);
+    } catch (err) {
+        log.error('Error fetching tasks', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/chat/tasks — create task from chat
+router.post('/tasks', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const { channelId, messageId, assignedTo, title, deadline } = req.body;
+        if (!title || !title.trim()) {
+            return res.status(400).json({ error: 'Task title is required' });
+        }
+        const task = await chat.createTask({
+            channelId: channelId || null,
+            messageId: messageId || null,
+            assignedTo: assignedTo || null,
+            assignedBy: userId,
+            title: title.trim(),
+            deadline: deadline || null
+        });
+
+        // Broadcast task to channel
+        if (channelId) {
+            broadcastToChannel(channelId, 'chat:task', { channelId, task });
+        }
+
+        res.status(201).json(task);
+    } catch (err) {
+        log.error('Error creating task', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PATCH /api/chat/tasks/:id — update task status
+router.patch('/tasks/:id', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const taskId = parseInt(req.params.id, 10);
+        if (isNaN(taskId)) return res.status(400).json({ error: 'Invalid task ID' });
+        const { status } = req.body;
+        if (!['open', 'in_progress', 'done'].includes(status)) {
+            return res.status(400).json({ error: 'Invalid status' });
+        }
+        const task = await chat.updateTask(taskId, userId, { status });
+        if (!task) return res.status(404).json({ error: 'Task not found' });
+        res.json(task);
+    } catch (err) {
+        log.error('Error updating task', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

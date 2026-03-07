@@ -478,12 +478,12 @@
     display: flex;
     gap: 10px;
     max-width: 72%;
-    animation: chatSlideIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: bubbleAppearOther 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     padding: 2px 0;
 }
 
 .chat-message.own {
-    animation: chatSlideInOwn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: bubbleAppearOwn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .chat-message.grouped {
@@ -535,6 +535,65 @@
 @keyframes chatChannelFade {
     from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+/* Emoji animations */
+@keyframes emojiBounce {
+    0% { transform: scale(0.3) rotate(-15deg); opacity: 0; }
+    40% { transform: scale(1.2) rotate(5deg); opacity: 1; }
+    60% { transform: scale(0.9) rotate(-3deg); }
+    80% { transform: scale(1.05) rotate(1deg); }
+    100% { transform: scale(1) rotate(0deg); }
+}
+
+@keyframes emojiWobble {
+    0% { transform: rotate(0deg); }
+    15% { transform: rotate(-12deg) scale(1.1); }
+    30% { transform: rotate(10deg) scale(1.05); }
+    45% { transform: rotate(-8deg); }
+    60% { transform: rotate(5deg); }
+    75% { transform: rotate(-3deg); }
+    100% { transform: rotate(0deg); }
+}
+
+@keyframes emojiPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+}
+
+@keyframes emojiFloat {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-6px) scale(1.08); }
+}
+
+@keyframes reactionPop {
+    0% { transform: scale(0); opacity: 0; }
+    50% { transform: scale(1.3); opacity: 1; }
+    70% { transform: scale(0.9); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes bubbleAppearOwn {
+    0% { opacity: 0; transform: translateX(20px) scale(0.92); }
+    60% { opacity: 1; transform: translateX(-4px) scale(1.01); }
+    100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes bubbleAppearOther {
+    0% { opacity: 0; transform: translateX(-20px) scale(0.92); }
+    60% { opacity: 1; transform: translateX(4px) scale(1.01); }
+    100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes readCheckPop {
+    0% { transform: scale(0.5); opacity: 0; }
+    60% { transform: scale(1.3); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes unreadBadgePulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+    50% { transform: scale(1.1); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
 }
 
 .chat-message.own {
@@ -639,6 +698,7 @@
 }
 .chat-read-check.read {
     color: #10B981;
+    animation: readCheckPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .chat-bubble-content {
@@ -649,7 +709,7 @@
     white-space: pre-wrap;
 }
 
-/* Emoji-only messages: big, no bubble */
+/* Emoji-only messages: big, no bubble, animated */
 .chat-message.emoji-only .chat-bubble {
     background: transparent !important;
     box-shadow: none !important;
@@ -660,6 +720,12 @@
     font-size: 52px;
     line-height: 1.15;
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+    animation: emojiBounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    cursor: default;
+    display: inline-block;
+}
+.chat-message.emoji-only .chat-bubble-content:hover {
+    animation: emojiWobble 0.8s ease;
 }
 .chat-message.emoji-only.grouped .chat-bubble-content {
     font-size: 52px;
@@ -718,6 +784,7 @@
     border: 1.5px solid rgba(0,0,0,0.06);
     transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
     box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    animation: reactionPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .chat-reaction-chip:hover {
@@ -825,7 +892,7 @@
 
 .chat-emoji-btn:hover {
     background: var(--gray-100);
-    transform: scale(1.25);
+    transform: scale(1.3) rotate(-8deg);
 }
 
 .chat-emoji-btn:active {
@@ -1453,6 +1520,7 @@
     justify-content: center;
     padding: 0 5px;
     margin-left: auto;
+    animation: unreadBadgePulse 2s ease-in-out infinite;
 }
 
 /* ==========================================
@@ -1823,6 +1891,64 @@
     font-size: 11px;
     color: var(--gray-400);
     margin-bottom: 2px;
+}
+
+/* ==========================================
+   EMOJI ANIMATION CLASSES (JS-driven)
+   ========================================== */
+
+/* Quick picker emoji stagger animation */
+.chat-emoji-picker .chat-emoji-btn:nth-child(1) { animation: reactionPop 0.3s 0s both; }
+.chat-emoji-picker .chat-emoji-btn:nth-child(2) { animation: reactionPop 0.3s 0.04s both; }
+.chat-emoji-picker .chat-emoji-btn:nth-child(3) { animation: reactionPop 0.3s 0.08s both; }
+.chat-emoji-picker .chat-emoji-btn:nth-child(4) { animation: reactionPop 0.3s 0.12s both; }
+.chat-emoji-picker .chat-emoji-btn:nth-child(5) { animation: reactionPop 0.3s 0.16s both; }
+.chat-emoji-picker .chat-emoji-btn:nth-child(6) { animation: reactionPop 0.3s 0.20s both; }
+
+/* Animated emoji in bubble content (via JS class) */
+.chat-animated-emoji {
+    display: inline-block;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.chat-animated-emoji:hover {
+    animation: emojiWobble 0.6s ease;
+    transform: scale(1.3);
+}
+
+/* Reaction chip new (just added) */
+.chat-reaction-chip.just-added {
+    animation: reactionPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Channel switch transition */
+.chat-messages-container.switching {
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.2s, transform 0.2s;
+}
+.chat-messages-container.switching.active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Send button ripple */
+.chat-send-btn.sending {
+    animation: chatPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Avatar hover wobble */
+.chat-avatar {
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.chat-avatar:hover {
+    transform: scale(1.15) rotate(-5deg);
+}
+
+/* Reply block slide in */
+.chat-reply-preview.visible {
+    animation: chatSlideIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* ==========================================

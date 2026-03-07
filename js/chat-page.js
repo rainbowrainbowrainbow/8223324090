@@ -53,13 +53,15 @@
         return idx % 6;
     }
 
-    // Sound preloading
+    // Sound preloading — all available sounds
     var _sounds = {};
     function _preloadSounds() {
-        ['message-new', 'message-sent', 'mention'].forEach(function (name) {
+        ['message-new', 'message-sent', 'mention', 'connect', 'error', 'task-new'].forEach(function (name) {
             try {
                 _sounds[name] = new Audio('sounds/' + name + '.mp3');
                 _sounds[name].volume = 0.5;
+                // Preload into memory
+                _sounds[name].load();
             } catch (e) { /* ignore */ }
         });
     }
@@ -68,8 +70,10 @@
         if (!_soundsEnabled || document.hasFocus()) return;
         try {
             if (_sounds[name]) {
-                _sounds[name].currentTime = 0;
-                _sounds[name].play().catch(function () {});
+                // Clone audio for overlapping sounds
+                var s = _sounds[name].cloneNode();
+                s.volume = _sounds[name].volume;
+                s.play().catch(function () {});
             }
         } catch (e) { /* ignore */ }
     }
@@ -78,8 +82,9 @@
         if (!_soundsEnabled) return;
         try {
             if (_sounds[name]) {
-                _sounds[name].currentTime = 0;
-                _sounds[name].play().catch(function () {});
+                var s = _sounds[name].cloneNode();
+                s.volume = _sounds[name].volume;
+                s.play().catch(function () {});
             }
         } catch (e) { /* ignore */ }
     }
@@ -1028,6 +1033,7 @@
     // Reconnect: drain offline queue
     window.addEventListener('wsStatusChange', function (e) {
         if (e.detail && e.detail.connected) {
+            _playSoundAlways('connect');
             _drainOfflineQueue();
             if (_currentChannel && typeof ParkWS !== 'undefined') {
                 ParkWS.joinChannel(_currentChannel.id);
@@ -1177,10 +1183,25 @@
         // Join WS channel
         if (typeof ParkWS !== 'undefined') ParkWS.joinChannel(channel.id);
 
+        // Animate channel switch
+        var container = document.getElementById('chatMessages');
+        if (container) {
+            container.classList.add('switching');
+        }
+
         // Load messages
         try {
             var messages = await _api('GET', '/channels/' + channel.id + '/messages');
             _renderMessages(messages || []);
+            // Animate in
+            if (container) {
+                requestAnimationFrame(function () {
+                    container.classList.add('active');
+                    setTimeout(function () {
+                        container.classList.remove('switching', 'active');
+                    }, 250);
+                });
+            }
 
             // Mark as read
             if (messages && messages.length > 0) {
@@ -1372,6 +1393,8 @@
         safe = safe.replace(/\B@(\w+)/g, '<span class="chat-mention">@$1</span>');
         // Format URLs
         safe = safe.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary-dark);text-decoration:underline">$1</a>');
+        // Wrap emojis with animated span for hover wobble
+        safe = safe.replace(/([\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2702}-\u{27B0}\u{2764}\u{2728}\u{2705}\u{274C}\u{2B50}][\u{FE0F}\u{200D}]?)/gu, '<span class="chat-animated-emoji">$1</span>');
         return safe;
     }
 
@@ -1444,6 +1467,13 @@
             return;
         }
 
+        // Animate send button
+        var sendBtn = document.querySelector('.chat-send-btn');
+        if (sendBtn) {
+            sendBtn.classList.add('sending');
+            setTimeout(function () { sendBtn.classList.remove('sending'); }, 300);
+        }
+
         try {
             var msg = await _api('POST', '/channels/' + _currentChannel.id + '/messages', msgData);
             if (msg) {
@@ -1452,6 +1482,7 @@
             }
         } catch (err) {
             console.error('[Chat] Send error:', err);
+            _playSoundAlways('error');
             input.value = content;
             _autoGrow(input);
         }
@@ -1562,6 +1593,7 @@
             if (existingChip) {
                 await _api('DELETE', '/messages/' + messageId + '/reactions/' + encodeURIComponent(emoji));
             } else {
+                _playSoundAlways('message-sent');
                 await _api('POST', '/messages/' + messageId + '/reactions', { emoji: emoji });
             }
         } catch (err) {

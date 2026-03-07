@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v20.9.15**. CRM Big Sprint: Supabase Customers, Leads Page, Banquet Booking, Staff Extension.
+Версія **v20.9.27**. Security Hardening + Test Coverage + Price Sync + UI Polish.
 
 ## Що готово (коротко)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -42,38 +42,47 @@
 - **v20.9.13: Leads Page — standalone /leads з воронкою, фільтрами, конверсією**
 - **v20.9.14: Banquet Booking — банкетні поля, amber стиль на таймлайні**
 - **v20.9.15: Staff Extension — contract_type, skills, telegram в HR модалці**
+- **v20.9.16: Task Visibility — role-based filtering через config/roles.js**
+- **v20.9.18: Leads UI Polish — hardcoded colors, UX покращення**
+- **v20.9.19: Test Coverage — +101 тест (leads, customers, finance, staff, tasks, warehouse)**
+- **v20.9.20: Full Test Suite — +75 тестів, 9 нових файлів**
+- **v20.9.21: 91% Test Coverage — 22 нових тест-файли, 797 тестів, 0 fails**
+- **v20.9.22: Bugfix — 3 endpoint 500s + telegram cancellation duplicate**
+- **v20.9.23: Leads Dark Mode — dark mode fix + modal mis-click protection**
+- **v20.9.24: Sidebar Cleanup — видалено Status/Analytics, fix Center iframe**
+- **v20.9.25: Price Sync — централізовані ціни оновлюють каталог бронювань**
+- **v20.9.26: Performance + Compatibility**
+- **v20.9.27: Security Hardening — CSP, input validation, JWT audit**
 
-## Що нове (поточна сесія) — v20.9.12–v20.9.15
+## Що нове (поточна сесія) — v20.9.16–v20.9.27
 
-### v20.9.15 — Staff Extension
-- **HR** — нові поля: telegram_username, contract_type (fulltime/parttime/contract), skills (TEXT[])
-- **Модалка** — edit modal розширено новими полями
-- **Міграція** — 026_leads_banquet_staff.sql (26.3)
+### v20.9.27 — Security Hardening
+- **CSP** — connect-src, frame-src виправлено для embed mode
+- **JWT** — revert hard fail (зламав production), залишено warning
+- **Input validation** — додатковий захист
 
-### v20.9.14 — Banquet Booking
-- **Бронювання** — banquet_menu, banquet_guests, banquet_tables в POST/PUT
-- **Форма** — банкетні поля з'являються при category=banquet
-- **Таймлайн** — .banquet-block стиль (amber gradient)
+### v20.9.25–v20.9.26 — Price Sync + Performance
+- **Price Sync** — централізовані ціни автоматично оновлюють каталог бронювань
+- **UX** — кнопка збереження, час, валідація дат
+- **Performance** — оптимізація сумісності
 
-### v20.9.13 — Leads Page
-- **Сторінка** — leads.html + js/leads-page.js: повний CRUD, фільтри, пошук
-- **API** — instagram, source, lost_reason, booking_id + /api/leads/stats
-- **Конверсія** — кнопка "Конвертувати" → перехід на бронювання з pre-fill
-- **Sidebar** — додано "Ліди" в навігацію
+### v20.9.19–v20.9.21 — Test Coverage Expansion
+- **797 тестів**, 0 fails, 22 тест-файли
+- Покриття: leads, customers, finance, staff, tasks, warehouse, certificates, recurring, points, kleshnya, procurement, telegram, backup, settings, stats, afisha, products, auth
 
-### v20.9.12 — Supabase Customers
-- **db/supabase.js** — Supabase клієнт (lazy init, fallback)
-- **routes/customers.js** — повний CRUD через Supabase
-- **Міграція** — POST /api/customers/migrate-to-supabase
+### v20.9.22–v20.9.24 — Bugfixes + UI
+- **3 endpoint 500s** виправлено
+- **Leads dark mode** — контраст, модалка
+- **Sidebar** — видалено дублі, Center iframe embed
 
 ## Архітектура
 - **17+ сторінок**, **40+ routes**, 18+ services, 5 middleware
 - **~95+ таблиць**, 80+ індексів, 26 міграцій
-- ~75 000+ рядків коду
-- 291 тест, 0 fail
+- ~85 000+ рядків коду
+- 797 тестів, 0 fail
 
 ## Технічний стан
-- Branch: `claude/event-maestro-crm-m3Jlp`
+- Branch: `claude/event-genix-crm-AtvBd`
 - Сервер: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql`
 
 ## Відомі проблеми / пастки для нової сесії
@@ -91,4 +100,4 @@
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-03, v20.9.15*
+*Оновлено: 2026-03-07, v20.9.27*

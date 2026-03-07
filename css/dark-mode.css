@@ -1505,9 +1505,17 @@ body.dark-mode .chat-input {
     background: #2a2a3e;
     border-color: #3a3a4e;
     color: #e0e0e0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+body.dark-mode .chat-input:focus {
+    border-color: #7c5cbf;
+    box-shadow: 0 0 0 3px rgba(124,92,191,0.15), 0 1px 3px rgba(0,0,0,0.15);
 }
 body.dark-mode .chat-bubble {
-    box-shadow: none;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+body.dark-mode .chat-bubble:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 body.dark-mode .chat-bubble-content {
     color: #e8e8f0;
@@ -1529,7 +1537,27 @@ body.dark-mode .chat-read-check.read {
 }
 body.dark-mode .chat-msg-actions {
     background: #2a2a3e;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35), 0 0 0 0.5px rgba(255,255,255,0.06);
+}
+body.dark-mode .chat-context-menu {
+    background: #2a2a3e;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 0 0.5px rgba(255,255,255,0.06);
+}
+body.dark-mode .chat-send-btn {
+    box-shadow: 0 2px 8px rgba(124,92,191,0.3);
+}
+body.dark-mode .chat-send-btn:hover {
+    box-shadow: 0 4px 14px rgba(124,92,191,0.4);
+}
+body.dark-mode .chat-channel-item.active {
+    box-shadow: 0 0 0 1px rgba(124,92,191,0.2);
+}
+body.dark-mode .chat-scroll-bottom {
+    background: #2a2a3e;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+body.dark-mode .chat-date-divider span {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
 }
 body.dark-mode .chat-emoji-picker {
     background: #2a2a3e;

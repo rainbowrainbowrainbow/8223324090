@@ -263,9 +263,15 @@ var ParkWS = (function () {
                 window.dispatchEvent(new CustomEvent('ws:chat', {
                     detail: { eventType: message.type, payload: message.payload }
                 }));
-                // Update unread badge on non-chat pages
+                // Update unread badge + show toast on non-chat pages
                 if (window.location.pathname !== '/chat') {
                     _incrementChatBadge();
+                    var chatMsg = message.payload && message.payload.message;
+                    if (chatMsg && typeof showNotification === 'function') {
+                        var sender = chatMsg.displayName || chatMsg.username || '';
+                        var preview = (chatMsg.content || '').substring(0, 60);
+                        showNotification(sender + ': ' + preview);
+                    }
                 }
                 break;
             case 'chat:typing':

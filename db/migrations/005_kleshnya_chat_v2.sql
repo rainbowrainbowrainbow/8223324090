@@ -18,7 +18,17 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_username ON chat_sessions(username, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_pinned ON chat_sessions(username, is_pinned DESC, updated_at DESC);
 
--- 2. Extend kleshnya_chat with session/media/bridge fields
+-- 2. Ensure kleshnya_chat base table exists (created by initDatabase on existing DBs)
+CREATE TABLE IF NOT EXISTS kleshnya_chat (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    role VARCHAR(10) NOT NULL DEFAULT 'assistant',
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kleshnya_chat_username ON kleshnya_chat(username, created_at);
+
+-- 3. Extend kleshnya_chat with session/media/bridge fields
 ALTER TABLE kleshnya_chat ADD COLUMN IF NOT EXISTS session_id INTEGER REFERENCES chat_sessions(id) ON DELETE CASCADE;
 ALTER TABLE kleshnya_chat ADD COLUMN IF NOT EXISTS media_type VARCHAR(20);
 ALTER TABLE kleshnya_chat ADD COLUMN IF NOT EXISTS media_url TEXT;

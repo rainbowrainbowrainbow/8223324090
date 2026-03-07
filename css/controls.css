@@ -3,6 +3,28 @@
  */
 
 /* ==========================================
+   v20.11.0: FORM VALIDATION STATES
+   ========================================== */
+
+[aria-invalid="true"] {
+    border-color: #EF4444 !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+[aria-invalid="true"]:focus {
+    border-color: #EF4444 !important;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3);
+}
+
+.field-error {
+    display: block;
+    color: #EF4444;
+    font-size: var(--font-xs, 12px);
+    margin-top: 4px;
+    font-weight: 600;
+}
+
+/* ==========================================
    ZOOM CONTROLS
    ========================================== */
 

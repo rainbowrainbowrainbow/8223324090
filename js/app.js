@@ -31,6 +31,8 @@ function initializeApp() {
     initializeEventListeners();
     // v15.1: CRM customer toggle + autocomplete
     if (typeof initCustomerCRM === 'function') initCustomerCRM();
+    // v20.11.0: Initialize form validation
+    if (typeof BookingForm !== 'undefined' && BookingForm.init) BookingForm.init();
     // v19.11: Room Load Panel
     if (typeof initRoomLoadPanel === 'function') initRoomLoadPanel();
     AppState.nowLineInterval = setInterval(renderNowLine, 60000);

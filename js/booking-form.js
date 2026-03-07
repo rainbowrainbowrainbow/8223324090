@@ -6,6 +6,55 @@
  */
 
 window.BookingForm = {
+    _dirty: false,
+
+    /**
+     * v20.11.0: Initialize form validation listeners
+     */
+    init() {
+        const fields = ['roomSelect', 'selectedProgram', 'bookingNotes', 'bookingGroupName',
+            'costumeSelect', 'kidsCountInput', 'customerName', 'customerPhone'];
+        fields.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', () => { BookingForm._dirty = true; });
+                el.addEventListener('input', () => { BookingForm._dirty = true; });
+            }
+        });
+
+        // v20.11.0: Unsaved changes warning
+        window.addEventListener('beforeunload', (e) => {
+            if (BookingForm._dirty) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+    },
+
+    isDirty() { return this._dirty; },
+    markClean() {
+        this._dirty = false;
+        // Clear aria-invalid from all fields
+        document.querySelectorAll('[aria-invalid="true"]').forEach(el => {
+            el.setAttribute('aria-invalid', 'false');
+        });
+    },
+
+    /**
+     * v20.11.0: Validate single field on blur
+     */
+    validateField(fieldId) {
+        const el = document.getElementById(fieldId);
+        if (!el) return;
+        const isEmpty = !el.value;
+        const isRequired = el.hasAttribute('aria-required');
+        if (isRequired && isEmpty) {
+            el.setAttribute('aria-invalid', 'true');
+        } else {
+            el.setAttribute('aria-invalid', 'false');
+        }
+    },
+
     /**
      * Validate booking form fields before submission
      * @returns {{ valid: boolean, error?: string }}
@@ -14,8 +63,14 @@ window.BookingForm = {
         const programId = document.getElementById('selectedProgram')?.value;
         const room = document.getElementById('roomSelect')?.value;
 
-        if (!programId) return { valid: false, error: 'Оберіть програму' };
-        if (!room) return { valid: false, error: 'Оберіть кімнату' };
+        if (!programId) {
+            document.getElementById('selectedProgram')?.setAttribute('aria-invalid', 'true');
+            return { valid: false, error: 'Оберіть програму' };
+        }
+        if (!room) {
+            document.getElementById('roomSelect')?.setAttribute('aria-invalid', 'true');
+            return { valid: false, error: 'Оберіть кімнату' };
+        }
 
         const program = getProductsSync().find(p => p.id === programId);
         if (!program) return { valid: false, error: 'Програму не знайдено' };

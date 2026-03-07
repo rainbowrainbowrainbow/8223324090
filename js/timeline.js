@@ -435,6 +435,27 @@ function applyStatusFilter() {
     updateFilterBanner();
 }
 
+// v20.11.0: Keyboard navigation for booking blocks
+document.addEventListener('keydown', (e) => {
+    const focused = document.activeElement;
+    if (!focused || !focused.classList.contains('booking-block')) return;
+
+    if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        focused.click();
+        return;
+    }
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const blocks = Array.from(document.querySelectorAll('.booking-block:not(.status-hidden)'));
+        const idx = blocks.indexOf(focused);
+        if (idx === -1) return;
+        const next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+        if (next >= 0 && next < blocks.length) blocks[next].focus();
+    }
+});
+
 // v5.15: Dim "Today" button when already on today
 function updateTodayButton() {
     const btn = document.getElementById('todayBtn');
@@ -477,6 +498,9 @@ function createBookingBlock(booking, startHour) {
     const filter = AppState.statusFilter || 'all';
     const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
     block.className = `booking-block ${booking.category}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${booking.category === 'banquet' ? ' banquet-block' : ''}`;
+    block.setAttribute('tabindex', '0');
+    block.setAttribute('role', 'button');
+    block.setAttribute('aria-label', `${booking.label || booking.category} ${booking.time} ${booking.room || ''}`);
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 

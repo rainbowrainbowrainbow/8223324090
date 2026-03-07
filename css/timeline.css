@@ -324,6 +324,13 @@
     border-left: 3px solid rgba(0,0,0,0.12);
 }
 
+/* v20.11.0: Keyboard focus ring */
+.booking-block:focus-visible {
+    outline: 2px solid var(--primary, #D4A843);
+    outline-offset: 2px;
+    z-index: 20;
+}
+
 .booking-block:hover {
     transform: translateY(-2px);
     z-index: 20;

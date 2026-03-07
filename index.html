@@ -15,17 +15,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=20.10.0">
-    <link rel="stylesheet" href="css/auth.css?v=20.10.0">
-    <link rel="stylesheet" href="css/layout.css?v=20.10.0">
-    <link rel="stylesheet" href="css/timeline.css?v=20.10.0">
-    <link rel="stylesheet" href="css/panel.css?v=20.10.0">
-    <link rel="stylesheet" href="css/modals.css?v=20.10.0">
-    <link rel="stylesheet" href="css/controls.css?v=20.10.0">
-    <link rel="stylesheet" href="css/features.css?v=20.10.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=20.10.0">
-    <link rel="stylesheet" href="css/responsive.css?v=20.10.0">
-    <link rel="stylesheet" href="css/pages.css?v=20.10.0">
+    <link rel="stylesheet" href="css/base.css?v=20.11.0">
+    <link rel="stylesheet" href="css/auth.css?v=20.11.0">
+    <link rel="stylesheet" href="css/layout.css?v=20.11.0">
+    <link rel="stylesheet" href="css/timeline.css?v=20.11.0">
+    <link rel="stylesheet" href="css/panel.css?v=20.11.0">
+    <link rel="stylesheet" href="css/modals.css?v=20.11.0">
+    <link rel="stylesheet" href="css/controls.css?v=20.11.0">
+    <link rel="stylesheet" href="css/features.css?v=20.11.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=20.11.0">
+    <link rel="stylesheet" href="css/responsive.css?v=20.11.0">
+    <link rel="stylesheet" href="css/pages.css?v=20.11.0">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -43,17 +43,17 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v20.10.0 — UX Polish & Observability</p>
+                <p class="tagline">AI First CRM v20.11.0 — Form Validation & Accessibility</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v20.10.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v20.11.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
-                    <input type="text" id="username" placeholder="Введіть ім'я" required>
+                    <input type="text" id="username" placeholder="Введіть ім'я" required aria-required="true" autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label for="password">Пароль</label>
-                    <input type="password" id="password" placeholder="Введіть пароль" required>
+                    <input type="password" id="password" placeholder="Введіть пароль" required aria-required="true" autocomplete="current-password">
                 </div>
                 <button type="submit" class="btn-login">Увійти →</button>
                 <p id="loginError" class="error-message"></p>
@@ -288,7 +288,7 @@
                 <div class="form-section">
                     <label>Кімната <button type="button" id="freeRoomsBtn" class="btn-free-rooms" title="Показати вільні кімнати">🏠 Вільні</button></label>
                     <div id="freeRoomsPanel" class="free-rooms-panel hidden"></div>
-                    <select id="roomSelect" required>
+                    <select id="roomSelect" required aria-required="true">
                         <option value="">Оберіть кімнату</option>
                         <optgroup label="Кімнати">
                             <option value="Марвел">Марвел</option>
@@ -1143,6 +1143,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v20.11.0 — Form Validation & Accessibility (Claude Code, 07.03.2026)</h4>
+                    <ul>
+                        <li><b>Валідація</b> — real-time перевірка полів бронювання (aria-invalid, red border)</li>
+                        <li><b>Незбережені зміни</b> — попередження при виході зі сторінки з незбереженими даними</li>
+                        <li><b>Клавіатура</b> — Arrow keys для навігації між бронюваннями на таймлайні</li>
+                        <li><b>A11y</b> — aria-required, aria-label, focus-visible на booking blocks</li>
+                        <li><b>Login</b> — autocomplete атрибути для username/password</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v20.10.0 — UX Polish & Observability (Claude Code, 07.03.2026)</h4>
                     <ul>
@@ -3405,26 +3415,26 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=20.10.0"></script>
-    <script src="js/api.js?v=20.10.0"></script>
-    <script src="js/ui.js?v=20.10.0"></script>
-    <script src="js/auth.js?v=20.10.0"></script>
-    <script src="js/timeline.js?v=20.10.0"></script>
-    <script src="js/booking.js?v=20.10.0"></script>
-    <script src="js/settings.js?v=20.10.0"></script>
-    <script src="js/booking-form.js?v=20.10.0"></script>
-    <script src="js/booking-linked.js?v=20.10.0"></script>
-    <script src="js/settings-dashboard.js?v=20.10.0"></script>
-    <script src="js/settings-history.js?v=20.10.0"></script>
-    <script src="js/settings-afisha.js?v=20.10.0"></script>
-    <script src="js/settings-certificates.js?v=20.10.0"></script>
-    <script src="js/offline.js?v=20.10.0"></script>
-    <script src="js/search.js?v=20.10.0"></script>
-    <script src="js/ws.js?v=20.10.0"></script>
-    <script src="js/components/sidebar.js?v=20.10.0"></script>
-    <script src="js/sales-panel.js?v=20.10.0"></script>
-    <script src="js/command-panel.js?v=20.10.0"></script>
-    <script src="js/idle-hints.js?v=20.10.0"></script>
-    <script src="js/app.js?v=20.10.0"></script>
+    <script src="js/config.js?v=20.11.0"></script>
+    <script src="js/api.js?v=20.11.0"></script>
+    <script src="js/ui.js?v=20.11.0"></script>
+    <script src="js/auth.js?v=20.11.0"></script>
+    <script src="js/timeline.js?v=20.11.0"></script>
+    <script src="js/booking.js?v=20.11.0"></script>
+    <script src="js/settings.js?v=20.11.0"></script>
+    <script src="js/booking-form.js?v=20.11.0"></script>
+    <script src="js/booking-linked.js?v=20.11.0"></script>
+    <script src="js/settings-dashboard.js?v=20.11.0"></script>
+    <script src="js/settings-history.js?v=20.11.0"></script>
+    <script src="js/settings-afisha.js?v=20.11.0"></script>
+    <script src="js/settings-certificates.js?v=20.11.0"></script>
+    <script src="js/offline.js?v=20.11.0"></script>
+    <script src="js/search.js?v=20.11.0"></script>
+    <script src="js/ws.js?v=20.11.0"></script>
+    <script src="js/components/sidebar.js?v=20.11.0"></script>
+    <script src="js/sales-panel.js?v=20.11.0"></script>
+    <script src="js/command-panel.js?v=20.11.0"></script>
+    <script src="js/idle-hints.js?v=20.11.0"></script>
+    <script src="js/app.js?v=20.11.0"></script>
 </body>
 </html>

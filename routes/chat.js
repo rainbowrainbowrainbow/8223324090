@@ -389,6 +389,11 @@ router.post('/channels/:id/members', async (req, res) => {
             userId: targetUserId
         });
 
+        // Notify the invited user directly (they're not subscribed to the channel yet)
+        sendToUser(String(targetUserId), 'chat:channel-invite', {
+            channelId
+        });
+
         res.json({ success: true });
     } catch (err) {
         log.error('Error adding member', err);

@@ -54,7 +54,7 @@ router.post('/login', async (req, res) => {
         );
 
         log.info(`User "${username}" logged in (role: ${user.role})`);
-        res.json({ token, user: { username: user.username, role: user.role, name: user.name } });
+        res.json({ token, user: { id: user.id, username: user.username, role: user.role, name: user.name } });
     } catch (err) {
         log.error('Login error', err);
         res.status(500).json({ error: 'Server error' });
@@ -65,14 +65,14 @@ router.get('/verify', authenticateToken, async (req, res) => {
     try {
         // Read fresh role from DB (JWT may have stale role after role migration)
         const result = await pool.query(
-            'SELECT role, name FROM users WHERE username = $1 AND is_active = true',
+            'SELECT id, role, name FROM users WHERE username = $1 AND is_active = true',
             [req.user.username]
         );
         if (result.rows.length === 0) {
             return res.status(403).json({ error: 'User not found or deactivated' });
         }
-        const { role, name } = result.rows[0];
-        res.json({ user: { username: req.user.username, role, name } });
+        const { id, role, name } = result.rows[0];
+        res.json({ user: { id, username: req.user.username, role, name } });
     } catch (err) {
         res.status(500).json({ error: 'Verification failed' });
     }

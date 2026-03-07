@@ -273,6 +273,8 @@ var ParkWS = (function () {
             case 'chat:reaction':
             case 'chat:read':
             case 'chat:mention':
+            case 'chat:member-added':
+            case 'chat:channel-invite':
                 window.dispatchEvent(new CustomEvent('ws:chat', {
                     detail: { eventType: message.type, payload: message.payload }
                 }));

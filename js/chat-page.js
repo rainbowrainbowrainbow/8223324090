@@ -1070,6 +1070,15 @@
         }
     }
 
+    async function _loadChannels() {
+        try {
+            _channels = await _api('GET', '/channels') || [];
+            _renderChannels();
+        } catch (err) {
+            console.error('[Chat] Load channels error:', err);
+        }
+    }
+
     // ==========================================
     // CHANNELS
     // ==========================================
@@ -1340,7 +1349,8 @@
         var html = '<div class="chat-reactions">';
         for (var emoji in groups) {
             var isOwn = groups[emoji].some(function (r) { return String(r.userId) === _currentUserId; });
-            html += '<button class="chat-reaction-chip' + (isOwn ? ' own' : '') + '" data-emoji="' + emoji + '">' +
+            var names = groups[emoji].map(function (r) { return r.username || ''; }).join(', ');
+            html += '<button class="chat-reaction-chip' + (isOwn ? ' own' : '') + '" data-emoji="' + emoji + '" title="' + _esc(names) + '">' +
                 emoji + ' <span class="chat-reaction-count">' + groups[emoji].length + '</span></button>';
         }
         html += '</div>';
@@ -1676,6 +1686,10 @@
                 break;
             case 'chat:mention':
                 _playSoundAlways('mention');
+                break;
+            case 'chat:channel-invite':
+                _playSoundAlways('mention');
+                _loadChannels();
                 break;
         }
     }

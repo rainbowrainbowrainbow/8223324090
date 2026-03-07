@@ -15,12 +15,13 @@ const swaggerSpec = {
   openapi: '3.0.0',
   info: {
     title: 'Event Genix — Booking API',
-    version: '16.2.0',
+    version: '20.12.0',
     description: 'REST API для системи бронювання дитячого розважального парку. Усі дати зберігаються в UTC, відображаються у Europe/Kyiv (UTC+2/+3). Валюта: UAH (₴). Номери бронювань: BK-YYYY-NNNN.'
   },
   servers: [
     { url: '/api', description: 'API base path' }
   ],
+  security: [{ bearerAuth: [] }],
   components: {
     securitySchemes: {
       bearerAuth: {
@@ -3349,6 +3350,113 @@ const swaggerSpec = {
         responses: {
           200: { description: 'History entries', content: { 'application/json': { schema: { type: 'object', properties: { items: { type: 'array', items: { $ref: '#/components/schemas/WarehouseHistoryEntry' } }, total: { type: 'integer' } } } } } }
         }
+      }
+    },
+
+    // ==========================================
+    // v20.12.0: NEW ENDPOINTS
+    // ==========================================
+
+    '/leads': {
+      get: {
+        tags: ['Leads'], summary: 'Get all leads with filters',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['new', 'contacted', 'qualified', 'converted', 'lost'] } },
+          { name: 'source', in: 'query', schema: { type: 'string' } },
+          { name: 'search', in: 'query', schema: { type: 'string' } }
+        ],
+        responses: { 200: { description: 'List of leads' } }
+      },
+      post: {
+        tags: ['Leads'], summary: 'Create a new lead',
+        security: [{ bearerAuth: [] }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['name'], properties: { name: { type: 'string' }, phone: { type: 'string' }, source: { type: 'string' }, notes: { type: 'string' }, budget: { type: 'number' } } } } } },
+        responses: { 201: { description: 'Lead created' } }
+      }
+    },
+    '/leads/stats': {
+      get: {
+        tags: ['Leads'], summary: 'Get lead funnel statistics',
+        security: [{ bearerAuth: [] }],
+        responses: { 200: { description: 'Lead counts by status' } }
+      }
+    },
+    '/leads/{id}': {
+      put: {
+        tags: ['Leads'], summary: 'Update lead',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: { 200: { description: 'Lead updated' } }
+      },
+      delete: {
+        tags: ['Leads'], summary: 'Delete lead',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: { 200: { description: 'Lead deleted' } }
+      }
+    },
+    '/customers': {
+      get: {
+        tags: ['Customers'], summary: 'Get all customers (Supabase)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } }
+        ],
+        responses: { 200: { description: 'List of customers' } }
+      },
+      post: {
+        tags: ['Customers'], summary: 'Create customer',
+        security: [{ bearerAuth: [] }],
+        responses: { 201: { description: 'Customer created' } }
+      }
+    },
+    '/customers/{id}': {
+      get: {
+        tags: ['Customers'], summary: 'Get customer by ID',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { 200: { description: 'Customer details' } }
+      },
+      put: {
+        tags: ['Customers'], summary: 'Update customer',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { 200: { description: 'Customer updated' } }
+      }
+    },
+    '/health': {
+      get: {
+        tags: ['System'], summary: 'Health check (public, no auth)',
+        responses: {
+          200: { description: 'System status', content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string' }, database: { type: 'string' }, uptime: { type: 'number' }, version: { type: 'string' } } } } } }
+        }
+      }
+    },
+    '/users': {
+      get: {
+        tags: ['Users'], summary: 'Get all users (admin only)',
+        security: [{ bearerAuth: [] }],
+        responses: { 200: { description: 'List of users' } }
+      }
+    },
+    '/workers': {
+      get: {
+        tags: ['Workers'], summary: 'Get all digital worker roles',
+        security: [{ bearerAuth: [] }],
+        responses: { 200: { description: 'Worker role definitions' } }
+      }
+    },
+    '/finance/summary': {
+      get: {
+        tags: ['Finance'], summary: 'Get financial summary for period',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } }
+        ],
+        responses: { 200: { description: 'Financial summary with revenue, expenses, profit' } }
       }
     }
   }

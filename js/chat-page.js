@@ -10,6 +10,8 @@
     var _channels = [];
     var _chatUsers = [];
     var _replyTo = null;
+    var _editingMsg = null;
+    var _contextMsg = null;
     var _oldestSeq = null;
     var _loadingMore = false;
     var _typingUsers = {};
@@ -192,6 +194,7 @@
             if (e.key === 'Escape') {
                 _closeMentionPopup();
                 _cancelReply();
+                _cancelEdit();
             }
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 var popup = document.getElementById('chatMentionPopup');
@@ -218,6 +221,273 @@
     var _replyCloseBtn = document.getElementById('chatReplyClose');
     if (_replyCloseBtn) {
         _replyCloseBtn.addEventListener('click', _cancelReply);
+    }
+
+    // Edit close
+    var _editCloseBtn = document.getElementById('chatEditClose');
+    if (_editCloseBtn) {
+        _editCloseBtn.addEventListener('click', _cancelEdit);
+    }
+
+    // Create channel modal
+    var _newChannelBtn = document.getElementById('chatNewChannel');
+    var _newChannelOverlay = document.getElementById('chatNewChannelOverlay');
+    var _newChannelCancel = document.getElementById('chatNewChannelCancel');
+    var _newChannelCreate = document.getElementById('chatNewChannelCreate');
+    var _newChannelName = document.getElementById('chatNewChannelName');
+    var _newChannelDesc = document.getElementById('chatNewChannelDesc');
+
+    if (_newChannelBtn) {
+        _newChannelBtn.addEventListener('click', function () {
+            _newChannelOverlay.style.display = 'flex';
+            _newChannelName.value = '';
+            _newChannelDesc.value = '';
+            _newChannelName.focus();
+        });
+    }
+    if (_newChannelCancel) {
+        _newChannelCancel.addEventListener('click', function () {
+            _newChannelOverlay.style.display = 'none';
+        });
+    }
+    if (_newChannelOverlay) {
+        _newChannelOverlay.addEventListener('click', function (e) {
+            if (e.target === _newChannelOverlay) _newChannelOverlay.style.display = 'none';
+        });
+    }
+    if (_newChannelCreate) {
+        _newChannelCreate.addEventListener('click', async function () {
+            var name = _newChannelName.value.trim();
+            if (!name) return;
+            try {
+                var channel = await _api('POST', '/channels', { name: name, description: _newChannelDesc.value.trim() });
+                if (channel) {
+                    _channels.unshift(channel);
+                    _renderChannels();
+                    _selectChannel(channel);
+                    _newChannelOverlay.style.display = 'none';
+                }
+            } catch (err) {
+                alert(err.message || 'Помилка створення каналу');
+            }
+        });
+    }
+    if (_newChannelName) {
+        _newChannelName.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') _newChannelCreate.click();
+            if (e.key === 'Escape') _newChannelOverlay.style.display = 'none';
+        });
+    }
+
+    // Pin button — show pinned messages in right panel
+    var _pinBtn = document.getElementById('chatPinBtn');
+    if (_pinBtn) {
+        _pinBtn.addEventListener('click', async function () {
+            if (!_currentChannel) return;
+            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle').textContent === 'Закріплені';
+            if (isOpen) {
+                _infoPanel.classList.remove('open');
+                _pinBtn.classList.remove('active');
+            } else {
+                _infoBtn.classList.remove('active');
+                _pinBtn.classList.add('active');
+                document.getElementById('chatInfoPanelTitle').textContent = 'Закріплені';
+                await _renderPinnedPanel();
+                _infoPanel.classList.add('open');
+            }
+        });
+    }
+
+    async function _renderPinnedPanel() {
+        var body = document.getElementById('chatInfoPanelBody');
+        if (!body || !_currentChannel) return;
+        body.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Завантаження...</div>';
+        try {
+            var pinned = await _api('GET', '/channels/' + _currentChannel.id + '/pinned');
+            if (!pinned || pinned.length === 0) {
+                body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--gray-400);font-size:13px">Немає закріплених повідомлень</div>';
+                return;
+            }
+            var html = '';
+            pinned.forEach(function (msg) {
+                var time = new Date(msg.createdAt).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
+                html += '<div class="chat-pinned-item" data-message-id="' + msg.id + '">' +
+                    '<div class="chat-info-member-name">' + _esc(msg.displayName || msg.username) + ' <span style="font-weight:400;color:var(--gray-400);font-size:11px">' + time + '</span></div>' +
+                    '<div style="font-size:13px;color:var(--gray-600);margin:2px 0 6px;line-height:1.4">' + _esc(_truncate(msg.content, 100)) + '</div>' +
+                    '<button class="chat-context-item chat-context-danger" onclick="document.dispatchEvent(new CustomEvent(\'chat:unpin\',{detail:{messageId:' + msg.id + '}}))" style="padding:4px 8px;font-size:11px">Відкріпити</button>' +
+                '</div>';
+            });
+            body.innerHTML = html;
+        } catch (err) {
+            body.innerHTML = '<div style="padding:16px;color:var(--danger);font-size:13px">Помилка завантаження</div>';
+        }
+    }
+
+    document.addEventListener('chat:unpin', async function (e) {
+        if (!_currentChannel) return;
+        try {
+            await _api('DELETE', '/channels/' + _currentChannel.id + '/pinned/' + e.detail.messageId);
+            _renderPinnedPanel();
+        } catch (err) {
+            console.error('[Chat] Unpin error:', err);
+        }
+    });
+
+    // Mute button
+    var _muteBtn = document.getElementById('chatMuteBtn');
+    if (_muteBtn) {
+        _muteBtn.addEventListener('click', async function () {
+            if (!_currentChannel) return;
+            try {
+                var result = await _api('PUT', '/channels/' + _currentChannel.id + '/mute');
+                if (result) {
+                    _muteBtn.classList.toggle('active', result.muted);
+                    _muteBtn.title = result.muted ? 'Увімкнути сповіщення' : 'Вимкнути сповіщення';
+                }
+            } catch (err) {
+                console.error('[Chat] Mute error:', err);
+            }
+        });
+    }
+
+    // Context menu (right-click on messages)
+    var _contextMenu = document.getElementById('chatContextMenu');
+    document.addEventListener('contextmenu', function (e) {
+        var msgEl = e.target.closest('.chat-message');
+        if (!msgEl || !_currentChannel) return;
+        e.preventDefault();
+
+        var msgId = msgEl.dataset.messageId;
+        var isOwn = msgEl.classList.contains('own');
+        _contextMsg = { id: msgId, isOwn: isOwn, el: msgEl };
+
+        // Show/hide edit option (only own messages)
+        var editItem = _contextMenu.querySelector('[data-action="edit"]');
+        if (editItem) editItem.style.display = isOwn ? 'flex' : 'none';
+
+        // Show/hide delete option (own messages)
+        var deleteItem = _contextMenu.querySelector('[data-action="delete"]');
+        if (deleteItem) deleteItem.style.display = isOwn ? 'flex' : 'none';
+
+        // Position context menu
+        var x = e.clientX;
+        var y = e.clientY;
+        _contextMenu.style.display = 'block';
+        var menuW = _contextMenu.offsetWidth;
+        var menuH = _contextMenu.offsetHeight;
+        if (x + menuW > window.innerWidth) x = window.innerWidth - menuW - 8;
+        if (y + menuH > window.innerHeight) y = window.innerHeight - menuH - 8;
+        _contextMenu.style.left = x + 'px';
+        _contextMenu.style.top = y + 'px';
+    });
+
+    document.addEventListener('click', function () {
+        if (_contextMenu) _contextMenu.style.display = 'none';
+    });
+
+    // Context menu action handlers
+    if (_contextMenu) {
+        _contextMenu.addEventListener('click', function (e) {
+            var btn = e.target.closest('.chat-context-item');
+            if (!btn || !_contextMsg) return;
+            var action = btn.dataset.action;
+
+            switch (action) {
+                case 'reply':
+                    _startReplyFromContext();
+                    break;
+                case 'edit':
+                    _startEdit();
+                    break;
+                case 'pin':
+                    _pinFromContext();
+                    break;
+                case 'react':
+                    _reactFromContext();
+                    break;
+                case 'delete':
+                    _deleteFromContext();
+                    break;
+            }
+            _contextMenu.style.display = 'none';
+        });
+    }
+
+    function _startReplyFromContext() {
+        if (!_contextMsg) return;
+        var contentEl = _contextMsg.el.querySelector('.chat-bubble-content');
+        var usernameEl = _contextMsg.el.querySelector('.chat-bubble-username');
+        _startReply({
+            id: _contextMsg.id,
+            content: contentEl ? contentEl.textContent : '',
+            displayName: usernameEl ? usernameEl.textContent : '',
+            username: usernameEl ? usernameEl.textContent : ''
+        });
+    }
+
+    function _startEdit() {
+        if (!_contextMsg || !_contextMsg.isOwn) return;
+        var contentEl = _contextMsg.el.querySelector('.chat-bubble-content');
+        if (!contentEl) return;
+        _editingMsg = { id: _contextMsg.id, el: _contextMsg.el };
+        var editPreview = document.getElementById('chatEditPreview');
+        var editContent = document.getElementById('chatEditContent');
+        if (editPreview) editPreview.style.display = 'flex';
+        if (editContent) editContent.textContent = _truncate(contentEl.textContent, 80);
+        var input = document.getElementById('chatInput');
+        if (input) {
+            input.value = contentEl.textContent;
+            input.focus();
+            _autoGrow(input);
+        }
+    }
+
+    function _cancelEdit() {
+        _editingMsg = null;
+        var editPreview = document.getElementById('chatEditPreview');
+        if (editPreview) editPreview.style.display = 'none';
+        var input = document.getElementById('chatInput');
+        if (input) {
+            input.value = '';
+            _autoGrow(input);
+        }
+    }
+
+    async function _pinFromContext() {
+        if (!_contextMsg || !_currentChannel) return;
+        try {
+            await _api('POST', '/channels/' + _currentChannel.id + '/pinned', { messageId: parseInt(_contextMsg.id, 10) });
+        } catch (err) {
+            console.error('[Chat] Pin error:', err);
+        }
+    }
+
+    function _reactFromContext() {
+        if (!_contextMsg) return;
+        var bubble = _contextMsg.el.querySelector('.chat-bubble');
+        if (bubble) {
+            _showEmojiPicker({ id: _contextMsg.id }, bubble);
+        }
+    }
+
+    async function _deleteFromContext() {
+        if (!_contextMsg) return;
+        if (!confirm('Видалити повідомлення?')) return;
+        try {
+            await _api('DELETE', '/messages/' + _contextMsg.id);
+            // Update UI immediately
+            var contentEl = _contextMsg.el.querySelector('.chat-bubble-content');
+            if (contentEl) {
+                contentEl.innerHTML = '<em style="color:var(--gray-400)">Повідомлення видалено</em>';
+            }
+            // Remove reactions and actions
+            var reactions = _contextMsg.el.querySelector('.chat-reactions');
+            if (reactions) reactions.remove();
+            var actions = _contextMsg.el.querySelector('.chat-msg-actions');
+            if (actions) actions.remove();
+        } catch (err) {
+            console.error('[Chat] Delete error:', err);
+        }
     }
 
     // Search messages button
@@ -295,14 +565,16 @@
     if (_infoBtn) {
         _infoBtn.addEventListener('click', function () {
             if (!_currentChannel) return;
-            var isOpen = _infoPanel.classList.contains('open');
+            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle').textContent === 'Учасники';
             if (isOpen) {
                 _infoPanel.classList.remove('open');
                 _infoBtn.classList.remove('active');
             } else {
+                if (_pinBtn) _pinBtn.classList.remove('active');
+                _infoBtn.classList.add('active');
+                document.getElementById('chatInfoPanelTitle').textContent = 'Учасники';
                 _renderInfoPanel();
                 _infoPanel.classList.add('open');
-                _infoBtn.classList.add('active');
             }
         });
     }
@@ -310,6 +582,7 @@
         _infoPanelClose.addEventListener('click', function () {
             _infoPanel.classList.remove('open');
             if (_infoBtn) _infoBtn.classList.remove('active');
+            if (_pinBtn) _pinBtn.classList.remove('active');
         });
     }
 
@@ -470,13 +743,16 @@
         // Update header
         document.getElementById('chatHeaderName').textContent = channel.name;
         document.getElementById('chatHeaderDesc').textContent = channel.description || '';
-        var meta = document.getElementById('chatHeaderMeta');
-        var membersEl = document.getElementById('chatHeaderMembers');
-        if (meta && membersEl) {
-            meta.style.display = 'flex';
-            var memberCount = channel.memberCount || _chatUsers.length;
-            membersEl.textContent = memberCount + ' ' + _pluralize(memberCount, 'учасник', 'учасники', 'учасників');
+
+        // Close right panel
+        if (_infoPanel && _infoPanel.classList.contains('open')) {
+            _infoPanel.classList.remove('open');
+            if (_infoBtn) _infoBtn.classList.remove('active');
+            if (_pinBtn) _pinBtn.classList.remove('active');
         }
+
+        // Reset mute button state
+        if (_muteBtn) _muteBtn.classList.remove('active');
 
         // Enable input
         var inputEl = document.getElementById('chatInput');
@@ -533,7 +809,7 @@
         if (messages.length === 0) {
             container.innerHTML =
                 '<div class="chat-empty">' +
-                    '<div class="chat-empty-icon">💬</div>' +
+                    '<div class="chat-empty-icon"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>' +
                     '<div class="chat-empty-title">Почніть спілкування!</div>' +
                     '<div class="chat-empty-hint">Напишіть перше повідомлення у канал ' + _esc(_currentChannel ? _currentChannel.name : '') + '</div>' +
                 '</div>';
@@ -577,6 +853,7 @@
         var initial = (msg.displayName || msg.username || '?').charAt(0).toUpperCase();
         var time = new Date(msg.createdAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
         var content = msg.deletedAt ? '<em style="color:var(--gray-400)">Повідомлення видалено</em>' : _formatContent(msg.content);
+        var editedHtml = msg.editedAt && !msg.deletedAt ? '<span class="chat-bubble-edited">(ред.)</span>' : '';
 
         var avatarColorClass = 'chat-avatar-color-' + _colorIdx(msg.userId);
         var usernameColorClass = 'chat-username-color-' + _colorIdx(msg.userId);
@@ -596,6 +873,7 @@
             '<div class="chat-bubble">' +
                 '<div class="chat-bubble-header">' +
                     '<span class="chat-bubble-username ' + usernameColorClass + '">' + _esc(msg.displayName || msg.username) + '</span>' +
+                    editedHtml +
                     '<span class="chat-bubble-time">' + time + '</span>' +
                 '</div>' +
                 replyHtml +
@@ -668,6 +946,32 @@
         if (!input) return;
         var content = input.value.trim();
         if (!content || !_currentChannel) return;
+
+        // Handle edit mode
+        if (_editingMsg) {
+            var editId = _editingMsg.id;
+            var editEl = _editingMsg.el;
+            _cancelEdit();
+            input.value = '';
+            _autoGrow(input);
+            try {
+                var updated = await _api('PUT', '/messages/' + editId, { content: content });
+                if (updated && editEl) {
+                    var contentEl = editEl.querySelector('.chat-bubble-content');
+                    if (contentEl) contentEl.innerHTML = _formatContent(updated.content);
+                    // Add edited indicator
+                    if (!editEl.querySelector('.chat-bubble-edited')) {
+                        var timeEl = editEl.querySelector('.chat-bubble-time');
+                        if (timeEl) timeEl.insertAdjacentHTML('beforebegin', '<span class="chat-bubble-edited">(ред.)</span>');
+                    }
+                }
+            } catch (err) {
+                console.error('[Chat] Edit error:', err);
+                input.value = content;
+                _autoGrow(input);
+            }
+            return;
+        }
 
         // Clear input immediately (optimistic)
         input.value = '';
@@ -929,10 +1233,16 @@
             case 'chat:reaction':
                 _onReaction(payload);
                 break;
+            case 'chat:edit':
+                _onEditMessage(payload);
+                break;
+            case 'chat:delete':
+                _onDeleteMessage(payload);
+                break;
             case 'chat:read':
                 break;
             case 'chat:mention':
-                _playSound('mention');
+                _playSoundAlways('mention');
                 break;
         }
     }
@@ -1011,6 +1321,30 @@
                 _toggleReaction(payload.messageId, chip.dataset.emoji);
             });
         });
+    }
+
+    function _onEditMessage(payload) {
+        if (!_currentChannel || payload.channelId !== _currentChannel.id) return;
+        var msgEl = document.querySelector('[data-message-id="' + payload.message.id + '"]');
+        if (!msgEl) return;
+        var contentEl = msgEl.querySelector('.chat-bubble-content');
+        if (contentEl) contentEl.innerHTML = _formatContent(payload.message.content);
+        if (!msgEl.querySelector('.chat-bubble-edited')) {
+            var timeEl = msgEl.querySelector('.chat-bubble-time');
+            if (timeEl) timeEl.insertAdjacentHTML('beforebegin', '<span class="chat-bubble-edited">(ред.)</span>');
+        }
+    }
+
+    function _onDeleteMessage(payload) {
+        if (!_currentChannel || payload.channelId !== _currentChannel.id) return;
+        var msgEl = document.querySelector('[data-message-id="' + payload.messageId + '"]');
+        if (!msgEl) return;
+        var contentEl = msgEl.querySelector('.chat-bubble-content');
+        if (contentEl) contentEl.innerHTML = '<em style="color:var(--gray-400)">Повідомлення видалено</em>';
+        var reactions = msgEl.querySelector('.chat-reactions');
+        if (reactions) reactions.remove();
+        var actions = msgEl.querySelector('.chat-msg-actions');
+        if (actions) actions.remove();
     }
 
     // ==========================================

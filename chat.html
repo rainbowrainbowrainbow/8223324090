@@ -6,13 +6,13 @@
     <title>Event Genix | Командний чат</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=21.1.0">
-    <link rel="stylesheet" href="css/layout.css?v=21.1.0">
-    <link rel="stylesheet" href="css/pages.css?v=21.1.0">
-    <link rel="stylesheet" href="css/modals.css?v=21.1.0">
-    <link rel="stylesheet" href="css/chat.css?v=21.1.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=21.1.0">
-    <link rel="stylesheet" href="css/responsive.css?v=21.1.0">
+    <link rel="stylesheet" href="css/base.css?v=21.2.0">
+    <link rel="stylesheet" href="css/layout.css?v=21.2.0">
+    <link rel="stylesheet" href="css/pages.css?v=21.2.0">
+    <link rel="stylesheet" href="css/modals.css?v=21.2.0">
+    <link rel="stylesheet" href="css/chat.css?v=21.2.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=21.2.0">
+    <link rel="stylesheet" href="css/responsive.css?v=21.2.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -73,6 +73,9 @@
                     <div class="chat-sidebar-header">
                         <div class="chat-sidebar-top">
                             <h2 class="chat-sidebar-title">Канали</h2>
+                            <button class="chat-sidebar-action-btn" id="chatNewChannel" title="Новий канал">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            </button>
                         </div>
                         <div class="chat-search">
                             <svg class="chat-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -96,6 +99,12 @@
                         <div class="chat-header-actions">
                             <button class="chat-header-action-btn" id="chatSearchMsgBtn" title="Пошук повідомлень">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            </button>
+                            <button class="chat-header-action-btn" id="chatPinBtn" title="Закріплені повідомлення">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L12 12"/><path d="M18 8L18 12C18 15.31 15.31 18 12 18C8.69 18 6 15.31 6 12L6 8"/><path d="M12 18L12 22"/></svg>
+                            </button>
+                            <button class="chat-header-action-btn" id="chatMuteBtn" title="Сповіщення каналу">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                             </button>
                             <button class="chat-header-action-btn" id="chatInfoBtn" title="Учасники каналу">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -136,6 +145,15 @@
                             </div>
                             <button class="chat-reply-close" id="chatReplyClose">&times;</button>
                         </div>
+                        <!-- Edit preview -->
+                        <div class="chat-edit-preview" id="chatEditPreview" style="display:none">
+                            <div class="chat-edit-preview-bar"></div>
+                            <div class="chat-edit-preview-text">
+                                <div class="chat-edit-preview-label">Редагування</div>
+                                <div class="chat-edit-preview-content" id="chatEditContent"></div>
+                            </div>
+                            <button class="chat-reply-close" id="chatEditClose">&times;</button>
+                        </div>
                         <div class="chat-mention-popup" id="chatMentionPopup"></div>
                         <div class="chat-input-row">
                             <textarea class="chat-input" id="chatInput" placeholder="Написати повідомлення..." rows="1" disabled></textarea>
@@ -146,22 +164,66 @@
                     </div>
                 </div>
 
-                <!-- Channel info panel (slide-in from right) -->
+                <!-- Right panel (info / pinned) -->
                 <div class="chat-info-panel" id="chatInfoPanel">
                     <div class="chat-info-panel-header">
-                        <h3 class="chat-info-panel-title">Учасники</h3>
+                        <h3 class="chat-info-panel-title" id="chatInfoPanelTitle">Учасники</h3>
                         <button class="chat-info-panel-close" id="chatInfoPanelClose">&times;</button>
                     </div>
                     <div class="chat-info-panel-body" id="chatInfoPanelBody"></div>
                 </div>
             </div>
         </main>
+
+        <!-- Context menu (floating) -->
+        <div class="chat-context-menu" id="chatContextMenu" style="display:none">
+            <button class="chat-context-item" data-action="reply">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                Відповісти
+            </button>
+            <button class="chat-context-item" data-action="edit">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Редагувати
+            </button>
+            <button class="chat-context-item" data-action="pin">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L12 12"/><path d="M18 8L18 12C18 15.31 15.31 18 12 18C8.69 18 6 15.31 6 12L6 8"/><path d="M12 18L12 22"/></svg>
+                Закріпити
+            </button>
+            <button class="chat-context-item" data-action="react">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                Реакція
+            </button>
+            <div class="chat-context-divider"></div>
+            <button class="chat-context-item chat-context-danger" data-action="delete">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Видалити
+            </button>
+        </div>
+
+        <!-- Create channel modal -->
+        <div class="chat-modal-overlay" id="chatNewChannelOverlay" style="display:none">
+            <div class="chat-modal">
+                <h3 class="chat-modal-title">Новий канал</h3>
+                <div class="chat-modal-field">
+                    <label>Назва</label>
+                    <input type="text" id="chatNewChannelName" placeholder="продажі" maxlength="40">
+                </div>
+                <div class="chat-modal-field">
+                    <label>Опис (необов'язково)</label>
+                    <input type="text" id="chatNewChannelDesc" placeholder="Обговорення продажів" maxlength="200">
+                </div>
+                <div class="chat-modal-actions">
+                    <button class="chat-modal-btn chat-modal-btn-cancel" id="chatNewChannelCancel">Скасувати</button>
+                    <button class="chat-modal-btn chat-modal-btn-primary" id="chatNewChannelCreate">Створити</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script src="js/config.js?v=21.1.0"></script>
-    <script src="js/api.js?v=21.1.0"></script>
-    <script src="js/auth.js?v=21.1.0"></script>
-    <script src="js/ws.js?v=21.1.0"></script>
-    <script src="js/chat-page.js?v=21.1.0"></script>
+    <script src="js/config.js?v=21.2.0"></script>
+    <script src="js/api.js?v=21.2.0"></script>
+    <script src="js/auth.js?v=21.2.0"></script>
+    <script src="js/ws.js?v=21.2.0"></script>
+    <script src="js/chat-page.js?v=21.2.0"></script>
 </body>
 </html>

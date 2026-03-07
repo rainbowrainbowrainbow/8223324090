@@ -299,6 +299,143 @@ async function getMessageById(messageId) {
     return result.rows[0] || null;
 }
 
+/**
+ * Create a new channel.
+ */
+async function createChannel(slug, name, description, createdBy) {
+    const result = await pool.query(`
+        INSERT INTO chat_channels (slug, name, description, is_default, created_by)
+        VALUES ($1, $2, $3, false, $4)
+        RETURNING *
+    `, [slug, name, description || '', createdBy]);
+    const ch = result.rows[0];
+    // Auto-join the creator
+    await pool.query(
+        'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [ch.id, createdBy]
+    );
+    return mapChannelRow({ ...ch, unread_count: '0' });
+}
+
+/**
+ * Edit a message (only owner can edit).
+ */
+async function editMessage(messageId, userId, newContent) {
+    const result = await pool.query(`
+        UPDATE chat_messages SET content = $1, edited_at = NOW()
+        WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL
+        RETURNING *
+    `, [newContent, messageId, userId]);
+    if (result.rows.length === 0) return null;
+    const msg = result.rows[0];
+    const full = await pool.query(`
+        SELECT cm.*, u.username, u.name AS display_name,
+            rm.content AS reply_content, ru.username AS reply_username
+        FROM chat_messages cm
+        JOIN users u ON u.id = cm.user_id
+        LEFT JOIN chat_messages rm ON rm.id = cm.reply_to
+        LEFT JOIN users ru ON ru.id = rm.user_id
+        WHERE cm.id = $1
+    `, [msg.id]);
+    return mapMessageRow(full.rows[0]);
+}
+
+/**
+ * Soft-delete a message (only owner or admin).
+ */
+async function deleteMessage(messageId, userId, isAdmin) {
+    let result;
+    if (isAdmin) {
+        result = await pool.query(
+            'UPDATE chat_messages SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
+            [messageId]
+        );
+    } else {
+        result = await pool.query(
+            'UPDATE chat_messages SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING *',
+            [messageId, userId]
+        );
+    }
+    return result.rows[0] || null;
+}
+
+/**
+ * Pin/unpin a message in a channel.
+ */
+async function pinMessage(channelId, messageId, userId) {
+    await pool.query(`
+        INSERT INTO chat_pinned (channel_id, message_id, pinned_by)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (channel_id, message_id) DO NOTHING
+    `, [channelId, messageId, userId]);
+}
+
+async function unpinMessage(channelId, messageId) {
+    await pool.query(
+        'DELETE FROM chat_pinned WHERE channel_id = $1 AND message_id = $2',
+        [channelId, messageId]
+    );
+}
+
+async function getPinnedMessages(channelId) {
+    const result = await pool.query(`
+        SELECT cm.*, u.username, u.name AS display_name, cp.pinned_at, pu.username AS pinned_by_username
+        FROM chat_pinned cp
+        JOIN chat_messages cm ON cm.id = cp.message_id
+        JOIN users u ON u.id = cm.user_id
+        JOIN users pu ON pu.id = cp.pinned_by
+        WHERE cp.channel_id = $1 AND cm.deleted_at IS NULL
+        ORDER BY cp.pinned_at DESC
+    `, [channelId]);
+    return result.rows.map(row => ({
+        ...mapMessageRow(row),
+        pinnedAt: row.pinned_at,
+        pinnedByUsername: row.pinned_by_username
+    }));
+}
+
+/**
+ * Toggle mute for a channel member.
+ */
+async function toggleMute(channelId, userId) {
+    const result = await pool.query(
+        'UPDATE chat_channel_members SET muted = NOT muted WHERE channel_id = $1 AND user_id = $2 RETURNING muted',
+        [channelId, userId]
+    );
+    return result.rows[0] ? result.rows[0].muted : false;
+}
+
+/**
+ * Get channel members list.
+ */
+async function getChannelMembers(channelId) {
+    const result = await pool.query(`
+        SELECT u.id, u.username, u.name AS display_name, u.role, m.joined_at, m.muted
+        FROM chat_channel_members m
+        JOIN users u ON u.id = m.user_id
+        WHERE m.channel_id = $1 AND u.is_active = true
+        ORDER BY u.username
+    `, [channelId]);
+    return result.rows.map(r => ({
+        id: r.id,
+        username: r.username,
+        displayName: r.display_name || r.username,
+        role: r.role,
+        joinedAt: r.joined_at,
+        muted: r.muted
+    }));
+}
+
+/**
+ * Join a user to a channel.
+ */
+async function joinChannel(channelId, userId) {
+    await pool.query(
+        'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [channelId, userId]
+    );
+}
+
 module.exports = {
     getChannels,
     getChannelMessages,
@@ -312,5 +449,14 @@ module.exports = {
     getChannelById,
     isMember,
     getMessageById,
-    mapMessageRow
+    mapMessageRow,
+    createChannel,
+    editMessage,
+    deleteMessage,
+    pinMessage,
+    unpinMessage,
+    getPinnedMessages,
+    toggleMute,
+    getChannelMembers,
+    joinChannel
 };

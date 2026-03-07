@@ -81,7 +81,11 @@
     // INITIALIZATION
     // ==========================================
 
-    document.addEventListener('DOMContentLoaded', function () {
+    // ==========================================
+    // AUTH + INIT (direct execution, kleshnya pattern)
+    // ==========================================
+
+    function _checkAuthAndInit() {
         _preloadSounds();
         _loadOfflineQueue();
 
@@ -105,47 +109,53 @@
                 _currentUsername = parsed.username;
                 var userEl = document.getElementById('currentUser');
                 if (userEl) userEl.textContent = parsed.name || parsed.username || '';
-            } catch (e) {}
+            } catch (e) {
+                console.error('[Chat] Failed to parse saved user:', e);
+            }
         }
 
+        // Show main app FIRST (prevent white page)
         document.getElementById('mainApp').classList.remove('hidden');
+
+        // Connect WebSocket
         if (typeof ParkWS !== 'undefined') ParkWS.connect();
+
+        // Load channels and messages
         _init();
+    }
 
-        // Logout handler
-        var logoutBtn = document.getElementById('logoutBtn');
-        if (logoutBtn) {
-            logoutBtn.addEventListener('click', function () {
-                if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
-                localStorage.removeItem('pzp_token');
-                localStorage.removeItem('pzp_current_user');
-                localStorage.removeItem('pzp_session');
-                window.location.href = '/';
-            });
-        }
+    // Logout handler
+    document.getElementById('logoutBtn').addEventListener('click', function () {
+        if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
+        localStorage.removeItem('pzp_token');
+        localStorage.removeItem('pzp_current_user');
+        localStorage.removeItem('pzp_session');
+        window.location.href = '/';
+    });
 
-        // Sidebar toggle (mobile)
-        var toggleBtn = document.getElementById('chatToggleSidebar');
-        var sidebar = document.getElementById('chatSidebar');
-        var overlay = document.getElementById('chatSidebarOverlay');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', function () {
-                sidebar.classList.toggle('open');
-                overlay.classList.toggle('visible');
-            });
-        }
-        if (overlay) {
-            overlay.addEventListener('click', function () {
-                sidebar.classList.remove('open');
-                overlay.classList.remove('visible');
-            });
-        }
+    // Sidebar toggle (mobile)
+    var _toggleBtn = document.getElementById('chatToggleSidebar');
+    var _sidebar = document.getElementById('chatSidebar');
+    var _overlay = document.getElementById('chatSidebarOverlay');
+    if (_toggleBtn) {
+        _toggleBtn.addEventListener('click', function () {
+            _sidebar.classList.toggle('open');
+            _overlay.classList.toggle('visible');
+        });
+    }
+    if (_overlay) {
+        _overlay.addEventListener('click', function () {
+            _sidebar.classList.remove('open');
+            _overlay.classList.remove('visible');
+        });
+    }
 
-        // Input handlers
-        var input = document.getElementById('chatInput');
-        var sendBtn = document.getElementById('chatSendBtn');
+    // Input handlers
+    var _input = document.getElementById('chatInput');
+    var _sendBtn = document.getElementById('chatSendBtn');
 
-        input.addEventListener('input', function () {
+    if (_input) {
+        _input.addEventListener('input', function () {
             _autoGrow(this);
             if (_currentChannel) {
                 ParkWS.sendChatTyping(_currentChannel.id);
@@ -153,63 +163,77 @@
             _handleMentionInput(this);
         });
 
-        input.addEventListener('keydown', function (e) {
-            // Enter to send (Shift+Enter for newline)
+        _input.addEventListener('keydown', function (e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 _sendMessage();
             }
-            // Escape to close mention popup or reply
             if (e.key === 'Escape') {
                 _closeMentionPopup();
                 _cancelReply();
             }
-            // Arrow keys for mention navigation
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 var popup = document.getElementById('chatMentionPopup');
-                if (popup.classList.contains('visible')) {
+                if (popup && popup.classList.contains('visible')) {
                     e.preventDefault();
                     _navigateMention(e.key === 'ArrowDown' ? 1 : -1);
                 }
             }
             if (e.key === 'Tab') {
                 var popup2 = document.getElementById('chatMentionPopup');
-                if (popup2.classList.contains('visible')) {
+                if (popup2 && popup2.classList.contains('visible')) {
                     e.preventDefault();
                     _selectMention();
                 }
             }
         });
+    }
 
-        sendBtn.addEventListener('click', _sendMessage);
+    if (_sendBtn) {
+        _sendBtn.addEventListener('click', _sendMessage);
+    }
 
-        // Reply close
-        document.getElementById('chatReplyClose').addEventListener('click', _cancelReply);
+    // Reply close
+    var _replyCloseBtn = document.getElementById('chatReplyClose');
+    if (_replyCloseBtn) {
+        _replyCloseBtn.addEventListener('click', _cancelReply);
+    }
 
-        // WebSocket chat events
-        window.addEventListener('ws:chat', function (e) {
-            _handleChatEvent(e.detail);
-        });
+    // WebSocket chat events
+    window.addEventListener('ws:chat', function (e) {
+        _handleChatEvent(e.detail);
+    });
 
-        // Infinite scroll
-        var messagesEl = document.getElementById('chatMessages');
-        messagesEl.addEventListener('scroll', function () {
+    // Infinite scroll
+    var _messagesEl = document.getElementById('chatMessages');
+    if (_messagesEl) {
+        _messagesEl.addEventListener('scroll', function () {
             if (this.scrollTop < 100 && !_loadingMore && _currentChannel && _oldestSeq > 1) {
                 _loadOlderMessages();
             }
         });
+    }
 
-        // Reconnect: drain offline queue
-        window.addEventListener('wsStatusChange', function (e) {
-            if (e.detail.connected) {
-                _drainOfflineQueue();
-                // Re-join current channel
-                if (_currentChannel) {
-                    ParkWS.joinChannel(_currentChannel.id);
-                }
+    // Reconnect: drain offline queue
+    window.addEventListener('wsStatusChange', function (e) {
+        if (e.detail.connected) {
+            _drainOfflineQueue();
+            if (_currentChannel) {
+                ParkWS.joinChannel(_currentChannel.id);
             }
-        });
+        }
     });
+
+    // Keyboard shortcut: Escape closes modals/sidebar
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            _sidebar.classList.remove('open');
+            _overlay.classList.remove('visible');
+        }
+    });
+
+    // Init
+    _checkAuthAndInit();
 
     async function _init() {
         try {

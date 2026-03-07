@@ -220,12 +220,115 @@
         _replyCloseBtn.addEventListener('click', _cancelReply);
     }
 
-    // Attach button (placeholder — show coming soon)
-    var _attachBtn = document.getElementById('chatAttachBtn');
-    if (_attachBtn) {
-        _attachBtn.addEventListener('click', function () {
-            alert('Функція обміну файлами буде у v21.1 🚀');
+    // Search messages button
+    var _searchMsgBtn = document.getElementById('chatSearchMsgBtn');
+    var _searchBar = document.getElementById('chatSearchBar');
+    var _searchMsgInput = document.getElementById('chatSearchMsgInput');
+    var _searchMsgClose = document.getElementById('chatSearchMsgClose');
+    var _searchMsgCount = document.getElementById('chatSearchMsgCount');
+
+    if (_searchMsgBtn) {
+        _searchMsgBtn.addEventListener('click', function () {
+            if (!_currentChannel) return;
+            var isOpen = _searchBar.style.display !== 'none';
+            if (isOpen) {
+                _closeSearchBar();
+            } else {
+                _searchBar.style.display = 'flex';
+                _searchMsgBtn.classList.add('active');
+                _searchMsgInput.focus();
+            }
         });
+    }
+    if (_searchMsgClose) {
+        _searchMsgClose.addEventListener('click', _closeSearchBar);
+    }
+    if (_searchMsgInput) {
+        _searchMsgInput.addEventListener('input', _debounce(function () {
+            _searchMessages(this.value.trim());
+        }, 250));
+        _searchMsgInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') _closeSearchBar();
+        });
+    }
+
+    function _closeSearchBar() {
+        if (_searchBar) _searchBar.style.display = 'none';
+        if (_searchMsgBtn) _searchMsgBtn.classList.remove('active');
+        if (_searchMsgInput) _searchMsgInput.value = '';
+        if (_searchMsgCount) _searchMsgCount.textContent = '';
+        // Remove highlights
+        document.querySelectorAll('.chat-message.search-highlight').forEach(function (el) {
+            el.classList.remove('search-highlight');
+        });
+    }
+
+    function _searchMessages(query) {
+        // Remove previous highlights
+        document.querySelectorAll('.chat-message.search-highlight').forEach(function (el) {
+            el.classList.remove('search-highlight');
+        });
+        if (!query) {
+            if (_searchMsgCount) _searchMsgCount.textContent = '';
+            return;
+        }
+        var q = query.toLowerCase();
+        var found = 0;
+        var firstMatch = null;
+        document.querySelectorAll('.chat-message').forEach(function (el) {
+            var content = (el.querySelector('.chat-bubble-content') || {}).textContent || '';
+            if (content.toLowerCase().includes(q)) {
+                el.classList.add('search-highlight');
+                found++;
+                if (!firstMatch) firstMatch = el;
+            }
+        });
+        if (_searchMsgCount) _searchMsgCount.textContent = found > 0 ? found + ' зн.' : 'не знайдено';
+        if (firstMatch) firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // Channel info panel button
+    var _infoBtn = document.getElementById('chatInfoBtn');
+    var _infoPanel = document.getElementById('chatInfoPanel');
+    var _infoPanelClose = document.getElementById('chatInfoPanelClose');
+
+    if (_infoBtn) {
+        _infoBtn.addEventListener('click', function () {
+            if (!_currentChannel) return;
+            var isOpen = _infoPanel.classList.contains('open');
+            if (isOpen) {
+                _infoPanel.classList.remove('open');
+                _infoBtn.classList.remove('active');
+            } else {
+                _renderInfoPanel();
+                _infoPanel.classList.add('open');
+                _infoBtn.classList.add('active');
+            }
+        });
+    }
+    if (_infoPanelClose) {
+        _infoPanelClose.addEventListener('click', function () {
+            _infoPanel.classList.remove('open');
+            if (_infoBtn) _infoBtn.classList.remove('active');
+        });
+    }
+
+    function _renderInfoPanel() {
+        var body = document.getElementById('chatInfoPanelBody');
+        if (!body) return;
+        var html = '<div class="chat-info-section-label">' + _chatUsers.length + ' ' + _pluralize(_chatUsers.length, 'учасник', 'учасники', 'учасників') + '</div>';
+        _chatUsers.forEach(function (u) {
+            var initial = (u.displayName || u.username || '?').charAt(0).toUpperCase();
+            var colorClass = 'chat-avatar-color-' + _colorIdx(u.id || 0);
+            html += '<div class="chat-info-member">' +
+                '<div class="chat-info-member-avatar ' + colorClass + '">' + initial + '</div>' +
+                '<div>' +
+                    '<div class="chat-info-member-name">' + _esc(u.displayName || u.username) + '</div>' +
+                    '<div class="chat-info-member-role">@' + _esc(u.username) + '</div>' +
+                '</div>' +
+            '</div>';
+        });
+        body.innerHTML = html;
     }
 
     // Scroll to bottom button
@@ -1005,6 +1108,15 @@
     function _truncate(str, max) {
         if (!str) return '';
         return str.length > max ? str.substring(0, max) + '...' : str;
+    }
+
+    function _debounce(fn, ms) {
+        var timer;
+        return function () {
+            var ctx = this, args = arguments;
+            clearTimeout(timer);
+            timer = setTimeout(function () { fn.apply(ctx, args); }, ms);
+        };
     }
 
     function _pluralize(n, one, few, many) {

@@ -1462,13 +1462,10 @@ body.dark-mode .booking-customer-info .customer-detail { color: #94A3B8; }
    ========================================== */
 body.dark-mode {
     --chat-bubble-own: #2b5e3a;
-    --chat-bubble-own-border: #1a4a2e;
     --chat-bubble-other: #2a2a3e;
-    --chat-bubble-other-border: #3a3a4e;
     --chat-mention-bg: rgba(16, 185, 129, 0.2);
     --chat-mention-color: #6EE7B7;
     --chat-bg: #1a1a2e;
-    --chat-bg-pattern: none;
 }
 
 body.dark-mode .chat-sidebar {
@@ -1487,14 +1484,18 @@ body.dark-mode .chat-channel-item:hover {
     background: #2a2a3e;
 }
 body.dark-mode .chat-channel-item.active {
-    background: rgba(16, 185, 129, 0.15);
+    background: rgba(16, 185, 129, 0.12);
 }
 body.dark-mode .chat-header {
     background: #1e1e30;
     border-color: #2a2a3e;
 }
-body.dark-mode .chat-header-action-btn {
-    background: #2a2a3e;
+body.dark-mode .chat-search-bar {
+    background: #1e1e30;
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-search-bar-input {
+    color: #e0e0e0;
 }
 body.dark-mode .chat-input-area {
     background: #1e1e30;
@@ -1523,7 +1524,7 @@ body.dark-mode .chat-reply-block {
     background: rgba(16, 185, 129, 0.08);
 }
 body.dark-mode .chat-reply-preview {
-    background: rgba(16, 185, 129, 0.08);
+    background: #2a2a3e;
 }
 body.dark-mode .chat-reaction-chip {
     background: rgba(255, 255, 255, 0.08);
@@ -1548,6 +1549,16 @@ body.dark-mode .chat-mention-popup {
 body.dark-mode .chat-mention-item:hover,
 body.dark-mode .chat-mention-item.active {
     background: #3a3a4e;
+}
+body.dark-mode .chat-info-panel {
+    background: #1e1e30;
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-info-panel-header {
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-info-member:hover {
+    background: #2a2a3e;
 }
 
 /* Scrollbar improvement */

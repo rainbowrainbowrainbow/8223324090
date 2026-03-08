@@ -64,9 +64,16 @@ router.post('/channels/:id/messages', async (req, res) => {
             return res.status(403).json({ error: 'Not a member of this channel' });
         }
 
-        // Guardian: check if user is muted
-        if (guardian.isUserMuted(channelId, userId)) {
-            return res.status(403).json({ error: '🛡️ Ви заблоковані в цьому чаті. Зачекайте 1 хвилину.' });
+        // Guardian: pre-check BEFORE saving (mute + keyword + LLM profanity)
+        const username = req.user.username || req.user.name || 'unknown';
+        const preCheck = await guardian.preCheckMessage({
+            channelId,
+            userId,
+            username,
+            content: content.trim()
+        });
+        if (preCheck.blocked) {
+            return res.status(403).json({ error: preCheck.message || '🛡️ Повідомлення заблоковано.' });
         }
 
         const { message, mentionedUserIds } = await chat.sendMessage(channelId, userId, {
@@ -96,7 +103,7 @@ router.post('/channels/:id/messages', async (req, res) => {
             log.error('Bot processing error', err);
         });
 
-        // Guardian processing (fire-and-forget — mask sensitive data, detect conflicts)
+        // Guardian background processing (mask sensitive data, detect conflicts)
         guardian.processMessage(message).catch(err => {
             log.error('Guardian processing error', err);
         });

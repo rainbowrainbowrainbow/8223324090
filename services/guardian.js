@@ -1170,25 +1170,18 @@ async function sendGuardianMessage(channelId, content) {
 // ==========================================
 
 /**
- * Process an incoming message through the guardian pipeline.
- * Called from chat route AFTER message is saved.
+ * Pre-check message BEFORE saving to DB.
+ * Called from chat route — blocks toxic messages before they appear.
  *
  * Pipeline:
  *   1. Check if user is muted → block
  *   2. Keyword profanity check (instant) → block
  *   3. LLM profanity check (1-2s) → block
- *   4. Mask sensitive data (fire-and-forget)
- *   5. Conflict detection + batch learning (fire-and-forget)
+ *
+ * Returns: { blocked: bool, reason?, message? }
  */
-async function processMessage(message) {
-    if (!message || !message.content) return { blocked: false };
-
-    // Don't process bot messages
-    if (message.isBot || message.username === GUARDIAN_USERNAME || message.username === 'openclaw') {
-        return { blocked: false };
-    }
-
-    const { channelId, userId, content, username, id: messageId } = message;
+async function preCheckMessage({ channelId, userId, username, content }) {
+    if (!content) return { blocked: false };
 
     // 1. Check if muted
     if (isUserMuted(channelId, userId)) {
@@ -1214,45 +1207,63 @@ async function processMessage(message) {
         severity: 'info'
     });
 
-    // 2. Quick keyword check — INLINE, blocks BEFORE message is shown
+    // 2. Quick keyword check — blocks BEFORE message is saved
     const toxicWords = quickToxicityCheck(content);
     if (toxicWords) {
         const isRussian = toxicWords.some(w => w.includes('російська'));
         const reason = isRussian
             ? '🇷🇺 Російська мова заборонена. Спілкуйтесь українською!'
             : `Нецензурна лексика: ${toxicWords.slice(0, 2).join(', ')}`;
-        if (messageId) {
-            await deleteToxicMessage(messageId, channelId, username, reason);
-        }
         await muteUser(channelId, userId, username, reason);
         _trackLLMFinding(channelId, username, 'keyword', reason, toxicWords);
+        await logAction('block_precheck', channelId, userId, null, { reason, words: toxicWords, username, source: 'keyword' });
         return { blocked: true, reason, message: '🛡️ ' + reason };
     }
 
-    // 3. LLM profanity check — INLINE, catches creative bypass (1-2s)
+    // 3. LLM profanity check — catches creative bypass (1-2s)
     if (AI_ENABLED && content.length >= 3) {
         const llmResult = await llmProfanityCheck(content);
         if (llmResult && llmResult.toxic) {
             const reason = `AI: ${llmResult.reason || 'Нецензурна лексика (обхід фільтру)'}`;
-            if (messageId) {
-                await deleteToxicMessage(messageId, channelId, username, reason);
-            }
             await muteUser(channelId, userId, username, reason);
             _learnWordsFromLLM(llmResult.words);
             _trackLLMFinding(channelId, username, 'llm-realtime', reason, llmResult.words || []);
+            await logAction('block_precheck', channelId, userId, null, { reason, words: llmResult.words, username, source: 'llm' });
             return { blocked: true, reason, message: '🛡️ ' + reason };
         }
     }
 
-    // Track conversation for daily reports
+    return { blocked: false };
+}
+
+/**
+ * Process an already-saved message (background tasks).
+ * Called from chat route AFTER message is saved and sent to client.
+ *
+ * Pipeline:
+ *   1. Track conversation for daily reports
+ *   2. Mask sensitive data (fire-and-forget)
+ *   3. Conflict detection + batch learning (fire-and-forget)
+ */
+async function processMessage(message) {
+    if (!message || !message.content) return;
+
+    // Don't process bot messages
+    if (message.isBot || message.username === GUARDIAN_USERNAME || message.username === 'openclaw') {
+        return;
+    }
+
+    const { channelId, userId, content, username, id: messageId } = message;
+
+    // 1. Track conversation for daily reports
     _trackConversation(channelId, username, content);
 
-    // 4. Mask sensitive data (fire-and-forget)
+    // 2. Mask sensitive data (fire-and-forget)
     maskSensitiveInMessage(messageId, channelId, content, username).catch(err => {
         log.error('Masking error', err);
     });
 
-    // 5. Conflict detection + batch learning (fire-and-forget)
+    // 3. Conflict detection + batch learning (fire-and-forget)
     (async () => {
         try {
             await analyzeConflict(channelId, userId, username, content, messageId);
@@ -1260,8 +1271,6 @@ async function processMessage(message) {
             log.error('Conflict analysis error', err);
         }
     })();
-
-    return { blocked: false };
 }
 
 // ==========================================
@@ -1481,5 +1490,6 @@ module.exports = {
     broadcastGuardianEvent,
     alertDirector,
     flushLearnBatch,
+    preCheckMessage,
     GUARDIAN_USERNAME
 };

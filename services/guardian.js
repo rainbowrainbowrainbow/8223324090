@@ -267,23 +267,225 @@ async function muteUser(channelId, userId, username, reason) {
     }
 }
 
-// Aggressive words/phrases for quick detection (no AI needed)
-const TOXIC_KEYWORDS = [
-    'дурак', 'дурень', 'ідіот', 'тупий', 'тупа', 'кретин',
-    'мудак', 'сука', 'бля', 'нахуй', 'нахій', 'піди на',
-    'заткнись', 'заткнися', 'рот закрий',
-    'пішов нафіг', 'пішла нафіг', 'пошел нафиг',
-    'придурок', 'дебіл', 'дебил', 'лох', 'лошок',
-    'fuck', 'shit', 'stfu', 'idiot', 'stupid'
+// Aggressive words/phrases for quick detection — EXPANDED
+const TOXIC_KEYWORDS_BASE = [
+    // Ukrainian profanity (all forms/variations)
+    'хуй', 'хуя', 'хую', 'хуї', 'хує', 'хуйн', 'хуйо', 'хуйл', 'хуїв',
+    'нахуй', 'нахій', 'нахуя', 'похуй', 'захуяр', 'охуе', 'охуєт', 'охуїт',
+    'піздец', 'пізда', 'піздат', 'пизд', 'пізд', 'піздо', 'підар',
+    'їбат', 'єбат', 'їбан', 'єбан', 'їбаш', 'єбаш', 'їбуч', 'єбуч',
+    'їбла', 'єбла', 'їблан', 'єблан', 'їбать', 'єбать', 'їбані', 'єбані',
+    'заєб', 'заїб', 'наєб', 'наїб', 'виїб', 'виєб', 'поїб', 'поєб', 'проєб', 'проїб',
+    'їбло', 'єбло', 'їбальник', 'єбальник',
+    'бля', 'блять', 'блядь', 'бляд', 'блядин', 'блядськ',
+    'курва', 'курв',
+    'сука', 'сучк', 'сучар', 'сучий',
+    'мудак', 'мудил', 'мудо', 'мудач',
+    'дурак', 'дурень', 'дурн', 'дура',
+    'ідіот', 'ідіотк', 'ідіотськ',
+    'тупий', 'тупа', 'тупе', 'тупиц',
+    'кретин', 'кретинк',
+    'дебіл', 'дебил', 'дебільн',
+    'придурок', 'придурк',
+    'лох', 'лошок', 'лохан', 'лошар',
+    'гандон', 'гондон',
+    'мразь', 'мразот',
+    'гнид', 'гнида',
+    'тварь', 'тварюк',
+    'козел', 'козлин',
+    'баран', 'баранин',
+    'свиня', 'свинюк', 'свинач',
+    'урод', 'виродок', 'виродк',
+    'заткнись', 'заткнися', 'рот закрий', 'закрий рота', 'замовкни', 'замовчи',
+    'пішов нафіг', 'пішла нафіг', 'пошел нафиг', 'пішов на',
+    'піди на', 'іди на', 'іди нах',
+    'йобан', 'йобнут',
+    'шльондра', 'шалава', 'повія',
+    'стерв', 'стервоз',
+    'дятел', 'чмо', 'чмошник',
+    'падл', 'падлюк', 'падло',
+    // Russian profanity (common in UA chat)
+    'блять', 'ебать', 'ёбан', 'ебан', 'ёбнут', 'ебнут',
+    'пиздец', 'пизда', 'пиздат',
+    'хуй', 'хуя', 'нахуй', 'похуй',
+    'сука', 'сучка', 'сукин',
+    'мудак', 'мудил',
+    'дебил', 'дебилк',
+    'пошёл нахуй', 'пошел нахуй',
+    'иди нахуй', 'иди на хуй',
+    'пошол нафиг', 'пошёл нафиг',
+    // English profanity
+    'fuck', 'fucker', 'fuckin', 'motherfuck', 'wtf', 'fck', 'f*ck',
+    'shit', 'shitty', 'bullshit',
+    'bitch', 'bitchin',
+    'asshole', 'ass hole',
+    'dick', 'dickhead',
+    'stfu', 'gtfo',
+    'idiot', 'moron', 'retard',
+    'stupid', 'dumb',
+    'bastard', 'cunt',
+    'damn', 'dammit',
+    'piss off', 'screw you',
+    'whore', 'slut'
 ];
 
+// Dynamic toxic words loaded from DB
+let _dynamicToxicWords = [];
+let _toxicWordsLoaded = false;
+
+async function loadDynamicToxicWords() {
+    try {
+        const result = await pool.query('SELECT word FROM guardian_toxic_words');
+        _dynamicToxicWords = result.rows.map(r => r.word.toLowerCase());
+        _toxicWordsLoaded = true;
+        log.info(`Loaded ${_dynamicToxicWords.length} dynamic toxic words`);
+    } catch (err) {
+        // Table might not exist yet
+        _dynamicToxicWords = [];
+    }
+}
+
+// Letter substitution map for fuzzy matching (leet-speak, similar chars)
+const CHAR_SUBSTITUTIONS = {
+    'а': '[аaа@]', 'б': '[бb6]', 'в': '[вvb]', 'г': '[гgґ]',
+    'д': '[дd]', 'е': '[еeеє3]', 'є': '[єеe3]', 'ж': '[жж]',
+    'з': '[зz3]', 'и': '[иuіы]', 'і': '[іiи1!]', 'ї': '[їіи]',
+    'й': '[йиі]', 'к': '[кk]', 'л': '[лl]', 'м': '[мm]',
+    'н': '[нn]', 'о': '[оo0]', 'п': '[пp]', 'р': '[рrp]',
+    'с': '[сsc$]', 'т': '[тt7]', 'у': '[уuy]', 'ф': '[фf]',
+    'х': '[хxh]', 'ц': '[цc]', 'ч': '[чch4]', 'ш': '[шsh]',
+    'щ': '[щш]', 'ь': '[ьь]?', 'ю': '[юu]', 'я': '[яr]',
+    'a': '[аaа@]', 'b': '[бb6]', 'c': '[сsc$]', 'd': '[дd]',
+    'e': '[еeеє3]', 'f': '[фf]', 'g': '[гgґ]', 'h': '[хxh]',
+    'i': '[іiи1!]', 'k': '[кk]', 'l': '[лl]', 'm': '[мm]',
+    'n': '[нn]', 'o': '[оo0]', 'p': '[пpр]', 'r': '[рrp]',
+    's': '[сsc$]', 't': '[тt7]', 'u': '[уuy]', 'v': '[вvb]',
+    'x': '[хxh]', 'y': '[уuy]', 'z': '[зz3]'
+};
+
 /**
- * Quick keyword-based toxicity check.
+ * Build a fuzzy regex from a word (handles leet-speak, similar chars, optional separators)
+ */
+function buildFuzzyRegex(word) {
+    const chars = word.toLowerCase().split('');
+    const pattern = chars.map(c => {
+        const sub = CHAR_SUBSTITUTIONS[c];
+        return sub ? sub : c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }).join('[\\s.\\-_*]*'); // Allow separators between chars
+    return new RegExp(pattern, 'i');
+}
+
+// Pre-build regexes for base keywords
+let _fuzzyRegexes = TOXIC_KEYWORDS_BASE.map(w => ({ word: w, regex: buildFuzzyRegex(w) }));
+
+/**
+ * Quick keyword-based toxicity check with fuzzy matching.
  */
 function quickToxicityCheck(content) {
     const lower = content.toLowerCase();
-    const found = TOXIC_KEYWORDS.filter(word => lower.includes(word));
-    return found.length > 0 ? found : null;
+
+    // 1. Direct match on all keywords (base + dynamic)
+    const allKeywords = [...TOXIC_KEYWORDS_BASE, ..._dynamicToxicWords];
+    const directMatch = allKeywords.filter(word => lower.includes(word));
+    if (directMatch.length > 0) return directMatch;
+
+    // 2. Fuzzy regex match (catches leet-speak, substitutions)
+    const fuzzyMatch = [];
+    for (const { word, regex } of _fuzzyRegexes) {
+        if (regex.test(lower)) {
+            fuzzyMatch.push(word);
+            if (fuzzyMatch.length >= 3) break; // enough evidence
+        }
+    }
+    if (fuzzyMatch.length > 0) return fuzzyMatch;
+
+    return null;
+}
+
+/**
+ * Delete toxic message from DB and notify via WebSocket.
+ */
+async function deleteToxicMessage(messageId, channelId, username, reason) {
+    try {
+        await pool.query(
+            'UPDATE chat_messages SET deleted_at = NOW() WHERE id = $1',
+            [messageId]
+        );
+        broadcastToChannel(channelId, 'chat:delete', {
+            channelId,
+            messageId,
+            deletedBy: 'guardian'
+        });
+        await logAction('delete', channelId, null, messageId, {
+            reason,
+            username
+        });
+
+        broadcastGuardianEvent({
+            type: 'delete',
+            channelId,
+            username,
+            details: `Повідомлення видалено: ${reason}`,
+            severity: 'danger'
+        });
+
+        log.info(`Deleted toxic message ${messageId} by ${username}: ${reason}`);
+    } catch (err) {
+        log.error('Failed to delete toxic message', err);
+    }
+}
+
+/**
+ * AI learns new toxic words from context and adds to dynamic filter.
+ */
+async function aiLearnToxicWords(content, username) {
+    if (!AI_ENABLED || !anthropic) return;
+
+    try {
+        const response = await anthropic.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 200,
+            system: `Ти — AI модератор чату. Перевір повідомлення на наявність образливих, токсичних або нецензурних слів/фраз будь-якою мовою.
+Якщо знайдеш нові образливі слова (які можуть бути замасковані спецсимволами, пробілами, або іншими трюками) — поверни їх.
+Відповідай ТІЛЬКИ у форматі JSON: {"toxic": true/false, "words": ["слово1", "слово2"], "reason": "опис"}
+Якщо повідомлення чисте: {"toxic": false}
+Не включай слова які вже є в стандартних словниках мату. Шукай тільки НОВІ варіації.`,
+            messages: [{ role: 'user', content: content }]
+        });
+
+        const text = response.content[0]?.text?.trim();
+        if (!text) return;
+
+        const match = text.match(/\{[\s\S]*\}/);
+        if (!match) return;
+
+        const result = JSON.parse(match[0]);
+        if (result.toxic && result.words && result.words.length > 0) {
+            // Add new words to DB
+            for (const word of result.words) {
+                const lower = word.toLowerCase().trim();
+                if (lower.length < 3 || lower.length > 50) continue;
+                try {
+                    await pool.query(
+                        'INSERT INTO guardian_toxic_words (word, added_by, source) VALUES ($1, $2, $3) ON CONFLICT (word) DO NOTHING',
+                        [lower, 'guardian-ai', 'llm-detected']
+                    );
+                    _dynamicToxicWords.push(lower);
+                    log.info(`AI learned new toxic word: "${lower}" from ${username}`);
+                } catch (e) { /* duplicate or error, ignore */ }
+            }
+
+            broadcastGuardianEvent({
+                type: 'learn',
+                channelId: null,
+                username: 'guardian',
+                details: `AI навчився: ${result.words.join(', ')}`,
+                severity: 'info'
+            });
+        }
+    } catch (err) {
+        log.error('AI toxic learn failed', err.message);
+    }
 }
 
 /**
@@ -325,17 +527,22 @@ async function aiConflictCheck(messages) {
 /**
  * Analyze message for conflicts. Mute if necessary.
  */
-async function analyzeConflict(channelId, userId, username, content) {
+async function analyzeConflict(channelId, userId, username, content, messageId) {
     // Track recent messages
     if (!_recentMessages[channelId]) _recentMessages[channelId] = [];
-    _recentMessages[channelId].push({ username, content, userId, ts: Date.now() });
+    _recentMessages[channelId].push({ username, content, userId, messageId, ts: Date.now() });
     if (_recentMessages[channelId].length > CONFLICT_WINDOW * 2) {
         _recentMessages[channelId] = _recentMessages[channelId].slice(-CONFLICT_WINDOW);
     }
 
-    // 1. Quick keyword check
+    // 1. Quick keyword check — if matched, DELETE message + mute
     const toxicWords = quickToxicityCheck(content);
     if (toxicWords) {
+        // Delete the toxic message
+        if (messageId) {
+            await deleteToxicMessage(messageId, channelId, username,
+                `Нецензурна лексика: ${toxicWords.slice(0, 2).join(', ')}`);
+        }
         await muteUser(channelId, userId, username, `Нецензурна лексика: ${toxicWords.slice(0, 2).join(', ')}...`);
         return true;
     }
@@ -345,7 +552,6 @@ async function analyzeConflict(channelId, userId, username, content) {
     if (recent.length >= 3 && AI_ENABLED) {
         const aiResult = await aiConflictCheck(recent.slice(-CONFLICT_WINDOW));
         if (aiResult && aiResult.conflict && aiResult.severity !== 'low') {
-            // Find aggressors in recent messages
             const aggressors = aiResult.aggressors || [];
             for (const aggressorName of aggressors) {
                 const aggressorMsg = recent.find(m => m.username === aggressorName);
@@ -356,6 +562,13 @@ async function analyzeConflict(channelId, userId, username, content) {
             }
             return aggressors.length > 0;
         }
+    }
+
+    // 3. If no keyword match and AI available — let AI learn new toxic patterns
+    if (AI_ENABLED && content.length > 5) {
+        aiLearnToxicWords(content, username).catch(err => {
+            log.error('AI learn error', err.message);
+        });
     }
 
     return false;
@@ -631,7 +844,7 @@ async function processMessage(message) {
     // 3. Analyze conflicts silently (no typing indicator shown)
     (async () => {
         try {
-            await analyzeConflict(channelId, userId, username, content);
+            await analyzeConflict(channelId, userId, username, content, messageId);
         } catch (err) {
             log.error('Conflict analysis error', err);
         }
@@ -839,6 +1052,9 @@ function getGuardianState() {
 
 // Start mood cycle on load
 startMoodCycle();
+
+// Load dynamic toxic words from DB
+loadDynamicToxicWords().catch(() => {});
 
 module.exports = {
     processMessage,

@@ -448,6 +448,22 @@ router.get('/users/:id/profile', async (req, res) => {
     }
 });
 
+// PATCH /api/chat/users/me/avatar — update own avatar
+router.patch('/users/me/avatar', async (req, res) => {
+    try {
+        const { avatarEmoji, avatarColor } = req.body;
+        const userId = req.user.id;
+        await pool.query(
+            'UPDATE users SET avatar_emoji = $1, avatar_color = $2 WHERE id = $3',
+            [avatarEmoji || null, avatarColor || null, userId]
+        );
+        res.json({ success: true, avatarEmoji, avatarColor });
+    } catch (err) {
+        log.error('Error updating avatar', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // PATCH /api/chat/channels/:id — update channel name/description
 router.patch('/channels/:id', async (req, res) => {
     try {

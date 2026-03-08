@@ -581,9 +581,11 @@
             var body = document.getElementById('chatInfoPanelBody');
             var isProfileBot = profile.username === 'openclaw';
             var isProfileGuardian = profile.username === 'guardian';
-            var initial = isProfileGuardian ? '🛡️' : isProfileBot ? '🦀' : (profile.displayName || profile.username || '?').charAt(0).toUpperCase();
-            var colorClass = isProfileGuardian ? 'chat-avatar-guardian' : isProfileBot ? 'chat-avatar-bot' : 'chat-avatar-color-' + _colorIdx(profile.id);
+            var initial = isProfileGuardian ? '🛡️' : isProfileBot ? '🦀' : (profile.avatarEmoji || (profile.displayName || profile.username || '?').charAt(0).toUpperCase());
+            var colorClass = isProfileGuardian ? 'chat-avatar-guardian' : isProfileBot ? 'chat-avatar-bot' : (profile.avatarColor ? '' : 'chat-avatar-color-' + _colorIdx(profile.id));
+            var avatarStyle = profile.avatarColor ? 'background:' + profile.avatarColor : '';
             var roleLabel = isProfileGuardian ? 'AI Охоронець' : isProfileBot ? 'AI Бот' : _roleLabel(profile.role);
+            var isOwnProfile = String(profile.id) === _currentUserId;
 
             var fields = '';
             if (profile.department) {
@@ -601,9 +603,14 @@
             var joinDate = new Date(profile.joinedAt).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
             fields += '<div class="chat-profile-field"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><div><span class="chat-profile-field-label">В системі з</span>' + joinDate + '</div></div>';
 
+            var avatarEditBtn = isOwnProfile ? '<button class="chat-profile-avatar-edit" data-edit-avatar="1" title="Змінити аватар">✏️</button>' : '';
+
             body.innerHTML =
                 '<div class="chat-profile-card">' +
-                    '<div class="chat-profile-avatar ' + colorClass + '">' + initial + '</div>' +
+                    '<div class="chat-profile-avatar-wrap">' +
+                        '<div class="chat-profile-avatar ' + colorClass + '"' + (avatarStyle ? ' style="' + avatarStyle + '"' : '') + '>' + initial + '</div>' +
+                        avatarEditBtn +
+                    '</div>' +
                     '<div class="chat-profile-name">' + _esc(profile.displayName) + '</div>' +
                     '<div class="chat-profile-username">@' + _esc(profile.username) + '</div>' +
                     '<div class="chat-profile-role-badge">' + roleLabel + '</div>' +
@@ -630,10 +637,81 @@
                 });
             }
 
+            // Avatar edit button handler
+            var avatarEditBtn = body.querySelector('[data-edit-avatar]');
+            if (avatarEditBtn) {
+                avatarEditBtn.addEventListener('click', function () {
+                    _showAvatarPicker(profile);
+                });
+            }
+
             _infoPanel.classList.add('open');
         } catch (err) {
             console.error('[Chat] Profile error:', err);
         }
+    }
+
+    var AVATAR_EMOJIS = ['😊', '😎', '🤓', '🦊', '🐱', '🐶', '🦁', '🐸', '🐵', '🦄', '🐲', '🦅', '🐺', '🐼', '🐨', '🦋', '🌟', '⚡', '🔥', '🎯', '🎸', '🎮', '🏀', '⚽', '🎪', '🎨', '🧸', '💎', '🌸', '🍀'];
+    var AVATAR_COLORS = ['#10B981', '#8B5CF6', '#3B82F6', '#F97316', '#EC4899', '#06B6D4', '#EF4444', '#F59E0B', '#14B8A6', '#A855F7', '#6366F1', '#E11D48'];
+
+    function _showAvatarPicker(profile) {
+        var body = document.getElementById('chatInfoPanelBody');
+        if (!body) return;
+
+        var emojiGrid = AVATAR_EMOJIS.map(function (e) {
+            return '<button class="avatar-pick-emoji' + (e === profile.avatarEmoji ? ' active' : '') + '" data-emoji="' + e + '">' + e + '</button>';
+        }).join('');
+
+        var colorGrid = AVATAR_COLORS.map(function (c) {
+            return '<button class="avatar-pick-color' + (c === profile.avatarColor ? ' active' : '') + '" data-color="' + c + '" style="background:' + c + '"></button>';
+        }).join('');
+
+        body.innerHTML =
+            '<div class="avatar-picker">' +
+                '<div class="avatar-picker-title">Оберіть аватар</div>' +
+                '<div class="avatar-picker-section">Емоджі</div>' +
+                '<div class="avatar-picker-grid">' + emojiGrid + '</div>' +
+                '<div class="avatar-picker-section">Колір фону</div>' +
+                '<div class="avatar-picker-colors">' + colorGrid + '</div>' +
+                '<div class="avatar-picker-actions">' +
+                    '<button class="avatar-picker-reset" id="avatarReset">Скинути</button>' +
+                    '<button class="avatar-picker-save" id="avatarSave">Зберегти</button>' +
+                '</div>' +
+            '</div>';
+
+        var selectedEmoji = profile.avatarEmoji || null;
+        var selectedColor = profile.avatarColor || null;
+
+        body.querySelectorAll('.avatar-pick-emoji').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                body.querySelectorAll('.avatar-pick-emoji').forEach(function (b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                selectedEmoji = btn.dataset.emoji;
+            });
+        });
+
+        body.querySelectorAll('.avatar-pick-color').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                body.querySelectorAll('.avatar-pick-color').forEach(function (b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                selectedColor = btn.dataset.color;
+            });
+        });
+
+        document.getElementById('avatarReset').addEventListener('click', function () {
+            selectedEmoji = null;
+            selectedColor = null;
+            body.querySelectorAll('.avatar-pick-emoji, .avatar-pick-color').forEach(function (b) { b.classList.remove('active'); });
+        });
+
+        document.getElementById('avatarSave').addEventListener('click', async function () {
+            try {
+                await _api('PATCH', '/users/me/avatar', { avatarEmoji: selectedEmoji, avatarColor: selectedColor });
+                _showUserProfile(profile.id);
+            } catch (e) {
+                console.error('Avatar save error:', e);
+            }
+        });
     }
 
     // Pin button — show pinned messages in right panel
@@ -706,18 +784,31 @@
 
     function _getWallpaper() {
         try {
+            // Per-channel wallpaper
+            if (_currentChannel) {
+                var perChannel = localStorage.getItem('chatWallpaper_ch_' + _currentChannel.id);
+                if (perChannel) return perChannel;
+            }
             return localStorage.getItem('chatWallpaper') || 'none';
         } catch (e) { return 'none'; }
     }
 
     function _setWallpaper(wp) {
-        try { localStorage.setItem('chatWallpaper', wp); } catch (e) {}
+        try {
+            // Save per-channel
+            if (_currentChannel) {
+                localStorage.setItem('chatWallpaper_ch_' + _currentChannel.id, wp);
+            }
+            localStorage.setItem('chatWallpaper', wp);
+        } catch (e) {}
         var messages = document.getElementById('chatMessages');
         if (messages) messages.setAttribute('data-wallpaper', wp);
     }
 
     function _applyWallpaper() {
-        _setWallpaper(_getWallpaper());
+        var wp = _getWallpaper();
+        var messages = document.getElementById('chatMessages');
+        if (messages) messages.setAttribute('data-wallpaper', wp);
     }
 
     function _toggleWallpaperPicker() {
@@ -877,6 +968,9 @@
                         _startDm(parseInt(_contextMsg.userId, 10));
                     }
                     break;
+                case 'create-task':
+                    _createTaskFromMessage();
+                    break;
             }
             _contextMenu.style.display = 'none';
         });
@@ -892,6 +986,42 @@
             displayName: usernameEl ? usernameEl.textContent : '',
             username: usernameEl ? usernameEl.textContent : ''
         });
+    }
+
+    function _createTaskFromMessage() {
+        if (!_contextMsg) return;
+        var contentEl = _contextMsg.el.querySelector('.chat-bubble-content');
+        var usernameEl = _contextMsg.el.querySelector('.chat-bubble-username');
+        var msgText = contentEl ? contentEl.textContent.trim() : '';
+        var author = usernameEl ? usernameEl.textContent.trim() : '';
+
+        // Show prompt for task description
+        var prompt = window.prompt(
+            '📋 Створити задачу з повідомлення\n\nОпишіть задачу (або залиште текст повідомлення):',
+            msgText.substring(0, 200)
+        );
+        if (!prompt) return;
+
+        // Create task via API
+        fetch('/api/tasks', {
+            method: 'POST',
+            headers: _headers(),
+            body: JSON.stringify({
+                title: prompt.substring(0, 100),
+                description: 'З чату від @' + author + ':\n\n' + msgText + '\n\n---\nЗадача: ' + prompt,
+                priority: 'medium',
+                sourceType: 'chat'
+            })
+        }).then(function (resp) {
+            if (resp.ok) {
+                // Show success toast
+                var toast = document.createElement('div');
+                toast.className = 'chat-toast';
+                toast.textContent = '✅ Задачу створено';
+                document.body.appendChild(toast);
+                setTimeout(function () { toast.remove(); }, 3000);
+            }
+        }).catch(function () {});
     }
 
     function _startEdit() {
@@ -2027,6 +2157,74 @@
                 _toggleReaction(payload.messageId, chip.dataset.emoji);
             });
         });
+
+        // Special emoji animation on reaction
+        if (payload.emoji) {
+            _triggerEmojiEffect(msgEl, payload.emoji);
+        }
+    }
+
+    // ==========================================
+    // SPECIAL EMOJI ANIMATIONS
+    // ==========================================
+
+    var EMOJI_EFFECTS = {
+        '🔥': { type: 'fire', particles: ['🔥', '🟠', '🟡', '✨'], count: 8 },
+        '❤️': { type: 'hearts', particles: ['❤️', '💕', '💗', '💖'], count: 6 },
+        '😂': { type: 'laugh', particles: ['😂', '🤣', '😆', '💀'], count: 5 },
+        '👍': { type: 'thumbs', particles: ['👍', '✨', '⭐'], count: 4 },
+        '🎉': { type: 'party', particles: ['🎉', '🎊', '✨', '🎈', '🥳'], count: 8 },
+        '💯': { type: 'hundred', particles: ['💯', '🔥', '✨', '⚡'], count: 6 },
+        '⚡': { type: 'lightning', particles: ['⚡', '💥', '✨'], count: 5 },
+        '👀': { type: 'eyes', particles: ['👀', '👁️', '🔍'], count: 4 }
+    };
+
+    function _triggerEmojiEffect(targetEl, emoji) {
+        var effect = EMOJI_EFFECTS[emoji];
+        if (!effect) return;
+
+        var rect = targetEl.getBoundingClientRect();
+        var container = document.createElement('div');
+        container.className = 'emoji-effect-container';
+        container.style.position = 'fixed';
+        container.style.left = rect.left + 'px';
+        container.style.top = rect.top + 'px';
+        container.style.width = rect.width + 'px';
+        container.style.height = rect.height + 'px';
+        container.style.pointerEvents = 'none';
+        container.style.zIndex = '500';
+        document.body.appendChild(container);
+
+        for (var i = 0; i < effect.count; i++) {
+            (function (idx) {
+                setTimeout(function () {
+                    var particle = document.createElement('span');
+                    particle.className = 'emoji-particle emoji-effect-' + effect.type;
+                    particle.textContent = effect.particles[idx % effect.particles.length];
+                    particle.style.left = (Math.random() * 100) + '%';
+                    particle.style.animationDelay = (Math.random() * 0.3) + 's';
+
+                    if (effect.type === 'fire') {
+                        // Fire rises up and burns out
+                        particle.style.setProperty('--dx', ((Math.random() - 0.5) * 60) + 'px');
+                        particle.style.setProperty('--dy', (-40 - Math.random() * 80) + 'px');
+                    } else if (effect.type === 'hearts') {
+                        // Hearts float up gently
+                        particle.style.setProperty('--dx', ((Math.random() - 0.5) * 80) + 'px');
+                        particle.style.setProperty('--dy', (-60 - Math.random() * 60) + 'px');
+                    } else {
+                        // Generic burst
+                        particle.style.setProperty('--dx', ((Math.random() - 0.5) * 100) + 'px');
+                        particle.style.setProperty('--dy', (-30 - Math.random() * 60) + 'px');
+                    }
+
+                    container.appendChild(particle);
+                }, idx * 50);
+            })(i);
+        }
+
+        // Cleanup after animation completes
+        setTimeout(function () { container.remove(); }, 2000);
     }
 
     function _onEditMessage(payload) {
@@ -2089,9 +2287,6 @@
         // Clear previous timer
         if (_muteTimerInterval) clearInterval(_muteTimerInterval);
 
-        // Save original content
-        var originalHtml = inputArea.innerHTML;
-
         // Replace with countdown overlay
         var overlay = document.createElement('div');
         overlay.className = 'chat-mute-overlay';
@@ -2099,11 +2294,12 @@
             '<div class="chat-mute-shield">🛡️</div>' +
             '<div class="chat-mute-info">' +
                 '<div class="chat-mute-title">Заблоковано Guardian</div>' +
-                '<div class="chat-mute-reason">' + (reason || 'Порушення правил чату') + '</div>' +
+                '<div class="chat-mute-reason">' + _esc(reason || 'Порушення правил чату') + '</div>' +
                 '<div class="chat-mute-timer">' +
                     '<span class="chat-mute-timer-value" id="chatMuteTimer">--:--</span>' +
-                    '<span class="chat-mute-timer-label">до розблокування</span>' +
+                    '<span class="chat-mute-timer-label">залишилось</span>' +
                 '</div>' +
+                '<button class="chat-mute-appeal-btn" id="chatMuteAppeal">🙏 Подати апеляцію</button>' +
             '</div>';
 
         inputArea.style.position = 'relative';
@@ -2118,18 +2314,21 @@
         var timerEl = document.getElementById('chatMuteTimer');
         var endTime = new Date(mutedUntil).getTime();
 
+        function clearMute() {
+            clearInterval(_muteTimerInterval);
+            _muteTimerInterval = null;
+            overlay.remove();
+            if (input) {
+                input.disabled = false;
+                input.placeholder = 'Написати повідомлення...';
+            }
+            if (sendBtn) sendBtn.disabled = false;
+        }
+
         function updateTimer() {
             var remaining = endTime - Date.now();
             if (remaining <= 0) {
-                // Unmute
-                clearInterval(_muteTimerInterval);
-                _muteTimerInterval = null;
-                overlay.remove();
-                if (input) {
-                    input.disabled = false;
-                    input.placeholder = 'Написати повідомлення...';
-                }
-                if (sendBtn) sendBtn.disabled = false;
+                clearMute();
                 return;
             }
             var min = Math.floor(remaining / 60000);
@@ -2137,6 +2336,38 @@
             if (timerEl) {
                 timerEl.textContent = String(min).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
             }
+        }
+
+        // Appeal button — unmutes immediately
+        var appealBtn = document.getElementById('chatMuteAppeal');
+        if (appealBtn) {
+            appealBtn.addEventListener('click', async function () {
+                appealBtn.disabled = true;
+                appealBtn.textContent = '⏳ Обробка...';
+                try {
+                    // Get active mute for current user in this channel
+                    var mutes = await _fetchJson('/api/guardian/mutes/active');
+                    if (mutes && mutes.length > 0) {
+                        var myMute = mutes.find(function (m) {
+                            return String(m.userId) === _currentUserId && m.channelId === _currentChannel.id;
+                        });
+                        if (myMute) {
+                            var resp = await fetch('/api/guardian/mutes/' + myMute.id, {
+                                method: 'DELETE',
+                                headers: _headers()
+                            });
+                            if (resp.ok) {
+                                clearMute();
+                                return;
+                            }
+                        }
+                    }
+                    // Fallback: just clear locally
+                    clearMute();
+                } catch (e) {
+                    clearMute();
+                }
+            });
         }
 
         updateTimer();

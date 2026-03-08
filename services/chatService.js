@@ -548,6 +548,7 @@ async function removeMember(channelId, userId) {
 async function getUserProfile(userId) {
     const result = await pool.query(`
         SELECT u.id, u.username, u.name, u.role, u.created_at,
+            u.avatar_emoji, u.avatar_color,
             s.department, s.position, s.phone, s.telegram_username
         FROM users u
         LEFT JOIN staff s ON lower(s.name) = lower(u.name) AND s.is_active = true
@@ -560,6 +561,8 @@ async function getUserProfile(userId) {
         username: r.username,
         displayName: r.name || r.username,
         role: r.role,
+        avatarEmoji: r.avatar_emoji || null,
+        avatarColor: r.avatar_color || null,
         department: r.department || null,
         position: r.position || null,
         phone: r.phone || null,

@@ -1457,6 +1457,149 @@
     margin-bottom: 8px;
 }
 
+/* Avatar wrap + edit button */
+.chat-profile-avatar-wrap {
+    position: relative;
+    display: inline-block;
+    margin-bottom: 10px;
+}
+
+.chat-profile-avatar-edit {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid var(--white, #fff);
+    background: var(--gray-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.chat-profile-avatar-edit:hover {
+    background: var(--primary-50);
+    transform: scale(1.1);
+}
+
+/* Avatar picker */
+.avatar-picker {
+    padding: 16px;
+    text-align: center;
+}
+
+.avatar-picker-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 16px;
+}
+
+.avatar-picker-section {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--gray-400);
+    font-weight: 600;
+    margin: 12px 0 8px;
+}
+
+.avatar-picker-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+}
+
+.avatar-pick-emoji {
+    width: 38px;
+    height: 38px;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    background: var(--gray-50);
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+
+.avatar-pick-emoji:hover {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.05);
+    transform: scale(1.1);
+}
+
+.avatar-pick-emoji.active {
+    border-color: var(--primary);
+    background: var(--primary-50);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.avatar-picker-colors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+}
+
+.avatar-pick-color {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.avatar-pick-color:hover {
+    transform: scale(1.15);
+}
+
+.avatar-pick-color.active {
+    border-color: var(--gray-800);
+    box-shadow: 0 0 0 2px var(--white), 0 0 0 4px var(--gray-300);
+}
+
+.avatar-picker-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 16px;
+}
+
+.avatar-picker-reset {
+    padding: 8px 16px;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    background: none;
+    color: var(--gray-500);
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.avatar-picker-save {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 8px;
+    background: var(--primary);
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.2s;
+}
+
+.avatar-picker-save:hover {
+    background: var(--primary-dark);
+}
+
 .chat-profile-role-badge {
     display: inline-block;
     padding: 2px 10px;
@@ -1629,7 +1772,6 @@
 
 .chat-input-area {
     background: var(--white);
-    border-top: 1px solid var(--gray-100);
     flex-shrink: 0;
 }
 
@@ -2073,6 +2215,33 @@
     margin: 4px 8px;
 }
 
+/* Toast notifications */
+.chat-toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 24px;
+    background: #1a1a2e;
+    color: white;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 999;
+    animation: toastIn 0.3s ease, toastOut 0.3s ease 2.5s forwards;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes toastOut {
+    from { opacity: 1; }
+    to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+}
+
 /* ==========================================
    CREATE CHANNEL MODAL
    ========================================== */
@@ -2395,6 +2564,36 @@
     font-size: 11px;
     color: var(--gray-400);
     font-weight: 500;
+}
+
+.chat-mute-appeal-btn {
+    margin-top: 10px;
+    padding: 8px 20px;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 10px;
+    background: rgba(99, 102, 241, 0.08);
+    color: #6366F1;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.chat-mute-appeal-btn:hover {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.5);
+    transform: translateY(-1px);
+}
+
+.chat-mute-appeal-btn:active {
+    transform: scale(0.97);
+}
+
+.chat-mute-appeal-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
 }
 
 [data-theme="dark"] .chat-mute-overlay {
@@ -2920,4 +3119,123 @@
 @keyframes guardianPulse {
     0%, 100% { box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3); }
     50% { box-shadow: 0 4px 24px rgba(99, 102, 241, 0.5); }
+}
+
+/* ==========================================
+   EMOJI REACTION ANIMATIONS
+   ========================================== */
+
+.emoji-particle {
+    position: absolute;
+    bottom: 50%;
+    font-size: 18px;
+    pointer-events: none;
+    animation: emojiParticleFly 1.2s ease-out forwards;
+    z-index: 500;
+}
+
+@keyframes emojiParticleFly {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0.5) rotate(0deg);
+    }
+    30% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.3), calc(var(--dy) * 0.3)) scale(1.2) rotate(15deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), var(--dy)) scale(0.3) rotate(45deg);
+    }
+}
+
+/* Fire effect — particles glow and shake */
+.emoji-effect-fire {
+    animation: fireParticle 1s ease-out forwards;
+    filter: drop-shadow(0 0 4px rgba(255, 100, 0, 0.6));
+}
+
+@keyframes fireParticle {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0.6);
+        filter: drop-shadow(0 0 4px rgba(255, 100, 0, 0.8));
+    }
+    25% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.3), calc(var(--dy) * 0.4)) scale(1.3);
+        filter: drop-shadow(0 0 8px rgba(255, 60, 0, 1));
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), var(--dy)) scale(0.1);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+}
+
+/* Hearts effect — float gently */
+.emoji-effect-hearts {
+    animation: heartFloat 1.5s ease-out forwards;
+}
+
+@keyframes heartFloat {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) scale(0) rotate(0deg);
+    }
+    15% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.1), calc(var(--dy) * 0.1)) scale(1.1) rotate(-10deg);
+    }
+    50% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.5)) scale(0.9) rotate(10deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), var(--dy)) scale(0.4) rotate(-5deg);
+    }
+}
+
+/* Party effect — confetti burst */
+.emoji-effect-party {
+    animation: partyBurst 1.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes partyBurst {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0) rotate(0deg);
+    }
+    20% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.2), calc(var(--dy) * 0.2)) scale(1.4) rotate(45deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), var(--dy)) scale(0.2) rotate(180deg);
+    }
+}
+
+/* Lightning effect — flash and zigzag */
+.emoji-effect-lightning {
+    animation: lightningZap 0.8s ease-out forwards;
+    filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.8));
+}
+
+@keyframes lightningZap {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(2);
+        filter: drop-shadow(0 0 12px rgba(255, 255, 100, 1));
+    }
+    20% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.3)) scale(0.8);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), var(--dy)) scale(0.1);
+        filter: drop-shadow(0 0 0 transparent);
+    }
 }

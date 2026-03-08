@@ -15,17 +15,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=21.6.0">
-    <link rel="stylesheet" href="css/auth.css?v=21.6.0">
-    <link rel="stylesheet" href="css/layout.css?v=21.6.0">
-    <link rel="stylesheet" href="css/timeline.css?v=21.6.0">
-    <link rel="stylesheet" href="css/panel.css?v=21.6.0">
-    <link rel="stylesheet" href="css/modals.css?v=21.6.0">
-    <link rel="stylesheet" href="css/controls.css?v=21.6.0">
-    <link rel="stylesheet" href="css/features.css?v=21.6.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=21.6.0">
-    <link rel="stylesheet" href="css/responsive.css?v=21.6.0">
-    <link rel="stylesheet" href="css/pages.css?v=21.6.0">
+    <link rel="stylesheet" href="css/base.css?v=21.7.0">
+    <link rel="stylesheet" href="css/auth.css?v=21.7.0">
+    <link rel="stylesheet" href="css/layout.css?v=21.7.0">
+    <link rel="stylesheet" href="css/timeline.css?v=21.7.0">
+    <link rel="stylesheet" href="css/panel.css?v=21.7.0">
+    <link rel="stylesheet" href="css/modals.css?v=21.7.0">
+    <link rel="stylesheet" href="css/controls.css?v=21.7.0">
+    <link rel="stylesheet" href="css/features.css?v=21.7.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=21.7.0">
+    <link rel="stylesheet" href="css/responsive.css?v=21.7.0">
+    <link rel="stylesheet" href="css/pages.css?v=21.7.0">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v21.6.0 — Kleshnya Bot + Guardian</p>
+                <p class="tagline">AI First CRM v21.7.0 — Guardian v2 + Emoji Effects</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v21.6.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v21.7.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1144,6 +1144,24 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v21.7.0 — Guardian v2 + Emoji Effects (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Guardian v2</b> — тихий режим: більше ніяких публічних повідомлень, лише 👀 спостерігає зверху</li>
+                        <li><b>Mood System</b> — 10 настроїв Guardian що змінюються від активності (😊😤🧐😴🫡🛡️☕🎯👀🤨)</li>
+                        <li><b>DM Директору</b> — при інцидентах Guardian пише директору в особисті</li>
+                        <li><b>Журнал безпеки</b> — панель логів в реальному часі для адмінів (кнопка 🛡️ зверху)</li>
+                        <li><b>Апеляція</b> — замість таймера тепер кнопка "Подати апеляцію" знімає бан миттєво</li>
+                        <li><b>Розширений фільтр</b> — 100+ слів з фазі-матчингом (лет-спік, спецсимволи, пробіли)</li>
+                        <li><b>AI навчання</b> — LLM автоматично знаходить і додає нові матюки до фільтра</li>
+                        <li><b>Видалення</b> — токсичні повідомлення тепер видаляються, а не просто блокуються</li>
+                        <li><b>Фон чату</b> — індивідуальний для кожного каналу</li>
+                        <li><b>Аватарки</b> — emoji-аватар + колір фону для профілю</li>
+                        <li><b>Задачі з чату</b> — ПКМ → "Створити задачу" з повідомлення</li>
+                        <li><b>Emoji-ефекти</b> — 🔥 палає, ❤️ літає, 🎉 конфетті, ⚡ блискавка при реакціях</li>
+                        <li><b>Маскування v2</b> — покращена підтримка карток (13-20 цифр, 5 груп)</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v21.6.0 — Kleshnya Bot + Guardian (Claude Code, 08.03.2026)</h4>
                     <ul>
@@ -3522,27 +3540,27 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/logger.js?v=21.6.0"></script>
-    <script src="js/config.js?v=21.6.0"></script>
-    <script src="js/api.js?v=21.6.0"></script>
-    <script src="js/ui.js?v=21.6.0"></script>
-    <script src="js/auth.js?v=21.6.0"></script>
-    <script src="js/timeline.js?v=21.6.0"></script>
-    <script src="js/booking.js?v=21.6.0"></script>
-    <script src="js/settings.js?v=21.6.0"></script>
-    <script src="js/booking-form.js?v=21.6.0"></script>
-    <script src="js/booking-linked.js?v=21.6.0"></script>
-    <script src="js/settings-dashboard.js?v=21.6.0"></script>
-    <script src="js/settings-history.js?v=21.6.0"></script>
-    <script src="js/settings-afisha.js?v=21.6.0"></script>
-    <script src="js/settings-certificates.js?v=21.6.0"></script>
-    <script src="js/offline.js?v=21.6.0"></script>
-    <script src="js/search.js?v=21.6.0"></script>
-    <script src="js/ws.js?v=21.6.0"></script>
-    <script src="js/components/sidebar.js?v=21.6.0"></script>
-    <script src="js/sales-panel.js?v=21.6.0"></script>
-    <script src="js/command-panel.js?v=21.6.0"></script>
-    <script src="js/idle-hints.js?v=21.6.0"></script>
-    <script src="js/app.js?v=21.6.0"></script>
+    <script src="js/logger.js?v=21.7.0"></script>
+    <script src="js/config.js?v=21.7.0"></script>
+    <script src="js/api.js?v=21.7.0"></script>
+    <script src="js/ui.js?v=21.7.0"></script>
+    <script src="js/auth.js?v=21.7.0"></script>
+    <script src="js/timeline.js?v=21.7.0"></script>
+    <script src="js/booking.js?v=21.7.0"></script>
+    <script src="js/settings.js?v=21.7.0"></script>
+    <script src="js/booking-form.js?v=21.7.0"></script>
+    <script src="js/booking-linked.js?v=21.7.0"></script>
+    <script src="js/settings-dashboard.js?v=21.7.0"></script>
+    <script src="js/settings-history.js?v=21.7.0"></script>
+    <script src="js/settings-afisha.js?v=21.7.0"></script>
+    <script src="js/settings-certificates.js?v=21.7.0"></script>
+    <script src="js/offline.js?v=21.7.0"></script>
+    <script src="js/search.js?v=21.7.0"></script>
+    <script src="js/ws.js?v=21.7.0"></script>
+    <script src="js/components/sidebar.js?v=21.7.0"></script>
+    <script src="js/sales-panel.js?v=21.7.0"></script>
+    <script src="js/command-panel.js?v=21.7.0"></script>
+    <script src="js/idle-hints.js?v=21.7.0"></script>
+    <script src="js/app.js?v=21.7.0"></script>
 </body>
 </html>

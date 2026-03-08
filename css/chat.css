@@ -3220,33 +3220,176 @@
     }
 }
 
-/* Fire effect — particles glow and shake */
+/* ==========================================
+   FIRE EFFECT v2 — Multi-layer inferno
+   ========================================== */
+
+/* Main fire particle — rises, flickers, color-shifts */
 .emoji-effect-fire {
-    animation: fireParticle 1s ease-out forwards;
-    filter: drop-shadow(0 0 4px rgba(255, 100, 0, 0.6));
+    animation: fireParticleV2 1.8s ease-out forwards;
+    filter: drop-shadow(0 0 6px rgba(255, 100, 0, 0.8));
 }
 
-@keyframes fireParticle {
+/* Secondary ember layer */
+.emoji-effect-fire.ember-layer {
+    animation: fireEmber 2.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    font-size: 8px !important;
+    filter: drop-shadow(0 0 3px rgba(255, 200, 50, 0.9));
+}
+
+/* Heat shimmer distortion layer */
+.emoji-effect-fire.heat-shimmer {
+    animation: heatShimmer 2s ease-out forwards;
+    font-size: 24px !important;
+    opacity: 0.15;
+    filter: blur(2px) drop-shadow(0 0 20px rgba(255, 80, 0, 0.4));
+}
+
+/* Smoke trail layer */
+.emoji-effect-fire.smoke-layer {
+    animation: smokeRise 2.5s ease-out forwards;
+    font-size: 14px !important;
+    filter: blur(1px) grayscale(0.8) opacity(0.5);
+}
+
+@keyframes fireParticleV2 {
     0% {
         opacity: 1;
-        transform: translate(0, 0) scale(0.6);
-        filter: drop-shadow(0 0 4px rgba(255, 100, 0, 0.8));
+        transform: translate(0, 0) scale(0.4) rotate(0deg);
+        filter: drop-shadow(0 0 4px rgba(255, 220, 50, 1));
+    }
+    10% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.05), calc(var(--dy) * 0.08)) scale(1.4) rotate(5deg);
+        filter: drop-shadow(0 0 12px rgba(255, 160, 0, 1));
     }
     25% {
         opacity: 1;
-        transform: translate(calc(var(--dx) * 0.3), calc(var(--dy) * 0.4)) scale(1.3);
-        filter: drop-shadow(0 0 8px rgba(255, 60, 0, 1));
+        transform: translate(calc(var(--dx) * 0.2 + 3px), calc(var(--dy) * 0.3)) scale(1.2) rotate(-8deg);
+        filter: drop-shadow(0 0 10px rgba(255, 80, 0, 0.9));
+    }
+    40% {
+        opacity: 0.9;
+        transform: translate(calc(var(--dx) * 0.35 - 2px), calc(var(--dy) * 0.5)) scale(1.0) rotate(12deg);
+        filter: drop-shadow(0 0 8px rgba(255, 40, 0, 0.8));
+    }
+    60% {
+        opacity: 0.7;
+        transform: translate(calc(var(--dx) * 0.55 + 4px), calc(var(--dy) * 0.7)) scale(0.8) rotate(-6deg);
+        filter: drop-shadow(0 0 6px rgba(200, 30, 0, 0.6));
+    }
+    80% {
+        opacity: 0.3;
+        transform: translate(calc(var(--dx) * 0.8 - 1px), calc(var(--dy) * 0.9)) scale(0.4) rotate(15deg);
+        filter: drop-shadow(0 0 3px rgba(150, 20, 0, 0.3));
     }
     100% {
         opacity: 0;
-        transform: translate(var(--dx), var(--dy)) scale(0.1);
+        transform: translate(var(--dx), var(--dy)) scale(0.1) rotate(20deg);
         filter: drop-shadow(0 0 0 transparent);
     }
 }
 
-/* Hearts effect — float gently */
+/* Embers — tiny sparks that spiral upward */
+@keyframes fireEmber {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0.3);
+        filter: drop-shadow(0 0 2px rgba(255, 200, 50, 1));
+    }
+    15% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.1 + 8px), calc(var(--dy) * 0.15)) scale(1) rotate(45deg);
+    }
+    30% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.2 - 5px), calc(var(--dy) * 0.35)) scale(0.9) rotate(120deg);
+        filter: drop-shadow(0 0 4px rgba(255, 150, 0, 0.8));
+    }
+    50% {
+        opacity: 0.8;
+        transform: translate(calc(var(--dx) * 0.4 + 10px), calc(var(--dy) * 0.55)) scale(0.7) rotate(200deg);
+    }
+    70% {
+        opacity: 0.5;
+        transform: translate(calc(var(--dx) * 0.6 - 8px), calc(var(--dy) * 0.75)) scale(0.5) rotate(300deg);
+        filter: drop-shadow(0 0 2px rgba(255, 100, 0, 0.4));
+    }
+    100% {
+        opacity: 0;
+        transform: translate(calc(var(--dx) * 0.9 + 6px), calc(var(--dy) * 1.2)) scale(0.15) rotate(450deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+}
+
+/* Heat shimmer — rising heat distortion */
+@keyframes heatShimmer {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) scaleX(1) scaleY(0.5);
+    }
+    10% {
+        opacity: 0.2;
+        transform: translate(2px, calc(var(--dy) * 0.1)) scaleX(1.3) scaleY(0.8);
+    }
+    30% {
+        opacity: 0.15;
+        transform: translate(-3px, calc(var(--dy) * 0.3)) scaleX(0.8) scaleY(1.2);
+    }
+    50% {
+        opacity: 0.1;
+        transform: translate(4px, calc(var(--dy) * 0.5)) scaleX(1.4) scaleY(0.9);
+    }
+    70% {
+        opacity: 0.05;
+        transform: translate(-2px, calc(var(--dy) * 0.7)) scaleX(0.9) scaleY(1.3);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(1px, calc(var(--dy) * 1.0)) scaleX(1) scaleY(1);
+    }
+}
+
+/* Smoke — drifts up and fades */
+@keyframes smokeRise {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) scale(0.3);
+        filter: blur(0px) grayscale(0);
+    }
+    20% {
+        opacity: 0.3;
+        transform: translate(calc(var(--dx) * 0.1), calc(var(--dy) * 0.2)) scale(0.8);
+        filter: blur(1px) grayscale(0.3);
+    }
+    50% {
+        opacity: 0.4;
+        transform: translate(calc(var(--dx) * 0.3 + 8px), calc(var(--dy) * 0.6)) scale(1.2);
+        filter: blur(2px) grayscale(0.6);
+    }
+    80% {
+        opacity: 0.15;
+        transform: translate(calc(var(--dx) * 0.5 + 15px), calc(var(--dy) * 1.0)) scale(1.8);
+        filter: blur(4px) grayscale(0.9);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(calc(var(--dx) * 0.6 + 20px), calc(var(--dy) * 1.3)) scale(2.2);
+        filter: blur(6px) grayscale(1);
+    }
+}
+
+/* ==========================================
+   HEARTS EFFECT v2 — Pulsing float
+   ========================================== */
 .emoji-effect-hearts {
-    animation: heartFloat 1.5s ease-out forwards;
+    animation: heartFloat 1.8s ease-out forwards;
+}
+
+.emoji-effect-hearts.heart-trail {
+    animation: heartTrail 2s ease-out forwards;
+    font-size: 10px !important;
+    opacity: 0.6;
 }
 
 @keyframes heartFloat {
@@ -3254,23 +3397,47 @@
         opacity: 0;
         transform: translate(0, 0) scale(0) rotate(0deg);
     }
-    15% {
+    10% {
         opacity: 1;
-        transform: translate(calc(var(--dx) * 0.1), calc(var(--dy) * 0.1)) scale(1.1) rotate(-10deg);
+        transform: translate(calc(var(--dx) * 0.05), calc(var(--dy) * 0.05)) scale(1.3) rotate(-15deg);
     }
-    50% {
+    25% {
+        transform: translate(calc(var(--dx) * 0.2), calc(var(--dy) * 0.2)) scale(0.9) rotate(8deg);
+    }
+    40% {
         opacity: 1;
-        transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.5)) scale(0.9) rotate(10deg);
+        transform: translate(calc(var(--dx) * 0.35 + 5px), calc(var(--dy) * 0.4)) scale(1.15) rotate(-5deg);
+    }
+    55% {
+        transform: translate(calc(var(--dx) * 0.5 - 3px), calc(var(--dy) * 0.55)) scale(0.85) rotate(12deg);
+    }
+    70% {
+        opacity: 0.7;
+        transform: translate(calc(var(--dx) * 0.7 + 4px), calc(var(--dy) * 0.7)) scale(1.0) rotate(-8deg);
     }
     100% {
         opacity: 0;
-        transform: translate(var(--dx), var(--dy)) scale(0.4) rotate(-5deg);
+        transform: translate(var(--dx), var(--dy)) scale(0.4) rotate(5deg);
     }
 }
 
-/* Party effect — confetti burst */
+@keyframes heartTrail {
+    0% { opacity: 0; transform: translate(0, 0) scale(0); }
+    20% { opacity: 0.5; transform: translate(calc(var(--dx) * 0.15), calc(var(--dy) * 0.2)) scale(0.8); }
+    50% { opacity: 0.4; transform: translate(calc(var(--dx) * 0.4), calc(var(--dy) * 0.5)) scale(0.6); }
+    100% { opacity: 0; transform: translate(calc(var(--dx) * 0.7), calc(var(--dy) * 0.8)) scale(0.2); }
+}
+
+/* ==========================================
+   PARTY EFFECT v2 — Confetti burst + gravity
+   ========================================== */
 .emoji-effect-party {
-    animation: partyBurst 1.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation: partyBurst 1.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.emoji-effect-party.confetti-piece {
+    animation: confettiFall 2s ease-in forwards;
+    font-size: 12px !important;
 }
 
 @keyframes partyBurst {
@@ -3278,35 +3445,530 @@
         opacity: 1;
         transform: translate(0, 0) scale(0) rotate(0deg);
     }
-    20% {
+    15% {
         opacity: 1;
-        transform: translate(calc(var(--dx) * 0.2), calc(var(--dy) * 0.2)) scale(1.4) rotate(45deg);
+        transform: translate(calc(var(--dx) * 0.15), calc(var(--dy) * 0.15)) scale(1.6) rotate(30deg);
+    }
+    30% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.3), calc(var(--dy) * 0.35)) scale(1.1) rotate(90deg);
+    }
+    50% {
+        opacity: 0.9;
+        transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.5)) scale(0.9) rotate(150deg);
     }
     100% {
         opacity: 0;
-        transform: translate(var(--dx), var(--dy)) scale(0.2) rotate(180deg);
+        transform: translate(var(--dx), calc(var(--dy) + 30px)) scale(0.2) rotate(360deg);
     }
 }
 
-/* Lightning effect — flash and zigzag */
+/* Confetti pieces fall with gravity */
+@keyframes confettiFall {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0) rotateX(0) rotateZ(0);
+    }
+    20% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.6), calc(var(--dy) * 0.4)) scale(1) rotateX(90deg) rotateZ(45deg);
+    }
+    50% {
+        opacity: 0.8;
+        transform: translate(calc(var(--dx) * 0.8), calc(var(--dy) * 0.1)) scale(0.9) rotateX(200deg) rotateZ(120deg);
+    }
+    80% {
+        opacity: 0.5;
+        transform: translate(calc(var(--dx) * 0.9), 40px) scale(0.7) rotateX(310deg) rotateZ(250deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), 80px) scale(0.4) rotateX(360deg) rotateZ(360deg);
+    }
+}
+
+/* ==========================================
+   LIGHTNING EFFECT v2 — Flash + afterglow
+   ========================================== */
 .emoji-effect-lightning {
-    animation: lightningZap 0.8s ease-out forwards;
-    filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.8));
+    animation: lightningZap 1s ease-out forwards;
+    filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.9));
+}
+
+.emoji-effect-lightning.lightning-flash {
+    animation: lightningFlash 0.6s ease-out forwards;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle, rgba(255, 255, 200, 0.4) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.emoji-effect-lightning.afterglow {
+    animation: lightningAfterglow 1.5s ease-out forwards;
+    font-size: 10px !important;
+    filter: drop-shadow(0 0 4px rgba(180, 160, 255, 0.8));
 }
 
 @keyframes lightningZap {
     0% {
         opacity: 1;
-        transform: translate(0, 0) scale(2);
-        filter: drop-shadow(0 0 12px rgba(255, 255, 100, 1));
+        transform: translate(0, 0) scale(2) skewX(0deg);
+        filter: drop-shadow(0 0 15px rgba(255, 255, 100, 1));
     }
-    20% {
+    8% {
         opacity: 1;
-        transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.3)) scale(0.8);
+        transform: translate(calc(var(--dx) * 0.15), calc(var(--dy) * 0.1)) scale(0.6) skewX(15deg);
+        filter: drop-shadow(0 0 20px rgba(200, 180, 255, 1));
+    }
+    16% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.3), calc(var(--dy) * 0.25)) scale(1.8) skewX(-10deg);
+        filter: drop-shadow(0 0 12px rgba(255, 255, 100, 0.9));
+    }
+    30% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.45), calc(var(--dy) * 0.35)) scale(0.5) skewX(8deg);
+    }
+    50% {
+        opacity: 0.7;
+        transform: translate(calc(var(--dx) * 0.6), calc(var(--dy) * 0.5)) scale(1.2) skewX(-5deg);
+        filter: drop-shadow(0 0 8px rgba(150, 130, 255, 0.7));
     }
     100% {
         opacity: 0;
-        transform: translate(var(--dx), var(--dy)) scale(0.1);
+        transform: translate(var(--dx), var(--dy)) scale(0.1) skewX(0deg);
         filter: drop-shadow(0 0 0 transparent);
     }
+}
+
+@keyframes lightningFlash {
+    0% { opacity: 0; transform: scale(0.5); }
+    10% { opacity: 0.8; transform: scale(2); }
+    20% { opacity: 0.2; transform: scale(1.5); }
+    30% { opacity: 0.6; transform: scale(2.5); }
+    50% { opacity: 0.1; transform: scale(3); }
+    100% { opacity: 0; transform: scale(4); }
+}
+
+@keyframes lightningAfterglow {
+    0% { opacity: 0.8; transform: translate(0, 0) scale(0.5); }
+    30% { opacity: 0.5; transform: translate(calc(var(--dx) * 0.3), calc(var(--dy) * 0.3)) scale(0.8); }
+    100% { opacity: 0; transform: translate(calc(var(--dx) * 0.6), calc(var(--dy) * 0.6)) scale(0.2); }
+}
+
+/* ==========================================
+   SKULL EFFECT — Dark vortex swirl
+   ========================================== */
+.emoji-effect-skull {
+    animation: skullVortex 1.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    filter: drop-shadow(0 0 6px rgba(100, 0, 150, 0.7));
+}
+
+.emoji-effect-skull.soul-wisp {
+    animation: soulWisp 2s ease-out forwards;
+    font-size: 10px !important;
+    filter: drop-shadow(0 0 4px rgba(150, 50, 255, 0.6));
+}
+
+@keyframes skullVortex {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0) rotate(0deg);
+        filter: drop-shadow(0 0 4px rgba(100, 0, 150, 0.9));
+    }
+    15% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.1), calc(var(--dy) * 0.1)) scale(1.5) rotate(60deg);
+        filter: drop-shadow(0 0 10px rgba(150, 0, 200, 1));
+    }
+    30% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.25), calc(var(--dy) * 0.2)) scale(1.1) rotate(150deg);
+    }
+    50% {
+        opacity: 0.9;
+        transform: translate(calc(var(--dx) * 0.45), calc(var(--dy) * 0.4)) scale(0.9) rotate(270deg);
+        filter: drop-shadow(0 0 8px rgba(100, 0, 150, 0.7));
+    }
+    75% {
+        opacity: 0.5;
+        transform: translate(calc(var(--dx) * 0.7), calc(var(--dy) * 0.65)) scale(0.6) rotate(400deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), var(--dy)) scale(0.1) rotate(540deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+}
+
+@keyframes soulWisp {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) scale(0.3);
+    }
+    20% {
+        opacity: 0.6;
+        transform: translate(calc(var(--dx) * 0.1 + 12px), calc(var(--dy) * 0.15)) scale(0.7) rotate(30deg);
+    }
+    40% {
+        opacity: 0.5;
+        transform: translate(calc(var(--dx) * 0.25 - 8px), calc(var(--dy) * 0.35)) scale(0.6) rotate(80deg);
+    }
+    60% {
+        opacity: 0.3;
+        transform: translate(calc(var(--dx) * 0.4 + 15px), calc(var(--dy) * 0.55)) scale(0.5) rotate(150deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(calc(var(--dx) * 0.6 - 5px), calc(var(--dy) * 0.8)) scale(0.1) rotate(270deg);
+    }
+}
+
+/* ==========================================
+   SNOW EFFECT — Gentle falling snowflakes
+   ========================================== */
+.emoji-effect-snow {
+    animation: snowFall 2.5s ease-in forwards;
+    filter: drop-shadow(0 0 4px rgba(200, 220, 255, 0.8));
+}
+
+.emoji-effect-snow.snowflake-sparkle {
+    animation: snowSparkle 2s ease-in-out forwards;
+    font-size: 8px !important;
+}
+
+@keyframes snowFall {
+    0% {
+        opacity: 0;
+        transform: translate(0, -20px) scale(0) rotate(0deg);
+    }
+    10% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.05 + 3px), calc(var(--dy) * -0.1)) scale(1) rotate(15deg);
+    }
+    25% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.15 - 5px), 10px) scale(0.95) rotate(-20deg);
+        filter: drop-shadow(0 0 6px rgba(200, 220, 255, 1));
+    }
+    40% {
+        transform: translate(calc(var(--dx) * 0.3 + 8px), 30px) scale(1.05) rotate(25deg);
+    }
+    55% {
+        opacity: 0.9;
+        transform: translate(calc(var(--dx) * 0.45 - 6px), 50px) scale(0.9) rotate(-15deg);
+    }
+    70% {
+        opacity: 0.7;
+        transform: translate(calc(var(--dx) * 0.6 + 4px), 70px) scale(0.85) rotate(30deg);
+        filter: drop-shadow(0 0 3px rgba(200, 220, 255, 0.5));
+    }
+    85% {
+        opacity: 0.4;
+        transform: translate(calc(var(--dx) * 0.75 - 3px), 90px) scale(0.7) rotate(-10deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), 110px) scale(0.5) rotate(40deg);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+}
+
+@keyframes snowSparkle {
+    0%, 100% { opacity: 0; transform: translate(0, 0) scale(0); }
+    15% { opacity: 0.8; transform: translate(calc(var(--dx) * 0.2), 15px) scale(1.2); }
+    30% { opacity: 0.4; transform: translate(calc(var(--dx) * 0.25), 25px) scale(0.6); }
+    50% { opacity: 0.9; transform: translate(calc(var(--dx) * 0.4), 45px) scale(1); }
+    70% { opacity: 0.3; transform: translate(calc(var(--dx) * 0.55), 65px) scale(0.5); }
+    85% { opacity: 0.6; transform: translate(calc(var(--dx) * 0.65), 80px) scale(0.8); }
+}
+
+/* ==========================================
+   TORNADO EFFECT — Swirling chaos
+   ========================================== */
+.emoji-effect-tornado {
+    animation: tornadoSpin 1.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    filter: drop-shadow(0 0 4px rgba(100, 150, 200, 0.6));
+}
+
+.emoji-effect-tornado.debris {
+    animation: tornadoDebris 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    font-size: 10px !important;
+}
+
+@keyframes tornadoSpin {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0.3) rotate(0deg);
+    }
+    10% {
+        opacity: 1;
+        transform: translate(20px, calc(var(--dy) * 0.05)) scale(1.2) rotate(72deg);
+    }
+    20% {
+        transform: translate(-15px, calc(var(--dy) * 0.15)) scale(1.1) rotate(144deg);
+    }
+    30% {
+        transform: translate(25px, calc(var(--dy) * 0.25)) scale(1.3) rotate(216deg);
+    }
+    40% {
+        opacity: 1;
+        transform: translate(-20px, calc(var(--dy) * 0.35)) scale(1.0) rotate(288deg);
+    }
+    50% {
+        transform: translate(30px, calc(var(--dy) * 0.45)) scale(1.4) rotate(360deg);
+    }
+    60% {
+        opacity: 0.8;
+        transform: translate(-25px, calc(var(--dy) * 0.55)) scale(1.1) rotate(432deg);
+    }
+    70% {
+        transform: translate(18px, calc(var(--dy) * 0.65)) scale(0.9) rotate(504deg);
+    }
+    80% {
+        opacity: 0.5;
+        transform: translate(-12px, calc(var(--dy) * 0.8)) scale(0.6) rotate(576deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(5px, var(--dy)) scale(0.2) rotate(720deg);
+    }
+}
+
+@keyframes tornadoDebris {
+    0% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(0.5); }
+    20% { opacity: 1; transform: translate(30px, -10px) rotate(120deg) scale(1); }
+    40% { transform: translate(-25px, -25px) rotate(250deg) scale(0.8); }
+    60% { opacity: 0.7; transform: translate(35px, -15px) rotate(400deg) scale(0.9); }
+    80% { opacity: 0.3; transform: translate(-20px, 10px) rotate(550deg) scale(0.5); }
+    100% { opacity: 0; transform: translate(15px, 30px) rotate(720deg) scale(0.1); }
+}
+
+/* ==========================================
+   EXPLOSION EFFECT — Shockwave + debris
+   ========================================== */
+.emoji-effect-explosion {
+    animation: explosionBurst 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    filter: drop-shadow(0 0 8px rgba(255, 100, 0, 0.9));
+}
+
+.emoji-effect-explosion.shockwave {
+    animation: shockwaveRing 0.8s ease-out forwards;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 200, 100, 0.8);
+    background: transparent;
+    font-size: 0 !important;
+}
+
+.emoji-effect-explosion.debris-chunk {
+    animation: explosionDebris 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    font-size: 12px !important;
+}
+
+@keyframes explosionBurst {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0);
+        filter: drop-shadow(0 0 15px rgba(255, 255, 100, 1));
+    }
+    8% {
+        opacity: 1;
+        transform: translate(0, 0) scale(2.5);
+        filter: drop-shadow(0 0 25px rgba(255, 200, 50, 1));
+    }
+    20% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.25), calc(var(--dy) * 0.2)) scale(1.5);
+        filter: drop-shadow(0 0 15px rgba(255, 100, 0, 0.9));
+    }
+    40% {
+        opacity: 0.8;
+        transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.45)) scale(1);
+        filter: drop-shadow(0 0 8px rgba(200, 50, 0, 0.7));
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), var(--dy)) scale(0.2);
+        filter: drop-shadow(0 0 0 transparent);
+    }
+}
+
+@keyframes shockwaveRing {
+    0% {
+        opacity: 0.9;
+        transform: scale(0);
+        border-width: 4px;
+        border-color: rgba(255, 255, 200, 0.9);
+    }
+    30% {
+        opacity: 0.7;
+        transform: scale(3);
+        border-width: 3px;
+        border-color: rgba(255, 180, 80, 0.6);
+    }
+    60% {
+        opacity: 0.3;
+        transform: scale(5);
+        border-width: 2px;
+    }
+    100% {
+        opacity: 0;
+        transform: scale(8);
+        border-width: 1px;
+        border-color: transparent;
+    }
+}
+
+@keyframes explosionDebris {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0.3) rotate(0deg);
+    }
+    15% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.4), calc(var(--dy) * 0.3)) scale(1.2) rotate(60deg);
+    }
+    40% {
+        opacity: 0.9;
+        transform: translate(calc(var(--dx) * 0.7), calc(var(--dy) * 0.5)) scale(0.8) rotate(180deg);
+    }
+    70% {
+        opacity: 0.4;
+        transform: translate(calc(var(--dx) * 0.9), calc(var(--dy) * 0.3 + 40px)) scale(0.5) rotate(280deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), calc(var(--dy) + 80px)) scale(0.2) rotate(360deg);
+    }
+}
+
+/* ==========================================
+   RAINBOW EFFECT — Color-shifting arc
+   ========================================== */
+.emoji-effect-rainbow {
+    animation: rainbowArc 2s ease-out forwards;
+}
+
+.emoji-effect-rainbow.rainbow-sparkle {
+    animation: rainbowSparkle 1.8s ease-out forwards;
+    font-size: 10px !important;
+}
+
+@keyframes rainbowArc {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0) rotate(0deg);
+        filter: hue-rotate(0deg) drop-shadow(0 0 4px rgba(255, 0, 100, 0.8));
+    }
+    15% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.1), calc(var(--dy) * 0.15)) scale(1.3) rotate(-20deg);
+        filter: hue-rotate(60deg) drop-shadow(0 0 8px rgba(255, 200, 0, 0.8));
+    }
+    30% {
+        transform: translate(calc(var(--dx) * 0.25), calc(var(--dy) * 0.35)) scale(1.1) rotate(15deg);
+        filter: hue-rotate(120deg) drop-shadow(0 0 8px rgba(0, 255, 100, 0.8));
+    }
+    45% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.4), calc(var(--dy) * 0.5)) scale(1.2) rotate(-10deg);
+        filter: hue-rotate(180deg) drop-shadow(0 0 8px rgba(0, 100, 255, 0.8));
+    }
+    60% {
+        transform: translate(calc(var(--dx) * 0.55), calc(var(--dy) * 0.6)) scale(1.0) rotate(20deg);
+        filter: hue-rotate(240deg) drop-shadow(0 0 8px rgba(100, 0, 255, 0.8));
+    }
+    75% {
+        opacity: 0.7;
+        transform: translate(calc(var(--dx) * 0.7), calc(var(--dy) * 0.75)) scale(0.8) rotate(-5deg);
+        filter: hue-rotate(300deg) drop-shadow(0 0 6px rgba(255, 0, 200, 0.6));
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), var(--dy)) scale(0.3) rotate(15deg);
+        filter: hue-rotate(360deg) drop-shadow(0 0 0 transparent);
+    }
+}
+
+@keyframes rainbowSparkle {
+    0% { opacity: 0; transform: translate(0, 0) scale(0); filter: hue-rotate(0deg); }
+    20% { opacity: 1; transform: translate(calc(var(--dx) * 0.2), calc(var(--dy) * 0.2)) scale(1); filter: hue-rotate(90deg); }
+    40% { opacity: 0.5; transform: translate(calc(var(--dx) * 0.35), calc(var(--dy) * 0.4)) scale(0.5); filter: hue-rotate(180deg); }
+    60% { opacity: 0.8; transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.55)) scale(0.9); filter: hue-rotate(270deg); }
+    100% { opacity: 0; transform: translate(calc(var(--dx) * 0.7), calc(var(--dy) * 0.7)) scale(0.2); filter: hue-rotate(360deg); }
+}
+
+/* ==========================================
+   DIAMOND EFFECT — Crystalline sparkle
+   ========================================== */
+.emoji-effect-diamond {
+    animation: diamondGleam 1.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    filter: drop-shadow(0 0 6px rgba(150, 200, 255, 0.8));
+}
+
+.emoji-effect-diamond.facet-flash {
+    animation: facetFlash 1s ease-out forwards;
+    font-size: 8px !important;
+    filter: drop-shadow(0 0 3px rgba(200, 230, 255, 0.9));
+}
+
+@keyframes diamondGleam {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(0) rotate(0deg);
+        filter: drop-shadow(0 0 4px rgba(150, 200, 255, 0.9)) brightness(1);
+    }
+    10% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.05), calc(var(--dy) * 0.05)) scale(1.5) rotate(15deg);
+        filter: drop-shadow(0 0 15px rgba(200, 230, 255, 1)) brightness(1.5);
+    }
+    20% {
+        transform: translate(calc(var(--dx) * 0.12), calc(var(--dy) * 0.12)) scale(0.8) rotate(-10deg);
+        filter: drop-shadow(0 0 8px rgba(150, 200, 255, 0.8)) brightness(1);
+    }
+    35% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.25), calc(var(--dy) * 0.25)) scale(1.3) rotate(25deg);
+        filter: drop-shadow(0 0 12px rgba(200, 230, 255, 1)) brightness(1.4);
+    }
+    50% {
+        transform: translate(calc(var(--dx) * 0.4), calc(var(--dy) * 0.4)) scale(0.9) rotate(-5deg);
+        filter: drop-shadow(0 0 6px rgba(150, 200, 255, 0.7)) brightness(1);
+    }
+    65% {
+        opacity: 0.8;
+        transform: translate(calc(var(--dx) * 0.55), calc(var(--dy) * 0.55)) scale(1.1) rotate(15deg);
+        filter: drop-shadow(0 0 10px rgba(200, 230, 255, 0.9)) brightness(1.3);
+    }
+    80% {
+        opacity: 0.4;
+        transform: translate(calc(var(--dx) * 0.75), calc(var(--dy) * 0.75)) scale(0.7) rotate(-8deg);
+        filter: drop-shadow(0 0 4px rgba(150, 200, 255, 0.5)) brightness(1.1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx), var(--dy)) scale(0.2) rotate(20deg);
+        filter: drop-shadow(0 0 0 transparent) brightness(1);
+    }
+}
+
+@keyframes facetFlash {
+    0% { opacity: 0; transform: translate(0, 0) scale(0) rotate(0deg); }
+    15% {
+        opacity: 1;
+        transform: translate(calc(var(--dx) * 0.2), calc(var(--dy) * 0.15)) scale(1.5) rotate(45deg);
+        filter: drop-shadow(0 0 8px rgba(255, 255, 255, 1)) brightness(2);
+    }
+    30% { opacity: 0.3; transform: translate(calc(var(--dx) * 0.3), calc(var(--dy) * 0.25)) scale(0.5) rotate(90deg); }
+    50% {
+        opacity: 0.8;
+        transform: translate(calc(var(--dx) * 0.45), calc(var(--dy) * 0.4)) scale(1.2) rotate(135deg);
+        filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.8)) brightness(1.8);
+    }
+    100% { opacity: 0; transform: translate(calc(var(--dx) * 0.6), calc(var(--dy) * 0.6)) scale(0.1) rotate(180deg); }
 }

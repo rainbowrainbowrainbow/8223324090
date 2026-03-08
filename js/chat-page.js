@@ -2169,15 +2169,211 @@
     // ==========================================
 
     var EMOJI_EFFECTS = {
-        '🔥': { type: 'fire', particles: ['🔥', '🟠', '🟡', '✨'], count: 8 },
-        '❤️': { type: 'hearts', particles: ['❤️', '💕', '💗', '💖'], count: 6 },
+        '🔥': { type: 'fire', particles: ['🔥', '🟠', '🟡', '✨'], count: 10, layers: true },
+        '❤️': { type: 'hearts', particles: ['❤️', '💕', '💗', '💖', '💘'], count: 8, layers: true },
         '😂': { type: 'laugh', particles: ['😂', '🤣', '😆', '💀'], count: 5 },
         '👍': { type: 'thumbs', particles: ['👍', '✨', '⭐'], count: 4 },
-        '🎉': { type: 'party', particles: ['🎉', '🎊', '✨', '🎈', '🥳'], count: 8 },
+        '🎉': { type: 'party', particles: ['🎉', '🎊', '✨', '🎈', '🥳', '🎀'], count: 10, layers: true },
         '💯': { type: 'hundred', particles: ['💯', '🔥', '✨', '⚡'], count: 6 },
-        '⚡': { type: 'lightning', particles: ['⚡', '💥', '✨'], count: 5 },
-        '👀': { type: 'eyes', particles: ['👀', '👁️', '🔍'], count: 4 }
+        '⚡': { type: 'lightning', particles: ['⚡', '💥', '✨', '🔮'], count: 7, layers: true },
+        '👀': { type: 'eyes', particles: ['👀', '👁️', '🔍'], count: 4 },
+        '💀': { type: 'skull', particles: ['💀', '☠️', '👻', '🖤'], count: 8, layers: true },
+        '❄️': { type: 'snow', particles: ['❄️', '🌨️', '⛄', '✨', '💎'], count: 10, layers: true },
+        '🌪️': { type: 'tornado', particles: ['🌪️', '💨', '🍃', '🌀'], count: 8, layers: true },
+        '💥': { type: 'explosion', particles: ['💥', '🔥', '💫', '✨', '🟠'], count: 12, layers: true },
+        '🌈': { type: 'rainbow', particles: ['🌈', '✨', '⭐', '🦄', '💫'], count: 8, layers: true },
+        '💎': { type: 'diamond', particles: ['💎', '✨', '🔹', '🔷', '💠'], count: 8, layers: true }
     };
+
+    function _spawnParticle(container, effect, idx, extraClass) {
+        var particle = document.createElement('span');
+        particle.className = 'emoji-particle emoji-effect-' + effect.type + (extraClass ? ' ' + extraClass : '');
+        particle.textContent = effect.particles[idx % effect.particles.length];
+        particle.style.left = (Math.random() * 100) + '%';
+        particle.style.animationDelay = (Math.random() * 0.3) + 's';
+
+        var dx, dy;
+        switch (effect.type) {
+            case 'fire':
+                dx = ((Math.random() - 0.5) * 70) + 'px';
+                dy = (-50 - Math.random() * 90) + 'px';
+                break;
+            case 'hearts':
+                dx = ((Math.random() - 0.5) * 90) + 'px';
+                dy = (-70 - Math.random() * 70) + 'px';
+                break;
+            case 'snow':
+                dx = ((Math.random() - 0.5) * 120) + 'px';
+                dy = (20 + Math.random() * 60) + 'px';
+                break;
+            case 'tornado':
+                dx = ((Math.random() - 0.5) * 60) + 'px';
+                dy = (-40 - Math.random() * 80) + 'px';
+                break;
+            case 'explosion':
+                var angle = Math.random() * Math.PI * 2;
+                var dist = 60 + Math.random() * 80;
+                dx = (Math.cos(angle) * dist) + 'px';
+                dy = (Math.sin(angle) * dist) + 'px';
+                break;
+            case 'skull':
+                dx = ((Math.random() - 0.5) * 80) + 'px';
+                dy = (-30 - Math.random() * 70) + 'px';
+                break;
+            case 'rainbow':
+                dx = ((Math.random() - 0.5) * 120) + 'px';
+                dy = (-50 - Math.random() * 60) + 'px';
+                break;
+            case 'diamond':
+                dx = ((Math.random() - 0.5) * 100) + 'px';
+                dy = (-40 - Math.random() * 70) + 'px';
+                break;
+            default:
+                dx = ((Math.random() - 0.5) * 100) + 'px';
+                dy = (-30 - Math.random() * 60) + 'px';
+        }
+        particle.style.setProperty('--dx', dx);
+        particle.style.setProperty('--dy', dy);
+        container.appendChild(particle);
+    }
+
+    function _spawnSubLayers(container, effect) {
+        switch (effect.type) {
+            case 'fire':
+                // Ember sparks
+                for (var e = 0; e < 6; e++) {
+                    (function(i) {
+                        setTimeout(function() {
+                            _spawnParticle(container, { type: 'fire', particles: ['🟡', '🟠', '✨'] }, i, 'ember-layer');
+                        }, i * 80 + 100);
+                    })(e);
+                }
+                // Heat shimmer
+                setTimeout(function() {
+                    _spawnParticle(container, { type: 'fire', particles: ['🔥'] }, 0, 'heat-shimmer');
+                }, 50);
+                // Smoke
+                for (var s = 0; s < 3; s++) {
+                    (function(i) {
+                        setTimeout(function() {
+                            _spawnParticle(container, { type: 'fire', particles: ['🌫️', '💨'] }, i, 'smoke-layer');
+                        }, i * 120 + 300);
+                    })(s);
+                }
+                break;
+            case 'hearts':
+                for (var h = 0; h < 4; h++) {
+                    (function(i) {
+                        setTimeout(function() {
+                            _spawnParticle(container, { type: 'hearts', particles: ['💗', '💕', '✨'] }, i, 'heart-trail');
+                        }, i * 100 + 150);
+                    })(h);
+                }
+                break;
+            case 'party':
+                // Confetti pieces
+                var confetti = ['🟥', '🟦', '🟩', '🟨', '🟪', '🟧'];
+                for (var c = 0; c < 8; c++) {
+                    (function(i) {
+                        setTimeout(function() {
+                            _spawnParticle(container, { type: 'party', particles: confetti }, i, 'confetti-piece');
+                        }, i * 40 + 80);
+                    })(c);
+                }
+                break;
+            case 'lightning':
+                // Flash overlay
+                setTimeout(function() {
+                    var flash = document.createElement('div');
+                    flash.className = 'emoji-particle emoji-effect-lightning lightning-flash';
+                    container.appendChild(flash);
+                }, 0);
+                // Afterglow sparks
+                for (var l = 0; l < 4; l++) {
+                    (function(i) {
+                        setTimeout(function() {
+                            _spawnParticle(container, { type: 'lightning', particles: ['✨', '🔮', '💫'] }, i, 'afterglow');
+                        }, i * 60 + 200);
+                    })(l);
+                }
+                break;
+            case 'skull':
+                // Soul wisps
+                for (var w = 0; w < 5; w++) {
+                    (function(i) {
+                        setTimeout(function() {
+                            _spawnParticle(container, { type: 'skull', particles: ['👻', '🖤', '💜'] }, i, 'soul-wisp');
+                        }, i * 90 + 120);
+                    })(w);
+                }
+                break;
+            case 'snow':
+                // Sparkle flakes
+                for (var f = 0; f < 6; f++) {
+                    (function(i) {
+                        setTimeout(function() {
+                            _spawnParticle(container, { type: 'snow', particles: ['✨', '💫', '⚪'] }, i, 'snowflake-sparkle');
+                        }, i * 100 + 100);
+                    })(f);
+                }
+                break;
+            case 'tornado':
+                // Flying debris
+                for (var d = 0; d < 5; d++) {
+                    (function(i) {
+                        setTimeout(function() {
+                            _spawnParticle(container, { type: 'tornado', particles: ['🍃', '🌿', '📄', '🧢'] }, i, 'debris');
+                        }, i * 70 + 100);
+                    })(d);
+                }
+                break;
+            case 'explosion':
+                // Shockwave ring
+                setTimeout(function() {
+                    var sw = document.createElement('span');
+                    sw.className = 'emoji-particle emoji-effect-explosion shockwave';
+                    sw.style.left = '50%';
+                    sw.style.bottom = '50%';
+                    sw.style.marginLeft = '-10px';
+                    container.appendChild(sw);
+                }, 0);
+                // Debris chunks
+                for (var b = 0; b < 6; b++) {
+                    (function(i) {
+                        setTimeout(function() {
+                            var angle = (i / 6) * Math.PI * 2;
+                            var dist = 70 + Math.random() * 60;
+                            var p = document.createElement('span');
+                            p.className = 'emoji-particle emoji-effect-explosion debris-chunk';
+                            p.textContent = ['🟫', '🟧', '⬛', '🟥'][i % 4];
+                            p.style.left = '50%';
+                            p.style.setProperty('--dx', (Math.cos(angle) * dist) + 'px');
+                            p.style.setProperty('--dy', (Math.sin(angle) * dist) + 'px');
+                            container.appendChild(p);
+                        }, i * 30 + 50);
+                    })(b);
+                }
+                break;
+            case 'rainbow':
+                for (var r = 0; r < 5; r++) {
+                    (function(i) {
+                        setTimeout(function() {
+                            _spawnParticle(container, { type: 'rainbow', particles: ['✨', '⭐', '💫'] }, i, 'rainbow-sparkle');
+                        }, i * 80 + 100);
+                    })(r);
+                }
+                break;
+            case 'diamond':
+                for (var g = 0; g < 5; g++) {
+                    (function(i) {
+                        setTimeout(function() {
+                            _spawnParticle(container, { type: 'diamond', particles: ['✨', '💫', '⚪'] }, i, 'facet-flash');
+                        }, i * 70 + 80);
+                    })(g);
+                }
+                break;
+        }
+    }
 
     function _triggerEmojiEffect(targetEl, emoji) {
         var effect = EMOJI_EFFECTS[emoji];
@@ -2195,36 +2391,22 @@
         container.style.zIndex = '500';
         document.body.appendChild(container);
 
+        // Main particles
         for (var i = 0; i < effect.count; i++) {
             (function (idx) {
                 setTimeout(function () {
-                    var particle = document.createElement('span');
-                    particle.className = 'emoji-particle emoji-effect-' + effect.type;
-                    particle.textContent = effect.particles[idx % effect.particles.length];
-                    particle.style.left = (Math.random() * 100) + '%';
-                    particle.style.animationDelay = (Math.random() * 0.3) + 's';
-
-                    if (effect.type === 'fire') {
-                        // Fire rises up and burns out
-                        particle.style.setProperty('--dx', ((Math.random() - 0.5) * 60) + 'px');
-                        particle.style.setProperty('--dy', (-40 - Math.random() * 80) + 'px');
-                    } else if (effect.type === 'hearts') {
-                        // Hearts float up gently
-                        particle.style.setProperty('--dx', ((Math.random() - 0.5) * 80) + 'px');
-                        particle.style.setProperty('--dy', (-60 - Math.random() * 60) + 'px');
-                    } else {
-                        // Generic burst
-                        particle.style.setProperty('--dx', ((Math.random() - 0.5) * 100) + 'px');
-                        particle.style.setProperty('--dy', (-30 - Math.random() * 60) + 'px');
-                    }
-
-                    container.appendChild(particle);
+                    _spawnParticle(container, effect, idx);
                 }, idx * 50);
             })(i);
         }
 
-        // Cleanup after animation completes
-        setTimeout(function () { container.remove(); }, 2000);
+        // Sub-layers for complex effects
+        if (effect.layers) {
+            _spawnSubLayers(container, effect);
+        }
+
+        // Cleanup after all animations complete
+        setTimeout(function () { container.remove(); }, 3000);
     }
 
     function _onEditMessage(payload) {

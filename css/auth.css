@@ -240,6 +240,24 @@
     font-family: 'Inter', sans-serif;
 }
 
+/* Landing link on login */
+.login-landing-link {
+    display: block;
+    text-align: center;
+    margin-top: 12px;
+    color: var(--gold-primary, #D4A843);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    letter-spacing: 0.03em;
+    transition: color 0.2s;
+}
+
+.login-landing-link:hover {
+    color: var(--gold-light, #E8C468);
+    text-decoration: underline;
+}
+
 /* v6.0: Test mode hint */
 .test-mode-hint {
     text-align: center;

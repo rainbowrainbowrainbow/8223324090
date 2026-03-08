@@ -152,7 +152,8 @@ router.post('/messages/:id/reactions', async (req, res) => {
         broadcastToChannel(msg.channel_id, 'chat:reaction', {
             channelId: msg.channel_id,
             messageId,
-            reactions
+            reactions,
+            emoji
         });
 
         res.json({ reactions });

@@ -2222,9 +2222,10 @@
             });
         });
 
-        // Special emoji animation on reaction
+        // Special emoji animation on reaction (visible to all users)
         if (payload.emoji) {
             _triggerEmojiEffect(msgEl, payload.emoji);
+            _playSoundAlways('message-sent');
         }
     }
 

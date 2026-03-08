@@ -5,7 +5,7 @@
  * tracks LLM usage costs. Only escalates to Kleshnya if decisions needed.
  */
 
-const pool = require('../db');
+const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('SummaryAgent');

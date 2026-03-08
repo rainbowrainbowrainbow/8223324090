@@ -2356,6 +2356,273 @@
 
         container.appendChild(_createMessageEl(msg, isGrouped));
         container.scrollTop = container.scrollHeight;
+
+        // Trigger dino mega effects for sticker messages
+        if (msg.contentType === 'sticker') {
+            _triggerStickerEffect(msg.content);
+        }
+    }
+
+    // ==========================================
+    // DINO MEGA EFFECTS 🦕🦖
+    // ==========================================
+    var _DINO_EFFECTS = {
+        '🦕': 'earthquake',
+        '🦖': 'fire-roar',
+        '🥚': 'egg-hatch',
+        '🌋': 'volcano',
+        '🦴': 'bone-dig',
+        '🦎': 'chameleon',
+        '🐊': 'swamp',
+        '🌴': 'tropical-storm'
+    };
+
+    function _triggerStickerEffect(emoji) {
+        var effectType = _DINO_EFFECTS[emoji];
+        if (!effectType) return;
+
+        var container = document.createElement('div');
+        container.className = 'dino-effect-container';
+        document.body.appendChild(container);
+
+        switch (effectType) {
+            case 'earthquake':
+                _effectEarthquake(container);
+                break;
+            case 'fire-roar':
+                _effectFireRoar(container);
+                break;
+            case 'egg-hatch':
+                _effectEggHatch(container);
+                break;
+            case 'volcano':
+                _effectVolcano(container);
+                break;
+            case 'bone-dig':
+                _effectBoneDig(container);
+                break;
+            case 'chameleon':
+                _effectChameleon(container);
+                break;
+            case 'swamp':
+                _effectSwamp(container);
+                break;
+            case 'tropical-storm':
+                _effectTropicalStorm(container);
+                break;
+        }
+
+        _playSoundAlways('mention');
+        var duration = effectType === 'egg-hatch' ? 5000 : 4000;
+        setTimeout(function () { container.remove(); }, duration);
+    }
+
+    function _effectEarthquake(container) {
+        // Shake the whole chat area
+        var chatArea = document.querySelector('.chat-messages-area') || document.getElementById('chatMessages');
+        if (chatArea) chatArea.classList.add('dino-shake');
+        setTimeout(function () { if (chatArea) chatArea.classList.remove('dino-shake'); }, 3000);
+
+        // Falling rocks
+        var ROCKS = ['🪨', '💎', '🏔️', '⛰️', '🗻'];
+        for (var i = 0; i < 25; i++) {
+            var rock = document.createElement('span');
+            rock.className = 'dino-falling-rock';
+            rock.textContent = ROCKS[i % ROCKS.length];
+            rock.style.left = (Math.random() * 100) + '%';
+            rock.style.setProperty('--fall-delay', (Math.random() * 1.5) + 's');
+            rock.style.setProperty('--fall-duration', (1.5 + Math.random() * 2) + 's');
+            rock.style.setProperty('--rock-size', (18 + Math.random() * 20) + 'px');
+            rock.style.setProperty('--rock-rotation', (Math.random() * 720 - 360) + 'deg');
+            container.appendChild(rock);
+        }
+
+        // Crack lines
+        var crack = document.createElement('div');
+        crack.className = 'dino-earthquake-crack';
+        container.appendChild(crack);
+    }
+
+    function _effectFireRoar(container) {
+        // Red flash
+        var flash = document.createElement('div');
+        flash.className = 'dino-fire-flash';
+        container.appendChild(flash);
+
+        // Fire particles rising from bottom
+        var FIRES = ['🔥', '💥', '☄️', '🌟', '⚡'];
+        for (var i = 0; i < 40; i++) {
+            var flame = document.createElement('span');
+            flame.className = 'dino-fire-particle';
+            flame.textContent = FIRES[i % FIRES.length];
+            flame.style.left = (Math.random() * 100) + '%';
+            flame.style.setProperty('--fire-delay', (Math.random() * 2) + 's');
+            flame.style.setProperty('--fire-duration', (1.5 + Math.random() * 2) + 's');
+            flame.style.setProperty('--fire-size', (16 + Math.random() * 24) + 'px');
+            flame.style.setProperty('--fire-sway', ((Math.random() - 0.5) * 100) + 'px');
+            container.appendChild(flame);
+        }
+
+        // Giant T-Rex silhouette
+        var rex = document.createElement('div');
+        rex.className = 'dino-trex-roar';
+        rex.textContent = '🦖';
+        container.appendChild(rex);
+    }
+
+    function _effectEggHatch(container) {
+        // Central egg that cracks
+        var egg = document.createElement('div');
+        egg.className = 'dino-egg-center';
+        egg.innerHTML = '<span class="dino-egg-emoji">🥚</span>';
+        container.appendChild(egg);
+
+        // After 2s, crack and confetti
+        setTimeout(function () {
+            egg.classList.add('dino-egg-cracked');
+            egg.innerHTML = '<span class="dino-egg-emoji">🦕</span>';
+
+            // Confetti burst
+            var CONFETTI = ['🎉', '🎊', '✨', '💫', '⭐', '🌟', '🎀', '🎈'];
+            for (var i = 0; i < 35; i++) {
+                var piece = document.createElement('span');
+                piece.className = 'dino-egg-confetti';
+                piece.textContent = CONFETTI[i % CONFETTI.length];
+                var angle = (i / 35) * 360;
+                var distance = 150 + Math.random() * 200;
+                piece.style.setProperty('--confetti-x', (Math.cos(angle * Math.PI / 180) * distance) + 'px');
+                piece.style.setProperty('--confetti-y', (Math.sin(angle * Math.PI / 180) * distance) + 'px');
+                piece.style.setProperty('--confetti-rotation', (Math.random() * 720) + 'deg');
+                piece.style.setProperty('--confetti-delay', (Math.random() * 0.3) + 's');
+                container.appendChild(piece);
+            }
+        }, 2000);
+    }
+
+    function _effectVolcano(container) {
+        // Lava drops from top
+        var LAVA = ['🔴', '🟠', '🟡', '🔥', '💧'];
+        for (var i = 0; i < 35; i++) {
+            var drop = document.createElement('span');
+            drop.className = 'dino-lava-drop';
+            drop.textContent = LAVA[i % LAVA.length];
+            drop.style.left = (20 + Math.random() * 60) + '%';
+            drop.style.setProperty('--lava-delay', (Math.random() * 2) + 's');
+            drop.style.setProperty('--lava-duration', (1.5 + Math.random() * 2) + 's');
+            drop.style.setProperty('--lava-size', (14 + Math.random() * 18) + 'px');
+            container.appendChild(drop);
+        }
+
+        // Sparks flying sideways
+        var SPARKS = ['✨', '💥', '⚡', '🌟'];
+        for (var j = 0; j < 20; j++) {
+            var spark = document.createElement('span');
+            spark.className = 'dino-volcano-spark';
+            spark.textContent = SPARKS[j % SPARKS.length];
+            spark.style.setProperty('--spark-x', ((Math.random() - 0.5) * window.innerWidth) + 'px');
+            spark.style.setProperty('--spark-y', (-100 - Math.random() * 300) + 'px');
+            spark.style.setProperty('--spark-delay', (Math.random() * 1.5) + 's');
+            container.appendChild(spark);
+        }
+
+        // Volcano emoji at bottom
+        var volcano = document.createElement('div');
+        volcano.className = 'dino-volcano-base';
+        volcano.textContent = '🌋';
+        container.appendChild(volcano);
+    }
+
+    function _effectBoneDig(container) {
+        // Bones falling with dust
+        var BONES = ['🦴', '💀', '🦷', '🦴', '🏺', '🦴'];
+        for (var i = 0; i < 30; i++) {
+            var bone = document.createElement('span');
+            bone.className = 'dino-bone-fall';
+            bone.textContent = BONES[i % BONES.length];
+            bone.style.left = (Math.random() * 100) + '%';
+            bone.style.setProperty('--bone-delay', (Math.random() * 2) + 's');
+            bone.style.setProperty('--bone-duration', (2 + Math.random() * 2) + 's');
+            bone.style.setProperty('--bone-size', (18 + Math.random() * 16) + 'px');
+            bone.style.setProperty('--bone-rotation', (Math.random() * 540 - 270) + 'deg');
+            container.appendChild(bone);
+        }
+
+        // Dust cloud rising from bottom
+        var dust = document.createElement('div');
+        dust.className = 'dino-dust-cloud';
+        container.appendChild(dust);
+    }
+
+    function _effectChameleon(container) {
+        // Flashing color overlay
+        var overlay = document.createElement('div');
+        overlay.className = 'dino-chameleon-flash';
+        container.appendChild(overlay);
+
+        // Chameleons running across screen
+        var LIZARDS = ['🦎', '🦎', '🦎', '🦎'];
+        for (var i = 0; i < 6; i++) {
+            var lizard = document.createElement('span');
+            lizard.className = 'dino-chameleon-run';
+            lizard.textContent = LIZARDS[i % LIZARDS.length];
+            lizard.style.setProperty('--run-delay', (i * 0.5) + 's');
+            lizard.style.setProperty('--run-y', (15 + Math.random() * 70) + '%');
+            lizard.style.setProperty('--run-direction', i % 2 === 0 ? '1' : '-1');
+            lizard.style.fontSize = (24 + Math.random() * 16) + 'px';
+            container.appendChild(lizard);
+        }
+    }
+
+    function _effectSwamp(container) {
+        // Bubbles rising from bottom
+        var BUBBLES = ['🫧', '💧', '🟢', '🫧', '💚'];
+        for (var i = 0; i < 30; i++) {
+            var bubble = document.createElement('span');
+            bubble.className = 'dino-swamp-bubble';
+            bubble.textContent = BUBBLES[i % BUBBLES.length];
+            bubble.style.left = (Math.random() * 100) + '%';
+            bubble.style.setProperty('--bubble-delay', (Math.random() * 3) + 's');
+            bubble.style.setProperty('--bubble-duration', (2 + Math.random() * 3) + 's');
+            bubble.style.setProperty('--bubble-size', (12 + Math.random() * 20) + 'px');
+            bubble.style.setProperty('--bubble-sway', ((Math.random() - 0.5) * 60) + 'px');
+            container.appendChild(bubble);
+        }
+
+        // Green tint overlay
+        var swampOverlay = document.createElement('div');
+        swampOverlay.className = 'dino-swamp-overlay';
+        container.appendChild(swampOverlay);
+
+        // Crocodile eyes appearing
+        var croc = document.createElement('div');
+        croc.className = 'dino-croc-eyes';
+        croc.textContent = '🐊';
+        container.appendChild(croc);
+    }
+
+    function _effectTropicalStorm(container) {
+        // Leaves flying across screen
+        var LEAVES = ['🍃', '🌿', '🍂', '🌴', '🪺', '🌺'];
+        for (var i = 0; i < 35; i++) {
+            var leaf = document.createElement('span');
+            leaf.className = 'dino-storm-leaf';
+            leaf.textContent = LEAVES[i % LEAVES.length];
+            leaf.style.setProperty('--leaf-delay', (Math.random() * 2) + 's');
+            leaf.style.setProperty('--leaf-duration', (1.5 + Math.random() * 2) + 's');
+            leaf.style.setProperty('--leaf-start-y', (Math.random() * 100) + '%');
+            leaf.style.setProperty('--leaf-size', (14 + Math.random() * 18) + 'px');
+            leaf.style.setProperty('--leaf-rotation', (Math.random() * 720) + 'deg');
+            container.appendChild(leaf);
+        }
+
+        // Wind lines
+        for (var j = 0; j < 8; j++) {
+            var wind = document.createElement('div');
+            wind.className = 'dino-wind-line';
+            wind.style.setProperty('--wind-y', (10 + Math.random() * 80) + '%');
+            wind.style.setProperty('--wind-delay', (Math.random() * 1.5) + 's');
+            container.appendChild(wind);
+        }
     }
 
     function _appendOptimisticMessage(content) {
@@ -2714,10 +2981,11 @@
 
         var content = sticker.url ? sticker.url : sticker.emoji;
         try {
-            await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
+            var msg = await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
                 content: content,
                 contentType: 'sticker'
             });
+            if (msg) _appendMessage(msg);
         } catch (err) {
             console.error('[Chat] Send sticker error:', err);
         }
@@ -2807,10 +3075,11 @@
         if (_gifPanel) _gifPanel.style.display = 'none';
 
         try {
-            await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
+            var msg = await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
                 content: gifUrl,
                 contentType: 'gif'
             });
+            if (msg) _appendMessage(msg);
         } catch (err) {
             console.error('[Chat] Send GIF error:', err);
         }
@@ -2900,11 +3169,15 @@
 
             try {
                 var token = localStorage.getItem('pzp_token');
-                await fetch('/api/chat/channels/' + _currentChannel.id + '/upload', {
+                var resp = await fetch('/api/chat/channels/' + _currentChannel.id + '/upload', {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + token },
                     body: formData
                 });
+                if (resp.ok) {
+                    var msg = await resp.json();
+                    _appendMessage(msg);
+                }
             } catch (err) {
                 console.error('[Chat] Voice upload error:', err);
             }

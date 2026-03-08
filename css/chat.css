@@ -890,6 +890,34 @@
 .chat-avatar-color-6 { background: #EF4444; }
 .chat-avatar-color-7 { background: #F59E0B; }
 
+/* Bot avatars — styled with gradients */
+.chat-avatar-bot {
+    background: linear-gradient(135deg, #10B981, #059669) !important;
+    color: white;
+    font-size: 16px;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+    border: 2px solid rgba(16, 185, 129, 0.15);
+}
+
+.chat-avatar-guardian {
+    background: linear-gradient(135deg, #6366F1, #8B5CF6) !important;
+    color: white;
+    font-size: 16px;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+    border: 2px solid rgba(99, 102, 241, 0.15);
+}
+
+/* Bot username colors */
+.chat-username-bot {
+    color: #059669 !important;
+    font-weight: 700;
+}
+
+.chat-username-guardian {
+    color: #6366F1 !important;
+    font-weight: 700;
+}
+
 .chat-message.own .chat-avatar {
     display: none;
 }
@@ -1400,6 +1428,19 @@
     font-weight: 700;
     color: var(--white);
     margin: 0 auto 10px;
+}
+
+.chat-profile-avatar.chat-avatar-bot {
+    font-size: 32px;
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+    border: 3px solid rgba(16, 185, 129, 0.15);
+}
+
+.chat-profile-avatar.chat-avatar-guardian {
+    font-size: 32px;
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+    border: 3px solid rgba(99, 102, 241, 0.15);
+    animation: guardianPulse 2s ease-in-out infinite;
 }
 
 .chat-profile-name {

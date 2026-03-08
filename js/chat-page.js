@@ -579,9 +579,11 @@
             _pinBtn.classList.remove('active');
             document.getElementById('chatInfoPanelTitle').textContent = 'Профіль';
             var body = document.getElementById('chatInfoPanelBody');
-            var initial = (profile.displayName || profile.username || '?').charAt(0).toUpperCase();
-            var colorClass = 'chat-avatar-color-' + _colorIdx(profile.id);
-            var roleLabel = _roleLabel(profile.role);
+            var isProfileBot = profile.username === 'openclaw';
+            var isProfileGuardian = profile.username === 'guardian';
+            var initial = isProfileGuardian ? '🛡️' : isProfileBot ? '🦀' : (profile.displayName || profile.username || '?').charAt(0).toUpperCase();
+            var colorClass = isProfileGuardian ? 'chat-avatar-guardian' : isProfileBot ? 'chat-avatar-bot' : 'chat-avatar-color-' + _colorIdx(profile.id);
+            var roleLabel = isProfileGuardian ? 'AI Охоронець' : isProfileBot ? 'AI Бот' : _roleLabel(profile.role);
 
             var fields = '';
             if (profile.department) {
@@ -1417,8 +1419,8 @@
             readCheckHtml = '<span class="chat-read-check sent" title="Відправлено">✓</span>';
         }
 
-        var avatarColorClass = 'chat-avatar-color-' + _colorIdx(msg.userId);
-        var usernameColorClass = 'chat-username-color-' + _colorIdx(msg.userId);
+        var avatarColorClass = isGuardian ? 'chat-avatar-guardian' : isBot ? 'chat-avatar-bot' : 'chat-avatar-color-' + _colorIdx(msg.userId);
+        var usernameColorClass = isGuardian ? 'chat-username-guardian' : isBot ? 'chat-username-bot' : 'chat-username-color-' + _colorIdx(msg.userId);
 
         var replyHtml = '';
         if (msg.replyTo && msg.replyContent) {

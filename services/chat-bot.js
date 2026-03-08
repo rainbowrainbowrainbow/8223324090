@@ -2,8 +2,8 @@
  * chat-bot.js — Kleshnya bot integration for team messenger
  *
  * Monitors messages in team chat channels.
- * When @openclaw or @kleshnya is mentioned, generates a response
- * via kleshnya-chat engine and posts it as a bot message.
+ * - In DM with openclaw: responds to ALL messages
+ * - In group channels: responds when @openclaw/@kleshnya is mentioned
  */
 
 const { createLogger } = require('../utils/logger');
@@ -25,8 +25,35 @@ const RATE_LIMIT_MS = 3000;
 const _channelHistory = {};
 const MAX_HISTORY = 10;
 
+// Cache: channelId → boolean (is DM with bot)
+const _botDmChannels = {};
+
 /**
- * Check if a message is directed at the bot.
+ * Check if a channel is a DM with the bot user.
+ */
+async function isBotDmChannel(channelId) {
+    if (_botDmChannels[channelId] !== undefined) return _botDmChannels[channelId];
+    try {
+        const botId = await getBotUserId();
+        const result = await pool.query(
+            'SELECT is_dm, dm_user_ids FROM chat_channels WHERE id = $1',
+            [channelId]
+        );
+        const row = result.rows[0];
+        if (row && row.is_dm && row.dm_user_ids) {
+            _botDmChannels[channelId] = row.dm_user_ids.includes(botId);
+        } else {
+            _botDmChannels[channelId] = false;
+        }
+    } catch (err) {
+        log.error('Error checking bot DM channel:', err);
+        _botDmChannels[channelId] = false;
+    }
+    return _botDmChannels[channelId];
+}
+
+/**
+ * Check if a message is directed at the bot via @mention.
  */
 function isBotMention(content) {
     if (!content) return false;
@@ -39,7 +66,6 @@ function isBotMention(content) {
  */
 function extractQuestion(content) {
     let text = content;
-    // Remove all bot mention patterns (case-insensitive)
     for (const mention of BOT_MENTIONS) {
         const regex = new RegExp(mention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
         text = text.replace(regex, '');
@@ -58,7 +84,6 @@ function trackMessage(channelId, username, content) {
         role: username === BOT_USERNAME ? 'assistant' : 'user',
         content: content
     });
-    // Keep only last N
     if (_channelHistory[channelId].length > MAX_HISTORY) {
         _channelHistory[channelId] = _channelHistory[channelId].slice(-MAX_HISTORY);
     }
@@ -67,8 +92,6 @@ function trackMessage(channelId, username, content) {
 /**
  * Process an incoming team chat message.
  * Called from the chat route after a message is sent.
- *
- * @param {object} message - The full message object (with username, content, channelId, etc.)
  */
 async function processMessage(message) {
     if (!message || !message.content) return;
@@ -79,8 +102,13 @@ async function processMessage(message) {
     // Track in history
     trackMessage(message.channelId, message.username, message.content);
 
-    // Check if this is a bot mention
-    if (!isBotMention(message.content)) return;
+    // Determine if bot should respond:
+    // 1. DM with bot — always respond
+    // 2. Group channel — only on @mention
+    const isDm = await isBotDmChannel(message.channelId);
+    const hasMention = isBotMention(message.content);
+
+    if (!isDm && !hasMention) return;
 
     // Rate limit per channel
     const now = Date.now();
@@ -90,15 +118,15 @@ async function processMessage(message) {
     }
     _lastResponse[message.channelId] = now;
 
-    const question = extractQuestion(message.content);
+    // In DM, use the full message; in channels, strip the @mention
+    const question = isDm ? message.content.trim() : extractQuestion(message.content);
     if (!question) {
-        // Just a mention with no question — send help
         await respondToChannel(message.channelId, message.id,
             '🦀 Привіт! Я Клешня — питай що хочеш! Бронювання, задачі, команду, виручку...');
         return;
     }
 
-    log.info(`Bot mention in ch:${message.channelId} by ${message.username}: "${question.substring(0, 50)}..."`);
+    log.info(`Bot ${isDm ? 'DM' : 'mention'} in ch:${message.channelId} by ${message.username}: "${question.substring(0, 50)}..."`);
 
     // Show typing indicator
     broadcastToChannel(message.channelId, 'chat:typing', {
@@ -113,14 +141,12 @@ async function processMessage(message) {
 
         let responseText = result.message || '🦀 Не зрозумів, спробуй інакше.';
 
-        // Add suggestions as inline hints
         if (result.suggestions && result.suggestions.length > 0) {
             responseText += '\n\n💡 ' + result.suggestions.join(' · ');
         }
 
         await respondToChannel(message.channelId, message.id, responseText);
 
-        // Track bot response in history
         trackMessage(message.channelId, BOT_USERNAME, responseText);
     } catch (err) {
         log.error('Bot response error:', err);

@@ -424,6 +424,8 @@ const TOXIC_KEYWORDS_BASE = [
     'damn', 'dammit',
     'piss off', 'screw you',
     'whore', 'slut',
+    // Slang shortcuts / abbreviations
+    'пидр', 'підр', 'пидрас', 'підрас',
     // Sexual/NSFW content (blocked in children's park system)
     'порно', 'порнух', 'порнограф', 'порев', 'порево',
     'секс', 'сексуальн',
@@ -547,22 +549,42 @@ function quickToxicityCheck(content) {
     const lower = content.toLowerCase();
     // Normalize: remove separators between letters (catches "г а в н о", "г-а-в-н-о")
     const normalized = lower.replace(/[\s.\-_*!?,;:'"()]+/g, '');
+    // Collapse repeated chars: "пиииздааааа" → "пизда", "ааааа" → "а"
+    const collapsed = normalized.replace(/(.)\1{2,}/g, '$1');
 
-    // 0. Detect Russian language — block entirely
+    // 0. Block phone numbers (privacy protection in children's park)
+    const phonePatterns = [
+        /(?:\+?38)?0\d{9}/,                    // UA: 0XXXXXXXXX or +380XXXXXXXXX
+        /\+?\d[\d\s\-]{8,}\d/,                 // Generic: 10+ digits with separators
+        /\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/, // XX XXX XX XX
+        /\+\*{3}\s?\*{4}\s?\*{4}/              // Masked: +*** **** ****
+    ];
+    const contentNoSpaces = content.replace(/\s/g, '');
+    if (phonePatterns.some(p => p.test(content) || p.test(contentNoSpaces))) {
+        // Only block if the message is primarily a phone number (not a booking ID etc)
+        const digitCount = (contentNoSpaces.match(/\d/g) || []).length;
+        if (digitCount >= 7) {
+            return ['📱 телефонний номер'];
+        }
+    }
+
+    // 0.5. Detect Russian language — block entirely
     const ruDetect = detectRussianLanguage(content);
     if (ruDetect) {
         return ['🇷🇺 російська мова'];
     }
 
-    // 1. Direct match on all keywords (base + dynamic)
+    // 1. Direct match on all keywords (base + dynamic) — check original, normalized AND collapsed
     const allKeywords = [...TOXIC_KEYWORDS_BASE, ..._dynamicToxicWords];
-    const directMatch = allKeywords.filter(word => lower.includes(word) || normalized.includes(word));
+    const directMatch = allKeywords.filter(word =>
+        lower.includes(word) || normalized.includes(word) || collapsed.includes(word)
+    );
     if (directMatch.length > 0) return directMatch;
 
     // 2. Fuzzy regex match (catches leet-speak, substitutions)
     const fuzzyMatch = [];
     for (const { word, regex } of _fuzzyRegexes) {
-        if (regex.test(lower)) {
+        if (regex.test(lower) || regex.test(collapsed)) {
             fuzzyMatch.push(word);
             if (fuzzyMatch.length >= 3) break; // enough evidence
         }

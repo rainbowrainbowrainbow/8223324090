@@ -310,7 +310,7 @@
         if (caption) formData.append('caption', caption);
 
         try {
-            var token = localStorage.getItem('token');
+            var token = localStorage.getItem('pzp_token');
             var resp = await fetch('/api/chat/channels/' + _currentChannel.id + '/upload', {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + token },
@@ -2311,9 +2311,11 @@
         } catch (err) {
             console.error('[Chat] Send error:', err);
             _playSoundAlways('error');
-            // If blocked by Guardian (muted) — show mute overlay with appeal
+            // Any 403 = Guardian block — show mute overlay with appeal
             var errMsg = err.message || '';
-            if (errMsg.includes('🛡️') || errMsg.includes('заблоковані') || errMsg.includes('Нецензурна')) {
+            if (errMsg.includes('🛡️') || errMsg.includes('заблоковані') || errMsg.includes('Нецензурна') ||
+                errMsg.includes('телефонний') || errMsg.includes('російська') || errMsg.includes('Доступ заборонено')) {
+                _appendSystemMessage('🛡️ ' + errMsg);
                 _checkAndShowMuteOverlay();
             } else {
                 input.value = content;
@@ -2885,7 +2887,7 @@
             formData.append('caption', '🎙 Голосове (' + duration + 'с)');
 
             try {
-                var token = localStorage.getItem('token');
+                var token = localStorage.getItem('pzp_token');
                 await fetch('/api/chat/channels/' + _currentChannel.id + '/upload', {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + token },
@@ -4653,7 +4655,7 @@
             _appendSystemMessage('🧠 Генерую резюме розмови...');
 
             try {
-                var token = localStorage.getItem('token');
+                var token = localStorage.getItem('pzp_token');
                 var r = await fetch('/api/summary/channel/' + _currentChannel.id + '?hours=24', {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }

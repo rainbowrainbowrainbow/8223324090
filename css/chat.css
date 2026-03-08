@@ -2646,6 +2646,7 @@
 .chat-input-area {
     background: var(--white);
     flex-shrink: 0;
+    position: relative;
 }
 
 .chat-reply-preview {

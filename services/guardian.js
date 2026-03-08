@@ -225,6 +225,14 @@ function isUserMuted(channelId, userId) {
 }
 
 /**
+ * Clear mute from in-memory cache (called on appeal/manual unmute).
+ */
+function clearMuteCache(channelId, userId) {
+    const key = `${channelId}:${userId}`;
+    delete _activeMutes[key];
+}
+
+/**
  * Mute user in channel for 15 minutes.
  */
 async function muteUser(channelId, userId, username, reason) {
@@ -1210,6 +1218,7 @@ loadDynamicToxicWords().catch(() => {});
 module.exports = {
     processMessage,
     isUserMuted,
+    clearMuteCache,
     detectAndMaskSensitive,
     generateDailyReport,
     runDailyReports,

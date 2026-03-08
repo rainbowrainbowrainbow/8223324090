@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { generateDailyReport, runDailyReports, ensureGuardianMemberships, getMood, getGuardianState } = require('../services/guardian');
+const { generateDailyReport, runDailyReports, ensureGuardianMemberships, getMood, getGuardianState, clearMuteCache } = require('../services/guardian');
 
 const log = createLogger('GuardianRoute');
 
@@ -155,7 +155,14 @@ router.get('/mutes/active', async (req, res) => {
  */
 router.delete('/mutes/:id', async (req, res) => {
     try {
+        // Get mute info before clearing (need channelId + userId for cache)
+        const muteInfo = await pool.query('SELECT channel_id, user_id FROM chat_mutes WHERE id = $1', [req.params.id]);
         await pool.query('UPDATE chat_mutes SET muted_until = NOW() WHERE id = $1', [req.params.id]);
+        // Clear in-memory cache so user can send messages immediately
+        if (muteInfo.rows.length > 0) {
+            const { channel_id, user_id } = muteInfo.rows[0];
+            clearMuteCache(channel_id, user_id);
+        }
         res.json({ success: true });
     } catch (err) {
         log.error('DELETE /mutes error', err);

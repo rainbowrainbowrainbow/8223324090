@@ -105,10 +105,15 @@
         var opts = { method: method, headers: _headers() };
         if (body) opts.body = JSON.stringify(body);
         var resp = await fetch(API_BASE + path, opts);
-        if (resp.status === 401 || resp.status === 403) {
+        if (resp.status === 401) {
             localStorage.removeItem('pzp_token');
             if (typeof showLoginScreen === 'function') showLoginScreen();
             return null;
+        }
+        if (resp.status === 403) {
+            // 403 from mute = not auth failure, just blocked
+            var errData = await resp.json().catch(function () { return {}; });
+            throw new Error(errData.error || 'Доступ заборонено');
         }
         if (!resp.ok) {
             var err = await resp.json().catch(function () { return {}; });
@@ -1534,13 +1539,32 @@
         var isGuardian = msg.isBot && msg.username === 'guardian' || msg.username === 'guardian';
         if (isGuardian) isBot = true;
         var emojiOnly = !msg.deletedAt && msg.content && _isOnlyEmoji(msg.content);
+
+        // Feature 3: Time-based gradient class
+        var timeClass = '';
+        if (isOwn) {
+            var h = new Date(msg.createdAt).getHours();
+            if (h >= 6 && h < 12) timeClass = ' time-morning';
+            else if (h >= 18 && h < 22) timeClass = ' time-evening';
+            else if (h >= 22 || h < 6) timeClass = ' time-night';
+        }
+
+        // Feature 10: Role-based class
+        var roleClass = '';
+        if (msg.role === 'admin' || msg.role === 'owner') roleClass = ' role-admin-msg';
+        else if (msg.role === 'animator') roleClass = ' role-animator-msg';
+        else if (msg.role === 'cashier') roleClass = ' role-cashier-msg';
+
         var el = document.createElement('div');
-        el.className = 'chat-message' + (isOwn ? ' own' : '') + (isGrouped ? ' grouped' : '') + (emojiOnly ? ' emoji-only' : '') + (isBot ? ' bot' : '') + (isGuardian ? ' guardian' : '');
+        el.className = 'chat-message' + (isOwn ? ' own' : '') + (isGrouped ? ' grouped' : '') + (emojiOnly ? ' emoji-only' : '') + (isBot ? ' bot' : '') + (isGuardian ? ' guardian' : '') + timeClass + roleClass;
         el.dataset.messageId = msg.id;
         el.dataset.seq = msg.seq;
         el.dataset.userId = msg.userId;
 
-        var initial = isGuardian ? '🛡️' : isBot ? '🦀' : (msg.displayName || msg.username || '?').charAt(0).toUpperCase();
+        // Feature 17: Emoji avatars (park mascots)
+        var EMOJI_AVATARS = ['🦕', '🦖', '🦎', '🐊', '🦴', '🌴', '🌋', '🥚'];
+        var userEmojiAvatar = !isBot && !isGuardian ? EMOJI_AVATARS[_colorIdx(msg.userId)] : null;
+        var initial = isGuardian ? '🛡️' : isBot ? '🦀' : userEmojiAvatar || (msg.displayName || msg.username || '?').charAt(0).toUpperCase();
         var time = new Date(msg.createdAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
         var content = msg.deletedAt ? '<em style="color:var(--gray-400)">Повідомлення видалено</em>' : (isBot ? _formatBotContent(msg.content) : _formatContent(msg.content));
         var editedHtml = msg.editedAt && !msg.deletedAt ? '<span class="chat-bubble-edited">(ред.)</span>' : '';
@@ -1551,6 +1575,8 @@
 
         var avatarColorClass = isGuardian ? 'chat-avatar-guardian' : isBot ? 'chat-avatar-bot' : 'chat-avatar-color-' + _colorIdx(msg.userId);
         var usernameColorClass = isGuardian ? 'chat-username-guardian' : isBot ? 'chat-username-bot' : 'chat-username-color-' + _colorIdx(msg.userId);
+        // Feature 17: Add emoji-avatar class for park mascots
+        if (userEmojiAvatar) avatarColorClass += ' emoji-avatar';
 
         var replyHtml = '';
         if (msg.replyTo && msg.replyContent) {
@@ -1562,12 +1588,31 @@
 
         var reactionsHtml = _renderReactions(msg);
 
+        // Feature 10: Role badge HTML
+        var roleBadgeHtml = '';
+        if (!isBot && !isGuardian && msg.role) {
+            if (msg.role === 'admin' || msg.role === 'owner') roleBadgeHtml = '<span class="chat-role-badge admin">адмін</span>';
+            else if (msg.role === 'animator') roleBadgeHtml = '<span class="chat-role-badge animator">аніматор</span>';
+            else if (msg.role === 'cashier') roleBadgeHtml = '<span class="chat-role-badge cashier">касир</span>';
+        }
+
+        // Feature 10: Role-based username class
+        var roleUsernameClass = '';
+        if (!isBot && !isGuardian && msg.role) {
+            if (msg.role === 'admin' || msg.role === 'owner') roleUsernameClass = ' role-admin';
+            else if (msg.role === 'animator') roleUsernameClass = ' role-animator';
+            else if (msg.role === 'cashier') roleUsernameClass = ' role-cashier';
+        }
+
+        // Feature 1: Online dot
+        var onlineDotHtml = '<span class="chat-online-dot" data-user-id="' + msg.userId + '"></span>';
+
         el.innerHTML =
-            '<div class="chat-avatar ' + avatarColorClass + '">' + initial + '</div>' +
+            '<div class="chat-avatar ' + avatarColorClass + '">' + initial + onlineDotHtml + '</div>' +
             '<div class="chat-bubble">' +
                 '<div class="chat-bubble-header">' +
-                    '<span class="chat-bubble-username ' + usernameColorClass + '">' + _esc(msg.displayName || msg.username) + '</span>' +
-                    (isGuardian ? '<span class="chat-bot-badge guardian-badge">GUARD</span>' : (isBot ? '<span class="chat-bot-badge">BOT</span>' : '')) +
+                    '<span class="chat-bubble-username ' + usernameColorClass + roleUsernameClass + '">' + _esc(msg.displayName || msg.username) + '</span>' +
+                    (isGuardian ? '<span class="chat-bot-badge guardian-badge">GUARD</span>' : (isBot ? '<span class="chat-bot-badge">BOT</span>' : roleBadgeHtml)) +
                     editedHtml +
                     '<span class="chat-bubble-time">' + time + readCheckHtml + '</span>' +
                 '</div>' +
@@ -1578,7 +1623,8 @@
                     '<button class="chat-msg-action-btn" data-action="reply" title="Відповісти">↩</button>' +
                     '<button class="chat-msg-action-btn" data-action="react" title="Реакція">😊</button>' +
                 '</div>' +
-            '</div>';
+            '</div>' +
+            '<span class="chat-swipe-reply-icon">↩</span>';
 
         // Action handlers
         var replyBtn = el.querySelector('[data-action="reply"]');
@@ -1633,10 +1679,14 @@
 
         var html = '<div class="chat-reactions">';
         for (var emoji in groups) {
+            var count = groups[emoji].length;
             var isOwn = groups[emoji].some(function (r) { return String(r.userId) === _currentUserId; });
             var names = groups[emoji].map(function (r) { return r.username || ''; }).join(', ');
-            html += '<button class="chat-reaction-chip' + (isOwn ? ' own' : '') + '" data-emoji="' + emoji + '" title="' + _esc(names) + '">' +
-                emoji + ' <span class="chat-reaction-count">' + groups[emoji].length + '</span></button>';
+            // Feature 19: Combo classes
+            var comboClass = count >= 5 ? ' combo-5' : count >= 3 ? ' combo-3' : '';
+            var hotBadge = count >= 5 ? '<span class="chat-reaction-hot-badge">HOT</span>' : '';
+            html += '<button class="chat-reaction-chip' + (isOwn ? ' own' : '') + comboClass + '" data-emoji="' + emoji + '" title="' + _esc(names) + '">' +
+                emoji + ' <span class="chat-reaction-count">' + count + '</span>' + hotBadge + '</button>';
         }
         html += '</div>';
         return html;
@@ -2105,16 +2155,30 @@
         }
         var hasGuardianTyping = names.includes('guardian');
         var hasOpenclawTyping = names.includes('openclaw');
+
+        // Feature 8: Build avatar + name pairs
+        var EMOJI_AVATARS = ['🦕', '🦖', '🦎', '🐊', '🦴', '🌴', '🌋', '🥚'];
+        var avatarHtml = '';
         var displayNames = names.map(function (n) {
             if (n === 'guardian') return '🛡️ Guardian';
             if (n === 'openclaw') return '🦀 OpenClaw';
+            // Find user to get avatar
+            var user = _chatUsers.find(function (u) { return u.username === n; });
+            if (user) {
+                var colorClass = 'chat-avatar-color-' + _colorIdx(user.id || 0);
+                var emoji = EMOJI_AVATARS[_colorIdx(user.id || 0)];
+                avatarHtml += '<span class="chat-typing-mini-avatar ' + colorClass + '">' + emoji + '</span>';
+            }
             return n;
         });
         var text = displayNames.length === 1
             ? displayNames[0] + ' пише'
             : displayNames.slice(0, 2).join(', ') + ' пишуть';
         var extraClass = hasGuardianTyping ? ' guardian-typing' : hasOpenclawTyping ? ' bot-typing' : '';
-        el.innerHTML = '<span class="chat-typing-text' + extraClass + '">' + text + ' <span class="chat-typing-dots"><span></span><span></span><span></span></span></span>';
+
+        // Feature 4: Wave animation instead of dots
+        var waveHtml = '<span class="chat-typing-wave"><span></span><span></span><span></span><span></span><span></span></span>';
+        el.innerHTML = '<span class="chat-typing-text' + extraClass + '"><span class="chat-typing-avatar">' + avatarHtml + '</span> ' + text + ' ' + waveHtml + '</span>';
     }
 
     function _onReadReceipt(payload) {
@@ -2899,4 +2963,413 @@
     setTimeout(function () {
         _initGuardianUI();
     }, 500);
+
+    // ==========================================
+    // FEATURE 5: SOUND EFFECTS FOR REACTIONS
+    // ==========================================
+    var _origToggleReaction = _toggleReaction;
+    // Reaction sounds are played via existing _playSoundAlways in _toggleReaction
+
+    // ==========================================
+    // FEATURE 9: SWIPE-TO-REPLY (MOBILE)
+    // ==========================================
+    (function initSwipeToReply() {
+        var container = document.getElementById('chatMessages');
+        if (!container) return;
+
+        var startX = 0;
+        var currentEl = null;
+        var swiping = false;
+        var THRESHOLD = 60;
+
+        container.addEventListener('touchstart', function (e) {
+            var msgEl = e.target.closest('.chat-message');
+            if (!msgEl) return;
+            startX = e.touches[0].clientX;
+            currentEl = msgEl;
+            swiping = false;
+        }, { passive: true });
+
+        container.addEventListener('touchmove', function (e) {
+            if (!currentEl) return;
+            var dx = e.touches[0].clientX - startX;
+            var isOwn = currentEl.classList.contains('own');
+            var swipeDir = isOwn ? -dx : dx;
+
+            if (swipeDir > 10) {
+                swiping = true;
+                currentEl.classList.add('swiping');
+                var offset = Math.min(swipeDir, 80);
+                currentEl.style.transform = isOwn ? 'translateX(-' + offset + 'px)' : 'translateX(' + offset + 'px)';
+
+                var icon = currentEl.querySelector('.chat-swipe-reply-icon');
+                if (icon) {
+                    if (swipeDir >= THRESHOLD) {
+                        icon.classList.add('ready');
+                    } else {
+                        icon.classList.remove('ready');
+                    }
+                }
+            }
+        }, { passive: true });
+
+        container.addEventListener('touchend', function () {
+            if (!currentEl) return;
+            if (swiping) {
+                var icon = currentEl.querySelector('.chat-swipe-reply-icon');
+                if (icon && icon.classList.contains('ready')) {
+                    var msgId = currentEl.dataset.messageId;
+                    // Find message data and trigger reply
+                    var usernameEl = currentEl.querySelector('.chat-bubble-username');
+                    var contentEl = currentEl.querySelector('.chat-bubble-content');
+                    if (msgId && contentEl) {
+                        _startReply({
+                            id: msgId,
+                            displayName: usernameEl ? usernameEl.textContent : '',
+                            username: usernameEl ? usernameEl.textContent : '',
+                            content: contentEl.textContent
+                        });
+                        _playSoundAlways('message-sent');
+                    }
+                }
+                currentEl.classList.remove('swiping');
+                currentEl.style.transform = '';
+                if (icon) icon.classList.remove('ready');
+            }
+            currentEl = null;
+            swiping = false;
+        }, { passive: true });
+    })();
+
+    // ==========================================
+    // FEATURE 11: CONFETTI + ACHIEVEMENT
+    // ==========================================
+    function _showConfetti() {
+        var container = document.createElement('div');
+        container.className = 'chat-confetti-container';
+        document.body.appendChild(container);
+
+        var colors = ['#EF4444', '#F97316', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899'];
+        for (var i = 0; i < 60; i++) {
+            var piece = document.createElement('div');
+            piece.className = 'chat-confetti-piece';
+            piece.style.left = (Math.random() * 100) + '%';
+            piece.style.animationDelay = (Math.random() * 1.5) + 's';
+            piece.style.animationDuration = (2 + Math.random() * 2) + 's';
+            piece.style.background = colors[i % colors.length];
+            piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+            piece.style.width = (6 + Math.random() * 8) + 'px';
+            piece.style.height = (6 + Math.random() * 8) + 'px';
+            container.appendChild(piece);
+        }
+
+        setTimeout(function () { container.remove(); }, 4000);
+    }
+
+    function _showAchievementToast(icon, title, desc) {
+        _showConfetti();
+        _playSoundAlways('mention');
+
+        var toast = document.createElement('div');
+        toast.className = 'chat-achievement-toast';
+        toast.innerHTML =
+            '<div class="chat-achievement-icon">' + icon + '</div>' +
+            '<div class="chat-achievement-text">' +
+                '<div class="chat-achievement-title">' + _esc(title) + '</div>' +
+                '<div class="chat-achievement-desc">' + _esc(desc) + '</div>' +
+            '</div>';
+
+        document.body.appendChild(toast);
+
+        // Click to dismiss
+        toast.addEventListener('click', function () {
+            toast.style.transition = 'all 0.3s ease';
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(-50%) translateY(-20px) scale(0.8)';
+            setTimeout(function () { toast.remove(); }, 300);
+        });
+
+        // Auto-dismiss after 5s
+        setTimeout(function () {
+            if (toast.parentNode) {
+                toast.style.transition = 'all 0.5s ease';
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(-50%) translateY(-20px) scale(0.8)';
+                setTimeout(function () { toast.remove(); }, 500);
+            }
+        }, 5000);
+    }
+
+    // Listen for achievement events from WebSocket
+    document.addEventListener('parkws', function (e) {
+        if (e.detail && e.detail.eventType === 'achievement:unlocked') {
+            var p = e.detail.payload;
+            _showAchievementToast(p.icon || '🏆', p.title || 'Досягнення!', p.description || '');
+        }
+    });
+
+    // ==========================================
+    // FEATURE 14: LINK PREVIEW (CLIENT-SIDE)
+    // ==========================================
+    // Simple domain extraction for link previews
+    function _addLinkPreviews(el) {
+        var links = el.querySelectorAll('.chat-bubble-content a[href]');
+        links.forEach(function (link) {
+            var url = link.href;
+            if (!url || link.closest('.chat-link-preview')) return;
+            try {
+                var domain = new URL(url).hostname.replace('www.', '');
+                var preview = document.createElement('a');
+                preview.className = 'chat-link-preview';
+                preview.href = url;
+                preview.target = '_blank';
+                preview.rel = 'noopener';
+                preview.innerHTML =
+                    '<div class="chat-link-preview-body">' +
+                        '<div class="chat-link-preview-title">' + _esc(url.split('/').slice(3).join('/').substring(0, 50) || domain) + '</div>' +
+                        '<div class="chat-link-preview-domain">🔗 ' + _esc(domain) + '</div>' +
+                    '</div>';
+                var bubble = link.closest('.chat-bubble-content');
+                if (bubble) bubble.parentNode.insertBefore(preview, bubble.nextSibling);
+            } catch (e) { /* ignore invalid URLs */ }
+        });
+    }
+
+    // Hook into message rendering
+    var _origAppendMessage = _appendMessage;
+    _appendMessage = function (msg) {
+        _origAppendMessage(msg);
+        // Add link previews to last message
+        var container = document.getElementById('chatMessages');
+        if (container) {
+            var lastMsg = container.querySelector('.chat-message:last-child');
+            if (lastMsg) _addLinkPreviews(lastMsg);
+        }
+    };
+
+    // ==========================================
+    // FEATURE 15: PINNED MESSAGES BAR
+    // ==========================================
+    function _updatePinnedBar(channel) {
+        var bar = document.getElementById('chatPinnedBar');
+        if (!bar) {
+            // Create pinned bar dynamically
+            var chatMain = document.querySelector('.chat-main');
+            var header = document.querySelector('.chat-header');
+            if (chatMain && header) {
+                bar = document.createElement('div');
+                bar.className = 'chat-pinned-bar';
+                bar.id = 'chatPinnedBar';
+                bar.innerHTML =
+                    '<span class="chat-pinned-bar-icon">📌</span>' +
+                    '<span class="chat-pinned-bar-text" id="chatPinnedText"></span>' +
+                    '<button class="chat-pinned-bar-close" id="chatPinnedClose">✕</button>';
+                header.after(bar);
+
+                document.getElementById('chatPinnedClose').addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    bar.classList.remove('visible');
+                });
+            }
+        }
+        if (!bar) return;
+
+        // Check if channel has pinned message
+        if (channel && channel.pinnedMessage) {
+            document.getElementById('chatPinnedText').textContent = channel.pinnedMessage;
+            bar.classList.add('visible');
+        } else {
+            bar.classList.remove('visible');
+        }
+    }
+
+    // ==========================================
+    // FEATURE 16: MOOD GRADIENT BACKGROUND
+    // ==========================================
+    function _updateMoodGradient(moodEmoji) {
+        var container = document.getElementById('chatMessages');
+        if (!container) return;
+
+        // Remove old mood classes
+        container.classList.remove('mood-positive', 'mood-neutral', 'mood-serious', 'mood-angry');
+
+        // Map Guardian mood emoji to mood class
+        var moodMap = {
+            '😊': 'mood-positive', '😄': 'mood-positive', '😎': 'mood-positive',
+            '🤔': 'mood-neutral', '😐': 'mood-neutral', '🙂': 'mood-neutral',
+            '😤': 'mood-angry', '😠': 'mood-angry', '🚨': 'mood-angry',
+            '🧐': 'mood-serious', '😶': 'mood-serious', '🤖': 'mood-serious'
+        };
+
+        var moodClass = moodMap[moodEmoji] || 'mood-neutral';
+        container.classList.add(moodClass);
+    }
+
+    // Hook into guardian mood update
+    var _origUpdateGuardianMood = _updateGuardianMood;
+    _updateGuardianMood = function (emoji, label) {
+        _origUpdateGuardianMood(emoji, label);
+        _updateMoodGradient(emoji);
+    };
+
+    // ==========================================
+    // FEATURE 18: AUTO NIGHT MODE
+    // ==========================================
+    function _checkAutoNightMode() {
+        var hour = new Date().getHours();
+        var isNight = (hour >= 22 || hour < 7);
+        var darkMode = localStorage.getItem('pzp_darkMode') === 'true';
+        var autoNight = localStorage.getItem('pzp_autoNight') !== 'false'; // Default enabled
+
+        if (autoNight && isNight && !darkMode) {
+            document.body.classList.add('dark-mode');
+            document.body.setAttribute('data-theme', 'dark');
+            document.body.classList.add('night-auto');
+        } else if (autoNight && !isNight && !darkMode) {
+            document.body.classList.remove('night-auto');
+            // Only remove dark mode if it was auto-applied
+            if (document.body.classList.contains('night-auto')) {
+                document.body.classList.remove('dark-mode');
+                document.body.removeAttribute('data-theme');
+            }
+        }
+    }
+
+    // Check on init and every 5 minutes
+    _checkAutoNightMode();
+    setInterval(_checkAutoNightMode, 5 * 60 * 1000);
+
+    // ==========================================
+    // FEATURE 20: EASTER EGG COMMANDS
+    // ==========================================
+    var EASTER_EGG_COMMANDS = {
+        '/rain': _easterRain,
+        '/дощ': _easterRain,
+        '/party': _easterParty,
+        '/вечірка': _easterParty,
+        '/snow': _easterSnow,
+        '/сніг': _easterSnow,
+        '/confetti': function () { _showConfetti(); _appendSystemMessage('🎊 Конфетті!'); }
+    };
+
+    function _easterRain() {
+        var container = document.createElement('div');
+        container.className = 'chat-easter-effect';
+        document.body.appendChild(container);
+
+        var DINO_EMOJIS = ['🦕', '🦖', '🦎', '🐊', '🦴', '🥚'];
+        for (var i = 0; i < 30; i++) {
+            var drop = document.createElement('span');
+            drop.className = 'easter-rain-drop';
+            drop.textContent = DINO_EMOJIS[i % DINO_EMOJIS.length];
+            drop.style.left = (Math.random() * 100) + '%';
+            drop.style.setProperty('--fall-duration', (2 + Math.random() * 3) + 's');
+            drop.style.setProperty('--delay', (Math.random() * 2) + 's');
+            drop.style.fontSize = (20 + Math.random() * 16) + 'px';
+            container.appendChild(drop);
+        }
+
+        _appendSystemMessage('🦕 Динозаври йдуть!');
+        _playSoundAlways('mention');
+        setTimeout(function () { container.remove(); }, 6000);
+    }
+
+    function _easterParty() {
+        var container = document.createElement('div');
+        container.className = 'chat-easter-effect';
+        container.innerHTML =
+            '<div class="easter-disco-ball">🪩</div>' +
+            '<div class="easter-party-light"></div>';
+        document.body.appendChild(container);
+
+        _showConfetti();
+        _appendSystemMessage('🪩 Вечірка в Парку Закревського Періоду!');
+        _playSoundAlways('connect');
+        setTimeout(function () { container.remove(); }, 6000);
+    }
+
+    function _easterSnow() {
+        var container = document.createElement('div');
+        container.className = 'chat-easter-effect';
+        document.body.appendChild(container);
+
+        var SNOW = ['❄️', '❅', '❆', '✿', '✻', '❃'];
+        for (var i = 0; i < 40; i++) {
+            var flake = document.createElement('span');
+            flake.className = 'easter-snowflake';
+            flake.textContent = SNOW[i % SNOW.length];
+            flake.style.left = (Math.random() * 100) + '%';
+            flake.style.setProperty('--fall-duration', (3 + Math.random() * 4) + 's');
+            flake.style.setProperty('--delay', (Math.random() * 3) + 's');
+            flake.style.setProperty('--sway', ((Math.random() - 0.5) * 60) + 'px');
+            flake.style.fontSize = (12 + Math.random() * 14) + 'px';
+            container.appendChild(flake);
+        }
+
+        _appendSystemMessage('❄️ Сніг у парку!');
+        _playSoundAlways('mention');
+        setTimeout(function () { container.remove(); }, 8000);
+    }
+
+    // Hook easter egg commands into _sendMessage
+    var _origSendMessageInput = document.getElementById('chatInput');
+    if (_origSendMessageInput) {
+        _origSendMessageInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                var val = _origSendMessageInput.value.trim().toLowerCase();
+                if (EASTER_EGG_COMMANDS[val]) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    var cmd = EASTER_EGG_COMMANDS[val];
+                    _origSendMessageInput.value = '';
+                    if (typeof _autoGrow === 'function') _autoGrow(_origSendMessageInput);
+                    cmd();
+                }
+            }
+        });
+    }
+
+    // ==========================================
+    // FEATURE 1: ONLINE STATUS TRACKING
+    // ==========================================
+    var _onlineUsers = {};
+
+    function _updateOnlineDots() {
+        document.querySelectorAll('.chat-online-dot').forEach(function (dot) {
+            var userId = dot.dataset.userId;
+            if (_onlineUsers[userId]) {
+                dot.classList.add('online');
+                dot.classList.remove('away');
+            } else {
+                dot.classList.remove('online');
+            }
+        });
+    }
+
+    // Listen for presence events
+    document.addEventListener('parkws', function (e) {
+        if (e.detail && e.detail.eventType === 'user:online') {
+            _onlineUsers[e.detail.payload.userId] = true;
+            _updateOnlineDots();
+        }
+        if (e.detail && e.detail.eventType === 'user:offline') {
+            delete _onlineUsers[e.detail.payload.userId];
+            _updateOnlineDots();
+        }
+    });
+
+    // Mark current user as online
+    if (_currentUserId) _onlineUsers[_currentUserId] = true;
+
+    // ==========================================
+    // FEATURE 17: EMOJI AVATAR BLINK
+    // ==========================================
+    setInterval(function () {
+        var avatars = document.querySelectorAll('.chat-avatar.emoji-avatar');
+        if (avatars.length === 0) return;
+        var randomAvatar = avatars[Math.floor(Math.random() * avatars.length)];
+        randomAvatar.classList.add('blink');
+        setTimeout(function () { randomAvatar.classList.remove('blink'); }, 300);
+    }, 5000);
+
 })();

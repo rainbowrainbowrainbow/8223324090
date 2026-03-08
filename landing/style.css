@@ -278,6 +278,7 @@ h1, h2, h3, h4 {
 .timeline-block {
     max-width: 700px;
     margin: 48px auto 0;
+    position: relative;
 }
 
 .timeline-entry {
@@ -285,10 +286,35 @@ h1, h2, h3, h4 {
     gap: 24px;
     padding: 24px 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    position: relative;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.4s ease;
+    border-radius: 12px;
+    padding-left: 12px;
+    padding-right: 12px;
 }
 
 .timeline-entry:last-child {
     border-bottom: none;
+}
+
+.timeline-entry:hover {
+    background: rgba(201, 168, 76, 0.04);
+    transform: translateX(4px);
+}
+
+.timeline-entry.reacting {
+    background: rgba(201, 168, 76, 0.06);
+}
+
+.timeline-entry.bumped {
+    animation: bump 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes bump {
+    0% { transform: translateX(0) scale(1); }
+    30% { transform: translateX(-3px) scale(1.01); }
+    60% { transform: translateX(2px) scale(0.99); }
+    100% { transform: translateX(0) scale(1); }
 }
 
 .timeline-time {
@@ -305,6 +331,135 @@ h1, h2, h3, h4 {
     color: #E8E8E8;
     line-height: 1.7;
     font-weight: 300;
+}
+
+/* --- Floating reactions --- */
+.reaction-bubble {
+    position: absolute;
+    pointer-events: none;
+    font-size: 22px;
+    z-index: 10;
+    opacity: 0;
+    will-change: transform, opacity;
+}
+
+.reaction-bubble.flying {
+    animation: reactionFly var(--fly-duration, 3s) cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+@keyframes reactionFly {
+    0% {
+        opacity: 0;
+        transform: translate(0, 0) scale(0.3) rotate(0deg);
+    }
+    10% {
+        opacity: 1;
+        transform: translate(calc(var(--dx, 20px) * 0.1), calc(var(--dy, -30px) * 0.1)) scale(1.2) rotate(calc(var(--rot, 15deg) * 0.3));
+    }
+    30% {
+        opacity: 1;
+        transform: translate(calc(var(--dx, 20px) * 0.35), calc(var(--dy, -30px) * 0.4)) scale(1) rotate(calc(var(--rot, 15deg) * 0.6));
+    }
+    50% {
+        opacity: 0.9;
+        transform: translate(calc(var(--dx, 20px) * 0.55 + var(--wobble, 15px)), calc(var(--dy, -30px) * 0.6)) scale(1.1) rotate(calc(var(--rot, 15deg) * 0.8));
+    }
+    70% {
+        opacity: 0.7;
+        transform: translate(calc(var(--dx, 20px) * 0.8 - var(--wobble, 15px) * 0.5), calc(var(--dy, -30px) * 0.85)) scale(0.95) rotate(var(--rot, 15deg));
+    }
+    90% {
+        opacity: 0.3;
+        transform: translate(calc(var(--dx, 20px) * 0.95), calc(var(--dy, -30px) * 0.95)) scale(0.7) rotate(calc(var(--rot, 15deg) * 1.2));
+    }
+    100% {
+        opacity: 0;
+        transform: translate(var(--dx, 20px), var(--dy, -30px)) scale(0.3) rotate(calc(var(--rot, 15deg) * 1.5));
+    }
+}
+
+/* Glow trail behind reaction */
+.reaction-trail {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #C9A84C;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 9;
+    animation: trailFade 1.5s ease-out forwards;
+}
+
+@keyframes trailFade {
+    0% { opacity: 0.6; transform: scale(1); }
+    100% { opacity: 0; transform: scale(3); filter: blur(4px); }
+}
+
+/* Connection line between entries */
+.reaction-line {
+    position: absolute;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(201, 168, 76, 0.4), transparent);
+    pointer-events: none;
+    z-index: 8;
+    transform-origin: left center;
+    opacity: 0;
+    animation: linePulse 2s ease-out forwards;
+}
+
+@keyframes linePulse {
+    0% { opacity: 0; transform: scaleX(0); }
+    20% { opacity: 0.6; transform: scaleX(1); }
+    100% { opacity: 0; transform: scaleX(1); }
+}
+
+/* Ripple on entry when hit by reaction */
+.ripple-hit {
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    border: 1px solid rgba(201, 168, 76, 0.3);
+    pointer-events: none;
+    animation: rippleExpand 1.2s ease-out forwards;
+}
+
+@keyframes rippleExpand {
+    0% { opacity: 0.5; transform: scale(0.98); }
+    50% { opacity: 0.3; transform: scale(1.02); border-color: rgba(201, 168, 76, 0.15); }
+    100% { opacity: 0; transform: scale(1.05); }
+}
+
+/* Ambient floating particles in timeline */
+.ambient-particle {
+    position: absolute;
+    width: 3px;
+    height: 3px;
+    background: rgba(201, 168, 76, 0.3);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 7;
+    animation: ambientFloat var(--float-dur, 8s) ease-in-out infinite;
+    animation-delay: var(--float-delay, 0s);
+}
+
+@keyframes ambientFloat {
+    0%, 100% {
+        transform: translate(0, 0) scale(1);
+        opacity: 0.2;
+    }
+    25% {
+        transform: translate(var(--ax, 10px), var(--ay, -15px)) scale(1.5);
+        opacity: 0.5;
+    }
+    50% {
+        transform: translate(var(--bx, -5px), var(--by, -30px)) scale(1);
+        opacity: 0.3;
+    }
+    75% {
+        transform: translate(var(--cx, 15px), var(--cy, -10px)) scale(1.3);
+        opacity: 0.4;
+    }
 }
 
 /* =====================

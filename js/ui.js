@@ -356,6 +356,54 @@ function toggleDarkMode() {
 }
 
 // ==========================================
+// NIGHT SETTINGS
+// ==========================================
+
+function initNightSettings() {
+    const btn = document.getElementById('nightSettingsBtn');
+    const panel = document.getElementById('nightSettingsPanel');
+    const startSel = document.getElementById('nightStartSelect');
+    const endSel = document.getElementById('nightEndSelect');
+    const autoCb = document.getElementById('autoNightCheckbox');
+
+    if (!btn || !panel || !startSel || !endSel) return;
+
+    // Populate hour selects
+    for (let h = 0; h < 24; h++) {
+        const label = String(h).padStart(2, '0') + ':00';
+        startSel.appendChild(new Option(label, h));
+        endSel.appendChild(new Option(label, h));
+    }
+
+    startSel.value = localStorage.getItem('pzp_night_start') || '19';
+    endSel.value = localStorage.getItem('pzp_night_end') || '7';
+    if (autoCb) autoCb.checked = localStorage.getItem('pzp_autoNight') !== 'false';
+
+    btn.addEventListener('click', () => {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+
+    startSel.addEventListener('change', () => {
+        localStorage.setItem('pzp_night_start', startSel.value);
+    });
+    endSel.addEventListener('change', () => {
+        localStorage.setItem('pzp_night_end', endSel.value);
+    });
+    if (autoCb) {
+        autoCb.addEventListener('change', () => {
+            localStorage.setItem('pzp_autoNight', String(autoCb.checked));
+        });
+    }
+
+    // Close panel when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+            panel.style.display = 'none';
+        }
+    });
+}
+
+// ==========================================
 // COMPACT MODE
 // ==========================================
 

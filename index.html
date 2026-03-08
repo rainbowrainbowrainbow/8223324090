@@ -170,6 +170,20 @@
                         <span id="darkModeIcon">🌙</span>
                         <span class="toggle-mini-label">Тема</span>
                     </label>
+                    <button class="btn-night-settings" id="nightSettingsBtn" title="Налаштування авто-теми">⚙️</button>
+                    <div class="night-settings-panel" id="nightSettingsPanel" style="display:none">
+                        <div class="night-settings-row">
+                            <span>Початок ночі:</span>
+                            <select id="nightStartSelect" class="night-settings-select"></select>
+                        </div>
+                        <div class="night-settings-row">
+                            <span>Кінець ночі:</span>
+                            <select id="nightEndSelect" class="night-settings-select"></select>
+                        </div>
+                        <label class="night-settings-row">
+                            <input type="checkbox" id="autoNightCheckbox" checked> Авто нічна тема
+                        </label>
+                    </div>
                     <button id="undoBtn" class="btn-undo hidden" title="Скасувати останню дію">↩ Скасувати</button>
                     <button id="roomLoadBtn" class="btn-room-load" title="Навантаження кімнат">🏠 Кімнати</button>
                 </div>

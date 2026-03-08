@@ -54,6 +54,15 @@ let _moodHistory = []; // last 20 mood changes
 let _channelHealth = {}; // { channelId: { score: 0-100, lastIncident: timestamp } }
 const _guardianMemory = {}; // { channelId: { events: [], context: '' } }
 
+// Batch learning buffer (instead of per-message API calls)
+let _pendingLearnMessages = [];
+const LEARN_BATCH_SIZE = 20;
+const LEARN_INTERVAL_MS = 5 * 60 * 1000; // 5 min
+
+// Conversation tracker for better reports
+const _conversationTracker = {}; // channelId -> [{ username, content, ts }]
+const CONVERSATION_MAX_PER_CHANNEL = 200;
+
 // Director user ID cache
 let _directorUserId = null;
 
@@ -489,6 +498,66 @@ async function aiLearnToxicWords(content, username) {
 }
 
 /**
+ * Flush pending learn messages as a single batch AI call.
+ * Called every 5 min by scheduler or when buffer is full.
+ */
+async function flushLearnBatch() {
+    if (!AI_ENABLED || !anthropic || _pendingLearnMessages.length === 0) return;
+
+    const batch = _pendingLearnMessages.splice(0, LEARN_BATCH_SIZE);
+    log.info(`Flushing learn batch: ${batch.length} messages`);
+
+    try {
+        const chatLog = batch.map((m, i) =>
+            `${i + 1}. [${m.username}]: ${m.content}`
+        ).join('\n');
+
+        const response = await anthropic.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 300,
+            system: `Ти — AI модератор чату. Переглянь пачку повідомлень і знайди НОВІ образливі/токсичні слова чи фрази (будь-якою мовою).
+Шукай тільки НОВІ варіації мату — замасковані спецсимволами, пробілами, літ-спіком, транслітом тощо.
+НЕ включай стандартні відомі матюки — тільки креативні обхідні варіанти.
+Відповідай ТІЛЬКИ у форматі JSON: {"toxic": true/false, "words": ["слово1", "слово2"], "reason": "опис"}
+Якщо все чисто: {"toxic": false}`,
+            messages: [{ role: 'user', content: chatLog }]
+        });
+
+        const text = response.content[0]?.text?.trim();
+        if (!text) return;
+
+        const match = text.match(/\{[\s\S]*\}/);
+        if (!match) return;
+
+        const result = JSON.parse(match[0]);
+        if (result.toxic && result.words && result.words.length > 0) {
+            for (const word of result.words) {
+                const lower = word.toLowerCase().trim();
+                if (lower.length < 3 || lower.length > 50) continue;
+                try {
+                    await pool.query(
+                        'INSERT INTO guardian_toxic_words (word, added_by, source) VALUES ($1, $2, $3) ON CONFLICT (word) DO NOTHING',
+                        [lower, 'guardian-ai', 'llm-detected']
+                    );
+                    _dynamicToxicWords.push(lower);
+                    log.info(`AI batch-learned toxic word: "${lower}"`);
+                } catch (e) { /* duplicate or error, ignore */ }
+            }
+
+            broadcastGuardianEvent({
+                type: 'learn',
+                channelId: null,
+                username: 'guardian',
+                details: `AI навчився (батч): ${result.words.join(', ')}`,
+                severity: 'info'
+            });
+        }
+    } catch (err) {
+        log.error('AI batch learn failed', err.message);
+    }
+}
+
+/**
  * AI-based conflict detection for ambiguous cases.
  * Analyzes last N messages in context.
  */
@@ -564,11 +633,14 @@ async function analyzeConflict(channelId, userId, username, content, messageId) 
         }
     }
 
-    // 3. If no keyword match and AI available — let AI learn new toxic patterns
-    if (AI_ENABLED && content.length > 5) {
-        aiLearnToxicWords(content, username).catch(err => {
-            log.error('AI learn error', err.message);
-        });
+    // 3. If no keyword match and AI available — buffer for batch learning
+    if (AI_ENABLED && content.length > 10) {
+        _pendingLearnMessages.push({ content, username, channelId });
+        if (_pendingLearnMessages.length >= LEARN_BATCH_SIZE) {
+            flushLearnBatch().catch(err => {
+                log.error('AI batch learn error', err.message);
+            });
+        }
     }
 
     return false;
@@ -643,21 +715,26 @@ async function generateDailyReport(channelId, dateStr) {
         const response = await anthropic.messages.create({
             model: 'claude-haiku-4-5-20251001',
             max_tokens: 600,
-            system: `Ти — Guardian, AI-модератор корпоративного чату розважального парку.
-Створи короткий щоденний звіт з чату. Формат:
+            system: `Ти — Guardian, AI-модератор корпоративного чату розважального парку "Парк Закревського Періоду".
+Створи щоденний звіт з чату для директора. Формат:
 
 📊 <b>Звіт за [дата]</b> | #${channel?.slug || 'канал'}
 
-<b>Головне:</b>
-- Основні теми обговорення (2-3 пункти)
+<b>👥 Хто про що:</b>
+- @username1 — обговорював [тема], запитував про [тема]
+- @username2 — повідомив про [тема], домовився з @username3 про [тема]
+(перелічи КОЖНОГО активного учасника та коротко що він обговорював/робив)
 
-<b>Важливе:</b>
-- Рішення, домовленості, або терміни які згадувались
+<b>📌 Головне:</b>
+- Ключові теми та рішення (2-3 пункти)
 
-<b>Модерація:</b>
-- Блокувань: X, Замасковано даних: Y
+<b>⚠️ Важливе:</b>
+- Рішення, домовленості, дедлайни, задачі
 
-Пиши українською, лаконічно. Ігноруй дрібні привітання та переписки.`,
+<b>🛡️ Модерація:</b>
+- Блокувань: ${actionCounts.mute || 0}, Замасковано: ${actionCounts.mask || 0}
+
+Пиши українською, лаконічно. Ігноруй дрібні привітання. Фокусуйся на робочих темах та хто чим займався.`,
             messages: [{ role: 'user', content: `Повідомлення за ${dateStr}:\n\n${chatLog}` }]
         });
 
@@ -719,16 +796,87 @@ async function runDailyReports() {
             WHERE c.is_dm = false OR c.is_dm IS NULL
         `, [guardianId]);
 
+        const allReports = [];
         for (const ch of channels.rows) {
             const report = await generateDailyReport(ch.id, dateStr);
             if (report) {
                 await sendGuardianMessage(ch.id, report);
+                allReports.push({ channel: ch.name || ch.slug, report });
             }
         }
+
+        // Send consolidated digest to director as DM
+        if (allReports.length > 0) {
+            await sendDirectorDigest(allReports, dateStr);
+        }
+
+        // Flush any remaining learn messages
+        await flushLearnBatch();
+
+        // Clear conversation tracker for the day
+        Object.keys(_conversationTracker).forEach(k => { _conversationTracker[k] = []; });
 
         log.info(`Daily reports completed for ${channels.rows.length} channels`);
     } catch (err) {
         log.error('Daily reports failed', err);
+    }
+}
+
+/**
+ * Track conversation topics for daily report enrichment.
+ * Stores recent messages per channel in memory.
+ */
+function _trackConversation(channelId, username, content) {
+    if (!_conversationTracker[channelId]) _conversationTracker[channelId] = [];
+    _conversationTracker[channelId].push({
+        username,
+        content: content.substring(0, 300),
+        ts: Date.now()
+    });
+    // Limit memory
+    if (_conversationTracker[channelId].length > CONVERSATION_MAX_PER_CHANNEL) {
+        _conversationTracker[channelId] = _conversationTracker[channelId].slice(-CONVERSATION_MAX_PER_CHANNEL);
+    }
+}
+
+/**
+ * Send consolidated daily digest to director as DM.
+ * Combines all channel reports + adds learned words info.
+ */
+async function sendDirectorDigest(allReports, dateStr) {
+    try {
+        // Count learned words today
+        const learnedResult = await pool.query(`
+            SELECT COUNT(*) cnt FROM guardian_toxic_words
+            WHERE created_at::date = $1::date AND source = 'llm-detected'
+        `, [dateStr]);
+        const learnedCount = parseInt(learnedResult.rows[0]?.cnt || 0);
+
+        // Count total actions today
+        const actionsResult = await pool.query(`
+            SELECT action_type, COUNT(*) cnt FROM guardian_actions
+            WHERE created_at::date = $1::date
+            GROUP BY action_type
+        `, [dateStr]);
+        const totalActions = {};
+        actionsResult.rows.forEach(r => { totalActions[r.action_type] = parseInt(r.cnt); });
+
+        let digestHtml = `🛡️ <b>Вечірній дайджест Guardian</b>\n📅 ${dateStr}\n\n`;
+
+        for (const r of allReports) {
+            digestHtml += `━━━ <b>#${r.channel}</b> ━━━\n${r.report}\n\n`;
+        }
+
+        digestHtml += `━━━ <b>Загальна статистика</b> ━━━\n`;
+        digestHtml += `🛡️ Блокувань: ${totalActions.mute || 0}\n`;
+        digestHtml += `🔒 Замасковано: ${totalActions.mask || 0}\n`;
+        digestHtml += `🗑️ Видалено: ${totalActions.delete || 0}\n`;
+        digestHtml += `🧠 Нових слів вивчено: ${learnedCount}\n`;
+
+        await alertDirector(digestHtml);
+        log.info(`Director digest sent for ${dateStr}, ${allReports.length} channels`);
+    } catch (err) {
+        log.error('Failed to send director digest', err);
     }
 }
 
@@ -835,6 +983,9 @@ async function processMessage(message) {
         details: `Повідомлення перевірено (${content.length} символів)`,
         severity: 'info'
     });
+
+    // Track conversation for daily reports
+    _trackConversation(channelId, username, content);
 
     // 2. Mask sensitive data (fire-and-forget)
     maskSensitiveInMessage(messageId, channelId, content, username).catch(err => {
@@ -1068,5 +1219,6 @@ module.exports = {
     getGuardianState,
     broadcastGuardianEvent,
     alertDirector,
+    flushLearnBatch,
     GUARDIAN_USERNAME
 };

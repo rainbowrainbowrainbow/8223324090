@@ -412,7 +412,15 @@ runMigrations(pool).then(() => {
             }
         }
         schedulerIntervals.push(setInterval(guardScheduler('checkGuardianReports', checkGuardianReports, { dedup: 'daily' }), 60000));
-        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian');
+
+        // v21.8: Guardian AI batch learn flush (every 5 min)
+        async function flushGuardianLearn() {
+            const { flushLearnBatch } = require('./services/guardian');
+            await flushLearnBatch();
+        }
+        schedulerIntervals.push(setInterval(guardScheduler('flushGuardianLearn', flushGuardianLearn), 5 * 60 * 1000));
+
+        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

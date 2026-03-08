@@ -87,11 +87,11 @@ router.get('/widgets/:type', async (req, res) => {
                 const { getKyivDateStr } = require('../services/booking');
                 const today = getKyivDateStr();
                 const result = await pool.query(`
-                    SELECT b.id, b.booking_number, b.client_name, b.phone, b.program,
-                           b.start_time, b.end_time, b.room, b.status, b.children_count
+                    SELECT b.id, b.label as client_name, b.program_name as program,
+                           b.time as start_time, b.room, b.status, b.kids_count as children_count
                     FROM bookings b
                     WHERE b.date = $1 AND b.status != 'cancelled'
-                    ORDER BY b.start_time ASC
+                    ORDER BY b.time ASC
                 `, [today]);
                 data = { bookings: result.rows, date: today };
                 break;
@@ -101,9 +101,9 @@ router.get('/widgets/:type', async (req, res) => {
                 const { getKyivDateStr } = require('../services/booking');
                 const today = getKyivDateStr();
                 const result = await pool.query(`
-                    SELECT ss.date, ss.status, ss.start_time, ss.end_time, ss.note
-                    FROM staff_shifts ss
-                    JOIN employee_profiles ep ON ep.id = ss.employee_id
+                    SELECT ss.date, ss.status, ss.shift_start as start_time, ss.shift_end as end_time, ss.note
+                    FROM staff_schedule ss
+                    JOIN employee_profiles ep ON ep.staff_id = ss.staff_id
                     WHERE ep.user_id = $1 AND ss.date >= $2
                     ORDER BY ss.date ASC
                     LIMIT 7
@@ -131,7 +131,7 @@ router.get('/widgets/:type', async (req, res) => {
                 const [bookings, tasks, revenue] = await Promise.all([
                     pool.query("SELECT COUNT(*) as count FROM bookings WHERE date = $1 AND status != 'cancelled'", [today]),
                     pool.query("SELECT COUNT(*) as count FROM tasks WHERE status = 'in_progress'"),
-                    pool.query("SELECT COALESCE(SUM(total_amount), 0) as total FROM bookings WHERE date = $1 AND status = 'confirmed'", [today]),
+                    pool.query("SELECT COALESCE(SUM(price), 0) as total FROM bookings WHERE date = $1 AND status = 'confirmed'", [today]),
                 ]);
                 data = {
                     bookingsToday: parseInt(bookings.rows[0].count),
@@ -143,10 +143,9 @@ router.get('/widgets/:type', async (req, res) => {
 
             case 'announcements': {
                 const result = await pool.query(`
-                    SELECT id, title, content, priority, created_at, author_name
+                    SELECT id, title, text_content as content, priority, created_at, created_by as author_name
                     FROM announcements
-                    WHERE is_active = true
-                    AND (expires_at IS NULL OR expires_at > NOW())
+                    WHERE status = 'active'
                     ORDER BY priority DESC, created_at DESC
                     LIMIT 5
                 `);

@@ -15,17 +15,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=21.7.1">
-    <link rel="stylesheet" href="css/auth.css?v=21.7.1">
-    <link rel="stylesheet" href="css/layout.css?v=21.7.1">
-    <link rel="stylesheet" href="css/timeline.css?v=21.7.1">
-    <link rel="stylesheet" href="css/panel.css?v=21.7.1">
-    <link rel="stylesheet" href="css/modals.css?v=21.7.1">
-    <link rel="stylesheet" href="css/controls.css?v=21.7.1">
-    <link rel="stylesheet" href="css/features.css?v=21.7.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=21.7.1">
-    <link rel="stylesheet" href="css/responsive.css?v=21.7.1">
-    <link rel="stylesheet" href="css/pages.css?v=21.7.1">
+    <link rel="stylesheet" href="css/base.css?v=21.8.0">
+    <link rel="stylesheet" href="css/auth.css?v=21.8.0">
+    <link rel="stylesheet" href="css/layout.css?v=21.8.0">
+    <link rel="stylesheet" href="css/timeline.css?v=21.8.0">
+    <link rel="stylesheet" href="css/panel.css?v=21.8.0">
+    <link rel="stylesheet" href="css/modals.css?v=21.8.0">
+    <link rel="stylesheet" href="css/controls.css?v=21.8.0">
+    <link rel="stylesheet" href="css/features.css?v=21.8.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=21.8.0">
+    <link rel="stylesheet" href="css/responsive.css?v=21.8.0">
+    <link rel="stylesheet" href="css/pages.css?v=21.8.0">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v21.7.1 — Mute Appeal UI Redesign</p>
+                <p class="tagline">AI First CRM v21.8.0 — Complex Emoji Effects v2</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v21.7.1</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v21.8.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1144,6 +1144,22 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v21.8.0 — Complex Emoji Effects v2 (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Вогонь v2</b> — 4-шарова система: полум'я + вуглинки + теплове марево + дим</li>
+                        <li><b>Вибух 💥</b> — ударна хвиля + радіальні уламки з гравітацією</li>
+                        <li><b>Торнадо 🌪️</b> — хаотичне кружляння з летючим сміттям</li>
+                        <li><b>Сніг ❄️</b> — падаючі сніжинки з мерехтінням</li>
+                        <li><b>Череп 💀</b> — темний вихор з душами-привидами</li>
+                        <li><b>Веселка 🌈</b> — hue-rotate через весь спектр кольорів</li>
+                        <li><b>Діамант 💎</b> — кристалічне мерехтіння з facet-спалахами</li>
+                        <li><b>Покращені</b> — серця з trail, конфетті з гравітацією, блискавка з flash</li>
+                    </ul>
+                    <button type="button" class="btn-demo-effects" id="btnDemoEffects" style="margin:12px 0 8px;padding:10px 20px;background:linear-gradient(135deg,#ff6b35,#f7c948,#4ecdc4,#6c5ce7);color:#fff;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:15px;letter-spacing:0.5px;box-shadow:0 4px 15px rgba(108,92,231,0.3);transition:all 0.3s ease">
+                        Спробувати ефекти на цій сторінці
+                    </button>
+                </div>
                 <div class="changelog-section">
                     <h4>v21.7.1 — Mute Appeal UI Redesign (Claude Code, 08.03.2026)</h4>
                     <ul>
@@ -3549,27 +3565,216 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/logger.js?v=21.7.1"></script>
-    <script src="js/config.js?v=21.7.1"></script>
-    <script src="js/api.js?v=21.7.1"></script>
-    <script src="js/ui.js?v=21.7.1"></script>
-    <script src="js/auth.js?v=21.7.1"></script>
-    <script src="js/timeline.js?v=21.7.1"></script>
-    <script src="js/booking.js?v=21.7.1"></script>
-    <script src="js/settings.js?v=21.7.1"></script>
-    <script src="js/booking-form.js?v=21.7.1"></script>
-    <script src="js/booking-linked.js?v=21.7.1"></script>
-    <script src="js/settings-dashboard.js?v=21.7.1"></script>
-    <script src="js/settings-history.js?v=21.7.1"></script>
-    <script src="js/settings-afisha.js?v=21.7.1"></script>
-    <script src="js/settings-certificates.js?v=21.7.1"></script>
-    <script src="js/offline.js?v=21.7.1"></script>
-    <script src="js/search.js?v=21.7.1"></script>
-    <script src="js/ws.js?v=21.7.1"></script>
-    <script src="js/components/sidebar.js?v=21.7.1"></script>
-    <script src="js/sales-panel.js?v=21.7.1"></script>
-    <script src="js/command-panel.js?v=21.7.1"></script>
-    <script src="js/idle-hints.js?v=21.7.1"></script>
-    <script src="js/app.js?v=21.7.1"></script>
+    <script src="js/logger.js?v=21.8.0"></script>
+    <script src="js/config.js?v=21.8.0"></script>
+    <script src="js/api.js?v=21.8.0"></script>
+    <script src="js/ui.js?v=21.8.0"></script>
+    <script src="js/auth.js?v=21.8.0"></script>
+    <script src="js/timeline.js?v=21.8.0"></script>
+    <script src="js/booking.js?v=21.8.0"></script>
+    <script src="js/settings.js?v=21.8.0"></script>
+    <script src="js/booking-form.js?v=21.8.0"></script>
+    <script src="js/booking-linked.js?v=21.8.0"></script>
+    <script src="js/settings-dashboard.js?v=21.8.0"></script>
+    <script src="js/settings-history.js?v=21.8.0"></script>
+    <script src="js/settings-afisha.js?v=21.8.0"></script>
+    <script src="js/settings-certificates.js?v=21.8.0"></script>
+    <script src="js/offline.js?v=21.8.0"></script>
+    <script src="js/search.js?v=21.8.0"></script>
+    <script src="js/ws.js?v=21.8.0"></script>
+    <script src="js/components/sidebar.js?v=21.8.0"></script>
+    <script src="js/sales-panel.js?v=21.8.0"></script>
+    <script src="js/command-panel.js?v=21.8.0"></script>
+    <script src="js/idle-hints.js?v=21.8.0"></script>
+    <script src="js/app.js?v=21.8.0"></script>
+
+    <!-- Emoji Effects Demo (inline — works on index.html without chat.css) -->
+    <style>
+    .effects-demo-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:9998;opacity:0;pointer-events:none;transition:opacity .3s ease}
+    .effects-demo-overlay.active{opacity:1;pointer-events:auto}
+    .effects-demo-panel{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);z-index:9999;background:linear-gradient(180deg,rgba(30,30,40,0.97),rgba(20,20,30,0.99));border-radius:24px 24px 0 0;padding:24px 20px 32px;max-width:500px;width:95%;box-shadow:0 -8px 40px rgba(0,0,0,0.5);transition:transform .4s cubic-bezier(0.34,1.56,0.64,1)}
+    .effects-demo-panel.active{transform:translateX(-50%) translateY(0)}
+    .effects-demo-panel h3{color:#fff;text-align:center;margin:0 0 6px;font-size:20px;font-family:'Space Grotesk',sans-serif}
+    .effects-demo-panel .demo-subtitle{color:rgba(255,255,255,0.5);text-align:center;font-size:13px;margin:0 0 18px}
+    .effects-demo-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+    .demo-effect-btn{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:14px;background:rgba(255,255,255,0.05);cursor:pointer;transition:all .2s ease;-webkit-tap-highlight-color:transparent;user-select:none}
+    .demo-effect-btn:hover{background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.2);transform:scale(1.08)}
+    .demo-effect-btn:active{transform:scale(0.95)}
+    .demo-effect-btn .demo-emoji{font-size:28px;line-height:1}
+    .demo-effect-btn .demo-label{font-size:10px;color:rgba(255,255,255,0.6);font-family:'Inter',sans-serif}
+    .demo-close-btn{position:absolute;top:12px;right:16px;background:none;border:none;color:rgba(255,255,255,0.5);font-size:24px;cursor:pointer;padding:4px 8px;border-radius:8px;transition:all .2s}
+    .demo-close-btn:hover{color:#fff;background:rgba(255,255,255,0.1)}
+
+    /* Inline particle styles for index.html demo */
+    .demo-particle-container{position:fixed;pointer-events:none;z-index:10000}
+    .demo-particle{position:absolute;font-size:20px;pointer-events:none;will-change:transform,opacity}
+
+    @keyframes demoFireV2{0%{opacity:1;transform:translate(0,0) scale(.4);filter:drop-shadow(0 0 4px rgba(255,220,50,1))}10%{opacity:1;transform:translate(calc(var(--dx)*.05),calc(var(--dy)*.08)) scale(1.4);filter:drop-shadow(0 0 12px rgba(255,160,0,1))}25%{opacity:1;transform:translate(calc(var(--dx)*.2 + 3px),calc(var(--dy)*.3)) scale(1.2) rotate(-8deg);filter:drop-shadow(0 0 10px rgba(255,80,0,.9))}60%{opacity:.7;transform:translate(calc(var(--dx)*.55 + 4px),calc(var(--dy)*.7)) scale(.8) rotate(-6deg);filter:drop-shadow(0 0 6px rgba(200,30,0,.6))}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.1) rotate(20deg);filter:drop-shadow(0 0 0 transparent)}}
+    @keyframes demoEmber{0%{opacity:1;transform:translate(0,0) scale(.3)}15%{opacity:1;transform:translate(calc(var(--dx)*.1 + 8px),calc(var(--dy)*.15)) scale(1) rotate(45deg)}50%{opacity:.8;transform:translate(calc(var(--dx)*.4 + 10px),calc(var(--dy)*.55)) scale(.7) rotate(200deg)}100%{opacity:0;transform:translate(calc(var(--dx)*.9 + 6px),calc(var(--dy)*1.2)) scale(.15) rotate(450deg)}}
+    @keyframes demoSmoke{0%{opacity:0;transform:translate(0,0) scale(.3)}20%{opacity:.3;transform:translate(calc(var(--dx)*.1),calc(var(--dy)*.2)) scale(.8);filter:blur(1px)}50%{opacity:.4;transform:translate(calc(var(--dx)*.3 + 8px),calc(var(--dy)*.6)) scale(1.2);filter:blur(2px)}100%{opacity:0;transform:translate(calc(var(--dx)*.6 + 20px),calc(var(--dy)*1.3)) scale(2.2);filter:blur(6px) grayscale(1)}}
+    @keyframes demoHeart{0%{opacity:0;transform:translate(0,0) scale(0)}10%{opacity:1;transform:translate(calc(var(--dx)*.05),calc(var(--dy)*.05)) scale(1.3) rotate(-15deg)}40%{opacity:1;transform:translate(calc(var(--dx)*.35 + 5px),calc(var(--dy)*.4)) scale(1.15) rotate(-5deg)}70%{opacity:.7;transform:translate(calc(var(--dx)*.7 + 4px),calc(var(--dy)*.7)) scale(1) rotate(-8deg)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.4) rotate(5deg)}}
+    @keyframes demoParty{0%{opacity:1;transform:translate(0,0) scale(0) rotate(0)}15%{opacity:1;transform:translate(calc(var(--dx)*.15),calc(var(--dy)*.15)) scale(1.6) rotate(30deg)}50%{opacity:.9;transform:translate(calc(var(--dx)*.5),calc(var(--dy)*.5)) scale(.9) rotate(150deg)}100%{opacity:0;transform:translate(var(--dx),calc(var(--dy) + 30px)) scale(.2) rotate(360deg)}}
+    @keyframes demoConfetti{0%{opacity:1;transform:translate(0,0) scale(0) rotateX(0) rotateZ(0)}20%{opacity:1;transform:translate(calc(var(--dx)*.6),calc(var(--dy)*.4)) scale(1) rotateX(90deg) rotateZ(45deg)}50%{opacity:.8;transform:translate(calc(var(--dx)*.8),calc(var(--dy)*.1)) scale(.9) rotateX(200deg) rotateZ(120deg)}100%{opacity:0;transform:translate(var(--dx),80px) scale(.4) rotateX(360deg) rotateZ(360deg)}}
+    @keyframes demoLightning{0%{opacity:1;transform:translate(0,0) scale(2) skewX(0);filter:drop-shadow(0 0 15px rgba(255,255,100,1))}8%{opacity:1;transform:translate(calc(var(--dx)*.15),calc(var(--dy)*.1)) scale(.6) skewX(15deg)}16%{opacity:1;transform:translate(calc(var(--dx)*.3),calc(var(--dy)*.25)) scale(1.8) skewX(-10deg)}50%{opacity:.7;transform:translate(calc(var(--dx)*.6),calc(var(--dy)*.5)) scale(1.2) skewX(-5deg);filter:drop-shadow(0 0 8px rgba(150,130,255,.7))}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.1);filter:drop-shadow(0 0 0 transparent)}}
+    @keyframes demoFlash{0%{opacity:0;transform:scale(.5)}10%{opacity:.8;transform:scale(2)}20%{opacity:.2;transform:scale(1.5)}30%{opacity:.6;transform:scale(2.5)}100%{opacity:0;transform:scale(4)}}
+    @keyframes demoSkull{0%{opacity:1;transform:translate(0,0) scale(0) rotate(0);filter:drop-shadow(0 0 4px rgba(100,0,150,.9))}15%{opacity:1;transform:translate(calc(var(--dx)*.1),calc(var(--dy)*.1)) scale(1.5) rotate(60deg);filter:drop-shadow(0 0 10px rgba(150,0,200,1))}50%{opacity:.9;transform:translate(calc(var(--dx)*.45),calc(var(--dy)*.4)) scale(.9) rotate(270deg)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.1) rotate(540deg);filter:drop-shadow(0 0 0 transparent)}}
+    @keyframes demoSoulWisp{0%{opacity:0;transform:translate(0,0) scale(.3)}20%{opacity:.6;transform:translate(calc(var(--dx)*.1 + 12px),calc(var(--dy)*.15)) scale(.7) rotate(30deg)}60%{opacity:.3;transform:translate(calc(var(--dx)*.4 + 15px),calc(var(--dy)*.55)) scale(.5) rotate(150deg)}100%{opacity:0;transform:translate(calc(var(--dx)*.6 - 5px),calc(var(--dy)*.8)) scale(.1) rotate(270deg)}}
+    @keyframes demoSnow{0%{opacity:0;transform:translate(0,-20px) scale(0)}10%{opacity:1;transform:translate(calc(var(--dx)*.05 + 3px),calc(var(--dy)*-.1)) scale(1) rotate(15deg);filter:drop-shadow(0 0 4px rgba(200,220,255,.8))}40%{transform:translate(calc(var(--dx)*.3 + 8px),30px) scale(1.05) rotate(25deg)}70%{opacity:.7;transform:translate(calc(var(--dx)*.6 + 4px),70px) scale(.85) rotate(30deg)}100%{opacity:0;transform:translate(var(--dx),110px) scale(.5) rotate(40deg)}}
+    @keyframes demoTornado{0%{opacity:1;transform:translate(0,0) scale(.3) rotate(0)}10%{opacity:1;transform:translate(20px,calc(var(--dy)*.05)) scale(1.2) rotate(72deg)}30%{transform:translate(25px,calc(var(--dy)*.25)) scale(1.3) rotate(216deg)}50%{transform:translate(30px,calc(var(--dy)*.45)) scale(1.4) rotate(360deg)}70%{transform:translate(18px,calc(var(--dy)*.65)) scale(.9) rotate(504deg)}100%{opacity:0;transform:translate(5px,var(--dy)) scale(.2) rotate(720deg)}}
+    @keyframes demoDebris{0%{opacity:1;transform:translate(0,0) rotate(0) scale(.5)}20%{opacity:1;transform:translate(30px,-10px) rotate(120deg) scale(1)}60%{opacity:.7;transform:translate(35px,-15px) rotate(400deg) scale(.9)}100%{opacity:0;transform:translate(15px,30px) rotate(720deg) scale(.1)}}
+    @keyframes demoExplosion{0%{opacity:1;transform:translate(0,0) scale(0);filter:drop-shadow(0 0 15px rgba(255,255,100,1))}8%{opacity:1;transform:translate(0,0) scale(2.5);filter:drop-shadow(0 0 25px rgba(255,200,50,1))}20%{opacity:1;transform:translate(calc(var(--dx)*.25),calc(var(--dy)*.2)) scale(1.5)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.2);filter:drop-shadow(0 0 0 transparent)}}
+    @keyframes demoShockwave{0%{opacity:.9;transform:scale(0);border-width:4px}30%{opacity:.7;transform:scale(3);border-width:3px}100%{opacity:0;transform:scale(8);border-width:1px;border-color:transparent}}
+    @keyframes demoRainbow{0%{opacity:1;transform:translate(0,0) scale(0);filter:hue-rotate(0deg) drop-shadow(0 0 4px rgba(255,0,100,.8))}15%{opacity:1;transform:translate(calc(var(--dx)*.1),calc(var(--dy)*.15)) scale(1.3) rotate(-20deg);filter:hue-rotate(60deg)}45%{opacity:1;transform:translate(calc(var(--dx)*.4),calc(var(--dy)*.5)) scale(1.2);filter:hue-rotate(180deg)}75%{opacity:.7;transform:translate(calc(var(--dx)*.7),calc(var(--dy)*.75)) scale(.8);filter:hue-rotate(300deg)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.3);filter:hue-rotate(360deg)}}
+    @keyframes demoDiamond{0%{opacity:1;transform:translate(0,0) scale(0);filter:drop-shadow(0 0 4px rgba(150,200,255,.9)) brightness(1)}10%{opacity:1;transform:translate(calc(var(--dx)*.05),calc(var(--dy)*.05)) scale(1.5) rotate(15deg);filter:drop-shadow(0 0 15px rgba(200,230,255,1)) brightness(1.5)}35%{opacity:1;transform:translate(calc(var(--dx)*.25),calc(var(--dy)*.25)) scale(1.3) rotate(25deg);filter:brightness(1.4)}65%{opacity:.8;transform:translate(calc(var(--dx)*.55),calc(var(--dy)*.55)) scale(1.1);filter:brightness(1.3)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.2);filter:brightness(1)}}
+    @keyframes demoFacet{0%{opacity:0;transform:translate(0,0) scale(0)}15%{opacity:1;transform:translate(calc(var(--dx)*.2),calc(var(--dy)*.15)) scale(1.5) rotate(45deg);filter:brightness(2)}30%{opacity:.3;transform:translate(calc(var(--dx)*.3),calc(var(--dy)*.25)) scale(.5) rotate(90deg)}100%{opacity:0;transform:translate(calc(var(--dx)*.6),calc(var(--dy)*.6)) scale(.1) rotate(180deg)}}
+    @keyframes demoGeneric{0%{opacity:1;transform:translate(0,0) scale(.5)}30%{opacity:1;transform:translate(calc(var(--dx)*.3),calc(var(--dy)*.3)) scale(1.2) rotate(15deg)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.3) rotate(45deg)}}
+    </style>
+
+    <div class="effects-demo-overlay" id="effectsDemoOverlay"></div>
+    <div class="effects-demo-panel" id="effectsDemoPanel">
+        <button type="button" class="demo-close-btn" id="demoCloseBtn">&times;</button>
+        <h3>Emoji-ефекти v2</h3>
+        <p class="demo-subtitle">Натисни щоб запустити анімацію</p>
+        <div class="effects-demo-grid">
+            <button type="button" class="demo-effect-btn" data-effect="fire"><span class="demo-emoji">🔥</span><span class="demo-label">Вогонь</span></button>
+            <button type="button" class="demo-effect-btn" data-effect="hearts"><span class="demo-emoji">❤️</span><span class="demo-label">Серця</span></button>
+            <button type="button" class="demo-effect-btn" data-effect="party"><span class="demo-emoji">🎉</span><span class="demo-label">Свято</span></button>
+            <button type="button" class="demo-effect-btn" data-effect="lightning"><span class="demo-emoji">⚡</span><span class="demo-label">Блискавка</span></button>
+            <button type="button" class="demo-effect-btn" data-effect="explosion"><span class="demo-emoji">💥</span><span class="demo-label">Вибух</span></button>
+            <button type="button" class="demo-effect-btn" data-effect="skull"><span class="demo-emoji">💀</span><span class="demo-label">Череп</span></button>
+            <button type="button" class="demo-effect-btn" data-effect="snow"><span class="demo-emoji">❄️</span><span class="demo-label">Сніг</span></button>
+            <button type="button" class="demo-effect-btn" data-effect="tornado"><span class="demo-emoji">🌪️</span><span class="demo-label">Торнадо</span></button>
+            <button type="button" class="demo-effect-btn" data-effect="rainbow"><span class="demo-emoji">🌈</span><span class="demo-label">Веселка</span></button>
+            <button type="button" class="demo-effect-btn" data-effect="diamond"><span class="demo-emoji">💎</span><span class="demo-label">Діамант</span></button>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        var DEMO_EFFECTS = {
+            fire:      { particles: ['🔥','🟠','🟡','✨'], count: 10, anim: 'demoFireV2', dur: 1.8, layers: 'fire' },
+            hearts:    { particles: ['❤️','💕','💗','💖','💘'], count: 8, anim: 'demoHeart', dur: 1.8, layers: 'hearts' },
+            party:     { particles: ['🎉','🎊','✨','🎈','🥳','🎀'], count: 10, anim: 'demoParty', dur: 1.6, layers: 'party' },
+            lightning: { particles: ['⚡','💥','✨','🔮'], count: 7, anim: 'demoLightning', dur: 1, layers: 'lightning' },
+            explosion: { particles: ['💥','🔥','💫','✨','🟠'], count: 12, anim: 'demoExplosion', dur: 1.2, layers: 'explosion' },
+            skull:     { particles: ['💀','☠️','👻','🖤'], count: 8, anim: 'demoSkull', dur: 1.6, layers: 'skull' },
+            snow:      { particles: ['❄️','🌨️','⛄','✨','💎'], count: 10, anim: 'demoSnow', dur: 2.5, layers: 'snow' },
+            tornado:   { particles: ['🌪️','💨','🍃','🌀'], count: 8, anim: 'demoTornado', dur: 1.8, layers: 'tornado' },
+            rainbow:   { particles: ['🌈','✨','⭐','🦄','💫'], count: 8, anim: 'demoRainbow', dur: 2, layers: 'rainbow' },
+            diamond:   { particles: ['💎','✨','🔹','🔷','💠'], count: 8, anim: 'demoDiamond', dur: 1.5, layers: 'diamond' }
+        };
+
+        function _dp(container, txt, anim, dur, dx, dy, fs, delay) {
+            var p = document.createElement('span');
+            p.className = 'demo-particle';
+            p.textContent = txt;
+            if (fs) p.style.fontSize = fs + 'px';
+            p.style.left = (Math.random() * 100) + '%';
+            p.style.bottom = '50%';
+            p.style.setProperty('--dx', dx + 'px');
+            p.style.setProperty('--dy', dy + 'px');
+            p.style.animation = anim + ' ' + dur + 's ease-out ' + (delay || 0) + 's forwards';
+            container.appendChild(p);
+        }
+
+        function _demoLayers(container, type) {
+            var i;
+            switch(type) {
+                case 'fire':
+                    for(i=0;i<6;i++){(function(j){setTimeout(function(){_dp(container,'✨','demoEmber',2.2,(Math.random()-.5)*70,-50-Math.random()*80,8,0)},j*80+100)})(i)}
+                    for(i=0;i<3;i++){(function(j){setTimeout(function(){_dp(container,'💨','demoSmoke',2.5,(Math.random()-.5)*40,-60-Math.random()*50,14,0)},j*120+300)})(i)}
+                    break;
+                case 'hearts':
+                    for(i=0;i<4;i++){(function(j){setTimeout(function(){_dp(container,'💗','demoHeart',2,(Math.random()-.5)*80,-60-Math.random()*60,10,0)},j*100+150)})(i)}
+                    break;
+                case 'party':
+                    var conf=['🟥','🟦','🟩','🟨','🟪','🟧'];
+                    for(i=0;i<8;i++){(function(j){setTimeout(function(){var a=Math.random()*Math.PI*2;_dp(container,conf[j%6],'demoConfetti',2,Math.cos(a)*80,Math.sin(a)*60,12,0)},j*40+80)})(i)}
+                    break;
+                case 'lightning':
+                    setTimeout(function(){
+                        var f=document.createElement('div');f.className='demo-particle';
+                        f.style.cssText='position:absolute;left:0;top:0;width:100%;height:100%;background:radial-gradient(circle,rgba(255,255,200,0.4) 0%,transparent 70%);border-radius:50%;pointer-events:none;animation:demoFlash .6s ease-out forwards';
+                        container.appendChild(f)
+                    },0);
+                    for(i=0;i<4;i++){(function(j){setTimeout(function(){_dp(container,'✨','demoLightning',1.5,(Math.random()-.5)*80,-30-Math.random()*50,10,0)},j*60+200)})(i)}
+                    break;
+                case 'explosion':
+                    setTimeout(function(){
+                        var sw=document.createElement('div');sw.className='demo-particle';
+                        sw.style.cssText='position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;border:3px solid rgba(255,200,100,.8);background:transparent;pointer-events:none;animation:demoShockwave .8s ease-out forwards';
+                        container.appendChild(sw)
+                    },0);
+                    for(i=0;i<6;i++){(function(j){setTimeout(function(){var a=(j/6)*Math.PI*2,d=70+Math.random()*60;_dp(container,['🟫','🟧','⬛','🟥'][j%4],'demoExplosion',1.5,Math.cos(a)*d,Math.sin(a)*d,12,0)},j*30+50)})(i)}
+                    break;
+                case 'skull':
+                    for(i=0;i<5;i++){(function(j){setTimeout(function(){_dp(container,['👻','🖤','💜'][j%3],'demoSoulWisp',2,(Math.random()-.5)*80,-30-Math.random()*70,10,0)},j*90+120)})(i)}
+                    break;
+                case 'snow':
+                    for(i=0;i<6;i++){(function(j){setTimeout(function(){_dp(container,'✨','demoSnow',2,(Math.random()-.5)*120,20+Math.random()*60,8,0)},j*100+100)})(i)}
+                    break;
+                case 'tornado':
+                    for(i=0;i<5;i++){(function(j){setTimeout(function(){_dp(container,['🍃','🌿','📄','🧢'][j%4],'demoDebris',2,(Math.random()-.5)*60,-40-Math.random()*80,10,0)},j*70+100)})(i)}
+                    break;
+                case 'rainbow':
+                    for(i=0;i<5;i++){(function(j){setTimeout(function(){_dp(container,'✨','demoRainbow',1.8,(Math.random()-.5)*120,-50-Math.random()*60,10,0)},j*80+100)})(i)}
+                    break;
+                case 'diamond':
+                    for(i=0;i<5;i++){(function(j){setTimeout(function(){_dp(container,'✨','demoFacet',1,(Math.random()-.5)*100,-40-Math.random()*70,8,0)},j*70+80)})(i)}
+                    break;
+            }
+        }
+
+        function triggerDemoEffect(btn, effectType) {
+            var effect = DEMO_EFFECTS[effectType];
+            if (!effect) return;
+            var rect = btn.getBoundingClientRect();
+            var container = document.createElement('div');
+            container.className = 'demo-particle-container';
+            container.style.left = rect.left + 'px';
+            container.style.top = rect.top + 'px';
+            container.style.width = rect.width + 'px';
+            container.style.height = rect.height + 'px';
+            document.body.appendChild(container);
+
+            for (var i = 0; i < effect.count; i++) {
+                (function(idx) {
+                    setTimeout(function() {
+                        var dx, dy;
+                        if (effectType === 'fire') { dx = (Math.random()-.5)*70; dy = -50-Math.random()*90; }
+                        else if (effectType === 'hearts') { dx = (Math.random()-.5)*90; dy = -70-Math.random()*70; }
+                        else if (effectType === 'snow') { dx = (Math.random()-.5)*120; dy = 20+Math.random()*60; }
+                        else if (effectType === 'explosion') { var a=Math.random()*Math.PI*2,d=60+Math.random()*80; dx=Math.cos(a)*d; dy=Math.sin(a)*d; }
+                        else if (effectType === 'tornado') { dx = (Math.random()-.5)*60; dy = -40-Math.random()*80; }
+                        else { dx = (Math.random()-.5)*100; dy = -30-Math.random()*60; }
+                        _dp(container, effect.particles[idx % effect.particles.length], effect.anim, effect.dur, dx, dy, null, Math.random()*0.3);
+                    }, idx * 50);
+                })(i);
+            }
+            if (effect.layers) _demoLayers(container, effect.layers);
+            setTimeout(function(){ container.remove() }, 3500);
+        }
+
+        // Panel open/close
+        var overlay = document.getElementById('effectsDemoOverlay');
+        var panel = document.getElementById('effectsDemoPanel');
+        var btnOpen = document.getElementById('btnDemoEffects');
+        var btnClose = document.getElementById('demoCloseBtn');
+
+        function openDemo() { overlay.classList.add('active'); panel.classList.add('active'); }
+        function closeDemo() { overlay.classList.remove('active'); panel.classList.remove('active'); }
+
+        if (btnOpen) btnOpen.addEventListener('click', openDemo);
+        if (btnClose) btnClose.addEventListener('click', closeDemo);
+        if (overlay) overlay.addEventListener('click', closeDemo);
+
+        // Effect buttons
+        document.querySelectorAll('.demo-effect-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                triggerDemoEffect(btn, btn.dataset.effect);
+            });
+        });
+    })();
+    </script>
 </body>
 </html>

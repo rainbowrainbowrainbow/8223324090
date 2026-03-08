@@ -1,18 +1,21 @@
 /**
- * services/guardian.js — Guardian AI Agent 🛡️
+ * services/guardian.js — Guardian AI Agent 🛡️ v2.0
  *
- * AI-powered chat moderator that:
- * 1. Collects important messages for daily reports
- * 2. Detects conflicts/arguments and mutes users for 15 min
- * 3. Masks sensitive data (phone numbers, card numbers, emails, etc.)
+ * Silent watcher mode:
+ * - NO public messages in channels (eyes watch from above)
+ * - Masks sensitive data silently (edits message, no announcement)
+ * - DMs director with real-time incident alerts
+ * - Broadcasts guardian:event for live security log panel
+ * - Mood system: emoji changes periodically based on channel health
+ * - Memory: stores context for AI analysis
  *
- * Uses Claude Haiku for conflict detection.
+ * Uses Claude Haiku for conflict detection + daily reports.
  * Sensitive data masking works without AI (regex-based).
  */
 
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { broadcastToChannel } = require('./websocket');
+const { broadcastToChannel, sendToUser, broadcast } = require('./websocket');
 const Anthropic = require('@anthropic-ai/sdk');
 
 const log = createLogger('Guardian');
@@ -31,6 +34,28 @@ if (AI_ENABLED) {
 
 // Cache guardian user ID
 let _guardianUserId = null;
+
+// Guardian mood system
+const MOODS = [
+    { emoji: '😊', label: 'Все спокійно', level: 'calm' },
+    { emoji: '🧐', label: 'Аналізую...', level: 'watching' },
+    { emoji: '😴', label: 'Тихо тут...', level: 'idle' },
+    { emoji: '🤨', label: 'Щось підозріле', level: 'alert' },
+    { emoji: '😤', label: 'Порушення!', level: 'angry' },
+    { emoji: '🫡', label: 'Все під контролем', level: 'salute' },
+    { emoji: '👀', label: 'Спостерігаю', level: 'default' },
+    { emoji: '🛡️', label: 'Захищаю', level: 'protect' },
+    { emoji: '☕', label: 'Перерва', level: 'break' },
+    { emoji: '🎯', label: 'Зосереджений', level: 'focused' }
+];
+
+let _currentMood = { emoji: '👀', label: 'Спостерігаю', level: 'default' };
+let _moodHistory = []; // last 20 mood changes
+let _channelHealth = {}; // { channelId: { score: 0-100, lastIncident: timestamp } }
+const _guardianMemory = {}; // { channelId: { events: [], context: '' } }
+
+// Director user ID cache
+let _directorUserId = null;
 
 async function getGuardianUserId() {
     if (_guardianUserId) return _guardianUserId;
@@ -59,12 +84,14 @@ async function getGuardianUserId() {
 // ==========================================
 
 const SENSITIVE_PATTERNS = [
+    // Credit/debit card numbers: 13-19 digit sequences (with optional spaces/dashes)
+    { regex: /\b(\d{4})[\s-]?(\d{4})[\s-]?(\d{4})[\s-]?(\d{1,7})\b/g, replace: '$1 **** **** ****', type: 'card' },
+    // Long digit sequences (5+ groups of 4) — catch-all for badly formatted cards
+    { regex: /\b(\d{4})[\s-](\d{4})[\s-](\d{4})[\s-](\d{4})[\s-](\d{1,4})\b/g, replace: '$1 **** **** **** ****', type: 'card' },
     // Ukrainian phone: +380XXXXXXXXX, 380XXXXXXXXX, 0XXXXXXXXX
     { regex: /(\+?3?8?0)\s?(\d{2})\s?(\d{3})\s?(\d{2})\s?(\d{2})/g, replace: '+380 ** *** ** $5', type: 'phone' },
     // International phone
     { regex: /\+\d{1,3}\s?\d{2,4}\s?\d{3,4}\s?\d{2,4}/g, replace: '+*** **** ****', type: 'phone' },
-    // Credit/debit card numbers
-    { regex: /\b(\d{4})\s?(\d{4})\s?(\d{4})\s?(\d{4})\b/g, replace: '$1 **** **** $4', type: 'card' },
     // IBAN
     { regex: /\b(UA)\d{2}\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{4}\b/gi, replace: 'UA** **** **** **** ****', type: 'iban' },
     // Email addresses
@@ -114,7 +141,7 @@ async function maskSensitiveInMessage(messageId, channelId, content, username) {
     if (!result) return false;
 
     try {
-        // Update message content in DB
+        // Update message content in DB — SILENTLY (no public notice)
         await pool.query(
             'UPDATE chat_messages SET content = $1, edited_at = NOW() WHERE id = $2',
             [result.maskedContent, messageId]
@@ -127,7 +154,7 @@ async function maskSensitiveInMessage(messageId, channelId, content, username) {
             username
         });
 
-        // Broadcast edit to channel
+        // Broadcast edit to channel (message updates silently in UI)
         broadcastToChannel(channelId, 'chat:message-edited', {
             channelId,
             messageId,
@@ -135,9 +162,24 @@ async function maskSensitiveInMessage(messageId, channelId, content, username) {
             editedAt: new Date().toISOString()
         });
 
-        // Send guardian notice
-        await sendGuardianMessage(channelId,
-            `🛡️ Я замаскував чутливі дані (${result.types.join(', ')}) у повідомленні @${username}. Будьте обережні з персональними даними!`
+        // Update mood to protective
+        setMood('protect', channelId);
+
+        // Broadcast guardian event for security log panel
+        broadcastGuardianEvent({
+            type: 'mask',
+            channelId,
+            username,
+            details: `Замасковано: ${result.types.join(', ')}`,
+            severity: 'warning'
+        });
+
+        // DM director about the incident
+        await alertDirector(
+            `🛡️ <b>Маскування даних</b>\n` +
+            `Канал: #${await getChannelSlug(channelId)}\n` +
+            `Користувач: @${username}\n` +
+            `Тип: ${result.types.join(', ')}`
         );
 
         log.info(`Masked sensitive data [${result.types.join(',')}] in msg:${messageId} by ${username}`);
@@ -189,12 +231,7 @@ async function muteUser(channelId, userId, username, reason) {
 
         await logAction('mute', channelId, userId, null, { reason, until: mutedUntil, username });
 
-        // Notify channel
-        await sendGuardianMessage(channelId,
-            `🛡️ @${username} заблоковано на 15 хвилин.\n<i>Причина: ${reason}</i>\n\nБудь ласка, спілкуйтесь з повагою! 🤝`
-        );
-
-        // Broadcast mute event
+        // NO public message — just broadcast mute event (user sees mute countdown overlay)
         broadcastToChannel(channelId, 'chat:user-muted', {
             channelId,
             userId,
@@ -202,6 +239,27 @@ async function muteUser(channelId, userId, username, reason) {
             mutedUntil: mutedUntil.toISOString(),
             reason
         });
+
+        // Update mood to angry
+        setMood('angry', channelId);
+
+        // Broadcast guardian event for security log panel
+        broadcastGuardianEvent({
+            type: 'mute',
+            channelId,
+            username,
+            details: `Заблоковано на 15 хв: ${reason}`,
+            severity: 'danger'
+        });
+
+        // DM director about mute
+        await alertDirector(
+            `🚨 <b>Блокування користувача</b>\n` +
+            `Канал: #${await getChannelSlug(channelId)}\n` +
+            `Користувач: @${username}\n` +
+            `Причина: ${reason}\n` +
+            `До: ${mutedUntil.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}`
+        );
 
         log.info(`Muted ${username} (id:${userId}) in ch:${channelId} until ${mutedUntil.toISOString()}`);
     } catch (err) {
@@ -551,23 +609,28 @@ async function processMessage(message) {
         };
     }
 
+    // Briefly flash "watching" mood on new message
+    if (_currentMood.level === 'calm' || _currentMood.level === 'idle' || _currentMood.level === 'break') {
+        setMood('watching', channelId);
+    }
+
+    // Broadcast scan event for live log
+    broadcastGuardianEvent({
+        type: 'scan',
+        channelId,
+        username,
+        details: `Повідомлення перевірено (${content.length} символів)`,
+        severity: 'info'
+    });
+
     // 2. Mask sensitive data (fire-and-forget)
     maskSensitiveInMessage(messageId, channelId, content, username).catch(err => {
         log.error('Masking error', err);
     });
 
-    // 3. Analyze conflicts — show guardian typing first
+    // 3. Analyze conflicts silently (no typing indicator shown)
     (async () => {
         try {
-            // Show typing indicator for Guardian
-            const guardianId = await getGuardianUserId();
-            if (guardianId) {
-                broadcastToChannel(channelId, 'chat:typing', {
-                    channelId,
-                    userId: guardianId,
-                    username: GUARDIAN_USERNAME
-                });
-            }
             await analyzeConflict(channelId, userId, username, content);
         } catch (err) {
             log.error('Conflict analysis error', err);
@@ -613,6 +676,170 @@ async function ensureGuardianMemberships() {
     }
 }
 
+// ==========================================
+// MOOD SYSTEM
+// ==========================================
+
+function setMood(level, channelId) {
+    const mood = MOODS.find(m => m.level === level) || MOODS.find(m => m.level === 'default');
+    const prev = _currentMood;
+    _currentMood = mood;
+    _moodHistory.push({ ...mood, ts: Date.now(), channelId });
+    if (_moodHistory.length > 20) _moodHistory = _moodHistory.slice(-20);
+
+    // Broadcast mood change to all clients
+    broadcast('guardian:mood', {
+        emoji: mood.emoji,
+        label: mood.label,
+        level: mood.level,
+        prevEmoji: prev.emoji
+    });
+
+    // Auto-reset to calm/watching after 30s if angry/alert
+    if (level === 'angry' || level === 'alert' || level === 'protect') {
+        setTimeout(() => {
+            if (_currentMood.level === level) {
+                setMood('salute', channelId);
+            }
+        }, 30000);
+    }
+}
+
+function getMood() {
+    return _currentMood;
+}
+
+// Periodic mood changes based on channel activity
+function startMoodCycle() {
+    setInterval(() => {
+        // If no incidents for 5 min → calm/idle
+        const now = Date.now();
+        const lastEvent = _moodHistory.length > 0 ? _moodHistory[_moodHistory.length - 1].ts : 0;
+        const elapsed = now - lastEvent;
+
+        if (_currentMood.level === 'angry' || _currentMood.level === 'protect') return; // Don't override active states
+
+        if (elapsed > 10 * 60 * 1000) {
+            // 10+ min idle
+            const idleMoods = ['idle', 'break', 'calm'];
+            setMood(idleMoods[Math.floor(Math.random() * idleMoods.length)]);
+        } else if (elapsed > 3 * 60 * 1000) {
+            // 3-10 min → watching
+            const watchMoods = ['default', 'focused', 'calm'];
+            setMood(watchMoods[Math.floor(Math.random() * watchMoods.length)]);
+        }
+    }, 60000); // Check every minute
+}
+
+// ==========================================
+// DIRECTOR ALERTS (DM)
+// ==========================================
+
+async function getDirectorUserId() {
+    if (_directorUserId) return _directorUserId;
+    try {
+        // Director = first admin user (by id)
+        const result = await pool.query(
+            "SELECT id FROM users WHERE role = 'admin' AND is_active = true ORDER BY id LIMIT 1"
+        );
+        if (result.rows.length > 0) {
+            _directorUserId = result.rows[0].id;
+        }
+        return _directorUserId;
+    } catch (err) {
+        log.error('Failed to find director', err);
+        return null;
+    }
+}
+
+async function alertDirector(content) {
+    try {
+        const directorId = await getDirectorUserId();
+        if (!directorId) return;
+
+        // Find or create DM channel with Guardian
+        const guardianId = await getGuardianUserId();
+        if (!guardianId) return;
+
+        let dmChannel = await pool.query(`
+            SELECT c.id FROM chat_channels c
+            JOIN chat_channel_members m1 ON m1.channel_id = c.id AND m1.user_id = $1
+            JOIN chat_channel_members m2 ON m2.channel_id = c.id AND m2.user_id = $2
+            WHERE c.is_dm = true
+            LIMIT 1
+        `, [guardianId, directorId]);
+
+        let channelId;
+        if (dmChannel.rows.length > 0) {
+            channelId = dmChannel.rows[0].id;
+        } else {
+            // Create DM channel
+            const ch = await pool.query(`
+                INSERT INTO chat_channels (name, slug, is_dm, created_by)
+                VALUES ('Guardian → Director', 'dm-guardian-director', true, $1)
+                RETURNING id
+            `, [guardianId]);
+            channelId = ch.rows[0].id;
+            await pool.query('INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2), ($1, $3)', [channelId, guardianId, directorId]);
+        }
+
+        // Send DM message
+        await sendGuardianMessage(channelId, content);
+
+        log.info(`Alert sent to director: ${content.substring(0, 50)}...`);
+    } catch (err) {
+        log.error('Failed to alert director', err);
+    }
+}
+
+// ==========================================
+// GUARDIAN EVENT BROADCASTING (Security Log)
+// ==========================================
+
+function broadcastGuardianEvent(event) {
+    const payload = {
+        ...event,
+        timestamp: new Date().toISOString(),
+        mood: _currentMood
+    };
+
+    // Store in memory for channel context
+    if (event.channelId) {
+        if (!_guardianMemory[event.channelId]) {
+            _guardianMemory[event.channelId] = { events: [], context: '' };
+        }
+        _guardianMemory[event.channelId].events.push(payload);
+        // Keep last 50 events per channel
+        if (_guardianMemory[event.channelId].events.length > 50) {
+            _guardianMemory[event.channelId].events = _guardianMemory[event.channelId].events.slice(-50);
+        }
+    }
+
+    // Broadcast to all connected admins via WebSocket
+    broadcast('guardian:event', payload);
+}
+
+async function getChannelSlug(channelId) {
+    try {
+        const r = await pool.query('SELECT slug FROM chat_channels WHERE id = $1', [channelId]);
+        return r.rows[0]?.slug || String(channelId);
+    } catch { return String(channelId); }
+}
+
+function getGuardianState() {
+    return {
+        mood: _currentMood,
+        moodHistory: _moodHistory.slice(-10),
+        channelHealth: _channelHealth,
+        memory: Object.fromEntries(
+            Object.entries(_guardianMemory).map(([k, v]) => [k, { eventCount: v.events.length, lastEvent: v.events[v.events.length - 1] }])
+        )
+    };
+}
+
+// Start mood cycle on load
+startMoodCycle();
+
 module.exports = {
     processMessage,
     isUserMuted,
@@ -621,5 +848,9 @@ module.exports = {
     runDailyReports,
     ensureGuardianMemberships,
     sendGuardianMessage,
+    getMood,
+    getGuardianState,
+    broadcastGuardianEvent,
+    alertDirector,
     GUARDIAN_USERNAME
 };

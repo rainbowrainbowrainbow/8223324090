@@ -128,6 +128,30 @@
                         <button class="chat-search-bar-close" id="chatSearchMsgClose">&times;</button>
                     </div>
 
+                    <!-- Guardian watching bar -->
+                    <div class="guardian-watch-bar" id="guardianWatchBar" style="display:none">
+                        <div class="guardian-watch-eyes" id="guardianWatchEyes">👀</div>
+                        <div class="guardian-watch-mood" id="guardianWatchMood">
+                            <span class="guardian-mood-emoji" id="guardianMoodEmoji">👀</span>
+                            <span class="guardian-mood-label" id="guardianMoodLabel">Спостерігаю</span>
+                        </div>
+                        <button class="guardian-watch-log-btn" id="guardianLogBtn" title="Журнал безпеки">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            <span class="guardian-log-badge" id="guardianLogBadge" style="display:none">0</span>
+                        </button>
+                    </div>
+
+                    <!-- Guardian security log panel (slide-down, admin only) -->
+                    <div class="guardian-log-panel" id="guardianLogPanel" style="display:none">
+                        <div class="guardian-log-header">
+                            <span>🛡️ Журнал безпеки (реальний час)</span>
+                            <button class="guardian-log-close" id="guardianLogClose">&times;</button>
+                        </div>
+                        <div class="guardian-log-entries" id="guardianLogEntries">
+                            <div class="guardian-log-empty">Немає подій</div>
+                        </div>
+                    </div>
+
                     <div class="chat-messages" id="chatMessages">
                         <div class="chat-empty">
                             <div class="chat-empty-icon">

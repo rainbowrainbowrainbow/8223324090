@@ -286,6 +286,23 @@ var ParkWS = (function () {
                 }));
                 break;
 
+            // Guardian events
+            case 'guardian:mood':
+            case 'guardian:event':
+                window.dispatchEvent(new CustomEvent('ws:chat', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
+                break;
+
+            // Chat inline events (edits, mutes, deletes)
+            case 'chat:message-edited':
+            case 'chat:user-muted':
+            case 'chat:delete':
+                window.dispatchEvent(new CustomEvent('ws:chat', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
+                break;
+
             default:
                 _debug('[WS] Unknown event:', message.type);
                 break;

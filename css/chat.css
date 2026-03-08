@@ -2704,3 +2704,220 @@
         width: 100%;
     }
 }
+
+/* ==========================================
+   GUARDIAN WATCHING BAR
+   ========================================== */
+
+.guardian-watch-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 16px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.05));
+    border-bottom: 1px solid rgba(99, 102, 241, 0.12);
+    min-height: 36px;
+    position: relative;
+    z-index: 2;
+}
+
+.guardian-watch-eyes {
+    font-size: 20px;
+    animation: guardianLook 4s ease-in-out infinite;
+    cursor: default;
+    user-select: none;
+    line-height: 1;
+}
+
+@keyframes guardianLook {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(3px); }
+    75% { transform: translateX(-3px); }
+}
+
+.guardian-watch-mood {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+}
+
+.guardian-mood-emoji {
+    font-size: 16px;
+    transition: transform 0.3s;
+    cursor: default;
+}
+
+.guardian-mood-emoji.changing {
+    transform: scale(1.4) rotate(10deg);
+}
+
+.guardian-mood-label {
+    font-size: 12px;
+    color: var(--gray-500);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+
+.guardian-watch-log-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 8px;
+    padding: 4px 10px;
+    cursor: pointer;
+    color: var(--gray-500);
+    font-size: 11px;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.guardian-watch-log-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    color: #6366F1;
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.guardian-log-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #EF4444;
+    color: white;
+    font-size: 9px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    animation: badgePop 0.3s ease;
+}
+
+@keyframes badgePop {
+    0% { transform: scale(0); }
+    50% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+}
+
+/* ==========================================
+   GUARDIAN SECURITY LOG PANEL
+   ========================================== */
+
+.guardian-log-panel {
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--chat-bg, #fff);
+    border-bottom: 2px solid rgba(99, 102, 241, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    z-index: 2;
+    position: relative;
+}
+
+.guardian-log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #6366F1;
+    background: rgba(99, 102, 241, 0.06);
+    border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.guardian-log-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--gray-400);
+    line-height: 1;
+    padding: 0 4px;
+}
+
+.guardian-log-close:hover {
+    color: var(--gray-600);
+}
+
+.guardian-log-entries {
+    padding: 4px 0;
+}
+
+.guardian-log-empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--gray-400);
+    font-size: 12px;
+}
+
+.guardian-log-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 6px 16px;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    animation: logSlideIn 0.3s ease;
+}
+
+@keyframes logSlideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.guardian-log-entry:last-child {
+    border-bottom: none;
+}
+
+.guardian-log-entry-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+}
+
+.guardian-log-entry-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.guardian-log-entry-text {
+    color: var(--gray-700);
+    line-height: 1.4;
+}
+
+.guardian-log-entry-text b {
+    color: var(--gray-800);
+}
+
+.guardian-log-entry-time {
+    color: var(--gray-400);
+    font-size: 10px;
+    margin-top: 2px;
+}
+
+.guardian-log-entry.severity-danger {
+    background: rgba(239, 68, 68, 0.04);
+}
+
+.guardian-log-entry.severity-warning {
+    background: rgba(245, 158, 11, 0.04);
+}
+
+.guardian-log-entry.severity-info {
+    background: transparent;
+}
+
+/* Guardian pulse animation for the shield in profile */
+@keyframes guardianPulse {
+    0%, 100% { box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3); }
+    50% { box-shadow: 0 4px 24px rgba(99, 102, 241, 0.5); }
+}

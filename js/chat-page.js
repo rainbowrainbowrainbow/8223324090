@@ -1917,6 +1917,12 @@
             case 'chat:user-muted':
                 _onUserMuted(payload);
                 break;
+            case 'guardian:mood':
+                _onGuardianMood(payload);
+                break;
+            case 'guardian:event':
+                _onGuardianEvent(payload);
+                break;
         }
     }
 
@@ -2297,4 +2303,172 @@
         if (last === 1) return one;
         return many;
     }
+
+    // ==========================================
+    // GUARDIAN WATCHING UI
+    // ==========================================
+
+    var _guardianWatchBar = document.getElementById('guardianWatchBar');
+    var _guardianMoodEmoji = document.getElementById('guardianMoodEmoji');
+    var _guardianMoodLabel = document.getElementById('guardianMoodLabel');
+    var _guardianLogBtn = document.getElementById('guardianLogBtn');
+    var _guardianLogPanel = document.getElementById('guardianLogPanel');
+    var _guardianLogEntries = document.getElementById('guardianLogEntries');
+    var _guardianLogBadge = document.getElementById('guardianLogBadge');
+    var _guardianLogClose = document.getElementById('guardianLogClose');
+    var _guardianEvents = [];
+    var _guardianLogOpen = false;
+    var _guardianUnreadCount = 0;
+    var _isAdmin = false;
+
+    function _initGuardianUI() {
+        // Check if user is admin
+        try {
+            var token = localStorage.getItem('token');
+            if (token) {
+                var payload = JSON.parse(atob(token.split('.')[1]));
+                _isAdmin = payload.role === 'admin' || payload.role === 'owner';
+            }
+        } catch (e) { /* ignore */ }
+
+        // Show guardian bar when channel is selected
+        if (_guardianWatchBar) {
+            _guardianWatchBar.style.display = 'flex';
+        }
+
+        // Fetch initial mood
+        _fetchJson('/api/guardian/mood').then(function (mood) {
+            if (mood && mood.emoji) {
+                _updateGuardianMood(mood.emoji, mood.label);
+            }
+        }).catch(function () { /* ignore */ });
+
+        // Log button — only for admins
+        if (_guardianLogBtn) {
+            if (!_isAdmin) {
+                _guardianLogBtn.style.display = 'none';
+            }
+            _guardianLogBtn.addEventListener('click', function () {
+                _guardianLogOpen = !_guardianLogOpen;
+                if (_guardianLogPanel) {
+                    _guardianLogPanel.style.display = _guardianLogOpen ? 'block' : 'none';
+                }
+                if (_guardianLogOpen) {
+                    _guardianUnreadCount = 0;
+                    if (_guardianLogBadge) _guardianLogBadge.style.display = 'none';
+                    // Load recent events from API
+                    _loadGuardianEvents();
+                }
+            });
+        }
+
+        if (_guardianLogClose) {
+            _guardianLogClose.addEventListener('click', function () {
+                _guardianLogOpen = false;
+                if (_guardianLogPanel) _guardianLogPanel.style.display = 'none';
+            });
+        }
+    }
+
+    function _updateGuardianMood(emoji, label) {
+        if (_guardianMoodEmoji) {
+            _guardianMoodEmoji.classList.add('changing');
+            setTimeout(function () {
+                _guardianMoodEmoji.textContent = emoji;
+                _guardianMoodEmoji.classList.remove('changing');
+            }, 150);
+        }
+        if (_guardianMoodLabel) {
+            _guardianMoodLabel.textContent = label || '';
+        }
+    }
+
+    function _onGuardianMood(payload) {
+        if (!payload) return;
+        _updateGuardianMood(payload.emoji, payload.label);
+    }
+
+    function _onGuardianEvent(payload) {
+        if (!payload) return;
+
+        // Skip scan events (too noisy for UI)
+        if (payload.type === 'scan') return;
+
+        _guardianEvents.unshift(payload);
+        if (_guardianEvents.length > 100) _guardianEvents = _guardianEvents.slice(0, 100);
+
+        // Update badge counter
+        if (!_guardianLogOpen && _isAdmin) {
+            _guardianUnreadCount++;
+            if (_guardianLogBadge) {
+                _guardianLogBadge.textContent = _guardianUnreadCount > 9 ? '9+' : String(_guardianUnreadCount);
+                _guardianLogBadge.style.display = 'flex';
+            }
+        }
+
+        // Prepend to log panel if open
+        if (_guardianLogOpen && _guardianLogEntries) {
+            var emptyEl = _guardianLogEntries.querySelector('.guardian-log-empty');
+            if (emptyEl) emptyEl.remove();
+            _guardianLogEntries.insertBefore(_buildLogEntry(payload), _guardianLogEntries.firstChild);
+        }
+    }
+
+    function _buildLogEntry(ev) {
+        var el = document.createElement('div');
+        el.className = 'guardian-log-entry severity-' + (ev.severity || 'info');
+
+        var icon = '🔍';
+        if (ev.type === 'mask') icon = '🛡️';
+        else if (ev.type === 'mute') icon = '🚨';
+        else if (ev.type === 'warn') icon = '⚠️';
+        else if (ev.type === 'scan') icon = '👁️';
+
+        var time = '';
+        try {
+            time = new Date(ev.timestamp).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        } catch (e) { time = ''; }
+
+        el.innerHTML =
+            '<div class="guardian-log-entry-icon">' + icon + '</div>' +
+            '<div class="guardian-log-entry-body">' +
+                '<div class="guardian-log-entry-text"><b>@' + _esc(ev.username || '?') + '</b> — ' + _esc(ev.details || ev.type) + '</div>' +
+                '<div class="guardian-log-entry-time">' + time + '</div>' +
+            '</div>';
+        return el;
+    }
+
+    async function _loadGuardianEvents() {
+        if (!_isAdmin || !_guardianLogEntries) return;
+        try {
+            var actions = await _fetchJson('/api/guardian/actions?limit=20');
+            if (actions && actions.length > 0) {
+                _guardianLogEntries.innerHTML = '';
+                actions.forEach(function (a) {
+                    var ev = {
+                        type: a.actionType,
+                        username: a.targetUsername || (a.details && a.details.username) || '?',
+                        details: (a.details && a.details.reason) || (a.details && a.details.types && ('Замасковано: ' + a.details.types.join(', '))) || a.actionType,
+                        severity: a.actionType === 'mute' ? 'danger' : a.actionType === 'mask' ? 'warning' : 'info',
+                        timestamp: a.createdAt
+                    };
+                    _guardianLogEntries.appendChild(_buildLogEntry(ev));
+                });
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    // Direct fetch for non-chat APIs (guardian, etc.)
+    async function _fetchJson(url) {
+        var resp = await fetch(url, { headers: _headers() });
+        if (!resp.ok) return null;
+        return resp.json();
+    }
+
+    // Initialize guardian UI when channel is selected
+    var _origSelectChannel = _selectChannel;
+    // Override init — show guardian bar on page load
+    setTimeout(function () {
+        _initGuardianUI();
+    }, 500);
 })();

@@ -1624,3 +1624,39 @@ body.dark-mode .chat-info-member:hover {
 body.dark-mode ::-webkit-scrollbar-track {
     background: #0f0f1a;
 }
+
+/* Guardian watch bar dark mode */
+body.dark-mode .guardian-watch-bar {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08));
+    border-bottom-color: rgba(99, 102, 241, 0.2);
+}
+
+body.dark-mode .guardian-mood-label {
+    color: var(--gray-400);
+}
+
+body.dark-mode .guardian-watch-log-btn {
+    border-color: rgba(99, 102, 241, 0.25);
+    color: var(--gray-400);
+}
+
+body.dark-mode .guardian-log-panel {
+    background: var(--chat-bg, #1a1a2e);
+    border-bottom-color: rgba(99, 102, 241, 0.25);
+}
+
+body.dark-mode .guardian-log-header {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+body.dark-mode .guardian-log-entry-text {
+    color: var(--gray-300);
+}
+
+body.dark-mode .guardian-log-entry.severity-danger {
+    background: rgba(239, 68, 68, 0.08);
+}
+
+body.dark-mode .guardian-log-entry.severity-warning {
+    background: rgba(245, 158, 11, 0.06);
+}

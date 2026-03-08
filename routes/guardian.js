@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { generateDailyReport, runDailyReports, ensureGuardianMemberships } = require('../services/guardian');
+const { generateDailyReport, runDailyReports, ensureGuardianMemberships, getMood, getGuardianState } = require('../services/guardian');
 
 const log = createLogger('GuardianRoute');
 
@@ -199,6 +199,22 @@ router.get('/stats', async (req, res) => {
         log.error('GET /stats error', err);
         res.status(500).json({ error: 'Failed to fetch stats' });
     }
+});
+
+/**
+ * GET /api/guardian/mood
+ * Get current guardian mood
+ */
+router.get('/mood', (req, res) => {
+    res.json(getMood());
+});
+
+/**
+ * GET /api/guardian/state
+ * Get full guardian state (mood, health, memory summary)
+ */
+router.get('/state', (req, res) => {
+    res.json(getGuardianState());
 });
 
 module.exports = router;

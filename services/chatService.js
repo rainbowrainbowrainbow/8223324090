@@ -17,6 +17,8 @@ function mapMessageRow(row) {
         replyTo: row.reply_to || null,
         replyContent: row.reply_content || null,
         replyUsername: row.reply_username || null,
+        isBot: row.is_bot || false,
+        contentType: row.content_type || 'text',
         editedAt: row.edited_at || null,
         deletedAt: row.deleted_at || null,
         createdAt: row.created_at,
@@ -631,8 +633,8 @@ async function sendBotMessage(channelId, content, { contentType = 'system', meta
         await client.query('BEGIN');
         const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
         const seq = seqResult.rows[0].seq;
-        // Use first admin user as sender for bot messages (or null if we add nullable user_id later)
-        const botUser = await client.query("SELECT id FROM users WHERE username = 'openclaw' OR role = 'admin' ORDER BY id LIMIT 1");
+        // Prefer openclaw user, fallback to first admin
+        const botUser = await client.query("SELECT id FROM users WHERE username = 'openclaw' OR role = 'admin' ORDER BY (username = 'openclaw') DESC, id LIMIT 1");
         const botUserId = botUser.rows[0]?.id || 1;
         const result = await client.query(`
             INSERT INTO chat_messages (channel_id, user_id, seq, content, is_bot, content_type, metadata)

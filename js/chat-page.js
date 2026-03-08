@@ -1271,14 +1271,15 @@
 
     function _createMessageEl(msg, isGrouped) {
         var isOwn = String(msg.userId) === _currentUserId;
+        var isBot = msg.isBot || msg.username === 'openclaw';
         var emojiOnly = !msg.deletedAt && msg.content && _isOnlyEmoji(msg.content);
         var el = document.createElement('div');
-        el.className = 'chat-message' + (isOwn ? ' own' : '') + (isGrouped ? ' grouped' : '') + (emojiOnly ? ' emoji-only' : '');
+        el.className = 'chat-message' + (isOwn ? ' own' : '') + (isGrouped ? ' grouped' : '') + (emojiOnly ? ' emoji-only' : '') + (isBot ? ' bot' : '');
         el.dataset.messageId = msg.id;
         el.dataset.seq = msg.seq;
         el.dataset.userId = msg.userId;
 
-        var initial = (msg.displayName || msg.username || '?').charAt(0).toUpperCase();
+        var initial = isBot ? '🦀' : (msg.displayName || msg.username || '?').charAt(0).toUpperCase();
         var time = new Date(msg.createdAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
         var content = msg.deletedAt ? '<em style="color:var(--gray-400)">Повідомлення видалено</em>' : _formatContent(msg.content);
         var editedHtml = msg.editedAt && !msg.deletedAt ? '<span class="chat-bubble-edited">(ред.)</span>' : '';

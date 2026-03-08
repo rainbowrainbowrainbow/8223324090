@@ -4,6 +4,7 @@
 const router = require('express').Router();
 const chat = require('../services/chatService');
 const { broadcastToChannel, sendToUser } = require('../services/websocket');
+const { processMessage: processBotMessage } = require('../services/chat-bot');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('ChatAPI');
@@ -83,6 +84,11 @@ router.post('/channels/:id/messages', async (req, res) => {
                 content: message.content
             });
         }
+
+        // Bot processing (fire-and-forget — don't block response)
+        processBotMessage(message).catch(err => {
+            log.error('Bot processing error', err);
+        });
 
         res.status(201).json(message);
     } catch (err) {

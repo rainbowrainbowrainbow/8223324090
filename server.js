@@ -217,7 +217,7 @@ app.get('/staff', (req, res) => {
     res.sendFile(path.join(__dirname, 'staff.html'));
 });
 app.get('/kleshnya', (req, res) => {
-    res.sendFile(path.join(__dirname, 'kleshnya.html'));
+    res.redirect('/chat');
 });
 app.get('/designs', (req, res) => {
     res.sendFile(path.join(__dirname, 'designs.html'));
@@ -327,6 +327,12 @@ runMigrations(pool).then(() => {
             const { registerBotCommands } = require('./services/bot');
             registerBotCommands().catch(err => log.error('Bot commands registration error', err));
         } catch (e) { log.error('Failed to register bot commands', e); }
+
+        // Ensure chat bot is member of all default channels
+        try {
+            const { ensureBotMemberships } = require('./services/chat-bot');
+            ensureBotMemberships().catch(err => log.error('Bot memberships error', err));
+        } catch (e) { log.error('Failed to ensure bot memberships', e); }
 
         // v19.10: Schedulers wrapped with guardScheduler for dedup + error tracking
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoDigest', checkAutoDigest, { dedup: 'daily' }), 60000));

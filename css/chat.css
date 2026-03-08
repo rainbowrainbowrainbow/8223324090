@@ -3997,6 +3997,12 @@
     transform: scale(1.05);
 }
 
+.guardian-watch-digest-btn:active,
+.guardian-watch-digest-btn.active {
+    background: rgba(245, 158, 11, 0.3);
+    transform: scale(0.95);
+}
+
 .guardian-digest-panel {
     background: var(--white);
     border-bottom: 1px solid var(--gray-100);
@@ -4004,6 +4010,9 @@
     overflow-y: auto;
     animation: chatFadeIn 0.3s ease;
     box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    position: relative;
+    z-index: 5;
+    flex-shrink: 0;
 }
 
 .guardian-digest-header {

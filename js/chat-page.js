@@ -2823,13 +2823,17 @@
 
     if (_digestBtn) {
         _digestBtn.addEventListener('click', function () {
+            console.log('[Guardian] Digest button clicked, panel:', !!_digestPanel);
             _digestOpen = !_digestOpen;
+            _digestBtn.classList.toggle('active', _digestOpen);
             if (_digestPanel) _digestPanel.style.display = _digestOpen ? 'block' : 'none';
             if (_digestOpen) {
                 _digestCurrentDate = new Date();
                 _loadDigest(_digestCurrentDate);
             }
         });
+    } else {
+        console.warn('[Guardian] Digest button #guardianDigestBtn not found in DOM');
     }
     if (_digestClose) {
         _digestClose.addEventListener('click', function () {
@@ -2855,7 +2859,10 @@
     }
 
     async function _loadDigest(date) {
-        if (!_digestContent || !_digestDate) return;
+        if (!_digestContent || !_digestDate) {
+            console.warn('[Guardian] Digest content or date element missing');
+            return;
+        }
         var dateStr = date.toLocaleDateString('sv-SE'); // YYYY-MM-DD
         var displayDate = date.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
         _digestDate.textContent = displayDate;
@@ -2863,7 +2870,9 @@
 
         try {
             var channelParam = _currentChannel ? '&channelId=' + _currentChannel.id : '';
+            console.log('[Guardian] Loading digest for', dateStr, channelParam ? 'channel ' + _currentChannel.id : 'all channels');
             var reports = await _fetchJson('/api/guardian/reports?limit=10' + channelParam);
+            console.log('[Guardian] Reports received:', reports ? reports.length : 'null');
             if (!reports || reports.length === 0) {
                 _digestContent.innerHTML = '<div class="guardian-digest-empty">📭 Дайджест ще не згенеровано.<br><small>Guardian створює звіт щовечора о 23:00</small></div>';
                 return;
@@ -2907,7 +2916,8 @@
 
             _digestContent.innerHTML = statsHtml + '<div class="guardian-digest-body">' + summary + '</div>';
         } catch (e) {
-            _digestContent.innerHTML = '<div class="guardian-digest-empty">❌ Помилка завантаження</div>';
+            console.error('[Guardian] Digest load error:', e);
+            _digestContent.innerHTML = '<div class="guardian-digest-empty">❌ Помилка завантаження дайджесту</div>';
         }
     }
     var _guardianLogBadge = document.getElementById('guardianLogBadge');
@@ -2918,12 +2928,13 @@
     var _isAdmin = false;
 
     function _initGuardianUI() {
+        console.log('[Guardian] Initializing guardian UI');
         // Check if user is admin
         try {
-            var token = localStorage.getItem('token');
+            var token = localStorage.getItem('pzp_token');
             if (token) {
                 var payload = JSON.parse(atob(token.split('.')[1]));
-                _isAdmin = payload.role === 'admin' || payload.role === 'owner';
+                _isAdmin = payload.role === 'admin' || payload.role === 'creator' || payload.role === 'director';
             }
         } catch (e) { /* ignore */ }
 

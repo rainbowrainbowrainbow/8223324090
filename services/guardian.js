@@ -785,65 +785,19 @@ async function aiConflictCheck(messages) {
 }
 
 /**
- * Analyze message for conflicts. Mute if necessary.
+ * Analyze message for conflicts (fire-and-forget from processMessage).
+ * Keyword + LLM profanity checks are now INLINE in processMessage.
+ * This only handles: conflict detection + batch learning.
  */
 async function analyzeConflict(channelId, userId, username, content, messageId) {
-    // Track recent messages
+    // Track recent messages for conflict context
     if (!_recentMessages[channelId]) _recentMessages[channelId] = [];
     _recentMessages[channelId].push({ username, content, userId, messageId, ts: Date.now() });
     if (_recentMessages[channelId].length > CONFLICT_WINDOW * 2) {
         _recentMessages[channelId] = _recentMessages[channelId].slice(-CONFLICT_WINDOW);
     }
 
-    // 1. Quick keyword check — if matched, DELETE message + mute
-    const toxicWords = quickToxicityCheck(content);
-    if (toxicWords) {
-        const isRussian = toxicWords.some(w => w.includes('російська'));
-        const reason = isRussian
-            ? '🇷🇺 Російська мова заборонена. Спілкуйтесь українською!'
-            : `Нецензурна лексика: ${toxicWords.slice(0, 2).join(', ')}`;
-        // Delete the toxic message
-        if (messageId) {
-            await deleteToxicMessage(messageId, channelId, username, reason);
-        }
-        await muteUser(channelId, userId, username, reason);
-        return true;
-    }
-
-    // 2. Real-time LLM profanity check for messages that passed keyword filter
-    if (AI_ENABLED && content.length >= 3) {
-        const llmResult = await llmProfanityCheck(content);
-        if (llmResult && llmResult.toxic) {
-            const reason = `AI: ${llmResult.reason || 'Нецензурна лексика (обхід фільтру)'}`;
-            if (messageId) {
-                await deleteToxicMessage(messageId, channelId, username, reason);
-            }
-            await muteUser(channelId, userId, username, reason);
-
-            // Learn new words from AI detection
-            if (llmResult.words && llmResult.words.length > 0) {
-                for (const w of llmResult.words) {
-                    const word = w.toLowerCase().trim();
-                    if (word.length >= 2 && !TOXIC_KEYWORDS_BASE.includes(word) && !_dynamicToxicWords.includes(word)) {
-                        try {
-                            await pool.query(
-                                `INSERT INTO guardian_toxic_words (word, added_by, source) VALUES ($1, 'guardian', 'llm-realtime') ON CONFLICT DO NOTHING`,
-                                [word]
-                            );
-                            _dynamicToxicWords.push(word);
-                            _fuzzyRegexes.push({ word, regex: buildFuzzyRegex(word) });
-                            log.info(`Learned new toxic word from LLM: "${word}"`);
-                        } catch (err) {
-                            log.error('Failed to save learned word', err.message);
-                        }
-                    }
-                }
-            }
-            return true;
-        }
-    }
-
-    // 3. AI check for subtle conflicts (if we have enough context)
+    // 1. AI conflict check (needs context of multiple messages)
     const recent = _recentMessages[channelId];
     if (recent.length >= 3 && AI_ENABLED) {
         const aiResult = await aiConflictCheck(recent.slice(-CONFLICT_WINDOW));
@@ -860,7 +814,7 @@ async function analyzeConflict(channelId, userId, username, content, messageId) 
         }
     }
 
-    // 4. If no keyword match and AI available — buffer for batch learning
+    // 2. Buffer for batch learning
     if (AI_ENABLED && content.length > 10) {
         _pendingLearnMessages.push({ content, username, channelId });
         if (_pendingLearnMessages.length >= LEARN_BATCH_SIZE) {
@@ -939,6 +893,13 @@ async function generateDailyReport(channelId, dateStr) {
             `[${new Date(m.created_at).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}] ${m.username}: ${m.content}`
         ).join('\n');
 
+        // Collect LLM findings for this channel
+        const findings = _llmFindings[channelId] || [];
+        const findingsCount = findings.length;
+        const findingsSection = findingsCount > 0
+            ? `\n<b>🤖 AI-модерація:</b>\n- Заблоковано спроб обходу фільтру: ${findingsCount}\n- Користувачі: ${[...new Set(findings.map(f => f.username))].join(', ')}\n- Причини: ${[...new Set(findings.map(f => f.reason))].slice(0, 3).join('; ')}`
+            : '';
+
         const summary = await callLLM(
             `Ти — Guardian, AI-модератор корпоративного чату розважального парку "Парк Закревського Періоду".
 Створи щоденний звіт з чату для директора. Формат:
@@ -957,11 +918,15 @@ async function generateDailyReport(channelId, dateStr) {
 - Рішення, домовленості, дедлайни, задачі
 
 <b>🛡️ Модерація:</b>
-- Блокувань: ${actionCounts.mute || 0}, Замасковано: ${actionCounts.mask || 0}
+- Блокувань: ${actionCounts.mute || 0}, Замасковано: ${actionCounts.mask || 0}, AI-блокувань: ${findingsCount}
+${findingsSection}
 
 Пиши українською, лаконічно. Ігноруй дрібні привітання. Фокусуйся на робочих темах та хто чим займався.`,
             `Повідомлення за ${dateStr}:\n\n${chatLog}`, 600
         ) || 'Не вдалось згенерувати звіт';
+
+        // Clear findings for this channel after report
+        _llmFindings[channelId] = [];
 
         // Extract important messages (mentioned decisions/deadlines)
         const important = messages.filter(m =>
@@ -1059,6 +1024,46 @@ function _trackConversation(channelId, username, content) {
     // Limit memory
     if (_conversationTracker[channelId].length > CONVERSATION_MAX_PER_CHANNEL) {
         _conversationTracker[channelId] = _conversationTracker[channelId].slice(-CONVERSATION_MAX_PER_CHANNEL);
+    }
+}
+
+// ==========================================
+// LLM FINDINGS TRACKER (for digest enrichment)
+// ==========================================
+
+const _llmFindings = {}; // { channelId: [{ username, type, reason, words, ts }] }
+
+/**
+ * Track LLM moderation findings for daily digest.
+ */
+function _trackLLMFinding(channelId, username, type, reason, words) {
+    if (!_llmFindings[channelId]) _llmFindings[channelId] = [];
+    _llmFindings[channelId].push({ username, type, reason, words: words || [], ts: Date.now() });
+    if (_llmFindings[channelId].length > 100) {
+        _llmFindings[channelId] = _llmFindings[channelId].slice(-50);
+    }
+}
+
+/**
+ * Learn new toxic words from LLM detection result.
+ */
+async function _learnWordsFromLLM(words) {
+    if (!words || words.length === 0) return;
+    for (const w of words) {
+        const word = w.toLowerCase().trim();
+        if (word.length >= 2 && !TOXIC_KEYWORDS_BASE.includes(word) && !_dynamicToxicWords.includes(word)) {
+            try {
+                await pool.query(
+                    `INSERT INTO guardian_toxic_words (word, added_by, source) VALUES ($1, 'guardian', 'llm-realtime') ON CONFLICT DO NOTHING`,
+                    [word]
+                );
+                _dynamicToxicWords.push(word);
+                _fuzzyRegexes.push({ word, regex: buildFuzzyRegex(word) });
+                log.info(`Learned new toxic word from LLM: "${word}"`);
+            } catch (err) {
+                log.error('Failed to save learned word', err.message);
+            }
+        }
     }
 }
 
@@ -1170,8 +1175,10 @@ async function sendGuardianMessage(channelId, content) {
  *
  * Pipeline:
  *   1. Check if user is muted → block
- *   2. Mask sensitive data
- *   3. Analyze for conflicts
+ *   2. Keyword profanity check (instant) → block
+ *   3. LLM profanity check (1-2s) → block
+ *   4. Mask sensitive data (fire-and-forget)
+ *   5. Conflict detection + batch learning (fire-and-forget)
  */
 async function processMessage(message) {
     if (!message || !message.content) return { blocked: false };
@@ -1207,15 +1214,45 @@ async function processMessage(message) {
         severity: 'info'
     });
 
+    // 2. Quick keyword check — INLINE, blocks BEFORE message is shown
+    const toxicWords = quickToxicityCheck(content);
+    if (toxicWords) {
+        const isRussian = toxicWords.some(w => w.includes('російська'));
+        const reason = isRussian
+            ? '🇷🇺 Російська мова заборонена. Спілкуйтесь українською!'
+            : `Нецензурна лексика: ${toxicWords.slice(0, 2).join(', ')}`;
+        if (messageId) {
+            await deleteToxicMessage(messageId, channelId, username, reason);
+        }
+        await muteUser(channelId, userId, username, reason);
+        _trackLLMFinding(channelId, username, 'keyword', reason, toxicWords);
+        return { blocked: true, reason, message: '🛡️ ' + reason };
+    }
+
+    // 3. LLM profanity check — INLINE, catches creative bypass (1-2s)
+    if (AI_ENABLED && content.length >= 3) {
+        const llmResult = await llmProfanityCheck(content);
+        if (llmResult && llmResult.toxic) {
+            const reason = `AI: ${llmResult.reason || 'Нецензурна лексика (обхід фільтру)'}`;
+            if (messageId) {
+                await deleteToxicMessage(messageId, channelId, username, reason);
+            }
+            await muteUser(channelId, userId, username, reason);
+            _learnWordsFromLLM(llmResult.words);
+            _trackLLMFinding(channelId, username, 'llm-realtime', reason, llmResult.words || []);
+            return { blocked: true, reason, message: '🛡️ ' + reason };
+        }
+    }
+
     // Track conversation for daily reports
     _trackConversation(channelId, username, content);
 
-    // 2. Mask sensitive data (fire-and-forget)
+    // 4. Mask sensitive data (fire-and-forget)
     maskSensitiveInMessage(messageId, channelId, content, username).catch(err => {
         log.error('Masking error', err);
     });
 
-    // 3. Analyze conflicts silently (no typing indicator shown)
+    // 5. Conflict detection + batch learning (fire-and-forget)
     (async () => {
         try {
             await analyzeConflict(channelId, userId, username, content, messageId);

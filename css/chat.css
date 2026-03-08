@@ -4152,6 +4152,31 @@
     color: var(--gray-300, #d1d5db);
 }
 
+.guardian-digest-generate-btn {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 8px 16px;
+    background: var(--amber-100, #fef3c7);
+    color: var(--amber-800, #92400e);
+    border: 1px solid var(--amber-300, #fcd34d);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background 0.2s;
+    min-height: 44px;
+}
+
+.guardian-digest-generate-btn:hover {
+    background: var(--amber-200, #fde68a);
+}
+
+[data-theme="dark"] .guardian-digest-generate-btn {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--amber-300, #fcd34d);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
 /* ==========================================
    FEATURE 1: ONLINE/OFFLINE INDICATORS
    ========================================== */

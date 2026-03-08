@@ -168,17 +168,20 @@ function formatPrice(amount) {
  */
 function initDarkMode() {
     const saved = localStorage.getItem('pzp_dark_mode');
+    const autoEnabled = localStorage.getItem('pzp_autoNight') !== 'false';
     let isDark;
     if (saved === 'true') {
         isDark = true;
     } else if (saved === 'false') {
         isDark = false;
-    } else {
+    } else if (autoEnabled) {
         // Авто: темна тема з configurable часу (default 19:00-07:00)
         const hour = new Date().getHours();
         const autoStart = parseInt(localStorage.getItem('pzp_night_start') || '19', 10);
         const autoEnd = parseInt(localStorage.getItem('pzp_night_end') || '7', 10);
         isDark = (autoStart > autoEnd) ? (hour >= autoStart || hour < autoEnd) : (hour >= autoStart && hour < autoEnd);
+    } else {
+        isDark = false;
     }
     document.body.classList.toggle('dark-mode', isDark);
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');

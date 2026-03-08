@@ -395,6 +395,20 @@ function initNightSettings() {
         });
     }
 
+    // Reset to auto button
+    const resetBtn = document.getElementById('resetAutoThemeBtn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            localStorage.removeItem('pzp_dark_mode');
+            AppState.darkMode = initDarkMode();
+            const toggle = document.getElementById('darkModeToggle');
+            if (toggle) toggle.checked = AppState.darkMode;
+            const icon = document.getElementById('darkModeIcon');
+            if (icon) icon.textContent = AppState.darkMode ? '☀️' : '🌙';
+            panel.style.display = 'none';
+        });
+    }
+
     // Close panel when clicking outside
     document.addEventListener('click', (e) => {
         if (!panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {

@@ -184,6 +184,31 @@ body.dark-mode .btn-night-settings {
     border-color: var(--gray-600, #4b5563);
 }
 
+.btn-reset-auto {
+    width: 100%;
+    padding: 6px 10px;
+    margin-top: 4px;
+    border: 1px solid var(--gray-300);
+    background: var(--gray-50);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--gray-600);
+    transition: all 0.15s;
+}
+
+.btn-reset-auto:hover {
+    background: var(--primary, #6366f1);
+    color: white;
+    border-color: var(--primary, #6366f1);
+}
+
+body.dark-mode .btn-reset-auto {
+    background: var(--gray-700, #374151);
+    border-color: var(--gray-600, #4b5563);
+    color: var(--gray-400, #9ca3af);
+}
+
 /* ==========================================
    UNDO BUTTON
    ========================================== */

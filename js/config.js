@@ -276,3 +276,27 @@ function getProductsSync() {
 
 // v21.14.0: Auto-init dark mode on all pages that load config.js
 initDarkMode();
+
+// v21.15.0: Fallback showNotification for pages without ui.js
+// Provides toast functionality for ws.js offline/reconnect indicators
+if (typeof showNotification === 'undefined') {
+    window.showNotification = function(message, type) {
+        let container = document.getElementById('toastContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'toast-container';
+            container.setAttribute('aria-live', 'polite');
+            document.body.appendChild(container);
+        }
+        const toast = document.createElement('div');
+        toast.className = 'toast' + (type ? ' ' + type : '');
+        toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function() {
+            toast.classList.add('toast-exit');
+            setTimeout(function() { toast.remove(); }, 300);
+        }, 3000);
+    };
+}

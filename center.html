@@ -7,12 +7,12 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=20.93">
-    <link rel="stylesheet" href="css/layout.css?v=20.93">
-    <link rel="stylesheet" href="css/pages.css?v=20.93">
-    <link rel="stylesheet" href="css/modals.css?v=20.93">
-    <link rel="stylesheet" href="css/dark-mode.css?v=20.93">
-    <link rel="stylesheet" href="css/responsive.css?v=20.93">
+    <link rel="stylesheet" href="css/base.css?v=21.15.0">
+    <link rel="stylesheet" href="css/layout.css?v=21.15.0">
+    <link rel="stylesheet" href="css/pages.css?v=21.15.0">
+    <link rel="stylesheet" href="css/modals.css?v=21.15.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=21.15.0">
+    <link rel="stylesheet" href="css/responsive.css?v=21.15.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -847,19 +847,8 @@
                     <span class="em-logo-sub">AI First CRM</span>
                 </div>
             </div>
-            <nav class="sidebar-links">
-                <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
-                <a href="/programs" class="nav-link"><span class="nav-icon">П</span> <span class="nav-text">Програми</span></a>
-                <a href="/staff" class="nav-link"><span class="nav-icon">Г</span> <span class="nav-text">Графік</span></a>
-                <a href="/hr" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">H</span> <span class="nav-text">HR</span></a>
-                <a href="/designs" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Д</span> <span class="nav-text">Дизайни</span></a>
-                <a href="/customers" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
-                <a href="/finance" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
-                <a href="/warehouse" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
-                <a href="/center" class="nav-link active sidebar-admin-only hidden"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
-                <a href="/art-director" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
-                <a href="/demo" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
+            <nav class="sidebar-links" id="sidebarLinks">
+                <!-- Populated by sidebar.js -->
             </nav>
         </aside>
 
@@ -1188,11 +1177,12 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="js/config.js?v=20.70"></script>
-    <script src="js/api.js?v=20.70"></script>
-    <script src="js/auth.js?v=20.70"></script>
-    <script src="js/components/sidebar.js?v=20.70"></script>
-    <script src="js/center-page.js?v=20.70"></script>
+    <script src="js/config.js?v=21.15.0"></script>
+    <script src="js/api.js?v=21.15.0"></script>
+    <script src="js/auth.js?v=21.15.0"></script>
+    <script src="js/components/sidebar.js?v=21.15.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/center-page.js?v=21.15.0"></script>
     <script>
     // v20.3.0: Center tabs
     (function() {

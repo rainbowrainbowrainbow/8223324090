@@ -7,16 +7,26 @@
  */
 
 const Sidebar = (() => {
+    // v21.15.0: Full NAV_ITEMS matching all standalone pages + PAGE_ACCESS
     const NAV_ITEMS = [
-        { href: '/',          icon: 'T',  label: 'Таймлайн' },
+        { href: '/',          icon: 'Т',  label: 'Таймлайн' },
         { href: '/center',    icon: 'Ц',  label: 'Центр' },
         { href: '/tasks',     icon: 'З',  label: 'Задачі' },
-        { href: '/art',       icon: 'А',  label: 'Арт' },
+        { href: '/chat',      icon: 'Чт', label: 'Чат' },
         { href: '/customers', icon: 'К',  label: 'Клієнти' },
+        { href: '/programs',  icon: 'П',  label: 'Програми' },
         { href: '/staff',     icon: 'Ш',  label: 'Персонал' },
+        { href: '/art',       icon: 'А',  label: 'Арт' },
+        { href: '/designs',   icon: 'Д',  label: 'Дизайни' },
         { href: '/warehouse', icon: 'С',  label: 'Склад' },
         { href: '/training',  icon: 'Н',  label: 'Навчання' },
-        { href: '/settings',  icon: 'Л',  label: 'Налаштування' },
+        { href: '/hr',        icon: 'HR', label: 'Кадри' },
+        { href: '/finance',   icon: 'Ф',  label: 'Фінанси' },
+        { href: '/analytics', icon: 'Ан', label: 'Аналітика' },
+        { href: '/leads',     icon: 'Л',  label: 'Ліди' },
+        { href: '/demo',      icon: 'De', label: 'Демо' },
+        { href: '/status',    icon: 'Ст', label: 'Статус' },
+        { href: '/settings',  icon: '⚙',  label: 'Налаштування' },
     ];
 
     // v20.6.0: Status badge config

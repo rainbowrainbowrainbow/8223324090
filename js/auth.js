@@ -76,6 +76,7 @@ const ROLE_NAMES = {
 const PAGE_ACCESS = {
     '/':          ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
     '/tasks':     ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
+    '/chat':      ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
     '/center':    ['creator', 'director', 'vice_director', 'senior_manager'],
     '/art':       ['creator', 'director', 'vice_director', 'senior_manager'],
     '/customers': ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
@@ -89,6 +90,7 @@ const PAGE_ACCESS = {
     '/hr':        ['creator', 'director', 'vice_director', 'senior_manager'],
     '/finance':   ['creator', 'director'],
     '/analytics': ['creator', 'director', 'vice_director', 'senior_manager'],
+    '/leads':     ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
     '/status':    ['creator', 'director', 'vice_director', 'senior_manager'],
 };
 

@@ -857,4 +857,217 @@ router.delete('/bookmarks/:id', async (req, res) => {
     }
 });
 
+// ==========================================
+// TRANSLATE
+// ==========================================
+
+// POST /api/chat/translate — translate message text
+router.post('/translate', async (req, res) => {
+    try {
+        const { text, targetLang } = req.body;
+        if (!text) return res.status(400).json({ error: 'Missing text' });
+
+        const lang = targetLang || 'en';
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+
+        if (!apiKey) {
+            return res.json({ translated: text, note: 'API ключ не налаштовано' });
+        }
+
+        const https = require('https');
+        const body = JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 500,
+            messages: [{
+                role: 'user',
+                content: `Translate the following text to ${lang === 'uk' ? 'Ukrainian' : 'English'}. Return ONLY the translation, no explanations:\n\n${text}`
+            }]
+        });
+
+        const translated = await new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'api.anthropic.com',
+                path: '/v1/messages',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01'
+                },
+                timeout: 10000
+            };
+            const req2 = https.request(options, (resp) => {
+                let data = '';
+                resp.on('data', chunk => data += chunk);
+                resp.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(data);
+                        resolve(parsed.content?.[0]?.text || text);
+                    } catch (e) { resolve(text); }
+                });
+            });
+            req2.on('error', () => resolve(text));
+            req2.write(body);
+            req2.end();
+        });
+
+        res.json({ translated });
+    } catch (err) {
+        log.error('Error translating', err);
+        res.json({ translated: req.body.text });
+    }
+});
+
+// ==========================================
+// STICKERS
+// ==========================================
+
+// GET /api/chat/stickers — list all sticker packs with stickers
+router.get('/stickers', async (req, res) => {
+    try {
+        const pool = require('../db/pool');
+        const packs = await pool.query('SELECT * FROM chat_sticker_packs ORDER BY is_default DESC, name');
+        const stickers = await pool.query('SELECT * FROM chat_stickers ORDER BY pack_id, sort_order');
+
+        const result = packs.rows.map(p => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            coverUrl: p.cover_url,
+            isDefault: p.is_default,
+            stickers: stickers.rows
+                .filter(s => s.pack_id === p.id)
+                .map(s => ({ id: s.id, emoji: s.emoji, url: s.url, altText: s.alt_text }))
+        }));
+
+        // If no packs, return built-in dino stickers
+        if (result.length === 0) {
+            result.push({
+                id: 0, name: 'Дино Парк 🦕', description: 'Стікери парку', isDefault: true,
+                stickers: [
+                    { id: 1, emoji: '🦕', url: '', altText: 'Дружній діно' },
+                    { id: 2, emoji: '🦖', url: '', altText: 'Хижий діно' },
+                    { id: 3, emoji: '🥚', url: '', altText: 'Яйце діно' },
+                    { id: 4, emoji: '🌋', url: '', altText: 'Вулкан' },
+                    { id: 5, emoji: '🦴', url: '', altText: 'Кістка' },
+                    { id: 6, emoji: '🌴', url: '', altText: 'Пальма' },
+                    { id: 7, emoji: '🦎', url: '', altText: 'Ящірка' },
+                    { id: 8, emoji: '🐊', url: '', altText: 'Крокодил' },
+                    { id: 9, emoji: '🎉', url: '', altText: 'Свято' },
+                    { id: 10, emoji: '🎂', url: '', altText: 'Торт' },
+                    { id: 11, emoji: '🎈', url: '', altText: 'Кулька' },
+                    { id: 12, emoji: '🎪', url: '', altText: 'Цирк' },
+                    { id: 13, emoji: '🏰', url: '', altText: 'Замок' },
+                    { id: 14, emoji: '🎠', url: '', altText: 'Карусель' },
+                    { id: 15, emoji: '🧸', url: '', altText: 'Ведмедик' },
+                    { id: 16, emoji: '🦁', url: '', altText: 'Лев' }
+                ]
+            });
+        }
+        res.json(result);
+    } catch (err) {
+        log.error('Error loading stickers', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// GIF SEARCH
+// ==========================================
+
+// GET /api/chat/gifs — search GIFs via Tenor
+router.get('/gifs', async (req, res) => {
+    try {
+        const query = req.query.q || 'trending';
+        const tenorKey = process.env.TENOR_API_KEY;
+        if (!tenorKey) {
+            return res.json([]); // No API key configured
+        }
+
+        const https = require('https');
+        const apiUrl = query === 'trending'
+            ? `https://tenor.googleapis.com/v2/featured?key=${tenorKey}&limit=20&media_filter=tinygif,gif`
+            : `https://tenor.googleapis.com/v2/search?key=${tenorKey}&q=${encodeURIComponent(query)}&limit=20&media_filter=tinygif,gif`;
+
+        const data = await new Promise((resolve, reject) => {
+            https.get(apiUrl, { timeout: 5000 }, (resp) => {
+                let body = '';
+                resp.on('data', chunk => body += chunk);
+                resp.on('end', () => {
+                    try { resolve(JSON.parse(body)); }
+                    catch (e) { reject(e); }
+                });
+            }).on('error', reject);
+        });
+
+        const results = (data.results || []).map(r => ({
+            id: r.id,
+            title: r.title || '',
+            preview: r.media_formats?.tinygif?.url || r.media_formats?.gif?.url || '',
+            url: r.media_formats?.gif?.url || r.media_formats?.tinygif?.url || ''
+        }));
+
+        res.json(results);
+    } catch (err) {
+        log.debug('GIF search error: ' + err.message);
+        res.json([]);
+    }
+});
+
+// ==========================================
+// QUICK REPLY TEMPLATES
+// ==========================================
+
+// GET /api/chat/templates — list user's templates
+router.get('/templates', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const pool = require('../db/pool');
+        const result = await pool.query(
+            'SELECT * FROM chat_templates WHERE user_id = $1 ORDER BY shortcut', [userId]
+        );
+        res.json(result.rows.map(r => ({
+            id: r.id, shortcut: r.shortcut, content: r.content, category: r.category
+        })));
+    } catch (err) {
+        log.error('Error loading templates', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/chat/templates — create template
+router.post('/templates', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const { shortcut, content, category } = req.body;
+        if (!shortcut || !content) return res.status(400).json({ error: 'Missing shortcut or content' });
+
+        const pool = require('../db/pool');
+        const result = await pool.query(
+            `INSERT INTO chat_templates (user_id, shortcut, content, category)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (user_id, shortcut) DO UPDATE SET content = $3, category = $4
+             RETURNING *`,
+            [userId, shortcut.toLowerCase().replace(/^\//, ''), content, category || 'general']
+        );
+        res.json({ id: result.rows[0].id, shortcut: result.rows[0].shortcut, content: result.rows[0].content, category: result.rows[0].category });
+    } catch (err) {
+        log.error('Error creating template', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// DELETE /api/chat/templates/:id — delete template
+router.delete('/templates/:id', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const pool = require('../db/pool');
+        await pool.query('DELETE FROM chat_templates WHERE id = $1 AND user_id = $2', [req.params.id, userId]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Error deleting template', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

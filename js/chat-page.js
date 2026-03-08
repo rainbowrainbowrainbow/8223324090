@@ -218,6 +218,7 @@
                 ParkWS.sendChatTyping(_currentChannel.id);
             }
             _handleMentionInput(this);
+            _handleSlashCommand(this);
         });
 
         _input.addEventListener('keydown', function (e) {
@@ -1940,6 +1941,7 @@
                 '<div class="chat-msg-actions">' +
                     '<button class="chat-msg-action-btn" data-action="reply" title="Відповісти">↩</button>' +
                     '<button class="chat-msg-action-btn" data-action="react" title="Реакція">😊</button>' +
+                    '<button class="chat-msg-action-btn" data-action="translate" title="Перекласти">🌐</button>' +
                 '</div>' +
             '</div>' +
             '<span class="chat-swipe-reply-icon">↩</span>';
@@ -1955,6 +1957,13 @@
         if (reactBtn) {
             reactBtn.addEventListener('click', function (e) {
                 _showEmojiPicker(msg, e.target);
+            });
+        }
+
+        var translateBtn = el.querySelector('[data-action="translate"]');
+        if (translateBtn) {
+            translateBtn.addEventListener('click', function () {
+                _translateMessage(msg, el);
             });
         }
 
@@ -2058,12 +2067,29 @@
 
     /** Render file/image attachment from metadata */
     function _renderFileAttachment(msg) {
+        // GIF content type
+        if (msg.contentType === 'gif' && msg.content && msg.content.startsWith('http')) {
+            return '<div class="chat-gif-message"><img src="' + _esc(msg.content) + '" alt="GIF" class="chat-attached-gif" loading="lazy"></div>';
+        }
+        // Sticker content type
+        if (msg.contentType === 'sticker') {
+            if (msg.content && msg.content.startsWith('http')) {
+                return '<div class="chat-sticker-message"><img src="' + _esc(msg.content) + '" alt="sticker" class="chat-sticker-img"></div>';
+            }
+            return '<div class="chat-sticker-message"><span class="chat-sticker-emoji">' + _esc(msg.content) + '</span></div>';
+        }
         var meta = msg.metadata;
         if (!meta || !meta.file) return '';
         var f = meta.file;
         if (f.type === 'image') {
             return '<div class="chat-file-attachment chat-image-attachment">' +
                 '<img src="' + _esc(f.url) + '" alt="' + _esc(f.name) + '" class="chat-attached-image" loading="lazy" onclick="window.open(this.src,\'_blank\')">' +
+            '</div>';
+        }
+        // Audio/voice message
+        if (/\.(webm|ogg|mp3|wav)$/i.test(f.name)) {
+            return '<div class="chat-voice-player">' +
+                '<audio controls preload="metadata" class="chat-audio-element"><source src="' + _esc(f.url) + '" type="' + _esc(f.mimeType || 'audio/webm') + '"></audio>' +
             '</div>';
         }
         // File attachment
@@ -2380,6 +2406,376 @@
 
     var _mentionStart = -1;
     var _mentionActiveIdx = 0;
+
+    // ==========================================
+    // TRANSLATE
+    // ==========================================
+    async function _translateMessage(msg, el) {
+        if (!msg.content) return;
+        var contentEl = el.querySelector('.chat-bubble-content');
+        if (!contentEl) return;
+
+        // Check if already has translation
+        var existing = el.querySelector('.chat-translation');
+        if (existing) {
+            existing.remove();
+            return;
+        }
+
+        // Detect language: if mostly Cyrillic → translate to English, otherwise to Ukrainian
+        var cyrillicCount = (msg.content.match(/[а-яіїєґ]/gi) || []).length;
+        var targetLang = cyrillicCount > msg.content.length * 0.3 ? 'en' : 'uk';
+
+        var loadingEl = document.createElement('div');
+        loadingEl.className = 'chat-translation loading';
+        loadingEl.textContent = 'Перекладаю...';
+        contentEl.after(loadingEl);
+
+        try {
+            var result = await _api('POST', '/translate', { text: msg.content, targetLang: targetLang });
+            loadingEl.classList.remove('loading');
+            loadingEl.innerHTML = '<span class="chat-translation-label">🌐 ' + (targetLang === 'en' ? 'EN' : 'UK') + ':</span> ' + _esc(result.translated || msg.content);
+        } catch (err) {
+            loadingEl.remove();
+            console.error('[Chat] Translate error:', err);
+        }
+    }
+
+    // ==========================================
+    // STICKERS
+    // ==========================================
+    var _stickerBtn = document.getElementById('chatStickerBtn');
+    var _stickerPanel = null;
+    var _stickerPanelOpen = false;
+
+    if (_stickerBtn) {
+        _stickerBtn.addEventListener('click', _toggleStickerPanel);
+    }
+
+    function _toggleStickerPanel() {
+        _stickerPanelOpen = !_stickerPanelOpen;
+        if (!_stickerPanel) {
+            _stickerPanel = document.createElement('div');
+            _stickerPanel.className = 'chat-sticker-panel';
+            var inputArea = document.querySelector('.chat-input-area');
+            if (inputArea) inputArea.appendChild(_stickerPanel);
+            _loadStickers();
+        }
+        _stickerPanel.style.display = _stickerPanelOpen ? 'flex' : 'none';
+    }
+
+    async function _loadStickers() {
+        if (!_stickerPanel) return;
+        try {
+            var packs = await _api('GET', '/stickers');
+            _stickerPanel.innerHTML = '';
+
+            (packs || []).forEach(function (pack) {
+                var packDiv = document.createElement('div');
+                packDiv.className = 'chat-sticker-pack';
+                packDiv.innerHTML = '<div class="chat-sticker-pack-name">' + _esc(pack.name) + '</div>';
+
+                var grid = document.createElement('div');
+                grid.className = 'chat-sticker-grid';
+
+                (pack.stickers || []).forEach(function (s) {
+                    var btn = document.createElement('button');
+                    btn.className = 'chat-sticker-item';
+                    if (s.url) {
+                        btn.innerHTML = '<img src="' + _esc(s.url) + '" alt="' + _esc(s.altText || s.emoji) + '">';
+                    } else {
+                        btn.textContent = s.emoji;
+                    }
+                    btn.title = s.altText || s.emoji;
+                    btn.addEventListener('click', function () {
+                        _sendSticker(s);
+                    });
+                    grid.appendChild(btn);
+                });
+
+                packDiv.appendChild(grid);
+                _stickerPanel.appendChild(packDiv);
+            });
+        } catch (err) {
+            console.error('[Chat] Stickers error:', err);
+        }
+    }
+
+    async function _sendSticker(sticker) {
+        if (!_currentChannel) return;
+        _stickerPanelOpen = false;
+        if (_stickerPanel) _stickerPanel.style.display = 'none';
+
+        var content = sticker.url ? sticker.url : sticker.emoji;
+        try {
+            await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
+                content: content,
+                contentType: 'sticker'
+            });
+        } catch (err) {
+            console.error('[Chat] Send sticker error:', err);
+        }
+    }
+
+    // ==========================================
+    // GIF SEARCH
+    // ==========================================
+    var _gifBtn = document.getElementById('chatGifBtn');
+    var _gifPanel = null;
+    var _gifPanelOpen = false;
+
+    if (_gifBtn) {
+        _gifBtn.addEventListener('click', _toggleGifPanel);
+    }
+
+    function _toggleGifPanel() {
+        _gifPanelOpen = !_gifPanelOpen;
+        if (!_gifPanel) {
+            _gifPanel = document.createElement('div');
+            _gifPanel.className = 'chat-gif-panel';
+            _gifPanel.innerHTML = '<div class="chat-gif-search-row">' +
+                '<input class="chat-gif-search" placeholder="Шукати GIF..." type="text">' +
+                '</div>' +
+                '<div class="chat-gif-grid" id="chatGifGrid"></div>';
+            var inputArea = document.querySelector('.chat-input-area');
+            if (inputArea) inputArea.appendChild(_gifPanel);
+
+            var searchInput = _gifPanel.querySelector('.chat-gif-search');
+            var debounce;
+            searchInput.addEventListener('input', function () {
+                clearTimeout(debounce);
+                var q = this.value.trim();
+                debounce = setTimeout(function () {
+                    _searchGifs(q || 'funny');
+                }, 400);
+            });
+
+            // Load trending
+            _searchGifs('trending');
+        }
+        _gifPanel.style.display = _gifPanelOpen ? 'flex' : 'none';
+    }
+
+    async function _searchGifs(query) {
+        var grid = document.getElementById('chatGifGrid');
+        if (!grid) return;
+
+        try {
+            var results = await _api('GET', '/gifs?q=' + encodeURIComponent(query));
+            grid.innerHTML = '';
+            (results || []).forEach(function (gif) {
+                var img = document.createElement('img');
+                img.className = 'chat-gif-item';
+                img.src = gif.preview;
+                img.alt = gif.title || 'GIF';
+                img.loading = 'lazy';
+                img.addEventListener('click', function () {
+                    _sendGif(gif.url);
+                });
+                grid.appendChild(img);
+            });
+            if (!results || results.length === 0) {
+                grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Нічого не знайдено</div>';
+            }
+        } catch (err) {
+            console.error('[Chat] GIF search error:', err);
+            grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">GIF API не налаштовано</div>';
+        }
+    }
+
+    async function _sendGif(gifUrl) {
+        if (!_currentChannel) return;
+        _gifPanelOpen = false;
+        if (_gifPanel) _gifPanel.style.display = 'none';
+
+        try {
+            await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
+                content: gifUrl,
+                contentType: 'gif'
+            });
+        } catch (err) {
+            console.error('[Chat] Send GIF error:', err);
+        }
+    }
+
+    // ==========================================
+    // VOICE MESSAGES
+    // ==========================================
+    var _voiceBtn = document.getElementById('chatVoiceBtn');
+    var _voiceRecording = document.getElementById('chatVoiceRecording');
+    var _voiceTimer = document.getElementById('chatVoiceTimer');
+    var _voiceCancel = document.getElementById('chatVoiceCancel');
+    var _voiceSend = document.getElementById('chatVoiceSend');
+    var _mediaRecorder = null;
+    var _audioChunks = [];
+    var _voiceInterval = null;
+    var _voiceStart = 0;
+
+    if (_voiceBtn) {
+        _voiceBtn.addEventListener('click', _startVoiceRecording);
+    }
+    if (_voiceCancel) {
+        _voiceCancel.addEventListener('click', _cancelVoiceRecording);
+    }
+    if (_voiceSend) {
+        _voiceSend.addEventListener('click', _sendVoiceMessage);
+    }
+
+    async function _startVoiceRecording() {
+        try {
+            var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            _mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+            _audioChunks = [];
+
+            _mediaRecorder.ondataavailable = function (e) {
+                if (e.data.size > 0) _audioChunks.push(e.data);
+            };
+
+            _mediaRecorder.start();
+            _voiceStart = Date.now();
+
+            // Show recording UI
+            if (_voiceRecording) _voiceRecording.style.display = 'flex';
+            if (_voiceBtn) _voiceBtn.style.display = 'none';
+            if (_sendBtn) _sendBtn.style.display = 'none';
+
+            _voiceInterval = setInterval(function () {
+                var secs = Math.floor((Date.now() - _voiceStart) / 1000);
+                if (_voiceTimer) _voiceTimer.textContent = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+            }, 1000);
+        } catch (err) {
+            console.error('[Chat] Mic access error:', err);
+            alert('Немає доступу до мікрофону');
+        }
+    }
+
+    function _cancelVoiceRecording() {
+        if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+            _mediaRecorder.stop();
+            _mediaRecorder.stream.getTracks().forEach(function (t) { t.stop(); });
+        }
+        _mediaRecorder = null;
+        _audioChunks = [];
+        clearInterval(_voiceInterval);
+        if (_voiceRecording) _voiceRecording.style.display = 'none';
+        if (_voiceBtn) _voiceBtn.style.display = '';
+        if (_sendBtn) _sendBtn.style.display = '';
+    }
+
+    function _sendVoiceMessage() {
+        if (!_mediaRecorder || !_currentChannel) return;
+
+        _mediaRecorder.onstop = async function () {
+            _mediaRecorder.stream.getTracks().forEach(function (t) { t.stop(); });
+            clearInterval(_voiceInterval);
+            if (_voiceRecording) _voiceRecording.style.display = 'none';
+            if (_voiceBtn) _voiceBtn.style.display = '';
+            if (_sendBtn) _sendBtn.style.display = '';
+
+            var blob = new Blob(_audioChunks, { type: 'audio/webm' });
+            var duration = Math.floor((Date.now() - _voiceStart) / 1000);
+            var file = new File([blob], 'voice-' + Date.now() + '.webm', { type: 'audio/webm' });
+
+            var formData = new FormData();
+            formData.append('file', file);
+            formData.append('caption', '🎙 Голосове (' + duration + 'с)');
+
+            try {
+                var token = localStorage.getItem('token');
+                await fetch('/api/chat/channels/' + _currentChannel.id + '/upload', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    body: formData
+                });
+            } catch (err) {
+                console.error('[Chat] Voice upload error:', err);
+            }
+
+            _audioChunks = [];
+            _mediaRecorder = null;
+        };
+
+        _mediaRecorder.stop();
+    }
+
+    // ==========================================
+    // SLASH COMMAND TEMPLATES
+    // ==========================================
+    var _templates = [];
+    var _slashPopup = null;
+
+    async function _loadTemplates() {
+        try {
+            _templates = await _api('GET', '/templates') || [];
+        } catch (e) { _templates = []; }
+    }
+    _loadTemplates();
+
+    function _handleSlashCommand(input) {
+        var val = input.value;
+        if (!val.startsWith('/') || val.includes(' ')) {
+            _closeSlashPopup();
+            return;
+        }
+        var query = val.slice(1).toLowerCase();
+        var matches = _templates.filter(function (t) {
+            return t.shortcut.toLowerCase().startsWith(query);
+        });
+
+        // Also add built-in commands
+        var builtins = [
+            { shortcut: 'шаблон', content: '⚙️ Створити новий шаблон', builtin: 'create' }
+        ];
+        if ('шаблон'.startsWith(query) || 'shablon'.startsWith(query)) {
+            matches = matches.concat(builtins);
+        }
+
+        if (matches.length === 0) {
+            _closeSlashPopup();
+            return;
+        }
+
+        if (!_slashPopup) {
+            _slashPopup = document.createElement('div');
+            _slashPopup.className = 'chat-slash-popup';
+            var inputArea = document.querySelector('.chat-input-area');
+            if (inputArea) inputArea.appendChild(_slashPopup);
+        }
+
+        _slashPopup.innerHTML = '<div class="chat-slash-header">Шаблони</div>';
+        _slashPopup.style.display = 'block';
+
+        matches.slice(0, 8).forEach(function (t) {
+            var item = document.createElement('div');
+            item.className = 'chat-slash-item';
+            item.innerHTML = '<span class="chat-slash-cmd">/' + _esc(t.shortcut) + '</span>' +
+                '<span class="chat-slash-preview">' + _esc((t.content || '').slice(0, 50)) + '</span>';
+            item.addEventListener('click', function () {
+                if (t.builtin === 'create') {
+                    _showCreateTemplate();
+                } else {
+                    input.value = t.content;
+                    if (typeof _autoGrow === 'function') _autoGrow(input);
+                }
+                _closeSlashPopup();
+            });
+            _slashPopup.appendChild(item);
+        });
+    }
+
+    function _closeSlashPopup() {
+        if (_slashPopup) _slashPopup.style.display = 'none';
+    }
+
+    function _showCreateTemplate() {
+        var shortcut = prompt('Шорткат (наприклад: ціна)');
+        if (!shortcut) return;
+        var content = prompt('Текст шаблону');
+        if (!content) return;
+        _api('POST', '/templates', { shortcut: shortcut, content: content }).then(function () {
+            _loadTemplates();
+        });
+    }
 
     function _handleMentionInput(input) {
         var val = input.value;

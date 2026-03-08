@@ -222,10 +222,25 @@
                             <button class="chat-input-icon-btn" id="chatFileBtn" title="Прикріпити файл">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
                             </button>
+                            <button class="chat-input-icon-btn" id="chatStickerBtn" title="Стікери">
+                                <span style="font-size:18px">🦕</span>
+                            </button>
+                            <button class="chat-input-icon-btn" id="chatGifBtn" title="GIF">
+                                <span style="font-weight:800;font-size:12px;letter-spacing:-0.5px">GIF</span>
+                            </button>
                             <button class="chat-input-icon-btn" id="chatEmojiToggle" title="Емоджі">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
                             </button>
                             <textarea class="chat-input" id="chatInput" placeholder="Написати повідомлення..." rows="1" disabled></textarea>
+                            <button class="chat-voice-btn" id="chatVoiceBtn" title="Голосове повідомлення">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                            </button>
+                            <div class="chat-voice-recording" id="chatVoiceRecording" style="display:none">
+                                <span class="chat-voice-dot"></span>
+                                <span class="chat-voice-timer" id="chatVoiceTimer">0:00</span>
+                                <button class="chat-voice-cancel" id="chatVoiceCancel">Скасувати</button>
+                                <button class="chat-voice-send" id="chatVoiceSend">Надіслати</button>
+                            </div>
                             <button class="chat-send-btn" id="chatSendBtn" disabled title="Надіслати">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                             </button>

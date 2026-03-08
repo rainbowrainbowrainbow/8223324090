@@ -20,7 +20,7 @@ const { broadcastToChannel, sendToUser, broadcast } = require('./websocket');
 const log = createLogger('Guardian');
 
 const GUARDIAN_USERNAME = 'guardian';
-const MUTE_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const MUTE_DURATION_MS = 1 * 60 * 1000; // 1 minute
 
 // AI setup — OpenRouter (cheap models) or Anthropic fallback
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -294,7 +294,7 @@ function clearMuteCache(channelId, userId) {
 }
 
 /**
- * Mute user in channel for 15 minutes.
+ * Mute user in channel for 1 minute.
  */
 async function muteUser(channelId, userId, username, reason) {
     const mutedUntil = new Date(Date.now() + MUTE_DURATION_MS);
@@ -479,10 +479,50 @@ let _fuzzyRegexes = TOXIC_KEYWORDS_BASE.map(w => ({ word: w, regex: buildFuzzyRe
 /**
  * Quick keyword-based toxicity check with fuzzy matching.
  */
+/**
+ * Detect Russian language in text.
+ * Russian-specific letters not present in Ukrainian: ы, э, ё, ъ
+ * Also detects common Russian word patterns and endings.
+ */
+function detectRussianLanguage(content) {
+    const lower = content.toLowerCase();
+
+    // 1. Russian-specific letters (don't exist in Ukrainian)
+    if (/[ыэёъ]/i.test(lower)) {
+        return 'russian-letters';
+    }
+
+    // 2. Common Russian words/endings not used in Ukrainian
+    const russianPatterns = [
+        /\bчто\b/, /\bкогда\b/, /\bтолько\b/, /\bесли\b/, /\bпочему\b/,
+        /\bпотому\b/, /\bсейчас\b/, /\bздесь\b/, /\bтоже\b/, /\bтогда\b/,
+        /\bникогда\b/, /\bвсегда\b/, /\bхорошо\b/, /\bконечно\b/, /\bнаверное\b/,
+        /\bдаже\b/, /\bможет\b/, /\bбудет\b/, /\bбыло\b/, /\bбыли\b/,
+        /\bделает\b/, /\bделаешь\b/, /\bпонятно\b/, /\bладно\b/, /\bреально\b/,
+        /\bговорит\b/, /\bговоришь\b/, /\bзнаешь\b/, /\bзнает\b/,
+        /\bнужно\b/, /\bможно\b/, /\bнельзя\b/, /\bпожалуйста\b/,
+        /\bспасибо\b/, /\bничего\b/, /\bкакой\b/, /\bкакая\b/,
+        /\bещё\b/, /\bеще\b/, /\bуже\b/, /\bочень\b/,
+        /ает\b/, /ует\b/, /ёт\b/, /ться\b/,
+        /\bне\s+блокает\b/, /\bне\s+работает\b/
+    ];
+
+    const matchCount = russianPatterns.filter(p => p.test(lower)).length;
+    if (matchCount >= 1) return 'russian-words';
+
+    return null;
+}
+
 function quickToxicityCheck(content) {
     const lower = content.toLowerCase();
     // Normalize: remove separators between letters (catches "г а в н о", "г-а-в-н-о")
     const normalized = lower.replace(/[\s.\-_*!?,;:'"()]+/g, '');
+
+    // 0. Detect Russian language — block entirely
+    const ruDetect = detectRussianLanguage(content);
+    if (ruDetect) {
+        return ['🇷🇺 російська мова'];
+    }
 
     // 1. Direct match on all keywords (base + dynamic)
     const allKeywords = [...TOXIC_KEYWORDS_BASE, ..._dynamicToxicWords];
@@ -686,12 +726,15 @@ async function analyzeConflict(channelId, userId, username, content, messageId) 
     // 1. Quick keyword check — if matched, DELETE message + mute
     const toxicWords = quickToxicityCheck(content);
     if (toxicWords) {
+        const isRussian = toxicWords.some(w => w.includes('російська'));
+        const reason = isRussian
+            ? '🇷🇺 Російська мова заборонена. Спілкуйтесь українською!'
+            : `Нецензурна лексика: ${toxicWords.slice(0, 2).join(', ')}`;
         // Delete the toxic message
         if (messageId) {
-            await deleteToxicMessage(messageId, channelId, username,
-                `Нецензурна лексика: ${toxicWords.slice(0, 2).join(', ')}`);
+            await deleteToxicMessage(messageId, channelId, username, reason);
         }
-        await muteUser(channelId, userId, username, `Нецензурна лексика: ${toxicWords.slice(0, 2).join(', ')}...`);
+        await muteUser(channelId, userId, username, reason);
         return true;
     }
 
@@ -1041,7 +1084,7 @@ async function processMessage(message) {
         return {
             blocked: true,
             reason: 'muted',
-            message: '🛡️ Ви заблоковані в цьому чаті. Зачекайте 15 хвилин.'
+            message: '🛡️ Ви заблоковані в цьому чаті. Зачекайте 1 хвилину.'
         };
     }
 

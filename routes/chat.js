@@ -66,7 +66,7 @@ router.post('/channels/:id/messages', async (req, res) => {
 
         // Guardian: check if user is muted
         if (guardian.isUserMuted(channelId, userId)) {
-            return res.status(403).json({ error: '🛡️ Ви заблоковані в цьому чаті. Зачекайте 15 хвилин.' });
+            return res.status(403).json({ error: '🛡️ Ви заблоковані в цьому чаті. Зачекайте 1 хвилину.' });
         }
 
         const { message, mentionedUserIds } = await chat.sendMessage(channelId, userId, {

@@ -688,6 +688,101 @@
         }
     });
 
+    // Wallpaper picker
+    var _wallpapers = [
+        { id: 'none', label: 'Без фону' },
+        { id: 'bubbles', label: 'Бульки' },
+        { id: 'dots', label: 'Крапки' },
+        { id: 'dino', label: 'Діно' },
+        { id: 'waves', label: 'Хвилі' },
+        { id: 'gradient', label: 'Градієнт' },
+        { id: 'stars', label: 'Зірки' },
+        { id: 'geometric', label: 'Геометрія' }
+    ];
+    var _wallpaperBtn = document.getElementById('chatWallpaperBtn');
+    var _wallpaperPopup = null;
+
+    function _getWallpaper() {
+        try {
+            return localStorage.getItem('chatWallpaper') || 'none';
+        } catch (e) { return 'none'; }
+    }
+
+    function _setWallpaper(wp) {
+        try { localStorage.setItem('chatWallpaper', wp); } catch (e) {}
+        var messages = document.getElementById('chatMessages');
+        if (messages) messages.setAttribute('data-wallpaper', wp);
+    }
+
+    function _applyWallpaper() {
+        _setWallpaper(_getWallpaper());
+    }
+
+    function _toggleWallpaperPicker() {
+        if (_wallpaperPopup) {
+            _wallpaperPopup.remove();
+            _wallpaperPopup = null;
+            return;
+        }
+        var current = _getWallpaper();
+        _wallpaperPopup = document.createElement('div');
+        _wallpaperPopup.className = 'chat-wallpaper-popup';
+        _wallpaperPopup.innerHTML =
+            '<div class="chat-wallpaper-popup-title">Фон чату</div>' +
+            '<div class="chat-wallpaper-picker">' +
+                _wallpapers.map(function (wp) {
+                    return '<div class="chat-wallpaper-option-wrap">' +
+                        '<div class="chat-wallpaper-option' + (wp.id === current ? ' active' : '') + '" data-wp="' + wp.id + '"></div>' +
+                        '<div class="chat-wallpaper-label">' + wp.label + '</div>' +
+                    '</div>';
+                }).join('') +
+            '</div>';
+
+        // Position below button
+        if (_wallpaperBtn) {
+            var rect = _wallpaperBtn.getBoundingClientRect();
+            _wallpaperPopup.style.position = 'fixed';
+            _wallpaperPopup.style.top = (rect.bottom + 8) + 'px';
+            _wallpaperPopup.style.right = (window.innerWidth - rect.right) + 'px';
+            _wallpaperPopup.style.zIndex = '200';
+        }
+
+        document.body.appendChild(_wallpaperPopup);
+
+        // Click handler on options
+        _wallpaperPopup.querySelectorAll('.chat-wallpaper-option').forEach(function (opt) {
+            opt.addEventListener('click', function () {
+                var wp = opt.dataset.wp;
+                _setWallpaper(wp);
+                // Update active state
+                _wallpaperPopup.querySelectorAll('.chat-wallpaper-option').forEach(function (o) {
+                    o.classList.toggle('active', o.dataset.wp === wp);
+                });
+            });
+        });
+
+        // Close on outside click
+        setTimeout(function () {
+            document.addEventListener('click', function closeWp(e) {
+                if (_wallpaperPopup && !_wallpaperPopup.contains(e.target) && e.target !== _wallpaperBtn) {
+                    _wallpaperPopup.remove();
+                    _wallpaperPopup = null;
+                    document.removeEventListener('click', closeWp);
+                }
+            });
+        }, 100);
+    }
+
+    if (_wallpaperBtn) {
+        _wallpaperBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            _toggleWallpaperPicker();
+        });
+    }
+
+    // Apply saved wallpaper on load
+    _applyWallpaper();
+
     // Mute button
     var _muteBtn = document.getElementById('chatMuteBtn');
     if (_muteBtn) {
@@ -1180,6 +1275,9 @@
         // Update header
         document.getElementById('chatHeaderName').textContent = channel.name;
         document.getElementById('chatHeaderDesc').textContent = channel.description || '';
+
+        // Apply wallpaper
+        _applyWallpaper();
 
         // Close right panel
         if (_infoPanel && _infoPanel.classList.contains('open')) {

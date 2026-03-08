@@ -405,6 +405,271 @@
     display: flex;
     flex-direction: column;
     gap: 3px;
+    transition: background 0.4s ease;
+}
+
+/* ==========================================
+   CHAT WALLPAPERS
+   ========================================== */
+
+/* Default — clean */
+.chat-messages[data-wallpaper="none"] {
+    background: var(--white);
+}
+
+/* Bubbles — light circular pattern */
+.chat-messages[data-wallpaper="bubbles"] {
+    background-color: #f8fafc;
+    background-image:
+        radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.04) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(16, 185, 129, 0.04) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 0.03) 0%, transparent 40%);
+}
+
+/* Dots — subtle dot grid */
+.chat-messages[data-wallpaper="dots"] {
+    background-color: #fafbfc;
+    background-image: radial-gradient(circle, rgba(99, 102, 241, 0.08) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* Dino — subtle dino silhouettes (park theme!) */
+.chat-messages[data-wallpaper="dino"] {
+    background-color: #f0fdf4;
+    background-image:
+        radial-gradient(ellipse 18px 22px at 15% 25%, rgba(16, 185, 129, 0.06) 50%, transparent 50%),
+        radial-gradient(ellipse 14px 18px at 55% 75%, rgba(16, 185, 129, 0.05) 50%, transparent 50%),
+        radial-gradient(ellipse 20px 16px at 85% 35%, rgba(16, 185, 129, 0.04) 50%, transparent 50%),
+        radial-gradient(circle 6px at 30% 60%, rgba(34, 197, 94, 0.06) 50%, transparent 50%),
+        radial-gradient(circle 4px at 70% 20%, rgba(34, 197, 94, 0.05) 50%, transparent 50%);
+    background-size: 200px 200px;
+}
+
+/* Waves — gentle wave pattern */
+.chat-messages[data-wallpaper="waves"] {
+    background-color: #eff6ff;
+    background-image:
+        repeating-linear-gradient(
+            -45deg,
+            transparent,
+            transparent 20px,
+            rgba(59, 130, 246, 0.03) 20px,
+            rgba(59, 130, 246, 0.03) 21px
+        );
+}
+
+/* Gradient — warm sunset */
+.chat-messages[data-wallpaper="gradient"] {
+    background: linear-gradient(160deg, #fdf4ff 0%, #fef3c7 30%, #ecfdf5 60%, #eff6ff 100%);
+}
+
+/* Stars — subtle star pattern */
+.chat-messages[data-wallpaper="stars"] {
+    background-color: #fafafa;
+    background-image:
+        radial-gradient(2px 2px at 10% 20%, rgba(245, 158, 11, 0.15) 50%, transparent 50%),
+        radial-gradient(2px 2px at 30% 55%, rgba(99, 102, 241, 0.12) 50%, transparent 50%),
+        radial-gradient(1.5px 1.5px at 55% 15%, rgba(16, 185, 129, 0.12) 50%, transparent 50%),
+        radial-gradient(2px 2px at 70% 70%, rgba(245, 158, 11, 0.1) 50%, transparent 50%),
+        radial-gradient(1.5px 1.5px at 90% 40%, rgba(99, 102, 241, 0.1) 50%, transparent 50%),
+        radial-gradient(2px 2px at 45% 85%, rgba(16, 185, 129, 0.1) 50%, transparent 50%);
+    background-size: 120px 120px;
+}
+
+/* Geometric — hexagonal */
+.chat-messages[data-wallpaper="geometric"] {
+    background-color: #fafafa;
+    background-image:
+        linear-gradient(30deg, rgba(99, 102, 241, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(99, 102, 241, 0.03) 87.5%),
+        linear-gradient(150deg, rgba(99, 102, 241, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(99, 102, 241, 0.03) 87.5%),
+        linear-gradient(30deg, rgba(99, 102, 241, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(99, 102, 241, 0.03) 87.5%),
+        linear-gradient(150deg, rgba(99, 102, 241, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(99, 102, 241, 0.03) 87.5%);
+    background-size: 80px 140px;
+    background-position: 0 0, 0 0, 40px 70px, 40px 70px;
+}
+
+/* Dark mode wallpapers */
+[data-theme="dark"] .chat-messages[data-wallpaper="bubbles"] {
+    background-color: var(--dark-bg);
+    background-image:
+        radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(16, 185, 129, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 0.06) 0%, transparent 40%);
+}
+
+[data-theme="dark"] .chat-messages[data-wallpaper="dots"] {
+    background-color: var(--dark-bg);
+    background-image: radial-gradient(circle, rgba(99, 102, 241, 0.12) 1px, transparent 1px);
+}
+
+[data-theme="dark"] .chat-messages[data-wallpaper="dino"] {
+    background-color: var(--dark-bg);
+    background-image:
+        radial-gradient(ellipse 18px 22px at 15% 25%, rgba(16, 185, 129, 0.1) 50%, transparent 50%),
+        radial-gradient(ellipse 14px 18px at 55% 75%, rgba(16, 185, 129, 0.08) 50%, transparent 50%),
+        radial-gradient(ellipse 20px 16px at 85% 35%, rgba(16, 185, 129, 0.07) 50%, transparent 50%);
+    background-size: 200px 200px;
+}
+
+[data-theme="dark"] .chat-messages[data-wallpaper="waves"] {
+    background-color: var(--dark-bg);
+    background-image: repeating-linear-gradient(-45deg, transparent, transparent 20px, rgba(59, 130, 246, 0.06) 20px, rgba(59, 130, 246, 0.06) 21px);
+}
+
+[data-theme="dark"] .chat-messages[data-wallpaper="gradient"] {
+    background: linear-gradient(160deg, rgba(99, 48, 140, 0.15) 0%, rgba(120, 90, 30, 0.1) 30%, rgba(16, 90, 60, 0.1) 60%, var(--dark-bg) 100%);
+}
+
+[data-theme="dark"] .chat-messages[data-wallpaper="stars"] {
+    background-color: var(--dark-bg);
+    background-image:
+        radial-gradient(2px 2px at 10% 20%, rgba(245, 158, 11, 0.2) 50%, transparent 50%),
+        radial-gradient(2px 2px at 30% 55%, rgba(99, 102, 241, 0.18) 50%, transparent 50%),
+        radial-gradient(1.5px 1.5px at 55% 15%, rgba(16, 185, 129, 0.18) 50%, transparent 50%),
+        radial-gradient(2px 2px at 70% 70%, rgba(245, 158, 11, 0.15) 50%, transparent 50%),
+        radial-gradient(1.5px 1.5px at 90% 40%, rgba(99, 102, 241, 0.15) 50%, transparent 50%),
+        radial-gradient(2px 2px at 45% 85%, rgba(16, 185, 129, 0.15) 50%, transparent 50%);
+    background-size: 120px 120px;
+}
+
+[data-theme="dark"] .chat-messages[data-wallpaper="geometric"] {
+    background-color: var(--dark-bg);
+    background-image:
+        linear-gradient(30deg, rgba(99, 102, 241, 0.06) 12%, transparent 12.5%, transparent 87%, rgba(99, 102, 241, 0.06) 87.5%),
+        linear-gradient(150deg, rgba(99, 102, 241, 0.06) 12%, transparent 12.5%, transparent 87%, rgba(99, 102, 241, 0.06) 87.5%),
+        linear-gradient(30deg, rgba(99, 102, 241, 0.06) 12%, transparent 12.5%, transparent 87%, rgba(99, 102, 241, 0.06) 87.5%),
+        linear-gradient(150deg, rgba(99, 102, 241, 0.06) 12%, transparent 12.5%, transparent 87%, rgba(99, 102, 241, 0.06) 87.5%);
+    background-size: 80px 140px;
+    background-position: 0 0, 0 0, 40px 70px, 40px 70px;
+}
+
+/* Wallpaper picker */
+.chat-wallpaper-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+}
+
+.chat-wallpaper-option {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+    border: 2px solid var(--gray-200);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.chat-wallpaper-option:hover {
+    transform: scale(1.1);
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+.chat-wallpaper-option.active {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+}
+
+.chat-wallpaper-option.active::after {
+    content: '✓';
+    position: absolute;
+    bottom: 2px;
+    right: 4px;
+    font-size: 10px;
+    color: var(--primary);
+    font-weight: 800;
+}
+
+.chat-wallpaper-option[data-wp="none"] { background: white; }
+.chat-wallpaper-option[data-wp="bubbles"] {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(16, 185, 129, 0.1));
+}
+.chat-wallpaper-option[data-wp="dots"] {
+    background-color: #fafbfc;
+    background-image: radial-gradient(circle, rgba(99, 102, 241, 0.15) 1.5px, transparent 1.5px);
+    background-size: 10px 10px;
+}
+.chat-wallpaper-option[data-wp="dino"] {
+    background: linear-gradient(135deg, #d1fae5, #ecfdf5);
+}
+.chat-wallpaper-option[data-wp="waves"] {
+    background: repeating-linear-gradient(-45deg, #eff6ff, #eff6ff 5px, rgba(59, 130, 246, 0.08) 5px, rgba(59, 130, 246, 0.08) 6px);
+}
+.chat-wallpaper-option[data-wp="gradient"] {
+    background: linear-gradient(160deg, #fdf4ff, #fef3c7 50%, #ecfdf5);
+}
+.chat-wallpaper-option[data-wp="stars"] {
+    background-color: #fafafa;
+    background-image:
+        radial-gradient(2px 2px at 20% 30%, rgba(245, 158, 11, 0.3) 50%, transparent 50%),
+        radial-gradient(2px 2px at 60% 60%, rgba(99, 102, 241, 0.25) 50%, transparent 50%),
+        radial-gradient(1.5px 1.5px at 80% 20%, rgba(16, 185, 129, 0.25) 50%, transparent 50%);
+    background-size: 30px 30px;
+}
+.chat-wallpaper-option[data-wp="geometric"] {
+    background-color: #fafafa;
+    background-image: linear-gradient(30deg, rgba(99, 102, 241, 0.08) 12%, transparent 12.5%, transparent 87%, rgba(99, 102, 241, 0.08) 87.5%);
+    background-size: 20px 35px;
+}
+
+.chat-wallpaper-label {
+    font-size: 9px;
+    text-align: center;
+    color: var(--gray-500);
+    margin-top: 2px;
+}
+
+.chat-wallpaper-option-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Wallpaper popup */
+.chat-wallpaper-popup {
+    background: var(--white);
+    border-radius: 14px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+    padding: 12px;
+    min-width: 280px;
+    animation: popupSlide 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes popupSlide {
+    0% { opacity: 0; transform: translateY(-8px) scale(0.95); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.chat-wallpaper-popup-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gray-700);
+    margin-bottom: 8px;
+    padding: 0 4px;
+}
+
+[data-theme="dark"] .chat-wallpaper-popup {
+    background: var(--dark-card);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .chat-wallpaper-popup-title {
+    color: var(--gray-200);
+}
+
+[data-theme="dark"] .chat-wallpaper-option {
+    border-color: var(--gray-600);
+}
+
+[data-theme="dark"] .chat-wallpaper-option[data-wp="none"] {
+    background: var(--dark-bg);
+}
+
+[data-theme="dark"] .chat-wallpaper-label {
+    color: var(--gray-400);
 }
 
 .chat-messages::-webkit-scrollbar {

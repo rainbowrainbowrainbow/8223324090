@@ -292,6 +292,67 @@ async function notifyClientsToSync() {
 // MESSAGE HANDLING
 // ==========================================
 
+// ==========================================
+// PUSH NOTIFICATIONS (Chat messages)
+// ==========================================
+
+self.addEventListener('push', (event) => {
+    if (!event.data) return;
+
+    let data;
+    try {
+        data = event.data.json();
+    } catch (e) {
+        data = { title: 'Нове повідомлення', body: event.data.text() };
+    }
+
+    const DINO_ICONS = ['🦕', '🦖', '🦎', '🐊', '🦴', '🌴'];
+    const icon = data.icon || '/images/favicon-192.png';
+    const dinoEmoji = DINO_ICONS[Math.floor(Math.random() * DINO_ICONS.length)];
+    const title = (data.title || 'Event Genix Chat') + ' ' + dinoEmoji;
+    const options = {
+        body: data.body || 'Нове повідомлення',
+        icon: icon,
+        badge: '/images/favicon-192.png',
+        tag: data.tag || 'chat-' + Date.now(),
+        renotify: true,
+        vibrate: [100, 50, 100, 50, 200],
+        data: {
+            url: data.url || '/chat.html',
+            channelId: data.channelId || null
+        },
+        actions: [
+            { action: 'open', title: 'Відкрити' },
+            { action: 'dismiss', title: 'Потім' }
+        ]
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+
+    if (event.action === 'dismiss') return;
+
+    const url = event.notification.data?.url || '/chat.html';
+    event.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+            .then((clientList) => {
+                for (const client of clientList) {
+                    if (client.url.includes('/chat.html') && 'focus' in client) {
+                        return client.focus();
+                    }
+                }
+                return self.clients.openWindow(url);
+            })
+    );
+});
+
+// ==========================================
+// MESSAGE HANDLING
+// ==========================================
+
 self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();

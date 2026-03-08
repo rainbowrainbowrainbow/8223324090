@@ -2000,6 +2000,9 @@
             });
         }
 
+        // Check for ephemeral (self-destruct) messages
+        _checkEphemeralMessage(msg, el);
+
         return el;
     }
 
@@ -2194,6 +2197,24 @@
             return;
         }
 
+        // Handle /зникне command (self-destruct message)
+        var selfDestructMatch = content.match(/^\/зникне\s+(\d+)$/);
+        if (!selfDestructMatch) selfDestructMatch = content.match(/^\/vanish\s+(\d+)$/);
+        if (selfDestructMatch) {
+            var minutes = parseInt(selfDestructMatch[1], 10);
+            if (minutes < 1 || minutes > 1440) {
+                _appendSystemMessage('⏱ Вкажіть від 1 до 1440 хвилин. Приклад: /зникне 5');
+                input.value = '';
+                _autoGrow(input);
+                return;
+            }
+            _selfDestructMode = minutes;
+            input.value = '';
+            _autoGrow(input);
+            _appendSystemMessage('💨 Режим самознищення: наступне повідомлення зникне через ' + minutes + ' хв. Напишіть повідомлення.');
+            return;
+        }
+
         // Handle /task command
         if (content.startsWith('/task ') || content.startsWith('/задача ')) {
             var taskText = content.replace(/^\/(?:task|задача)\s+/, '');
@@ -2233,6 +2254,30 @@
         input.value = '';
         _autoGrow(input);
         _closeMentionPopup();
+
+        // If self-destruct mode is active, send via ephemeral endpoint
+        if (_selfDestructMode) {
+            var sdMinutes = _selfDestructMode;
+            _selfDestructMode = null;
+            try {
+                var sdMsg = await _api('POST', '/channels/' + _currentChannel.id + '/ephemeral', {
+                    content: content,
+                    expiresInMinutes: sdMinutes
+                });
+                if (sdMsg) {
+                    sdMsg._ephemeral = true;
+                    sdMsg._expiresInMinutes = sdMinutes;
+                    _appendMessage(sdMsg);
+                    _startCountdownBadge(sdMsg.id, sdMinutes);
+                    _playSoundAlways('message-sent');
+                }
+            } catch (err) {
+                console.error('[Chat] Ephemeral send error:', err);
+                input.value = content;
+                _autoGrow(input);
+            }
+            return;
+        }
 
         var msgData = {
             content: content,
@@ -2406,6 +2451,165 @@
 
     var _mentionStart = -1;
     var _mentionActiveIdx = 0;
+
+    // ==========================================
+    // SELF-DESTRUCT MESSAGES
+    // ==========================================
+    var _selfDestructMode = null; // null or minutes
+
+    function _startCountdownBadge(msgId, minutes) {
+        var msgEl = document.querySelector('[data-message-id="' + msgId + '"]');
+        if (!msgEl) return;
+        msgEl.classList.add('ephemeral-message');
+
+        var badge = document.createElement('div');
+        badge.className = 'chat-ephemeral-badge';
+        var bubble = msgEl.querySelector('.chat-bubble');
+        if (bubble) bubble.appendChild(badge);
+
+        var endTime = Date.now() + minutes * 60000;
+        function updateBadge() {
+            var remaining = endTime - Date.now();
+            if (remaining <= 0) {
+                msgEl.classList.add('ephemeral-fading');
+                setTimeout(function () { msgEl.remove(); }, 500);
+                return;
+            }
+            var m = Math.floor(remaining / 60000);
+            var s = Math.floor((remaining % 60000) / 1000);
+            badge.textContent = '💨 ' + (m > 0 ? m + 'хв ' : '') + s + 'с';
+            if (remaining < 60000) badge.classList.add('urgent');
+            requestAnimationFrame(updateBadge);
+        }
+        updateBadge();
+    }
+
+    // Check incoming messages for ephemeral metadata
+    function _checkEphemeralMessage(msg, el) {
+        if (msg.metadata && msg.metadata.ephemeral && msg.expiresAt) {
+            el.classList.add('ephemeral-message');
+            var badge = document.createElement('div');
+            badge.className = 'chat-ephemeral-badge';
+            var bubble = el.querySelector('.chat-bubble');
+            if (bubble) bubble.appendChild(badge);
+
+            var endTime = new Date(msg.expiresAt).getTime();
+            function updateBadge() {
+                var remaining = endTime - Date.now();
+                if (remaining <= 0) {
+                    el.classList.add('ephemeral-fading');
+                    setTimeout(function () { el.remove(); }, 500);
+                    return;
+                }
+                var m = Math.floor(remaining / 60000);
+                var s = Math.floor((remaining % 60000) / 1000);
+                badge.textContent = '💨 ' + (m > 0 ? m + 'хв ' : '') + s + 'с';
+                if (remaining < 60000) badge.classList.add('urgent');
+                requestAnimationFrame(updateBadge);
+            }
+            updateBadge();
+        }
+    }
+
+    // ==========================================
+    // SCHEDULED MESSAGES
+    // ==========================================
+    var _scheduleBtn = document.getElementById('chatScheduleBtn');
+    if (_scheduleBtn) {
+        _scheduleBtn.addEventListener('click', _showScheduleDialog);
+    }
+
+    function _showScheduleDialog() {
+        var input = document.getElementById('chatInput');
+        var content = input ? input.value.trim() : '';
+        if (!content || !_currentChannel) {
+            alert('Спочатку напишіть повідомлення');
+            return;
+        }
+
+        // Create quick time options
+        var now = new Date();
+        var options = [
+            { label: 'Через 30 хв', time: new Date(now.getTime() + 30 * 60000) },
+            { label: 'Через 1 год', time: new Date(now.getTime() + 60 * 60000) },
+            { label: 'Завтра о 9:00', time: _nextDayAt(9) },
+            { label: 'Завтра о 12:00', time: _nextDayAt(12) }
+        ];
+
+        var popup = document.createElement('div');
+        popup.className = 'chat-schedule-popup';
+        popup.innerHTML = '<div class="chat-schedule-header">Надіслати пізніше</div>';
+
+        options.forEach(function (opt) {
+            var btn = document.createElement('button');
+            btn.className = 'chat-schedule-option';
+            btn.innerHTML = opt.label + '<span class="chat-schedule-time">' +
+                opt.time.toLocaleString('uk-UA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + '</span>';
+            btn.addEventListener('click', function () {
+                _scheduleMessage(content, opt.time.toISOString());
+                popup.remove();
+            });
+            popup.appendChild(btn);
+        });
+
+        // Custom datetime
+        var customBtn = document.createElement('button');
+        customBtn.className = 'chat-schedule-option';
+        customBtn.textContent = 'Обрати час...';
+        customBtn.addEventListener('click', function () {
+            var dateStr = prompt('Дата та час (РРРР-ММ-ДД ГГ:ХХ)');
+            if (dateStr) {
+                var date = new Date(dateStr.replace(' ', 'T'));
+                if (!isNaN(date.getTime())) {
+                    _scheduleMessage(content, date.toISOString());
+                }
+            }
+            popup.remove();
+        });
+        popup.appendChild(customBtn);
+
+        // Position near button
+        var inputArea = document.querySelector('.chat-input-area');
+        if (inputArea) inputArea.appendChild(popup);
+
+        // Close on outside click
+        setTimeout(function () {
+            document.addEventListener('click', function close(e) {
+                if (!popup.contains(e.target)) {
+                    popup.remove();
+                    document.removeEventListener('click', close);
+                }
+            });
+        }, 100);
+    }
+
+    function _nextDayAt(hour) {
+        var d = new Date();
+        d.setDate(d.getDate() + 1);
+        d.setHours(hour, 0, 0, 0);
+        return d;
+    }
+
+    async function _scheduleMessage(content, scheduledAt) {
+        try {
+            await _api('POST', '/channels/' + _currentChannel.id + '/schedule', {
+                content: content,
+                scheduledAt: scheduledAt
+            });
+            var input = document.getElementById('chatInput');
+            if (input) { input.value = ''; if (typeof _autoGrow === 'function') _autoGrow(input); }
+
+            // Brief notification
+            var toast = document.createElement('div');
+            toast.className = 'chat-bookmark-toast';
+            toast.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999';
+            toast.textContent = '⏰ Заплановано';
+            document.body.appendChild(toast);
+            setTimeout(function () { toast.remove(); }, 2000);
+        } catch (err) {
+            console.error('[Chat] Schedule error:', err);
+        }
+    }
 
     // ==========================================
     // TRANSLATE
@@ -4352,6 +4556,94 @@
     // ==========================================
     // FEATURE 21: AI SUMMARY BUTTON
     // ==========================================
+    // ==========================================
+    // CHAT STATS & PREMIUM COEFFICIENT
+    // ==========================================
+    var _statsBtn = document.getElementById('chatStatsBtn');
+    if (_statsBtn) {
+        _statsBtn.addEventListener('click', _showChatStats);
+    }
+
+    async function _showChatStats() {
+        try {
+            var myStats = await _api('GET', '/stats/me?days=30');
+            var leaderboard = await _api('GET', '/stats/leaderboard?days=30');
+
+            var overlay = document.createElement('div');
+            overlay.className = 'chat-stats-overlay';
+            overlay.addEventListener('click', function (e) {
+                if (e.target === overlay) overlay.remove();
+            });
+
+            var coeff = myStats.premiumCoefficient || 0;
+            var bd = myStats.breakdown || {};
+            var coeffColor = coeff >= 0.7 ? '#10B981' : coeff >= 0.4 ? '#F59E0B' : '#EF4444';
+            var coeffLabel = coeff >= 0.7 ? 'Відмінно' : coeff >= 0.4 ? 'Добре' : 'Потребує уваги';
+
+            var html = '<div class="chat-stats-panel">';
+            html += '<div class="chat-stats-header"><h3>📊 Статистика чату</h3><button class="chat-stats-close">&times;</button></div>';
+
+            // Premium coefficient hero
+            html += '<div class="chat-stats-hero">';
+            html += '<div class="chat-stats-coeff" style="color:' + coeffColor + '">' + (coeff * 100).toFixed(0) + '%</div>';
+            html += '<div class="chat-stats-coeff-label" style="color:' + coeffColor + '">' + coeffLabel + '</div>';
+            html += '<div class="chat-stats-coeff-sublabel">Коефіцієнт премії за комунікацію</div>';
+            html += '</div>';
+
+            // Breakdown bars
+            html += '<div class="chat-stats-breakdown">';
+            var breakdownItems = [
+                { label: '💬 Повідомлення', value: bd.messages || 0, color: '#10B981' },
+                { label: '❤️ Корисність', value: bd.helpfulness || 0, color: '#EC4899' },
+                { label: '📅 Стабільність', value: bd.consistency || 0, color: '#3B82F6' },
+                { label: '↩️ Відповідальність', value: bd.responsiveness || 0, color: '#F97316' }
+            ];
+            breakdownItems.forEach(function (item) {
+                html += '<div class="chat-stats-bar-row">';
+                html += '<span class="chat-stats-bar-label">' + item.label + '</span>';
+                html += '<div class="chat-stats-bar"><div class="chat-stats-bar-fill" style="width:' + (item.value * 4) + '%;background:' + item.color + '"></div></div>';
+                html += '<span class="chat-stats-bar-value">' + item.value + '/25</span>';
+                html += '</div>';
+            });
+            html += '</div>';
+
+            // My numbers
+            html += '<div class="chat-stats-numbers">';
+            html += '<div class="chat-stats-num"><span>' + (myStats.total_messages || 0) + '</span><small>повідомлень</small></div>';
+            html += '<div class="chat-stats-num"><span>' + (myStats.total_reactions_received || 0) + '</span><small>реакцій отримано</small></div>';
+            html += '<div class="chat-stats-num"><span>' + (myStats.total_replies || 0) + '</span><small>відповідей</small></div>';
+            html += '<div class="chat-stats-num"><span>' + (myStats.active_days || 0) + '</span><small>активних днів</small></div>';
+            html += '</div>';
+
+            // Leaderboard
+            if (leaderboard && leaderboard.length > 0) {
+                html += '<div class="chat-stats-leaderboard"><h4>🏆 Рейтинг команди</h4>';
+                var medals = ['🥇', '🥈', '🥉'];
+                leaderboard.slice(0, 10).forEach(function (user, idx) {
+                    var medal = idx < 3 ? medals[idx] : (idx + 1) + '.';
+                    var isMe = String(user.user_id) === _currentUserId;
+                    html += '<div class="chat-stats-leader-row' + (isMe ? ' me' : '') + '">';
+                    html += '<span class="chat-stats-leader-rank">' + medal + '</span>';
+                    html += '<span class="chat-stats-leader-name">' + _esc(user.display_name || user.username) + '</span>';
+                    html += '<span class="chat-stats-leader-score">' + parseFloat(user.activity_score || 0).toFixed(1) + '</span>';
+                    html += '</div>';
+                });
+                html += '</div>';
+            }
+
+            html += '</div>';
+            overlay.innerHTML = html;
+            document.body.appendChild(overlay);
+
+            overlay.querySelector('.chat-stats-close').addEventListener('click', function () {
+                overlay.remove();
+            });
+        } catch (err) {
+            console.error('[Chat] Stats error:', err);
+            _appendSystemMessage('❌ Не вдалось завантажити статистику');
+        }
+    }
+
     var _summaryBtn = document.getElementById('chatSummaryBtn');
     if (_summaryBtn) {
         _summaryBtn.addEventListener('click', async function () {
@@ -4491,6 +4783,52 @@
 
     // Mark current user as online
     if (_currentUserId) _onlineUsers[_currentUserId] = true;
+
+    // ==========================================
+    // PWA PUSH NOTIFICATIONS
+    // ==========================================
+    async function _initPushNotifications() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        try {
+            var reg = await navigator.serviceWorker.ready;
+            // Check if already subscribed
+            var existing = await reg.pushManager.getSubscription();
+            if (existing) return; // Already subscribed
+
+            // Get VAPID key from server
+            var resp = await _api('GET', '/push/vapid-key');
+            if (!resp || !resp.publicKey) return;
+
+            var subscription = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: _urlBase64ToUint8Array(resp.publicKey)
+            });
+
+            // Send subscription to server
+            var sub = subscription.toJSON();
+            await _api('POST', '/push/subscribe', {
+                endpoint: sub.endpoint,
+                keys: sub.keys
+            });
+            console.log('[Chat] Push subscription saved');
+        } catch (err) {
+            console.warn('[Chat] Push notifications not available:', err.message);
+        }
+    }
+
+    function _urlBase64ToUint8Array(base64String) {
+        var padding = '='.repeat((4 - base64String.length % 4) % 4);
+        var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        var rawData = window.atob(base64);
+        var outputArray = new Uint8Array(rawData.length);
+        for (var i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+    }
+
+    // Auto-init push after a short delay
+    setTimeout(_initPushNotifications, 3000);
 
     // ==========================================
     // FEATURE 17: EMOJI AVATAR BLINK

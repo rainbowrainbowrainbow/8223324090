@@ -26,7 +26,8 @@ function mapMessageRow(row) {
         displayName: row.display_name || row.username,
         metadata: row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : null,
         threadRootId: row.thread_root_id || null,
-        threadReplyCount: row.thread_reply_count || 0
+        threadReplyCount: row.thread_reply_count || 0,
+        expiresAt: row.expires_at || null
     };
 }
 
@@ -887,5 +888,72 @@ module.exports = {
     findChannelByEntity,
     createBookingChannel,
     getReadReceipts,
-    sendFileMessage
+    sendFileMessage,
+    updateActivityStats,
+    getChatActivityStats,
+    getChatActivityLeaderboard
 };
+
+/**
+ * Update chat activity stats for a user (called on message send, reaction, etc.)
+ */
+async function updateActivityStats(userId, field) {
+    const validFields = ['messages_sent', 'reactions_given', 'reactions_received', 'replies_sent'];
+    if (!validFields.includes(field)) return;
+
+    await pool.query(`
+        INSERT INTO chat_activity_stats (user_id, date, ${field})
+        VALUES ($1, CURRENT_DATE, 1)
+        ON CONFLICT (user_id, date) DO UPDATE SET ${field} = chat_activity_stats.${field} + 1
+    `, [userId]);
+}
+
+/**
+ * Get chat activity stats for a user (last N days)
+ */
+async function getChatActivityStats(userId, days = 30) {
+    const result = await pool.query(`
+        SELECT
+            COALESCE(SUM(messages_sent), 0) AS total_messages,
+            COALESCE(SUM(reactions_given), 0) AS total_reactions_given,
+            COALESCE(SUM(reactions_received), 0) AS total_reactions_received,
+            COALESCE(SUM(replies_sent), 0) AS total_replies,
+            COALESCE(AVG(helpfulness_score), 0) AS avg_helpfulness,
+            COUNT(DISTINCT date) AS active_days
+        FROM chat_activity_stats
+        WHERE user_id = $1 AND date >= CURRENT_DATE - INTERVAL '1 day' * $2
+    `, [userId, days]);
+    return result.rows[0];
+}
+
+/**
+ * Get leaderboard of chat activity
+ */
+async function getChatActivityLeaderboard(days = 30) {
+    const result = await pool.query(`
+        SELECT
+            u.id AS user_id,
+            u.username,
+            u.name AS display_name,
+            COALESCE(SUM(cas.messages_sent), 0) AS total_messages,
+            COALESCE(SUM(cas.reactions_given), 0) AS total_reactions_given,
+            COALESCE(SUM(cas.reactions_received), 0) AS total_reactions_received,
+            COALESCE(SUM(cas.replies_sent), 0) AS total_replies,
+            COUNT(DISTINCT cas.date) AS active_days,
+            ROUND(
+                (COALESCE(SUM(cas.messages_sent), 0) * 1.0 +
+                 COALESCE(SUM(cas.reactions_given), 0) * 0.5 +
+                 COALESCE(SUM(cas.reactions_received), 0) * 2.0 +
+                 COALESCE(SUM(cas.replies_sent), 0) * 1.5) /
+                GREATEST(COUNT(DISTINCT cas.date), 1),
+                2
+            ) AS activity_score
+        FROM users u
+        LEFT JOIN chat_activity_stats cas ON cas.user_id = u.id AND cas.date >= CURRENT_DATE - INTERVAL '1 day' * $1
+        WHERE u.is_bot = false
+        GROUP BY u.id, u.username, u.name
+        ORDER BY activity_score DESC
+        LIMIT 20
+    `, [days]);
+    return result.rows;
+}

@@ -13,6 +13,52 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('ChatAPI');
 
+// Push notification helper (fire-and-forget)
+async function sendPushToChannel(channelId, senderUserId, title, body) {
+    try {
+        const webpush = require('web-push');
+        if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
+
+        webpush.setVapidDetails(
+            'mailto:' + (process.env.VAPID_EMAIL || 'admin@eventgenix.com'),
+            process.env.VAPID_PUBLIC_KEY,
+            process.env.VAPID_PRIVATE_KEY
+        );
+
+        const pool = require('../db').pool;
+        // Get push subscriptions for channel members (excluding sender)
+        const subs = await pool.query(`
+            SELECT ps.endpoint, ps.p256dh, ps.auth, ps.user_id
+            FROM push_subscriptions ps
+            JOIN chat_channel_members ccm ON ccm.user_id = ps.user_id
+            WHERE ccm.channel_id = $1 AND ps.user_id != $2
+        `, [channelId, senderUserId]);
+
+        const payload = JSON.stringify({
+            title: title,
+            body: body.length > 100 ? body.slice(0, 100) + '…' : body,
+            tag: 'chat-' + channelId,
+            url: '/chat.html',
+            channelId: channelId
+        });
+
+        for (const sub of subs.rows) {
+            webpush.sendNotification({
+                endpoint: sub.endpoint,
+                keys: { p256dh: sub.p256dh, auth: sub.auth }
+            }, payload).catch(() => {
+                // Remove stale subscriptions
+                pool.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]).catch(() => {});
+            });
+        }
+    } catch (err) {
+        // web-push not installed or VAPID not configured — skip silently
+        if (err.code !== 'MODULE_NOT_FOUND') {
+            log.error('Push notification error', err);
+        }
+    }
+}
+
 // File upload config
 const chatStorage = multer.diskStorage({
     destination: path.join(__dirname, '..', 'uploads', 'chat'),
@@ -107,6 +153,10 @@ router.post('/channels/:id/messages', async (req, res) => {
             clientMessageId: clientMessageId || null
         });
 
+        // Track activity stats (fire-and-forget)
+        chat.updateActivityStats(userId, 'messages_sent').catch(() => {});
+        if (replyTo) chat.updateActivityStats(userId, 'replies_sent').catch(() => {});
+
         // Broadcast to channel members via WebSocket (fire-and-forget after commit)
         broadcastToChannel(channelId, 'chat:message', {
             channelId,
@@ -122,6 +172,9 @@ router.post('/channels/:id/messages', async (req, res) => {
                 content: message.content
             });
         }
+
+        // Push notifications for offline users (fire-and-forget)
+        sendPushToChannel(channelId, userId, message.displayName || message.username, message.content);
 
         // Bot processing (fire-and-forget — don't block response)
         processBotMessage(message).catch(err => {
@@ -253,6 +306,12 @@ router.post('/messages/:id/reactions', async (req, res) => {
         if (!msg) return res.status(404).json({ error: 'Message not found' });
 
         const reactions = await chat.addReaction(messageId, userId, emoji);
+
+        // Track reaction stats (fire-and-forget)
+        chat.updateActivityStats(userId, 'reactions_given').catch(() => {});
+        if (msg.user_id !== userId) {
+            chat.updateActivityStats(msg.user_id, 'reactions_received').catch(() => {});
+        }
 
         broadcastToChannel(msg.channel_id, 'chat:reaction', {
             channelId: msg.channel_id,
@@ -691,7 +750,7 @@ router.get('/messages/:id/thread', async (req, res) => {
         const messageId = parseInt(req.params.id, 10);
         if (isNaN(messageId)) return res.status(400).json({ error: 'Invalid message ID' });
 
-        const pool = require('../db/pool');
+        const pool = require('../db').pool;
         const result = await pool.query(`
             SELECT cm.*, u.username, u.name AS display_name
             FROM chat_messages cm
@@ -718,7 +777,7 @@ router.post('/messages/:id/thread', async (req, res) => {
             return res.status(400).json({ error: 'Invalid parameters' });
         }
 
-        const pool = require('../db/pool');
+        const pool = require('../db').pool;
 
         // Get the root message's channel
         const rootMsg = await pool.query('SELECT channel_id FROM chat_messages WHERE id = $1', [rootMessageId]);
@@ -788,7 +847,7 @@ router.post('/bookmarks', async (req, res) => {
         const { messageId, category, note } = req.body;
         if (!messageId) return res.status(400).json({ error: 'Missing messageId' });
 
-        const pool = require('../db/pool');
+        const pool = require('../db').pool;
         await pool.query(
             `INSERT INTO chat_bookmarks (user_id, message_id, category, note)
              VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, message_id) DO UPDATE SET category = $3, note = $4`,
@@ -806,7 +865,7 @@ router.get('/bookmarks', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
         const category = req.query.category || null;
-        const pool = require('../db/pool');
+        const pool = require('../db').pool;
 
         let query = `
             SELECT b.*, cm.content, cm.created_at AS message_date, cm.channel_id,
@@ -848,11 +907,133 @@ router.get('/bookmarks', async (req, res) => {
 router.delete('/bookmarks/:id', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
-        const pool = require('../db/pool');
+        const pool = require('../db').pool;
         await pool.query('DELETE FROM chat_bookmarks WHERE id = $1 AND user_id = $2', [req.params.id, userId]);
         res.json({ success: true });
     } catch (err) {
         log.error('Error removing bookmark', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// SELF-DESTRUCT MESSAGES
+// ==========================================
+
+// POST /api/chat/channels/:id/ephemeral — send message that auto-deletes
+router.post('/channels/:id/ephemeral', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const channelId = parseInt(req.params.id, 10);
+        const { content, expiresInMinutes } = req.body;
+        if (isNaN(channelId) || !content || !expiresInMinutes) {
+            return res.status(400).json({ error: 'Missing parameters' });
+        }
+
+        const expiresAt = new Date(Date.now() + expiresInMinutes * 60000).toISOString();
+
+        const pool = require('../db').pool;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
+            const seq = seqResult.rows[0].seq;
+            const result = await client.query(`
+                INSERT INTO chat_messages (channel_id, user_id, seq, content, expires_at, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING *
+            `, [channelId, userId, seq, content, expiresAt,
+                JSON.stringify({ ephemeral: true, expiresInMinutes })]);
+
+            await client.query(
+                'UPDATE chat_channel_members SET last_read_seq = $1 WHERE channel_id = $2 AND user_id = $3',
+                [seq, channelId, userId]
+            );
+            await client.query('COMMIT');
+
+            const fullMsg = await pool.query(`
+                SELECT cm.*, u.username, u.name AS display_name
+                FROM chat_messages cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1
+            `, [result.rows[0].id]);
+            const message = chat.mapMessageRow(fullMsg.rows[0]);
+
+            broadcastToChannel(channelId, 'chat:message', { channelId, message }, String(userId));
+            res.status(201).json(message);
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        log.error('Error sending ephemeral message', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// SCHEDULED MESSAGES
+// ==========================================
+
+// POST /api/chat/channels/:id/schedule — schedule a message
+router.post('/channels/:id/schedule', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const channelId = parseInt(req.params.id, 10);
+        const { content, scheduledAt } = req.body;
+        if (isNaN(channelId) || !content || !scheduledAt) {
+            return res.status(400).json({ error: 'Missing parameters' });
+        }
+
+        const pool = require('../db').pool;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
+            const seq = seqResult.rows[0].seq;
+            const result = await client.query(`
+                INSERT INTO chat_messages (channel_id, user_id, seq, content, is_scheduled, scheduled_at)
+                VALUES ($1, $2, $3, $4, true, $5)
+                RETURNING *
+            `, [channelId, userId, seq, content, scheduledAt]);
+            await client.query('COMMIT');
+
+            res.status(201).json({
+                id: result.rows[0].id,
+                content,
+                scheduledAt,
+                channelId
+            });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        log.error('Error scheduling message', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/chat/scheduled — list user's scheduled messages
+router.get('/scheduled', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const pool = require('../db').pool;
+        const result = await pool.query(`
+            SELECT cm.*, cc.name AS channel_name
+            FROM chat_messages cm
+            JOIN chat_channels cc ON cc.id = cm.channel_id
+            WHERE cm.user_id = $1 AND cm.is_scheduled = true AND cm.scheduled_at > NOW()
+            ORDER BY cm.scheduled_at
+        `, [userId]);
+        res.json(result.rows.map(r => ({
+            id: r.id, content: r.content, channelId: r.channel_id,
+            channelName: r.channel_name, scheduledAt: r.scheduled_at
+        })));
+    } catch (err) {
+        log.error('Error listing scheduled', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -925,7 +1106,7 @@ router.post('/translate', async (req, res) => {
 // GET /api/chat/stickers — list all sticker packs with stickers
 router.get('/stickers', async (req, res) => {
     try {
-        const pool = require('../db/pool');
+        const pool = require('../db').pool;
         const packs = await pool.query('SELECT * FROM chat_sticker_packs ORDER BY is_default DESC, name');
         const stickers = await pool.query('SELECT * FROM chat_stickers ORDER BY pack_id, sort_order');
 
@@ -1022,7 +1203,7 @@ router.get('/gifs', async (req, res) => {
 router.get('/templates', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
-        const pool = require('../db/pool');
+        const pool = require('../db').pool;
         const result = await pool.query(
             'SELECT * FROM chat_templates WHERE user_id = $1 ORDER BY shortcut', [userId]
         );
@@ -1042,7 +1223,7 @@ router.post('/templates', async (req, res) => {
         const { shortcut, content, category } = req.body;
         if (!shortcut || !content) return res.status(400).json({ error: 'Missing shortcut or content' });
 
-        const pool = require('../db/pool');
+        const pool = require('../db').pool;
         const result = await pool.query(
             `INSERT INTO chat_templates (user_id, shortcut, content, category)
              VALUES ($1, $2, $3, $4)
@@ -1061,13 +1242,113 @@ router.post('/templates', async (req, res) => {
 router.delete('/templates/:id', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
-        const pool = require('../db/pool');
+        const pool = require('../db').pool;
         await pool.query('DELETE FROM chat_templates WHERE id = $1 AND user_id = $2', [req.params.id, userId]);
         res.json({ success: true });
     } catch (err) {
         log.error('Error deleting template', err);
         res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+// ==========================================
+// CHAT ACTIVITY STATS & PREMIUM COEFFICIENT
+// ==========================================
+
+// GET /api/chat/stats/me — my activity stats
+router.get('/stats/me', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const days = parseInt(req.query.days || '30', 10);
+        const stats = await chat.getChatActivityStats(userId, days);
+
+        // Calculate premium coefficient (0.0 - 1.0 bonus)
+        // Based on: messages, reactions received (helpfulness), active days, replies
+        const totalMessages = parseInt(stats.total_messages || 0);
+        const reactionsReceived = parseInt(stats.total_reactions_received || 0);
+        const activeDays = parseInt(stats.active_days || 0);
+        const totalReplies = parseInt(stats.total_replies || 0);
+
+        // Normalized scores (each 0-25 points, total max 100)
+        var msgScore = Math.min(totalMessages / 100, 1) * 25;        // 100 msgs = max
+        var reactionScore = Math.min(reactionsReceived / 50, 1) * 25; // 50 reactions = max
+        var dayScore = Math.min(activeDays / days, 1) * 25;           // every day = max
+        var replyScore = Math.min(totalReplies / 30, 1) * 25;         // 30 replies = max
+
+        var premiumCoefficient = Math.round((msgScore + reactionScore + dayScore + replyScore)) / 100;
+
+        res.json({
+            ...stats,
+            days,
+            premiumCoefficient: Math.min(premiumCoefficient, 1.0),
+            breakdown: {
+                messages: Math.round(msgScore),
+                helpfulness: Math.round(reactionScore),
+                consistency: Math.round(dayScore),
+                responsiveness: Math.round(replyScore)
+            }
+        });
+    } catch (err) {
+        log.error('Error getting chat stats', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/chat/stats/leaderboard — team leaderboard
+router.get('/stats/leaderboard', async (req, res) => {
+    try {
+        const days = parseInt(req.query.days || '30', 10);
+        const leaderboard = await chat.getChatActivityLeaderboard(days);
+        res.json(leaderboard);
+    } catch (err) {
+        log.error('Error getting chat leaderboard', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// PUSH NOTIFICATION SUBSCRIPTIONS
+// ==========================================
+
+// POST /api/chat/push/subscribe — save push subscription
+router.post('/push/subscribe', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const { endpoint, keys } = req.body;
+        if (!endpoint || !keys || !keys.p256dh || !keys.auth) {
+            return res.status(400).json({ error: 'Invalid subscription' });
+        }
+        const pool = require('../db').pool;
+        await pool.query(`
+            INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, endpoint) DO UPDATE SET p256dh = $3, auth = $4
+        `, [userId, endpoint, keys.p256dh, keys.auth]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Error saving push subscription', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// DELETE /api/chat/push/unsubscribe — remove push subscription
+router.delete('/push/unsubscribe', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const { endpoint } = req.body;
+        const pool = require('../db').pool;
+        await pool.query('DELETE FROM push_subscriptions WHERE user_id = $1 AND endpoint = $2', [userId, endpoint]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Error removing push subscription', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/chat/push/vapid-key — return public VAPID key
+router.get('/push/vapid-key', async (req, res) => {
+    const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || '';
+    res.json({ publicKey: vapidPublicKey });
 });
 
 module.exports = router;

@@ -5,8 +5,9 @@
 const https = require('https');
 const http = require('http');
 const { URL } = require('url');
-const pool = require('../db/pool');
-const log = require('../utils/logger');
+const { pool } = require('../db');
+const { createLogger } = require('../utils/logger');
+const log = createLogger('LinkPreview');
 
 // Simple in-memory cache for OG data (TTL: 1 hour)
 const _ogCache = new Map();

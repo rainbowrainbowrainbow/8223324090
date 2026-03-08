@@ -1525,6 +1525,34 @@ body.dark-mode .chat-link-preview-title {
     color: #C4B5FD;
 }
 
+body.dark-mode .ephemeral-message.own .chat-bubble {
+    background: linear-gradient(135deg, #1a3a2a 60%, rgba(239,68,68,0.12));
+}
+body.dark-mode .ephemeral-message:not(.own) .chat-bubble {
+    background: linear-gradient(135deg, #1e1e30 60%, rgba(239,68,68,0.12));
+}
+body.dark-mode .chat-ephemeral-badge {
+    background: rgba(239,68,68,0.15);
+    color: #FCA5A5;
+}
+
+body.dark-mode .chat-stats-panel {
+    background: #1e1e30;
+    color: #e0e0e0;
+}
+body.dark-mode .chat-stats-header {
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-stats-bar {
+    background: rgba(255,255,255,0.08);
+}
+body.dark-mode .chat-stats-num {
+    background: rgba(124,92,191,0.12);
+}
+body.dark-mode .chat-stats-leader-row.me {
+    background: rgba(124,92,191,0.15);
+}
+
 body.dark-mode .chat-sidebar {
     background: #1e1e30;
     border-color: #2a2a3e;

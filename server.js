@@ -266,6 +266,12 @@ app.get('/chat', (req, res) => {
     res.sendFile(path.join(__dirname, 'chat.html'));
 });
 
+// Landing page (separate site)
+app.use('/landing', express.static(path.join(__dirname, 'landing')));
+app.get('/landing', (req, res) => {
+    res.sendFile(path.join(__dirname, 'landing', 'index.html'));
+});
+
 // SPA fallback (must be last)
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));

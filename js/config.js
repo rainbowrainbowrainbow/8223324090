@@ -273,3 +273,6 @@ function getProductsSync() {
     }
     return PROGRAMS;
 }
+
+// v21.14.0: Auto-init dark mode on all pages that load config.js
+initDarkMode();

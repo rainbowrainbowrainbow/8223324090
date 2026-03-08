@@ -7,12 +7,12 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=18.0">
-    <link rel="stylesheet" href="css/layout.css?v=18.0">
-    <link rel="stylesheet" href="css/pages.css?v=18.0">
-    <link rel="stylesheet" href="css/modals.css?v=18.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=18.0">
-    <link rel="stylesheet" href="css/responsive.css?v=18.0">
+    <link rel="stylesheet" href="css/base.css?v=21.14.0">
+    <link rel="stylesheet" href="css/layout.css?v=21.14.0">
+    <link rel="stylesheet" href="css/pages.css?v=21.14.0">
+    <link rel="stylesheet" href="css/modals.css?v=21.14.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=21.14.0">
+    <link rel="stylesheet" href="css/responsive.css?v=21.14.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -977,7 +977,7 @@
             <!-- TAB 3: TEAM -->
             <div id="tab-team" class="hr-tab-content">
                 <div class="hr-team-filters">
-                    <input type="text" id="teamSearch" class="hr-team-search" placeholder="Пошук за ім'ям або телефоном...">
+                    <input type="text" id="teamSearch" class="hr-team-search" aria-label="Пошук за ім'ям або телефоном..." placeholder="Пошук за ім'ям або телефоном...">
                     <select id="teamRoleFilter" class="hr-team-select">
                         <option value="">Всі ролі</option>
                         <option value="animator">Аніматор</option>
@@ -1079,7 +1079,7 @@
             </div>
             <div class="form-group">
                 <label>Телефон</label>
-                <input type="tel" id="editPhone" placeholder="+380...">
+                <input type="tel" id="editPhone" aria-label="+380..." placeholder="+380...">
             </div>
             <div class="form-group">
                 <label>Дата народження</label>
@@ -1087,11 +1087,11 @@
             </div>
             <div class="form-group">
                 <label>Екстрений контакт</label>
-                <input type="text" id="editEmergencyContact" placeholder="Мама, Петренко О.В.">
+                <input type="text" id="editEmergencyContact" aria-label="Мама, Петренко О.В." placeholder="Мама, Петренко О.В.">
             </div>
             <div class="form-group">
                 <label>Телефон екстр. контакту</label>
-                <input type="tel" id="editEmergencyPhone" placeholder="+380...">
+                <input type="tel" id="editEmergencyPhone" aria-label="+380..." placeholder="+380...">
             </div>
             <div class="form-group">
                 <label>Ставка грн/год</label>
@@ -1099,11 +1099,11 @@
             </div>
             <div class="form-group">
                 <label>Telegram ID</label>
-                <input type="text" id="editTelegramId" placeholder="123456789">
+                <input type="text" id="editTelegramId" aria-label="123456789" placeholder="123456789">
             </div>
             <div class="form-group">
                 <label>Telegram Username</label>
-                <input type="text" id="editTelegramUsername" placeholder="@username">
+                <input type="text" id="editTelegramUsername" aria-label="@username" placeholder="@username">
             </div>
             <div class="form-group">
                 <label>Тип контракту</label>
@@ -1115,7 +1115,7 @@
             </div>
             <div class="form-group">
                 <label>Навички (через кому)</label>
-                <input type="text" id="editSkills" placeholder="анімація, квести, МК...">
+                <input type="text" id="editSkills" aria-label="анімація, квести, МК..." placeholder="анімація, квести, МК...">
             </div>
             <div class="form-group">
                 <label>Нотатки</label>
@@ -1143,7 +1143,7 @@
             </div>
             <div class="form-group">
                 <label>Причина корекції</label>
-                <textarea id="corrNotes" rows="2" placeholder="Забув відмітитись..."></textarea>
+                <textarea id="corrNotes" rows="2" aria-label="Забув відмітитись..." placeholder="Забув відмітитись..."></textarea>
             </div>
             <div class="hr-modal-actions">
                 <button id="corrCancel" class="btn-secondary">Скасувати</button>
@@ -1164,9 +1164,9 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=18.0"></script>
-    <script src="js/api.js?v=20.51"></script>
-    <script src="js/auth.js?v=20.51"></script>
-    <script src="js/hr-page.js?v=20.51"></script>
+    <script src="js/config.js?v=21.14.0"></script>
+    <script src="js/api.js?v=21.14.0"></script>
+    <script src="js/auth.js?v=21.14.0"></script>
+    <script src="js/hr-page.js?v=21.14.0"></script>
 </body>
 </html>

@@ -15,17 +15,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=21.13.0">
-    <link rel="stylesheet" href="css/auth.css?v=21.13.0">
-    <link rel="stylesheet" href="css/layout.css?v=21.13.0">
-    <link rel="stylesheet" href="css/timeline.css?v=21.13.0">
-    <link rel="stylesheet" href="css/panel.css?v=21.13.0">
-    <link rel="stylesheet" href="css/modals.css?v=21.13.0">
-    <link rel="stylesheet" href="css/controls.css?v=21.13.0">
-    <link rel="stylesheet" href="css/features.css?v=21.13.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=21.13.0">
-    <link rel="stylesheet" href="css/responsive.css?v=21.13.0">
-    <link rel="stylesheet" href="css/pages.css?v=21.13.0">
+    <link rel="stylesheet" href="css/base.css?v=21.14.0">
+    <link rel="stylesheet" href="css/auth.css?v=21.14.0">
+    <link rel="stylesheet" href="css/layout.css?v=21.14.0">
+    <link rel="stylesheet" href="css/timeline.css?v=21.14.0">
+    <link rel="stylesheet" href="css/panel.css?v=21.14.0">
+    <link rel="stylesheet" href="css/modals.css?v=21.14.0">
+    <link rel="stylesheet" href="css/controls.css?v=21.14.0">
+    <link rel="stylesheet" href="css/features.css?v=21.14.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=21.14.0">
+    <link rel="stylesheet" href="css/responsive.css?v=21.14.0">
+    <link rel="stylesheet" href="css/pages.css?v=21.14.0">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -43,17 +43,17 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v21.13.0 — Role Dashboard + Hierarchy ✨</p>
+                <p class="tagline">AI First CRM v21.14.0 — Polish + A11y + Tablet ✨</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v21.13.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v21.14.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
-                    <input type="text" id="username" placeholder="Введіть ім'я" required aria-required="true" autocomplete="username">
+                    <input type="text" id="username" aria-label="Введіть ім'я" placeholder="Введіть ім'я" required aria-required="true" autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label for="password">Пароль</label>
-                    <input type="password" id="password" placeholder="Введіть пароль" required aria-required="true" autocomplete="current-password">
+                    <input type="password" id="password" aria-label="Введіть пароль" placeholder="Введіть пароль" required aria-required="true" autocomplete="current-password">
                 </div>
                 <button type="submit" class="btn-login">Увійти →</button>
                 <p id="loginError" class="error-message"></p>
@@ -371,13 +371,13 @@
                 <!-- Примітки -->
                 <div class="form-section">
                     <label>Примітки (опційно)</label>
-                    <input type="text" id="bookingNotes" placeholder="Додаткова інформація...">
+                    <input type="text" id="bookingNotes" aria-label="Додаткова інформація..." placeholder="Додаткова інформація...">
                 </div>
 
                 <!-- v5.10: Група/Банкет -->
                 <div class="form-section">
                     <label>Група / Банкет (опційно)</label>
-                    <input type="text" id="bookingGroupName" placeholder="Напр: День народження Олі" title="Об'єднує бронювання в одну подію">
+                    <input type="text" id="bookingGroupName" aria-label="Напр: День народження Олі" placeholder="Напр: День народження Олі" title="Об'єднує бронювання в одну подію">
                 </div>
 
                 <!-- v20.9.14: Banquet fields — visible only when category=banquet -->
@@ -385,15 +385,15 @@
                     <div style="display:grid;gap:10px;">
                         <div>
                             <label>Кількість гостей</label>
-                            <input type="number" id="banquetGuests" min="1" max="500" placeholder="20">
+                            <input type="number" id="banquetGuests" min="1" max="500" aria-label="20" placeholder="20">
                         </div>
                         <div>
                             <label>Кількість столів</label>
-                            <input type="number" id="banquetTables" min="1" max="50" placeholder="4">
+                            <input type="number" id="banquetTables" min="1" max="50" aria-label="4" placeholder="4">
                         </div>
                         <div>
                             <label>Нотатки по меню</label>
-                            <textarea id="banquetMenu" rows="2" placeholder="Торт, піца, сік..."></textarea>
+                            <textarea id="banquetMenu" rows="2" aria-label="Торт, піца, сік..." placeholder="Торт, піца, сік..."></textarea>
                         </div>
                     </div>
                 </div>
@@ -410,7 +410,7 @@
                     <div class="form-section">
                         <label>Пошук клієнта</label>
                         <div class="customer-search-wrap">
-                            <input type="text" id="customerSearch" placeholder="Ім'я, телефон або Instagram..." autocomplete="off">
+                            <input type="text" id="customerSearch" aria-label="Ім'я, телефон або Instagram..." placeholder="Ім'я, телефон або Instagram..." autocomplete="off">
                             <div id="customerSearchResults" class="customer-search-results hidden"></div>
                         </div>
                         <input type="hidden" id="selectedCustomerId">
@@ -418,19 +418,19 @@
                     <div class="customer-fields">
                         <div class="form-section">
                             <label>Ім'я клієнта <span class="required-mark">*</span></label>
-                            <input type="text" id="customerName" placeholder="Прізвище Ім'я">
+                            <input type="text" id="customerName" aria-label="Прізвище Ім'я" placeholder="Прізвище Ім'я">
                         </div>
                         <div class="form-section">
                             <label>Телефон</label>
-                            <input type="tel" id="customerPhone" placeholder="+380..." inputmode="tel">
+                            <input type="tel" id="customerPhone" aria-label="+380..." placeholder="+380..." inputmode="tel">
                         </div>
                         <div class="form-section">
                             <label>Instagram</label>
-                            <input type="text" id="customerInstagram" placeholder="username">
+                            <input type="text" id="customerInstagram" aria-label="username" placeholder="username">
                         </div>
                         <div class="form-section">
                             <label>Ім'я дитини</label>
-                            <input type="text" id="customerChildName" placeholder="Ім'я іменинника">
+                            <input type="text" id="customerChildName" aria-label="Ім'я іменинника" placeholder="Ім'я іменинника">
                         </div>
                         <div class="form-section">
                             <label>Дата народження дитини</label>
@@ -459,7 +459,7 @@
                 <div class="form-section">
                     <label>Програма</label>
                     <div class="program-search-wrap">
-                        <input type="text" id="programSearch" class="program-search-input" placeholder="Пошук програми..." autocomplete="off">
+                        <input type="text" id="programSearch" class="program-search-input" aria-label="Пошук програми..." placeholder="Пошук програми..." autocomplete="off">
                     </div>
                     <div class="programs-icons" id="programsIcons">
                         <!-- Генерується через JS -->
@@ -495,7 +495,7 @@
                 <div id="customProgramSection" class="custom-program-section hidden">
                     <div class="form-section">
                         <label>Назва позиції</label>
-                        <input type="text" id="customName" placeholder="Наприклад: Особлива подія">
+                        <input type="text" id="customName" aria-label="Наприклад: Особлива подія" placeholder="Наприклад: Особлива подія">
                     </div>
                     <div class="form-section">
                         <label>Тривалість (хв)</label>
@@ -547,7 +547,7 @@
                 <!-- v3.2: К-кість дітей (для МК) -->
                 <div id="kidsCountSection" class="form-section kids-count-section hidden">
                     <label>Кількість дітей</label>
-                    <input type="number" id="kidsCountInput" min="1" max="50" placeholder="Введіть к-кість дітей">
+                    <input type="number" id="kidsCountInput" min="1" max="50" aria-label="Введіть к-кість дітей" placeholder="Введіть к-кість дітей">
                 </div>
 
                 <!-- v20.7.0: Age-based recommendations -->
@@ -638,7 +638,7 @@
                             <option value="revoked">❌ Анульовані</option>
                             <option value="blocked">🚫 Заблоковані</option>
                         </select>
-                        <input type="text" id="certFilterSearch" class="cert-filter-input" placeholder="Пошук..." oninput="debounceCertSearch()">
+                        <input type="text" id="certFilterSearch" class="cert-filter-input" aria-label="Пошук..." placeholder="Пошук..." oninput="debounceCertSearch()">
                     </div>
                 </div>
                 <div id="certificatesList" class="certificates-list">
@@ -673,7 +673,7 @@
                 </div>
                 <div class="form-group">
                     <label>Або введіть вручну</label>
-                    <input type="text" id="editLineName" placeholder="Наприклад: Женя">
+                    <input type="text" id="editLineName" aria-label="Наприклад: Женя" placeholder="Наприклад: Женя">
                 </div>
                 <div class="form-group">
                     <label>Колір</label>
@@ -695,7 +695,7 @@
             <div class="animators-management">
                 <div class="form-group">
                     <label>Список аніматорів (по одному на рядок)</label>
-                    <textarea id="animatorsList" rows="10" placeholder="Женя&#10;Анлі&#10;Маша&#10;..."></textarea>
+                    <textarea id="animatorsList" rows="10" aria-label="Женя&#10;Анлі&#10;Маша&#10;..." placeholder="Женя&#10;Анлі&#10;Маша&#10;..."></textarea>
                 </div>
                 <button type="button" id="saveAnimatorsBtn" class="btn-submit">Зберегти список</button>
             </div>
@@ -714,7 +714,7 @@
                     <div class="animators-management">
                         <div class="form-group">
                             <label>Список аніматорів (по одному на рядок)</label>
-                            <textarea id="settingsAnimatorsList" rows="8" placeholder="Женя&#10;Анлі&#10;Маша&#10;..."></textarea>
+                            <textarea id="settingsAnimatorsList" rows="8" aria-label="Женя&#10;Анлі&#10;Маша&#10;..." placeholder="Женя&#10;Анлі&#10;Маша&#10;..."></textarea>
                         </div>
                         <button type="button" id="settingsSaveAnimatorsBtn" class="btn-submit">Зберегти список</button>
                     </div>
@@ -725,7 +725,7 @@
                     <div class="telegram-setup">
                         <div class="form-group">
                             <label>Chat ID групи:</label>
-                            <input type="text" id="settingsTelegramChatId" placeholder="-100xxxxxxxxxx">
+                            <input type="text" id="settingsTelegramChatId" aria-label="-100xxxxxxxxxx" placeholder="-100xxxxxxxxxx">
                         </div>
                         <div class="form-group">
                             <label>Знайдені чати (натисніть щоб обрати):</label>
@@ -745,7 +745,7 @@
                         </div>
                         <div class="form-group">
                             <label>Thread ID:</label>
-                            <input type="text" id="settingsTelegramThreadId" placeholder="Обрати зі списку або ввести вручну">
+                            <input type="text" id="settingsTelegramThreadId" aria-label="Обрати зі списку або ввести вручну" placeholder="Обрати зі списку або ввести вручну">
                         </div>
                         <button type="button" id="saveThreadIdBtn" class="btn-submit btn-purple">💾 Зберегти Thread ID</button>
                     </div>
@@ -820,11 +820,11 @@
             <form id="automationRuleForm" onsubmit="handleAutomationRuleSubmit(event)">
                 <div class="form-group">
                     <label for="arName">Назва правила</label>
-                    <input type="text" id="arName" placeholder="напр: Піньята — друк" required>
+                    <input type="text" id="arName" aria-label="напр: Піньята — друк" placeholder="напр: Піньята — друк" required>
                 </div>
                 <div class="form-group">
                     <label for="arProductIds">ID продуктів (через кому)</label>
-                    <input type="text" id="arProductIds" placeholder="напр: pinata,pinata_custom" required>
+                    <input type="text" id="arProductIds" aria-label="напр: pinata,pinata_custom" placeholder="напр: pinata,pinata_custom" required>
                 </div>
                 <div class="form-group">
                     <label for="arTriggerType">Тригер</label>
@@ -839,7 +839,7 @@
                 </div>
                 <div class="form-group">
                     <label for="arTaskTitle">Шаблон задачі</label>
-                    <input type="text" id="arTaskTitle" value="📋 Підготовка до {programName} на {date}" placeholder="Плейсхолдери: {date}, {time}, {programName}, {pinataFiller}...">
+                    <input type="text" id="arTaskTitle" value="📋 Підготовка до {programName} на {date}" aria-label="Плейсхолдери: {date}, {time}, {programName}, {pinataFiller}..." placeholder="Плейсхолдери: {date}, {time}, {programName}, {pinataFiller}...">
                 </div>
                 <div class="form-group">
                     <label><input type="checkbox" id="arSendTelegram"> Також надіслати в Telegram групу</label>
@@ -870,28 +870,28 @@
                 <input type="hidden" id="contractorEditId">
                 <div class="form-group">
                     <label for="contractorName">Ім'я / Назва</label>
-                    <input type="text" id="contractorName" placeholder="напр: Євгенія" required>
+                    <input type="text" id="contractorName" aria-label="напр: Євгенія" placeholder="напр: Євгенія" required>
                 </div>
                 <div class="form-group">
                     <label for="contractorSpecialty">Спеціалізація (через кому)</label>
-                    <input type="text" id="contractorSpecialty" placeholder="напр: pinata_print, print">
+                    <input type="text" id="contractorSpecialty" aria-label="напр: pinata_print, print" placeholder="напр: pinata_print, print">
                     <p class="form-hint">Категорії: pinata_print, tshirt_order, print, supplies, banner</p>
                 </div>
                 <div class="form-group">
                     <label for="contractorTelegramId">Telegram Chat ID</label>
-                    <input type="text" id="contractorTelegramId" placeholder="напр: 622480549">
+                    <input type="text" id="contractorTelegramId" aria-label="напр: 622480549" placeholder="напр: 622480549">
                 </div>
                 <div class="form-group">
                     <label for="contractorTelegramUser">Telegram username</label>
-                    <input type="text" id="contractorTelegramUser" placeholder="напр: armonia_del_mundo">
+                    <input type="text" id="contractorTelegramUser" aria-label="напр: armonia_del_mundo" placeholder="напр: armonia_del_mundo">
                 </div>
                 <div class="form-group">
                     <label for="contractorPhone">Телефон</label>
-                    <input type="text" id="contractorPhone" placeholder="+380...">
+                    <input type="text" id="contractorPhone" aria-label="+380..." placeholder="+380...">
                 </div>
                 <div class="form-group">
                     <label for="contractorNotes">Примітки</label>
-                    <input type="text" id="contractorNotes" placeholder="Що робить, умови...">
+                    <input type="text" id="contractorNotes" aria-label="Що робить, умови..." placeholder="Що робить, умови...">
                 </div>
                 <button type="submit" class="btn-submit btn-full">💾 Зберегти</button>
             </form>
@@ -944,7 +944,7 @@
                 </div>
                 <div class="form-group">
                     <label for="certNotes">Примітка</label>
-                    <textarea id="certNotes" rows="2" placeholder="Опціонально..."></textarea>
+                    <textarea id="certNotes" rows="2" aria-label="Опціонально..." placeholder="Опціонально..."></textarea>
                 </div>
                 <button type="submit" class="btn-submit btn-full">Видати сертифікат</button>
             </form>
@@ -987,7 +987,7 @@
                 </div>
                 <div class="form-group">
                     <label for="batchCertEventName">Назва події (опціонально)</label>
-                    <input type="text" id="batchCertEventName" maxlength="200" placeholder="напр. Вітання Іменинників">
+                    <input type="text" id="batchCertEventName" maxlength="200" aria-label="напр. Вітання Іменинників" placeholder="напр. Вітання Іменинників">
                     <small class="form-hint">Друкується на сертифікаті замість типу</small>
                 </div>
                 <div class="form-group" style="display:none">
@@ -1045,7 +1045,7 @@
                         <option value="certificate_create">📄 Сертифікат видано</option>
                         <option value="certificate_batch">📦 Пакет сертифікатів</option>
                     </select>
-                    <input type="text" id="historyFilterUser" class="history-filter-input" placeholder="Користувач...">
+                    <input type="text" id="historyFilterUser" class="history-filter-input" aria-label="Користувач..." placeholder="Користувач...">
                     <div class="history-date-range">
                         <input type="date" id="historyFilterFrom" class="history-filter-input" title="Від">
                         <span class="history-date-sep">—</span>
@@ -1138,7 +1138,7 @@
             <div class="telegram-setup">
                 <div class="form-group">
                     <label>Chat ID групи</label>
-                    <input type="text" id="telegramChatId" placeholder="-100xxxxxxxxxx">
+                    <input type="text" id="telegramChatId" aria-label="-100xxxxxxxxxx" placeholder="-100xxxxxxxxxx">
                 </div>
                 <div class="form-group">
                     <label>Знайдені чати:</label>
@@ -1146,7 +1146,7 @@
                 </div>
                 <div class="form-group">
                     <label>Thread ID гілки (необов'язково):</label>
-                    <input type="text" id="telegramThreadId" placeholder="ID теми/гілки для сповіщень">
+                    <input type="text" id="telegramThreadId" aria-label="ID теми/гілки для сповіщень" placeholder="ID теми/гілки для сповіщень">
                 </div>
                 <button type="button" id="saveTelegramBtn" class="btn-submit">Зберегти та протестувати</button>
             </div>
@@ -1168,7 +1168,7 @@
     <div id="searchModal" class="search-overlay hidden">
         <div class="search-container">
             <div class="search-header">
-                <input type="text" id="searchInput" class="search-input" placeholder="Пошук бронювань, клієнтів, задач..." autocomplete="off" oninput="onSearchInput(this.value)">
+                <input type="text" id="searchInput" class="search-input" aria-label="Пошук бронювань, клієнтів, задач..." placeholder="Пошук бронювань, клієнтів, задач..." autocomplete="off" oninput="onSearchInput(this.value)">
                 <kbd class="search-kbd">Esc</kbd>
             </div>
             <div id="searchResults" class="search-results">
@@ -1189,6 +1189,20 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v21.14.0 — Polish + A11y + Tablet (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Версії</b> — синхронізовано ?v= теги на всіх 13 standalone-сторінках</li>
+                        <li><b>iOS zoom</b> — font-size 16px на всіх input/select/textarea (запобігає автозум)</li>
+                        <li><b>Touch targets</b> — мінімум 44px для кнопок та інтерактивних елементів (WCAG 2.1)</li>
+                        <li><b>Tablet</b> — новий breakpoint 769-1023px: вужчий sidebar (200px), адаптивні колонки</li>
+                        <li><b>Dark mode</b> — автоматична ініціалізація на всіх standalone-сторінках через config.js</li>
+                        <li><b>Accessibility</b> — 111 aria-label додано, контраст --gray-400 підвищено до WCAG AA (4.5:1)</li>
+                        <li><b>Offline UI</b> — toast "Ви офлайн" при втраті зв'язку, "Синхронізовано" при відновленні</li>
+                        <li><b>WebSocket</b> — toast "Перепідключення..." при розриві, "Синхронізовано" при реконнекті</li>
+                        <li><b>Kleshnya CSS</b> — видалено orphaned responsive стилі для kleshnya widget</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v21.13.0 — Role Dashboard + Hierarchy (Claude Code, 08.03.2026)</h4>
                     <ul>
@@ -3403,15 +3417,15 @@
                 <div class="pf-grid">
                     <div class="form-group">
                         <label for="pf-code">Код *</label>
-                        <input type="text" id="pf-code" maxlength="20" required placeholder="КВ12">
+                        <input type="text" id="pf-code" maxlength="20" required aria-label="КВ12" placeholder="КВ12">
                     </div>
                     <div class="form-group">
                         <label for="pf-label">Мітка *</label>
-                        <input type="text" id="pf-label" maxlength="100" required placeholder="КВ12(60)">
+                        <input type="text" id="pf-label" maxlength="100" required aria-label="КВ12(60)" placeholder="КВ12(60)">
                     </div>
                     <div class="form-group">
                         <label for="pf-icon">Іконка</label>
-                        <input type="text" id="pf-icon" maxlength="10" placeholder="🎭">
+                        <input type="text" id="pf-icon" maxlength="10" aria-label="🎭" placeholder="🎭">
                     </div>
                     <div class="form-group">
                         <label for="pf-category">Категорія *</label>
@@ -3428,7 +3442,7 @@
                 </div>
                 <div class="form-group">
                     <label for="pf-name">Назва *</label>
-                    <input type="text" id="pf-name" maxlength="200" required placeholder="Назва програми">
+                    <input type="text" id="pf-name" maxlength="200" required aria-label="Назва програми" placeholder="Назва програми">
                 </div>
                 <div class="pf-grid">
                     <div class="form-group">
@@ -3451,16 +3465,16 @@
                 <div class="pf-grid">
                     <div class="form-group">
                         <label for="pf-age">Вік</label>
-                        <input type="text" id="pf-age" maxlength="30" placeholder="5-12р">
+                        <input type="text" id="pf-age" maxlength="30" aria-label="5-12р" placeholder="5-12р">
                     </div>
                     <div class="form-group">
                         <label for="pf-kids">Діти</label>
-                        <input type="text" id="pf-kids" maxlength="30" placeholder="4-10">
+                        <input type="text" id="pf-kids" maxlength="30" aria-label="4-10" placeholder="4-10">
                     </div>
                 </div>
                 <div class="form-group">
                     <label for="pf-description">Опис</label>
-                    <textarea id="pf-description" rows="3" maxlength="2000" placeholder="Опис програми..."></textarea>
+                    <textarea id="pf-description" rows="3" maxlength="2000" aria-label="Опис програми..." placeholder="Опис програми..."></textarea>
                 </div>
                 <div class="pf-checkboxes">
                     <label class="pf-check"><input type="checkbox" id="pf-perchild"> Ціна за дитину</label>
@@ -3482,7 +3496,7 @@
             <h3>📝 Задачник</h3>
             <div class="tasks-toolbar">
                 <div class="tasks-form-row">
-                    <input type="text" id="taskTitle" class="afisha-input" placeholder="Нове завдання..." style="flex:2">
+                    <input type="text" id="taskTitle" class="afisha-input" aria-label="Нове завдання..." placeholder="Нове завдання..." style="flex:2">
                     <input type="date" id="taskDate" class="afisha-input">
                     <select id="taskPriority" class="afisha-input afisha-type-select">
                         <option value="normal">Звичайна</option>
@@ -3496,7 +3510,7 @@
                         <option value="trampoline">Батути</option>
                         <option value="personal">Особисте</option>
                     </select>
-                    <input type="text" id="taskAssignedTo" class="afisha-input" placeholder="Відповідальний" style="max-width:120px">
+                    <input type="text" id="taskAssignedTo" class="afisha-input" aria-label="Відповідальний" placeholder="Відповідальний" style="max-width:120px">
                     <button type="button" id="addTaskBtn" class="btn-afisha-add">Додати</button>
                 </div>
                 <div class="tasks-filters">
@@ -3527,18 +3541,18 @@
                     <input type="date" id="afishaDate" class="afisha-input">
                     <input type="time" id="afishaTime" class="afisha-input" value="12:00">
                     <button type="button" id="afishaAutoTimeBtn" class="btn-auto-time" title="Знайти вільний слот">Авто</button>
-                    <input type="text" id="afishaTitle" class="afisha-input" placeholder="Назва події">
+                    <input type="text" id="afishaTitle" class="afisha-input" aria-label="Назва події" placeholder="Назва події">
                     <input type="number" id="afishaDuration" class="afisha-input" value="60" min="15" step="15" title="Тривалість (хв)">
                     <button type="button" id="addAfishaBtn" class="btn-afisha-add">Додати</button>
                 </div>
                 <div class="afisha-form-row" style="margin-top:6px">
-                    <input type="text" id="afishaDescription" class="afisha-input" placeholder="Опис (опціонально)" style="flex:1">
+                    <input type="text" id="afishaDescription" class="afisha-input" aria-label="Опис (опціонально)" placeholder="Опис (опціонально)" style="flex:1">
                 </div>
             </div>
             <div id="afishaList" class="afisha-list"></div>
             <div class="afisha-import-section">
                 <label>Імпорт/Експорт (формат: дата;час;хвилини;назва;опис — по одній на рядок):</label>
-                <textarea id="afishaImportText" rows="3" placeholder="2026-03-01;12:00;60;Піратська вечірка;Капітан Джек та команда&#10;2026-03-01;14:00;90;Шоу бульбашок;Мильні бульбашки для дітей"></textarea>
+                <textarea id="afishaImportText" rows="3" aria-label="2026-03-01;12:00;60;Піратська вечірка;Капітан Джек та команда&#10;2026-03-01;14:00;90;Шоу бульбашок;Мильні бульбашки для дітей" placeholder="2026-03-01;12:00;60;Піратська вечірка;Капітан Джек та команда&#10;2026-03-01;14:00;90;Шоу бульбашок;Мильні бульбашки для дітей"></textarea>
                 <div style="display:flex;gap:8px;margin-top:8px">
                     <button type="button" id="afishaImportBtn" class="btn-afisha-import">📥 Імпортувати</button>
                     <button type="button" id="afishaExportBtn" class="btn-afisha-import" style="background:linear-gradient(135deg,#3B82F6,#2563EB)">📤 Експортувати</button>
@@ -3548,7 +3562,7 @@
             <div class="afisha-recurring-section" style="margin-top:16px;border-top:1px solid var(--gray-200,#E5E7EB);padding-top:12px">
                 <h4 style="margin:0 0 8px">🔄 Повторювані події</h4>
                 <div class="afisha-form-row" style="flex-wrap:wrap;gap:6px">
-                    <input type="text" id="afishaTplTitle" class="afisha-input" placeholder="Назва" style="flex:2">
+                    <input type="text" id="afishaTplTitle" class="afisha-input" aria-label="Назва" placeholder="Назва" style="flex:2">
                     <input type="time" id="afishaTplTime" class="afisha-input" value="12:00">
                     <input type="number" id="afishaTplDuration" class="afisha-input" value="60" min="15" step="15" title="Хвилини">
                     <select id="afishaTplPattern" class="afisha-input afisha-type-select" title="Повторення">
@@ -3558,8 +3572,8 @@
                         <option value="weekly" selected>Щотижня (Сб)</option>
                         <option value="custom">Свої дні</option>
                     </select>
-                    <input type="text" id="afishaTplDays" class="afisha-input" placeholder="Дні: 1,3,5" style="max-width:90px;display:none" title="1=Пн, 2=Вт, 3=Ср, 4=Чт, 5=Пт, 6=Сб, 7=Нд">
-                    <input type="text" id="afishaTplDesc" class="afisha-input" placeholder="Опис" style="flex:1">
+                    <input type="text" id="afishaTplDays" class="afisha-input" aria-label="Дні: 1,3,5" placeholder="Дні: 1,3,5" style="max-width:90px;display:none" title="1=Пн, 2=Вт, 3=Ср, 4=Чт, 5=Пт, 6=Сб, 7=Нд">
+                    <input type="text" id="afishaTplDesc" class="afisha-input" aria-label="Опис" placeholder="Опис" style="flex:1">
                     <button type="button" id="addAfishaTplBtn" class="btn-afisha-add">+ Шаблон</button>
                 </div>
                 <div id="afishaTplList" style="margin-top:8px"></div>
@@ -3593,7 +3607,7 @@
                 </div>
                 <div class="form-group">
                     <label for="afishaEditDescription">Опис</label>
-                    <input type="text" id="afishaEditDescription" class="form-input" placeholder="Опис події (опціонально)">
+                    <input type="text" id="afishaEditDescription" class="form-input" aria-label="Опис події (опціонально)" placeholder="Опис події (опціонально)">
                 </div>
                 <div class="modal-actions">
                     <button type="submit" class="btn-submit">Зберегти</button>
@@ -3616,7 +3630,7 @@
                 </div>
                 <div class="form-group">
                     <label for="taskEditDescription">Опис</label>
-                    <input type="text" id="taskEditDescription" class="form-input" placeholder="Деталі завдання (опціонально)">
+                    <input type="text" id="taskEditDescription" class="form-input" aria-label="Деталі завдання (опціонально)" placeholder="Деталі завдання (опціонально)">
                 </div>
                 <div class="form-group">
                     <label for="taskEditDate">Дата</label>
@@ -3632,7 +3646,7 @@
                 </div>
                 <div class="form-group">
                     <label for="taskEditAssigned">Відповідальний</label>
-                    <input type="text" id="taskEditAssigned" class="form-input" placeholder="Хто виконує">
+                    <input type="text" id="taskEditAssigned" class="form-input" aria-label="Хто виконує" placeholder="Хто виконує">
                 </div>
                 <div class="form-group">
                     <label for="taskEditCategory">Категорія</label>
@@ -3662,11 +3676,11 @@
             <form id="improvementForm">
                 <div class="form-group">
                     <label>Опис ідеї</label>
-                    <input type="text" id="improvementTitle" placeholder="Що можна покращити?" required style="font-size:16px">
+                    <input type="text" id="improvementTitle" aria-label="Що можна покращити?" placeholder="Що можна покращити?" required style="font-size:16px">
                 </div>
                 <div class="form-group">
                     <label>Деталі (необов'язково)</label>
-                    <textarea id="improvementDescription" placeholder="Детальніше..." rows="3" style="width:100%;border:1px solid var(--gray-200);border-radius:var(--radius-sm);padding:10px;font-family:inherit;font-size:14px;resize:vertical"></textarea>
+                    <textarea id="improvementDescription" aria-label="Детальніше..." placeholder="Детальніше..." rows="3" style="width:100%;border:1px solid var(--gray-200);border-radius:var(--radius-sm);padding:10px;font-family:inherit;font-size:14px;resize:vertical"></textarea>
                 </div>
                 <div class="confirm-buttons">
                     <button type="button" class="btn-cancel" onclick="document.getElementById('improvementModal').classList.add('hidden')">Скасувати</button>
@@ -3679,28 +3693,28 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/logger.js?v=21.13.0"></script>
-    <script src="js/config.js?v=21.13.0"></script>
-    <script src="js/api.js?v=21.13.0"></script>
-    <script src="js/ui.js?v=21.13.0"></script>
-    <script src="js/auth.js?v=21.13.0"></script>
-    <script src="js/timeline.js?v=21.13.0"></script>
-    <script src="js/booking.js?v=21.13.0"></script>
-    <script src="js/settings.js?v=21.13.0"></script>
-    <script src="js/booking-form.js?v=21.13.0"></script>
-    <script src="js/booking-linked.js?v=21.13.0"></script>
-    <script src="js/settings-dashboard.js?v=21.13.0"></script>
-    <script src="js/settings-history.js?v=21.13.0"></script>
-    <script src="js/settings-afisha.js?v=21.13.0"></script>
-    <script src="js/settings-certificates.js?v=21.13.0"></script>
-    <script src="js/offline.js?v=21.13.0"></script>
-    <script src="js/search.js?v=21.13.0"></script>
-    <script src="js/ws.js?v=21.13.0"></script>
-    <script src="js/components/sidebar.js?v=21.13.0"></script>
-    <script src="js/sales-panel.js?v=21.13.0"></script>
-    <script src="js/command-panel.js?v=21.13.0"></script>
-    <script src="js/idle-hints.js?v=21.13.0"></script>
-    <script src="js/app.js?v=21.13.0"></script>
+    <script src="js/logger.js?v=21.14.0"></script>
+    <script src="js/config.js?v=21.14.0"></script>
+    <script src="js/api.js?v=21.14.0"></script>
+    <script src="js/ui.js?v=21.14.0"></script>
+    <script src="js/auth.js?v=21.14.0"></script>
+    <script src="js/timeline.js?v=21.14.0"></script>
+    <script src="js/booking.js?v=21.14.0"></script>
+    <script src="js/settings.js?v=21.14.0"></script>
+    <script src="js/booking-form.js?v=21.14.0"></script>
+    <script src="js/booking-linked.js?v=21.14.0"></script>
+    <script src="js/settings-dashboard.js?v=21.14.0"></script>
+    <script src="js/settings-history.js?v=21.14.0"></script>
+    <script src="js/settings-afisha.js?v=21.14.0"></script>
+    <script src="js/settings-certificates.js?v=21.14.0"></script>
+    <script src="js/offline.js?v=21.14.0"></script>
+    <script src="js/search.js?v=21.14.0"></script>
+    <script src="js/ws.js?v=21.14.0"></script>
+    <script src="js/components/sidebar.js?v=21.14.0"></script>
+    <script src="js/sales-panel.js?v=21.14.0"></script>
+    <script src="js/command-panel.js?v=21.14.0"></script>
+    <script src="js/idle-hints.js?v=21.14.0"></script>
+    <script src="js/app.js?v=21.14.0"></script>
 
     <!-- Emoji Effects Demo (inline — works on index.html without chat.css) -->
     <style>

@@ -7,12 +7,12 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=18.0">
-    <link rel="stylesheet" href="css/layout.css?v=18.0">
-    <link rel="stylesheet" href="css/pages.css?v=18.0">
-    <link rel="stylesheet" href="css/modals.css?v=18.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=18.0">
-    <link rel="stylesheet" href="css/responsive.css?v=18.0">
+    <link rel="stylesheet" href="css/base.css?v=21.14.0">
+    <link rel="stylesheet" href="css/layout.css?v=21.14.0">
+    <link rel="stylesheet" href="css/pages.css?v=21.14.0">
+    <link rel="stylesheet" href="css/modals.css?v=21.14.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=21.14.0">
+    <link rel="stylesheet" href="css/responsive.css?v=21.14.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -561,7 +561,7 @@
 
             <!-- Filters -->
             <div class="wh-filters">
-                <input type="text" id="searchInput" class="wh-search" placeholder="Пошук за назвою...">
+                <input type="text" id="searchInput" class="wh-search" aria-label="Пошук за назвою..." placeholder="Пошук за назвою...">
                 <button id="lowStockToggle" class="wh-toggle">Мало на складі</button>
             </div>
 
@@ -569,7 +569,7 @@
             <div id="itemForm" class="inline-form" style="display:none;">
                 <div class="form-field">
                     <label>Назва</label>
-                    <input type="text" id="wf-name" placeholder="Туалетний папір" maxlength="255" style="min-width:200px">
+                    <input type="text" id="wf-name" aria-label="Туалетний папір" placeholder="Туалетний папір" maxlength="255" style="min-width:200px">
                 </div>
                 <div class="form-field">
                     <label>Категорія</label>
@@ -607,7 +607,7 @@
                 </div>
                 <div class="form-field">
                     <label>Примітки</label>
-                    <input type="text" id="wf-notes" placeholder="Де купити, постачальник..." style="min-width:200px">
+                    <input type="text" id="wf-notes" aria-label="Де купити, постачальник..." placeholder="Де купити, постачальник..." style="min-width:200px">
                 </div>
                 <input type="hidden" id="wf-id" value="">
                 <div style="display:flex; gap:8px; margin-top:20px;">
@@ -698,7 +698,7 @@
             </div>
             <div class="form-group">
                 <label>Причина</label>
-                <input type="text" id="qtyModalReason" placeholder="Щоденне використання">
+                <input type="text" id="qtyModalReason" aria-label="Щоденне використання" placeholder="Щоденне використання">
             </div>
             <div class="wh-modal-actions">
                 <button id="qtyModalConfirm" class="btn-page-primary">Підтвердити</button>
@@ -724,7 +724,7 @@
             <h3 id="procFormTitle">Новий список закупок</h3>
             <div class="form-group">
                 <label>Назва</label>
-                <input type="text" id="pf-title" placeholder="Закупка на тиждень...">
+                <input type="text" id="pf-title" aria-label="Закупка на тиждень..." placeholder="Закупка на тиждень...">
             </div>
             <div class="form-group">
                 <label>Відділ</label>
@@ -742,7 +742,7 @@
             </div>
             <div class="form-group">
                 <label>Примітки</label>
-                <input type="text" id="pf-notes" placeholder="Постачальник, коментарі...">
+                <input type="text" id="pf-notes" aria-label="Постачальник, коментарі..." placeholder="Постачальник, коментарі...">
             </div>
             <input type="hidden" id="pf-id" value="">
             <div class="wh-modal-actions">
@@ -761,9 +761,9 @@
 
             <!-- Add item inline -->
             <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
-                <input type="text" id="pd-item-name" placeholder="Позиція" style="flex:1;min-width:140px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
-                <input type="number" id="pd-item-qty" placeholder="К-сть" value="1" min="1" style="width:70px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
-                <input type="number" id="pd-item-price" placeholder="Ціна ₴" value="0" min="0" style="width:90px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
+                <input type="text" id="pd-item-name" aria-label="Позиція" placeholder="Позиція" style="flex:1;min-width:140px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
+                <input type="number" id="pd-item-qty" aria-label="К-сть" placeholder="К-сть" value="1" min="1" style="width:70px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
+                <input type="number" id="pd-item-price" aria-label="Ціна ₴" placeholder="Ціна ₴" value="0" min="0" style="width:90px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
                 <button onclick="addProcItem()" class="btn-page-primary" style="white-space:nowrap;">+ Додати</button>
             </div>
 
@@ -778,9 +778,9 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=18.0"></script>
-    <script src="js/api.js?v=20.51"></script>
-    <script src="js/auth.js?v=20.51"></script>
-    <script src="js/warehouse-page.js?v=20.51"></script>
+    <script src="js/config.js?v=21.14.0"></script>
+    <script src="js/api.js?v=21.14.0"></script>
+    <script src="js/auth.js?v=21.14.0"></script>
+    <script src="js/warehouse-page.js?v=21.14.0"></script>
 </body>
 </html>

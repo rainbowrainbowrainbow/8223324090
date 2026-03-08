@@ -219,11 +219,16 @@ var ParkWS = (function () {
 
         switch (message.type) {
             case 'auth:success':
+                var wasReconnect = _reconnectAttempts > 0;
                 _connected = true;
                 _reconnectAttempts = 0;
                 _debug('[WS] Authenticated as:', message.payload.username,
                     '(clients:', message.payload.connectedClients, ')');
                 _dispatchStatus(true);
+                // v21.14.0: Show synced toast on reconnect
+                if (wasReconnect) {
+                    _showConnectionToast('Синхронізовано', 'success');
+                }
                 // Re-subscribe to previously subscribed dates
                 _resubscribeDates();
                 // Fetch chat unread badge
@@ -425,6 +430,11 @@ var ParkWS = (function () {
 
         _debug('[WS] Reconnecting in', delay / 1000, 's (attempt', _reconnectAttempts, ')');
 
+        // v21.14.0: Show reconnecting toast on first attempt only
+        if (_reconnectAttempts === 1) {
+            _showConnectionToast('Перепідключення...', '');
+        }
+
         _reconnectTimer = setTimeout(function () {
             _reconnectTimer = null;
             connect();
@@ -477,9 +487,18 @@ var ParkWS = (function () {
     // NETWORK EVENTS
     // ==========================================
 
+    // v21.14.0: UI toast helpers for connection status
+    var _lastOfflineToastTime = 0;
+    function _showConnectionToast(message, type) {
+        if (typeof showNotification === 'function') {
+            showNotification(message, type || '');
+        }
+    }
+
     // Resume reconnection when browser goes back online
     window.addEventListener('online', function () {
         _debug('[WS] Browser is online');
+        _showConnectionToast('З\'єднання відновлено', 'success');
         if (!_connected && !_intentionalClose && localStorage.getItem('pzp_token')) {
             // Wait for offline queue sync to complete first, then reconnect
             setTimeout(function () {
@@ -491,6 +510,7 @@ var ParkWS = (function () {
     // Pause reconnection when browser goes offline
     window.addEventListener('offline', function () {
         _debug('[WS] Browser is offline, pausing reconnection');
+        _showConnectionToast('Ви офлайн — зміни збережені локально', 'error');
         if (_reconnectTimer) {
             clearTimeout(_reconnectTimer);
             _reconnectTimer = null;

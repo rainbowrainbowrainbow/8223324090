@@ -6,12 +6,12 @@
     <title>Event Genix | Ліди</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=20.9.23">
-    <link rel="stylesheet" href="css/layout.css?v=20.9.23">
-    <link rel="stylesheet" href="css/pages.css?v=20.9.23">
-    <link rel="stylesheet" href="css/modals.css?v=20.9.23">
-    <link rel="stylesheet" href="css/dark-mode.css?v=20.9.23">
-    <link rel="stylesheet" href="css/responsive.css?v=20.9.23">
+    <link rel="stylesheet" href="css/base.css?v=21.14.0">
+    <link rel="stylesheet" href="css/layout.css?v=21.14.0">
+    <link rel="stylesheet" href="css/pages.css?v=21.14.0">
+    <link rel="stylesheet" href="css/modals.css?v=21.14.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=21.14.0">
+    <link rel="stylesheet" href="css/responsive.css?v=21.14.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -406,7 +406,7 @@
                     <button class="filter-btn" data-status="booked">Заброньовано</button>
                     <button class="filter-btn" data-status="lost">Втрачено</button>
                 </div>
-                <input type="text" class="search-input" id="leadsSearch" placeholder="Пошук за ім'ям, телефоном...">
+                <input type="text" class="search-input" id="leadsSearch" aria-label="Пошук за ім'ям, телефоном..." placeholder="Пошук за ім'ям, телефоном...">
             </div>
 
             <!-- Table -->
@@ -438,15 +438,15 @@
             <input type="hidden" id="leadEditId">
             <div class="form-group">
                 <label>Ім'я *</label>
-                <input type="text" id="leadName" placeholder="Ім'я клієнта">
+                <input type="text" id="leadName" aria-label="Ім'я клієнта" placeholder="Ім'я клієнта">
             </div>
             <div class="form-group">
                 <label>Телефон</label>
-                <input type="tel" id="leadPhone" placeholder="+380..." inputmode="tel">
+                <input type="tel" id="leadPhone" aria-label="+380..." placeholder="+380..." inputmode="tel">
             </div>
             <div class="form-group">
                 <label>Instagram</label>
-                <input type="text" id="leadInstagram" placeholder="@username">
+                <input type="text" id="leadInstagram" aria-label="@username" placeholder="@username">
             </div>
             <div class="form-group">
                 <label>Джерело</label>
@@ -466,11 +466,11 @@
             </div>
             <div class="form-group">
                 <label>Кількість дітей</label>
-                <input type="number" id="leadChildrenCount" min="1" max="100" placeholder="10">
+                <input type="number" id="leadChildrenCount" min="1" max="100" aria-label="10" placeholder="10">
             </div>
             <div class="form-group">
                 <label>Нотатки</label>
-                <textarea id="leadNotes" rows="3" placeholder="Додаткова інформація..."></textarea>
+                <textarea id="leadNotes" rows="3" aria-label="Додаткова інформація..." placeholder="Додаткова інформація..."></textarea>
             </div>
             <div class="form-group">
                 <label>Відповідальний</label>
@@ -485,8 +485,8 @@
         </div>
     </div>
 
-    <script src="js/config.js?v=20.9.23"></script>
-    <script src="js/auth.js?v=20.9.23"></script>
-    <script src="js/leads-page.js?v=20.9.23"></script>
+    <script src="js/config.js?v=21.14.0"></script>
+    <script src="js/auth.js?v=21.14.0"></script>
+    <script src="js/leads-page.js?v=21.14.0"></script>
 </body>
 </html>

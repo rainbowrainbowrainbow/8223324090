@@ -556,10 +556,23 @@ async function processMessage(message) {
         log.error('Masking error', err);
     });
 
-    // 3. Analyze conflicts (fire-and-forget)
-    analyzeConflict(channelId, userId, username, content).catch(err => {
-        log.error('Conflict analysis error', err);
-    });
+    // 3. Analyze conflicts — show guardian typing first
+    (async () => {
+        try {
+            // Show typing indicator for Guardian
+            const guardianId = await getGuardianUserId();
+            if (guardianId) {
+                broadcastToChannel(channelId, 'chat:typing', {
+                    channelId,
+                    userId: guardianId,
+                    username: GUARDIAN_USERNAME
+                });
+            }
+            await analyzeConflict(channelId, userId, username, content);
+        } catch (err) {
+            log.error('Conflict analysis error', err);
+        }
+    })();
 
     return { blocked: false };
 }

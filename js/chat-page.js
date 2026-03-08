@@ -973,23 +973,52 @@
             '<div class="chat-info-section-label" style="padding:0">' + count + ' ' + _pluralize(count, 'учасник', 'учасники', 'учасників') + '</div>' +
             '<button class="chat-sidebar-action-btn" id="chatAddMemberBtn" title="Додати учасника"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>' +
             '</div>';
+        var hasGuardian = _channelMembers.some(function (u) { return u.username === 'guardian'; });
         _channelMembers.forEach(function (u) {
-            var initial = (u.displayName || u.username || '?').charAt(0).toUpperCase();
-            var colorClass = 'chat-avatar-color-' + _colorIdx(u.id || 0);
+            var isGuardianUser = u.username === 'guardian';
+            var isOpenclawUser = u.username === 'openclaw';
+            var initial = isGuardianUser ? '🛡️' : isOpenclawUser ? '🦀' : (u.displayName || u.username || '?').charAt(0).toUpperCase();
+            var colorClass = isGuardianUser ? '' : 'chat-avatar-color-' + _colorIdx(u.id || 0);
+            var avatarStyle = isGuardianUser ? 'background:linear-gradient(135deg,#6366F1,#8B5CF6);color:white;' : isOpenclawUser ? 'background:linear-gradient(135deg,#10B981,#059669);color:white;' : '';
+            var badgeHtml = isGuardianUser ? '<span class="chat-bot-badge guardian-badge" style="margin-left:6px;font-size:8px">GUARD</span>' : isOpenclawUser ? '<span class="chat-bot-badge" style="margin-left:6px;font-size:8px">BOT</span>' : '';
             html += '<div class="chat-info-member" data-user-id="' + u.id + '" style="cursor:pointer">' +
-                '<div class="chat-info-member-avatar ' + colorClass + '">' + initial + '</div>' +
+                '<div class="chat-info-member-avatar ' + colorClass + '"' + (avatarStyle ? ' style="' + avatarStyle + '"' : '') + '>' + initial + '</div>' +
                 '<div>' +
-                    '<div class="chat-info-member-name">' + _esc(u.displayName || u.username) + '</div>' +
+                    '<div class="chat-info-member-name">' + _esc(u.displayName || u.username) + badgeHtml + '</div>' +
                     '<div class="chat-info-member-role">@' + _esc(u.username) + ' · ' + _esc(_roleLabel(u.role)) + '</div>' +
                 '</div>' +
             '</div>';
         });
+        // Add Guardian invite button if not in channel
+        if (!hasGuardian) {
+            html += '<div class="chat-guardian-invite" id="chatGuardianInvite">' +
+                '<button class="chat-guardian-invite-btn">' +
+                    '<span class="chat-guardian-invite-icon">🛡️</span>' +
+                    '<span>Додати Guardian — AI охоронець</span>' +
+                '</button>' +
+            '</div>';
+        }
         body.innerHTML = html;
 
         // Add member button
         var addBtn = body.querySelector('#chatAddMemberBtn');
         if (addBtn) {
             addBtn.addEventListener('click', function () { _openAddMemberModal(); });
+        }
+
+        // Guardian invite button
+        var guardianInvite = body.querySelector('#chatGuardianInvite');
+        if (guardianInvite) {
+            guardianInvite.addEventListener('click', async function () {
+                try {
+                    await _api('POST', '/channels/' + _currentChannel.id + '/members', { username: 'guardian' });
+                    guardianInvite.innerHTML = '<div style="text-align:center;padding:8px;color:#6366F1;font-size:13px;animation:guardianAppear 0.5s ease">🛡️ Guardian додано!</div>';
+                    setTimeout(function () { _renderInfoPanel(); }, 1500);
+                } catch (err) {
+                    console.error('[Chat] Guardian invite error:', err);
+                    guardianInvite.innerHTML = '<div style="text-align:center;padding:8px;color:var(--danger);font-size:13px">Не вдалось додати</div>';
+                }
+            });
         }
 
         // Click member → profile
@@ -1438,6 +1467,19 @@
         // Close emoji panel on send
         if (_emojiPanelOpen) _toggleEmojiPanel();
 
+        // Handle /guardian command — invite guardian to channel
+        if (content === '/guardian' || content === '/охоронець') {
+            input.value = '';
+            _autoGrow(input);
+            try {
+                await _api('POST', '/channels/' + _currentChannel.id + '/members', { username: 'guardian' });
+                _appendSystemMessage('🛡️ Guardian додано до каналу! Тепер AI-охоронець слідкує за порядком.');
+            } catch (err) {
+                _appendSystemMessage('🛡️ Guardian вже є в цьому каналі або не вдалось додати.');
+            }
+            return;
+        }
+
         // Handle /task command
         if (content.startsWith('/task ') || content.startsWith('/задача ')) {
             var taskText = content.replace(/^\/(?:task|задача)\s+/, '');
@@ -1513,6 +1555,16 @@
             input.value = content;
             _autoGrow(input);
         }
+    }
+
+    function _appendSystemMessage(text) {
+        var container = document.getElementById('chatMessages');
+        if (!container) return;
+        var el = document.createElement('div');
+        el.className = 'chat-system-message guardian-system-msg';
+        el.innerHTML = '<div class="chat-system-text">' + text + '</div>';
+        container.appendChild(el);
+        container.scrollTop = container.scrollHeight;
     }
 
     function _appendMessage(msg) {
@@ -1815,10 +1867,18 @@
             el.innerHTML = '';
             return;
         }
-        var text = names.length === 1
-            ? names[0] + ' пише'
-            : names.slice(0, 2).join(', ') + ' пишуть';
-        el.innerHTML = text + ' <span class="chat-typing-dots"><span></span><span></span><span></span></span>';
+        var hasGuardianTyping = names.includes('guardian');
+        var hasOpenclawTyping = names.includes('openclaw');
+        var displayNames = names.map(function (n) {
+            if (n === 'guardian') return '🛡️ Guardian';
+            if (n === 'openclaw') return '🦀 OpenClaw';
+            return n;
+        });
+        var text = displayNames.length === 1
+            ? displayNames[0] + ' пише'
+            : displayNames.slice(0, 2).join(', ') + ' пишуть';
+        var extraClass = hasGuardianTyping ? ' guardian-typing' : hasOpenclawTyping ? ' bot-typing' : '';
+        el.innerHTML = '<span class="chat-typing-text' + extraClass + '">' + text + ' <span class="chat-typing-dots"><span></span><span></span><span></span></span></span>';
     }
 
     function _onReadReceipt(payload) {
@@ -1906,24 +1966,75 @@
         }
     }
 
+    var _muteTimerInterval = null;
+
     function _onUserMuted(payload) {
         if (!_currentChannel || payload.channelId !== _currentChannel.id) return;
-        // If it's us who got muted, disable input
+        // If it's us who got muted, show countdown timer
         if (String(payload.userId) === _currentUserId) {
-            var input = document.getElementById('chatInput');
-            if (input) {
-                input.disabled = true;
-                input.placeholder = '🛡️ Заблоковано до ' + new Date(payload.mutedUntil).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
-                // Auto-unlock after mute expires
-                var remaining = new Date(payload.mutedUntil).getTime() - Date.now();
-                if (remaining > 0) {
-                    setTimeout(function () {
-                        input.disabled = false;
-                        input.placeholder = 'Написати повідомлення...';
-                    }, remaining);
+            _showMuteCountdown(payload.mutedUntil, payload.reason);
+        }
+    }
+
+    function _showMuteCountdown(mutedUntil, reason) {
+        var inputArea = document.querySelector('.chat-input-area');
+        if (!inputArea) return;
+
+        // Clear previous timer
+        if (_muteTimerInterval) clearInterval(_muteTimerInterval);
+
+        // Save original content
+        var originalHtml = inputArea.innerHTML;
+
+        // Replace with countdown overlay
+        var overlay = document.createElement('div');
+        overlay.className = 'chat-mute-overlay';
+        overlay.innerHTML =
+            '<div class="chat-mute-shield">🛡️</div>' +
+            '<div class="chat-mute-info">' +
+                '<div class="chat-mute-title">Заблоковано Guardian</div>' +
+                '<div class="chat-mute-reason">' + (reason || 'Порушення правил чату') + '</div>' +
+                '<div class="chat-mute-timer">' +
+                    '<span class="chat-mute-timer-value" id="chatMuteTimer">--:--</span>' +
+                    '<span class="chat-mute-timer-label">до розблокування</span>' +
+                '</div>' +
+            '</div>';
+
+        inputArea.style.position = 'relative';
+        inputArea.appendChild(overlay);
+
+        // Disable actual input
+        var input = document.getElementById('chatInput');
+        var sendBtn = document.getElementById('chatSendBtn');
+        if (input) input.disabled = true;
+        if (sendBtn) sendBtn.disabled = true;
+
+        var timerEl = document.getElementById('chatMuteTimer');
+        var endTime = new Date(mutedUntil).getTime();
+
+        function updateTimer() {
+            var remaining = endTime - Date.now();
+            if (remaining <= 0) {
+                // Unmute
+                clearInterval(_muteTimerInterval);
+                _muteTimerInterval = null;
+                overlay.remove();
+                if (input) {
+                    input.disabled = false;
+                    input.placeholder = 'Написати повідомлення...';
                 }
+                if (sendBtn) sendBtn.disabled = false;
+                return;
+            }
+            var min = Math.floor(remaining / 60000);
+            var sec = Math.floor((remaining % 60000) / 1000);
+            if (timerEl) {
+                timerEl.textContent = String(min).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
             }
         }
+
+        updateTimer();
+        _muteTimerInterval = setInterval(updateTimer, 1000);
     }
 
     // ==========================================

@@ -543,6 +543,78 @@ function quickToxicityCheck(content) {
 }
 
 /**
+ * Real-time LLM profanity check — catches creative/obfuscated profanity
+ * that keyword filters miss. Returns { toxic: bool, reason, words[] } or null.
+ */
+const _llmCache = new Map(); // simple cache to avoid duplicate calls
+const LLM_CACHE_TTL = 60000; // 1 min
+
+async function llmProfanityCheck(content) {
+    if (!AI_ENABLED) return null;
+    // Skip very short or very long messages
+    if (content.length < 3 || content.length > 500) return null;
+
+    // Check cache
+    const cacheKey = content.toLowerCase().trim();
+    const cached = _llmCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < LLM_CACHE_TTL) return cached.result;
+
+    // Clean old cache entries periodically
+    if (_llmCache.size > 200) {
+        const now = Date.now();
+        for (const [k, v] of _llmCache) {
+            if (now - v.ts > LLM_CACHE_TTL) _llmCache.delete(k);
+        }
+    }
+
+    try {
+        const systemPrompt = `Ти — модератор чату дитячого парку. Аналізуй повідомлення на наявність:
+- Нецензурної лексики (мат, лайка) будь-якою мовою
+- Обхід фільтрів: заміна літер цифрами, пропуски, зірочки, транслітерація
+- Образливі слова, сексуальний підтекст, агресія
+- Креативний мат: "п1зд@", "ху.й", "bl9d'", "шл юх а", "с у к а"
+
+Відповідай ТІЛЬКИ у форматі JSON:
+{"toxic": true/false, "reason": "коротке пояснення укр", "words": ["знайдене_слово1"]}
+
+Якщо повідомлення чисте — {"toxic": false}
+Будь ДУЖЕ суворим. Краще помилитись і заблокувати, ніж пропустити мат.`;
+
+        const result = await callLLM(systemPrompt, content, 150);
+        if (!result) {
+            _llmCache.set(cacheKey, { ts: Date.now(), result: null });
+            return null;
+        }
+
+        // Parse JSON from response
+        const jsonMatch = result.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            _llmCache.set(cacheKey, { ts: Date.now(), result: null });
+            return null;
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        const res = {
+            toxic: !!parsed.toxic,
+            reason: parsed.reason || null,
+            words: Array.isArray(parsed.words) ? parsed.words : []
+        };
+
+        _llmCache.set(cacheKey, { ts: Date.now(), result: res });
+
+        if (res.toxic) {
+            log.info(`LLM detected profanity: "${content}" → ${res.reason} [${res.words.join(', ')}]`);
+        }
+
+        return res;
+    } catch (err) {
+        log.error('LLM profanity check error', err.message);
+        _llmCache.set(cacheKey, { ts: Date.now(), result: null });
+        return null;
+    }
+}
+
+/**
  * Delete toxic message from DB and notify via WebSocket.
  */
 async function deleteToxicMessage(messageId, channelId, username, reason) {
@@ -738,7 +810,40 @@ async function analyzeConflict(channelId, userId, username, content, messageId) 
         return true;
     }
 
-    // 2. AI check for subtle conflicts (if we have enough context)
+    // 2. Real-time LLM profanity check for messages that passed keyword filter
+    if (AI_ENABLED && content.length >= 3) {
+        const llmResult = await llmProfanityCheck(content);
+        if (llmResult && llmResult.toxic) {
+            const reason = `AI: ${llmResult.reason || 'Нецензурна лексика (обхід фільтру)'}`;
+            if (messageId) {
+                await deleteToxicMessage(messageId, channelId, username, reason);
+            }
+            await muteUser(channelId, userId, username, reason);
+
+            // Learn new words from AI detection
+            if (llmResult.words && llmResult.words.length > 0) {
+                for (const w of llmResult.words) {
+                    const word = w.toLowerCase().trim();
+                    if (word.length >= 2 && !TOXIC_KEYWORDS_BASE.includes(word) && !_dynamicToxicWords.includes(word)) {
+                        try {
+                            await pool.query(
+                                `INSERT INTO guardian_toxic_words (word, added_by, source) VALUES ($1, 'guardian', 'llm-realtime') ON CONFLICT DO NOTHING`,
+                                [word]
+                            );
+                            _dynamicToxicWords.push(word);
+                            _fuzzyRegexes.push({ word, regex: buildFuzzyRegex(word) });
+                            log.info(`Learned new toxic word from LLM: "${word}"`);
+                        } catch (err) {
+                            log.error('Failed to save learned word', err.message);
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+    }
+
+    // 3. AI check for subtle conflicts (if we have enough context)
     const recent = _recentMessages[channelId];
     if (recent.length >= 3 && AI_ENABLED) {
         const aiResult = await aiConflictCheck(recent.slice(-CONFLICT_WINDOW));
@@ -755,7 +860,7 @@ async function analyzeConflict(channelId, userId, username, content, messageId) 
         }
     }
 
-    // 3. If no keyword match and AI available — buffer for batch learning
+    // 4. If no keyword match and AI available — buffer for batch learning
     if (AI_ENABLED && content.length > 10) {
         _pendingLearnMessages.push({ content, username, channelId });
         if (_pendingLearnMessages.length >= LEARN_BATCH_SIZE) {

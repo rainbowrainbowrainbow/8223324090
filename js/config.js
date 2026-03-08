@@ -174,9 +174,11 @@ function initDarkMode() {
     } else if (saved === 'false') {
         isDark = false;
     } else {
-        // Авто: темна тема з 20:00 до 07:00
+        // Авто: темна тема з configurable часу (default 19:00-07:00)
         const hour = new Date().getHours();
-        isDark = hour >= 20 || hour < 7;
+        const autoStart = parseInt(localStorage.getItem('pzp_night_start') || '19', 10);
+        const autoEnd = parseInt(localStorage.getItem('pzp_night_end') || '7', 10);
+        isDark = (autoStart > autoEnd) ? (hour >= autoStart || hour < autoEnd) : (hour >= autoStart && hour < autoEnd);
     }
     document.body.classList.toggle('dark-mode', isDark);
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');

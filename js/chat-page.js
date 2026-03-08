@@ -131,9 +131,21 @@
         _preloadSounds();
         _loadOfflineQueue();
 
-        // Dark mode
-        if (localStorage.getItem('pzp_darkMode') === 'true') {
+        // Dark mode — unified key pzp_dark_mode
+        var savedDark = localStorage.getItem('pzp_dark_mode');
+        if (savedDark === 'true') {
             document.body.classList.add('dark-mode');
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else if (savedDark === null) {
+            // Auto: check time-based
+            var autoStart = parseInt(localStorage.getItem('pzp_night_start') || '19', 10);
+            var autoEnd = parseInt(localStorage.getItem('pzp_night_end') || '7', 10);
+            var nowHour = new Date().getHours();
+            var isAutoNight = (autoStart > autoEnd) ? (nowHour >= autoStart || nowHour < autoEnd) : (nowHour >= autoStart && nowHour < autoEnd);
+            if (isAutoNight) {
+                document.body.classList.add('dark-mode');
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
         }
 
         // Auth check (standalone page pattern)
@@ -1622,6 +1634,98 @@
 
     // Init
     _checkAuthAndInit();
+
+    // ==========================================
+    // DARK MODE TOGGLE (chat page)
+    // ==========================================
+    var _themeBtn = document.getElementById('chatThemeBtn');
+    var _themeIcon = document.getElementById('chatThemeIcon');
+    var _themeLabel = document.getElementById('chatThemeLabel');
+    var _themeAutoBtn = document.getElementById('chatThemeAutoBtn');
+    var _themeSettings = document.getElementById('chatThemeSettings');
+
+    function _updateThemeUI() {
+        var isDark = document.body.classList.contains('dark-mode');
+        if (_themeIcon) _themeIcon.textContent = isDark ? '☀️' : '🌙';
+        if (_themeLabel) _themeLabel.textContent = isDark ? 'Світла' : 'Темна';
+    }
+    _updateThemeUI();
+
+    if (_themeBtn) {
+        _themeBtn.addEventListener('click', function () {
+            var isDark = document.body.classList.contains('dark-mode');
+            document.body.classList.toggle('dark-mode', !isDark);
+            document.documentElement.setAttribute('data-theme', !isDark ? 'dark' : 'light');
+            document.body.classList.remove('night-auto');
+            localStorage.setItem('pzp_dark_mode', String(!isDark));
+            _updateThemeUI();
+        });
+    }
+
+    if (_themeAutoBtn) {
+        _themeAutoBtn.addEventListener('click', function () {
+            var isVisible = _themeSettings && _themeSettings.style.display !== 'none';
+            if (_themeSettings) _themeSettings.style.display = isVisible ? 'none' : 'block';
+        });
+    }
+
+    // Night time settings
+    var _nightStartSel = document.getElementById('chatNightStart');
+    var _nightEndSel = document.getElementById('chatNightEnd');
+    var _autoNightCb = document.getElementById('chatAutoNight');
+
+    if (_nightStartSel && _nightEndSel) {
+        for (var h = 0; h < 24; h++) {
+            var opt1 = document.createElement('option');
+            opt1.value = h;
+            opt1.textContent = String(h).padStart(2, '0') + ':00';
+            _nightStartSel.appendChild(opt1);
+            var opt2 = document.createElement('option');
+            opt2.value = h;
+            opt2.textContent = String(h).padStart(2, '0') + ':00';
+            _nightEndSel.appendChild(opt2);
+        }
+        _nightStartSel.value = localStorage.getItem('pzp_night_start') || '19';
+        _nightEndSel.value = localStorage.getItem('pzp_night_end') || '7';
+
+        _nightStartSel.addEventListener('change', function () {
+            localStorage.setItem('pzp_night_start', _nightStartSel.value);
+        });
+        _nightEndSel.addEventListener('change', function () {
+            localStorage.setItem('pzp_night_end', _nightEndSel.value);
+        });
+    }
+
+    if (_autoNightCb) {
+        _autoNightCb.checked = localStorage.getItem('pzp_autoNight') !== 'false';
+        _autoNightCb.addEventListener('change', function () {
+            localStorage.setItem('pzp_autoNight', String(_autoNightCb.checked));
+            if (!_autoNightCb.checked) {
+                // Remove auto if was auto-applied
+                if (document.body.classList.contains('night-auto')) {
+                    document.body.classList.remove('dark-mode', 'night-auto');
+                    document.documentElement.setAttribute('data-theme', 'light');
+                    localStorage.removeItem('pzp_dark_mode');
+                    _updateThemeUI();
+                }
+            }
+        });
+    }
+
+    // Reset to auto mode (remove manual override)
+    // Long-press theme button = reset to auto
+    var _themeLongPress = null;
+    if (_themeBtn) {
+        _themeBtn.addEventListener('mousedown', function () {
+            _themeLongPress = setTimeout(function () {
+                localStorage.removeItem('pzp_dark_mode');
+                _checkAutoNightMode();
+                _updateThemeUI();
+            }, 1500);
+        });
+        _themeBtn.addEventListener('mouseup', function () { clearTimeout(_themeLongPress); });
+        _themeBtn.addEventListener('mouseleave', function () { clearTimeout(_themeLongPress); });
+    }
 
     // ==========================================
     // INITIALIZATION
@@ -4814,24 +4918,24 @@
     };
 
     // ==========================================
-    // FEATURE 18: AUTO NIGHT MODE
+    // FEATURE 18: AUTO NIGHT MODE (configurable)
     // ==========================================
     function _checkAutoNightMode() {
         var hour = new Date().getHours();
-        var isNight = (hour >= 22 || hour < 7);
-        var darkMode = localStorage.getItem('pzp_darkMode') === 'true';
+        var autoStart = parseInt(localStorage.getItem('pzp_night_start') || '19', 10);
+        var autoEnd = parseInt(localStorage.getItem('pzp_night_end') || '7', 10);
+        var isNight = (autoStart > autoEnd) ? (hour >= autoStart || hour < autoEnd) : (hour >= autoStart && hour < autoEnd);
+        var savedDark = localStorage.getItem('pzp_dark_mode');
         var autoNight = localStorage.getItem('pzp_autoNight') !== 'false'; // Default enabled
 
-        if (autoNight && isNight && !darkMode) {
+        if (autoNight && isNight && savedDark === null) {
             document.body.classList.add('dark-mode');
-            document.body.setAttribute('data-theme', 'dark');
+            document.documentElement.setAttribute('data-theme', 'dark');
             document.body.classList.add('night-auto');
-        } else if (autoNight && !isNight && !darkMode) {
-            document.body.classList.remove('night-auto');
-            // Only remove dark mode if it was auto-applied
+        } else if (autoNight && !isNight && savedDark === null) {
             if (document.body.classList.contains('night-auto')) {
-                document.body.classList.remove('dark-mode');
-                document.body.removeAttribute('data-theme');
+                document.body.classList.remove('dark-mode', 'night-auto');
+                document.documentElement.setAttribute('data-theme', 'light');
             }
         }
     }

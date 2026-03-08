@@ -346,8 +346,9 @@ function hideTooltip() {
 function toggleDarkMode() {
     AppState.darkMode = !AppState.darkMode;
     document.body.classList.toggle('dark-mode', AppState.darkMode);
+    document.body.classList.remove('night-auto');
     document.documentElement.setAttribute('data-theme', AppState.darkMode ? 'dark' : 'light');
-    localStorage.setItem('pzp_dark_mode', AppState.darkMode);
+    localStorage.setItem('pzp_dark_mode', String(AppState.darkMode));
     const toggle = document.getElementById('darkModeToggle');
     if (toggle) toggle.checked = AppState.darkMode;
     const icon = document.getElementById('darkModeIcon');

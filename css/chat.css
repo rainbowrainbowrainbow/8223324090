@@ -58,6 +58,101 @@
     flex-shrink: 0;
 }
 
+.chat-sidebar-footer {
+    padding: 8px 12px;
+    border-top: 1px solid var(--gray-100);
+    flex-shrink: 0;
+}
+
+.chat-theme-toggle {
+    display: flex;
+    gap: 4px;
+}
+
+.chat-theme-btn {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--gray-200);
+    background: var(--white);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: center;
+    transition: all 0.2s;
+    color: var(--gray-600);
+    min-height: 36px;
+}
+
+.chat-theme-btn:hover {
+    background: var(--gray-100);
+}
+
+.chat-theme-auto-btn {
+    flex: 0;
+    padding: 6px 8px;
+}
+
+.chat-theme-settings {
+    margin-top: 8px;
+    padding: 8px;
+    background: var(--gray-50);
+    border-radius: 8px;
+    font-size: 12px;
+}
+
+.chat-theme-setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    color: var(--gray-600);
+}
+
+.chat-theme-setting-row:last-child {
+    margin-bottom: 0;
+}
+
+.chat-theme-select {
+    padding: 3px 6px;
+    border: 1px solid var(--gray-200);
+    border-radius: 6px;
+    font-size: 12px;
+    background: var(--white);
+    color: var(--gray-700);
+}
+
+body.dark-mode .chat-sidebar-footer {
+    border-top-color: var(--gray-700, #374151);
+}
+
+body.dark-mode .chat-theme-btn {
+    background: var(--gray-700, #374151);
+    border-color: var(--gray-600, #4b5563);
+    color: var(--gray-300, #d1d5db);
+}
+
+body.dark-mode .chat-theme-btn:hover {
+    background: var(--gray-600, #4b5563);
+}
+
+body.dark-mode .chat-theme-settings {
+    background: var(--gray-800, #1f2937);
+}
+
+body.dark-mode .chat-theme-setting-row {
+    color: var(--gray-400, #9ca3af);
+}
+
+body.dark-mode .chat-theme-select {
+    background: var(--gray-700, #374151);
+    border-color: var(--gray-600, #4b5563);
+    color: var(--gray-300, #d1d5db);
+}
+
 .chat-sidebar-top {
     display: flex;
     align-items: center;
@@ -5040,17 +5135,60 @@
     letter-spacing: 0.5px;
 }
 
-[data-theme="dark"] .guardian-digest-panel {
-    background: var(--gray-800, #1f2937);
-}
-
-[data-theme="dark"] .guardian-digest-header {
+[data-theme="dark"] .guardian-digest-panel,
+body.dark-mode .guardian-digest-panel {
     background: var(--gray-800, #1f2937);
     border-bottom-color: var(--gray-700, #374151);
 }
 
-[data-theme="dark"] .guardian-digest-content {
+[data-theme="dark"] .guardian-digest-header,
+body.dark-mode .guardian-digest-header {
+    background: var(--gray-800, #1f2937);
+    border-bottom-color: var(--gray-700, #374151);
+    color: var(--gray-200, #e5e7eb);
+}
+
+[data-theme="dark"] .guardian-digest-content,
+body.dark-mode .guardian-digest-content {
     color: var(--gray-300, #d1d5db);
+}
+
+body.dark-mode .guardian-digest-content b {
+    color: var(--gray-200, #e5e7eb);
+}
+
+body.dark-mode .guardian-digest-stats {
+    background: rgba(16, 185, 129, 0.1);
+}
+
+body.dark-mode .guardian-digest-stat-value {
+    color: var(--primary-light, #34d399);
+}
+
+body.dark-mode .guardian-digest-stat-label {
+    color: var(--gray-400, #9ca3af);
+}
+
+body.dark-mode .guardian-digest-nav-btn {
+    background: var(--gray-700, #374151);
+    border-color: var(--gray-600, #4b5563);
+    color: var(--gray-300, #d1d5db);
+}
+
+body.dark-mode .guardian-digest-nav-btn:hover {
+    background: var(--gray-600, #4b5563);
+}
+
+body.dark-mode .guardian-digest-close {
+    color: var(--gray-400, #9ca3af);
+}
+
+body.dark-mode .guardian-digest-close:hover {
+    background: var(--gray-700, #374151);
+}
+
+body.dark-mode .guardian-digest-empty {
+    color: var(--gray-500, #6b7280);
 }
 
 .guardian-digest-generate-btn {
@@ -5072,7 +5210,8 @@
     background: var(--amber-200, #fde68a);
 }
 
-[data-theme="dark"] .guardian-digest-generate-btn {
+[data-theme="dark"] .guardian-digest-generate-btn,
+body.dark-mode .guardian-digest-generate-btn {
     background: rgba(245, 158, 11, 0.15);
     color: var(--amber-300, #fcd34d);
     border-color: rgba(245, 158, 11, 0.3);

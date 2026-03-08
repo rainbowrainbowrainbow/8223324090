@@ -15,17 +15,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=21.12.0">
-    <link rel="stylesheet" href="css/auth.css?v=21.12.0">
-    <link rel="stylesheet" href="css/layout.css?v=21.12.0">
-    <link rel="stylesheet" href="css/timeline.css?v=21.12.0">
-    <link rel="stylesheet" href="css/panel.css?v=21.12.0">
-    <link rel="stylesheet" href="css/modals.css?v=21.12.0">
-    <link rel="stylesheet" href="css/controls.css?v=21.12.0">
-    <link rel="stylesheet" href="css/features.css?v=21.12.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=21.12.0">
-    <link rel="stylesheet" href="css/responsive.css?v=21.12.0">
-    <link rel="stylesheet" href="css/pages.css?v=21.12.0">
+    <link rel="stylesheet" href="css/base.css?v=21.13.0">
+    <link rel="stylesheet" href="css/auth.css?v=21.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=21.13.0">
+    <link rel="stylesheet" href="css/timeline.css?v=21.13.0">
+    <link rel="stylesheet" href="css/panel.css?v=21.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=21.13.0">
+    <link rel="stylesheet" href="css/controls.css?v=21.13.0">
+    <link rel="stylesheet" href="css/features.css?v=21.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=21.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=21.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=21.13.0">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v21.12.0 — Dark Mode Fix + Night Settings ✨</p>
+                <p class="tagline">AI First CRM v21.13.0 — Role Dashboard + Hierarchy ✨</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v21.12.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v21.13.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -90,7 +90,6 @@
                 <a href="/art-director" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
                 <a href="/demo" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
                 <a href="/chat" class="nav-link" id="navChat"><span class="nav-icon">Чт</span> <span class="nav-text">Чат</span> <span class="chat-unread-badge" id="chatUnreadBadge" style="display:none"></span></a>
-                <a href="/kleshnya" class="nav-link nav-link-kleshnya sidebar-admin-only hidden"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
                 <div class="sidebar-divider"></div>
                 <span class="sidebar-section-label">Дії</span>
                 <button type="button" id="sidebarHistoryBtn" class="nav-link sidebar-action sidebar-admin-only hidden" title="Історія змін бронювань"><span class="nav-icon">Іс</span> <span class="nav-text">Історія</span></button>
@@ -1109,14 +1108,19 @@
             <h3>🏆 Бали команди</h3>
             <div class="points-toolbar" id="pointsToolbar">
                 <div class="points-role-selector">
-                    <label>Роль:</label>
+                    <label>Фільтр:</label>
                     <select id="pointsRoleSelect">
-                        <option value="all">Всі</option>
-                        <option value="animator">Аніматор</option>
-                        <option value="instructor">Інструктор</option>
-                        <option value="waiter">Офіціант</option>
-                        <option value="admin">Адміністратор</option>
-                        <option value="manager">Менеджер</option>
+                        <option value="all">Всі ролі</option>
+                        <option value="creator">👑 Творець</option>
+                        <option value="director">🎯 Директор</option>
+                        <option value="vice_director">📋 Заст. директора</option>
+                        <option value="senior_manager">⭐ Ст. менеджер</option>
+                        <option value="manager">📊 Менеджер</option>
+                        <option value="admin">🔧 Адміністратор</option>
+                        <option value="senior_instructor">🎓 Ст. інструктор</option>
+                        <option value="instructor">📚 Інструктор</option>
+                        <option value="animator">🎭 Аніматор</option>
+                        <option value="waiter">🍽️ Офіціант</option>
                     </select>
                 </div>
                 <div class="points-tools" id="pointsTools"></div>
@@ -1185,6 +1189,18 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v21.13.0 — Role Dashboard + Hierarchy (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Клешня</b> — видалено кнопку "Клешня" з навігації всіх 13 сторінок</li>
+                        <li><b>Ієрархія ролей</b> — візуалізація 10 ролей по 4 рівнях (Керівництво → Управління → Операційний → Польовий)</li>
+                        <li><b>Role-based інтерфейс</b> — різні інформаційні панелі залежно від ролі (KPI/Команда/Фінанси vs Задачі/Стрік/Поради)</li>
+                        <li><b>Дашборд задач</b> — завжди відкритий блок внизу з активними задачами, статусами, пріоритетами</li>
+                        <li><b>Фільтр по всіх ролях</b> — dropdown з іконками для кожної з 10 ролей</li>
+                        <li><b>Дайджест</b> — виправлено відображення помилки (тепер показує конкретну причину)</li>
+                        <li><b>Журнал безпеки</b> — виправлено перекриття заголовка при скролі</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v21.12.0 — Dark Mode Fix + Night Settings (Claude Code, 08.03.2026)</h4>
                     <ul>
@@ -3663,28 +3679,28 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/logger.js?v=21.12.0"></script>
-    <script src="js/config.js?v=21.12.0"></script>
-    <script src="js/api.js?v=21.12.0"></script>
-    <script src="js/ui.js?v=21.12.0"></script>
-    <script src="js/auth.js?v=21.12.0"></script>
-    <script src="js/timeline.js?v=21.12.0"></script>
-    <script src="js/booking.js?v=21.12.0"></script>
-    <script src="js/settings.js?v=21.12.0"></script>
-    <script src="js/booking-form.js?v=21.12.0"></script>
-    <script src="js/booking-linked.js?v=21.12.0"></script>
-    <script src="js/settings-dashboard.js?v=21.12.0"></script>
-    <script src="js/settings-history.js?v=21.12.0"></script>
-    <script src="js/settings-afisha.js?v=21.12.0"></script>
-    <script src="js/settings-certificates.js?v=21.12.0"></script>
-    <script src="js/offline.js?v=21.12.0"></script>
-    <script src="js/search.js?v=21.12.0"></script>
-    <script src="js/ws.js?v=21.12.0"></script>
-    <script src="js/components/sidebar.js?v=21.12.0"></script>
-    <script src="js/sales-panel.js?v=21.12.0"></script>
-    <script src="js/command-panel.js?v=21.12.0"></script>
-    <script src="js/idle-hints.js?v=21.12.0"></script>
-    <script src="js/app.js?v=21.12.0"></script>
+    <script src="js/logger.js?v=21.13.0"></script>
+    <script src="js/config.js?v=21.13.0"></script>
+    <script src="js/api.js?v=21.13.0"></script>
+    <script src="js/ui.js?v=21.13.0"></script>
+    <script src="js/auth.js?v=21.13.0"></script>
+    <script src="js/timeline.js?v=21.13.0"></script>
+    <script src="js/booking.js?v=21.13.0"></script>
+    <script src="js/settings.js?v=21.13.0"></script>
+    <script src="js/booking-form.js?v=21.13.0"></script>
+    <script src="js/booking-linked.js?v=21.13.0"></script>
+    <script src="js/settings-dashboard.js?v=21.13.0"></script>
+    <script src="js/settings-history.js?v=21.13.0"></script>
+    <script src="js/settings-afisha.js?v=21.13.0"></script>
+    <script src="js/settings-certificates.js?v=21.13.0"></script>
+    <script src="js/offline.js?v=21.13.0"></script>
+    <script src="js/search.js?v=21.13.0"></script>
+    <script src="js/ws.js?v=21.13.0"></script>
+    <script src="js/components/sidebar.js?v=21.13.0"></script>
+    <script src="js/sales-panel.js?v=21.13.0"></script>
+    <script src="js/command-panel.js?v=21.13.0"></script>
+    <script src="js/idle-hints.js?v=21.13.0"></script>
+    <script src="js/app.js?v=21.13.0"></script>
 
     <!-- Emoji Effects Demo (inline — works on index.html without chat.css) -->
     <style>

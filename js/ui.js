@@ -800,10 +800,59 @@ async function exportTimelineImage() {
 }
 
 // ==========================================
-// POINTS PANEL
+// POINTS PANEL — Role-Based Dashboard
 // ==========================================
 
+const POINTS_ROLE_HIERARCHY = [
+    { key: 'creator', name: 'Творець', icon: '👑', tier: 'executive' },
+    { key: 'director', name: 'Директор', icon: '🎯', tier: 'executive' },
+    { key: 'vice_director', name: 'Заст. директора', icon: '📋', tier: 'executive' },
+    { key: 'senior_manager', name: 'Старший менеджер', icon: '⭐', tier: 'management' },
+    { key: 'manager', name: 'Менеджер', icon: '📊', tier: 'management' },
+    { key: 'admin', name: 'Адміністратор', icon: '🔧', tier: 'operational' },
+    { key: 'senior_instructor', name: 'Ст. інструктор', icon: '🎓', tier: 'operational' },
+    { key: 'instructor', name: 'Інструктор', icon: '📚', tier: 'field' },
+    { key: 'animator', name: 'Аніматор', icon: '🎭', tier: 'field' },
+    { key: 'waiter', name: 'Офіціант', icon: '🍽️', tier: 'field' }
+];
+
+const TIER_INFO = {
+    executive: { label: 'Керівництво', color: '#8b5cf6' },
+    management: { label: 'Управління', color: '#3b82f6' },
+    operational: { label: 'Операційний', color: '#22c55e' },
+    field: { label: 'Польовий', color: '#f59e0b' }
+};
+
+// Role-specific info boards
+const ROLE_BOARDS = {
+    executive: [
+        { id: 'kpi', icon: '📊', label: 'KPI команди', desc: 'Продуктивність, виручка, задоволеність' },
+        { id: 'team', icon: '👥', label: 'Огляд команди', desc: 'Хто працює, навантаження, графік' },
+        { id: 'finance', icon: '💰', label: 'Фінанси', desc: 'Дохід, витрати, прогноз' },
+        { id: 'alerts', icon: '🚨', label: 'Сповіщення', desc: 'Критичні події та ескалації' }
+    ],
+    management: [
+        { id: 'tasks', icon: '📋', label: 'Задачі команди', desc: 'Статус задач підлеглих' },
+        { id: 'schedule', icon: '📅', label: 'Графік', desc: 'Розклад на сьогодні/тиждень' },
+        { id: 'bookings', icon: '📞', label: 'Бронювання', desc: 'Поточні та очікувані' },
+        { id: 'reports', icon: '📈', label: 'Звіти', desc: 'Тижневі показники' }
+    ],
+    operational: [
+        { id: 'my-tasks', icon: '✅', label: 'Мої задачі', desc: 'Що потрібно зробити сьогодні' },
+        { id: 'schedule', icon: '📅', label: 'Мій графік', desc: 'Коли я працюю' },
+        { id: 'programs', icon: '🎪', label: 'Програми', desc: 'Програми на сьогодні' },
+        { id: 'streak', icon: '🔥', label: 'Мій стрік', desc: 'Серія та досягнення' }
+    ],
+    field: [
+        { id: 'my-tasks', icon: '✅', label: 'Мої задачі', desc: 'Задачі на сьогодні' },
+        { id: 'my-rank', icon: '🏅', label: 'Моє місце', desc: 'Позиція в рейтингу' },
+        { id: 'streak', icon: '🔥', label: 'Стрік', desc: 'Моя серія' },
+        { id: 'tips', icon: '💡', label: 'Поради', desc: 'Як заробити більше балів' }
+    ]
+};
+
 let _pointsData = [];
+let _pointsTasksData = null;
 
 async function showPointsPanel() {
     const modal = document.getElementById('pointsModal');
@@ -816,53 +865,36 @@ async function showPointsPanel() {
     quickStats.innerHTML = '';
     modal.classList.remove('hidden');
 
-    // Role-based toolbar
     const role = getUserRole();
     _buildPointsToolbar(role, toolsDiv);
 
+    // Fetch points + tasks in parallel
     try {
-        const resp = await fetch(`${API_BASE}/points`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(resp)) return;
-        _pointsData = await resp.json();
+        const [pointsResp, tasksResp] = await Promise.all([
+            fetch(`${API_BASE}/points`, { headers: getAuthHeaders(false) }),
+            fetch(`${API_BASE}/tasks?limit=10`, { headers: getAuthHeaders(false) }).catch(() => null)
+        ]);
+        if (handleAuthError(pointsResp)) return;
+        _pointsData = await pointsResp.json();
+        _pointsTasksData = tasksResp && tasksResp.ok ? await tasksResp.json() : [];
         _renderPointsPanel();
     } catch (err) {
         content.innerHTML = '<div class="error-msg">Помилка завантаження балів</div>';
     }
 
-    // Role filter
     const roleSelect = document.getElementById('pointsRoleSelect');
-    if (roleSelect) {
-        roleSelect.onchange = () => _renderPointsPanel();
-    }
+    if (roleSelect) roleSelect.onchange = () => _renderPointsPanel();
 }
 
 function _buildPointsToolbar(role, toolsDiv) {
     if (!toolsDiv) return;
-    const ROLE_NAMES = {
-        creator: 'Творець', director: 'Директор', vice_director: 'Заст. директора',
-        senior_manager: 'Ст. менеджер', manager: 'Менеджер', admin: 'Адміністратор',
-        senior_instructor: 'Ст. інструктор', instructor: 'Інструктор',
-        animator: 'Аніматор', waiter: 'Офіціант'
-    };
+    const roleInfo = POINTS_ROLE_HIERARCHY.find(r => r.key === role) || { icon: '👤', name: role, tier: 'field' };
+    const tierInfo = TIER_INFO[roleInfo.tier];
 
-    let tools = '';
-    tools += `<span class="points-role-badge">${ROLE_NAMES[role] || role}</span>`;
-
-    if (['creator', 'director', 'vice_director', 'senior_manager'].includes(role)) {
-        tools += `<span class="points-tool-chip" title="Загальна продуктивність">📊 KPI</span>`;
-        tools += `<span class="points-tool-chip" title="Середній бал команди">👥 Команда</span>`;
-        tools += `<span class="points-tool-chip" title="Задачі в роботі">📋 Задачі</span>`;
-    } else if (['manager', 'admin'].includes(role)) {
-        tools += `<span class="points-tool-chip" title="Мої задачі сьогодні">📋 Задачі</span>`;
-        tools += `<span class="points-tool-chip" title="Графік на сьогодні">📅 Графік</span>`;
-    } else if (['animator', 'instructor', 'senior_instructor'].includes(role)) {
-        tools += `<span class="points-tool-chip" title="Моя позиція в рейтингу">🏅 Моє місце</span>`;
-        tools += `<span class="points-tool-chip" title="Мій стрік">🔥 Стрік</span>`;
-    } else if (role === 'waiter') {
-        tools += `<span class="points-tool-chip" title="Мій прогрес">📈 Прогрес</span>`;
-    }
-
-    toolsDiv.innerHTML = tools;
+    toolsDiv.innerHTML = `
+        <span class="points-role-badge" style="background:${tierInfo.color}">${roleInfo.icon} ${roleInfo.name}</span>
+        <span class="points-tier-badge" style="border-color:${tierInfo.color};color:${tierInfo.color}">${tierInfo.label}</span>
+    `;
 }
 
 function _renderPointsPanel() {
@@ -870,17 +902,11 @@ function _renderPointsPanel() {
     const quickStats = document.getElementById('pointsQuickStats');
     const roleSelect = document.getElementById('pointsRoleSelect');
     const filterRole = roleSelect ? roleSelect.value : 'all';
+    const role = getUserRole();
+    const roleInfo = POINTS_ROLE_HIERARCHY.find(r => r.key === role) || { tier: 'field' };
 
     let data = _pointsData;
-    if (filterRole !== 'all') {
-        data = data.filter(u => u.role === filterRole);
-    }
-
-    if (data.length === 0) {
-        content.innerHTML = '<div class="points-empty">Немає даних для відображення</div>';
-        quickStats.innerHTML = '';
-        return;
-    }
+    if (filterRole !== 'all') data = data.filter(u => u.role === filterRole);
 
     // Quick stats
     const totalPermanent = data.reduce((s, u) => s + parseInt(u.permanent_total || 0), 0);
@@ -894,29 +920,78 @@ function _renderPointsPanel() {
         <div class="points-stat-card"><div class="points-stat-num">${avgPermanent}</div><div class="points-stat-label">Середній</div></div>
     `;
 
-    // Leaderboard
+    let html = '';
+
+    // 1) Role hierarchy visualization
+    html += _renderRoleHierarchy(role);
+
+    // 2) Role-specific info boards
+    html += _renderInfoBoards(roleInfo.tier);
+
+    // 3) Leaderboard
+    html += _renderLeaderboard(data, role);
+
+    // 4) Tasks dashboard (always at bottom)
+    html += _renderTasksDashboard();
+
+    content.innerHTML = html;
+}
+
+function _renderRoleHierarchy(currentRole) {
+    let html = '<div class="points-hierarchy"><h4>Ієрархія ролей</h4><div class="points-hierarchy-chain">';
+    let prevTier = '';
+    POINTS_ROLE_HIERARCHY.forEach(r => {
+        const tierInfo = TIER_INFO[r.tier];
+        if (r.tier !== prevTier) {
+            if (prevTier) html += '</div>';
+            html += `<div class="points-hierarchy-tier" style="--tier-color:${tierInfo.color}"><span class="points-tier-label">${tierInfo.label}</span>`;
+            prevTier = r.tier;
+        }
+        const isMe = r.key === currentRole;
+        html += `<span class="points-hierarchy-role${isMe ? ' points-hierarchy-me' : ''}" style="--role-color:${tierInfo.color}" title="${r.name}">${r.icon}</span>`;
+    });
+    html += '</div></div></div>';
+    return html;
+}
+
+function _renderInfoBoards(tier) {
+    const boards = ROLE_BOARDS[tier] || ROLE_BOARDS.field;
+    let html = '<div class="points-boards"><h4>Інформаційна панель</h4><div class="points-boards-grid">';
+    boards.forEach(b => {
+        html += `<div class="points-board-card">
+            <div class="points-board-icon">${b.icon}</div>
+            <div class="points-board-info">
+                <div class="points-board-label">${b.label}</div>
+                <div class="points-board-desc">${b.desc}</div>
+            </div>
+        </div>`;
+    });
+    html += '</div></div>';
+    return html;
+}
+
+function _renderLeaderboard(data, currentRole) {
+    if (data.length === 0) return '<div class="points-empty">Немає даних</div>';
+
     const medals = ['🥇', '🥈', '🥉'];
     const currentUser = AppState.currentUser ? AppState.currentUser.username : '';
-    const ROLE_SHORT = {
-        creator: 'Творець', director: 'Директор', vice_director: 'Заст.',
-        senior_manager: 'Ст.мен.', manager: 'Менеджер', admin: 'Адмін',
-        senior_instructor: 'Ст.інстр.', instructor: 'Інструктор',
-        animator: 'Аніматор', waiter: 'Офіціант'
-    };
+    const ROLE_SHORT = {};
+    POINTS_ROLE_HIERARCHY.forEach(r => ROLE_SHORT[r.key] = r.name);
 
-    let html = '<div class="points-leaderboard">';
+    let html = '<div class="points-leaderboard-section"><h4>Рейтинг</h4><div class="points-leaderboard">';
     data.forEach((u, i) => {
         const medal = medals[i] || `${i + 1}`;
         const isMe = u.username === currentUser;
         const monthCls = parseInt(u.monthly_current) >= 0 ? 'positive' : 'negative';
         const monthSign = parseInt(u.monthly_current) > 0 ? '+' : '';
-        const roleName = ROLE_SHORT[u.role] || u.role || '';
+        const roleInfo = POINTS_ROLE_HIERARCHY.find(r => r.key === u.role);
+        const tierColor = roleInfo ? TIER_INFO[roleInfo.tier].color : '#999';
 
         html += `<div class="points-leader-row${isMe ? ' points-leader-me' : ''}">
             <span class="points-leader-rank">${medal}</span>
             <div class="points-leader-info">
                 <span class="points-leader-name">${u.name || u.username}</span>
-                <span class="points-leader-role">${roleName}</span>
+                <span class="points-leader-role" style="color:${tierColor}">${roleInfo ? roleInfo.icon : ''} ${ROLE_SHORT[u.role] || u.role || ''}</span>
             </div>
             <div class="points-leader-scores">
                 <span class="points-leader-permanent">${u.permanent_total}</span>
@@ -924,7 +999,43 @@ function _renderPointsPanel() {
             </div>
         </div>`;
     });
-    html += '</div>';
+    html += '</div></div>';
+    return html;
+}
 
-    content.innerHTML = html;
+function _renderTasksDashboard() {
+    const tasks = Array.isArray(_pointsTasksData) ? _pointsTasksData : (_pointsTasksData && _pointsTasksData.tasks ? _pointsTasksData.tasks : []);
+    const currentUser = AppState.currentUser ? AppState.currentUser.username : '';
+
+    let myTasks = tasks.filter(t => t.assigned_to === currentUser && t.status !== 'done');
+    if (myTasks.length === 0) myTasks = tasks.filter(t => t.status !== 'done').slice(0, 5);
+
+    const doneTasks = tasks.filter(t => t.assigned_to === currentUser && t.status === 'done').length;
+    const pendingTasks = tasks.filter(t => t.assigned_to === currentUser && t.status !== 'done').length;
+
+    let html = `<div class="points-tasks-dashboard">
+        <h4>Задачі</h4>
+        <div class="points-tasks-summary">
+            <span class="points-tasks-stat">✅ Виконано: <strong>${doneTasks}</strong></span>
+            <span class="points-tasks-stat">⏳ В роботі: <strong>${pendingTasks}</strong></span>
+        </div>`;
+
+    if (myTasks.length > 0) {
+        html += '<div class="points-tasks-list">';
+        myTasks.slice(0, 5).forEach(t => {
+            const statusIcons = { todo: '⬜', in_progress: '🔄', review: '👀', blocked: '🚫' };
+            const statusIcon = statusIcons[t.status] || '⬜';
+            const priority = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '🟢';
+            html += `<div class="points-task-row">
+                <span>${statusIcon} ${priority}</span>
+                <span class="points-task-title">${t.title || 'Без назви'}</span>
+            </div>`;
+        });
+        html += '</div>';
+    } else {
+        html += '<div class="points-tasks-empty">Немає активних задач</div>';
+    }
+
+    html += '</div>';
+    return html;
 }

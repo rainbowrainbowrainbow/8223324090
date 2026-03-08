@@ -6,6 +6,7 @@
     'use strict';
 
     var API_BASE = '/api/chat';
+    var _easterEggCommands = null; // populated later in FEATURE 20
     var _currentChannel = null;
     var _channels = [];
     var _chatUsers = [];
@@ -1747,6 +1748,16 @@
         // Close emoji panel on send
         if (_emojiPanelOpen) _toggleEmojiPanel();
 
+        // Handle easter egg commands (before other processing)
+        var contentLower = content.toLowerCase();
+        if (_easterEggCommands && _easterEggCommands[contentLower]) {
+            var cmd = _easterEggCommands[contentLower];
+            input.value = '';
+            if (typeof _autoGrow === 'function') _autoGrow(input);
+            cmd();
+            return;
+        }
+
         // Handle /guardian command — invite guardian to channel
         if (content === '/guardian' || content === '/охоронець') {
             input.value = '';
@@ -3355,9 +3366,46 @@
     setInterval(_checkAutoNightMode, 5 * 60 * 1000);
 
     // ==========================================
+    // FEATURE 21: AI SUMMARY BUTTON
+    // ==========================================
+    var _summaryBtn = document.getElementById('chatSummaryBtn');
+    if (_summaryBtn) {
+        _summaryBtn.addEventListener('click', async function () {
+            if (!_currentChannel) return;
+            _summaryBtn.disabled = true;
+            _summaryBtn.style.opacity = '0.5';
+            _appendSystemMessage('🧠 Генерую резюме розмови...');
+
+            try {
+                var token = localStorage.getItem('token');
+                var r = await fetch('/api/summary/channel/' + _currentChannel.id + '?hours=24', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+                });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                var resp = await r.json();
+                if (resp.summary) {
+                    var costText = resp.cost > 0 ? ' (вартість: $' + resp.cost.toFixed(4) + ')' : '';
+                    _appendSystemMessage('📋 **Резюме** (' + (resp.messagesCount || '?') + ' повідомлень)' + costText + ':\n\n' + resp.summary);
+                    if (resp.needsDecision) {
+                        _appendSystemMessage('⚠️ Є питання що потребують рішення керівника!');
+                    }
+                } else {
+                    _appendSystemMessage('❌ Не вдалось згенерувати резюме.');
+                }
+            } catch (err) {
+                _appendSystemMessage('❌ Помилка: ' + (err.message || 'OpenRouter недоступний'));
+            }
+
+            _summaryBtn.disabled = false;
+            _summaryBtn.style.opacity = '';
+        });
+    }
+
+    // ==========================================
     // FEATURE 20: EASTER EGG COMMANDS
     // ==========================================
-    var EASTER_EGG_COMMANDS = {
+    _easterEggCommands = {
         '/rain': _easterRain,
         '/дощ': _easterRain,
         '/party': _easterParty,
@@ -3426,23 +3474,7 @@
         setTimeout(function () { container.remove(); }, 8000);
     }
 
-    // Hook easter egg commands into _sendMessage
-    var _origSendMessageInput = document.getElementById('chatInput');
-    if (_origSendMessageInput) {
-        _origSendMessageInput.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                var val = _origSendMessageInput.value.trim().toLowerCase();
-                if (EASTER_EGG_COMMANDS[val]) {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    var cmd = EASTER_EGG_COMMANDS[val];
-                    _origSendMessageInput.value = '';
-                    if (typeof _autoGrow === 'function') _autoGrow(_origSendMessageInput);
-                    cmd();
-                }
-            }
-        });
-    }
+    // Easter egg commands are now handled inside _sendMessage() directly
 
     // ==========================================
     // FEATURE 1: ONLINE STATUS TRACKING

@@ -151,6 +151,7 @@ app.use('/api/leads', require('./routes/leads'));
 app.use('/api/scripts', require('./routes/scripts'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/guardian', require('./routes/guardian'));
+app.use('/api/summary', require('./routes/summary'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));

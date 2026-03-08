@@ -517,6 +517,7 @@ function initUIControlListeners() {
         sidebarDashboardBtn: () => { if (typeof showDashboard === 'function') showDashboard(); },
         sidebarSettingsBtn: () => { if (typeof showSettings === 'function') showSettings(); },
         sidebarDigestBtn: () => { if (typeof sendDailyDigest === 'function') sendDailyDigest(); },
+        sidebarPointsBtn: () => { if (typeof showPointsPanel === 'function') showPointsPanel(); },
     };
     for (const [id, handler] of Object.entries(sidebarActions)) {
         const el = document.getElementById(id);

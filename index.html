@@ -97,6 +97,7 @@
                 <button type="button" id="sidebarAfishaBtn" class="nav-link sidebar-action"><span class="nav-icon">Аф</span> <span class="nav-text">Афіша</span></button>
                 <button type="button" id="sidebarCertificatesBtn" class="nav-link sidebar-action hidden"><span class="nav-icon">Сф</span> <span class="nav-text">Сертифікати</span></button>
                 <button type="button" id="sidebarDashboardBtn" class="nav-link sidebar-action sidebar-no-viewer hidden"><span class="nav-icon">Ст</span> <span class="nav-text">Статистика</span></button>
+                <button type="button" id="sidebarPointsBtn" class="nav-link sidebar-action"><span class="nav-icon">Бл</span> <span class="nav-text">Бали</span></button>
                 <button type="button" id="sidebarSettingsBtn" class="nav-link sidebar-action sidebar-admin-only hidden"><span class="nav-icon">Нл</span> <span class="nav-text">Налаштування</span></button>
                 <button type="button" id="sidebarDigestBtn" class="nav-link sidebar-action sidebar-admin-only hidden"><span class="nav-icon">Дж</span> <span class="nav-text">Дайджест</span></button>
             </nav>
@@ -1098,6 +1099,30 @@
             <span class="modal-close">&times;</span>
             <h3>📊 Дашборд</h3>
             <div id="dashboardContent"></div>
+        </div>
+    </div>
+
+    <!-- Модальне вікно Бали -->
+    <div id="pointsModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Бали команди">
+        <div class="modal-content modal-wide">
+            <span class="modal-close">&times;</span>
+            <h3>🏆 Бали команди</h3>
+            <div class="points-toolbar" id="pointsToolbar">
+                <div class="points-role-selector">
+                    <label>Роль:</label>
+                    <select id="pointsRoleSelect">
+                        <option value="all">Всі</option>
+                        <option value="animator">Аніматор</option>
+                        <option value="instructor">Інструктор</option>
+                        <option value="waiter">Офіціант</option>
+                        <option value="admin">Адміністратор</option>
+                        <option value="manager">Менеджер</option>
+                    </select>
+                </div>
+                <div class="points-tools" id="pointsTools"></div>
+            </div>
+            <div class="points-quick-stats" id="pointsQuickStats"></div>
+            <div id="pointsContent"><div class="loading-spinner">Завантаження...</div></div>
         </div>
     </div>
 

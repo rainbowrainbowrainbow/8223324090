@@ -71,7 +71,7 @@ async function buildAndSendDigest(date) {
     if (bookings.length === 0 && afishaEvents.length === 0) {
         const text = `📅 <b>${date}</b>\n\nНемає бронювань на цей день.`;
         const result = await sendTelegramMessage(chatId, text);
-        return { success: result?.ok || false, count: 0 };
+        return { success: result?.ok || false, count: 0, reason: result?.ok ? undefined : (result?.description || 'send_failed') };
     }
 
     await ensureDefaultLines(date);
@@ -157,7 +157,7 @@ async function buildAndSendDigest(date) {
         await scheduleAutoDelete(chatId, result.result.message_id);
     }
 
-    return { success: result?.ok || false, count: bookings.length };
+    return { success: result?.ok || false, count: bookings.length, reason: result?.ok ? undefined : (result?.description || 'send_failed') };
 }
 
 async function sendTomorrowReminder(todayStr) {

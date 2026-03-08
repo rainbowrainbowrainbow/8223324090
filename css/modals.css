@@ -1783,3 +1783,184 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* ==========================================
+   POINTS PANEL
+   ========================================== */
+
+.points-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--gray-200);
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.points-role-selector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--gray-600);
+}
+
+.points-role-selector select {
+    padding: 4px 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: 6px;
+    font-size: 13px;
+    min-height: 32px;
+}
+
+.points-tools {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.points-role-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--primary, #6366f1);
+    color: white;
+}
+
+.points-tool-chip {
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
+    cursor: default;
+    white-space: nowrap;
+}
+
+.points-quick-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.points-stat-card {
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+}
+
+.points-stat-num {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--gray-800);
+}
+
+.points-stat-num.positive { color: var(--success, #22c55e); }
+
+.points-stat-label {
+    font-size: 11px;
+    color: var(--gray-500);
+    margin-top: 2px;
+}
+
+.points-leaderboard {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.points-leader-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--gray-50);
+    border-radius: 10px;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+}
+
+.points-leader-row:hover {
+    border-color: var(--gray-200);
+}
+
+.points-leader-me {
+    background: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.2);
+}
+
+.points-leader-rank {
+    font-size: 18px;
+    width: 32px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.points-leader-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.points-leader-name {
+    display: block;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--gray-800);
+}
+
+.points-leader-role {
+    font-size: 11px;
+    color: var(--gray-500);
+}
+
+.points-leader-scores {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.points-leader-permanent {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--warning, #f59e0b);
+}
+
+.points-leader-monthly {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.points-leader-monthly.positive { color: var(--success, #22c55e); }
+.points-leader-monthly.negative { color: var(--danger, #ef4444); }
+
+.points-empty {
+    text-align: center;
+    padding: 32px;
+    color: var(--gray-400);
+    font-size: 14px;
+}
+
+/* Dark mode */
+body.dark-mode .points-toolbar { border-bottom-color: var(--gray-700, #374151); }
+body.dark-mode .points-role-selector { color: var(--gray-400); }
+body.dark-mode .points-role-selector select { background: var(--gray-700); border-color: var(--gray-600); color: var(--gray-300); }
+body.dark-mode .points-tool-chip { background: var(--gray-700); border-color: var(--gray-600); color: var(--gray-300); }
+body.dark-mode .points-stat-card { background: var(--gray-800, #1f2937); border-color: var(--gray-700); }
+body.dark-mode .points-stat-num { color: var(--gray-200); }
+body.dark-mode .points-leader-row { background: var(--gray-800, #1f2937); }
+body.dark-mode .points-leader-row:hover { border-color: var(--gray-600); }
+body.dark-mode .points-leader-me { background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.3); }
+body.dark-mode .points-leader-name { color: var(--gray-200); }
+body.dark-mode .points-leader-role { color: var(--gray-500); }
+
+@media (max-width: 600px) {
+    .points-quick-stats { grid-template-columns: repeat(2, 1fr); }
+    .points-toolbar { flex-direction: column; align-items: flex-start; }
+}

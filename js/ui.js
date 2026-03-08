@@ -798,3 +798,133 @@ async function exportTimelineImage() {
 
     showNotification('Таймлайн експортовано як картинку!', 'success');
 }
+
+// ==========================================
+// POINTS PANEL
+// ==========================================
+
+let _pointsData = [];
+
+async function showPointsPanel() {
+    const modal = document.getElementById('pointsModal');
+    const content = document.getElementById('pointsContent');
+    const quickStats = document.getElementById('pointsQuickStats');
+    const toolsDiv = document.getElementById('pointsTools');
+    if (!modal) return;
+
+    content.innerHTML = '<div class="loading-spinner">Завантаження...</div>';
+    quickStats.innerHTML = '';
+    modal.classList.remove('hidden');
+
+    // Role-based toolbar
+    const role = getUserRole();
+    _buildPointsToolbar(role, toolsDiv);
+
+    try {
+        const resp = await fetch(`${API_BASE}/points`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(resp)) return;
+        _pointsData = await resp.json();
+        _renderPointsPanel();
+    } catch (err) {
+        content.innerHTML = '<div class="error-msg">Помилка завантаження балів</div>';
+    }
+
+    // Role filter
+    const roleSelect = document.getElementById('pointsRoleSelect');
+    if (roleSelect) {
+        roleSelect.onchange = () => _renderPointsPanel();
+    }
+}
+
+function _buildPointsToolbar(role, toolsDiv) {
+    if (!toolsDiv) return;
+    const ROLE_NAMES = {
+        creator: 'Творець', director: 'Директор', vice_director: 'Заст. директора',
+        senior_manager: 'Ст. менеджер', manager: 'Менеджер', admin: 'Адміністратор',
+        senior_instructor: 'Ст. інструктор', instructor: 'Інструктор',
+        animator: 'Аніматор', waiter: 'Офіціант'
+    };
+
+    let tools = '';
+    tools += `<span class="points-role-badge">${ROLE_NAMES[role] || role}</span>`;
+
+    if (['creator', 'director', 'vice_director', 'senior_manager'].includes(role)) {
+        tools += `<span class="points-tool-chip" title="Загальна продуктивність">📊 KPI</span>`;
+        tools += `<span class="points-tool-chip" title="Середній бал команди">👥 Команда</span>`;
+        tools += `<span class="points-tool-chip" title="Задачі в роботі">📋 Задачі</span>`;
+    } else if (['manager', 'admin'].includes(role)) {
+        tools += `<span class="points-tool-chip" title="Мої задачі сьогодні">📋 Задачі</span>`;
+        tools += `<span class="points-tool-chip" title="Графік на сьогодні">📅 Графік</span>`;
+    } else if (['animator', 'instructor', 'senior_instructor'].includes(role)) {
+        tools += `<span class="points-tool-chip" title="Моя позиція в рейтингу">🏅 Моє місце</span>`;
+        tools += `<span class="points-tool-chip" title="Мій стрік">🔥 Стрік</span>`;
+    } else if (role === 'waiter') {
+        tools += `<span class="points-tool-chip" title="Мій прогрес">📈 Прогрес</span>`;
+    }
+
+    toolsDiv.innerHTML = tools;
+}
+
+function _renderPointsPanel() {
+    const content = document.getElementById('pointsContent');
+    const quickStats = document.getElementById('pointsQuickStats');
+    const roleSelect = document.getElementById('pointsRoleSelect');
+    const filterRole = roleSelect ? roleSelect.value : 'all';
+
+    let data = _pointsData;
+    if (filterRole !== 'all') {
+        data = data.filter(u => u.role === filterRole);
+    }
+
+    if (data.length === 0) {
+        content.innerHTML = '<div class="points-empty">Немає даних для відображення</div>';
+        quickStats.innerHTML = '';
+        return;
+    }
+
+    // Quick stats
+    const totalPermanent = data.reduce((s, u) => s + parseInt(u.permanent_total || 0), 0);
+    const totalMonthly = data.reduce((s, u) => s + parseInt(u.monthly_current || 0), 0);
+    const avgPermanent = data.length > 0 ? Math.round(totalPermanent / data.length) : 0;
+
+    quickStats.innerHTML = `
+        <div class="points-stat-card"><div class="points-stat-num">${data.length}</div><div class="points-stat-label">Учасників</div></div>
+        <div class="points-stat-card"><div class="points-stat-num">${totalPermanent}</div><div class="points-stat-label">Всього балів</div></div>
+        <div class="points-stat-card"><div class="points-stat-num positive">${totalMonthly >= 0 ? '+' : ''}${totalMonthly}</div><div class="points-stat-label">За місяць</div></div>
+        <div class="points-stat-card"><div class="points-stat-num">${avgPermanent}</div><div class="points-stat-label">Середній</div></div>
+    `;
+
+    // Leaderboard
+    const medals = ['🥇', '🥈', '🥉'];
+    const currentUser = AppState.currentUser ? AppState.currentUser.username : '';
+    const ROLE_SHORT = {
+        creator: 'Творець', director: 'Директор', vice_director: 'Заст.',
+        senior_manager: 'Ст.мен.', manager: 'Менеджер', admin: 'Адмін',
+        senior_instructor: 'Ст.інстр.', instructor: 'Інструктор',
+        animator: 'Аніматор', waiter: 'Офіціант'
+    };
+
+    let html = '<div class="points-leaderboard">';
+    data.forEach((u, i) => {
+        const medal = medals[i] || `${i + 1}`;
+        const isMe = u.username === currentUser;
+        const monthCls = parseInt(u.monthly_current) >= 0 ? 'positive' : 'negative';
+        const monthSign = parseInt(u.monthly_current) > 0 ? '+' : '';
+        const roleName = ROLE_SHORT[u.role] || u.role || '';
+
+        html += `<div class="points-leader-row${isMe ? ' points-leader-me' : ''}">
+            <span class="points-leader-rank">${medal}</span>
+            <div class="points-leader-info">
+                <span class="points-leader-name">${u.name || u.username}</span>
+                <span class="points-leader-role">${roleName}</span>
+            </div>
+            <div class="points-leader-scores">
+                <span class="points-leader-permanent">${u.permanent_total}</span>
+                <span class="points-leader-monthly ${monthCls}">${monthSign}${u.monthly_current}</span>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+
+    content.innerHTML = html;
+}

@@ -4075,8 +4075,9 @@ body.dark-mode .chat-theme-select {
    ========================================== */
 
 .guardian-log-panel {
+    display: flex;
+    flex-direction: column;
     max-height: 220px;
-    overflow-y: auto;
     background: var(--chat-bg, #fff);
     border-bottom: 2px solid rgba(99, 102, 241, 0.15);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
@@ -4094,9 +4095,13 @@ body.dark-mode .chat-theme-select {
     color: #6366F1;
     background: rgba(99, 102, 241, 0.06);
     border-bottom: 1px solid rgba(99, 102, 241, 0.1);
-    position: sticky;
-    top: 0;
-    z-index: 1;
+    flex-shrink: 0;
+}
+
+.guardian-log-entries {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
 }
 
 .guardian-log-close {
@@ -4111,10 +4116,6 @@ body.dark-mode .chat-theme-select {
 
 .guardian-log-close:hover {
     color: var(--gray-600);
-}
-
-.guardian-log-entries {
-    padding: 4px 0;
 }
 
 .guardian-log-empty {

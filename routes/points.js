@@ -14,8 +14,8 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Points');
 
-// GET /api/points — leaderboard (admin/user only)
-router.get('/', requireRole('admin', 'user'), async (req, res) => {
+// GET /api/points — leaderboard (all authenticated users)
+router.get('/', async (req, res) => {
     try {
         const points = await getAllPoints();
         res.json(points);

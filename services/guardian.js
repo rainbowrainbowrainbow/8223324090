@@ -326,7 +326,7 @@ async function muteUser(channelId, userId, username, reason) {
             type: 'mute',
             channelId,
             username,
-            details: `Заблоковано на 15 хв: ${reason}`,
+            details: `Заблоковано на 1 хв: ${reason}`,
             severity: 'danger'
         });
 

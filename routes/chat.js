@@ -5,6 +5,7 @@ const router = require('express').Router();
 const chat = require('../services/chatService');
 const { broadcastToChannel, sendToUser } = require('../services/websocket');
 const { processMessage: processBotMessage } = require('../services/chat-bot');
+const guardian = require('../services/guardian');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('ChatAPI');
@@ -63,6 +64,11 @@ router.post('/channels/:id/messages', async (req, res) => {
             return res.status(403).json({ error: 'Not a member of this channel' });
         }
 
+        // Guardian: check if user is muted
+        if (guardian.isUserMuted(channelId, userId)) {
+            return res.status(403).json({ error: '🛡️ Ви заблоковані в цьому чаті. Зачекайте 15 хвилин.' });
+        }
+
         const { message, mentionedUserIds } = await chat.sendMessage(channelId, userId, {
             content: content.trim(),
             replyTo: replyTo || null,
@@ -88,6 +94,11 @@ router.post('/channels/:id/messages', async (req, res) => {
         // Bot processing (fire-and-forget — don't block response)
         processBotMessage(message).catch(err => {
             log.error('Bot processing error', err);
+        });
+
+        // Guardian processing (fire-and-forget — mask sensitive data, detect conflicts)
+        guardian.processMessage(message).catch(err => {
+            log.error('Guardian processing error', err);
         });
 
         res.status(201).json(message);

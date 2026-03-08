@@ -1272,16 +1272,18 @@
     function _createMessageEl(msg, isGrouped) {
         var isOwn = String(msg.userId) === _currentUserId;
         var isBot = msg.isBot || msg.username === 'openclaw';
+        var isGuardian = msg.isBot && msg.username === 'guardian' || msg.username === 'guardian';
+        if (isGuardian) isBot = true;
         var emojiOnly = !msg.deletedAt && msg.content && _isOnlyEmoji(msg.content);
         var el = document.createElement('div');
-        el.className = 'chat-message' + (isOwn ? ' own' : '') + (isGrouped ? ' grouped' : '') + (emojiOnly ? ' emoji-only' : '') + (isBot ? ' bot' : '');
+        el.className = 'chat-message' + (isOwn ? ' own' : '') + (isGrouped ? ' grouped' : '') + (emojiOnly ? ' emoji-only' : '') + (isBot ? ' bot' : '') + (isGuardian ? ' guardian' : '');
         el.dataset.messageId = msg.id;
         el.dataset.seq = msg.seq;
         el.dataset.userId = msg.userId;
 
-        var initial = isBot ? '🦀' : (msg.displayName || msg.username || '?').charAt(0).toUpperCase();
+        var initial = isGuardian ? '🛡️' : isBot ? '🦀' : (msg.displayName || msg.username || '?').charAt(0).toUpperCase();
         var time = new Date(msg.createdAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
-        var content = msg.deletedAt ? '<em style="color:var(--gray-400)">Повідомлення видалено</em>' : _formatContent(msg.content);
+        var content = msg.deletedAt ? '<em style="color:var(--gray-400)">Повідомлення видалено</em>' : (isBot ? _formatBotContent(msg.content) : _formatContent(msg.content));
         var editedHtml = msg.editedAt && !msg.deletedAt ? '<span class="chat-bubble-edited">(ред.)</span>' : '';
         var readCheckHtml = '';
         if (isOwn && !msg.deletedAt) {
@@ -1306,6 +1308,7 @@
             '<div class="chat-bubble">' +
                 '<div class="chat-bubble-header">' +
                     '<span class="chat-bubble-username ' + usernameColorClass + '">' + _esc(msg.displayName || msg.username) + '</span>' +
+                    (isGuardian ? '<span class="chat-bot-badge guardian-badge">GUARD</span>' : (isBot ? '<span class="chat-bot-badge">BOT</span>' : '')) +
                     editedHtml +
                     '<span class="chat-bubble-time">' + time + readCheckHtml + '</span>' +
                 '</div>' +
@@ -1395,6 +1398,29 @@
         // Format URLs
         safe = safe.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary-dark);text-decoration:underline">$1</a>');
         // Wrap emojis with animated span for hover wobble
+        safe = safe.replace(/([\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2702}-\u{27B0}\u{2764}\u{2728}\u{2705}\u{274C}\u{2B50}][\u{FE0F}\u{200D}]?)/gu, '<span class="chat-animated-emoji">$1</span>');
+        return safe;
+    }
+
+    /** Format bot messages — allow safe HTML tags (<b>, <i>, <br>, <li>, <ul>) */
+    function _formatBotContent(text) {
+        if (!text) return '';
+        // First escape everything
+        var safe = _esc(text);
+        // Then restore safe HTML tags that bots use
+        safe = safe.replace(/&lt;b&gt;/g, '<b>').replace(/&lt;\/b&gt;/g, '</b>');
+        safe = safe.replace(/&lt;i&gt;/g, '<i>').replace(/&lt;\/i&gt;/g, '</i>');
+        safe = safe.replace(/&lt;br\s*\/?&gt;/g, '<br>');
+        safe = safe.replace(/&lt;li&gt;/g, '<li>').replace(/&lt;\/li&gt;/g, '</li>');
+        safe = safe.replace(/&lt;ul&gt;/g, '<ul>').replace(/&lt;\/ul&gt;/g, '</ul>');
+        safe = safe.replace(/&lt;em&gt;/g, '<em>').replace(/&lt;\/em&gt;/g, '</em>');
+        // Format @mentions
+        safe = safe.replace(/\B@(\w+)/g, '<span class="chat-mention">@$1</span>');
+        // Format URLs
+        safe = safe.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary-dark);text-decoration:underline">$1</a>');
+        // Newlines to <br>
+        safe = safe.replace(/\n/g, '<br>');
+        // Wrap emojis
         safe = safe.replace(/([\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2702}-\u{27B0}\u{2764}\u{2728}\u{2705}\u{274C}\u{2B50}][\u{FE0F}\u{200D}]?)/gu, '<span class="chat-animated-emoji">$1</span>');
         return safe;
     }
@@ -1733,6 +1759,12 @@
                 _playSoundAlways('mention');
                 _loadChannels();
                 break;
+            case 'chat:message-edited':
+                _onMessageEdited(payload);
+                break;
+            case 'chat:user-muted':
+                _onUserMuted(payload);
+                break;
         }
     }
 
@@ -1853,6 +1885,45 @@
         if (reactions) reactions.remove();
         var actions = msgEl.querySelector('.chat-msg-actions');
         if (actions) actions.remove();
+    }
+
+    function _onMessageEdited(payload) {
+        if (!_currentChannel || payload.channelId !== _currentChannel.id) return;
+        var msgEl = document.querySelector('[data-message-id="' + payload.messageId + '"]');
+        if (!msgEl) return;
+        var contentEl = msgEl.querySelector('.chat-bubble-content');
+        if (contentEl) {
+            var isBot = msgEl.classList.contains('bot') || msgEl.classList.contains('guardian');
+            contentEl.innerHTML = isBot ? _formatBotContent(payload.content) : _formatContent(payload.content);
+        }
+        // Add edited indicator
+        var header = msgEl.querySelector('.chat-bubble-header');
+        if (header && !header.querySelector('.chat-bubble-edited')) {
+            var edited = document.createElement('span');
+            edited.className = 'chat-bubble-edited';
+            edited.textContent = '(ред.)';
+            header.insertBefore(edited, header.querySelector('.chat-bubble-time'));
+        }
+    }
+
+    function _onUserMuted(payload) {
+        if (!_currentChannel || payload.channelId !== _currentChannel.id) return;
+        // If it's us who got muted, disable input
+        if (String(payload.userId) === _currentUserId) {
+            var input = document.getElementById('chatInput');
+            if (input) {
+                input.disabled = true;
+                input.placeholder = '🛡️ Заблоковано до ' + new Date(payload.mutedUntil).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+                // Auto-unlock after mute expires
+                var remaining = new Date(payload.mutedUntil).getTime() - Date.now();
+                if (remaining > 0) {
+                    setTimeout(function () {
+                        input.disabled = false;
+                        input.placeholder = 'Написати повідомлення...';
+                    }, remaining);
+                }
+            }
+        }
     }
 
     // ==========================================

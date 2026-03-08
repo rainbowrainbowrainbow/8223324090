@@ -150,6 +150,7 @@ app.use('/api/page-statuses', require('./routes/page-statuses'));
 app.use('/api/leads', require('./routes/leads'));
 app.use('/api/scripts', require('./routes/scripts'));
 app.use('/api/chat', require('./routes/chat'));
+app.use('/api/guardian', require('./routes/guardian'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -334,6 +335,12 @@ runMigrations(pool).then(() => {
             ensureBotMemberships().catch(err => log.error('Bot memberships error', err));
         } catch (e) { log.error('Failed to ensure bot memberships', e); }
 
+        // Ensure Guardian AI agent is member of all default channels
+        try {
+            const { ensureGuardianMemberships } = require('./services/guardian');
+            ensureGuardianMemberships().catch(err => log.error('Guardian memberships error', err));
+        } catch (e) { log.error('Failed to ensure guardian memberships', e); }
+
         // v19.10: Schedulers wrapped with guardScheduler for dedup + error tracking
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoDigest', checkAutoDigest, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoReminder', checkAutoReminder, { dedup: 'daily' }), 60000));
@@ -396,7 +403,16 @@ runMigrations(pool).then(() => {
         }
         schedulerIntervals.push(setInterval(guardScheduler('checkTrainingPrompts', checkTrainingPrompts, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkTrainingSummary', checkTrainingSummary, { dedup: 'daily' }), 60000));
-        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training');
+        // v21.6: Guardian daily reports (runs at 21:00 Kyiv time)
+        async function checkGuardianReports() {
+            const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+            if (now.getHours() === 21 && now.getMinutes() < 2) {
+                const { runDailyReports } = require('./services/guardian');
+                await runDailyReports();
+            }
+        }
+        schedulerIntervals.push(setInterval(guardScheduler('checkGuardianReports', checkGuardianReports, { dedup: 'daily' }), 60000));
+        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

@@ -1917,8 +1917,8 @@
     font-weight: 700;
 }
 
-.chat-message.bot .chat-bubble-username::after {
-    content: ' BOT';
+/* Bot badge (span-based, supports different bot types) */
+.chat-bot-badge {
     font-size: 9px;
     font-weight: 800;
     background: #10B981;
@@ -1928,11 +1928,55 @@
     margin-left: 6px;
     vertical-align: middle;
     letter-spacing: 0.5px;
+    display: inline-block;
+}
+
+.chat-bot-badge.guardian-badge {
+    background: linear-gradient(135deg, #6366F1, #8B5CF6);
+}
+
+/* Guardian bot styles */
+.chat-message.guardian .chat-avatar {
+    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%) !important;
+    color: white;
+    font-size: 18px;
+    line-height: 1;
+    border: 2px solid rgba(99, 102, 241, 0.3);
+}
+
+.chat-message.guardian .chat-bubble {
+    background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.1);
+}
+
+.chat-message.guardian .chat-bubble-username {
+    color: #6366F1 !important;
+    font-weight: 700;
 }
 
 [data-theme="dark"] .chat-message.bot .chat-bubble {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.1) 100%);
     border-color: rgba(16, 185, 129, 0.25);
+}
+
+[data-theme="dark"] .chat-message.guardian .chat-bubble {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%);
+    border-color: rgba(99, 102, 241, 0.25);
+}
+
+/* Muted/blocked user message style */
+.chat-message.muted-msg .chat-bubble {
+    opacity: 0.5;
+    filter: grayscale(0.5);
+}
+
+.chat-message.muted-msg .chat-bubble::after {
+    content: '🔇 Заблоковано на 15 хв';
+    display: block;
+    font-size: 11px;
+    color: var(--gray-400);
+    margin-top: 4px;
 }
 
 /* ==========================================

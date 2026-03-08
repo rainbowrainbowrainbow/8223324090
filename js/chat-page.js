@@ -1486,6 +1486,9 @@
 
         // Focus input
         if (inputEl) inputEl.focus();
+
+        // Check if user has active mute in this channel (covers page reload)
+        _checkAndShowMuteOverlay();
     }
 
     // ==========================================
@@ -1843,8 +1846,14 @@
         } catch (err) {
             console.error('[Chat] Send error:', err);
             _playSoundAlways('error');
-            input.value = content;
-            _autoGrow(input);
+            // If blocked by Guardian (muted) — show mute overlay with appeal
+            var errMsg = err.message || '';
+            if (errMsg.includes('🛡️') || errMsg.includes('заблоковані') || errMsg.includes('Нецензурна')) {
+                _checkAndShowMuteOverlay();
+            } else {
+                input.value = content;
+                _autoGrow(input);
+            }
         }
     }
 
@@ -2529,6 +2538,28 @@
     }
 
     var _muteTimerInterval = null;
+
+    /**
+     * Check if current user has active mute and show overlay.
+     * Called on channel load and on 403 send error.
+     */
+    async function _checkAndShowMuteOverlay() {
+        if (!_currentChannel || !_currentUserId) return;
+        try {
+            var mutes = await _fetchJson('/api/guardian/mutes/active');
+            if (mutes && mutes.length > 0) {
+                var myMute = mutes.find(function (m) {
+                    return String(m.userId) === _currentUserId && String(m.channelId) === String(_currentChannel.id);
+                });
+                if (myMute) {
+                    _showMuteCountdown(myMute.mutedUntil, myMute.reason);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.error('[Chat] Failed to check mutes:', e);
+        }
+    }
 
     function _onUserMuted(payload) {
         if (!_currentChannel || payload.channelId !== _currentChannel.id) return;

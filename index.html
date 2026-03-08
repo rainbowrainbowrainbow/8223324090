@@ -15,17 +15,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=21.15.0">
-    <link rel="stylesheet" href="css/auth.css?v=21.15.0">
-    <link rel="stylesheet" href="css/layout.css?v=21.15.0">
-    <link rel="stylesheet" href="css/timeline.css?v=21.15.0">
-    <link rel="stylesheet" href="css/panel.css?v=21.15.0">
-    <link rel="stylesheet" href="css/modals.css?v=21.15.0">
-    <link rel="stylesheet" href="css/controls.css?v=21.15.0">
-    <link rel="stylesheet" href="css/features.css?v=21.15.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=21.15.0">
-    <link rel="stylesheet" href="css/responsive.css?v=21.15.0">
-    <link rel="stylesheet" href="css/pages.css?v=21.15.0">
+    <link rel="stylesheet" href="css/base.css?v=22.0.0">
+    <link rel="stylesheet" href="css/auth.css?v=22.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.0.0">
+    <link rel="stylesheet" href="css/timeline.css?v=22.0.0">
+    <link rel="stylesheet" href="css/panel.css?v=22.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=22.0.0">
+    <link rel="stylesheet" href="css/controls.css?v=22.0.0">
+    <link rel="stylesheet" href="css/features.css?v=22.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=22.0.0">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v21.15.0 — Unified Navigation ✨</p>
+                <p class="tagline">AI First CRM v22.0.0 — Dashboard + Roles ✨</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v21.15.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v22.0.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1189,6 +1189,18 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v22.0.0 — Dashboard + Roles + Navigation (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Dashboard</b> — нова персоналізована HOME-сторінка з віджетами (задачі, бронювання, графік, команда, погода, курси)</li>
+                        <li><b>25 ролей</b> — розширення з 10 до 25 ролей (бухгалтер, арт-директор, маркетолог, IT, HR, шеф-кухар, кондитер, рецепція, бариста, клінінг, технік та ін.)</li>
+                        <li><b>Навігація</b> — дашборд як головна, мердж /leads→/customers, /designs→/art, перейменування Персонал→Команда</li>
+                        <li><b>Тест-панель</b> — creator може переключати ролі для тестування інтерфейсів</li>
+                        <li><b>Onboarding</b> — вибір віджетів при першому вході на дашборд</li>
+                        <li><b>Widget API</b> — /api/dashboard/* ендпоінти, кеш для погоди/курсів</li>
+                        <li><b>Role DB</b> — нова таблиця role_definitions з 25 ролями, departments, parent_role</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v21.15.0 — Unified Navigation (Claude Code, 08.03.2026)</h4>
                     <ul>
@@ -3706,28 +3718,28 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/logger.js?v=21.15.0"></script>
-    <script src="js/config.js?v=21.15.0"></script>
-    <script src="js/api.js?v=21.15.0"></script>
-    <script src="js/ui.js?v=21.15.0"></script>
-    <script src="js/auth.js?v=21.15.0"></script>
-    <script src="js/timeline.js?v=21.15.0"></script>
-    <script src="js/booking.js?v=21.15.0"></script>
-    <script src="js/settings.js?v=21.15.0"></script>
-    <script src="js/booking-form.js?v=21.15.0"></script>
-    <script src="js/booking-linked.js?v=21.15.0"></script>
-    <script src="js/settings-dashboard.js?v=21.15.0"></script>
-    <script src="js/settings-history.js?v=21.15.0"></script>
-    <script src="js/settings-afisha.js?v=21.15.0"></script>
-    <script src="js/settings-certificates.js?v=21.15.0"></script>
-    <script src="js/offline.js?v=21.15.0"></script>
-    <script src="js/search.js?v=21.15.0"></script>
-    <script src="js/ws.js?v=21.15.0"></script>
-    <script src="js/components/sidebar.js?v=21.15.0"></script>
-    <script src="js/sales-panel.js?v=21.15.0"></script>
-    <script src="js/command-panel.js?v=21.15.0"></script>
-    <script src="js/idle-hints.js?v=21.15.0"></script>
-    <script src="js/app.js?v=21.15.0"></script>
+    <script src="js/logger.js?v=22.0.0"></script>
+    <script src="js/config.js?v=22.0.0"></script>
+    <script src="js/api.js?v=22.0.0"></script>
+    <script src="js/ui.js?v=22.0.0"></script>
+    <script src="js/auth.js?v=22.0.0"></script>
+    <script src="js/timeline.js?v=22.0.0"></script>
+    <script src="js/booking.js?v=22.0.0"></script>
+    <script src="js/settings.js?v=22.0.0"></script>
+    <script src="js/booking-form.js?v=22.0.0"></script>
+    <script src="js/booking-linked.js?v=22.0.0"></script>
+    <script src="js/settings-dashboard.js?v=22.0.0"></script>
+    <script src="js/settings-history.js?v=22.0.0"></script>
+    <script src="js/settings-afisha.js?v=22.0.0"></script>
+    <script src="js/settings-certificates.js?v=22.0.0"></script>
+    <script src="js/offline.js?v=22.0.0"></script>
+    <script src="js/search.js?v=22.0.0"></script>
+    <script src="js/ws.js?v=22.0.0"></script>
+    <script src="js/components/sidebar.js?v=22.0.0"></script>
+    <script src="js/sales-panel.js?v=22.0.0"></script>
+    <script src="js/command-panel.js?v=22.0.0"></script>
+    <script src="js/idle-hints.js?v=22.0.0"></script>
+    <script src="js/app.js?v=22.0.0"></script>
 
     <!-- Emoji Effects Demo (inline — works on index.html without chat.css) -->
     <style>

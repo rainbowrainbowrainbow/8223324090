@@ -152,6 +152,7 @@ app.use('/api/scripts', require('./routes/scripts'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/guardian', require('./routes/guardian'));
 app.use('/api/summary', require('./routes/summary'));
+app.use('/api/dashboard', require('./routes/dashboard'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -204,6 +205,11 @@ app.get('/api/shifts/daily-digest', async (req, res) => {
 });
 
 // --- Static pages ---
+// v22.0.0: Dashboard as HOME page
+app.get('/dashboard', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dashboard.html'));
+});
+
 app.get('/invite', (req, res) => {
     res.sendFile(path.join(__dirname, 'invite.html'));
 });
@@ -221,9 +227,8 @@ app.get('/staff', (req, res) => {
 app.get('/kleshnya', (req, res) => {
     res.redirect('/chat');
 });
-app.get('/designs', (req, res) => {
-    res.sendFile(path.join(__dirname, 'designs.html'));
-});
+// v22.0.0: designs merged into art-director page
+app.get('/designs', (req, res) => res.redirect(301, '/art?tab=designs'));
 app.get('/warehouse', (req, res) => {
     res.sendFile(path.join(__dirname, 'warehouse.html'));
 });
@@ -258,10 +263,8 @@ app.get('/status', (req, res) => {
 app.get('/training', (req, res) => {
     res.sendFile(path.join(__dirname, 'training.html'));
 });
-// v20.9.13: leads page
-app.get('/leads', (req, res) => {
-    res.sendFile(path.join(__dirname, 'leads.html'));
-});
+// v22.0.0: leads merged into customers page
+app.get('/leads', (req, res) => res.redirect(301, '/customers?tab=leads'));
 // v20.13: Team messenger
 app.get('/chat', (req, res) => {
     res.sendFile(path.join(__dirname, 'chat.html'));

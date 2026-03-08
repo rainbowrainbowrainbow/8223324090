@@ -61,51 +61,73 @@ function showLoginScreen() {
     if (improvementFab) improvementFab.classList.add('hidden');
 }
 
-// v20.1.0: Role hierarchy and access helpers
-const ROLE_HIERARCHY = ['waiter', 'animator', 'instructor', 'senior_instructor', 'admin', 'manager', 'senior_manager', 'vice_director', 'director', 'creator'];
+// v22.0.0: Role hierarchy — 25 roles (higher index = more permissions)
+const ROLE_HIERARCHY = [
+    'waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista',
+    'reception', 'animator', 'pastry_chef', 'head_pastry', 'cook', 'head_chef',
+    'instructor', 'senior_instructor', 'admin', 'hr', 'it_specialist',
+    'marketer', 'art_director', 'accountant', 'manager', 'senior_manager',
+    'vice_director', 'director', 'creator'
+];
 const ROLE_LEVEL = {};
 ROLE_HIERARCHY.forEach((r, i) => ROLE_LEVEL[r] = i);
 
 const ROLE_NAMES = {
     creator: 'Творець', director: 'Директор', vice_director: 'Заст. директора',
-    senior_manager: 'Старший менеджер', manager: 'Менеджер', admin: 'Адміністратор',
+    senior_manager: 'Старший менеджер', manager: 'Менеджер',
+    accountant: 'Бухгалтер', art_director: 'Арт-директор', marketer: 'Маркетолог',
+    it_specialist: 'IT-спеціаліст', hr: 'HR-менеджер',
+    admin: 'Адміністратор',
     senior_instructor: 'Старший інструктор', instructor: 'Інструктор',
-    animator: 'Аніматор', waiter: 'Офіціант'
+    head_chef: 'Шеф-кухар', cook: 'Кухар', head_pastry: 'Шеф-кондитер', pastry_chef: 'Кондитер',
+    animator: 'Аніматор', reception: 'Рецепція', barista: 'Бариста',
+    wardrobe: 'Гардеробник', cleaning: 'Клінінг', maintenance: 'Технік',
+    dishwasher: 'Посудомийник', waiter: 'Офіціант'
 };
 
+// v22.0.0: Role groups for cleaner access control
+const _MANAGEMENT_UP = ['creator', 'director', 'vice_director', 'senior_manager'];
+const _MANAGER_UP = [..._MANAGEMENT_UP, 'manager'];
+const _ADMIN_UP = [..._MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'];
+const _ALL_STAFF = ROLE_HIERARCHY.filter(r => r !== 'waiter');
+
 const PAGE_ACCESS = {
-    '/':          ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
-    '/tasks':     ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
-    '/chat':      ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
-    '/center':    ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/art':       ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/customers': ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    '/staff':     ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/warehouse': ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/designs':   ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    '/training':  ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
+    '/dashboard': ROLE_HIERARCHY.slice(),
+    '/':          _ALL_STAFF,
+    '/tasks':     _ALL_STAFF,
+    '/chat':      _ALL_STAFF,
+    '/center':    _MANAGEMENT_UP,
+    '/art':       [..._MANAGEMENT_UP, 'art_director'],
+    '/customers': [..._ADMIN_UP, 'reception'],
+    '/staff':     [..._MANAGEMENT_UP, 'hr'],
+    '/warehouse': [..._MANAGEMENT_UP, 'admin'],
+    '/training':  [..._MANAGER_UP, 'senior_instructor', 'instructor'],
     '/settings':  ['creator', 'director'],
-    '/demo':      ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
-    '/programs':  ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor'],
-    '/hr':        ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/finance':   ['creator', 'director'],
-    '/analytics': ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/leads':     ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    '/status':    ['creator', 'director', 'vice_director', 'senior_manager'],
+    '/demo':      _MANAGER_UP,
+    '/programs':  [..._ADMIN_UP, 'senior_instructor'],
+    '/hr':        [..._MANAGEMENT_UP, 'hr'],
+    '/finance':   ['creator', 'director', 'accountant'],
+    '/analytics': _MANAGEMENT_UP,
+    '/status':    _MANAGEMENT_UP,
 };
 
 const ACTION_PERMISSIONS = {
-    create_booking:  ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    edit_booking:    ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    cancel_booking:  ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
+    create_booking:  [..._ADMIN_UP, 'reception'],
+    edit_booking:    [..._ADMIN_UP, 'reception'],
+    cancel_booking:  _MANAGER_UP,
     delete_booking:  ['creator', 'director'],
     manage_users:    ['creator', 'director'],
-    view_revenue:    ['creator', 'director', 'vice_director', 'senior_manager'],
+    view_revenue:    [..._MANAGEMENT_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
-    export_data:     ['creator', 'director', 'vice_director', 'senior_manager'],
+    export_data:     _MANAGEMENT_UP,
 };
 
 function getUserRole() {
+    // v22.0.0: Test panel support — creator can simulate other roles
+    const testRole = localStorage.getItem('pzp_test_role');
+    if (testRole && AppState.currentUser && AppState.currentUser.role === 'creator') {
+        return testRole;
+    }
     return AppState.currentUser ? AppState.currentUser.role : null;
 }
 
@@ -129,7 +151,8 @@ function canAccessPage(page) {
 
 function isViewer() {
     const role = getUserRole();
-    return role === 'waiter' || role === 'animator' || role === 'instructor';
+    const viewerRoles = ['waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista', 'reception', 'animator', 'pastry_chef', 'cook', 'instructor'];
+    return viewerRoles.includes(role);
 }
 
 function canManageProducts() {

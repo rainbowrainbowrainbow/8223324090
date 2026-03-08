@@ -3,15 +3,14 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v20.12.0**. Бранч `claude/event-genix-crm-AtvBd` — запушений, PR в main треба створити вручну (gh CLI без токена).
+Версія **v22.0.0**. Бранч `claude/event-genix-crm-handoff-7ANWR`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **package.json**: `"version": "20.12.0"`
-- **Бранч**: `claude/event-genix-crm-AtvBd` (pushed to origin)
-- **Production**: v20.9.27 на `deployed` бранчі (деплоїть тільки Клешня)
-- **main**: відстає (v20.2.0), PR ще не створений
+- **package.json**: `"version": "22.0.0"`
+- **Бранч**: `claude/event-genix-crm-handoff-7ANWR`
+- **Що нового у v22.0.0**: Dashboard як HOME, 25 ролей, навігація реструктуризована, тест-панель creator
 
 ### Тести
 - **291 тест**, 290 pass, 1 fail (pre-existing — CSV/XLSX export)

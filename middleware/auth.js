@@ -1,6 +1,6 @@
 /**
  * middleware/auth.js — JWT authentication + Role-based access control
- * v20.1.0: Expanded role system — 10 roles with hierarchy and access matrix
+ * v22.0.0: Expanded role system — 25 roles with hierarchy and access matrix
  */
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
@@ -14,57 +14,76 @@ if (!process.env.JWT_SECRET) {
     log.warn('JWT_SECRET not set in environment! Sessions will be lost on restart. Set JWT_SECRET env variable.');
 }
 
-// v20.1.0: Role hierarchy (higher index = more permissions)
+// v22.0.0: Role hierarchy — 25 roles (higher index = more permissions)
 const ROLE_HIERARCHY = [
     'waiter',            // 0
-    'animator',          // 1
-    'instructor',        // 2
-    'senior_instructor', // 3
-    'admin',             // 4
-    'manager',           // 5
-    'senior_manager',    // 6
-    'vice_director',     // 7
-    'director',          // 8
-    'creator'            // 9
+    'dishwasher',        // 1
+    'maintenance',       // 2
+    'cleaning',          // 3
+    'wardrobe',          // 4
+    'barista',           // 5
+    'reception',         // 6
+    'animator',          // 7
+    'pastry_chef',       // 8
+    'head_pastry',       // 9
+    'cook',              // 10
+    'head_chef',         // 11
+    'instructor',        // 12
+    'senior_instructor', // 13
+    'admin',             // 14
+    'hr',                // 15
+    'it_specialist',     // 16
+    'marketer',          // 17
+    'art_director',      // 18
+    'accountant',        // 19
+    'manager',           // 20
+    'senior_manager',    // 21
+    'vice_director',     // 22
+    'director',          // 23
+    'creator'            // 24
 ];
 
 const ROLE_LEVEL = {};
 ROLE_HIERARCHY.forEach((role, idx) => { ROLE_LEVEL[role] = idx; });
 
-// Page access matrix — which roles can access each page
+// v22.0.0: Page access matrix — all roles, merged pages (/leads→/customers, /designs→/art)
+const ALL_STAFF = ROLE_HIERARCHY.filter(r => r !== 'waiter');
+const MANAGEMENT_UP = ['creator', 'director', 'vice_director', 'senior_manager'];
+const MANAGER_UP = [...MANAGEMENT_UP, 'manager'];
+const ADMIN_UP = [...MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'];
 const PAGE_ACCESS = {
-    '/':          ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
-    '/tasks':     ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
-    '/center':    ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/art':       ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/customers': ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    '/staff':     ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/warehouse': ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/designs':   ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    '/training':  ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
+    '/dashboard': ROLE_HIERARCHY,  // Everyone
+    '/':          ALL_STAFF,
+    '/tasks':     ALL_STAFF,
+    '/center':    MANAGEMENT_UP,
+    '/art':       [...MANAGEMENT_UP, 'art_director'],
+    '/customers': [...ADMIN_UP, 'reception'],
+    '/staff':     [...MANAGEMENT_UP, 'hr'],
+    '/warehouse': [...MANAGEMENT_UP, 'admin'],
+    '/training':  [...MANAGER_UP, 'senior_instructor', 'instructor'],
     '/settings':  ['creator', 'director'],
-    '/demo':      ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
-    '/programs':  ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor'],
-    '/hr':        ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/chat':      ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
-    '/finance':   ['creator', 'director'],
-    '/analytics': ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/status':    ['creator', 'director', 'vice_director', 'senior_manager'],
+    '/demo':      MANAGER_UP,
+    '/programs':  [...ADMIN_UP, 'senior_instructor'],
+    '/hr':        [...MANAGEMENT_UP, 'hr'],
+    '/chat':      ALL_STAFF,
+    '/finance':   ['creator', 'director', 'accountant'],
+    '/analytics': MANAGEMENT_UP,
+    '/status':    MANAGEMENT_UP,
 };
 
-// Action permissions matrix for timeline
+// v22.0.0: Action permissions matrix for timeline
 const ACTION_PERMISSIONS = {
-    create_booking:  ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    edit_booking:    ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    cancel_booking:  ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
+    create_booking:  [...ADMIN_UP, 'reception'],
+    edit_booking:    [...ADMIN_UP, 'reception'],
+    cancel_booking:  MANAGER_UP,
     delete_booking:  ['creator', 'director'],
-    view_all:        ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    view_own:        ['senior_instructor', 'instructor', 'animator'],
+    view_all:        ADMIN_UP,
+    view_own:        ['senior_instructor', 'instructor', 'animator', 'reception'],
     manage_users:    ['creator', 'director'],
-    view_revenue:    ['creator', 'director', 'vice_director', 'senior_manager'],
+    view_revenue:    [...MANAGEMENT_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
-    export_data:     ['creator', 'director', 'vice_director', 'senior_manager'],
-    manage_staff:    ['creator', 'director', 'vice_director', 'senior_manager'],
+    export_data:     MANAGEMENT_UP,
+    manage_staff:    [...MANAGEMENT_UP, 'hr'],
 };
 
 function authenticateToken(req, res, next) {
@@ -96,12 +115,12 @@ function authenticateToken(req, res, next) {
     }
 }
 
-// v20.1.0: Legacy role mapping — old roles expand to new ones for backward compat
+// v22.0.0: Legacy role mapping — old roles expand to new ones for backward compat
 const LEGACY_ROLE_MAP = {
-    'admin': ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    'user': ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor'],
-    'manager': ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
-    'viewer': ['animator', 'waiter', 'instructor'],
+    'admin': ADMIN_UP,
+    'user': [...ADMIN_UP, 'senior_instructor', 'instructor'],
+    'manager': MANAGER_UP,
+    'viewer': ['animator', 'waiter', 'instructor', 'reception', 'barista', 'wardrobe', 'cleaning', 'maintenance', 'dishwasher'],
 };
 
 // v20.1.0: Check if user has one of the specified roles (with legacy expansion)

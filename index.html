@@ -15,17 +15,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=21.8.0">
-    <link rel="stylesheet" href="css/auth.css?v=21.8.0">
-    <link rel="stylesheet" href="css/layout.css?v=21.8.0">
-    <link rel="stylesheet" href="css/timeline.css?v=21.8.0">
-    <link rel="stylesheet" href="css/panel.css?v=21.8.0">
-    <link rel="stylesheet" href="css/modals.css?v=21.8.0">
-    <link rel="stylesheet" href="css/controls.css?v=21.8.0">
-    <link rel="stylesheet" href="css/features.css?v=21.8.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=21.8.0">
-    <link rel="stylesheet" href="css/responsive.css?v=21.8.0">
-    <link rel="stylesheet" href="css/pages.css?v=21.8.0">
+    <link rel="stylesheet" href="css/base.css?v=21.9.0">
+    <link rel="stylesheet" href="css/auth.css?v=21.9.0">
+    <link rel="stylesheet" href="css/layout.css?v=21.9.0">
+    <link rel="stylesheet" href="css/timeline.css?v=21.9.0">
+    <link rel="stylesheet" href="css/panel.css?v=21.9.0">
+    <link rel="stylesheet" href="css/modals.css?v=21.9.0">
+    <link rel="stylesheet" href="css/controls.css?v=21.9.0">
+    <link rel="stylesheet" href="css/features.css?v=21.9.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=21.9.0">
+    <link rel="stylesheet" href="css/responsive.css?v=21.9.0">
+    <link rel="stylesheet" href="css/pages.css?v=21.9.0">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v21.8.0 — Complex Emoji Effects v2</p>
+                <p class="tagline">AI First CRM v21.9.0 — Chat Mega Upgrade ✨</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v21.8.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v21.9.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1144,6 +1144,26 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v21.9.0 — Chat Mega Upgrade (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Бан-фікс</b> — апеляція тепер знімає бан а не викидає з системи</li>
+                        <li><b>Online-статус</b> — зелена пульсуюча крапка на аватарках</li>
+                        <li><b>Гігантські стікери</b> — emoji-only повідомлення 80px з bounce-анімацією</li>
+                        <li><b>Градієнтні бабли</b> — власні повідомлення змінюють колір залежно від часу доби</li>
+                        <li><b>Хвиля друку</b> — аудіо-хвиля замість крапок + міні-аватар того хто пише</li>
+                        <li><b>Swipe-to-reply</b> — на мобільних свайп вправо = відповісти</li>
+                        <li><b>Кольорові ролі</b> — адмін=червоний, аніматор=фіолет, касир=синій градієнти</li>
+                        <li><b>Ачівки</b> — конфетті + toast при досягненнях (click щоб забрати)</li>
+                        <li><b>Link preview</b> — автоматичні карточки з посилань</li>
+                        <li><b>Pinned bar</b> — закріплене повідомлення зверху каналу</li>
+                        <li><b>Mood gradient</b> — фон чату міняється від настрою Guardian</li>
+                        <li><b>Dino-аватарки</b> — парк-маскоти 🦕🦖🦎🐊🦴🌴🌋🥚 що моргають</li>
+                        <li><b>Авто нічний режим</b> — 22:00-07:00 синхронізація з dark mode</li>
+                        <li><b>Reaction combo</b> — 3+ пульсує, 5+ HOT badge</li>
+                        <li><b>Easter eggs</b> — /rain 🦕, /party 🪩, /snow ❄️, /confetti 🎊</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v21.8.0 — Complex Emoji Effects v2 (Claude Code, 08.03.2026)</h4>
                     <ul>
@@ -3565,28 +3585,28 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/logger.js?v=21.8.0"></script>
-    <script src="js/config.js?v=21.8.0"></script>
-    <script src="js/api.js?v=21.8.0"></script>
-    <script src="js/ui.js?v=21.8.0"></script>
-    <script src="js/auth.js?v=21.8.0"></script>
-    <script src="js/timeline.js?v=21.8.0"></script>
-    <script src="js/booking.js?v=21.8.0"></script>
-    <script src="js/settings.js?v=21.8.0"></script>
-    <script src="js/booking-form.js?v=21.8.0"></script>
-    <script src="js/booking-linked.js?v=21.8.0"></script>
-    <script src="js/settings-dashboard.js?v=21.8.0"></script>
-    <script src="js/settings-history.js?v=21.8.0"></script>
-    <script src="js/settings-afisha.js?v=21.8.0"></script>
-    <script src="js/settings-certificates.js?v=21.8.0"></script>
-    <script src="js/offline.js?v=21.8.0"></script>
-    <script src="js/search.js?v=21.8.0"></script>
-    <script src="js/ws.js?v=21.8.0"></script>
-    <script src="js/components/sidebar.js?v=21.8.0"></script>
-    <script src="js/sales-panel.js?v=21.8.0"></script>
-    <script src="js/command-panel.js?v=21.8.0"></script>
-    <script src="js/idle-hints.js?v=21.8.0"></script>
-    <script src="js/app.js?v=21.8.0"></script>
+    <script src="js/logger.js?v=21.9.0"></script>
+    <script src="js/config.js?v=21.9.0"></script>
+    <script src="js/api.js?v=21.9.0"></script>
+    <script src="js/ui.js?v=21.9.0"></script>
+    <script src="js/auth.js?v=21.9.0"></script>
+    <script src="js/timeline.js?v=21.9.0"></script>
+    <script src="js/booking.js?v=21.9.0"></script>
+    <script src="js/settings.js?v=21.9.0"></script>
+    <script src="js/booking-form.js?v=21.9.0"></script>
+    <script src="js/booking-linked.js?v=21.9.0"></script>
+    <script src="js/settings-dashboard.js?v=21.9.0"></script>
+    <script src="js/settings-history.js?v=21.9.0"></script>
+    <script src="js/settings-afisha.js?v=21.9.0"></script>
+    <script src="js/settings-certificates.js?v=21.9.0"></script>
+    <script src="js/offline.js?v=21.9.0"></script>
+    <script src="js/search.js?v=21.9.0"></script>
+    <script src="js/ws.js?v=21.9.0"></script>
+    <script src="js/components/sidebar.js?v=21.9.0"></script>
+    <script src="js/sales-panel.js?v=21.9.0"></script>
+    <script src="js/command-panel.js?v=21.9.0"></script>
+    <script src="js/idle-hints.js?v=21.9.0"></script>
+    <script src="js/app.js?v=21.9.0"></script>
 
     <!-- Emoji Effects Demo (inline — works on index.html without chat.css) -->
     <style>

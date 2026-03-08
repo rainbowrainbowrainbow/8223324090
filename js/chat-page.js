@@ -2807,6 +2807,109 @@
     var _guardianLogBtn = document.getElementById('guardianLogBtn');
     var _guardianLogPanel = document.getElementById('guardianLogPanel');
     var _guardianLogEntries = document.getElementById('guardianLogEntries');
+
+    // ==========================================
+    // GUARDIAN DIGEST (available to ALL users)
+    // ==========================================
+    var _digestPanel = document.getElementById('guardianDigestPanel');
+    var _digestBtn = document.getElementById('guardianDigestBtn');
+    var _digestContent = document.getElementById('guardianDigestContent');
+    var _digestDate = document.getElementById('guardianDigestDate');
+    var _digestClose = document.getElementById('guardianDigestClose');
+    var _digestPrev = document.getElementById('guardianDigestPrev');
+    var _digestNext = document.getElementById('guardianDigestNext');
+    var _digestOpen = false;
+    var _digestCurrentDate = new Date();
+
+    if (_digestBtn) {
+        _digestBtn.addEventListener('click', function () {
+            _digestOpen = !_digestOpen;
+            if (_digestPanel) _digestPanel.style.display = _digestOpen ? 'block' : 'none';
+            if (_digestOpen) {
+                _digestCurrentDate = new Date();
+                _loadDigest(_digestCurrentDate);
+            }
+        });
+    }
+    if (_digestClose) {
+        _digestClose.addEventListener('click', function () {
+            _digestOpen = false;
+            if (_digestPanel) _digestPanel.style.display = 'none';
+        });
+    }
+    if (_digestPrev) {
+        _digestPrev.addEventListener('click', function () {
+            _digestCurrentDate.setDate(_digestCurrentDate.getDate() - 1);
+            _loadDigest(_digestCurrentDate);
+        });
+    }
+    if (_digestNext) {
+        _digestNext.addEventListener('click', function () {
+            var tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            if (_digestCurrentDate < tomorrow) {
+                _digestCurrentDate.setDate(_digestCurrentDate.getDate() + 1);
+                _loadDigest(_digestCurrentDate);
+            }
+        });
+    }
+
+    async function _loadDigest(date) {
+        if (!_digestContent || !_digestDate) return;
+        var dateStr = date.toLocaleDateString('sv-SE'); // YYYY-MM-DD
+        var displayDate = date.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
+        _digestDate.textContent = displayDate;
+        _digestContent.innerHTML = '<div class="guardian-digest-empty">Завантаження...</div>';
+
+        try {
+            var channelParam = _currentChannel ? '&channelId=' + _currentChannel.id : '';
+            var reports = await _fetchJson('/api/guardian/reports?limit=10' + channelParam);
+            if (!reports || reports.length === 0) {
+                _digestContent.innerHTML = '<div class="guardian-digest-empty">📭 Дайджест ще не згенеровано.<br><small>Guardian створює звіт щовечора о 23:00</small></div>';
+                return;
+            }
+
+            // Find report for the selected date
+            var report = reports.find(function (r) {
+                return r.reportDate && r.reportDate.substring(0, 10) === dateStr;
+            });
+
+            if (!report) {
+                // Show the latest available report
+                report = reports[0];
+                if (report && report.reportDate) {
+                    var rd = new Date(report.reportDate);
+                    _digestDate.textContent = rd.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
+                    _digestCurrentDate = rd;
+                }
+            }
+
+            if (!report) {
+                _digestContent.innerHTML = '<div class="guardian-digest-empty">📭 Немає звіту за цей день</div>';
+                return;
+            }
+
+            // Stats bar
+            var statsHtml = '<div class="guardian-digest-stats">' +
+                '<div class="guardian-digest-stat"><span class="guardian-digest-stat-value">' + (report.conflictsDetected || 0) + '</span><span class="guardian-digest-stat-label">Блокувань</span></div>' +
+                '<div class="guardian-digest-stat"><span class="guardian-digest-stat-value">' + (report.sensitiveMasked || 0) + '</span><span class="guardian-digest-stat-label">Замасковано</span></div>' +
+                '</div>';
+
+            // Format summary — allow safe HTML tags
+            var summary = report.summary || 'Немає даних';
+            // Restore safe HTML tags from guardian reports
+            summary = summary.replace(/&lt;b&gt;/g, '<b>').replace(/&lt;\/b&gt;/g, '</b>');
+            summary = summary.replace(/&lt;i&gt;/g, '<i>').replace(/&lt;\/i&gt;/g, '</i>');
+            summary = summary.replace(/&lt;br\s*\/?&gt;/g, '<br>');
+            summary = summary.replace(/&lt;li&gt;/g, '<li>').replace(/&lt;\/li&gt;/g, '</li>');
+            summary = summary.replace(/&lt;ul&gt;/g, '<ul>').replace(/&lt;\/ul&gt;/g, '</ul>');
+            summary = summary.replace(/\n/g, '<br>');
+
+            _digestContent.innerHTML = statsHtml + '<div class="guardian-digest-body">' + summary + '</div>';
+        } catch (e) {
+            _digestContent.innerHTML = '<div class="guardian-digest-empty">❌ Помилка завантаження</div>';
+        }
+    }
     var _guardianLogBadge = document.getElementById('guardianLogBadge');
     var _guardianLogClose = document.getElementById('guardianLogClose');
     var _guardianEvents = [];

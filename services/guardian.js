@@ -16,20 +16,81 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { broadcastToChannel, sendToUser, broadcast } = require('./websocket');
-const Anthropic = require('@anthropic-ai/sdk');
 
 const log = createLogger('Guardian');
 
 const GUARDIAN_USERNAME = 'guardian';
 const MUTE_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
-// AI setup
+// AI setup — OpenRouter (cheap models) or Anthropic fallback
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const AI_ENABLED = !!ANTHROPIC_API_KEY;
-let anthropic = null;
-if (AI_ENABLED) {
-    anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-    log.info('Guardian AI enabled');
+const AI_ENABLED = !!(OPENROUTER_API_KEY || ANTHROPIC_API_KEY);
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemma-2-9b-it:free';
+
+if (OPENROUTER_API_KEY) {
+    log.info(`Guardian AI enabled (OpenRouter: ${OPENROUTER_MODEL})`);
+} else if (ANTHROPIC_API_KEY) {
+    log.info('Guardian AI enabled (Anthropic fallback)');
+}
+
+/**
+ * Unified LLM call — tries OpenRouter first, Anthropic fallback.
+ * Returns text response or null on error.
+ */
+async function callLLM(systemPrompt, userMessage, maxTokens) {
+    maxTokens = maxTokens || 300;
+
+    if (OPENROUTER_API_KEY) {
+        try {
+            const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + OPENROUTER_API_KEY,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://park-zp.railway.app',
+                    'X-Title': 'Park Guardian AI'
+                },
+                body: JSON.stringify({
+                    model: OPENROUTER_MODEL,
+                    max_tokens: maxTokens,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userMessage }
+                    ]
+                })
+            });
+            if (!resp.ok) {
+                const errText = await resp.text();
+                log.error('OpenRouter API error', { status: resp.status, body: errText });
+                return null;
+            }
+            const data = await resp.json();
+            return data.choices?.[0]?.message?.content?.trim() || null;
+        } catch (err) {
+            log.error('OpenRouter call failed', err.message);
+            return null;
+        }
+    }
+
+    if (ANTHROPIC_API_KEY) {
+        try {
+            const Anthropic = require('@anthropic-ai/sdk');
+            const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+            const response = await anthropic.messages.create({
+                model: 'claude-haiku-4-5-20251001',
+                max_tokens: maxTokens,
+                system: systemPrompt,
+                messages: [{ role: 'user', content: userMessage }]
+            });
+            return response.content[0]?.text?.trim() || null;
+        } catch (err) {
+            log.error('Anthropic call failed', err.message);
+            return null;
+        }
+    }
+
+    return null;
 }
 
 // Cache guardian user ID
@@ -456,21 +517,17 @@ async function deleteToxicMessage(messageId, channelId, username, reason) {
  * AI learns new toxic words from context and adds to dynamic filter.
  */
 async function aiLearnToxicWords(content, username) {
-    if (!AI_ENABLED || !anthropic) return;
+    if (!AI_ENABLED) return;
 
     try {
-        const response = await anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 200,
-            system: `Ти — AI модератор чату. Перевір повідомлення на наявність образливих, токсичних або нецензурних слів/фраз будь-якою мовою.
+        const text = await callLLM(
+            `Ти — AI модератор чату. Перевір повідомлення на наявність образливих, токсичних або нецензурних слів/фраз будь-якою мовою.
 Якщо знайдеш нові образливі слова (які можуть бути замасковані спецсимволами, пробілами, або іншими трюками) — поверни їх.
 Відповідай ТІЛЬКИ у форматі JSON: {"toxic": true/false, "words": ["слово1", "слово2"], "reason": "опис"}
 Якщо повідомлення чисте: {"toxic": false}
 Не включай слова які вже є в стандартних словниках мату. Шукай тільки НОВІ варіації.`,
-            messages: [{ role: 'user', content: content }]
-        });
-
-        const text = response.content[0]?.text?.trim();
+            content, 200
+        );
         if (!text) return;
 
         const match = text.match(/\{[\s\S]*\}/);
@@ -510,7 +567,7 @@ async function aiLearnToxicWords(content, username) {
  * Called every 5 min by scheduler or when buffer is full.
  */
 async function flushLearnBatch() {
-    if (!AI_ENABLED || !anthropic || _pendingLearnMessages.length === 0) return;
+    if (!AI_ENABLED || _pendingLearnMessages.length === 0) return;
 
     const batch = _pendingLearnMessages.splice(0, LEARN_BATCH_SIZE);
     log.info(`Flushing learn batch: ${batch.length} messages`);
@@ -520,18 +577,14 @@ async function flushLearnBatch() {
             `${i + 1}. [${m.username}]: ${m.content}`
         ).join('\n');
 
-        const response = await anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 300,
-            system: `Ти — AI модератор чату. Переглянь пачку повідомлень і знайди НОВІ образливі/токсичні слова чи фрази (будь-якою мовою).
+        const text = await callLLM(
+            `Ти — AI модератор чату. Переглянь пачку повідомлень і знайди НОВІ образливі/токсичні слова чи фрази (будь-якою мовою).
 Шукай тільки НОВІ варіації мату — замасковані спецсимволами, пробілами, літ-спіком, транслітом тощо.
 НЕ включай стандартні відомі матюки — тільки креативні обхідні варіанти.
 Відповідай ТІЛЬКИ у форматі JSON: {"toxic": true/false, "words": ["слово1", "слово2"], "reason": "опис"}
 Якщо все чисто: {"toxic": false}`,
-            messages: [{ role: 'user', content: chatLog }]
-        });
-
-        const text = response.content[0]?.text?.trim();
+            chatLog, 300
+        );
         if (!text) return;
 
         const match = text.match(/\{[\s\S]*\}/);
@@ -570,24 +623,20 @@ async function flushLearnBatch() {
  * Analyzes last N messages in context.
  */
 async function aiConflictCheck(messages) {
-    if (!AI_ENABLED || !anthropic) return null;
+    if (!AI_ENABLED) return null;
 
     try {
         const chatLog = messages.map(m =>
             `[${m.username}]: ${m.content}`
         ).join('\n');
 
-        const response = await anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 200,
-            system: `Ти — модератор чату. Проаналізуй останні повідомлення і визнач чи є конфлікт або агресія.
+        const text = await callLLM(
+            `Ти — модератор чату. Проаналізуй останні повідомлення і визнач чи є конфлікт або агресія.
 Відповідай ТІЛЬКИ у форматі JSON: {"conflict": true/false, "severity": "low"/"medium"/"high", "aggressors": ["username"], "reason": "короткий опис"}
 Якщо конфлікту немає — {"conflict": false}
 Враховуй контекст: жарти та легке підколювання — це нормально. Шукай справжню агресію та образи.`,
-            messages: [{ role: 'user', content: chatLog }]
-        });
-
-        const text = response.content[0]?.text?.trim();
+            chatLog, 200
+        );
         if (!text) return null;
 
         // Parse JSON response
@@ -720,10 +769,8 @@ async function generateDailyReport(channelId, dateStr) {
             `[${new Date(m.created_at).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}] ${m.username}: ${m.content}`
         ).join('\n');
 
-        const response = await anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 600,
-            system: `Ти — Guardian, AI-модератор корпоративного чату розважального парку "Парк Закревського Періоду".
+        const summary = await callLLM(
+            `Ти — Guardian, AI-модератор корпоративного чату розважального парку "Парк Закревського Періоду".
 Створи щоденний звіт з чату для директора. Формат:
 
 📊 <b>Звіт за [дата]</b> | #${channel?.slug || 'канал'}
@@ -743,10 +790,8 @@ async function generateDailyReport(channelId, dateStr) {
 - Блокувань: ${actionCounts.mute || 0}, Замасковано: ${actionCounts.mask || 0}
 
 Пиши українською, лаконічно. Ігноруй дрібні привітання. Фокусуйся на робочих темах та хто чим займався.`,
-            messages: [{ role: 'user', content: `Повідомлення за ${dateStr}:\n\n${chatLog}` }]
-        });
-
-        const summary = response.content[0]?.text || 'Не вдалось згенерувати звіт';
+            `Повідомлення за ${dateStr}:\n\n${chatLog}`, 600
+        ) || 'Не вдалось згенерувати звіт';
 
         // Extract important messages (mentioned decisions/deadlines)
         const important = messages.filter(m =>

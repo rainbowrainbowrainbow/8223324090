@@ -2,13 +2,38 @@
  * routes/chat.js — Team messenger REST API
  */
 const router = require('express').Router();
+const path = require('path');
+const multer = require('multer');
 const chat = require('../services/chatService');
 const { broadcastToChannel, sendToUser } = require('../services/websocket');
 const { processMessage: processBotMessage } = require('../services/chat-bot');
 const guardian = require('../services/guardian');
+const linkPreview = require('../services/linkPreview');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('ChatAPI');
+
+// File upload config
+const chatStorage = multer.diskStorage({
+    destination: path.join(__dirname, '..', 'uploads', 'chat'),
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        const name = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + ext;
+        cb(null, name);
+    }
+});
+const chatUpload = multer({
+    storage: chatStorage,
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    fileFilter: (req, file, cb) => {
+        const allowed = /\.(jpg|jpeg|png|gif|webp|svg|pdf|doc|docx|xls|xlsx|txt|zip|mp3|mp4|ogg|wav|webm)$/i;
+        if (allowed.test(path.extname(file.originalname))) {
+            cb(null, true);
+        } else {
+            cb(new Error('Непідтримуваний формат файлу'));
+        }
+    }
+});
 
 // GET /api/chat/channels — list user's channels + unread counts
 router.get('/channels', async (req, res) => {
@@ -108,9 +133,67 @@ router.post('/channels/:id/messages', async (req, res) => {
             log.error('Guardian processing error', err);
         });
 
+        // Link preview processing (fire-and-forget — sends WS update when ready)
+        linkPreview.processMessageLinks(message.id, content).then(ogData => {
+            if (ogData) {
+                broadcastToChannel(channelId, 'chat:link-preview', {
+                    channelId,
+                    messageId: message.id,
+                    linkPreview: ogData
+                });
+            }
+        }).catch(err => {
+            log.debug('Link preview error: ' + err.message);
+        });
+
         res.status(201).json(message);
     } catch (err) {
         log.error('Error sending message', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/chat/channels/:id/upload — upload file to channel
+router.post('/channels/:id/upload', chatUpload.single('file'), async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const channelId = parseInt(req.params.id, 10);
+        if (isNaN(channelId) || !req.file) {
+            return res.status(400).json({ error: 'Invalid channel ID or missing file' });
+        }
+
+        const file = req.file;
+        const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.originalname);
+        const fileUrl = '/uploads/chat/' + file.filename;
+        const contentType = isImage ? 'image' : 'file';
+        const caption = req.body.caption || '';
+
+        const metadata = {
+            file: {
+                url: fileUrl,
+                name: file.originalname,
+                size: file.size,
+                mimeType: file.mimetype,
+                type: contentType
+            }
+        };
+
+        // Send as message with file metadata
+        const content = caption || (isImage ? '📷 Фото' : '📎 ' + file.originalname);
+        const { message, mentionedUserIds } = await chat.sendFileMessage(channelId, userId, content, contentType, metadata);
+
+        broadcastToChannel(channelId, 'chat:message', { channelId, message }, String(userId));
+
+        for (const mentionedId of mentionedUserIds) {
+            sendToUser(String(mentionedId), 'chat:mention', {
+                channelId, messageId: message.id,
+                mentionedBy: message.username, content: message.content
+            });
+        }
+
+        res.status(201).json(message);
+    } catch (err) {
+        log.error('Error uploading file', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -137,6 +220,21 @@ router.put('/channels/:id/read', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         log.error('Error marking as read', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/chat/channels/:id/read-receipts — get who read what
+router.get('/channels/:id/read-receipts', async (req, res) => {
+    try {
+        const channelId = parseInt(req.params.id, 10);
+        if (isNaN(channelId)) {
+            return res.status(400).json({ error: 'Invalid channel ID' });
+        }
+        const receipts = await chat.getReadReceipts(channelId);
+        res.json(receipts);
+    } catch (err) {
+        log.error('Error getting read receipts', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -500,7 +598,7 @@ router.delete('/channels/:id', async (req, res) => {
     }
 });
 
-// GET /api/chat/search — search messages
+// GET /api/chat/search — search messages (enhanced with filters)
 router.get('/search', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
@@ -508,8 +606,14 @@ router.get('/search', async (req, res) => {
         if (!q || q.trim().length < 2) {
             return res.status(400).json({ error: 'Query must be at least 2 characters' });
         }
-        const channelId = req.query.channel_id ? parseInt(req.query.channel_id, 10) : null;
-        const results = await chat.searchMessages(userId, q.trim(), channelId);
+        const filters = {
+            channelId: req.query.channel_id ? parseInt(req.query.channel_id, 10) : null,
+            fromUser: req.query.from_user || null,
+            dateFrom: req.query.date_from || null,
+            dateTo: req.query.date_to || null,
+            type: req.query.type || null // 'files', 'links', 'mentions'
+        };
+        const results = await chat.searchMessages(userId, q.trim(), filters.channelId, filters);
         res.json(results);
     } catch (err) {
         log.error('Error searching messages', err);
@@ -573,6 +677,182 @@ router.patch('/tasks/:id', async (req, res) => {
         res.json(task);
     } catch (err) {
         log.error('Error updating task', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// THREADS
+// ==========================================
+
+// GET /api/chat/messages/:id/thread — get thread messages
+router.get('/messages/:id/thread', async (req, res) => {
+    try {
+        const messageId = parseInt(req.params.id, 10);
+        if (isNaN(messageId)) return res.status(400).json({ error: 'Invalid message ID' });
+
+        const pool = require('../db/pool');
+        const result = await pool.query(`
+            SELECT cm.*, u.username, u.name AS display_name
+            FROM chat_messages cm
+            JOIN users u ON u.id = cm.user_id
+            WHERE cm.thread_root_id = $1 AND cm.deleted_at IS NULL
+            ORDER BY cm.seq ASC
+            LIMIT 200
+        `, [messageId]);
+
+        res.json(result.rows.map(r => chat.mapMessageRow(r)));
+    } catch (err) {
+        log.error('Error loading thread', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/chat/messages/:id/thread — reply in thread
+router.post('/messages/:id/thread', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const rootMessageId = parseInt(req.params.id, 10);
+        const { content } = req.body;
+        if (isNaN(rootMessageId) || !content || !content.trim()) {
+            return res.status(400).json({ error: 'Invalid parameters' });
+        }
+
+        const pool = require('../db/pool');
+
+        // Get the root message's channel
+        const rootMsg = await pool.query('SELECT channel_id FROM chat_messages WHERE id = $1', [rootMessageId]);
+        if (rootMsg.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+        const channelId = rootMsg.rows[0].channel_id;
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
+            const seq = seqResult.rows[0].seq;
+
+            const msgResult = await client.query(`
+                INSERT INTO chat_messages (channel_id, user_id, seq, content, thread_root_id, reply_to)
+                VALUES ($1, $2, $3, $4, $5, $5)
+                RETURNING *
+            `, [channelId, userId, seq, content.trim(), rootMessageId]);
+
+            // Update reply count on root message
+            await client.query(
+                'UPDATE chat_messages SET thread_reply_count = COALESCE(thread_reply_count, 0) + 1 WHERE id = $1',
+                [rootMessageId]
+            );
+
+            await client.query(
+                'UPDATE chat_channel_members SET last_read_seq = $1 WHERE channel_id = $2 AND user_id = $3',
+                [seq, channelId, userId]
+            );
+
+            await client.query('COMMIT');
+
+            const fullMsg = await pool.query(`
+                SELECT cm.*, u.username, u.name AS display_name
+                FROM chat_messages cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1
+            `, [msgResult.rows[0].id]);
+
+            const message = chat.mapMessageRow(fullMsg.rows[0]);
+
+            // Broadcast thread reply
+            broadcastToChannel(channelId, 'chat:thread-reply', {
+                channelId,
+                rootMessageId,
+                message
+            });
+
+            res.status(201).json(message);
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        log.error('Error sending thread reply', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// BOOKMARKS
+// ==========================================
+
+// POST /api/chat/bookmarks — save message bookmark
+router.post('/bookmarks', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const { messageId, category, note } = req.body;
+        if (!messageId) return res.status(400).json({ error: 'Missing messageId' });
+
+        const pool = require('../db/pool');
+        await pool.query(
+            `INSERT INTO chat_bookmarks (user_id, message_id, category, note)
+             VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, message_id) DO UPDATE SET category = $3, note = $4`,
+            [userId, messageId, category || 'general', note || null]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Error saving bookmark', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/chat/bookmarks — list user bookmarks
+router.get('/bookmarks', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const category = req.query.category || null;
+        const pool = require('../db/pool');
+
+        let query = `
+            SELECT b.*, cm.content, cm.created_at AS message_date, cm.channel_id,
+                   u.username, u.name AS display_name, cc.name AS channel_name
+            FROM chat_bookmarks b
+            JOIN chat_messages cm ON cm.id = b.message_id
+            JOIN users u ON u.id = cm.user_id
+            JOIN chat_channels cc ON cc.id = cm.channel_id
+            WHERE b.user_id = $1`;
+        const params = [userId];
+
+        if (category) {
+            query += ' AND b.category = $2';
+            params.push(category);
+        }
+        query += ' ORDER BY b.created_at DESC LIMIT 100';
+
+        const result = await pool.query(query, params);
+        res.json(result.rows.map(r => ({
+            id: r.id,
+            messageId: r.message_id,
+            content: r.content,
+            messageDate: r.message_date,
+            channelId: r.channel_id,
+            channelName: r.channel_name,
+            username: r.username,
+            displayName: r.display_name || r.username,
+            category: r.category,
+            note: r.note,
+            createdAt: r.created_at
+        })));
+    } catch (err) {
+        log.error('Error loading bookmarks', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// DELETE /api/chat/bookmarks/:id — remove bookmark
+router.delete('/bookmarks/:id', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const pool = require('../db/pool');
+        await pool.query('DELETE FROM chat_bookmarks WHERE id = $1 AND user_id = $2', [req.params.id, userId]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Error removing bookmark', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

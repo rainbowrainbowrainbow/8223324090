@@ -23,7 +23,10 @@ function mapMessageRow(row) {
         deletedAt: row.deleted_at || null,
         createdAt: row.created_at,
         username: row.username,
-        displayName: row.display_name || row.username
+        displayName: row.display_name || row.username,
+        metadata: row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : null,
+        threadRootId: row.thread_root_id || null,
+        threadReplyCount: row.thread_reply_count || 0
     };
 }
 
@@ -225,6 +228,54 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
 }
 
 /**
+ * Send a file message to a channel.
+ */
+async function sendFileMessage(channelId, userId, content, contentType, metadata) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
+        const seq = seqResult.rows[0].seq;
+
+        const msgResult = await client.query(`
+            INSERT INTO chat_messages (channel_id, user_id, seq, content, content_type, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *
+        `, [channelId, userId, seq, content, contentType, JSON.stringify(metadata)]);
+        const msg = msgResult.rows[0];
+
+        // Update sender's last_read_seq
+        await client.query(
+            'UPDATE chat_channel_members SET last_read_seq = $1 WHERE channel_id = $2 AND user_id = $3',
+            [seq, channelId, userId]
+        );
+
+        await client.query('COMMIT');
+
+        const fullMsg = await pool.query(`
+            SELECT cm.*, u.username, u.name AS display_name
+            FROM chat_messages cm
+            JOIN users u ON u.id = cm.user_id
+            WHERE cm.id = $1
+        `, [msg.id]);
+
+        return {
+            message: mapMessageRow(fullMsg.rows[0]),
+            mentionedUserIds: []
+        };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505' && err.constraint === 'chat_messages_channel_id_seq_key') {
+            return sendFileMessage(channelId, userId, content, contentType, metadata);
+        }
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
  * Mark channel as read up to a sequence number.
  */
 async function markAsRead(channelId, userId, seq) {
@@ -232,6 +283,25 @@ async function markAsRead(channelId, userId, seq) {
         'UPDATE chat_channel_members SET last_read_seq = GREATEST(last_read_seq, $1) WHERE channel_id = $2 AND user_id = $3',
         [seq, channelId, userId]
     );
+}
+
+/**
+ * Get read receipts for a channel — who read up to what seq.
+ */
+async function getReadReceipts(channelId) {
+    const result = await pool.query(
+        `SELECT m.user_id, m.last_read_seq, u.username, u.name AS display_name
+         FROM chat_channel_members m
+         JOIN users u ON u.id = m.user_id
+         WHERE m.channel_id = $1 AND m.last_read_seq > 0`,
+        [channelId]
+    );
+    return result.rows.map(r => ({
+        userId: r.user_id,
+        username: r.username,
+        displayName: r.display_name || r.username,
+        lastReadSeq: r.last_read_seq
+    }));
 }
 
 /**
@@ -603,20 +673,46 @@ async function archiveChannel(channelId) {
 /**
  * Search messages across channels the user has access to.
  */
-async function searchMessages(userId, query, channelId) {
+async function searchMessages(userId, query, channelId, filters = {}) {
     const params = [userId, '%' + query.replace(/[%_]/g, '\\$&') + '%'];
-    let channelFilter = '';
+    let extraFilters = '';
+    let paramIdx = 3;
+
     if (channelId) {
-        channelFilter = ' AND cm.channel_id = $3';
+        extraFilters += ' AND cm.channel_id = $' + paramIdx;
         params.push(channelId);
+        paramIdx++;
     }
+    if (filters.fromUser) {
+        extraFilters += ' AND u.username = $' + paramIdx;
+        params.push(filters.fromUser);
+        paramIdx++;
+    }
+    if (filters.dateFrom) {
+        extraFilters += ' AND cm.created_at >= $' + paramIdx;
+        params.push(filters.dateFrom);
+        paramIdx++;
+    }
+    if (filters.dateTo) {
+        extraFilters += ' AND cm.created_at <= $' + paramIdx;
+        params.push(filters.dateTo);
+        paramIdx++;
+    }
+    if (filters.type === 'files') {
+        extraFilters += " AND cm.content_type IN ('image', 'file')";
+    } else if (filters.type === 'links') {
+        extraFilters += " AND cm.content ~ 'https?://'";
+    } else if (filters.type === 'mentions') {
+        extraFilters += " AND cm.content ~ '@\\w+'";
+    }
+
     const result = await pool.query(`
         SELECT cm.*, u.username, u.name AS display_name, c.name AS channel_name, c.slug AS channel_slug
         FROM chat_messages cm
         JOIN users u ON u.id = cm.user_id
         JOIN chat_channels c ON c.id = cm.channel_id
         JOIN chat_channel_members ccm ON ccm.channel_id = cm.channel_id AND ccm.user_id = $1
-        WHERE cm.deleted_at IS NULL AND cm.content ILIKE $2${channelFilter}
+        WHERE cm.deleted_at IS NULL AND cm.content ILIKE $2${extraFilters}
         ORDER BY cm.created_at DESC
         LIMIT 50
     `, params);
@@ -789,5 +885,7 @@ module.exports = {
     getTasks,
     updateTask,
     findChannelByEntity,
-    createBookingChannel
+    createBookingChannel,
+    getReadReceipts,
+    sendFileMessage
 };

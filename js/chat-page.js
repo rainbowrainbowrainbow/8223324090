@@ -251,6 +251,104 @@
         _sendBtn.addEventListener('click', _sendMessage);
     }
 
+    // File upload
+    var _fileBtn = document.getElementById('chatFileBtn');
+    var _fileInput = document.getElementById('chatFileInput');
+    var _filePreview = document.getElementById('chatFilePreview');
+    var _filePreviewContent = document.getElementById('chatFilePreviewContent');
+    var _filePreviewClose = document.getElementById('chatFilePreviewClose');
+    var _pendingFile = null;
+
+    if (_fileBtn && _fileInput) {
+        _fileBtn.addEventListener('click', function () { _fileInput.click(); });
+        _fileInput.addEventListener('change', function () {
+            if (_fileInput.files && _fileInput.files[0]) {
+                _pendingFile = _fileInput.files[0];
+                _showFilePreview(_pendingFile);
+            }
+        });
+    }
+    if (_filePreviewClose) {
+        _filePreviewClose.addEventListener('click', function () {
+            _pendingFile = null;
+            if (_filePreview) _filePreview.style.display = 'none';
+            if (_fileInput) _fileInput.value = '';
+        });
+    }
+
+    function _showFilePreview(file) {
+        if (!_filePreview || !_filePreviewContent) return;
+        var isImage = file.type.startsWith('image/');
+        if (isImage) {
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                _filePreviewContent.innerHTML = '<img src="' + e.target.result + '" style="max-height:80px;border-radius:6px;object-fit:cover">' +
+                    '<span style="margin-left:8px;font-size:13px">' + _esc(file.name) + ' (' + _formatFileSize(file.size) + ')</span>';
+            };
+            reader.readAsDataURL(file);
+        } else {
+            _filePreviewContent.innerHTML = '<span style="font-size:20px">📎</span>' +
+                '<span style="margin-left:8px;font-size:13px">' + _esc(file.name) + ' (' + _formatFileSize(file.size) + ')</span>';
+        }
+        _filePreview.style.display = 'flex';
+    }
+
+    function _formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
+    }
+
+    async function _uploadFile() {
+        if (!_pendingFile || !_currentChannel) return;
+        var file = _pendingFile;
+        var caption = document.getElementById('chatInput').value.trim();
+
+        var formData = new FormData();
+        formData.append('file', file);
+        if (caption) formData.append('caption', caption);
+
+        try {
+            var token = localStorage.getItem('token');
+            var resp = await fetch('/api/chat/channels/' + _currentChannel.id + '/upload', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token },
+                body: formData
+            });
+            if (!resp.ok) throw new Error('Upload failed: ' + resp.status);
+
+            // Clear
+            _pendingFile = null;
+            if (_filePreview) _filePreview.style.display = 'none';
+            if (_fileInput) _fileInput.value = '';
+            var input = document.getElementById('chatInput');
+            if (input) { input.value = ''; if (typeof _autoGrow === 'function') _autoGrow(input); }
+        } catch (err) {
+            console.error('[Chat] Upload error:', err);
+            alert('Помилка завантаження файлу');
+        }
+    }
+
+    // Drag & drop on chat messages area
+    var _chatMain = document.querySelector('.chat-main');
+    if (_chatMain) {
+        _chatMain.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            _chatMain.classList.add('drag-over');
+        });
+        _chatMain.addEventListener('dragleave', function () {
+            _chatMain.classList.remove('drag-over');
+        });
+        _chatMain.addEventListener('drop', function (e) {
+            e.preventDefault();
+            _chatMain.classList.remove('drag-over');
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                _pendingFile = e.dataTransfer.files[0];
+                _showFilePreview(_pendingFile);
+            }
+        });
+    }
+
     // Emoji panel toggle
     var _emojiToggle = document.getElementById('chatEmojiToggle');
     if (_emojiToggle) {
@@ -974,6 +1072,15 @@
                         _startDm(parseInt(_contextMsg.userId, 10));
                     }
                     break;
+                case 'thread':
+                    _openThreadFromContext();
+                    break;
+                case 'forward':
+                    _forwardFromContext();
+                    break;
+                case 'bookmark':
+                    _bookmarkFromContext();
+                    break;
                 case 'create-task':
                     _createTaskFromMessage();
                     break;
@@ -992,6 +1099,157 @@
             displayName: usernameEl ? usernameEl.textContent : '',
             username: usernameEl ? usernameEl.textContent : ''
         });
+    }
+
+    // Thread support
+    var _threadPanel = document.getElementById('chatThreadPanel');
+    var _threadRoot = document.getElementById('chatThreadRoot');
+    var _threadMessages = document.getElementById('chatThreadMessages');
+    var _threadInput = document.getElementById('chatThreadInput');
+    var _threadSendBtn = document.getElementById('chatThreadSendBtn');
+    var _threadClose = document.getElementById('chatThreadClose');
+    var _currentThreadId = null;
+
+    async function _openThreadFromContext() {
+        if (!_contextMsg) return;
+        _openThread(_contextMsg.id, _contextMsg.el);
+    }
+
+    async function _openThread(messageId, msgEl) {
+        if (!_threadPanel) return;
+        _currentThreadId = messageId;
+
+        // Show root message
+        if (_threadRoot && msgEl) {
+            var contentEl = msgEl.querySelector('.chat-bubble-content');
+            var userEl = msgEl.querySelector('.chat-bubble-username');
+            _threadRoot.innerHTML = '<div class="chat-thread-root-user">' + _esc(userEl ? userEl.textContent : '') + '</div>' +
+                '<div class="chat-thread-root-text">' + (contentEl ? contentEl.innerHTML : '') + '</div>';
+        }
+
+        // Load thread replies
+        try {
+            var replies = await _api('GET', '/messages/' + messageId + '/thread');
+            if (_threadMessages) {
+                _threadMessages.innerHTML = '';
+                (replies || []).forEach(function (r) {
+                    var div = document.createElement('div');
+                    div.className = 'chat-thread-msg' + (String(r.userId) === _currentUserId ? ' own' : '');
+                    div.innerHTML = '<span class="chat-thread-msg-user">' + _esc(r.displayName || r.username) + '</span> ' +
+                        '<span class="chat-thread-msg-text">' + _formatContent(r.content) + '</span>' +
+                        '<span class="chat-thread-msg-time">' + new Date(r.createdAt).toLocaleTimeString('uk-UA', {hour:'2-digit',minute:'2-digit'}) + '</span>';
+                    _threadMessages.appendChild(div);
+                });
+                _threadMessages.scrollTop = _threadMessages.scrollHeight;
+            }
+        } catch (err) {
+            console.error('[Chat] Thread load error:', err);
+        }
+
+        _threadPanel.style.display = 'flex';
+    }
+
+    if (_threadClose) {
+        _threadClose.addEventListener('click', function () {
+            if (_threadPanel) _threadPanel.style.display = 'none';
+            _currentThreadId = null;
+        });
+    }
+
+    if (_threadSendBtn && _threadInput) {
+        _threadSendBtn.addEventListener('click', _sendThreadReply);
+        _threadInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                _sendThreadReply();
+            }
+        });
+    }
+
+    async function _sendThreadReply() {
+        if (!_currentThreadId || !_threadInput) return;
+        var content = _threadInput.value.trim();
+        if (!content) return;
+
+        try {
+            var reply = await _api('POST', '/messages/' + _currentThreadId + '/thread', { content: content });
+            _threadInput.value = '';
+
+            // Add to thread panel
+            if (_threadMessages && reply) {
+                var div = document.createElement('div');
+                div.className = 'chat-thread-msg own';
+                div.innerHTML = '<span class="chat-thread-msg-user">' + _esc(reply.displayName || reply.username) + '</span> ' +
+                    '<span class="chat-thread-msg-text">' + _formatContent(reply.content) + '</span>' +
+                    '<span class="chat-thread-msg-time">' + new Date(reply.createdAt).toLocaleTimeString('uk-UA', {hour:'2-digit',minute:'2-digit'}) + '</span>';
+                _threadMessages.appendChild(div);
+                _threadMessages.scrollTop = _threadMessages.scrollHeight;
+            }
+        } catch (err) {
+            console.error('[Chat] Thread reply error:', err);
+        }
+    }
+
+    // Forward message
+    async function _forwardFromContext() {
+        if (!_contextMsg) return;
+        var overlay = document.getElementById('chatForwardOverlay');
+        var list = document.getElementById('chatForwardChannelList');
+        var cancelBtn = document.getElementById('chatForwardCancel');
+        if (!overlay || !list) return;
+
+        // Load channels
+        var channels = await _api('GET', '/channels');
+        list.innerHTML = '';
+        (channels || []).forEach(function (ch) {
+            if (ch.id === (_currentChannel ? _currentChannel.id : -1)) return;
+            var item = document.createElement('button');
+            item.className = 'chat-forward-item';
+            item.textContent = (ch.isDm ? '💬 ' : '# ') + ch.name;
+            item.addEventListener('click', async function () {
+                var contentEl = _contextMsg.el.querySelector('.chat-bubble-content');
+                var usernameEl = _contextMsg.el.querySelector('.chat-bubble-username');
+                var fwdContent = '↪ Переслано від ' + (usernameEl ? usernameEl.textContent : '?') + ':\n' +
+                    (contentEl ? contentEl.textContent : '');
+                try {
+                    await _api('POST', '/channels/' + ch.id + '/messages', {
+                        content: fwdContent,
+                        metadata: { forwarded: { fromChannel: _currentChannel.id, fromMessageId: _contextMsg.id } }
+                    });
+                    overlay.style.display = 'none';
+                } catch (err) {
+                    console.error('[Chat] Forward error:', err);
+                }
+            });
+            list.appendChild(item);
+        });
+
+        overlay.style.display = 'flex';
+        if (cancelBtn) {
+            cancelBtn.onclick = function () { overlay.style.display = 'none'; };
+        }
+        overlay.addEventListener('click', function (e) {
+            if (e.target === overlay) overlay.style.display = 'none';
+        });
+    }
+
+    // Bookmark message
+    async function _bookmarkFromContext() {
+        if (!_contextMsg) return;
+        try {
+            await _api('POST', '/bookmarks', { messageId: parseInt(_contextMsg.id, 10) });
+            // Show brief notification
+            var el = _contextMsg.el;
+            if (el) {
+                var badge = document.createElement('span');
+                badge.className = 'chat-bookmark-toast';
+                badge.textContent = '⭐ Збережено';
+                el.appendChild(badge);
+                setTimeout(function () { badge.remove(); }, 2000);
+            }
+        } catch (err) {
+            console.error('[Chat] Bookmark error:', err);
+        }
     }
 
     function _createTaskFromMessage() {
@@ -1138,6 +1396,7 @@
         });
     }
 
+    var _searchDebounce = null;
     function _searchMessages(query) {
         // Remove previous highlights
         document.querySelectorAll('.chat-message.search-highlight').forEach(function (el) {
@@ -1145,8 +1404,13 @@
         });
         if (!query) {
             if (_searchMsgCount) _searchMsgCount.textContent = '';
+            // Remove global search results
+            var globalResults = document.getElementById('chatSearchResults');
+            if (globalResults) globalResults.remove();
             return;
         }
+
+        // Local highlight first
         var q = query.toLowerCase();
         var found = 0;
         var firstMatch = null;
@@ -1158,8 +1422,52 @@
                 if (!firstMatch) firstMatch = el;
             }
         });
-        if (_searchMsgCount) _searchMsgCount.textContent = found > 0 ? found + ' зн.' : 'не знайдено';
+        if (_searchMsgCount) _searchMsgCount.textContent = found > 0 ? found + ' зн.' : '...';
         if (firstMatch) firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Debounced server-side search for cross-channel results
+        clearTimeout(_searchDebounce);
+        _searchDebounce = setTimeout(function () {
+            _globalSearch(query);
+        }, 500);
+    }
+
+    async function _globalSearch(query) {
+        if (query.length < 2) return;
+        try {
+            var results = await _api('GET', '/search?q=' + encodeURIComponent(query));
+            if (!results || results.length === 0) {
+                if (_searchMsgCount) _searchMsgCount.textContent = 'не знайдено';
+                return;
+            }
+            if (_searchMsgCount) _searchMsgCount.textContent = results.length + ' зн.';
+
+            // Show results in a dropdown
+            var existing = document.getElementById('chatSearchResults');
+            if (existing) existing.remove();
+
+            var panel = document.createElement('div');
+            panel.id = 'chatSearchResults';
+            panel.className = 'chat-search-results';
+            results.slice(0, 20).forEach(function (r) {
+                var item = document.createElement('div');
+                item.className = 'chat-search-result-item';
+                item.innerHTML = '<div class="chat-search-result-channel">#' + _esc(r.channelName || '') + '</div>' +
+                    '<div class="chat-search-result-user">' + _esc(r.displayName || r.username) + '</div>' +
+                    '<div class="chat-search-result-text">' + _esc((r.content || '').slice(0, 100)) + '</div>';
+                item.addEventListener('click', function () {
+                    // Navigate to that channel
+                    var ch = _channels.find(function (c) { return c.id === r.channelId; });
+                    if (ch) _selectChannel(ch);
+                    panel.remove();
+                });
+                panel.appendChild(item);
+            });
+            var bar = document.getElementById('chatSearchBar');
+            if (bar) bar.parentNode.insertBefore(panel, bar.nextSibling);
+        } catch (err) {
+            console.error('[Chat] Global search error:', err);
+        }
     }
 
     // Channel info panel button
@@ -1468,11 +1776,14 @@
                 });
             }
 
-            // Mark as read
+            // Mark as read + load read receipts
             if (messages && messages.length > 0) {
                 var maxSeq = messages[messages.length - 1].seq;
                 _oldestSeq = messages[0].seq;
                 _api('PUT', '/channels/' + channel.id + '/read', { seq: maxSeq });
+
+                // Load read receipts and mark own messages
+                _loadReadReceipts(channel.id);
 
                 // Update local unread count
                 channel.unreadCount = 0;
@@ -1621,7 +1932,10 @@
                     '<span class="chat-bubble-time">' + time + readCheckHtml + '</span>' +
                 '</div>' +
                 replyHtml +
+                _renderFileAttachment(msg) +
                 '<div class="chat-bubble-content">' + content + '</div>' +
+                _renderLinkPreview(msg) +
+                (msg.threadReplyCount > 0 ? '<button class="chat-thread-badge" data-thread-id="' + msg.id + '">' + msg.threadReplyCount + ' відп.</button>' : '') +
                 reactionsHtml +
                 '<div class="chat-msg-actions">' +
                     '<button class="chat-msg-action-btn" data-action="reply" title="Відповісти">↩</button>' +
@@ -1650,6 +1964,14 @@
                 _toggleReaction(msg.id, chip.dataset.emoji);
             });
         });
+
+        // Thread badge click
+        var threadBadge = el.querySelector('.chat-thread-badge');
+        if (threadBadge) {
+            threadBadge.addEventListener('click', function () {
+                _openThread(msg.id, el);
+            });
+        }
 
         // Avatar click → profile
         var avatarEl = el.querySelector('.chat-avatar');
@@ -1706,13 +2028,79 @@
 
     function _formatContent(text) {
         var safe = _esc(text);
+
+        // --- Markdown formatting ---
+        // Code blocks (```) — must be before inline code
+        safe = safe.replace(/```(\w*)\n?([\s\S]*?)```/g, function(_, lang, code) {
+            return '<pre class="chat-codeblock" data-lang="' + (lang || '') + '"><code>' + code.replace(/\n$/, '') + '</code></pre>';
+        });
+        // Inline code (`)
+        safe = safe.replace(/`([^`\n]+)`/g, '<code class="chat-inline-code">$1</code>');
+        // Bold (**text**)
+        safe = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        // Italic (*text*)
+        safe = safe.replace(/\*(.+?)\*/g, '<em>$1</em>');
+        // Strikethrough (~~text~~)
+        safe = safe.replace(/~~(.+?)~~/g, '<del>$1</del>');
+        // Blockquote (> text) — at line start
+        safe = safe.replace(/(?:^|(?<=\n))&gt; ?(.+)/g, '<blockquote class="chat-blockquote">$1</blockquote>');
+
         // Format @mentions
         safe = safe.replace(/\B@(\w+)/g, '<span class="chat-mention">@$1</span>');
         // Format URLs
         safe = safe.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary-dark);text-decoration:underline">$1</a>');
+        // Newlines to <br> (outside of pre blocks)
+        safe = safe.replace(/\n/g, '<br>');
         // Wrap emojis with animated span for hover wobble
         safe = safe.replace(/([\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2702}-\u{27B0}\u{2764}\u{2728}\u{2705}\u{274C}\u{2B50}][\u{FE0F}\u{200D}]?)/gu, '<span class="chat-animated-emoji">$1</span>');
         return safe;
+    }
+
+    /** Render file/image attachment from metadata */
+    function _renderFileAttachment(msg) {
+        var meta = msg.metadata;
+        if (!meta || !meta.file) return '';
+        var f = meta.file;
+        if (f.type === 'image') {
+            return '<div class="chat-file-attachment chat-image-attachment">' +
+                '<img src="' + _esc(f.url) + '" alt="' + _esc(f.name) + '" class="chat-attached-image" loading="lazy" onclick="window.open(this.src,\'_blank\')">' +
+            '</div>';
+        }
+        // File attachment
+        var icon = '📄';
+        if (/\.pdf$/i.test(f.name)) icon = '📕';
+        else if (/\.(doc|docx)$/i.test(f.name)) icon = '📝';
+        else if (/\.(xls|xlsx)$/i.test(f.name)) icon = '📊';
+        else if (/\.(zip|rar|7z)$/i.test(f.name)) icon = '🗜️';
+        else if (/\.(mp3|wav|ogg)$/i.test(f.name)) icon = '🎵';
+        else if (/\.(mp4|webm)$/i.test(f.name)) icon = '🎬';
+
+        var sizeStr = f.size ? ' (' + (f.size < 1024*1024 ? (f.size/1024).toFixed(1)+' КБ' : (f.size/(1024*1024)).toFixed(1)+' МБ') + ')' : '';
+        return '<a class="chat-file-attachment" href="' + _esc(f.url) + '" target="_blank" rel="noopener" download>' +
+            '<span class="chat-file-icon">' + icon + '</span>' +
+            '<div class="chat-file-info">' +
+                '<div class="chat-file-name">' + _esc(f.name) + '</div>' +
+                '<div class="chat-file-size">' + sizeStr + '</div>' +
+            '</div>' +
+        '</a>';
+    }
+
+    /** Render link preview card from metadata */
+    function _renderLinkPreview(msg) {
+        var meta = msg.metadata;
+        if (!meta || !meta.linkPreview) return '';
+        var lp = meta.linkPreview;
+        if (!lp.title && !lp.description) return '';
+
+        var imageHtml = lp.image ? '<img class="chat-link-preview-img" src="' + _esc(lp.image) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '';
+        return '<a class="chat-link-preview" href="' + _esc(lp.url) + '" target="_blank" rel="noopener">' +
+            imageHtml +
+            '<div class="chat-link-preview-text">' +
+                '<div class="chat-link-preview-site">' + _esc(lp.siteName || '') + '</div>' +
+                '<div class="chat-link-preview-title">' + _esc(lp.title || '') + '</div>' +
+                (lp.description ? '<div class="chat-link-preview-desc">' + _esc(lp.description) + '</div>' : '') +
+            '</div>' +
+        '</a>';
     }
 
     /** Format bot messages — allow safe HTML tags (<b>, <i>, <br>, <li>, <ul>) */
@@ -1743,6 +2131,12 @@
     // ==========================================
 
     async function _sendMessage() {
+        // If there's a pending file, upload it instead
+        if (_pendingFile) {
+            await _uploadFile();
+            return;
+        }
+
         var input = document.getElementById('chatInput');
         if (!input) return;
         var content = input.value.trim();
@@ -2104,6 +2498,12 @@
             case 'chat:read':
                 _onReadReceipt(payload);
                 break;
+            case 'chat:link-preview':
+                _onLinkPreview(payload);
+                break;
+            case 'chat:thread-reply':
+                _onThreadReply(payload);
+                break;
             case 'chat:mention':
                 _playSoundAlways('mention');
                 break;
@@ -2203,9 +2603,14 @@
 
     function _onReadReceipt(payload) {
         if (!_currentChannel || payload.channelId !== _currentChannel.id) return;
-        // When someone reads up to seq X, mark all own messages with seq <= X as read (✓✓)
         var readSeq = payload.seq;
         if (!readSeq) return;
+
+        // Update cached receipts
+        if (!_readReceipts) _readReceipts = {};
+        _readReceipts[payload.userId] = readSeq;
+
+        // Mark own messages with seq <= readSeq as read
         document.querySelectorAll('.chat-message.own').forEach(function (el) {
             var msgSeq = parseInt(el.dataset.seq, 10);
             if (msgSeq <= readSeq) {
@@ -2218,6 +2623,119 @@
                 }
             }
         });
+
+        // Update read count badges in channels
+        _updateReadCountBadges();
+    }
+
+    function _onThreadReply(payload) {
+        if (!_currentChannel || payload.channelId !== _currentChannel.id) return;
+        // Update thread badge on root message
+        var rootEl = document.querySelector('[data-message-id="' + payload.rootMessageId + '"]');
+        if (rootEl) {
+            var badge = rootEl.querySelector('.chat-thread-badge');
+            if (badge) {
+                var count = parseInt(badge.textContent) + 1;
+                badge.textContent = count + ' відп.';
+            } else {
+                var reactionsEl = rootEl.querySelector('.chat-reactions');
+                var insertPoint = reactionsEl || rootEl.querySelector('.chat-msg-actions');
+                if (insertPoint) {
+                    insertPoint.insertAdjacentHTML('beforebegin',
+                        '<button class="chat-thread-badge" data-thread-id="' + payload.rootMessageId + '">1 відп.</button>');
+                }
+            }
+        }
+        // If thread panel is open for this thread, add reply
+        if (_currentThreadId === payload.rootMessageId && _threadMessages && payload.message) {
+            var r = payload.message;
+            var div = document.createElement('div');
+            div.className = 'chat-thread-msg' + (String(r.userId) === _currentUserId ? ' own' : '');
+            div.innerHTML = '<span class="chat-thread-msg-user">' + _esc(r.displayName || r.username) + '</span> ' +
+                '<span class="chat-thread-msg-text">' + _formatContent(r.content) + '</span>' +
+                '<span class="chat-thread-msg-time">' + new Date(r.createdAt).toLocaleTimeString('uk-UA', {hour:'2-digit',minute:'2-digit'}) + '</span>';
+            _threadMessages.appendChild(div);
+            _threadMessages.scrollTop = _threadMessages.scrollHeight;
+        }
+    }
+
+    function _onLinkPreview(payload) {
+        if (!_currentChannel || payload.channelId !== _currentChannel.id) return;
+        var msgEl = document.querySelector('[data-message-id="' + payload.messageId + '"]');
+        if (!msgEl) return;
+        var contentEl = msgEl.querySelector('.chat-bubble-content');
+        if (!contentEl) return;
+        // Insert preview after content
+        var existing = msgEl.querySelector('.chat-link-preview');
+        if (existing) return; // already rendered
+        var fakeMsg = { metadata: { linkPreview: payload.linkPreview } };
+        var html = _renderLinkPreview(fakeMsg);
+        if (html) contentEl.insertAdjacentHTML('afterend', html);
+    }
+
+    var _readReceipts = {};
+    var _channelMemberCount = 0;
+
+    /** Load read receipts for a channel and update checkmarks */
+    async function _loadReadReceipts(channelId) {
+        try {
+            var receipts = await _api('GET', '/channels/' + channelId + '/read-receipts');
+            if (!receipts || !Array.isArray(receipts)) return;
+
+            _readReceipts = {};
+            var currentUserId = _currentUserId;
+            var otherReadSeqs = [];
+
+            receipts.forEach(function (r) {
+                _readReceipts[r.userId] = r.lastReadSeq;
+                if (r.userId !== currentUserId) {
+                    otherReadSeqs.push(r.lastReadSeq);
+                }
+            });
+
+            _channelMemberCount = receipts.length;
+
+            if (otherReadSeqs.length === 0) return;
+
+            // For DMs: any other user read = double check
+            // For channels: show read count
+            var maxOtherRead = Math.max.apply(null, otherReadSeqs);
+            var isDm = _currentChannel && _currentChannel.isDm;
+
+            document.querySelectorAll('.chat-message.own').forEach(function (el) {
+                var msgSeq = parseInt(el.dataset.seq, 10);
+                var check = el.querySelector('.chat-read-check');
+                if (!check) return;
+
+                if (isDm) {
+                    // DM: simple double checkmark
+                    if (msgSeq <= maxOtherRead) {
+                        check.classList.remove('sent');
+                        check.classList.add('read');
+                        check.textContent = '✓✓';
+                        check.title = 'Прочитано';
+                    }
+                } else {
+                    // Channel: count how many read this message
+                    var readBy = otherReadSeqs.filter(function (s) { return s >= msgSeq; }).length;
+                    if (readBy > 0) {
+                        check.classList.remove('sent');
+                        check.classList.add('read');
+                        check.textContent = '✓✓';
+                        check.title = 'Прочитано: ' + readBy + '/' + otherReadSeqs.length;
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('[Chat] Load read receipts error:', err);
+        }
+    }
+
+    function _updateReadCountBadges() {
+        // Refresh read status for visible own messages
+        if (_currentChannel) {
+            _loadReadReceipts(_currentChannel.id);
+        }
     }
 
     function _onReaction(payload) {

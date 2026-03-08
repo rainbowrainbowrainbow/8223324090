@@ -1468,6 +1468,63 @@ body.dark-mode {
     --chat-bg: #0f0f1a;
 }
 
+body.dark-mode .chat-codeblock {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.1);
+}
+body.dark-mode .chat-inline-code {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.12);
+    color: #f97583;
+}
+body.dark-mode .chat-blockquote {
+    color: var(--gray-400);
+    background: rgba(124, 92, 191, 0.1);
+    border-left-color: #7C5CBF;
+}
+body.dark-mode .chat-thread-panel {
+    background: #1e1e30;
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-thread-header {
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-thread-root {
+    background: rgba(124, 92, 191, 0.1);
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-thread-badge {
+    background: rgba(124, 92, 191, 0.15);
+    border-color: rgba(124, 92, 191, 0.3);
+    color: #C4B5FD;
+}
+body.dark-mode .chat-thread-input-area {
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-file-attachment {
+    background: rgba(255,255,255,0.06);
+}
+body.dark-mode .chat-file-attachment:hover {
+    background: rgba(255,255,255,0.1);
+}
+body.dark-mode .chat-file-name {
+    color: #C4B5FD;
+}
+body.dark-mode .chat-file-preview {
+    background: rgba(124, 92, 191, 0.15);
+    border-color: rgba(255,255,255,0.1);
+}
+body.dark-mode .chat-link-preview {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.1);
+}
+body.dark-mode .chat-link-preview:hover {
+    background: rgba(255,255,255,0.08);
+}
+body.dark-mode .chat-link-preview-title {
+    color: #C4B5FD;
+}
+
 body.dark-mode .chat-sidebar {
     background: #1e1e30;
     border-color: #2a2a3e;

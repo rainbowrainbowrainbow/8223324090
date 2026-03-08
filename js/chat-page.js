@@ -2281,88 +2281,103 @@
     }
 
     function _showMuteCountdown(mutedUntil, reason) {
-        var inputArea = document.querySelector('.chat-input-area');
-        if (!inputArea) return;
+        var chatMain = document.querySelector('.chat-main');
+        if (!chatMain) return;
 
-        // Clear previous timer
+        // Clear previous
         if (_muteTimerInterval) clearInterval(_muteTimerInterval);
+        var old = document.getElementById('chatMuteOverlay');
+        if (old) old.remove();
 
-        // Replace with countdown overlay
+        var endTime = new Date(mutedUntil).getTime();
+        var totalDuration = endTime - Date.now();
+        if (totalDuration <= 0) return;
+
+        // SVG ring params
+        var R = 58, C = 2 * Math.PI * R;
+
         var overlay = document.createElement('div');
         overlay.className = 'chat-mute-overlay';
+        overlay.id = 'chatMuteOverlay';
         overlay.innerHTML =
-            '<div class="chat-mute-shield">🛡️</div>' +
-            '<div class="chat-mute-info">' +
-                '<div class="chat-mute-title">Заблоковано Guardian</div>' +
-                '<div class="chat-mute-reason">' + _esc(reason || 'Порушення правил чату') + '</div>' +
-                '<div class="chat-mute-timer">' +
-                    '<span class="chat-mute-timer-value" id="chatMuteTimer">--:--</span>' +
-                    '<span class="chat-mute-timer-label">залишилось</span>' +
+            '<div class="mute-card">' +
+                '<div class="mute-card-glow"></div>' +
+                '<div class="mute-ring-wrap">' +
+                    '<svg class="mute-ring-svg" viewBox="0 0 132 132">' +
+                        '<circle cx="66" cy="66" r="' + R + '" class="mute-ring-bg"/>' +
+                        '<circle cx="66" cy="66" r="' + R + '" class="mute-ring-progress" id="muteRingProgress" ' +
+                            'stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="0"/>' +
+                    '</svg>' +
+                    '<div class="mute-ring-center">' +
+                        '<span class="mute-ring-time" id="chatMuteTimer">--:--</span>' +
+                    '</div>' +
                 '</div>' +
-                '<button class="chat-mute-appeal-btn" id="chatMuteAppeal">🙏 Подати апеляцію</button>' +
+                '<div class="mute-card-body">' +
+                    '<div class="mute-card-icon">🛡️</div>' +
+                    '<div class="mute-card-title">Тимчасове блокування</div>' +
+                    '<div class="mute-card-reason">' + _esc(reason || 'Порушення правил чату') + '</div>' +
+                '</div>' +
+                '<button class="mute-appeal-btn" id="chatMuteAppeal">' +
+                    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>' +
+                    '<span>Подати апеляцію</span>' +
+                '</button>' +
+                '<div class="mute-card-hint">Апеляція миттєво знімає блокування</div>' +
             '</div>';
 
-        inputArea.style.position = 'relative';
-        inputArea.appendChild(overlay);
+        chatMain.appendChild(overlay);
 
-        // Disable actual input
+        // Disable input
         var input = document.getElementById('chatInput');
         var sendBtn = document.getElementById('chatSendBtn');
         if (input) input.disabled = true;
         if (sendBtn) sendBtn.disabled = true;
 
         var timerEl = document.getElementById('chatMuteTimer');
-        var endTime = new Date(mutedUntil).getTime();
+        var ringEl = document.getElementById('muteRingProgress');
 
         function clearMute() {
             clearInterval(_muteTimerInterval);
             _muteTimerInterval = null;
-            overlay.remove();
-            if (input) {
-                input.disabled = false;
-                input.placeholder = 'Написати повідомлення...';
-            }
+            overlay.classList.add('mute-out');
+            setTimeout(function () { overlay.remove(); }, 400);
+            if (input) { input.disabled = false; input.placeholder = 'Написати повідомлення...'; }
             if (sendBtn) sendBtn.disabled = false;
         }
 
         function updateTimer() {
             var remaining = endTime - Date.now();
-            if (remaining <= 0) {
-                clearMute();
-                return;
-            }
+            if (remaining <= 0) { clearMute(); return; }
             var min = Math.floor(remaining / 60000);
             var sec = Math.floor((remaining % 60000) / 1000);
-            if (timerEl) {
-                timerEl.textContent = String(min).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+            if (timerEl) timerEl.textContent = String(min).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+            // Update ring progress
+            if (ringEl) {
+                var fraction = remaining / totalDuration;
+                ringEl.setAttribute('stroke-dashoffset', String(C * (1 - fraction)));
             }
         }
 
-        // Appeal button — unmutes immediately
+        // Appeal button
         var appealBtn = document.getElementById('chatMuteAppeal');
         if (appealBtn) {
             appealBtn.addEventListener('click', async function () {
                 appealBtn.disabled = true;
-                appealBtn.textContent = '⏳ Обробка...';
+                appealBtn.querySelector('span').textContent = 'Обробка...';
+                appealBtn.classList.add('mute-appeal-loading');
                 try {
-                    // Get active mute for current user in this channel
                     var mutes = await _fetchJson('/api/guardian/mutes/active');
                     if (mutes && mutes.length > 0) {
                         var myMute = mutes.find(function (m) {
-                            return String(m.userId) === _currentUserId && m.channelId === _currentChannel.id;
+                            return String(m.userId) === _currentUserId && String(m.channelId) === String(_currentChannel.id);
                         });
                         if (myMute) {
                             var resp = await fetch('/api/guardian/mutes/' + myMute.id, {
                                 method: 'DELETE',
                                 headers: _headers()
                             });
-                            if (resp.ok) {
-                                clearMute();
-                                return;
-                            }
+                            if (resp.ok) { clearMute(); return; }
                         }
                     }
-                    // Fallback: just clear locally
                     clearMute();
                 } catch (e) {
                     clearMute();

@@ -2489,125 +2489,196 @@
    MUTE COUNTDOWN OVERLAY
    ========================================== */
 
+/* ---- Mute Overlay (fullscreen card) ---- */
 .chat-mute-overlay {
     position: absolute;
     inset: 0;
-    z-index: 50;
+    z-index: 60;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 16px;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.07), rgba(139, 92, 246, 0.07));
-    backdrop-filter: blur(6px);
-    border-top: 2px solid rgba(99, 102, 241, 0.3);
-    animation: muteOverlayIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    background: rgba(15, 15, 35, 0.55);
+    backdrop-filter: blur(12px);
+    animation: muteOverlayIn 0.5s ease both;
 }
-
+.chat-mute-overlay.mute-out {
+    animation: muteOverlayOut 0.4s ease both;
+}
 @keyframes muteOverlayIn {
-    0% { opacity: 0; transform: translateY(20px); }
-    100% { opacity: 1; transform: translateY(0); }
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+@keyframes muteOverlayOut {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
 }
 
-.chat-mute-shield {
-    font-size: 36px;
-    animation: muteShieldPulse 2s ease-in-out infinite;
-}
-
-@keyframes muteShieldPulse {
-    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 transparent); }
-    50% { transform: scale(1.1); filter: drop-shadow(0 0 12px rgba(99, 102, 241, 0.4)); }
-}
-
-.chat-mute-info {
+.mute-card {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-}
-
-.chat-mute-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: #6366F1;
-}
-
-.chat-mute-reason {
-    font-size: 12px;
-    color: var(--gray-500);
-    max-width: 250px;
-    white-space: nowrap;
+    align-items: center;
+    gap: 8px;
+    padding: 36px 44px 28px;
+    background: rgba(255,255,255,0.95);
+    border-radius: 24px;
+    box-shadow: 0 20px 60px rgba(99, 102, 241, 0.25), 0 0 0 1px rgba(99, 102, 241, 0.12);
+    animation: muteCardPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s both;
     overflow: hidden;
-    text-overflow: ellipsis;
+    max-width: 320px;
+    width: 90%;
+}
+.mute-card-glow {
+    position: absolute;
+    top: -60px; left: 50%; transform: translateX(-50%);
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(99,102,241,0.2) 0%, transparent 70%);
+    pointer-events: none;
+    animation: muteGlowPulse 3s ease-in-out infinite;
+}
+@keyframes muteCardPop {
+    0% { opacity: 0; transform: scale(0.8) translateY(30px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes muteGlowPulse {
+    0%, 100% { opacity: 0.6; transform: translateX(-50%) scale(1); }
+    50% { opacity: 1; transform: translateX(-50%) scale(1.2); }
 }
 
-.chat-mute-timer {
+/* Ring timer */
+.mute-ring-wrap {
+    position: relative;
+    width: 132px; height: 132px;
+}
+.mute-ring-svg {
+    width: 100%; height: 100%;
+    transform: rotate(-90deg);
+}
+.mute-ring-bg {
+    fill: none;
+    stroke: rgba(99,102,241,0.1);
+    stroke-width: 6;
+}
+.mute-ring-progress {
+    fill: none;
+    stroke: url(#muteGrad);
+    stroke: #6366F1;
+    stroke-width: 6;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear;
+}
+.mute-ring-center {
+    position: absolute;
+    inset: 0;
     display: flex;
-    align-items: baseline;
-    gap: 6px;
-    margin-top: 4px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
 }
-
-.chat-mute-timer-value {
-    font-size: 28px;
+.mute-ring-time {
+    font-size: 30px;
     font-weight: 800;
     font-family: 'Nunito', monospace;
     color: #6366F1;
     letter-spacing: 2px;
-    animation: timerTick 1s ease-in-out infinite;
+    line-height: 1;
 }
 
-@keyframes timerTick {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+/* Card body */
+.mute-card-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
+}
+.mute-card-icon {
+    font-size: 28px;
+    animation: muteShieldFloat 2.5s ease-in-out infinite;
+}
+@keyframes muteShieldFloat {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-4px) scale(1.05); }
+}
+.mute-card-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: #312E81;
+    letter-spacing: -0.01em;
+}
+.mute-card-reason {
+    font-size: 12px;
+    color: var(--gray-500);
+    max-width: 240px;
+    line-height: 1.4;
 }
 
-.chat-mute-timer-label {
-    font-size: 11px;
-    color: var(--gray-400);
-    font-weight: 500;
-}
-
-.chat-mute-appeal-btn {
-    margin-top: 10px;
-    padding: 8px 20px;
-    border: 1px solid rgba(99, 102, 241, 0.3);
-    border-radius: 10px;
-    background: rgba(99, 102, 241, 0.08);
-    color: #6366F1;
-    font-size: 13px;
-    font-weight: 600;
+/* Appeal button */
+.mute-appeal-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 12px 28px;
+    border: none;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #6366F1, #8B5CF6);
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
     cursor: pointer;
-    transition: all 0.2s;
     font-family: inherit;
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+    position: relative;
+    overflow: hidden;
 }
-
-.chat-mute-appeal-btn:hover {
-    background: rgba(99, 102, 241, 0.15);
-    border-color: rgba(99, 102, 241, 0.5);
-    transform: translateY(-1px);
+.mute-appeal-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
 }
-
-.chat-mute-appeal-btn:active {
+.mute-appeal-btn:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.45);
+}
+.mute-appeal-btn:hover::before { opacity: 1; }
+.mute-appeal-btn:active {
     transform: scale(0.97);
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
-
-.chat-mute-appeal-btn:disabled {
-    opacity: 0.5;
+.mute-appeal-btn:disabled {
+    opacity: 0.6;
     cursor: not-allowed;
     transform: none;
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.2);
+}
+.mute-appeal-btn.mute-appeal-loading svg {
+    animation: muteAppealSpin 0.8s linear infinite;
+}
+@keyframes muteAppealSpin {
+    to { transform: rotate(360deg); }
 }
 
-[data-theme="dark"] .chat-mute-overlay {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-    border-top-color: rgba(99, 102, 241, 0.4);
+.mute-card-hint {
+    font-size: 11px;
+    color: var(--gray-400);
+    margin-top: 2px;
 }
 
-[data-theme="dark"] .chat-mute-title {
-    color: #818CF8;
+/* Dark mode */
+[data-theme="dark"] .mute-card {
+    background: rgba(30, 27, 50, 0.95);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.2);
 }
-
-[data-theme="dark"] .chat-mute-timer-value {
-    color: #818CF8;
-}
+[data-theme="dark"] .mute-card-title { color: #C7D2FE; }
+[data-theme="dark"] .mute-ring-time { color: #A5B4FC; }
+[data-theme="dark"] .mute-ring-bg { stroke: rgba(99,102,241,0.15); }
+[data-theme="dark"] .mute-ring-progress { stroke: #818CF8; }
+[data-theme="dark"] .mute-card-hint { color: var(--gray-500); }
 
 /* ==========================================
    GUARDIAN ANIMATIONS

@@ -1539,11 +1539,38 @@
 }
 .chat-gif-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
     padding: 8px;
     overflow-y: auto;
     flex: 1;
+}
+.chat-gif-emoji-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 4px;
+    background: rgba(0,0,0,0.03);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: transform 0.15s, background 0.15s;
+    min-height: 70px;
+}
+.chat-gif-emoji-item:hover {
+    transform: scale(1.08);
+    background: rgba(16,185,129,0.1);
+}
+.chat-gif-emoji {
+    font-size: 28px;
+    line-height: 1.2;
+}
+.chat-gif-emoji-label {
+    font-size: 10px;
+    color: var(--gray-400);
+    margin-top: 2px;
+    font-weight: 600;
 }
 .chat-gif-item {
     width: 100%;

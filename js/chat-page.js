@@ -2770,22 +2770,34 @@
             var results = await _api('GET', '/gifs?q=' + encodeURIComponent(query));
             grid.innerHTML = '';
             (results || []).forEach(function (gif) {
-                var img = document.createElement('img');
-                img.className = 'chat-gif-item';
-                img.src = gif.preview;
-                img.alt = gif.title || 'GIF';
-                img.loading = 'lazy';
-                img.addEventListener('click', function () {
-                    _sendGif(gif.url);
-                });
-                grid.appendChild(img);
+                // Support both image GIFs (from Tenor) and emoji GIFs (built-in)
+                if (gif.emoji) {
+                    var btn = document.createElement('button');
+                    btn.className = 'chat-gif-emoji-item';
+                    btn.innerHTML = '<span class="chat-gif-emoji">' + gif.emoji + '</span>' +
+                        '<span class="chat-gif-emoji-label">' + _esc(gif.title) + '</span>';
+                    btn.addEventListener('click', function () {
+                        _sendGif(gif.emoji);
+                    });
+                    grid.appendChild(btn);
+                } else if (gif.preview) {
+                    var img = document.createElement('img');
+                    img.className = 'chat-gif-item';
+                    img.src = gif.preview;
+                    img.alt = gif.title || 'GIF';
+                    img.loading = 'lazy';
+                    img.addEventListener('click', function () {
+                        _sendGif(gif.url);
+                    });
+                    grid.appendChild(img);
+                }
             });
             if (!results || results.length === 0) {
                 grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Нічого не знайдено</div>';
             }
         } catch (err) {
             console.error('[Chat] GIF search error:', err);
-            grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">GIF API не налаштовано</div>';
+            grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Помилка завантаження</div>';
         }
     }
 

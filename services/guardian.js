@@ -426,6 +426,12 @@ const TOXIC_KEYWORDS_BASE = [
     'whore', 'slut',
     // Slang shortcuts / abbreviations
     'пидр', 'підр', 'пидрас', 'підрас',
+    'проститутк', 'проститук', 'простітутк',
+    'шлюх', 'шлюха', 'шлюшк',
+    'куні', 'кунілінгус', 'кунілінг',
+    'ніга', 'нига', 'нігга', 'нигга',
+    'пінаєш', 'пінає', 'пінати',
+    'вдупляю', 'вдуплят', 'вдупл',
     // Sexual/NSFW content (blocked in children's park system)
     'порно', 'порнух', 'порнограф', 'порев', 'порево',
     'секс', 'сексуальн',
@@ -547,23 +553,46 @@ function detectRussianLanguage(content) {
 
 function quickToxicityCheck(content) {
     const lower = content.toLowerCase();
-    // Normalize: remove separators between letters (catches "г а в н о", "г-а-в-н-о")
-    const normalized = lower.replace(/[\s.\-_*!?,;:'"()]+/g, '');
-    // Collapse repeated chars: "пиииздааааа" → "пизда", "ааааа" → "а"
+    // Normalize: remove ALL non-letter chars (catches "г а в н о", "х*й", "п*зда", "х-у-й")
+    const normalized = lower.replace(/[^а-яґєіїёa-z]/g, '');
+    // Collapse repeated chars: "пиииздааааа" → "пизда"
     const collapsed = normalized.replace(/(.)\1{2,}/g, '$1');
+    // Strip asterisks/dots but keep spaces (for "х*й" → "хй", "п*зда" → "пзда")
+    const destarred = lower.replace(/[*._\-]/g, '');
+    // Restore vowels in star-censored words: "х*й"→"хуй", "п*зда"→"пізда"
+    const uncensored = lower
+        .replace(/х\*й/g, 'хуй').replace(/х\*і/g, 'хуї').replace(/х\*є/g, 'хує')
+        .replace(/п\*зд/g, 'пізд').replace(/п\*зда/g, 'пізда')
+        .replace(/б\*я/g, 'бля').replace(/б\*ть/g, 'блять')
+        .replace(/с\*ка/g, 'сука').replace(/с\*к/g, 'сук')
+        .replace(/\*{2,}/g, '');  // "***" pure stars = suspicious
 
-    // 0. Block phone numbers (privacy protection in children's park)
-    const phonePatterns = [
-        /(?:\+?38)?0\d{9}/,                    // UA: 0XXXXXXXXX or +380XXXXXXXXX
-        /\+?\d[\d\s\-]{8,}\d/,                 // Generic: 10+ digits with separators
-        /\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/, // XX XXX XX XX
-        /\+\*{3}\s?\*{4}\s?\*{4}/              // Masked: +*** **** ****
-    ];
+    // Number substitution: "3.14здей" → "піздей", "пі3.14здей"
+    const deNumbered = lower
+        .replace(/3[\s.,]*14/g, 'пі')  // 3.14 = пі
+        .replace(/0/g, 'о').replace(/1/g, 'і').replace(/3/g, 'з')
+        .replace(/4/g, 'ч').replace(/6/g, 'б').replace(/8/g, 'в');
+    const deNumberedClean = deNumbered.replace(/[^а-яґєіїёa-z]/g, '');
+
+    // 0. Block phone/card numbers (privacy protection in children's park)
     const contentNoSpaces = content.replace(/\s/g, '');
+    const digitCount = (contentNoSpaces.match(/[\d*]/g) || []).length;
+    const pureDigits = (contentNoSpaces.match(/\d/g) || []).length;
+    // Card numbers: 4-4-4-4 or 16 digits or masked with *
+    if (/\d{4}[\s\-*]*\d{4}[\s\-*]*\d{4}[\s\-*]*\d{4}/.test(content) ||
+        /\d{4}[\s\-]*\*{4}[\s\-]*\*{4}[\s\-]*\*{4}/.test(content) ||
+        /\d{13,19}/.test(contentNoSpaces)) {
+        return ['💳 номер картки'];
+    }
+    // Phone numbers
+    const phonePatterns = [
+        /(?:\+?38)?0\d{9}/,
+        /\+?\d[\d\s\-]{8,}\d/,
+        /\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/,
+        /\+\*{3}\s?\*{4}\s?\*{4}/
+    ];
     if (phonePatterns.some(p => p.test(content) || p.test(contentNoSpaces))) {
-        // Only block if the message is primarily a phone number (not a booking ID etc)
-        const digitCount = (contentNoSpaces.match(/\d/g) || []).length;
-        if (digitCount >= 7) {
+        if (pureDigits >= 7) {
             return ['📱 телефонний номер'];
         }
     }
@@ -574,19 +603,20 @@ function quickToxicityCheck(content) {
         return ['🇷🇺 російська мова'];
     }
 
-    // 1. Direct match on all keywords (base + dynamic) — check original, normalized AND collapsed
+    // 1. Direct match on all keywords — check ALL normalized forms
     const allKeywords = [...TOXIC_KEYWORDS_BASE, ..._dynamicToxicWords];
+    const variants = [lower, normalized, collapsed, destarred, deNumberedClean, uncensored];
     const directMatch = allKeywords.filter(word =>
-        lower.includes(word) || normalized.includes(word) || collapsed.includes(word)
+        variants.some(v => v.includes(word))
     );
     if (directMatch.length > 0) return directMatch;
 
     // 2. Fuzzy regex match (catches leet-speak, substitutions)
     const fuzzyMatch = [];
     for (const { word, regex } of _fuzzyRegexes) {
-        if (regex.test(lower) || regex.test(collapsed)) {
+        if (variants.some(v => regex.test(v))) {
             fuzzyMatch.push(word);
-            if (fuzzyMatch.length >= 3) break; // enough evidence
+            if (fuzzyMatch.length >= 3) break;
         }
     }
     if (fuzzyMatch.length > 0) return fuzzyMatch;

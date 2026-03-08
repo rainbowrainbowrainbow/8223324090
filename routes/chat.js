@@ -1162,7 +1162,33 @@ router.get('/gifs', async (req, res) => {
         const query = req.query.q || 'trending';
         const tenorKey = process.env.TENOR_API_KEY;
         if (!tenorKey) {
-            return res.json([]); // No API key configured
+            // Fallback: built-in dino/park themed emoji "GIFs"
+            const builtinGifs = [
+                { id: 'b1', title: 'Дино танцює', preview: '', url: '', emoji: '🦕💃' },
+                { id: 'b2', title: 'Вечірка', preview: '', url: '', emoji: '🎉🥳🎊' },
+                { id: 'b3', title: 'Вогонь', preview: '', url: '', emoji: '🔥🔥🔥' },
+                { id: 'b4', title: 'Серце', preview: '', url: '', emoji: '❤️‍🔥' },
+                { id: 'b5', title: 'Сміх', preview: '', url: '', emoji: '😂🤣' },
+                { id: 'b6', title: 'Хижак', preview: '', url: '', emoji: '🦖🔥' },
+                { id: 'b7', title: 'Круто', preview: '', url: '', emoji: '😎👍' },
+                { id: 'b8', title: 'Плач', preview: '', url: '', emoji: '😭💔' },
+                { id: 'b9', title: 'Шок', preview: '', url: '', emoji: '😱🤯' },
+                { id: 'b10', title: 'Аплодисменти', preview: '', url: '', emoji: '👏👏👏' },
+                { id: 'b11', title: 'Дино парк', preview: '', url: '', emoji: '🦕🌴🌋' },
+                { id: 'b12', title: 'Торт', preview: '', url: '', emoji: '🎂🎈🎁' },
+                { id: 'b13', title: 'Рок', preview: '', url: '', emoji: '🤘🎸🎵' },
+                { id: 'b14', title: 'Спорт', preview: '', url: '', emoji: '⚽🏆🥇' },
+                { id: 'b15', title: 'Привіт', preview: '', url: '', emoji: '👋😊' },
+                { id: 'b16', title: 'Бай', preview: '', url: '', emoji: '👋😢' },
+                { id: 'b17', title: 'Їжа', preview: '', url: '', emoji: '🍕🍔🌮' },
+                { id: 'b18', title: 'Кіно', preview: '', url: '', emoji: '🎬🍿' },
+                { id: 'b19', title: 'Сон', preview: '', url: '', emoji: '😴💤' },
+                { id: 'b20', title: 'Космос', preview: '', url: '', emoji: '🚀🌌⭐' },
+            ];
+            const q = query.toLowerCase();
+            const filtered = q === 'trending' ? builtinGifs :
+                builtinGifs.filter(g => g.title.toLowerCase().includes(q) || g.emoji.includes(q));
+            return res.json(filtered.length > 0 ? filtered : builtinGifs);
         }
 
         const https = require('https');

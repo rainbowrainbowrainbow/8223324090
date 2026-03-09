@@ -671,6 +671,7 @@ function renderGameUI() {
                         ? `<p>Кулдаун...</p><div class="game-cooldown-timer" id="cooldownTimer">${Math.floor(cooldown / 60)}:${(cooldown % 60).toString().padStart(2, '0')}</div>`
                         : `<p>Повернись завтра! 🦕</p><p>Ти вже зіграв ${todayGames}/${gameStatus?.maxDaily || 5} ігор сьогодні</p>`
                     }
+                    <button class="game-start-btn" style="margin-top:16px;font-size:var(--font-sm);padding:8px 16px" onclick="resetMinigame()">🔄 Скинути кулдаун</button>
                 </div>
             ` : `
                 <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;gap:16px">
@@ -716,6 +717,20 @@ function startGame() {
     renderBoard();
     updateHeader();
     startTimer();
+}
+
+async function resetMinigame() {
+    try {
+        const r = await fetch('/api/minigame/reset', { method: 'POST', headers: getAuthHeaders() });
+        const data = await r.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || 'Помилка скидання');
+        }
+    } catch (e) {
+        alert('Помилка: ' + e.message);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', initGamePage);

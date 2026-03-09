@@ -111,4 +111,19 @@ router.post('/complete', requireRole(...ANY_ROLE), async (req, res) => {
     }
 });
 
+// POST /api/minigame/reset — admin: reset cooldown and daily limit for testing
+router.post('/reset', requireRole('admin', 'creator'), async (req, res) => {
+    try {
+        await pool.query(
+            'DELETE FROM minigame_sessions WHERE user_id = $1',
+            [req.user.id]
+        );
+        log.info(`Minigame reset for user ${req.user.id} by ${req.user.username}`);
+        res.json({ success: true, message: 'Кулдаун і ліміт скинуті' });
+    } catch (err) {
+        log.error('Minigame reset error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

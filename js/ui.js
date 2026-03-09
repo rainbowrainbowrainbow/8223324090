@@ -203,6 +203,52 @@ function customConfirm(message, title = 'Підтвердження') {
 }
 
 const _toastMaxVisible = 3;
+// ==========================================
+// CUSTOM CONFIRM MODAL (replaces native confirm())
+// ==========================================
+
+/**
+ * Beautiful confirm dialog that replaces native confirm().
+ * Returns a Promise<boolean>.
+ * Usage: if (await confirmModal('Видалити?')) { ... }
+ */
+function confirmModal(message, options = {}) {
+    return new Promise((resolve) => {
+        const { okText = 'Підтвердити', cancelText = 'Скасувати', type = 'warning' } = options;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.innerHTML = `
+            <div class="confirm-dialog ${type}">
+                <div class="confirm-icon">${type === 'danger' ? '⚠️' : type === 'success' ? '✅' : '❓'}</div>
+                <div class="confirm-message">${message}</div>
+                <div class="confirm-actions">
+                    <button class="confirm-btn confirm-cancel">${cancelText}</button>
+                    <button class="confirm-btn confirm-ok ${type}">${okText}</button>
+                </div>
+            </div>`;
+
+        const close = (result) => {
+            overlay.classList.add('confirm-exit');
+            setTimeout(() => overlay.remove(), 200);
+            resolve(result);
+        };
+
+        overlay.querySelector('.confirm-cancel').addEventListener('click', () => close(false));
+        overlay.querySelector('.confirm-ok').addEventListener('click', () => close(true));
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+
+        // ESC to cancel
+        const onKey = (e) => { if (e.key === 'Escape') { close(false); document.removeEventListener('keydown', onKey); } };
+        document.addEventListener('keydown', onKey);
+
+        document.body.appendChild(overlay);
+
+        // Focus OK button
+        requestAnimationFrame(() => overlay.querySelector('.confirm-ok').focus());
+    });
+}
+
 function showNotification(message, type = '') {
     const container = document.getElementById('toastContainer');
     if (!container) return;

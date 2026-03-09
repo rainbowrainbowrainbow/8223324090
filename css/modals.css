@@ -3,6 +3,114 @@
  */
 
 /* ==========================================
+   CUSTOM CONFIRM DIALOG
+   ========================================== */
+
+.confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: confirm-fade-in 0.15s ease;
+    backdrop-filter: blur(2px);
+}
+.confirm-overlay.confirm-exit {
+    animation: confirm-fade-out 0.2s ease forwards;
+}
+@keyframes confirm-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes confirm-fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+.confirm-dialog {
+    background: white;
+    border-radius: 16px;
+    padding: 28px 24px 20px;
+    max-width: 360px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+    animation: confirm-slide-in 0.2s ease;
+}
+@keyframes confirm-slide-in {
+    from { transform: scale(0.9) translateY(10px); opacity: 0; }
+    to { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.confirm-icon {
+    font-size: 36px;
+    margin-bottom: 12px;
+}
+.confirm-message {
+    font-size: var(--font-base);
+    color: var(--gray-700);
+    line-height: 1.5;
+    margin-bottom: 20px;
+    font-weight: 500;
+}
+.confirm-actions {
+    display: flex;
+    gap: 10px;
+}
+.confirm-btn {
+    flex: 1;
+    padding: 12px 16px;
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: var(--font-sm);
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    min-height: 44px;
+}
+.confirm-cancel {
+    background: var(--gray-100);
+    color: var(--gray-600);
+}
+.confirm-cancel:hover {
+    background: var(--gray-200);
+}
+.confirm-ok {
+    background: var(--primary);
+    color: white;
+}
+.confirm-ok:hover {
+    filter: brightness(1.1);
+}
+.confirm-ok.danger {
+    background: #ef4444;
+}
+.confirm-ok.danger:hover {
+    background: #dc2626;
+}
+.confirm-ok.success {
+    background: #22c55e;
+}
+
+/* Dark mode */
+body.dark-mode .confirm-dialog {
+    background: #2A2A4A;
+}
+body.dark-mode .confirm-message {
+    color: #E2E8F0;
+}
+body.dark-mode .confirm-cancel {
+    background: #3A3A5A;
+    color: #9CA3AF;
+}
+body.dark-mode .confirm-cancel:hover {
+    background: #4A4A6A;
+}
+
+/* ==========================================
    MODALS
    ========================================== */
 

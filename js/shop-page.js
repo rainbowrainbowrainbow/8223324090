@@ -106,18 +106,65 @@ function setCategory(cat) {
 }
 
 async function buyItem(itemId, itemName) {
-    if (!confirm(`Купити "${itemName}"?`)) return;
+    const ok = typeof confirmModal === 'function'
+        ? await confirmModal(`Купити "${itemName}"?`, { okText: 'Купити', type: 'success' })
+        : confirm(`Купити "${itemName}"?`);
+    if (!ok) return;
+
     const result = await shopApiPost('/shop/buy', { item_id: itemId });
     if (result?.success) {
-        alert(`✅ Куплено: ${result.item}`);
+        // Purchase animation
+        showPurchaseEffect(itemName);
         // Reload
         const [inventory, wallet] = await Promise.all([shopApiGet('/inventory'), shopApiGet('/wallet')]);
         shopInventory = inventory || [];
         shopWallet = wallet;
         renderShop();
     } else {
-        alert(`❌ ${result?.error || 'Помилка'}`);
+        if (typeof showNotification === 'function') {
+            showNotification(result?.error || 'Помилка покупки', 'error');
+        } else {
+            alert(`❌ ${result?.error || 'Помилка'}`);
+        }
     }
+}
+
+function showPurchaseEffect(itemName) {
+    // Success notification
+    if (typeof showNotification === 'function') {
+        showNotification(`✅ Куплено: ${itemName}`, 'success');
+    }
+
+    // Confetti-like particle burst
+    const container = document.createElement('div');
+    container.className = 'purchase-effect';
+    container.innerHTML = Array.from({ length: 12 }, () => {
+        const emoji = ['✨', '🎉', '💰', '⭐', '🪙'][Math.floor(Math.random() * 5)];
+        const x = (Math.random() - 0.5) * 200;
+        const y = -(Math.random() * 150 + 50);
+        const r = Math.random() * 360;
+        return `<span class="purchase-particle" style="--x:${x}px;--y:${y}px;--r:${r}deg">${emoji}</span>`;
+    }).join('');
+    document.body.appendChild(container);
+    setTimeout(() => container.remove(), 1200);
+
+    // Sound effect (Web Audio API — short blip)
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        // Play a pleasant ascending tone
+        osc.frequency.setValueAtTime(523, ctx.currentTime);      // C5
+        osc.frequency.setValueAtTime(659, ctx.currentTime + 0.08); // E5
+        osc.frequency.setValueAtTime(784, ctx.currentTime + 0.16); // G5
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.4);
+    } catch (e) { /* audio not supported */ }
 }
 
 document.addEventListener('DOMContentLoaded', initShopPage);

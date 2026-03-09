@@ -738,3 +738,23 @@ body.dark-mode .streak-day { border-color: #3D3D5C; background: #1E1E38; color: 
     .shop-grid { grid-template-columns: repeat(2, 1fr); }
     .notes-grid { grid-template-columns: 1fr; }
 }
+
+/* ==========================================
+   PURCHASE EFFECT (confetti particles)
+   ========================================== */
+.purchase-effect {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 10001;
+    pointer-events: none;
+}
+.purchase-particle {
+    position: absolute;
+    font-size: 24px;
+    animation: purchase-burst 0.8s ease-out forwards;
+}
+@keyframes purchase-burst {
+    0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+    100% { transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(0.5); opacity: 0; }
+}

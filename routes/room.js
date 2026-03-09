@@ -4,11 +4,9 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, ANY_ROLE } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Room');
-
-const ANY_ROLE = ['admin', 'user', 'animator', 'instructor', 'waiter', 'senior_instructor', 'manager', 'senior_manager', 'vice_director', 'director', 'creator'];
 
 // GET /api/room — my room (auto-create)
 router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
@@ -141,7 +139,7 @@ router.put('/decorate', requireRole(...ANY_ROLE), async (req, res) => {
         values.push(req.user.id);
 
         await pool.query(
-            `INSERT INTO user_rooms (user_id) VALUES ($${idx}) ON CONFLICT (user_id) DO NOTHING`,
+            'INSERT INTO user_rooms (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
             [req.user.id]
         );
         await pool.query(

@@ -4,14 +4,13 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, ANY_ROLE } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Minigame');
 
 const { updateQuestProgress } = require('./quests');
 const { updateStreak } = require('./streaks');
 
-const ANY_ROLE = ['admin', 'user', 'animator', 'instructor', 'waiter', 'senior_instructor', 'manager', 'senior_manager', 'vice_director', 'director', 'creator'];
 const COOLDOWN_MS = 30 * 60 * 1000; // 30 min
 const MAX_DAILY = 5;
 const MAX_COINS_PER_GAME = 50;
@@ -84,26 +83,34 @@ router.post('/complete', requireRole(...ANY_ROLE), async (req, res) => {
             return res.status(429).json({ error: 'Повернись завтра! 🦕' });
         }
 
-        // Record session
-        await pool.query(
-            'INSERT INTO minigame_sessions (user_id, score, coins_earned) VALUES ($1, $2, $3)',
-            [req.user.id, score, sanitizedCoins]
-        );
+        // Record session + award coins in a transaction
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query(
+                'INSERT INTO minigame_sessions (user_id, score, coins_earned) VALUES ($1, $2, $3)',
+                [req.user.id, score, sanitizedCoins]
+            );
+            if (sanitizedCoins > 0) {
+                await client.query(
+                    'UPDATE game_wallets SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW() WHERE user_id = $2',
+                    [sanitizedCoins, req.user.id]
+                );
+                await client.query(
+                    'INSERT INTO coin_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)',
+                    [req.user.id, sanitizedCoins, 'minigame', `Міні-гра: ${sanitizedCoins} монет (рахунок: ${score})`]
+                );
+            }
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK');
+            throw txErr;
+        } finally {
+            client.release();
+        }
 
         // Track quest progress (fire-and-forget)
         updateQuestProgress(req.user.id, 'play_minigame').catch(() => {});
-
-        // Award coins
-        if (sanitizedCoins > 0) {
-            await pool.query(
-                'UPDATE game_wallets SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW() WHERE user_id = $2',
-                [sanitizedCoins, req.user.id]
-            );
-            await pool.query(
-                'INSERT INTO coin_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)',
-                [req.user.id, sanitizedCoins, 'minigame', `Міні-гра: ${sanitizedCoins} монет (рахунок: ${score})`]
-            );
-        }
 
         // Update minigame streak (fire-and-forget)
         updateStreak(req.user.id, 'minigame').catch(() => {});
@@ -215,21 +222,30 @@ router.post('/boss/complete', requireRole(...ANY_ROLE), async (req, res) => {
         const completed = score >= TARGET_SCORE;
         const coinsEarned = completed ? Math.min(Math.floor(score / 10) * 3, 150) : 0; // x3 rewards, cap 150
 
-        await pool.query(
-            'INSERT INTO boss_rounds (user_id, week_start, score, target_score, coins_earned, completed) VALUES ($1, $2, $3, $4, $5, $6)',
-            [req.user.id, weekStart, score, TARGET_SCORE, coinsEarned, completed]
-        );
-
-        // Award coins for boss
-        if (coinsEarned > 0) {
-            await pool.query(
-                'UPDATE game_wallets SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW() WHERE user_id = $2',
-                [coinsEarned, req.user.id]
+        // Record boss round + award coins in a transaction
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query(
+                'INSERT INTO boss_rounds (user_id, week_start, score, target_score, coins_earned, completed) VALUES ($1, $2, $3, $4, $5, $6)',
+                [req.user.id, weekStart, score, TARGET_SCORE, coinsEarned, completed]
             );
-            await pool.query(
-                'INSERT INTO coin_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)',
-                [req.user.id, coinsEarned, 'boss_round', `Бос-раунд: ${score} очок (x3 нагорода: +${coinsEarned} монет)`]
-            );
+            if (coinsEarned > 0) {
+                await client.query(
+                    'UPDATE game_wallets SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW() WHERE user_id = $2',
+                    [coinsEarned, req.user.id]
+                );
+                await client.query(
+                    'INSERT INTO coin_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)',
+                    [req.user.id, coinsEarned, 'boss_round', `Бос-раунд: ${score} очок (x3 нагорода: +${coinsEarned} монет)`]
+                );
+            }
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK');
+            throw txErr;
+        } finally {
+            client.release();
         }
 
         res.json({ success: true, completed, score, coinsEarned, targetScore: TARGET_SCORE });

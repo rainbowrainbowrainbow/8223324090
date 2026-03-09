@@ -167,6 +167,9 @@ function requireAction(action) {
     };
 }
 
+// Convenience: all roles that can access gamification features
+const ANY_ROLE = ROLE_HIERARCHY;
+
 module.exports = {
     JWT_SECRET,
     authenticateToken,
@@ -176,5 +179,6 @@ module.exports = {
     ROLE_HIERARCHY,
     ROLE_LEVEL,
     PAGE_ACCESS,
-    ACTION_PERMISSIONS
+    ACTION_PERMISSIONS,
+    ANY_ROLE
 };

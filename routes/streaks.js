@@ -7,11 +7,9 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, ANY_ROLE } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Streaks');
-
-const ANY_ROLE = ['admin', 'user', 'animator', 'instructor', 'waiter', 'senior_instructor', 'manager', 'senior_manager', 'vice_director', 'director', 'creator'];
 
 const STREAK_MILESTONES = [
     { days: 3, coins: 15, label: '3 дні поспіль' },

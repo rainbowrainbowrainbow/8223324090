@@ -15,14 +15,13 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, ANY_ROLE } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Quiz');
 
 const { updateQuestProgress } = require('./quests');
 const { updateStreak } = require('./streaks');
 
-const ANY_ROLE = ['admin', 'user', 'animator', 'instructor', 'waiter', 'senior_instructor', 'manager', 'senior_manager', 'vice_director', 'director', 'creator'];
 const QUESTIONS_PER_GAME = 5;
 const TIME_PER_QUESTION_MS = 15000; // 15s per question
 const COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
@@ -164,19 +163,26 @@ router.post('/complete', requireRole(...ANY_ROLE), async (req, res) => {
             return res.status(400).json({ error: 'Сесію не знайдено або вже завершено' });
         }
 
-        // Validate answers server-side
+        // Validate answers server-side — batch fetch all questions at once
+        const questionIds = answers.map(a => a.questionId).filter(id => typeof id === 'number');
+        if (questionIds.length === 0) {
+            return res.status(400).json({ error: 'Немає відповідей' });
+        }
+        const questionsResult = await pool.query(
+            'SELECT id, correct_index, reward_coins, explanation, answers FROM quiz_questions WHERE id = ANY($1)',
+            [questionIds]
+        );
+        const questionsMap = {};
+        for (const q of questionsResult.rows) questionsMap[q.id] = q;
+
         let correctCount = 0;
         let totalCoins = 0;
         const results = [];
 
         for (const ans of answers) {
-            const q = await pool.query(
-                'SELECT id, correct_index, reward_coins, explanation, answers FROM quiz_questions WHERE id = $1',
-                [ans.questionId]
-            );
-            if (q.rows.length === 0) continue;
+            const question = questionsMap[ans.questionId];
+            if (!question) continue;
 
-            const question = q.rows[0];
             const isCorrect = ans.answerIndex === question.correct_index;
             if (isCorrect) {
                 correctCount++;
@@ -200,24 +206,32 @@ router.post('/complete', requireRole(...ANY_ROLE), async (req, res) => {
         // Cap coins
         totalCoins = Math.min(totalCoins, MAX_COINS_PER_GAME);
 
-        // Update session
-        await pool.query(
-            `UPDATE quiz_sessions SET
-                correct_count = $1, coins_earned = $2, answers = $3, completed = true
-            WHERE id = $4`,
-            [correctCount, totalCoins, JSON.stringify(results), sessionId]
-        );
-
-        // Award coins
-        if (totalCoins > 0) {
-            await pool.query(
-                'UPDATE game_wallets SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW() WHERE user_id = $2',
-                [totalCoins, req.user.id]
+        // Update session + award coins in a transaction
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query(
+                `UPDATE quiz_sessions SET
+                    correct_count = $1, coins_earned = $2, answers = $3, completed = true
+                WHERE id = $4`,
+                [correctCount, totalCoins, JSON.stringify(results), sessionId]
             );
-            await pool.query(
-                'INSERT INTO coin_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)',
-                [req.user.id, totalCoins, 'quiz', `Вікторина: ${correctCount}/${answers.length} правильних (+${totalCoins} монет)`]
-            );
+            if (totalCoins > 0) {
+                await client.query(
+                    'UPDATE game_wallets SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW() WHERE user_id = $2',
+                    [totalCoins, req.user.id]
+                );
+                await client.query(
+                    'INSERT INTO coin_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)',
+                    [req.user.id, totalCoins, 'quiz', `Вікторина: ${correctCount}/${answers.length} правильних (+${totalCoins} монет)`]
+                );
+            }
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK');
+            throw txErr;
+        } finally {
+            client.release();
         }
 
         // Track quest progress

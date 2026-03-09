@@ -4,22 +4,20 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, ANY_ROLE } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Shop');
-
-const ANY_ROLE = ['admin', 'user', 'animator', 'instructor', 'waiter', 'senior_instructor', 'manager', 'senior_manager', 'vice_director', 'director', 'creator'];
 
 // GET /api/shop — catalog
 router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT * FROM shop_items WHERE is_available = true ORDER BY category, price_coins'
+            'SELECT * FROM shop_items WHERE is_active = true ORDER BY category, price_coins'
         );
         res.json(result.rows.map(i => ({
             id: i.id, code: i.code, name: i.name, description: i.description,
-            category: i.category, imageUrl: i.image_url, priceCoins: i.price_coins,
-            rarity: i.rarity, isReal: i.is_real, realValue: i.real_value, equipSlot: i.equip_slot
+            category: i.category, icon: i.icon, priceCoins: i.price_coins,
+            rarity: i.rarity, equipSlot: i.equip_slot, type: i.type
         })));
     } catch (err) {
         log.error('Get shop error', err);
@@ -100,20 +98,20 @@ router.post('/buy', requireRole(...ANY_ROLE), async (req, res) => {
 router.get('/inventory', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT ui.*, si.code, si.name, si.description, si.category, si.image_url,
-                   si.rarity, si.equip_slot, si.is_real, si.real_value
+            SELECT ui.id, ui.item_id, ui.acquired_via, ui.acquired_at,
+                   si.code, si.name, si.description, si.category,
+                   si.rarity, si.equip_slot, si.icon
             FROM user_inventory ui
             JOIN shop_items si ON si.id = ui.item_id
-            WHERE ui.user_id = $1
-            ORDER BY ui.is_equipped DESC, si.category, si.name
-        `, [req.user.id]);
+            WHERE ui.username = $1
+            ORDER BY si.category, si.name
+        `, [req.user.username]);
 
         res.json(result.rows.map(r => ({
             id: r.id, itemId: r.item_id, code: r.code, name: r.name,
-            description: r.description, category: r.category, imageUrl: r.image_url,
-            rarity: r.rarity, equipSlot: r.equip_slot, quantity: r.quantity,
-            isEquipped: r.is_equipped, isReal: r.is_real, realValue: r.real_value,
-            obtainedFrom: r.obtained_from, obtainedAt: r.obtained_at
+            description: r.description, category: r.category, icon: r.icon,
+            rarity: r.rarity, equipSlot: r.equip_slot,
+            acquiredVia: r.acquired_via, acquiredAt: r.acquired_at
         })));
     } catch (err) {
         log.error('Get inventory error', err);

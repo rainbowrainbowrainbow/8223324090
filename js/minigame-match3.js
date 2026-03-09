@@ -1,13 +1,14 @@
 /**
- * minigame-match3.js — Match-3 minigame with Special Pieces (Park themed)
- * v22.7.0
+ * minigame-match3.js — Match-3 Epic Edition (Park themed)
+ * v22.9.0 — 9x9 board, frozen tiles, cross special, epic combo system with particles
  */
 
 // ==========================================
 // CONSTANTS
 // ==========================================
-const BOARD_SIZE = 8;
-const GAME_TIME = 60;
+const BOARD_COLS = 9;
+const BOARD_ROWS = 9;
+const GAME_TIME = 75; // more time for bigger board
 const MAX_COINS = 50;
 const PIECES = [
     { id: 'dino',    emoji: '🦕' },
@@ -16,28 +17,45 @@ const PIECES = [
     { id: 'mask',    emoji: '🎭' },
     { id: 'star',    emoji: '⭐' },
     { id: 'tent',    emoji: '🎪' },
+    { id: 'clown',   emoji: '🤡' },
 ];
 
 const SPECIAL_TYPES = {
-    bomb:      { emoji: '💣', bonus: 20, label: 'Бомба' },
-    lightning: { emoji: '⚡', bonus: 40, label: 'Блискавка' },
-    rainbow:   { emoji: '🌟', bonus: 60, label: 'Зірка' }
+    bomb:      { emoji: '💣', bonus: 20, label: 'Бомба', desc: '3×3 вибух' },
+    lightning: { emoji: '⚡', bonus: 40, label: 'Блискавка', desc: 'весь рядок' },
+    cross:     { emoji: '✦', bonus: 50, label: 'Хрест', desc: 'рядок + стовпець' },
+    rainbow:   { emoji: '🌈', bonus: 60, label: 'Веселка', desc: 'всі такого типу' }
 };
+
+// Combo level config: different effects per level
+const COMBO_LEVELS = [
+    null, // 0
+    { label: '', color: '' }, // combo 1 = no popup
+    { label: 'x1.0!', color: '#f59e0b', emoji: '🔥', shake: 1, particles: 4 },
+    { label: 'x1.5!', color: '#ef4444', emoji: '💥', shake: 2, particles: 8 },
+    { label: 'x2.0!', color: '#a855f7', emoji: '🌟', shake: 3, particles: 14, flash: 'purple' },
+    { label: 'x2.5!', color: '#3b82f6', emoji: '⚡', shake: 4, particles: 20, flash: 'blue' },
+    { label: 'x3.0!!', color: '#ef4444', emoji: '🔥🌈🔥', shake: 6, particles: 30, flash: 'rainbow', mega: true },
+];
+
+const FROZEN_SPAWN_CHANCE = 0.06; // 6% chance per new falling piece
 
 // ==========================================
 // STATE
 // ==========================================
 let board = [];
+let frozenMap = []; // frozenMap[r][c] = hits remaining (0=not frozen, 1=cracked, 2=solid)
 let selected = null;
 let gameActive = false;
 let timeLeft = GAME_TIME;
 let totalScore = 0;
 let coinsEarned = 0;
 let comboCount = 0;
+let maxCombo = 0;
 let timerInterval = null;
 let animating = false;
 let gameStatus = null;
-let lastSwap = null; // { row, col } — where the player swapped to
+let lastSwap = null;
 
 // ==========================================
 // UTILITIES
@@ -59,102 +77,87 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // ==========================================
 function createBoard() {
     const b = [];
-    for (let r = 0; r < BOARD_SIZE; r++) {
+    frozenMap = [];
+    for (let r = 0; r < BOARD_ROWS; r++) {
         b[r] = [];
-        for (let c = 0; c < BOARD_SIZE; c++) {
-            let piece;
-            let attempts = 0;
-            do {
-                piece = randomPiece();
-                attempts++;
-            } while (hasMatchAt(b, r, c, piece) && attempts < 50);
+        frozenMap[r] = [];
+        for (let c = 0; c < BOARD_COLS; c++) {
+            let piece, attempts = 0;
+            do { piece = randomPiece(); attempts++; } while (hasMatchAt(b, r, c, piece) && attempts < 50);
             b[r][c] = piece;
+            frozenMap[r][c] = 0;
+        }
+    }
+    // Seed some frozen tiles
+    let frozenCount = 0;
+    const maxFrozen = Math.floor(BOARD_ROWS * BOARD_COLS * 0.08);
+    while (frozenCount < maxFrozen) {
+        const r = Math.floor(Math.random() * BOARD_ROWS);
+        const c = Math.floor(Math.random() * BOARD_COLS);
+        if (frozenMap[r][c] === 0) {
+            frozenMap[r][c] = 2; // solid ice
+            frozenCount++;
         }
     }
     return b;
 }
 
-/**
- * Find all matches on the board, returned as groups.
- * Each group: { cells: [{row, col}], length, direction: 'h'|'v' }
- */
 function findMatchGroups(b) {
     const groups = [];
-
-    // Horizontal matches
-    for (let r = 0; r < BOARD_SIZE; r++) {
+    // Horizontal
+    for (let r = 0; r < BOARD_ROWS; r++) {
         let c = 0;
-        while (c <= BOARD_SIZE - 3) {
+        while (c <= BOARD_COLS - 3) {
             if (b[r][c] && b[r][c].id) {
                 const id = b[r][c].id;
                 let end = c;
-                while (end + 1 < BOARD_SIZE && b[r][end + 1]?.id === id) end++;
-                const len = end - c + 1;
-                if (len >= 3) {
+                while (end + 1 < BOARD_COLS && b[r][end + 1]?.id === id) end++;
+                if (end - c + 1 >= 3) {
                     const cells = [];
                     for (let i = c; i <= end; i++) cells.push({ row: r, col: i });
-                    groups.push({ cells, length: len, direction: 'h' });
+                    groups.push({ cells, length: end - c + 1, direction: 'h' });
                 }
                 c = end + 1;
-            } else {
-                c++;
-            }
+            } else c++;
         }
     }
-
-    // Vertical matches
-    for (let c = 0; c < BOARD_SIZE; c++) {
+    // Vertical
+    for (let c = 0; c < BOARD_COLS; c++) {
         let r = 0;
-        while (r <= BOARD_SIZE - 3) {
+        while (r <= BOARD_ROWS - 3) {
             if (b[r][c] && b[r][c].id) {
                 const id = b[r][c].id;
                 let end = r;
-                while (end + 1 < BOARD_SIZE && b[end + 1]?.[c]?.id === id) end++;
-                const len = end - r + 1;
-                if (len >= 3) {
+                while (end + 1 < BOARD_ROWS && b[end + 1]?.[c]?.id === id) end++;
+                if (end - r + 1 >= 3) {
                     const cells = [];
                     for (let i = r; i <= end; i++) cells.push({ row: i, col: c });
-                    groups.push({ cells, length: len, direction: 'v' });
+                    groups.push({ cells, length: end - r + 1, direction: 'v' });
                 }
                 r = end + 1;
-            } else {
-                r++;
-            }
+            } else r++;
         }
     }
-
     return groups;
 }
 
-/**
- * Detect L/T shapes: two groups (one horizontal, one vertical) sharing a cell.
- * Returns array of { cells (merged unique), intersectionCell }
- */
 function detectLTShapes(groups) {
     const ltShapes = [];
     const usedGroups = new Set();
-
     for (let i = 0; i < groups.length; i++) {
         for (let j = i + 1; j < groups.length; j++) {
             if (groups[i].direction === groups[j].direction) continue;
-            // Find shared cells
             const setA = new Set(groups[i].cells.map(c => `${c.row},${c.col}`));
             let intersection = null;
             for (const cell of groups[j].cells) {
-                if (setA.has(`${cell.row},${cell.col}`)) {
-                    intersection = cell;
-                    break;
-                }
+                if (setA.has(`${cell.row},${cell.col}`)) { intersection = cell; break; }
             }
             if (intersection) {
                 const allCellKeys = new Set();
                 const allCells = [];
                 for (const c of [...groups[i].cells, ...groups[j].cells]) {
                     const key = `${c.row},${c.col}`;
-                    if (!allCellKeys.has(key)) {
-                        allCellKeys.add(key);
-                        allCells.push(c);
-                    }
+                    if (!allCellKeys.has(key)) { allCellKeys.add(key); allCells.push(c); }
                 }
                 ltShapes.push({ cells: allCells, intersectionCell: intersection, groupI: i, groupJ: j });
                 usedGroups.add(i);
@@ -162,74 +165,56 @@ function detectLTShapes(groups) {
             }
         }
     }
-
     return { ltShapes, usedGroups };
 }
 
-/**
- * Determine what special pieces to create from match groups.
- * Returns array of { row, col, type: 'bomb'|'lightning'|'rainbow', id (piece type) }
- */
 function determineSpecials(groups, swapTarget) {
     const specials = [];
     const { ltShapes, usedGroups } = detectLTShapes(groups);
 
-    // L/T shapes → rainbow star at intersection
+    // L/T shapes → rainbow
     for (const lt of ltShapes) {
         const pos = lt.intersectionCell;
-        specials.push({
-            row: pos.row, col: pos.col,
-            type: 'rainbow',
-            id: board[pos.row][pos.col]?.id || 'star'
-        });
+        specials.push({ row: pos.row, col: pos.col, type: 'rainbow', id: board[pos.row][pos.col]?.id || 'star' });
     }
 
-    // Remaining groups (not part of L/T)
+    // Remaining groups
     for (let i = 0; i < groups.length; i++) {
         if (usedGroups.has(i)) continue;
         const g = groups[i];
-        if (g.length >= 5) {
-            // Lightning
+        if (g.length >= 6) {
+            // 6+ → cross (epic)
+            const pos = pickSpecialPosition(g.cells, swapTarget);
+            specials.push({ row: pos.row, col: pos.col, type: 'cross', id: board[pos.row][pos.col]?.id || 'star' });
+        } else if (g.length >= 5) {
             const pos = pickSpecialPosition(g.cells, swapTarget);
             specials.push({ row: pos.row, col: pos.col, type: 'lightning', id: board[pos.row][pos.col]?.id || 'star' });
         } else if (g.length === 4) {
-            // Bomb
             const pos = pickSpecialPosition(g.cells, swapTarget);
             specials.push({ row: pos.row, col: pos.col, type: 'bomb', id: board[pos.row][pos.col]?.id || 'star' });
         }
     }
-
     return specials;
 }
 
-/**
- * Pick position for special piece — prefer swap target if it's in the match, else lowest cell.
- */
 function pickSpecialPosition(cells, swapTarget) {
     if (swapTarget) {
         for (const c of cells) {
             if (c.row === swapTarget.row && c.col === swapTarget.col) return c;
         }
     }
-    // Fallback: lowest cell (highest row index)
     let best = cells[0];
-    for (const c of cells) {
-        if (c.row > best.row) best = c;
-    }
+    for (const c of cells) { if (c.row > best.row) best = c; }
     return best;
 }
 
-/**
- * Activate special pieces that are in the matched set.
- * Returns expanded set of cells to remove + bonus score.
- */
 function activateSpecials(b, matchedCells) {
     const toRemove = new Set(matchedCells.map(c => `${c.row},${c.col}`));
     let bonusScore = 0;
-    const activatedSpecials = []; // for animation tracking
+    const activatedSpecials = [];
     let iterations = 0;
-
     let changed = true;
+
     while (changed && iterations < 10) {
         changed = false;
         iterations++;
@@ -239,43 +224,44 @@ function activateSpecials(b, matchedCells) {
             if (!piece || !piece.special) continue;
 
             const specialType = piece.special;
-            piece.special = null; // consume it
+            piece.special = null;
             bonusScore += SPECIAL_TYPES[specialType]?.bonus || 0;
             activatedSpecials.push({ row: r, col: c, type: specialType });
 
             if (specialType === 'bomb') {
-                // 3x3 area
                 for (let dr = -1; dr <= 1; dr++) {
                     for (let dc = -1; dc <= 1; dc++) {
                         const nr = r + dr, nc = c + dc;
-                        if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+                        if (nr >= 0 && nr < BOARD_ROWS && nc >= 0 && nc < BOARD_COLS) {
                             const k = `${nr},${nc}`;
                             if (!toRemove.has(k)) { toRemove.add(k); changed = true; }
                         }
                     }
                 }
             } else if (specialType === 'lightning') {
-                // Entire row
-                for (let col = 0; col < BOARD_SIZE; col++) {
+                for (let col = 0; col < BOARD_COLS; col++) {
                     const k = `${r},${col}`;
                     if (!toRemove.has(k)) { toRemove.add(k); changed = true; }
                 }
+            } else if (specialType === 'cross') {
+                // Clear entire row + entire column
+                for (let col = 0; col < BOARD_COLS; col++) {
+                    const k = `${r},${col}`;
+                    if (!toRemove.has(k)) { toRemove.add(k); changed = true; }
+                }
+                for (let row = 0; row < BOARD_ROWS; row++) {
+                    const k = `${row},${c}`;
+                    if (!toRemove.has(k)) { toRemove.add(k); changed = true; }
+                }
             } else if (specialType === 'rainbow') {
-                // Find the piece type to clear — use the id stored on the rainbow
-                // or the id of the piece it was matched with
                 let targetId = piece.id;
-                // Check neighbors for a matched non-special piece
                 for (const nk of toRemove) {
                     const [nr, nc] = nk.split(',').map(Number);
                     const np = b[nr]?.[nc];
-                    if (np && np.id !== targetId && !np.special) {
-                        targetId = np.id;
-                        break;
-                    }
+                    if (np && np.id !== targetId && !np.special) { targetId = np.id; break; }
                 }
-                // Clear all pieces of that type
-                for (let rr = 0; rr < BOARD_SIZE; rr++) {
-                    for (let cc = 0; cc < BOARD_SIZE; cc++) {
+                for (let rr = 0; rr < BOARD_ROWS; rr++) {
+                    for (let cc = 0; cc < BOARD_COLS; cc++) {
                         if (b[rr][cc]?.id === targetId) {
                             const k = `${rr},${cc}`;
                             if (!toRemove.has(k)) { toRemove.add(k); changed = true; }
@@ -286,36 +272,46 @@ function activateSpecials(b, matchedCells) {
         }
     }
 
-    const cells = Array.from(toRemove).map(s => {
-        const [r, c] = s.split(',').map(Number);
-        return { row: r, col: c };
-    });
-
+    const cells = Array.from(toRemove).map(s => { const [r, c] = s.split(',').map(Number); return { row: r, col: c }; });
     return { cells, bonusScore, activatedSpecials };
 }
 
 function removeMatches(b, cells) {
     for (const c of cells) {
+        // Handle frozen tiles: damage ice instead of removing piece
+        if (frozenMap[c.row][c.col] > 0) {
+            frozenMap[c.row][c.col]--;
+            if (frozenMap[c.row][c.col] > 0) continue; // ice not fully broken yet
+        }
         b[c.row][c.col] = null;
     }
 }
 
 function applyGravity(b) {
     const fallen = [];
-    for (let c = 0; c < BOARD_SIZE; c++) {
-        let writeRow = BOARD_SIZE - 1;
-        for (let r = BOARD_SIZE - 1; r >= 0; r--) {
+    for (let c = 0; c < BOARD_COLS; c++) {
+        let writeRow = BOARD_ROWS - 1;
+        for (let r = BOARD_ROWS - 1; r >= 0; r--) {
             if (b[r][c]) {
                 if (r !== writeRow) {
                     b[writeRow][c] = b[r][c];
+                    // Move frozen state too
+                    frozenMap[writeRow][c] = frozenMap[r][c];
                     b[r][c] = null;
+                    frozenMap[r][c] = 0;
                     fallen.push({ row: writeRow, col: c });
                 }
                 writeRow--;
             }
         }
         for (let r = writeRow; r >= 0; r--) {
-            b[r][c] = randomPiece();
+            const piece = randomPiece();
+            b[r][c] = piece;
+            frozenMap[r][c] = 0;
+            // Random chance to spawn frozen
+            if (Math.random() < FROZEN_SPAWN_CHANCE) {
+                frozenMap[r][c] = 2;
+            }
             fallen.push({ row: r, col: c });
         }
     }
@@ -326,32 +322,99 @@ function scoreMatches(matchedCount) {
     if (matchedCount <= 0) return 0;
     if (matchedCount === 3) return 5;
     if (matchedCount === 4) return 15;
-    if (matchedCount >= 5) return 30;
+    if (matchedCount === 5) return 30;
+    if (matchedCount >= 6) return 50;
     return matchedCount * 3;
 }
 
 function hasValidMoves(b) {
-    for (let r = 0; r < BOARD_SIZE; r++) {
-        for (let c = 0; c < BOARD_SIZE; c++) {
-            if (c + 1 < BOARD_SIZE) {
-                swap(b, r, c, r, c + 1);
-                if (findMatchGroups(b).length > 0) { swap(b, r, c, r, c + 1); return true; }
-                swap(b, r, c, r, c + 1);
+    for (let r = 0; r < BOARD_ROWS; r++) {
+        for (let c = 0; c < BOARD_COLS; c++) {
+            if (c + 1 < BOARD_COLS) {
+                swapCells(b, r, c, r, c + 1);
+                if (findMatchGroups(b).length > 0) { swapCells(b, r, c, r, c + 1); return true; }
+                swapCells(b, r, c, r, c + 1);
             }
-            if (r + 1 < BOARD_SIZE) {
-                swap(b, r, c, r + 1, c);
-                if (findMatchGroups(b).length > 0) { swap(b, r, c, r + 1, c); return true; }
-                swap(b, r, c, r + 1, c);
+            if (r + 1 < BOARD_ROWS) {
+                swapCells(b, r, c, r + 1, c);
+                if (findMatchGroups(b).length > 0) { swapCells(b, r, c, r + 1, c); return true; }
+                swapCells(b, r, c, r + 1, c);
             }
         }
     }
     return false;
 }
 
-function swap(b, r1, c1, r2, c2) {
-    const tmp = b[r1][c1];
-    b[r1][c1] = b[r2][c2];
-    b[r2][c2] = tmp;
+function swapCells(b, r1, c1, r2, c2) {
+    const tmp = b[r1][c1]; b[r1][c1] = b[r2][c2]; b[r2][c2] = tmp;
+}
+
+// ==========================================
+// PARTICLES & EFFECTS
+// ==========================================
+function spawnParticles(count, centerEl, color) {
+    const boardEl = document.getElementById('gameBoard');
+    if (!boardEl || !centerEl) return;
+    const rect = centerEl.getBoundingClientRect();
+    const boardRect = boardEl.getBoundingClientRect();
+    const cx = rect.left - boardRect.left + rect.width / 2;
+    const cy = rect.top - boardRect.top + rect.height / 2;
+
+    for (let i = 0; i < count; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+        const dist = 40 + Math.random() * 80;
+        const dx = Math.cos(angle) * dist;
+        const dy = Math.sin(angle) * dist;
+        const size = 4 + Math.random() * 6;
+        p.style.cssText = `
+            left: ${cx}px; top: ${cy}px;
+            width: ${size}px; height: ${size}px;
+            background: ${color || '#f59e0b'};
+            --dx: ${dx}px; --dy: ${dy}px;
+        `;
+        boardEl.appendChild(p);
+        setTimeout(() => p.remove(), 700);
+    }
+}
+
+function spawnExplosionParticles(row, col, type) {
+    const boardEl = document.getElementById('gameBoard');
+    if (!boardEl) return;
+    const cell = boardEl.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+    if (!cell) return;
+
+    const colors = {
+        bomb: '#ef4444',
+        lightning: '#eab308',
+        cross: '#3b82f6',
+        rainbow: '#a855f7'
+    };
+    spawnParticles(type === 'cross' ? 24 : type === 'rainbow' ? 20 : 12, cell, colors[type] || '#f59e0b');
+}
+
+function screenShake(intensity) {
+    const page = document.querySelector('.game-page');
+    if (!page) return;
+    page.style.animation = 'none';
+    page.offsetHeight; // reflow
+    page.style.animation = `screen-shake ${0.15 + intensity * 0.05}s ease`;
+    page.style.setProperty('--shake-px', (intensity * 2) + 'px');
+}
+
+function screenFlash(color) {
+    const boardEl = document.getElementById('gameBoard');
+    if (!boardEl) return;
+    const flash = document.createElement('div');
+    flash.className = 'screen-flash';
+    if (color === 'rainbow') {
+        flash.classList.add('rainbow-flash');
+    } else {
+        flash.style.background = color || 'rgba(255,255,255,0.3)';
+    }
+    boardEl.appendChild(flash);
+    setTimeout(() => flash.remove(), 400);
 }
 
 // ==========================================
@@ -367,67 +430,68 @@ async function processCascade() {
         if (groups.length === 0) break;
 
         comboCount++;
+        if (comboCount > maxCombo) maxCombo = comboCount;
         const multiplier = Math.min(0.5 + comboCount * 0.5, 3);
 
-        // Collect all matched cells
         const allMatchedSet = new Set();
         const allMatched = [];
         for (const g of groups) {
             for (const c of g.cells) {
                 const key = `${c.row},${c.col}`;
-                if (!allMatchedSet.has(key)) {
-                    allMatchedSet.add(key);
-                    allMatched.push(c);
-                }
+                if (!allMatchedSet.has(key)) { allMatchedSet.add(key); allMatched.push(c); }
             }
         }
 
-        // Determine special pieces to create BEFORE removing
         const specials = determineSpecials(groups, lastSwap);
-
-        // Activate any existing specials in the match zone
         const activation = activateSpecials(board, allMatched);
         const toRemove = activation.cells;
         const bonusScore = activation.bonusScore;
 
-        // Base score from matched count + bonus from specials
         const baseScore = scoreMatches(allMatched.length);
         const roundScore = Math.round((baseScore + bonusScore) * multiplier);
         cascadeScore += roundScore;
 
-        // Show combo popup
-        if (comboCount > 1) {
-            showComboPopup(comboCount, multiplier);
+        // Epic combo effects
+        if (comboCount >= 2) {
+            const level = Math.min(comboCount, COMBO_LEVELS.length - 1);
+            const cfg = COMBO_LEVELS[level];
+            if (cfg) {
+                showComboPopup(comboCount, multiplier, cfg);
+                if (cfg.shake) screenShake(cfg.shake);
+                if (cfg.flash) screenFlash(cfg.flash === 'rainbow' ? 'rainbow' : cfg.flash === 'purple' ? 'rgba(168,85,247,0.25)' : 'rgba(59,130,246,0.25)');
+            }
         }
 
         // Animate special activations
         if (activation.activatedSpecials.length > 0) {
             renderBoard([], false, activation.activatedSpecials);
-            await sleep(200);
+            for (const sp of activation.activatedSpecials) {
+                spawnExplosionParticles(sp.row, sp.col, sp.type);
+            }
+            await sleep(250);
         }
 
-        // Animate matched/destroyed cells
+        // Animate matched
         renderBoard(toRemove);
-        await sleep(300);
+        await sleep(280);
 
-        // Remove all matched cells
+        // Remove
         removeMatches(board, toRemove);
         renderBoard();
-        await sleep(100);
+        await sleep(80);
 
-        // Place special pieces AFTER removal (they survive the match)
+        // Place specials
         for (const sp of specials) {
-            // Only place if the cell was emptied
             if (!board[sp.row][sp.col]) {
                 board[sp.row][sp.col] = { id: sp.id, emoji: PIECES.find(p => p.id === sp.id)?.emoji || '⭐', special: sp.type };
+                frozenMap[sp.row][sp.col] = 0;
             }
         }
 
         applyGravity(board);
         renderBoard([], true);
-        await sleep(200);
+        await sleep(180);
 
-        // Reset lastSwap after first cascade iteration
         lastSwap = null;
     }
 
@@ -436,9 +500,7 @@ async function processCascade() {
     comboCount = 0;
     animating = false;
 
-    if (!hasValidMoves(board)) {
-        board = createBoard();
-    }
+    if (!hasValidMoves(board)) board = createBoard();
 
     renderBoard();
     updateHeader();
@@ -457,15 +519,14 @@ async function handleCellClick(row, col) {
     const dc = Math.abs(selected.col - col);
 
     if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
-        swap(board, selected.row, selected.col, row, col);
-
+        swapCells(board, selected.row, selected.col, row, col);
         const groups = findMatchGroups(board);
         if (groups.length > 0) {
             lastSwap = { row, col };
             selected = null;
             await processCascade();
         } else {
-            swap(board, selected.row, selected.col, row, col);
+            swapCells(board, selected.row, selected.col, row, col);
             selected = null;
             renderBoard();
         }
@@ -483,9 +544,7 @@ function startTimer() {
     timerInterval = setInterval(() => {
         timeLeft--;
         updateHeader();
-        if (timeLeft <= 0) {
-            endGame();
-        }
+        if (timeLeft <= 0) endGame();
     }, 1000);
 }
 
@@ -516,43 +575,40 @@ function renderBoard(matchedCells = [], falling = false, activatedSpecials = [])
 
     const matchSet = new Set(matchedCells.map(m => `${m.row},${m.col}`));
     const specialActivationMap = {};
-    for (const sp of activatedSpecials) {
-        specialActivationMap[`${sp.row},${sp.col}`] = sp.type;
-    }
+    for (const sp of activatedSpecials) specialActivationMap[`${sp.row},${sp.col}`] = sp.type;
 
     let html = '';
-    for (let r = 0; r < BOARD_SIZE; r++) {
-        for (let c = 0; c < BOARD_SIZE; c++) {
+    for (let r = 0; r < BOARD_ROWS; r++) {
+        for (let c = 0; c < BOARD_COLS; c++) {
             const piece = board[r][c];
             const isSelected = selected && selected.row === r && selected.col === c;
             const isMatched = matchSet.has(`${r},${c}`);
             const activationType = specialActivationMap[`${r},${c}`];
+            const frozen = frozenMap[r]?.[c] || 0;
             const classes = ['game-cell'];
 
             if (isSelected) classes.push('selected');
             if (isMatched) classes.push('matched');
             if (falling) classes.push('falling');
-
-            // Special piece classes
-            if (piece?.special) {
-                classes.push(`special-${piece.special}`);
-            }
-
-            // Special activation animation
+            if (piece?.special) classes.push(`special-${piece.special}`);
             if (activationType === 'bomb') classes.push('exploding');
             if (activationType === 'lightning') classes.push('zapping');
+            if (activationType === 'cross') classes.push('cross-blasting');
             if (activationType === 'rainbow') classes.push('rainbow-clear');
+            if (frozen === 2) classes.push('frozen-solid');
+            if (frozen === 1) classes.push('frozen-cracked');
 
             let content = piece?.emoji || '';
-            // Show special indicator overlay
             if (piece?.special && SPECIAL_TYPES[piece.special]) {
                 content += `<span class="special-indicator">${SPECIAL_TYPES[piece.special].emoji}</span>`;
+            }
+            if (frozen > 0) {
+                content += `<span class="ice-overlay">${frozen === 2 ? '❄️' : '💧'}</span>`;
             }
 
             html += `<div class="${classes.join(' ')}" data-row="${r}" data-col="${c}">${content}</div>`;
         }
     }
-
     boardEl.innerHTML = html;
 
     boardEl.querySelectorAll('.game-cell').forEach(cell => {
@@ -562,25 +618,31 @@ function renderBoard(matchedCells = [], falling = false, activatedSpecials = [])
     });
 }
 
-function showComboPopup(combo, multiplier) {
+function showComboPopup(combo, multiplier, cfg) {
     const boardEl = document.getElementById('gameBoard');
     if (!boardEl) return;
 
     const popup = document.createElement('div');
     popup.className = 'combo-popup';
-    const size = Math.min(32 + combo * 4, 48);
+    if (cfg.mega) popup.classList.add('mega');
+    const size = Math.min(36 + combo * 6, 64);
     popup.style.fontSize = size + 'px';
-    popup.textContent = `x${multiplier.toFixed(1)}!`;
-    boardEl.style.position = 'relative';
+    popup.style.color = cfg.color;
+    popup.innerHTML = `<span class="combo-emoji">${cfg.emoji}</span> ${cfg.label}`;
     boardEl.appendChild(popup);
+    setTimeout(() => popup.remove(), 1200);
 
-    setTimeout(() => popup.remove(), 900);
+    // Spawn combo particles around the board center
+    if (cfg.particles) {
+        const center = boardEl.querySelector(`[data-row="4"][data-col="4"]`);
+        if (center) spawnParticles(cfg.particles, center, cfg.color);
+    }
 }
 
 function updateHeader() {
     const timerEl = document.getElementById('gameTimer');
     const scoreEl = document.getElementById('gameScore');
-    const coinsEl = document.getElementById('gameCoins');
+    const coinsEl = document.getElementById('gameCoinsValue');
     const comboEl = document.getElementById('gameCombo');
 
     if (timerEl) {
@@ -593,7 +655,8 @@ function updateHeader() {
     if (coinsEl) coinsEl.textContent = `${coinsEarned}/${MAX_COINS}`;
     if (comboEl) {
         if (comboCount > 1) {
-            comboEl.textContent = `Combo x${(0.5 + comboCount * 0.5).toFixed(1)}`;
+            const mult = Math.min(0.5 + comboCount * 0.5, 3);
+            comboEl.textContent = `Combo x${mult.toFixed(1)}`;
             comboEl.className = 'game-combo active';
         } else {
             comboEl.textContent = '';
@@ -606,16 +669,18 @@ function renderGameOver() {
     const boardEl = document.getElementById('gameBoard');
     if (!boardEl) return;
 
-    const stars = totalScore >= 300 ? '3' : totalScore >= 150 ? '2' : totalScore >= 50 ? '1' : '0';
-    const starsDisplay = stars === '3' ? '⭐⭐⭐' : stars === '2' ? '⭐⭐' : stars === '1' ? '⭐' : '';
+    const stars = totalScore >= 400 ? 3 : totalScore >= 200 ? 2 : totalScore >= 80 ? 1 : 0;
+    const starsArr = [];
+    for (let i = 0; i < 3; i++) starsArr.push(i < stars ? '⭐' : '☆');
 
     boardEl.innerHTML += `
     <div class="game-overlay">
-        <h2>Час вийшов!</h2>
-        ${starsDisplay ? `<div class="final-stars">${starsDisplay}</div>` : ''}
+        <h2>🎉 Час вийшов!</h2>
+        <div class="final-stars">${starsArr.join(' ')}</div>
         <div class="final-score-label">Рахунок</div>
         <div class="final-score">${totalScore}</div>
         <div class="final-coins">+${coinsEarned} монет 💰</div>
+        ${maxCombo >= 3 ? `<div class="final-combo">Макс. комбо: x${Math.min(0.5 + maxCombo * 0.5, 3).toFixed(1)} 🔥</div>` : ''}
         <button class="game-start-btn" onclick="location.reload()">🔄 Ще раз</button>
     </div>`;
 }
@@ -635,7 +700,6 @@ async function initGamePage() {
     } catch (e) {
         console.error('Status error', e);
     }
-
     renderGameUI();
 }
 
@@ -647,24 +711,26 @@ function renderGameUI() {
 
     document.getElementById('mainApp').innerHTML = `
     <div class="game-page">
-        <div style="margin-bottom:16px">
-            <a href="/profile" style="color:var(--primary);text-decoration:none;font-weight:600">← Профіль</a>
+        <div style="margin-bottom:12px">
+            <a href="/profile" class="game-back-link">← Назад</a>
         </div>
 
         <div class="game-header">
             <div class="game-title">🎮 3 в ряд</div>
             <div id="gameScore" class="game-score">0</div>
-            <div id="gameTimer" class="game-timer">1:00</div>
-            <div id="gameCoins" class="game-coins-display">💰 <span id="gameCoinsValue">0/${MAX_COINS}</span></div>
+            <div id="gameTimer" class="game-timer">1:15</div>
+            <div class="game-coins-display">💰 <span id="gameCoinsValue">0/${MAX_COINS}</span></div>
         </div>
 
         <div class="game-specials-legend">
-            <span title="4 в ряд">💣 4</span>
-            <span title="5+ в ряд">⚡ 5+</span>
-            <span title="L/T форма">🌟 L/T</span>
+            <span title="4 в ряд → Бомба 3×3">💣 4</span>
+            <span title="5 в ряд → Блискавка (рядок)">⚡ 5</span>
+            <span title="6+ в ряд → Хрест (рядок+стовпець)">✦ 6+</span>
+            <span title="L/T форма → Веселка (всі такого типу)">🌈 L/T</span>
+            <span title="Крижані клітинки — вдар двічі щоб зламати">❄️ Лід</span>
         </div>
 
-        <div id="gameBoard" class="game-board" style="position:relative;min-height:300px">
+        <div id="gameBoard" class="game-board" style="position:relative">
             ${!canPlay ? `
                 <div class="game-cooldown">
                     ${cooldown > 0
@@ -674,15 +740,18 @@ function renderGameUI() {
                     <button class="game-start-btn" style="margin-top:16px;font-size:var(--font-sm);padding:8px 16px" onclick="resetMinigame()">🔄 Скинути кулдаун</button>
                 </div>
             ` : `
-                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;gap:16px">
-                    <p style="font-size:48px">🎮</p>
-                    <p style="color:var(--gray-500)">З'єднуй 3+ однакових елементи</p>
+                <div class="game-start-screen">
+                    <div class="start-icon">🎮</div>
+                    <h3>3 в ряд — Epic Edition</h3>
+                    <p class="start-subtitle">9×9 поле · 7 типів · 4 спецблоки · Крижані клітинки</p>
                     <div class="game-hints">
-                        <p>💣 Зібери <b>4 в ряд</b> → Бомба (вибух 3×3)</p>
-                        <p>⚡ Зібери <b>5 в ряд</b> → Блискавка (весь рядок)</p>
-                        <p>🌟 Зібери <b>L або T</b> → Зірка (всі такого типу)</p>
+                        <div class="hint-row"><span class="hint-icon">💣</span> <b>4 в ряд</b> — Бомба (вибух 3×3)</div>
+                        <div class="hint-row"><span class="hint-icon">⚡</span> <b>5 в ряд</b> — Блискавка (весь рядок)</div>
+                        <div class="hint-row"><span class="hint-icon">✦</span> <b>6+ в ряд</b> — Хрест (рядок + стовпець)</div>
+                        <div class="hint-row"><span class="hint-icon">🌈</span> <b>L або T</b> — Веселка (всі такого типу)</div>
+                        <div class="hint-row"><span class="hint-icon">❄️</span> <b>Лід</b> — вдар двічі щоб зламати!</div>
                     </div>
-                    <button class="game-start-btn" onclick="startGame()">▶️ Почати гру</button>
+                    <button class="game-start-btn pulse" onclick="startGame()">▶️ Почати гру</button>
                 </div>
             `}
         </div>
@@ -691,7 +760,7 @@ function renderGameUI() {
 
         <div class="game-footer">
             <div class="game-best">Рекорд: ${bestScore} 🏆</div>
-            <div style="color:var(--gray-500);font-size:var(--font-sm)">Ігор сьогодні: ${todayGames}/${gameStatus?.maxDaily || 5}</div>
+            <div style="color:var(--gray-500);font-size:var(--font-sm)">Ігор: ${todayGames}/${gameStatus?.maxDaily || 5}</div>
         </div>
     </div>`;
 
@@ -712,6 +781,7 @@ function startGame() {
     totalScore = 0;
     coinsEarned = 0;
     comboCount = 0;
+    maxCombo = 0;
     lastSwap = null;
     gameActive = true;
     renderBoard();
@@ -723,11 +793,8 @@ async function resetMinigame() {
     try {
         const r = await fetch('/api/minigame/reset', { method: 'POST', headers: getAuthHeaders() });
         const data = await r.json();
-        if (data.success) {
-            location.reload();
-        } else {
-            showNotification(data.error || 'Помилка скидання', 'error');
-        }
+        if (data.success) location.reload();
+        else showNotification(data.error || 'Помилка скидання', 'error');
     } catch (e) {
         showNotification('Помилка: ' + e.message, 'error');
     }

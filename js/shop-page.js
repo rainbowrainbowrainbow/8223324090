@@ -106,9 +106,7 @@ function setCategory(cat) {
 }
 
 async function buyItem(itemId, itemName) {
-    const ok = typeof confirmModal === 'function'
-        ? await confirmModal(`Купити "${itemName}"?`, { okText: 'Купити', type: 'success' })
-        : confirm(`Купити "${itemName}"?`);
+    const ok = await confirmModal(`Купити "${itemName}"?`, { okText: 'Купити', type: 'success' });
     if (!ok) return;
 
     const result = await shopApiPost('/shop/buy', { item_id: itemId });
@@ -121,19 +119,13 @@ async function buyItem(itemId, itemName) {
         shopWallet = wallet;
         renderShop();
     } else {
-        if (typeof showNotification === 'function') {
-            showNotification(result?.error || 'Помилка покупки', 'error');
-        } else {
-            alert(`❌ ${result?.error || 'Помилка'}`);
-        }
+        showNotification(result?.error || 'Помилка покупки', 'error');
     }
 }
 
 function showPurchaseEffect(itemName) {
     // Success notification
-    if (typeof showNotification === 'function') {
-        showNotification(`✅ Куплено: ${itemName}`, 'success');
-    }
+    showNotification(`✅ Куплено: ${itemName}`, 'success');
 
     // Confetti-like particle burst
     const container = document.createElement('div');

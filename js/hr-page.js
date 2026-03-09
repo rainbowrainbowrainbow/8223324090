@@ -313,7 +313,7 @@ function renderToday(data) {
 async function handleClock(staffId, action, name, workedMin) {
     if (action === 'out') {
         const worked = fmtMinutes(workedMin) || 'невідомо';
-        if (!confirm(`Завершити зміну для ${name}?\nВідпрацьовано: ${worked}`)) return;
+        if (!await confirmModal(`Завершити зміну для ${name}?\nВідпрацьовано: ${worked}`, { type: 'warning', okText: 'Завершити' })) return;
     }
     const endpoint = action === 'out' ? '/clock-out' : '/clock-in';
     const data = await hrFetch(endpoint, {
@@ -609,7 +609,7 @@ async function saveShift() {
 
 async function deleteShift() {
     if (!editingShift || !editingShift.existing) return;
-    if (!confirm('Видалити зміну?')) return;
+    if (!await confirmModal('Видалити зміну?', { type: 'danger', okText: 'Видалити' })) return;
     const data = await hrFetch(`/shifts/${editingShift.existing.id}`, { method: 'DELETE' });
     if (data && data.success) {
         showNotification('Зміну видалено', 'success');
@@ -627,7 +627,7 @@ async function copyWeek() {
     nextWeek.setDate(nextWeek.getDate() + 7);
     const targetWeek = formatDate(nextWeek);
 
-    if (!confirm(`Копіювати розклад тижня ${sourceWeek} → ${targetWeek}?`)) return;
+    if (!await confirmModal(`Копіювати розклад тижня ${sourceWeek} → ${targetWeek}?`, { type: 'warning', okText: 'Копіювати' })) return;
 
     const data = await hrFetch('/shifts/copy-week', {
         method: 'POST',

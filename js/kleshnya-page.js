@@ -297,9 +297,7 @@
                 renderSessions();
             }
         } else if (action === 'clear') {
-            const doClear = typeof confirmModal === 'function'
-                ? await confirmModal('Очистити всі повідомлення цього чату?', { type: 'danger', okText: 'Очистити' })
-                : confirm('Очистити всі повідомлення цього чату?');
+            const doClear = await confirmModal('Очистити всі повідомлення цього чату?', { type: 'danger', okText: 'Очистити' });
             if (doClear) {
                 var token = getToken();
                 await fetch(API_BASE + '/kleshnya/sessions/' + sid + '/messages', {
@@ -315,9 +313,7 @@
                 renderSessions();
             }
         } else if (action === 'delete') {
-            const doDelete = typeof confirmModal === 'function'
-                ? await confirmModal('Видалити цей чат назавжди?', { type: 'danger', okText: 'Видалити' })
-                : confirm('Видалити цей чат назавжди?');
+            const doDelete = await confirmModal('Видалити цей чат назавжди?', { type: 'danger', okText: 'Видалити' });
             if (doDelete) {
                 await apiDeleteKleshnyaSession(sid);
                 sessions = sessions.filter(function (s) { return s.id !== sid; });

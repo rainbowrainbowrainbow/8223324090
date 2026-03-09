@@ -648,7 +648,7 @@ async function addNewPrice() {
 }
 
 async function deletePrice(code) {
-    if (!confirm(`Видалити ціну "${code}"?`)) return;
+    if (!await confirmModal(`Видалити ціну "${code}"?`, { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDeletePrice(code);
     if (result.success) {
         showNotification(`Ціну ${code} видалено`, 'success');
@@ -1007,7 +1007,7 @@ async function submitNewDiscount() {
 }
 
 async function deleteDiscount(id) {
-    if (!confirm('Деактивувати цей промокод?')) return;
+    if (!await confirmModal('Деактивувати цей промокод?', { type: 'warning', okText: 'Деактивувати' })) return;
     const result = await apiDeleteDiscount(id);
     if (result.success) {
         showNotification('Промокод деактивовано', 'success');
@@ -1146,7 +1146,7 @@ async function submitNewProposal() {
 }
 
 async function deleteProposal(id) {
-    if (!confirm('Видалити цю пропозицію?')) return;
+    if (!await confirmModal('Видалити цю пропозицію?', { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDeleteProposal(id);
     if (result.success) {
         showNotification('Пропозицію видалено', 'success');

@@ -300,3 +300,44 @@ if (typeof showNotification === 'undefined') {
         }, 3000);
     };
 }
+
+// v22.7.0: Fallback confirmModal for pages without ui.js
+if (typeof confirmModal === 'undefined') {
+    window.confirmModal = function(message, options) {
+        options = options || {};
+        return new Promise(function(resolve) {
+            var okText = options.okText || 'Підтвердити';
+            var cancelText = options.cancelText || 'Скасувати';
+            var type = options.type || 'warning';
+
+            var overlay = document.createElement('div');
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML =
+                '<div class="confirm-dialog ' + type + '">' +
+                    '<div class="confirm-icon">' + (type === 'danger' ? '⚠️' : type === 'success' ? '✅' : '❓') + '</div>' +
+                    '<div class="confirm-message">' + message + '</div>' +
+                    '<div class="confirm-actions">' +
+                        '<button class="confirm-btn confirm-cancel">' + cancelText + '</button>' +
+                        '<button class="confirm-btn confirm-ok ' + type + '">' + okText + '</button>' +
+                    '</div>' +
+                '</div>';
+
+            function close(result) {
+                overlay.classList.add('confirm-exit');
+                setTimeout(function() { overlay.remove(); }, 200);
+                document.removeEventListener('keydown', onKey);
+                resolve(result);
+            }
+
+            overlay.querySelector('.confirm-cancel').addEventListener('click', function() { close(false); });
+            overlay.querySelector('.confirm-ok').addEventListener('click', function() { close(true); });
+            overlay.addEventListener('click', function(e) { if (e.target === overlay) close(false); });
+
+            function onKey(e) { if (e.key === 'Escape') close(false); }
+            document.addEventListener('keydown', onKey);
+
+            document.body.appendChild(overlay);
+            requestAnimationFrame(function() { overlay.querySelector('.confirm-ok').focus(); });
+        });
+    };
+}

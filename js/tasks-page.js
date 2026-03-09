@@ -563,8 +563,7 @@ async function cycleStatus(taskId, newStatus) {
 }
 
 async function deleteTask(taskId) {
-    if (typeof confirmModal === 'function') { if (!await confirmModal('Видалити цю задачу?', { type: 'danger', okText: 'Видалити' })) return; }
-    else { if (!confirm('Видалити цю задачу?')) return; }
+    if (!await confirmModal('Видалити цю задачу?', { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDeleteTask(taskId);
     if (result && result.success) {
         allTasks = allTasks.filter(t => t.id !== taskId);
@@ -644,8 +643,7 @@ async function addTemplate() {
 }
 
 async function deleteTemplate(templateId) {
-    if (typeof confirmModal === 'function') { if (!await confirmModal('Видалити цей шаблон?', { type: 'danger', okText: 'Видалити' })) return; }
-    else { if (!confirm('Видалити цей шаблон?')) return; }
+    if (!await confirmModal('Видалити цей шаблон?', { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDeleteTemplate(templateId);
     if (result && result.success) {
         showNotification('Шаблон видалено', 'success');

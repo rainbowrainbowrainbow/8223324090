@@ -726,10 +726,10 @@ async function resetMinigame() {
         if (data.success) {
             location.reload();
         } else {
-            alert(data.error || 'Помилка скидання');
+            showNotification(data.error || 'Помилка скидання', 'error');
         }
     } catch (e) {
-        alert('Помилка: ' + e.message);
+        showNotification('Помилка: ' + e.message, 'error');
     }
 }
 

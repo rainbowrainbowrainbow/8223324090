@@ -266,7 +266,7 @@ async function saveProduct() {
 }
 
 async function deleteProduct(productId) {
-    if (!confirm('Деактивувати цю програму?')) return;
+    if (!await confirmModal('Деактивувати цю програму?', { type: 'warning', okText: 'Деактивувати' })) return;
     const result = await apiDeleteProduct(productId);
     if (result && result.success) {
         showNotification('Програму деактивовано', 'success');

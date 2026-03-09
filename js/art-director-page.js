@@ -442,7 +442,7 @@ async function openContentDetail(id) {
 }
 
 async function deleteContent(id) {
-    if (!confirm('Видалити цей контент?')) return;
+    if (!await confirmModal('Видалити цей контент?', { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDelete(`/content/${id}`);
     if (result.success) {
         showNotification('Контент видалено', 'success');
@@ -695,7 +695,7 @@ function renderBrandItem(item, category) {
 }
 
 async function deleteBrandItem(id) {
-    if (!confirm('Видалити це правило?')) return;
+    if (!await confirmModal('Видалити це правило?', { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDelete(`/brand/${id}`);
     if (result.success) {
         showNotification('Правило видалено', 'success');

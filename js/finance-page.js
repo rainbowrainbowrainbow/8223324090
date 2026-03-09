@@ -223,7 +223,7 @@ async function saveTransaction() {
 }
 
 async function deleteTransaction(id) {
-    if (!confirm('Видалити транзакцію?')) return;
+    if (!await confirmModal('Видалити транзакцію?', { type: 'danger', okText: 'Видалити' })) return;
     try {
         await apiRequest('DELETE', `/api/finance/transactions/${id}`);
         showNotification('Транзакцію видалено');

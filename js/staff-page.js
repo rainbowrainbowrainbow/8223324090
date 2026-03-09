@@ -524,8 +524,7 @@ async function handleCopyWeek() {
         ? 'всіх відділів'
         : (StaffState.departments[StaffState.activeDept] || StaffState.activeDept);
 
-    const ok = confirm(`Скопіювати графік ${deptLabel} з тижня ${fromMonday} на тиждень ${toMonday}?\n\nІснуючі записи будуть перезаписані.`);
-    if (!ok) return;
+    if (!await confirmModal(`Скопіювати графік ${deptLabel} з тижня ${fromMonday} на тиждень ${toMonday}?\n\nІснуючі записи будуть перезаписані.`, { type: 'warning', okText: 'Копіювати' })) return;
 
     const result = await copyWeekSchedule(fromMonday, toMonday, StaffState.activeDept);
     if (result.success) {

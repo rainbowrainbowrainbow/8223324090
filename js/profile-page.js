@@ -591,8 +591,7 @@ async function showAddNote() {
 }
 
 async function deleteNote(id) {
-    if (typeof confirmModal === 'function') { if (!await confirmModal('Видалити нотатку?', { type: 'danger', okText: 'Видалити' })) return; }
-    else { if (!confirm('Видалити нотатку?')) return; }
+    if (!await confirmModal('Видалити нотатку?', { type: 'danger', okText: 'Видалити' })) return;
     await apiDelete(`/notes/${id}`);
     myNotes = myNotes.filter(n => n.id !== id);
     renderProfile();

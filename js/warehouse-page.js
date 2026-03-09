@@ -322,7 +322,7 @@ async function saveItem() {
 }
 
 async function deleteItem(itemId) {
-    if (!confirm('Видалити цю позицію зі складу?')) return;
+    if (!await confirmModal('Видалити цю позицію зі складу?', { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDeleteWarehouseItem(itemId);
     if (result && result.success) {
         showNotification('Позицію видалено', 'success');
@@ -639,7 +639,7 @@ async function removeProcItem(listId, itemId) {
 
 async function completeProcList() {
     if (!currentProcListId) return;
-    if (!confirm('Закупити все? Позиції, пов\'язані зі складом, будуть поповнені автоматично.')) return;
+    if (!await confirmModal('Закупити все? Позиції, пов\'язані зі складом, будуть поповнені автоматично.', { type: 'warning', okText: 'Закупити' })) return;
 
     const result = await apiCompleteProcurement(currentProcListId);
     if (result && result.success) {

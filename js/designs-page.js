@@ -323,7 +323,7 @@ async function togglePin(id) {
 }
 
 async function deleteDesign(id) {
-    if (!confirm('Видалити цей дизайн?')) return;
+    if (!await confirmModal('Видалити цей дизайн?', { type: 'danger', okText: 'Видалити' })) return;
     await apiFetch(`${API}/${id}`, { method: 'DELETE' });
     showNotification('Дизайн видалено');
     await Promise.all([loadDesigns(), loadTags()]);
@@ -607,7 +607,7 @@ function filterCollection(id) {
 window.filterCollection = filterCollection;
 
 async function deleteCollection(id) {
-    if (!confirm('Видалити колекцію? Дизайни збережуться.')) return;
+    if (!await confirmModal('Видалити колекцію? Дизайни збережуться.', { type: 'danger', okText: 'Видалити' })) return;
     await apiFetch(`${API}/collections/${id}`, { method: 'DELETE' });
     await loadCollections();
     renderCollections();

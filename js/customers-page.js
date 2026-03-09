@@ -477,7 +477,7 @@ window.editCustomer = async function(id) {
 };
 
 window.confirmDeleteCustomer = async function(id) {
-    if (!confirm('Видалити клієнта? Бронювання будуть відв\'язані.')) return;
+    if (!await confirmModal('Видалити клієнта? Бронювання будуть відв\'язані.', { type: 'danger', okText: 'Видалити' })) return;
     try {
         await deleteCustomer(id);
         document.getElementById('customerDetailModal').classList.add('hidden');

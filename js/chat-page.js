@@ -338,7 +338,7 @@
             if (input) { input.value = ''; if (typeof _autoGrow === 'function') _autoGrow(input); }
         } catch (err) {
             console.error('[Chat] Upload error:', err);
-            alert('Помилка завантаження файлу');
+            showNotification('Помилка завантаження файлу', 'error');
         }
     }
 
@@ -576,7 +576,7 @@
                     _newChannelOverlay.style.display = 'none';
                 }
             } catch (err) {
-                alert(err.message || 'Помилка створення каналу');
+                showNotification(err.message || 'Помилка створення каналу', 'error');
             }
         });
     }
@@ -1397,7 +1397,7 @@
 
     async function _deleteFromContext() {
         if (!_contextMsg) return;
-        if (!confirm('Видалити повідомлення?')) return;
+        if (!await confirmModal('Видалити повідомлення?', { type: 'danger', okText: 'Видалити' })) return;
         try {
             await _api('DELETE', '/messages/' + _contextMsg.id);
             // Update UI immediately
@@ -2945,7 +2945,7 @@
         var input = document.getElementById('chatInput');
         var content = input ? input.value.trim() : '';
         if (!content || !_currentChannel) {
-            alert('Спочатку напишіть повідомлення');
+            showNotification('Спочатку напишіть повідомлення', 'error');
             return;
         }
 
@@ -3285,7 +3285,7 @@
             }, 1000);
         } catch (err) {
             console.error('[Chat] Mic access error:', err);
-            alert('Немає доступу до мікрофону');
+            showNotification('Немає доступу до мікрофону', 'error');
         }
     }
 
@@ -4353,7 +4353,7 @@
             }
         } catch (err) {
             console.error('[Chat] Task creation error:', err);
-            alert('Помилка: ' + err.message);
+            showNotification('Помилка: ' + err.message, 'error');
         }
     }
 

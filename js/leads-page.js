@@ -228,9 +228,9 @@ function isModalDirty() {
     return getModalState() !== modalInitialState;
 }
 
-function closeModal(force = false) {
+async function closeModal(force = false) {
     if (!force && isModalDirty()) {
-        if (!confirm('Є незбережені дані. Закрити?')) return;
+        if (!await confirmModal('Є незбережені дані. Закрити?', { type: 'warning', okText: 'Закрити' })) return;
     }
     document.getElementById('leadModal').classList.remove('active');
 }
@@ -238,7 +238,7 @@ function closeModal(force = false) {
 async function saveLead() {
     const editId = document.getElementById('leadEditId').value;
     const name = document.getElementById('leadName').value.trim();
-    if (!name) { alert("Ім'я обов'язкове"); return; }
+    if (!name) { showNotification("Ім'я обов'язкове", 'error'); return; }
 
     const body = {
         client_name: name,
@@ -259,17 +259,17 @@ async function saveLead() {
             res = await apiFetch('/api/leads', { method: 'POST', body: JSON.stringify(body) });
         }
         const data = await res.json();
-        if (!data.success) { alert(data.error || 'Помилка'); return; }
+        if (!data.success) { showNotification(data.error || 'Помилка', 'error'); return; }
         closeModal(true);
         await loadLeads();
     } catch (err) {
         console.error('Save lead error', err);
-        alert('Помилка збереження');
+        showNotification('Помилка збереження', 'error');
     }
 }
 
 async function deleteLead(id) {
-    if (!confirm('Видалити лід?')) return;
+    if (!await confirmModal('Видалити лід?', { type: 'danger', okText: 'Видалити' })) return;
     try {
         await apiFetch(`/api/leads/${id}`, { method: 'DELETE' });
         await loadLeads();

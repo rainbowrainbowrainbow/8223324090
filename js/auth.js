@@ -390,7 +390,7 @@ async function openProfileModal() {
 
         <div class="prof-tabs" role="tablist">
             <button class="prof-tab active" data-tab="today" role="tab">Сьогодні</button>
-            <button class="prof-tab" data-tab="game" role="tab">Гра</button>
+            <button class="prof-tab" data-tab="game" role="tab">Профіль</button>
             <button class="prof-tab" data-tab="tasks" role="tab">Задачі</button>
             <button class="prof-tab" data-tab="stats" role="tab">Стати</button>
             <button class="prof-tab" data-tab="settings" role="tab">Налашт.</button>
@@ -747,7 +747,23 @@ async function _profileTabGame(container, data) {
     _gameTabData = { profile, achievements, shop, leaderboard, username };
 
     if (!profile) {
-        container.innerHTML = '<div class="prof-section"><div class="profile-empty">Гейміфікація недоступна</div></div>';
+        // Fallback: show avatar and basic info even without gamification
+        const name = data.user.name || username;
+        const letter = (name || '?')[0].toUpperCase();
+        container.innerHTML = `
+            <div class="prof-section" style="text-align:center;padding:24px 16px">
+                <div class="character-display" style="margin:0 auto 16px;width:120px;height:120px;position:relative">
+                    <div class="character-bg" style="font-size:60px;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0.2">🌳</div>
+                    <div class="character-avatar" style="width:80px;height:80px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)">${letter}</div>
+                </div>
+                <h3 style="margin:0 0 4px;font-size:var(--font-lg)">${name}</h3>
+                <div style="color:var(--gray-500);margin-bottom:16px">${data.user.role || ''}</div>
+                <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+                    <a href="/game" class="game-start-btn" style="text-decoration:none;padding:10px 20px;font-size:var(--font-sm)">🎮 Міні-гра</a>
+                    <a href="/profile" class="game-start-btn" style="text-decoration:none;padding:10px 20px;font-size:var(--font-sm);background:var(--gray-200);color:var(--gray-700)">👤 Повний профіль</a>
+                </div>
+                <div style="margin-top:16px;color:var(--gray-400);font-size:var(--font-sm)">Система досягнень завантажується...</div>
+            </div>`;
         return;
     }
 

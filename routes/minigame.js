@@ -8,6 +8,8 @@ const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Minigame');
 
+const { updateQuestProgress } = require('./quests');
+
 const ANY_ROLE = ['admin', 'user', 'animator', 'instructor', 'waiter', 'senior_instructor', 'manager', 'senior_manager', 'vice_director', 'director', 'creator'];
 const COOLDOWN_MS = 30 * 60 * 1000; // 30 min
 const MAX_DAILY = 5;
@@ -86,6 +88,9 @@ router.post('/complete', requireRole(...ANY_ROLE), async (req, res) => {
             'INSERT INTO minigame_sessions (user_id, score, coins_earned) VALUES ($1, $2, $3)',
             [req.user.id, score, sanitizedCoins]
         );
+
+        // Track quest progress (fire-and-forget)
+        updateQuestProgress(req.user.id, 'play_minigame').catch(() => {});
 
         // Award coins
         if (sanitizedCoins > 0) {

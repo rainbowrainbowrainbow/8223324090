@@ -1,6 +1,6 @@
 /* ==========================================
-   MINIGAME: MATCH-3
-   v22.4.0
+   MINIGAME: MATCH-3 with Special Pieces
+   v22.7.0
    ========================================== */
 
 .game-page { max-width: 500px; margin: 0 auto; padding: 20px; text-align: center; }
@@ -9,21 +9,43 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     padding: 12px 16px;
     background: white;
     border-radius: var(--radius);
     box-shadow: var(--shadow-sm);
+    gap: 8px;
 }
-.game-title { font-weight: 800; font-size: var(--font-base); }
+.game-title { font-weight: 800; font-size: var(--font-base); white-space: nowrap; }
+.game-score { font-size: var(--font-xl); font-weight: 800; color: var(--primary); font-variant-numeric: tabular-nums; }
 .game-timer { font-size: var(--font-lg); font-weight: 800; font-variant-numeric: tabular-nums; }
 .game-timer.warning { color: #ef4444; animation: timer-pulse 0.5s ease infinite; }
-.game-coins { font-weight: 800; color: #f59e0b; }
+.game-coins-display { font-weight: 700; color: #f59e0b; font-size: var(--font-sm); white-space: nowrap; }
 
 @keyframes timer-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
 }
+
+/* Specials legend */
+.game-specials-legend {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 12px;
+    font-size: var(--font-sm);
+    color: var(--gray-500);
+    font-weight: 600;
+}
+
+/* Hints on start screen */
+.game-hints {
+    text-align: left;
+    font-size: var(--font-sm);
+    color: var(--gray-500);
+    line-height: 1.8;
+}
+.game-hints p { margin: 0; }
 
 .game-board {
     display: grid;
@@ -65,7 +87,81 @@
     50% { transform: scale(1.15); }
 }
 
-/* Match animation */
+/* ==========================================
+   SPECIAL PIECES
+   ========================================== */
+
+.game-cell .special-indicator {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    font-size: 10px;
+    line-height: 1;
+    pointer-events: none;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3));
+}
+
+.game-cell.special-bomb {
+    box-shadow: inset 0 0 0 2px #ef4444;
+    animation: special-idle 1.5s ease infinite;
+}
+.game-cell.special-lightning {
+    box-shadow: inset 0 0 0 2px #eab308;
+    animation: special-idle 1.2s ease infinite;
+}
+.game-cell.special-rainbow {
+    box-shadow: inset 0 0 0 2px #a855f7;
+    background: linear-gradient(135deg, rgba(168,85,247,0.1), rgba(234,179,8,0.1));
+    animation: rainbow-idle 2s linear infinite;
+}
+
+@keyframes special-idle {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+@keyframes rainbow-idle {
+    0% { box-shadow: inset 0 0 0 2px #ef4444; }
+    17% { box-shadow: inset 0 0 0 2px #f59e0b; }
+    33% { box-shadow: inset 0 0 0 2px #eab308; }
+    50% { box-shadow: inset 0 0 0 2px #22c55e; }
+    67% { box-shadow: inset 0 0 0 2px #3b82f6; }
+    83% { box-shadow: inset 0 0 0 2px #a855f7; }
+    100% { box-shadow: inset 0 0 0 2px #ef4444; }
+}
+
+/* Special activation animations */
+.game-cell.exploding {
+    animation: explode 0.4s ease forwards !important;
+}
+@keyframes explode {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.5); background: rgba(239,68,68,0.4); }
+    100% { transform: scale(0); opacity: 0; }
+}
+
+.game-cell.zapping {
+    animation: zap 0.35s ease forwards !important;
+}
+@keyframes zap {
+    0% { opacity: 1; }
+    30% { background: rgba(234,179,8,0.5); transform: scaleX(1.5); }
+    100% { opacity: 0; transform: scaleX(0); }
+}
+
+.game-cell.rainbow-clear {
+    animation: rainbow-dissolve 0.4s ease forwards !important;
+}
+@keyframes rainbow-dissolve {
+    0% { transform: scale(1); }
+    40% { background: rgba(168,85,247,0.4); transform: rotate(180deg) scale(1.3); }
+    100% { opacity: 0; transform: scale(0); }
+}
+
+/* ==========================================
+   MATCH & FALL ANIMATIONS
+   ========================================== */
+
 .game-cell.matched {
     animation: match-pop 0.3s ease forwards;
 }
@@ -75,7 +171,6 @@
     100% { transform: scale(0); opacity: 0; }
 }
 
-/* Falling animation */
 .game-cell.falling {
     animation: cell-fall 0.2s ease-out;
 }
@@ -84,9 +179,32 @@
     to { transform: translateY(0); opacity: 1; }
 }
 
-/* Swap animation */
 .game-cell.swapping {
     transition: transform 0.2s ease;
+}
+
+/* ==========================================
+   COMBO POPUP
+   ========================================== */
+
+.combo-popup {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 36px;
+    font-weight: 800;
+    color: #ef4444;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    animation: combo-float 0.9s ease-out forwards;
+    pointer-events: none;
+    z-index: 20;
+}
+
+@keyframes combo-float {
+    0% { opacity: 1; transform: translate(-50%, -50%) scale(0.5); }
+    25% { transform: translate(-50%, -50%) scale(1.3); }
+    100% { opacity: 0; transform: translate(-50%, -120%) scale(1); }
 }
 
 .game-combo {
@@ -102,6 +220,29 @@
     25% { transform: translateX(-4px); }
     75% { transform: translateX(4px); }
 }
+
+/* ==========================================
+   GAME OVER
+   ========================================== */
+
+.game-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    z-index: 10;
+    backdrop-filter: blur(4px);
+}
+.game-overlay h2 { font-size: var(--font-xl); margin-bottom: 8px; }
+.game-overlay .final-stars { font-size: 36px; margin-bottom: 8px; }
+.game-overlay .final-score-label { font-size: var(--font-sm); color: rgba(255,255,255,0.6); }
+.game-overlay .final-score { font-size: 56px; font-weight: 800; color: var(--primary); line-height: 1.1; }
+.game-overlay .final-coins { font-size: var(--font-lg); color: #f59e0b; margin: 8px 0 20px; }
 
 .game-footer {
     margin-top: 16px;
@@ -132,22 +273,6 @@
 .game-start-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
 .game-start-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-.game-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    border-radius: var(--radius);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    z-index: 10;
-}
-.game-overlay h2 { font-size: var(--font-xl); margin-bottom: 8px; }
-.game-overlay .final-score { font-size: 48px; font-weight: 800; color: #f59e0b; }
-.game-overlay .final-coins { font-size: var(--font-lg); margin: 8px 0 16px; }
-
 .game-cooldown {
     padding: 20px;
     text-align: center;
@@ -164,6 +289,10 @@ body.dark-mode .game-board { background: #2A2A4A; }
 body.dark-mode .game-cell { background: #1E1E38; }
 body.dark-mode .game-cell.selected { background: rgba(201,168,76,0.3); }
 body.dark-mode .game-best { color: #9CA3AF; }
+body.dark-mode .game-specials-legend { color: #9CA3AF; }
+body.dark-mode .game-cell.special-bomb { box-shadow: inset 0 0 0 2px #f87171; }
+body.dark-mode .game-cell.special-lightning { box-shadow: inset 0 0 0 2px #facc15; }
+body.dark-mode .game-cell.special-rainbow { box-shadow: inset 0 0 0 2px #c084fc; background: linear-gradient(135deg, rgba(168,85,247,0.15), rgba(234,179,8,0.15)); }
 
 /* ==========================================
    RESPONSIVE
@@ -171,4 +300,6 @@ body.dark-mode .game-best { color: #9CA3AF; }
 @media (max-width: 400px) {
     .game-board { gap: 2px; padding: 4px; }
     .game-cell { font-size: 16px; }
+    .game-header { padding: 8px 12px; gap: 4px; }
+    .game-specials-legend { gap: 8px; font-size: 12px; }
 }

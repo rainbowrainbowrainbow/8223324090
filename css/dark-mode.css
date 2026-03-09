@@ -1834,6 +1834,35 @@ body.dark-mode .scripts-quick-access {
 /* General: any remaining hardcoded #92400E text */
 body.dark-mode .hosts-warning-text { color: #FCD34D; }
 
+/* Confirm dialog icon variants */
+body.dark-mode .confirm-dialog.danger .confirm-icon {
+    background: rgba(239,68,68,0.15);
+}
+body.dark-mode .confirm-dialog.success .confirm-icon {
+    background: rgba(16,185,129,0.15);
+}
+body.dark-mode .confirm-dialog.warning .confirm-icon {
+    background: rgba(245,158,11,0.15);
+}
+
+/* Login form placeholder */
+body.dark-mode .login-form input::placeholder {
+    color: #6B7280;
+}
+
+/* Status background CSS variables for dark mode */
+body.dark-mode {
+    --status-confirmed-bg: rgba(16,185,129,0.15);
+    --status-confirmed-color: #6EE7B7;
+    --status-confirmed-border: rgba(16,185,129,0.3);
+    --status-preliminary-bg: rgba(245,158,11,0.15);
+    --status-preliminary-color: #FCD34D;
+    --status-preliminary-border: rgba(245,158,11,0.3);
+    --status-cancelled-bg: rgba(239,68,68,0.15);
+    --status-cancelled-color: #FCA5A5;
+    --status-cancelled-border: rgba(239,68,68,0.3);
+}
+
 /* Standalone pages — auth page corrections */
 body.dark-mode .auth-tagline { color: #9CA3AF; }
 body.dark-mode .auth-footer { color: #6B7280; }

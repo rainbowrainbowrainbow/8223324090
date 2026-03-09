@@ -629,17 +629,7 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_user_action_log_username ON user_action_log(username)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_user_action_log_created_at ON user_action_log(created_at)');
 
-        // v10.6: Achievements system
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS user_achievements (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) NOT NULL,
-                achievement_key VARCHAR(50) NOT NULL,
-                unlocked_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE(username, achievement_key)
-            )
-        `);
-        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_achievements_username ON user_achievements(username)');
+        // v10.6→v22.4: Achievements system (table managed by migration 032)
 
         // v10.6: User streaks
         await pool.query(`

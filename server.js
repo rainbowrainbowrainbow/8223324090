@@ -150,6 +150,14 @@ app.use('/api/page-statuses', require('./routes/page-statuses'));
 app.use('/api/leads', require('./routes/leads'));
 app.use('/api/scripts', require('./routes/scripts'));
 
+// v22.4.0: Achievements system
+app.use('/api/wallet', require('./routes/wallet'));
+app.use('/api/achievements', require('./routes/achievements'));
+app.use('/api/shop', require('./routes/shop'));
+app.use('/api', require('./routes/shop')); // /api/inventory, /api/profile/:id, /api/profile/equip
+app.use('/api/notes', require('./routes/notes'));
+app.use('/api/minigame', require('./routes/minigame'));
+
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
 
@@ -258,6 +266,16 @@ app.get('/training', (req, res) => {
 // v20.9.13: leads page
 app.get('/leads', (req, res) => {
     res.sendFile(path.join(__dirname, 'leads.html'));
+});
+// v22.4.0: profile, shop, game pages
+app.get('/profile', (req, res) => {
+    res.sendFile(path.join(__dirname, 'profile.html'));
+});
+app.get('/shop', (req, res) => {
+    res.sendFile(path.join(__dirname, 'shop.html'));
+});
+app.get('/game', (req, res) => {
+    res.sendFile(path.join(__dirname, 'game.html'));
 });
 
 // SPA fallback (must be last)

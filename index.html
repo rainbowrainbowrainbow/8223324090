@@ -15,17 +15,17 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=20.12.0">
-    <link rel="stylesheet" href="css/auth.css?v=20.12.0">
-    <link rel="stylesheet" href="css/layout.css?v=20.12.0">
-    <link rel="stylesheet" href="css/timeline.css?v=20.12.0">
-    <link rel="stylesheet" href="css/panel.css?v=20.12.0">
-    <link rel="stylesheet" href="css/modals.css?v=20.12.0">
-    <link rel="stylesheet" href="css/controls.css?v=20.12.0">
-    <link rel="stylesheet" href="css/features.css?v=20.12.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=20.12.0">
-    <link rel="stylesheet" href="css/responsive.css?v=20.12.0">
-    <link rel="stylesheet" href="css/pages.css?v=20.12.0">
+    <link rel="stylesheet" href="css/base.css?v=22.4.0">
+    <link rel="stylesheet" href="css/auth.css?v=22.4.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.4.0">
+    <link rel="stylesheet" href="css/timeline.css?v=22.4.0">
+    <link rel="stylesheet" href="css/panel.css?v=22.4.0">
+    <link rel="stylesheet" href="css/modals.css?v=22.4.0">
+    <link rel="stylesheet" href="css/controls.css?v=22.4.0">
+    <link rel="stylesheet" href="css/features.css?v=22.4.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.4.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.4.0">
+    <link rel="stylesheet" href="css/pages.css?v=22.4.0">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v20.12.0 — Swagger & Developer Experience</p>
+                <p class="tagline">AI First CRM v22.4.0 — Achievements System MVP</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v20.12.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v22.4.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -89,6 +89,11 @@
                 <a href="/art-director" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
                 <a href="/demo" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
                 <a href="/kleshnya" class="nav-link nav-link-kleshnya sidebar-admin-only hidden"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
+                <div class="sidebar-divider"></div>
+                <span class="sidebar-section-label">Гра</span>
+                <a href="/profile" class="nav-link"><span class="nav-icon">🎮</span> <span class="nav-text">Профіль</span></a>
+                <a href="/shop" class="nav-link"><span class="nav-icon">🛒</span> <span class="nav-text">Магазин</span></a>
+                <a href="/game" class="nav-link"><span class="nav-icon">🕹️</span> <span class="nav-text">3 в ряд</span></a>
                 <div class="sidebar-divider"></div>
                 <span class="sidebar-section-label">Дії</span>
                 <button type="button" id="sidebarHistoryBtn" class="nav-link sidebar-action sidebar-admin-only hidden" title="Історія змін бронювань"><span class="nav-icon">Іс</span> <span class="nav-text">Історія</span></button>
@@ -1143,6 +1148,19 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v22.4.0 — Achievements System MVP (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Ігрова валюта</b> — 1000 стартових монет кожному, заробіток за задачі/ачивки/міні-гру</li>
+                        <li><b>17 ачивок</b> — робочі, соціальні, рідкісні, секретні, сезонні з прогресом</li>
+                        <li><b>Магазин</b> — фони, зброя, одяг, рамки + реальні купони (кава/піца)</li>
+                        <li><b>Інвентар</b> — візуальний RPG-стиль з equipped slots (6x3 сітка)</li>
+                        <li><b>Персонаж</b> — CSS-layers аватар з 5 шарами одягання</li>
+                        <li><b>Міні-гра "3 в ряд"</b> — 8x8, combo, 60 сек, до 50 монет/гру, антифарм</li>
+                        <li><b>Нотатки</b> — sticky notes в профілі з кольорами та pin</li>
+                        <li><b>Dark Mode</b> — виправлено HR, Фінанси, Навчання</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v20.12.0 — Swagger & Developer Experience (Claude Code, 07.03.2026)</h4>
                     <ul>
@@ -3423,27 +3441,27 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/logger.js?v=20.12.0"></script>
-    <script src="js/config.js?v=20.12.0"></script>
-    <script src="js/api.js?v=20.12.0"></script>
-    <script src="js/ui.js?v=20.12.0"></script>
-    <script src="js/auth.js?v=20.12.0"></script>
-    <script src="js/timeline.js?v=20.12.0"></script>
-    <script src="js/booking.js?v=20.12.0"></script>
-    <script src="js/settings.js?v=20.12.0"></script>
-    <script src="js/booking-form.js?v=20.12.0"></script>
-    <script src="js/booking-linked.js?v=20.12.0"></script>
-    <script src="js/settings-dashboard.js?v=20.12.0"></script>
-    <script src="js/settings-history.js?v=20.12.0"></script>
-    <script src="js/settings-afisha.js?v=20.12.0"></script>
-    <script src="js/settings-certificates.js?v=20.12.0"></script>
-    <script src="js/offline.js?v=20.12.0"></script>
-    <script src="js/search.js?v=20.12.0"></script>
-    <script src="js/ws.js?v=20.12.0"></script>
-    <script src="js/components/sidebar.js?v=20.12.0"></script>
-    <script src="js/sales-panel.js?v=20.12.0"></script>
-    <script src="js/command-panel.js?v=20.12.0"></script>
-    <script src="js/idle-hints.js?v=20.12.0"></script>
-    <script src="js/app.js?v=20.12.0"></script>
+    <script src="js/logger.js?v=22.4.0"></script>
+    <script src="js/config.js?v=22.4.0"></script>
+    <script src="js/api.js?v=22.4.0"></script>
+    <script src="js/ui.js?v=22.4.0"></script>
+    <script src="js/auth.js?v=22.4.0"></script>
+    <script src="js/timeline.js?v=22.4.0"></script>
+    <script src="js/booking.js?v=22.4.0"></script>
+    <script src="js/settings.js?v=22.4.0"></script>
+    <script src="js/booking-form.js?v=22.4.0"></script>
+    <script src="js/booking-linked.js?v=22.4.0"></script>
+    <script src="js/settings-dashboard.js?v=22.4.0"></script>
+    <script src="js/settings-history.js?v=22.4.0"></script>
+    <script src="js/settings-afisha.js?v=22.4.0"></script>
+    <script src="js/settings-certificates.js?v=22.4.0"></script>
+    <script src="js/offline.js?v=22.4.0"></script>
+    <script src="js/search.js?v=22.4.0"></script>
+    <script src="js/ws.js?v=22.4.0"></script>
+    <script src="js/components/sidebar.js?v=22.4.0"></script>
+    <script src="js/sales-panel.js?v=22.4.0"></script>
+    <script src="js/command-panel.js?v=22.4.0"></script>
+    <script src="js/idle-hints.js?v=22.4.0"></script>
+    <script src="js/app.js?v=22.4.0"></script>
 </body>
 </html>

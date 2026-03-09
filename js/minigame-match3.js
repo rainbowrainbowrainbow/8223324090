@@ -425,7 +425,7 @@ async function processCascade() {
     let cascadeScore = 0;
     comboCount = 0;
 
-    while (true) {
+    while (gameActive) {
         const groups = findMatchGroups(board);
         if (groups.length === 0) break;
 
@@ -500,6 +500,12 @@ async function processCascade() {
     comboCount = 0;
     animating = false;
 
+    // If timer ran out during cascade, show game over now
+    if (!gameActive) {
+        endGame();
+        return;
+    }
+
     if (!hasValidMoves(board)) board = createBoard();
 
     renderBoard();
@@ -551,6 +557,10 @@ function startTimer() {
 async function endGame() {
     gameActive = false;
     clearInterval(timerInterval);
+
+    // If cascade is still running, it will call endGame when done
+    if (animating) return;
+
     renderGameOver();
 
     try {

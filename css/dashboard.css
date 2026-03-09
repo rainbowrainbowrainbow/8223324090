@@ -589,14 +589,15 @@
 }
 
 .dark-mode .widget-card {
-    background: #252540;
-    border-color: rgba(255,255,255,0.1);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    background: #2A2A4A;
+    border: 1px solid rgba(255,255,255,0.15);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05);
 }
 
 .dark-mode .widget-card:hover {
-    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-    border-color: rgba(255,255,255,0.15);
+    background: #303052;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.2);
 }
 
 .dark-mode .widget-header {

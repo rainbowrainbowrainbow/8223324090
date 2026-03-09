@@ -84,27 +84,28 @@ const BASE_GAME_TIME = 75;
 let GAME_TIME = BASE_GAME_TIME;
 const MAX_COINS = 50;
 
+const ASSET_PATH = 'assets/match3/';
 const BASE_PIECES = [
-    { id: 'dino',    emoji: '🦕' },
-    { id: 'balloon', emoji: '🎈' },
-    { id: 'cake',    emoji: '🎂' },
-    { id: 'mask',    emoji: '🎭' },
-    { id: 'star',    emoji: '⭐' },
-    { id: 'tent',    emoji: '🎪' },
-    { id: 'clown',   emoji: '🤡' },
+    { id: 'dino',    emoji: '🦕', img: ASSET_PATH + 'dino.png' },
+    { id: 'balloon', emoji: '🎈', img: ASSET_PATH + 'balloon.png' },
+    { id: 'cake',    emoji: '🎂', img: ASSET_PATH + 'cake.png' },
+    { id: 'mask',    emoji: '🎭', img: ASSET_PATH + 'mask.png' },
+    { id: 'star',    emoji: '⭐', img: ASSET_PATH + 'star.png' },
+    { id: 'tent',    emoji: '🎪', img: ASSET_PATH + 'tent.png' },
+    { id: 'clown',   emoji: '🤡', img: ASSET_PATH + 'clown.png' },
 ];
 const EXTRA_PIECES = [
-    { id: 'rocket',  emoji: '🚀' },
-    { id: 'gem',     emoji: '💎' },
+    { id: 'rocket',  emoji: '🚀', img: ASSET_PATH + 'rocket.png' },
+    { id: 'gem',     emoji: '💎', img: ASSET_PATH + 'gem.png' },
 ];
 
 let PIECES = [...BASE_PIECES];
 
 const SPECIAL_TYPES = {
-    bomb:      { emoji: '💣', bonus: 20, label: 'Бомба', desc: '3×3 вибух' },
-    lightning: { emoji: '⚡', bonus: 40, label: 'Блискавка', desc: 'весь рядок' },
-    cross:     { emoji: '✦', bonus: 50, label: 'Хрест', desc: 'рядок + стовпець' },
-    rainbow:   { emoji: '🌈', bonus: 60, label: 'Веселка', desc: 'всі такого типу' }
+    bomb:      { emoji: '💣', img: ASSET_PATH + 'bomb.png', bonus: 20, label: 'Бомба', desc: '3×3 вибух' },
+    lightning: { emoji: '⚡', img: ASSET_PATH + 'lightning.png', bonus: 40, label: 'Блискавка', desc: 'весь рядок' },
+    cross:     { emoji: '✦', img: ASSET_PATH + 'cross.png', bonus: 50, label: 'Хрест', desc: 'рядок + стовпець' },
+    rainbow:   { emoji: '🌈', img: ASSET_PATH + 'rainbow.png', bonus: 60, label: 'Веселка', desc: 'всі такого типу' }
 };
 
 const COMBO_LEVELS = [
@@ -979,9 +980,19 @@ function renderBoard(matchedCells = [], falling = false, activatedSpecials = [])
             if (frozen === 1) classes.push('frozen-cracked');
             if (isGhost) classes.push('ghost-tile');
 
-            let content = isGhost ? '❓' : (piece?.emoji || '');
+            let content = '';
+            if (isGhost) {
+                content = '❓';
+            } else if (piece?.img) {
+                content = `<img src="${piece.img}" class="piece-img" alt="${piece.id}" onerror="this.replaceWith(document.createTextNode('${piece.emoji}'))">`;
+            } else {
+                content = piece?.emoji || '';
+            }
             if (piece?.special && SPECIAL_TYPES[piece.special] && !isGhost) {
-                content += `<span class="special-indicator">${SPECIAL_TYPES[piece.special].emoji}</span>`;
+                const sp = SPECIAL_TYPES[piece.special];
+                content += sp.img 
+                    ? `<span class="special-indicator"><img src="${sp.img}" class="special-img" onerror="this.replaceWith(document.createTextNode('${sp.emoji}'))"></span>`
+                    : `<span class="special-indicator">${sp.emoji}</span>`;
             }
             if (frozen > 0) {
                 content += `<span class="ice-overlay">${frozen === 2 ? '❄️' : '💧'}</span>`;

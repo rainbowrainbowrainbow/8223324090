@@ -76,6 +76,10 @@
 /* ==========================================
    START SCREEN
    ========================================== */
+.game-start-screen,
+.game-cooldown {
+    grid-column: 1 / -1;
+}
 .game-start-screen {
     display: flex;
     flex-direction: column;

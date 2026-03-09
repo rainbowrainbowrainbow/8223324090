@@ -9,7 +9,6 @@
 // v5.16: History with filters and pagination
 const HISTORY_PAGE_SIZE = 50;
 let historyCurrentOffset = 0;
-let _lastHistoryItems = []; // v20.10.0: store for CSV export
 
 async function showHistory() {
     if (!canViewHistory()) return;
@@ -35,7 +34,6 @@ async function loadHistoryPage() {
         offset: historyCurrentOffset
     });
     const { items, total } = result;
-    _lastHistoryItems = items; // v20.10.0: store for CSV export
 
     // Stats
     const statsEl = document.getElementById('historyStats');
@@ -218,7 +216,7 @@ async function openProductForm(productId) {
         // Load product data
         const product = await apiGetProduct(productId);
         if (!product) {
-            showNotification('Не вдалося завантажити програму', 'error');
+            alert('Не вдалося завантажити програму');
             return;
         }
 
@@ -259,7 +257,7 @@ async function saveProduct() {
     const name = document.getElementById('pf-name').value.trim();
 
     if (!code || !label || !name) {
-        showNotification('Заповніть обов\'язкові поля: Код, Мітка, Назва', 'error');
+        alert('Заповніть обов\'язкові поля: Код, Мітка, Назва');
         return;
     }
 
@@ -296,13 +294,13 @@ async function saveProduct() {
         // Refresh catalog
         await showProgramsCatalog();
     } else {
-        showNotification('Помилка: ' + (result.error || 'Невідома помилка'), 'error');
+        alert('Помилка: ' + (result.error || 'Невідома помилка'));
     }
 }
 
 // v7.1: Delete (deactivate) product
 async function deleteProduct(productId) {
-    if (!await confirmModal('Деактивувати цю програму? Вона зникне з каталогу бронювань.', { type: 'danger', okText: 'Деактивувати' })) return;
+    if (!confirm('Деактивувати цю програму? Вона зникне з каталогу бронювань.')) return;
 
     const result = await apiDeleteProduct(productId);
     if (result.success) {
@@ -310,7 +308,7 @@ async function deleteProduct(productId) {
         AppState.productsLoadedAt = 0;
         await showProgramsCatalog();
     } else {
-        showNotification('Помилка: ' + (result.error || 'Невідома помилка'), 'error');
+        alert('Помилка: ' + (result.error || 'Невідома помилка'));
     }
 }
 
@@ -595,11 +593,7 @@ async function sendDailyDigest() {
         if (result.success) {
             showNotification('Дайджест відправлено в Telegram!', 'success');
         } else {
-            const msgs = {
-                'no_chat_id': 'Telegram Chat ID не налаштовано',
-                'No bot token configured': 'Telegram Bot Token не налаштовано. Встановіть TELEGRAM_BOT_TOKEN'
-            };
-            showNotification(msgs[result.reason] || 'Помилка: ' + (result.reason || 'невідома'), 'error');
+            showNotification(result.reason === 'no_chat_id' ? 'Telegram Chat ID не налаштовано' : 'Помилка відправки дайджесту', 'error');
         }
     } catch (err) {
         console.error('Digest send error:', err);
@@ -692,11 +686,9 @@ async function showSettings() {
     const animatorsTextarea = document.getElementById('settingsAnimatorsList');
     if (animatorsTextarea) animatorsTextarea.value = animators.join('\n');
 
-    const SETTINGS_ADMIN_ROLES = ['creator', 'director'];
-    const isSettingsAdmin = SETTINGS_ADMIN_ROLES.includes(AppState.currentUser.role);
     const tgSection = document.getElementById('settingsTelegramSection');
     if (tgSection) {
-        tgSection.style.display = isSettingsAdmin ? 'block' : 'none';
+        tgSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
     }
 
     // Load chat ID into input (user can also type it manually)
@@ -734,15 +726,15 @@ async function showSettings() {
     // v12.6: Load contractors
     const contractorsSection = document.getElementById('settingsContractorsSection');
     if (contractorsSection) {
-        contractorsSection.style.display = isSettingsAdmin ? 'block' : 'none';
-        if (isSettingsAdmin) renderContractors();
+        contractorsSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
+        if (AppState.currentUser.role === 'admin') renderContractors();
     }
 
     // v8.3: Load automation rules
     const automationSection = document.getElementById('settingsAutomationSection');
     if (automationSection) {
-        automationSection.style.display = isSettingsAdmin ? 'block' : 'none';
-        if (isSettingsAdmin) renderAutomationRules();
+        automationSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
+        if (AppState.currentUser.role === 'admin') renderAutomationRules();
     }
 
     // v8.4: Certificates moved to timeline panel (see openCertificatesPanel)
@@ -2411,7 +2403,12 @@ function toggleContractorSelect() {
 // ==========================================
 // v8.4: CERTIFICATES
 // ==========================================
-const debounceCertSearch = debounce(loadCertificates, 400);
+let certSearchTimeout = null;
+
+function debounceCertSearch() {
+    clearTimeout(certSearchTimeout);
+    certSearchTimeout = setTimeout(loadCertificates, 400);
+}
 
 function openCertificatesPanel() {
     const panel = document.getElementById('certificatesPanel');
@@ -2669,7 +2666,7 @@ async function handleCertificateSubmit(event) {
         showCertDetail(result.certificate.id);
 
         // Fire-and-forget: generate image and send to Telegram
-        sendCertImageToTelegram(result.certificate);
+        try { sendCertImageToTelegram(result.certificate); } catch(e) { console.warn('cert img:', e); }
     } else {
         showNotification(result.error || 'Помилка видачі', 'error');
     }
@@ -2781,7 +2778,7 @@ async function changeCertStatus(id, newStatus) {
 }
 
 async function deleteCertificate(id) {
-    if (!await confirmModal('Видалити сертифікат назавжди?', { type: 'danger', okText: 'Видалити' })) return;
+    if (!confirm('Видалити сертифікат назавжди?')) return;
 
     const result = await apiDeleteCertificate(id);
     if (result.success) {
@@ -2872,6 +2869,7 @@ function certRoundRect(ctx, x, y, w, h, r) {
 }
 
 async function generateCertificateCanvas(cert) {
+    // v20.2.0: Reduce canvas size on iOS/mobile to prevent getContext null on iPhone 11
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     const W = isMobile ? 800 : 1200;
     const H = isMobile ? 533 : 800;
@@ -2879,7 +2877,11 @@ async function generateCertificateCanvas(cert) {
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
-    if (!ctx) { console.warn('Canvas 2d context unavailable'); return canvas; }
+    // v20.2.0: Guard against null context (iOS memory pressure)
+    if (!ctx) {
+        console.warn('Canvas 2d context unavailable, skipping certificate render');
+        return canvas;
+    }
 
     // === DRAW BACKGROUND (seasonal, full image, no crop) ===
     const bgImg = await loadCertBg(cert.season || 'winter');
@@ -2947,14 +2949,14 @@ function drawCertDynamicContent(ctx, cert, W, H) {
 
     // Park name
     ctx.fillStyle = '#5A9ECF';
-    ctx.font = '700 14px Inter, sans-serif';
+    ctx.font = '700 14px Nunito, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Парк Закревського Періоду', centerX, y);
     y += 52;
 
     // СЕРТИФІКАТ title
     ctx.fillStyle = '#19468B';
-    ctx.font = '900 46px Inter, sans-serif';
+    ctx.font = '900 46px Nunito, sans-serif';
     ctx.fillText('СЕРТИФІКАТ', centerX, y);
     y += 22;
 
@@ -2982,7 +2984,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
         let nameFontSize = 34;
         ctx.fillStyle = '#0D2E5C';
         while (nameFontSize >= 20) {
-            ctx.font = `900 ${nameFontSize}px Inter, sans-serif`;
+            ctx.font = `900 ${nameFontSize}px Nunito, sans-serif`;
             if (ctx.measureText(nameText).width <= maxTextW) break;
             nameFontSize -= 2;
         }
@@ -2992,7 +2994,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
 
     // Certificate type
     ctx.fillStyle = '#2E5090';
-    ctx.font = '700 16px Inter, sans-serif';
+    ctx.font = '700 16px Nunito, sans-serif';
     ctx.fillText((cert.typeText || 'на одноразовий вхід').toUpperCase(), centerX, y);
     y += 34;
 
@@ -3006,7 +3008,7 @@ function drawCertDynamicContent(ctx, cert, W, H) {
 
     // Cert code
     ctx.fillStyle = '#2E5090';
-    ctx.font = '700 15px Inter, sans-serif';
+    ctx.font = '700 15px Nunito, sans-serif';
     ctx.fillText(cert.certCode || '', centerX, y + 22);
 
     // Valid date
@@ -3014,13 +3016,13 @@ function drawCertDynamicContent(ctx, cert, W, H) {
         ? new Date(cert.validUntil).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '—';
     ctx.fillStyle = '#6A8FBF';
-    ctx.font = '600 12px Inter, sans-serif';
+    ctx.font = '600 12px Nunito, sans-serif';
     ctx.fillText(`Дійсний до ${validDate}  •  Будні та вихідні`, centerX, y + 44);
     y += infoH + 20;
 
     // Phone at bottom of card
     ctx.fillStyle = '#6A8FBF';
-    ctx.font = '600 13px Inter, sans-serif';
+    ctx.font = '600 13px Nunito, sans-serif';
     ctx.fillText('+38 (0800) 75-35-53', centerX, cardY + cardH - 24);
 
     ctx.textAlign = 'left';
@@ -3067,7 +3069,7 @@ async function drawCertQRCode(ctx, cert, W, H, layout) {
 
                 // Label under QR
                 ctx.fillStyle = '#5A7FAA';
-                ctx.font = '600 11px Inter, sans-serif';
+                ctx.font = '600 11px Nunito, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText('Сканувати для перевірки', centerX, qrY + qrSize + 18);
                 ctx.textAlign = 'left';

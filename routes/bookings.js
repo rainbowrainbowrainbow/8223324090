@@ -35,8 +35,7 @@ router.get('/:date', async (req, res) => {
             `SELECT id, date, time, line_id, program_id, program_code, label, program_name,
                     category, duration, price, hosts, second_animator, pinata_filler, costume,
                     room, notes, created_by, created_at, linked_to, status, kids_count,
-                    updated_at, group_name, extra_data, skip_notification, customer_id, payment_method,
-                    banquet_guests, banquet_tables, banquet_menu
+                    updated_at, group_name, extra_data, skip_notification, customer_id, payment_method
              FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time`,
             [date]
         );
@@ -102,29 +101,16 @@ router.post('/', async (req, res) => {
             }
         }
 
-        // CRM: resolve or create customer (v20.9.12: Supabase with Railway fallback)
+        // CRM: resolve or create customer
         let customerId = b.customerId ? parseInt(b.customerId) : null;
         if (b.customer && b.customer.name && !customerId) {
             const c = b.customer;
-            const { getSupabase } = require('../db/supabase');
-            const sb = getSupabase();
-            if (sb) {
-                try {
-                    const { data: sbCust, error: sbErr } = await sb.from('customers').insert({
-                        name: c.name.trim(), phone: c.phone || null, instagram: c.instagram || null,
-                        child_name: c.childName || null, child_birthday: c.childBirthday || null, source: c.source || null
-                    }).select('id').single();
-                    if (!sbErr && sbCust) customerId = sbCust.id;
-                } catch (sbEx) { log.warn(`Supabase customer create failed: ${sbEx.message}`); }
-            }
-            if (!customerId) {
-                const custResult = await client.query(
-                    `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
-                     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-                    [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
-                );
-                customerId = custResult.rows[0].id;
-            }
+            const custResult = await client.query(
+                `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
+                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+            );
+            customerId = custResult.rows[0].id;
         }
 
         if (!b.id || !/^BK-\d{4}-\d{4,}$/.test(b.id)) {
@@ -132,10 +118,10 @@ router.post('/', async (req, res) => {
         }
 
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_tables, banquet_menu)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
              RETURNING *`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId, b.paymentMethod || null, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
+            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId, b.paymentMethod || null]
         );
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
@@ -187,24 +173,6 @@ router.post('/', async (req, res) => {
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         }
 
-        // v20.7.0: Auto follow-up task (2 days before event)
-        if (!b.linkedTo && b.date) {
-            const eventDate = new Date(b.date);
-            const deadline = new Date(eventDate.getTime() - 2 * 24 * 60 * 60 * 1000);
-            const deadlineStr = deadline.toISOString().split('T')[0];
-            const clientName = b.programName || b.label || b.programCode;
-            pool.query(`
-                INSERT INTO tasks (title, description, priority, category, source_type, source_id, date, deadline)
-                VALUES ($1, $2, 'normal', 'sales', 'booking', $3, $4, $5)
-            `, [
-                `Підтвердити свято: ${clientName} ${b.date}`,
-                'Зателефонувати, уточнити кількість дітей, чи потрібен торт/декор',
-                b.id,
-                deadlineStr,
-                deadlineStr
-            ]).catch(err => log.warn(`Follow-up task creation failed: ${err.message}`));
-        }
-
         const booking = insertResult.rows[0] ? mapBookingRow(insertResult.rows[0]) : { id: b.id };
 
         // WebSocket: notify other clients
@@ -218,41 +186,6 @@ router.post('/', async (req, res) => {
                 status: b.status || 'confirmed', price: b.price || 0,
                 kids_count: b.kidsCount, created_by: b.createdBy
             }, `booking_created_${b.id}`);
-        }
-
-        // v21.4: Chat messenger — auto-message in #бронювання
-        if (!b.linkedTo) {
-            try {
-                const chatService = require('../services/chatService');
-                const { broadcastToChannel } = require('../services/websocket');
-                const bDate = b.date || '';
-                const bTime = b.time || '';
-                const bProgram = b.programName || b.label || b.programCode || '';
-                const bPrice = b.price ? `${Number(b.price).toLocaleString('uk-UA')} ₴` : '';
-                const bRoom = b.room || '';
-                const chatContent = `📅 Нове бронювання #${b.id}\nКлієнт: ${bProgram}\nДата: ${bDate} ${bTime}\n${bRoom ? 'Зал: ' + bRoom + '\n' : ''}${bPrice ? 'Сума: ' + bPrice : ''}`;
-                // Find #бронювання channel
-                const channels = await pool.query("SELECT id FROM chat_channels WHERE slug = 'бронювання' LIMIT 1");
-                if (channels.rows[0]) {
-                    const chId = channels.rows[0].id;
-                    const botMsg = await chatService.sendBotMessage(chId, chatContent, {
-                        contentType: 'system',
-                        metadata: { booking_id: b.id, type: 'booking_created' }
-                    });
-                    broadcastToChannel(chId, 'chat:message', { channelId: chId, message: botMsg });
-                }
-            } catch (chatErr) {
-                log.warn(`Chat booking notification failed (non-blocking): ${chatErr.message}`);
-            }
-        }
-
-        // v22.2.0: Gamification — award coins + XP on booking creation
-        const bookingActor = req.user?.username;
-        if (bookingActor) {
-            try {
-                const { onBookingCreate } = require('../services/gamification');
-                onBookingCreate(bookingActor).catch(() => {});
-            } catch (e) { /* gamification not ready */ }
         }
 
         res.json({ success: true, booking });
@@ -452,8 +385,25 @@ router.delete('/:id', async (req, res) => {
 
         await client.query('COMMIT');
 
+        getLineName(booking.line_id, booking.date).then(lineName =>
+            notifyTelegram('delete', booking, { username: req.user?.username, lineName }))
+            .catch(err => log.error(`Telegram notify failed (delete): ${err.message}`));
+
         // WebSocket: notify other clients
         broadcast('booking:deleted', { id, date: booking.date, permanent }, req.user?.id?.toString(), booking.date);
+
+        // v19.1: Publish to event queue
+        publishEvent('booking.cancelled', {
+            booking_id: id,
+            booking_number: booking.booking_number || booking.id,
+            date: booking.date,
+            time: booking.time || '',
+            room: booking.room,
+            label: booking.label || booking.program_code || '',
+            program_code: booking.program_code,
+            permanent,
+            cancelled_by: req.user?.username
+        }, `booking_cancelled_${id}`);
 
         res.json({ success: true, permanent });
     } catch (err) {
@@ -552,16 +502,14 @@ router.put('/:id', async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25,
-                 banquet_guests=$26, banquet_tables=$27, banquet_menu=$28
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25
                  WHERE id=$23 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
                  b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null,
-                 id, clientUpdatedAt, updateCustomerId,
-                 b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
+                 id, clientUpdatedAt, updateCustomerId]
             );
         } else {
             // Legacy: no optimistic locking (backward compatibility)
@@ -569,15 +517,13 @@ router.put('/:id', async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24,
-                 banquet_guests=$25, banquet_tables=$26, banquet_menu=$27
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24
                  WHERE id=$23
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
-                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId,
-                 b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
+                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId]
             );
         }
 

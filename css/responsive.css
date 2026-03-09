@@ -117,6 +117,16 @@
    MOBILE (<=768px)
    ========================================== */
 
+/* v20.2.0: iOS Safari viewport fix */
+    :root {
+        --safe-height: 100vh;
+    }
+    @supports (-webkit-touch-callout: none) {
+        :root {
+            --safe-height: -webkit-fill-available;
+        }
+    }
+
 @media (max-width: 768px) {
     /* v7.8.6: Prevent horizontal scroll on mobile */
     html, body {

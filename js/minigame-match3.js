@@ -1,6 +1,6 @@
 /**
  * minigame-match3.js — Match-3 Epic Edition (Park themed)
- * v22.9.0 — 9x9 board, frozen tiles, cross special, epic combo system with particles
+ * v22.10.0 — 9x9 board, frozen tiles, cross special, epic combo system, daily records, boss round
  */
 
 // ==========================================
@@ -56,6 +56,12 @@ let timerInterval = null;
 let animating = false;
 let gameStatus = null;
 let lastSwap = null;
+let dailyRecords = null;
+let bossStatus = null;
+let isBossMode = false;
+
+const BOSS_TIME = 90; // Boss round: 90 seconds
+const BOSS_COIN_MULTIPLIER = 3;
 
 // ==========================================
 // UTILITIES
@@ -564,13 +570,23 @@ async function endGame() {
     renderGameOver();
 
     try {
-        const r = await fetch('/api/minigame/complete', {
-            method: 'POST',
-            headers: getAuthHeaders(),
-            body: JSON.stringify({ score: totalScore, coins_earned: coinsEarned })
-        });
-        const data = await r.json();
-        if (data.error) console.warn('Minigame submit:', data.error);
+        if (isBossMode) {
+            const r = await fetch('/api/minigame/boss/complete', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ score: totalScore })
+            });
+            const data = await r.json();
+            if (data.error) console.warn('Boss submit:', data.error);
+        } else {
+            const r = await fetch('/api/minigame/complete', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ score: totalScore, coins_earned: coinsEarned })
+            });
+            const data = await r.json();
+            if (data.error) console.warn('Minigame submit:', data.error);
+        }
     } catch (e) {
         console.error('Minigame submit error', e);
     }
@@ -679,6 +695,23 @@ function renderGameOver() {
     const boardEl = document.getElementById('gameBoard');
     if (!boardEl) return;
 
+    if (isBossMode) {
+        const TARGET = 300;
+        const won = totalScore >= TARGET;
+        const bossCoins = won ? Math.min(Math.floor(totalScore / 10) * 3, 150) : 0;
+
+        boardEl.innerHTML += `
+        <div class="game-overlay">
+            <h2>${won ? '🏆 Перемога!' : '💀 Не вдалось...'}</h2>
+            <div class="final-score-label" style="color:${won ? '#16a34a' : '#dc2626'}">Бос-раунд</div>
+            <div class="final-score">${totalScore} / ${TARGET}</div>
+            ${won ? `<div class="final-coins">+${bossCoins} монет 💰 (x3!)</div>` : '<div style="color:var(--gray-400)">Спробуй наступної неділі</div>'}
+            ${maxCombo >= 3 ? `<div class="final-combo">Макс. комбо: x${Math.min(0.5 + maxCombo * 0.5, 3).toFixed(1)} 🔥</div>` : ''}
+            <button class="game-start-btn" onclick="location.reload()">🔄 Назад</button>
+        </div>`;
+        return;
+    }
+
     const stars = totalScore >= 400 ? 3 : totalScore >= 200 ? 2 : totalScore >= 80 ? 1 : 0;
     const starsArr = [];
     for (let i = 0; i < 3; i++) starsArr.push(i < stars ? '⭐' : '☆');
@@ -704,9 +737,15 @@ async function initGamePage() {
     if (!token) { window.location.href = '/'; return; }
 
     try {
-        const r = await fetch('/api/minigame/status', { headers: getAuthHeaders(false) });
-        if (handleAuthError(r)) return;
-        gameStatus = await r.json();
+        const [statusRes, recordsRes, bossRes] = await Promise.all([
+            fetch('/api/minigame/status', { headers: getAuthHeaders(false) }),
+            fetch('/api/minigame/daily-records', { headers: getAuthHeaders(false) }),
+            fetch('/api/minigame/boss', { headers: getAuthHeaders(false) })
+        ]);
+        if (handleAuthError(statusRes)) return;
+        gameStatus = await statusRes.json();
+        if (recordsRes.ok) dailyRecords = await recordsRes.json();
+        if (bossRes.ok) bossStatus = await bossRes.json();
     } catch (e) {
         console.error('Status error', e);
     }
@@ -772,6 +811,9 @@ function renderGameUI() {
             <div class="game-best">Рекорд: ${bestScore} 🏆</div>
             <div style="color:var(--gray-500);font-size:var(--font-sm)">Ігор: ${todayGames}/${gameStatus?.maxDaily || 5}</div>
         </div>
+
+        ${renderDailyRecords()}
+        ${renderBossRound()}
     </div>`;
 
     if (cooldown > 0) {
@@ -785,7 +827,70 @@ function renderGameUI() {
     }
 }
 
+function renderDailyRecords() {
+    if (!dailyRecords) return '';
+    const top3 = dailyRecords.top3 || [];
+    const medals = ['🥇', '🥈', '🥉'];
+
+    return `
+    <div style="margin-top:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px">
+        <div style="font-weight:700;margin-bottom:8px">📊 Рекорди дня</div>
+        ${top3.length === 0 ? '<div style="color:var(--gray-400);font-size:var(--font-sm)">Ще ніхто не грав сьогодні</div>' : ''}
+        ${top3.map((r, i) => `
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:var(--font-sm)">
+                <span style="font-size:1.1rem">${medals[i]}</span>
+                <span style="flex:1;font-weight:${i === 0 ? '700' : '500'}">${r.name}</span>
+                <span style="font-weight:700;color:var(--primary)">${r.score}</span>
+                <span style="color:var(--gray-400)">💰${r.coins}</span>
+            </div>
+        `).join('')}
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:var(--font-sm);color:var(--gray-500)">
+            Твій рекорд сьогодні: <b style="color:var(--gray-700)">${dailyRecords.myBestToday || '—'}</b>
+            · Абсолютний: <b style="color:var(--gray-700)">${dailyRecords.myBestAllTime || '—'}</b>
+        </div>
+    </div>`;
+}
+
+function renderBossRound() {
+    if (!bossStatus) return '';
+
+    const { isBossDay, played, completed, score, coinsEarned: bossCoins, targetScore } = bossStatus;
+
+    if (!isBossDay && !played) {
+        return `
+        <div style="margin-top:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px">
+            <div style="font-weight:700">👹 Бос-раунд</div>
+            <div style="color:var(--gray-500);font-size:var(--font-sm);margin-top:4px">
+                Доступний щонеділі · 90 секунд · Нагорода x3
+            </div>
+        </div>`;
+    }
+
+    if (played) {
+        return `
+        <div style="margin-top:12px;background:${completed ? 'rgba(22,163,106,0.08)' : 'rgba(220,38,38,0.08)'};border:1px solid ${completed ? '#16a34a' : '#dc2626'};border-radius:12px;padding:14px">
+            <div style="font-weight:700">👹 Бос-раунд ${completed ? '✅ Перемога!' : '❌ Не вдалось'}</div>
+            <div style="font-size:var(--font-sm);margin-top:4px">
+                Рахунок: <b>${score}</b> / ${targetScore}
+                ${bossCoins > 0 ? ` · +${bossCoins} монет 💰` : ''}
+            </div>
+        </div>`;
+    }
+
+    return `
+    <div style="margin-top:12px;background:rgba(239,68,68,0.08);border:2px solid #ef4444;border-radius:12px;padding:14px">
+        <div style="font-weight:700;color:#ef4444">👹 БОС-РАУНД СЬОГОДНІ!</div>
+        <div style="font-size:var(--font-sm);margin-top:4px;color:var(--gray-600)">
+            Набери ${targetScore || 300}+ очок за 90 секунд · Нагорода x3
+        </div>
+        <button class="game-start-btn" style="margin-top:10px;background:#ef4444;font-size:0.9rem;padding:10px 20px" onclick="startBossRound()">
+            ⚔️ Почати бос-раунд
+        </button>
+    </div>`;
+}
+
 function startGame() {
+    isBossMode = false;
     board = createBoard();
     selected = null;
     totalScore = 0;
@@ -799,6 +904,28 @@ function startGame() {
     startTimer();
 }
 
+function startBossRound() {
+    isBossMode = true;
+    board = createBoard();
+    selected = null;
+    totalScore = 0;
+    coinsEarned = 0;
+    comboCount = 0;
+    maxCombo = 0;
+    lastSwap = null;
+    gameActive = true;
+    timeLeft = BOSS_TIME;
+    renderBoard();
+    updateHeader();
+
+    // Boss timer (uses BOSS_TIME)
+    timerInterval = setInterval(() => {
+        timeLeft--;
+        updateHeader();
+        if (timeLeft <= 0) endGame();
+    }, 1000);
+}
+
 async function resetMinigame() {
     try {
         const r = await fetch('/api/minigame/reset', { method: 'POST', headers: getAuthHeaders() });
@@ -808,6 +935,14 @@ async function resetMinigame() {
     } catch (e) {
         showNotification('Помилка: ' + e.message, 'error');
     }
+}
+
+function showNotification(msg, type) {
+    const el = document.createElement('div');
+    el.style.cssText = `position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;z-index:9999;background:${type === 'error' ? '#fee2e2' : '#dcfce7'};color:${type === 'error' ? '#dc2626' : '#16a34a'};box-shadow:0 4px 12px rgba(0,0,0,0.1)`;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
 }
 
 document.addEventListener('DOMContentLoaded', initGamePage);

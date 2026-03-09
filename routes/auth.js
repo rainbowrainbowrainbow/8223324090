@@ -54,6 +54,10 @@ router.post('/login', async (req, res) => {
         );
 
         log.info(`User "${username}" logged in (role: ${user.role})`);
+
+        // v22.10.0: Update login streak (fire-and-forget)
+        try { require('./streaks').updateStreak(user.id, 'login'); } catch (e) {}
+
         res.json({ token, user: { id: user.id, username: user.username, role: user.role, name: user.name } });
     } catch (err) {
         log.error('Login error', err);

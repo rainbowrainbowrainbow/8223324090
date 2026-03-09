@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Моя кімната</title>
+    <link rel="stylesheet" href="css/base.css?v=22.10.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.10.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.10.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.10.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="icon" href="images/favicon.ico">
+    <style>
+        .room-page { max-width: 700px; margin: 0 auto; padding: 16px; }
+        .room-back-link { color: var(--primary); text-decoration: none; font-size: var(--font-sm); }
+
+        .room-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 16px;
+        }
+        .room-title { font-size: 1.3rem; font-weight: 700; }
+        .room-visitors { font-size: var(--font-sm); color: var(--gray-500); }
+
+        /* The Room Grid — isometric-ish flat view */
+        .room-container {
+            position: relative; border-radius: 16px; overflow: hidden;
+            border: 2px solid var(--border); background: var(--surface);
+            aspect-ratio: 4/3; min-height: 300px;
+        }
+        .room-floor {
+            position: absolute; inset: 0;
+            background: linear-gradient(135deg, #f0e6d3 0%, #e8dcc8 50%, #ddd0b8 100%);
+        }
+        .room-wallpaper {
+            position: absolute; top: 0; left: 0; right: 0; height: 40%;
+            background: linear-gradient(180deg, #b8d4e3 0%, #d4e6f1 100%);
+            border-bottom: 3px solid var(--border);
+        }
+        .room-grid {
+            position: absolute; inset: 0;
+            display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(6, 1fr);
+            padding: 4px; gap: 2px; z-index: 2;
+        }
+        .room-cell {
+            border-radius: 4px; display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; cursor: pointer; transition: all 0.2s ease;
+            position: relative; min-height: 40px;
+        }
+        .room-cell:hover { background: rgba(var(--primary-rgb, 99,102,241), 0.15); }
+        .room-cell.occupied { cursor: grab; }
+        .room-cell.drop-target { background: rgba(var(--primary-rgb, 99,102,241), 0.25); outline: 2px dashed var(--primary); }
+        .room-cell.dragging { opacity: 0.5; }
+        .room-cell .item-label {
+            position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%);
+            font-size: 0.55rem; white-space: nowrap; background: rgba(0,0,0,0.6);
+            color: white; padding: 1px 4px; border-radius: 3px; pointer-events: none;
+        }
+        .room-cell .item-rarity {
+            position: absolute; top: 0; right: 2px; font-size: 0.5rem;
+        }
+
+        /* Mood indicator */
+        .room-mood {
+            position: absolute; bottom: 8px; right: 8px; z-index: 3;
+            font-size: 2.5rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+        }
+
+        /* Wallpaper styles */
+        .wallpaper-night { background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%) !important; }
+        .wallpaper-sunset { background: linear-gradient(180deg, #ff6b6b 0%, #ffa07a 50%, #ffd93d 100%) !important; }
+        .wallpaper-cosmos { background: linear-gradient(180deg, #0c0c1d 0%, #1a0533 50%, #2d1b69 100%) !important; }
+        .wallpaper-forest { background: linear-gradient(180deg, #2d5a27 0%, #4a7c44 50%, #6b9e64 100%) !important; }
+        .wallpaper-ocean { background: linear-gradient(180deg, #006994 0%, #0097b2 50%, #00c9db 100%) !important; }
+
+        /* Floor styles */
+        .floor-wood { background: linear-gradient(135deg, #8B6914 0%, #A0784C 50%, #8B6914 100%) !important; }
+        .floor-marble { background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 25%, #f0f0f0 50%, #e8e8e8 75%, #f5f5f5 100%) !important; }
+        .floor-grass { background: linear-gradient(135deg, #4caf50 0%, #66bb6a 50%, #4caf50 100%) !important; }
+
+        /* Inventory panel */
+        .room-inventory {
+            margin-top: 16px; background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 16px;
+        }
+        .room-inventory-title { font-weight: 700; margin-bottom: 10px; }
+        .room-inventory-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px;
+        }
+        .room-inventory-item {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 8px; border-radius: 8px; border: 1px solid var(--border);
+            cursor: grab; font-size: 1.5rem; transition: all 0.2s ease;
+            min-height: 60px;
+        }
+        .room-inventory-item:hover { border-color: var(--primary); transform: translateY(-2px); }
+        .room-inventory-item .inv-name {
+            font-size: 0.6rem; color: var(--gray-500); text-align: center;
+            margin-top: 4px; max-width: 60px; overflow: hidden; text-overflow: ellipsis;
+        }
+        .room-inventory-item.rarity-uncommon { border-color: #22c55e; }
+        .room-inventory-item.rarity-rare { border-color: #3b82f6; }
+        .room-inventory-item.rarity-epic { border-color: #a855f7; }
+        .room-inventory-item.rarity-legendary { border-color: #f59e0b; }
+        .room-inventory-item.placed { opacity: 0.4; }
+
+        .room-controls {
+            display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;
+        }
+        .room-ctrl-btn {
+            padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--surface); cursor: pointer; font-size: var(--font-sm);
+            font-weight: 600; transition: all 0.2s ease; min-height: 44px;
+        }
+        .room-ctrl-btn:hover { border-color: var(--primary); }
+        .room-ctrl-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+        .room-visitors-panel {
+            margin-top: 12px; background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 16px;
+        }
+        .visitor-item {
+            display: flex; align-items: center; gap: 8px; padding: 6px 0;
+            border-bottom: 1px solid var(--border); font-size: var(--font-sm);
+        }
+        .visitor-item:last-child { border-bottom: none; }
+
+        .mood-selector {
+            display: flex; gap: 8px; margin-top: 8px;
+        }
+        .mood-btn {
+            font-size: 1.5rem; cursor: pointer; padding: 4px 8px; border-radius: 8px;
+            border: 2px solid transparent; transition: all 0.2s ease;
+            background: none; min-width: 44px; min-height: 44px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .mood-btn:hover { border-color: var(--gray-300); }
+        .mood-btn.active { border-color: var(--primary); background: var(--primary-light); }
+
+        .dark-mode .room-floor { background: linear-gradient(135deg, #3a3028 0%, #4a3c30 50%, #3a3028 100%); }
+        .dark-mode .room-wallpaper { background: linear-gradient(180deg, #2a3a4a 0%, #3a4a5a 100%); }
+    </style>
+</head>
+<body>
+    <div id="mainApp" class="main-app" style="padding:20px">
+        <div style="text-align:center;padding:40px;color:var(--gray-400)">Завантаження...</div>
+    </div>
+    <script src="js/config.js?v=22.10.0"></script>
+    <script src="js/api.js?v=22.10.0"></script>
+    <script>
+    /**
+     * room-page.js — Virtual Room with drag-and-drop furniture
+     * v22.10.0
+     */
+    let roomData = null;
+    let visitorsData = [];
+    let dragItem = null;
+    let isOwner = true;
+    let viewUserId = null;
+
+    const MOOD_ICONS = {
+        happy: '\ud83d\ude04', working: '\ud83d\udcbb', tired: '\ud83d\ude34',
+        excited: '\ud83e\udd29', chill: '\ud83d\ude0e'
+    };
+
+    const ITEM_ICONS = {
+        // Map item codes/names to display icons
+        default: '\ud83d\udce6'
+    };
+
+    async function initRoomPage() {
+        if (localStorage.getItem('pzp_dark_mode') === 'true') document.body.classList.add('dark-mode');
+        const token = localStorage.getItem('pzp_token');
+        if (!token) { window.location.href = '/'; return; }
+
+        // Check if viewing someone else's room
+        const params = new URLSearchParams(window.location.search);
+        viewUserId = params.get('user');
+
+        try {
+            const url = viewUserId ? `/api/room/${viewUserId}` : '/api/room';
+            const r = await fetch(url, { headers: getAuthHeaders(false) });
+            if (handleAuthError(r)) return;
+            roomData = await r.json();
+            isOwner = !viewUserId;
+
+            if (isOwner) {
+                const vr = await fetch('/api/room/visitors/list', { headers: getAuthHeaders(false) });
+                if (vr.ok) visitorsData = await vr.json();
+            }
+        } catch (e) {
+            console.error('Room load error', e);
+        }
+
+        renderRoom();
+    }
+
+    function renderRoom() {
+        if (!roomData) {
+            document.getElementById('mainApp').innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400)">\u041a\u0456\u043c\u043d\u0430\u0442\u0443 \u043d\u0435 \u0437\u043d\u0430\u0439\u0434\u0435\u043d\u043e</div>';
+            return;
+        }
+
+        const layout = roomData.layout || {};
+        const wallpaperClass = roomData.wallpaper ? `wallpaper-${roomData.wallpaper.code || ''}` : '';
+        const floorClass = roomData.floor ? `floor-${roomData.floor.code || ''}` : '';
+        const moodEmoji = MOOD_ICONS[roomData.mood] || MOOD_ICONS.happy;
+
+        // Build grid cells
+        let gridHTML = '';
+        for (let r = 0; r < 6; r++) {
+            for (let c = 0; c < 8; c++) {
+                const placedItem = findItemAt(layout, r, c);
+                const occupied = placedItem ? 'occupied' : '';
+                const itemContent = placedItem
+                    ? `${getItemIcon(placedItem)}<span class="item-label">${placedItem.name || ''}</span><span class="item-rarity">${getRarityDot(placedItem.rarity)}</span>`
+                    : '';
+                gridHTML += `<div class="room-cell ${occupied}"
+                    data-row="${r}" data-col="${c}" data-item-id="${placedItem?.itemId || ''}"
+                    ${isOwner ? `draggable="${!!placedItem}"
+                    ondragstart="onDragStart(event)" ondragover="onDragOver(event)"
+                    ondragleave="onDragLeave(event)" ondrop="onDrop(event)"` : ''}
+                    >${itemContent}</div>`;
+            }
+        }
+
+        // Furniture not yet placed
+        const placedItemIds = new Set();
+        for (const [itemId, pos] of Object.entries(layout)) {
+            placedItemIds.add(parseInt(itemId));
+        }
+        const unplacedFurniture = (roomData.furniture || []).filter(f => !placedItemIds.has(f.itemId));
+
+        document.getElementById('mainApp').innerHTML = `
+        <div class="room-page">
+            <div style="margin-bottom:12px">
+                <a href="/profile" class="room-back-link">\u2190 \u041d\u0430\u0437\u0430\u0434 \u0434\u043e \u043f\u0440\u043e\u0444\u0456\u043b\u044e</a>
+            </div>
+
+            <div class="room-header">
+                <div>
+                    <div class="room-title">${isOwner ? '\ud83c\udfe0 \u041c\u043e\u044f \u043a\u0456\u043c\u043d\u0430\u0442\u0430' : `\ud83c\udfe0 \u041a\u0456\u043c\u043d\u0430\u0442\u0430: ${roomData.ownerName || ''}`}</div>
+                </div>
+                <div class="room-visitors">\ud83d\udc41 ${roomData.visitorCount || 0} \u0432\u0456\u0434\u0432\u0456\u0434\u0443\u0432\u0430\u0447\u0456\u0432</div>
+            </div>
+
+            <div class="room-container">
+                <div class="room-wallpaper ${wallpaperClass}"></div>
+                <div class="room-floor ${floorClass}"></div>
+                <div class="room-grid" id="roomGrid">
+                    ${gridHTML}
+                </div>
+                <div class="room-mood" id="roomMood">${moodEmoji}</div>
+            </div>
+
+            ${isOwner ? `
+                <div class="room-controls">
+                    <button class="room-ctrl-btn" onclick="toggleMoodSelector()">\ud83d\ude04 \u041d\u0430\u0441\u0442\u0440\u0456\u0439</button>
+                    <button class="room-ctrl-btn" onclick="location.href='/shop'">\ud83d\uded2 \u041c\u0430\u0433\u0430\u0437\u0438\u043d</button>
+                </div>
+                <div id="moodSelector" style="display:none" class="mood-selector">
+                    ${Object.entries(MOOD_ICONS).map(([key, emoji]) =>
+                        `<button class="mood-btn ${roomData.mood === key ? 'active' : ''}" onclick="setMood('${key}')">${emoji}</button>`
+                    ).join('')}
+                </div>
+
+                ${unplacedFurniture.length > 0 ? `
+                    <div class="room-inventory">
+                        <div class="room-inventory-title">\ud83d\udce6 \u041c\u0435\u0431\u043b\u0456 (${unplacedFurniture.length})</div>
+                        <div class="room-inventory-grid">
+                            ${unplacedFurniture.map(f => `
+                                <div class="room-inventory-item rarity-${f.rarity || 'common'}"
+                                    draggable="true" data-item-id="${f.itemId}" data-name="${f.name}"
+                                    ondragstart="onInventoryDragStart(event)">
+                                    ${getItemIcon(f)}
+                                    <span class="inv-name">${f.name}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+
+                ${visitorsData.length > 0 ? `
+                    <div class="room-visitors-panel">
+                        <div style="font-weight:700;margin-bottom:8px">\ud83d\udc65 \u041e\u0441\u0442\u0430\u043d\u043d\u0456 \u0432\u0456\u0434\u0432\u0456\u0434\u0443\u0432\u0430\u0447\u0456</div>
+                        ${visitorsData.slice(0, 5).map(v => `
+                            <div class="visitor-item">
+                                <span>\ud83d\udc64</span>
+                                <span style="flex:1">${v.name}</span>
+                                <span style="color:var(--gray-400)">${new Date(v.visitedAt).toLocaleDateString('uk')}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            ` : ''}
+        </div>`;
+
+        // Mobile: touch drag support
+        if (isOwner) setupTouchDrag();
+    }
+
+    function findItemAt(layout, row, col) {
+        for (const [itemId, pos] of Object.entries(layout)) {
+            if (pos.row === row && pos.col === col) {
+                const f = (roomData.furniture || []).find(f => f.itemId === parseInt(itemId));
+                return f ? { ...f, itemId: parseInt(itemId) } : { itemId: parseInt(itemId), name: '?', rarity: 'common' };
+            }
+        }
+        return null;
+    }
+
+    function getItemIcon(item) {
+        // Map by code or rarity
+        const icons = {
+            uncommon: '\ud83d\udfe2', rare: '\ud83d\udd35', epic: '\ud83d\udfe3', legendary: '\ud83d\udfe1'
+        };
+        return item?.code ? (ITEM_ICONS[item.code] || '\ud83d\udce6') : (icons[item?.rarity] || '\ud83d\udce6');
+    }
+
+    function getRarityDot(rarity) {
+        const dots = { common: '\u26aa', uncommon: '\ud83d\udfe2', rare: '\ud83d\udd35', epic: '\ud83d\udfe3', legendary: '\ud83d\udfe1' };
+        return dots[rarity] || '';
+    }
+
+    // Drag and Drop
+    function onDragStart(e) {
+        const cell = e.target.closest('.room-cell');
+        if (!cell || !cell.dataset.itemId) return;
+        dragItem = { itemId: parseInt(cell.dataset.itemId), fromCell: true };
+        cell.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function onInventoryDragStart(e) {
+        const el = e.target.closest('.room-inventory-item');
+        if (!el) return;
+        dragItem = { itemId: parseInt(el.dataset.itemId), fromCell: false };
+        e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function onDragOver(e) {
+        e.preventDefault();
+        const cell = e.target.closest('.room-cell');
+        if (cell && !cell.dataset.itemId) cell.classList.add('drop-target');
+    }
+
+    function onDragLeave(e) {
+        const cell = e.target.closest('.room-cell');
+        if (cell) cell.classList.remove('drop-target');
+    }
+
+    async function onDrop(e) {
+        e.preventDefault();
+        const cell = e.target.closest('.room-cell');
+        if (!cell || !dragItem) return;
+        cell.classList.remove('drop-target');
+
+        const row = parseInt(cell.dataset.row);
+        const col = parseInt(cell.dataset.col);
+
+        try {
+            const r = await fetch('/api/room/move', {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ item_id: dragItem.itemId, row, col })
+            });
+            const data = await r.json();
+            if (data.success) {
+                // Update local layout
+                roomData.layout = roomData.layout || {};
+                // Remove from old position
+                for (const [id, pos] of Object.entries(roomData.layout)) {
+                    if (parseInt(id) === dragItem.itemId) delete roomData.layout[id];
+                }
+                roomData.layout[dragItem.itemId] = { row, col };
+                renderRoom();
+            } else {
+                showNotification(data.error || '\u041f\u043e\u043c\u0438\u043b\u043a\u0430', 'error');
+            }
+        } catch (err) {
+            showNotification('\u041f\u043e\u043c\u0438\u043b\u043a\u0430 \u043f\u0435\u0440\u0435\u043c\u0456\u0449\u0435\u043d\u043d\u044f', 'error');
+        }
+        dragItem = null;
+    }
+
+    function toggleMoodSelector() {
+        const el = document.getElementById('moodSelector');
+        el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+    }
+
+    async function setMood(mood) {
+        try {
+            const r = await fetch('/api/room/decorate', {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ mood })
+            });
+            const data = await r.json();
+            if (data.success) {
+                roomData.mood = mood;
+                document.getElementById('roomMood').textContent = MOOD_ICONS[mood];
+                document.querySelectorAll('.mood-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelector(`.mood-btn[onclick="setMood('${mood}')"]`)?.classList.add('active');
+            }
+        } catch (err) {
+            showNotification('\u041f\u043e\u043c\u0438\u043b\u043a\u0430', 'error');
+        }
+    }
+
+    // Mobile touch drag
+    function setupTouchDrag() {
+        let touchItem = null;
+        let touchGhost = null;
+
+        document.querySelectorAll('.room-inventory-item, .room-cell.occupied').forEach(el => {
+            el.addEventListener('touchstart', (e) => {
+                const itemId = parseInt(el.dataset.itemId);
+                if (!itemId) return;
+                touchItem = { itemId, el };
+                touchGhost = document.createElement('div');
+                touchGhost.style.cssText = 'position:fixed;font-size:2rem;pointer-events:none;z-index:9999;opacity:0.8;';
+                touchGhost.textContent = el.textContent.trim().charAt(0) === '\u{1F4E6}' ? '\u{1F4E6}' : el.textContent.trim().substring(0, 2);
+                document.body.appendChild(touchGhost);
+            }, { passive: true });
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!touchGhost) return;
+            const t = e.touches[0];
+            touchGhost.style.left = (t.clientX - 16) + 'px';
+            touchGhost.style.top = (t.clientY - 16) + 'px';
+        }, { passive: true });
+
+        document.addEventListener('touchend', async (e) => {
+            if (!touchItem || !touchGhost) return;
+            touchGhost.remove();
+            touchGhost = null;
+
+            const t = e.changedTouches[0];
+            const target = document.elementFromPoint(t.clientX, t.clientY);
+            const cell = target?.closest('.room-cell');
+            if (cell && !cell.dataset.itemId) {
+                dragItem = touchItem;
+                await onDrop({ preventDefault: () => {}, target: cell });
+            }
+            touchItem = null;
+        });
+    }
+
+    function showNotification(msg, type) {
+        const el = document.createElement('div');
+        el.style.cssText = `position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;z-index:9999;background:${type === 'error' ? '#fee2e2' : '#dcfce7'};color:${type === 'error' ? '#dc2626' : '#16a34a'};box-shadow:0 4px 12px rgba(0,0,0,0.1)`;
+        el.textContent = msg;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 3000);
+    }
+
+    document.addEventListener('DOMContentLoaded', initRoomPage);
+    </script>
+</body>
+</html>

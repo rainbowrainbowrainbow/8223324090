@@ -27,8 +27,8 @@ router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
                 SELECT ui.item_id, si.code, si.name, si.category, si.rarity, si.equip_slot
                 FROM user_inventory ui
                 JOIN shop_items si ON si.id = ui.item_id
-                WHERE ui.user_id = $1 AND si.category = 'furniture'
-            `, [req.user.id])
+                WHERE ui.username = $1 AND si.category = 'furniture'
+            `, [req.user.username])
         ]);
 
         res.json({
@@ -65,7 +65,8 @@ router.get('/:userId', requireRole(...ANY_ROLE), async (req, res) => {
                 SELECT ui.item_id, si.code, si.name, si.category, si.rarity
                 FROM user_inventory ui
                 JOIN shop_items si ON si.id = ui.item_id
-                WHERE ui.user_id = $1 AND si.category = 'furniture'
+                JOIN users u ON u.username = ui.username
+                WHERE u.id = $1 AND si.category = 'furniture'
             `, [userId]),
             pool.query('SELECT id, name, username FROM users WHERE id = $1', [userId])
         ]);
@@ -109,15 +110,15 @@ router.put('/decorate', requireRole(...ANY_ROLE), async (req, res) => {
         // Verify ownership of items
         if (wallpaper_item_id) {
             const owned = await pool.query(
-                'SELECT 1 FROM user_inventory WHERE user_id = $1 AND item_id = $2',
-                [req.user.id, wallpaper_item_id]
+                'SELECT 1 FROM user_inventory WHERE username = $1 AND item_id = $2',
+                [req.user.username, wallpaper_item_id]
             );
             if (owned.rows.length === 0) return res.status(400).json({ error: 'Шпалери не у вашому інвентарі' });
         }
         if (floor_item_id) {
             const owned = await pool.query(
-                'SELECT 1 FROM user_inventory WHERE user_id = $1 AND item_id = $2',
-                [req.user.id, floor_item_id]
+                'SELECT 1 FROM user_inventory WHERE username = $1 AND item_id = $2',
+                [req.user.username, floor_item_id]
             );
             if (owned.rows.length === 0) return res.status(400).json({ error: 'Підлога не у вашому інвентарі' });
         }
@@ -168,8 +169,8 @@ router.put('/move', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         // Verify ownership
         const owned = await pool.query(
-            'SELECT 1 FROM user_inventory ui JOIN shop_items si ON si.id = ui.item_id WHERE ui.user_id = $1 AND ui.item_id = $2 AND si.category = $3',
-            [req.user.id, item_id, 'furniture']
+            'SELECT 1 FROM user_inventory ui JOIN shop_items si ON si.id = ui.item_id WHERE ui.username = $1 AND ui.item_id = $2 AND si.category = $3',
+            [req.user.username, item_id, 'furniture']
         );
         if (owned.rows.length === 0) return res.status(400).json({ error: 'Предмет не у вашому інвентарі' });
 

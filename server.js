@@ -167,6 +167,10 @@ app.use('/api/minigame', require('./routes/minigame'));
 app.use('/api/room', require('./routes/room'));
 app.use('/api/quests', require('./routes/quests'));
 
+// v22.10.0: Gamification v3 — Quiz, Streaks
+app.use('/api/quiz', require('./routes/quiz'));
+app.use('/api/streaks', require('./routes/streaks'));
+
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
 
@@ -301,6 +305,13 @@ app.get('/shop', (req, res) => {
 });
 app.get('/game', (req, res) => {
     res.sendFile(path.join(__dirname, 'game.html'));
+});
+// v22.10.0: Quiz + Room pages
+app.get('/quiz', (req, res) => {
+    res.sendFile(path.join(__dirname, 'quiz.html'));
+});
+app.get('/room', (req, res) => {
+    res.sendFile(path.join(__dirname, 'room.html'));
 });
 
 // SPA fallback (must be last)

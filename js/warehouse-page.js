@@ -347,7 +347,7 @@ function openUseModal(itemId) {
     document.getElementById('qtyModalReason').placeholder = 'Щоденне використання';
     document.getElementById('qtyModalConfirm').textContent = 'Списати';
     document.getElementById('qtyModalConfirm').className = 'btn-page-primary';
-    document.getElementById('qtyModalConfirm').style.background = '#EF4444';
+    document.getElementById('qtyModalConfirm').style.background = document.body.classList.contains('dark-mode') ? 'rgba(239,68,68,0.8)' : '#EF4444';
     document.getElementById('qtyModal').style.display = '';
     document.getElementById('qtyModalAmount').focus();
 }

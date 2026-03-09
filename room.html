@@ -449,7 +449,12 @@
 
     function showNotification(msg, type) {
         const el = document.createElement('div');
-        el.style.cssText = `position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;z-index:9999;background:${type === 'error' ? '#fee2e2' : '#dcfce7'};color:${type === 'error' ? '#dc2626' : '#16a34a'};box-shadow:0 4px 12px rgba(0,0,0,0.1)`;
+        const dk = document.body.classList.contains('dark-mode');
+        const errBg = dk ? 'rgba(239,68,68,0.15)' : '#fee2e2';
+        const okBg = dk ? 'rgba(22,163,106,0.15)' : '#dcfce7';
+        const errClr = dk ? '#FCA5A5' : '#dc2626';
+        const okClr = dk ? '#6EE7B7' : '#16a34a';
+        el.style.cssText = `position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;z-index:9999;background:${type === 'error' ? errBg : okBg};color:${type === 'error' ? errClr : okClr};box-shadow:0 4px 12px rgba(0,0,0,${dk ? '0.4' : '0.1'})`;
         el.textContent = msg;
         document.body.appendChild(el);
         setTimeout(() => el.remove(), 3000);

@@ -1745,3 +1745,95 @@ body.dark-mode .guardian-log-entry.severity-danger {
 body.dark-mode .guardian-log-entry.severity-warning {
     background: rgba(245, 158, 11, 0.06);
 }
+
+/* ==========================================
+   v22.3: DARK MODE GAPS FIX — comprehensive pass
+   ========================================== */
+
+/* Confirm dialog */
+body.dark-mode .confirm-dialog {
+    background: #1e1e32;
+    color: #E2E8F0;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 8px 16px rgba(0,0,0,0.3), 0 24px 56px rgba(0,0,0,0.5);
+}
+body.dark-mode .confirm-title { color: #F3F4F6; }
+body.dark-mode .confirm-msg { color: #D1D5DB; }
+
+/* Age recommendations section */
+body.dark-mode .age-reco-section {
+    background: linear-gradient(135deg, #2d2400 0%, #3d3000 100%);
+    border-color: rgba(217,119,6,0.3);
+}
+body.dark-mode .age-reco-hint { color: #FCD34D; }
+body.dark-mode .age-reco-btn {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(217,119,6,0.4);
+    color: #FCD34D;
+}
+body.dark-mode .age-reco-btn:hover {
+    background: rgba(217,119,6,0.2);
+    border-color: #D97706;
+}
+body.dark-mode .age-reco-tag {
+    background: rgba(217,119,6,0.15);
+    color: #FCD34D;
+}
+
+/* Undo button hover */
+body.dark-mode .btn-undo:hover {
+    background: rgba(245,158,11,0.15);
+    border-color: var(--warning);
+    color: #FCD34D;
+}
+
+/* Telegram chat type badge */
+body.dark-mode .telegram-chat-item .chat-type {
+    background: rgba(59,130,246,0.15);
+    color: #93C5FD;
+}
+
+/* Btn-auto-time hover */
+body.dark-mode .btn-auto-time:hover {
+    border-color: #8B5CF6;
+    background: rgba(139,92,246,0.15);
+}
+
+/* Afisha line header */
+body.dark-mode .afisha-line-header .line-name { color: #C4B5FD; }
+body.dark-mode .afisha-line-header .line-sub { color: #A78BFA; }
+
+/* Automation info text colors */
+body.dark-mode .invite-section-header { color: #FCD34D; }
+body.dark-mode .invite-preview { color: #FBBF24; }
+
+/* Features info text dark-brown fix */
+body.dark-mode .automation-info { color: #C4B5FD; }
+body.dark-mode .automation-status { color: #A78BFA; }
+
+/* Duration badges in controls.css */
+body.dark-mode .duration-short {
+    background: rgba(59,130,246,0.2);
+    color: #93C5FD;
+}
+body.dark-mode .duration-long {
+    background: rgba(245,158,11,0.2);
+    color: #FCD34D;
+}
+
+/* Pages — danger button hover */
+body.dark-mode .btn-danger:hover {
+    background: rgba(239,68,68,0.2);
+}
+
+/* Scripts quick access */
+body.dark-mode .scripts-quick-access {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.08);
+}
+
+/* General: any remaining hardcoded #92400E text */
+body.dark-mode .hosts-warning-text { color: #FCD34D; }
+
+/* Standalone pages — auth page corrections */
+body.dark-mode .auth-tagline { color: #9CA3AF; }
+body.dark-mode .auth-footer { color: #6B7280; }

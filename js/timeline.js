@@ -1883,7 +1883,7 @@ function _showAfishaLineMenu(e, event) {
     const unassign = document.createElement('div');
     unassign.style.cssText = 'padding:8px 14px;cursor:pointer;';
     unassign.textContent = '— Без лінії (афіша)';
-    unassign.onmouseenter = () => unassign.style.background = '#f7fafc';
+    unassign.onmouseenter = () => unassign.style.background = document.body.classList.contains('dark-mode') ? 'rgba(255,255,255,0.08)' : '#f7fafc';
     unassign.onmouseleave = () => unassign.style.background = '';
     unassign.onclick = () => { _moveAfishaToLine(event.id, null); menu.remove(); };
     if (event.line_id == null) unassign.style.fontWeight = '700';
@@ -1894,7 +1894,7 @@ function _showAfishaLineMenu(e, event) {
         item.style.cssText = 'padding:8px 14px;cursor:pointer;';
         item.textContent = line.name;
         if (event.line_id === line.id) item.style.fontWeight = '700';
-        item.onmouseenter = () => item.style.background = '#f7fafc';
+        item.onmouseenter = () => item.style.background = document.body.classList.contains('dark-mode') ? 'rgba(255,255,255,0.08)' : '#f7fafc';
         item.onmouseleave = () => item.style.background = '';
         item.onclick = () => { _moveAfishaToLine(event.id, line.id); menu.remove(); };
         menu.appendChild(item);

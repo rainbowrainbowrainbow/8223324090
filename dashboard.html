@@ -7,17 +7,21 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=22.1.0">
-    <link rel="stylesheet" href="css/layout.css?v=22.1.0">
-    <link rel="stylesheet" href="css/pages.css?v=22.1.0">
-    <link rel="stylesheet" href="css/modals.css?v=22.1.0">
-    <link rel="stylesheet" href="css/dashboard.css?v=22.1.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=22.1.0">
-    <link rel="stylesheet" href="css/responsive.css?v=22.1.0">
+    <link rel="stylesheet" href="css/base.css?v=22.2.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.2.0">
+    <link rel="stylesheet" href="css/pages.css?v=22.2.0">
+    <link rel="stylesheet" href="css/modals.css?v=22.2.0">
+    <link rel="stylesheet" href="css/dashboard.css?v=22.2.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.2.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.2.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <!-- Login screen (shared pattern) -->
     <div id="loginScreen" class="login-screen">
         <div class="login-container">
@@ -25,7 +29,7 @@
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-logo-img">
             </div>
             <h1>Event Genix</h1>
-            <p class="login-subtitle">AI First CRM v22.0.0</p>
+            <p class="login-subtitle">AI First CRM v22.2.0</p>
             <form id="loginForm" onsubmit="return false;">
                 <input type="text" id="loginUsername" placeholder="Логін" autocomplete="username" required aria-label="Логін">
                 <input type="password" id="loginPassword" placeholder="Пароль" autocomplete="current-password" required aria-label="Пароль">
@@ -102,12 +106,12 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/config.js?v=22.1.0"></script>
-    <script src="js/api.js?v=22.1.0"></script>
-    <script src="js/auth.js?v=22.1.0"></script>
-    <script src="js/components/sidebar.js?v=22.1.0"></script>
+    <script src="js/config.js?v=22.2.0"></script>
+    <script src="js/api.js?v=22.2.0"></script>
+    <script src="js/auth.js?v=22.2.0"></script>
+    <script src="js/components/sidebar.js?v=22.2.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/dashboard-page.js?v=22.1.0"></script>
+    <script src="js/dashboard-page.js?v=22.2.0"></script>
     <script>
     // Login handler
     document.getElementById('loginForm').addEventListener('submit', async () => {

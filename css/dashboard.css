@@ -584,13 +584,31 @@
 }
 
 /* Dark mode */
+.dark-mode .dashboard-page h1 {
+    color: #E2E8F0;
+}
+
 .dark-mode .widget-card {
-    background: rgba(45, 55, 72, 0.6);
-    border-color: rgba(255,255,255,0.06);
+    background: #252540;
+    border-color: rgba(255,255,255,0.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.dark-mode .widget-card:hover {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    border-color: rgba(255,255,255,0.15);
 }
 
 .dark-mode .widget-header {
-    border-bottom-color: rgba(255,255,255,0.06);
+    border-bottom-color: rgba(255,255,255,0.08);
+}
+
+.dark-mode .widget-title {
+    color: #E2E8F0;
+}
+
+.dark-mode .widget-body {
+    color: #CBD5E0;
 }
 
 .dark-mode .widget-task-item,
@@ -600,24 +618,97 @@
 .dark-mode .currency-item,
 .dark-mode .schedule-item,
 .dark-mode .announcement-item {
-    background: rgba(255,255,255,0.04);
+    background: rgba(255,255,255,0.06);
+}
+
+.dark-mode .widget-task-item:hover,
+.dark-mode .widget-booking-item:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+.dark-mode .widget-task-title,
+.dark-mode .widget-booking-name {
+    color: #E2E8F0;
+}
+
+.dark-mode .widget-booking-status.confirmed {
+    background: rgba(72, 187, 120, 0.2);
+    color: #68D391;
+}
+
+.dark-mode .widget-booking-status.preliminary {
+    background: rgba(214, 158, 46, 0.2);
+    color: #ECC94B;
+}
+
+.dark-mode .stat-value {
+    color: var(--primary, #C9A84C);
+}
+
+.dark-mode .stat-label {
+    color: #A0AEC0;
+}
+
+.dark-mode .weather-temp,
+.dark-mode .currency-value {
+    color: #E2E8F0;
+}
+
+.dark-mode .announcement-title {
+    color: #E2E8F0;
+}
+
+.dark-mode .announcement-content {
+    color: #A0AEC0;
 }
 
 .dark-mode .dashboard-btn {
-    background: rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.08);
     color: #e2e8f0;
+}
+
+.dark-mode .dashboard-btn:hover {
+    background: rgba(255,255,255,0.14);
+}
+
+.dark-mode .widget-empty {
+    color: #718096;
+}
+
+.dark-mode .widget-action-btn {
+    color: #718096;
+}
+
+.dark-mode .widget-action-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: #A0AEC0;
 }
 
 .dark-mode .test-panel,
 .dark-mode .onboarding-modal {
-    background: var(--bg-primary, #1a202c);
+    background: #252540;
     color: #e2e8f0;
+    border: 1px solid rgba(255,255,255,0.1);
 }
 
 .dark-mode .test-panel select {
-    background: var(--bg-secondary, #2d3748);
+    background: #333350;
     color: #e2e8f0;
+    border-color: rgba(255,255,255,0.12);
+}
+
+.dark-mode .onboarding-widget-option {
     border-color: rgba(255,255,255,0.1);
+    color: #CBD5E0;
+}
+
+.dark-mode .onboarding-widget-option:hover {
+    border-color: var(--primary, #C9A84C);
+}
+
+.dark-mode .onboarding-widget-option.selected {
+    border-color: var(--primary, #C9A84C);
+    background: rgba(201, 168, 76, 0.12);
 }
 
 /* Responsive */

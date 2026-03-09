@@ -1,5 +1,10 @@
 -- Migration 031: Game currency (wallets + transactions)
-CREATE TABLE IF NOT EXISTS game_wallets (
+-- Defensive: drop + recreate to avoid schema mismatch from partial deploys
+
+DROP TABLE IF EXISTS coin_transactions CASCADE;
+DROP TABLE IF EXISTS game_wallets CASCADE;
+
+CREATE TABLE game_wallets (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE UNIQUE,
     coins INTEGER NOT NULL DEFAULT 1000,
@@ -9,7 +14,7 @@ CREATE TABLE IF NOT EXISTS game_wallets (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS coin_transactions (
+CREATE TABLE coin_transactions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     amount INTEGER NOT NULL,
@@ -29,6 +34,6 @@ SELECT id, 1000, 1000 FROM users
 ON CONFLICT (user_id) DO NOTHING;
 
 INSERT INTO coin_transactions (user_id, amount, type, description)
-SELECT id, 1000, 'starter_bonus', 'Стартовий бонус 🎉'
+SELECT id, 1000, 'starter_bonus', 'Starter bonus'
 FROM users
 WHERE id NOT IN (SELECT user_id FROM coin_transactions WHERE type = 'starter_bonus');

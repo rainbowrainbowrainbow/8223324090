@@ -1,5 +1,9 @@
 -- Migration 032: Achievements system
-CREATE TABLE IF NOT EXISTS achievements (
+-- Defensive: clean state
+DROP TABLE IF EXISTS user_achievements CASCADE;
+DROP TABLE IF EXISTS achievements CASCADE;
+
+CREATE TABLE achievements (
     id SERIAL PRIMARY KEY,
     code VARCHAR(100) UNIQUE NOT NULL,
     name VARCHAR(200) NOT NULL,
@@ -16,10 +20,7 @@ CREATE TABLE IF NOT EXISTS achievements (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Drop old schema (initDatabase creates with username/achievement_key)
-DROP TABLE IF EXISTS user_achievements CASCADE;
-
-CREATE TABLE IF NOT EXISTS user_achievements (
+CREATE TABLE user_achievements (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     achievement_id INTEGER REFERENCES achievements(id),

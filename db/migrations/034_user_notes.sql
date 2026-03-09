@@ -1,5 +1,8 @@
 -- Migration 034: User notes (sticky notes)
-CREATE TABLE IF NOT EXISTS user_notes (
+DROP TABLE IF EXISTS minigame_sessions CASCADE;
+DROP TABLE IF EXISTS user_notes CASCADE;
+
+CREATE TABLE user_notes (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     title VARCHAR(200),
@@ -13,7 +16,7 @@ CREATE TABLE IF NOT EXISTS user_notes (
 CREATE INDEX IF NOT EXISTS idx_notes_user ON user_notes(user_id);
 
 -- Minigame sessions tracking (anti-farm)
-CREATE TABLE IF NOT EXISTS minigame_sessions (
+CREATE TABLE minigame_sessions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     game_type VARCHAR(50) DEFAULT 'match3',

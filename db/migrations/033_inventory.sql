@@ -1,5 +1,10 @@
 -- Migration 033: Shop items, inventory, extended profiles
-CREATE TABLE IF NOT EXISTS shop_items (
+-- Defensive: clean state
+DROP TABLE IF EXISTS user_inventory CASCADE;
+DROP TABLE IF EXISTS user_profiles_extended CASCADE;
+DROP TABLE IF EXISTS shop_items CASCADE;
+
+CREATE TABLE shop_items (
     id SERIAL PRIMARY KEY,
     code VARCHAR(100) UNIQUE NOT NULL,
     name VARCHAR(200) NOT NULL,
@@ -15,7 +20,7 @@ CREATE TABLE IF NOT EXISTS shop_items (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS user_inventory (
+CREATE TABLE user_inventory (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     item_id INTEGER REFERENCES shop_items(id),
@@ -26,7 +31,7 @@ CREATE TABLE IF NOT EXISTS user_inventory (
     UNIQUE(user_id, item_id)
 );
 
-CREATE TABLE IF NOT EXISTS user_profiles_extended (
+CREATE TABLE user_profiles_extended (
     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     avatar_url TEXT,
     avatar_style VARCHAR(50) DEFAULT 'default',

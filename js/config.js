@@ -301,20 +301,23 @@ if (typeof showNotification === 'undefined') {
     };
 }
 
-// v22.7.0: Fallback confirmModal for pages without ui.js
+// v22.8.0: Fallback confirmModal for pages without ui.js
 if (typeof confirmModal === 'undefined') {
     window.confirmModal = function(message, options) {
         options = options || {};
+        var icons = { danger: '🗑️', success: '✅', warning: '⚠️' };
         return new Promise(function(resolve) {
             var okText = options.okText || 'Підтвердити';
             var cancelText = options.cancelText || 'Скасувати';
             var type = options.type || 'warning';
+            var icon = icons[type] || '❓';
+            var closed = false;
 
             var overlay = document.createElement('div');
             overlay.className = 'confirm-overlay';
             overlay.innerHTML =
                 '<div class="confirm-dialog ' + type + '">' +
-                    '<div class="confirm-icon">' + (type === 'danger' ? '⚠️' : type === 'success' ? '✅' : '❓') + '</div>' +
+                    '<div class="confirm-icon">' + icon + '</div>' +
                     '<div class="confirm-message">' + message + '</div>' +
                     '<div class="confirm-actions">' +
                         '<button class="confirm-btn confirm-cancel">' + cancelText + '</button>' +
@@ -323,9 +326,11 @@ if (typeof confirmModal === 'undefined') {
                 '</div>';
 
             function close(result) {
+                if (closed) return;
+                closed = true;
                 overlay.classList.add('confirm-exit');
-                setTimeout(function() { overlay.remove(); }, 200);
                 document.removeEventListener('keydown', onKey);
+                setTimeout(function() { overlay.remove(); }, 200);
                 resolve(result);
             }
 

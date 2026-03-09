@@ -215,12 +215,14 @@ const _toastMaxVisible = 3;
 function confirmModal(message, options = {}) {
     return new Promise((resolve) => {
         const { okText = 'Підтвердити', cancelText = 'Скасувати', type = 'warning' } = options;
+        const icons = { danger: '🗑️', success: '✅', warning: '⚠️' };
+        const icon = icons[type] || '❓';
 
         const overlay = document.createElement('div');
         overlay.className = 'confirm-overlay';
         overlay.innerHTML = `
             <div class="confirm-dialog ${type}">
-                <div class="confirm-icon">${type === 'danger' ? '⚠️' : type === 'success' ? '✅' : '❓'}</div>
+                <div class="confirm-icon">${icon}</div>
                 <div class="confirm-message">${message}</div>
                 <div class="confirm-actions">
                     <button class="confirm-btn confirm-cancel">${cancelText}</button>
@@ -228,8 +230,12 @@ function confirmModal(message, options = {}) {
                 </div>
             </div>`;
 
+        let closed = false;
         const close = (result) => {
+            if (closed) return;
+            closed = true;
             overlay.classList.add('confirm-exit');
+            document.removeEventListener('keydown', onKey);
             setTimeout(() => overlay.remove(), 200);
             resolve(result);
         };
@@ -238,13 +244,10 @@ function confirmModal(message, options = {}) {
         overlay.querySelector('.confirm-ok').addEventListener('click', () => close(true));
         overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
 
-        // ESC to cancel
-        const onKey = (e) => { if (e.key === 'Escape') { close(false); document.removeEventListener('keydown', onKey); } };
+        const onKey = (e) => { if (e.key === 'Escape') close(false); };
         document.addEventListener('keydown', onKey);
 
         document.body.appendChild(overlay);
-
-        // Focus OK button
         requestAnimationFrame(() => overlay.querySelector('.confirm-ok').focus());
     });
 }

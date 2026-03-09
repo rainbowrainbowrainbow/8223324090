@@ -499,7 +499,7 @@ function switchTab(tab) {
     document.getElementById('tabRfm').style.display = tab === 'rfm' ? '' : 'none';
 
     if (tab === 'rfm' && !CrmState.rfmData) {
-        fetchRFM().then(renderRFM);
+        fetchRFM().then(renderRFM).catch(function() { /* RFM load failed */ });
     }
 }
 

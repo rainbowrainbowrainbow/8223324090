@@ -527,12 +527,12 @@ router.delete('/:id', async (req, res) => {
         const { id } = req.params;
         // v8.1: Fetch before delete for history logging
         const original = await pool.query('SELECT * FROM afisha WHERE id = $1', [id]);
-        // v7.6: Cascade — delete linked todo tasks (keep in_progress/done)
+        // Cascade — delete all linked tasks
         const deleted = await pool.query(
-            `DELETE FROM tasks WHERE afisha_id = $1 AND status = 'todo' RETURNING id`, [id]
+            `DELETE FROM tasks WHERE afisha_id = $1 RETURNING id`, [id]
         );
         if (deleted.rows.length > 0) {
-            log.info(`Cascade-deleted ${deleted.rows.length} todo tasks for afisha #${id}`);
+            log.info(`Cascade-deleted ${deleted.rows.length} tasks for afisha #${id}`);
         }
         await pool.query('DELETE FROM afisha WHERE id = $1', [id]);
         // v8.1: Log to history

@@ -54,14 +54,17 @@ router.put('/profile', async (req, res) => {
         const { display_name, bio, hobbies, avatar_url, is_public } = req.body;
 
         // Validate
-        if (display_name && display_name.length > 100) {
+        if (display_name && (typeof display_name !== 'string' || display_name.length > 100)) {
             return res.status(400).json({ error: 'Ім\'я занадто довге (макс 100)' });
         }
-        if (bio && bio.length > 500) {
+        if (bio && (typeof bio !== 'string' || bio.length > 500)) {
             return res.status(400).json({ error: 'Біо занадто довге (макс 500)' });
         }
         if (hobbies && (!Array.isArray(hobbies) || hobbies.length > 10)) {
             return res.status(400).json({ error: 'Максимум 10 хобі' });
+        }
+        if (avatar_url && (typeof avatar_url !== 'string' || avatar_url.length > 500 || !/^https?:\/\//.test(avatar_url))) {
+            return res.status(400).json({ error: 'Невалідний URL аватарки' });
         }
 
         await gamification.updateProfile(req.user.username, {
@@ -128,9 +131,9 @@ router.get('/shop', async (req, res) => {
 // POST /shop/buy — purchase item
 router.post('/shop/buy', async (req, res) => {
     try {
-        const { shopItemId } = req.body;
-        if (!shopItemId) {
-            return res.status(400).json({ error: 'shopItemId обов\'язковий' });
+        const shopItemId = parseInt(req.body.shopItemId);
+        if (!Number.isInteger(shopItemId) || shopItemId <= 0) {
+            return res.status(400).json({ error: 'shopItemId обов\'язковий (позитивне число)' });
         }
 
         const result = await gamification.purchaseShopItem(req.user.username, shopItemId);
@@ -147,9 +150,9 @@ router.post('/shop/buy', async (req, res) => {
 // POST /equip — equip item
 router.post('/equip', async (req, res) => {
     try {
-        const { itemId } = req.body;
-        if (!itemId) {
-            return res.status(400).json({ error: 'itemId обов\'язковий' });
+        const itemId = parseInt(req.body.itemId);
+        if (!Number.isInteger(itemId) || itemId <= 0) {
+            return res.status(400).json({ error: 'itemId обов\'язковий (позитивне число)' });
         }
 
         const result = await gamification.equipItem(req.user.username, itemId);
@@ -164,11 +167,12 @@ router.post('/equip', async (req, res) => {
 });
 
 // POST /unequip — unequip slot
+const VALID_SLOTS = ['wallpaper', 'floor', 'hat', 'frame', 'badge', 'pet', 'effect'];
 router.post('/unequip', async (req, res) => {
     try {
         const { slot } = req.body;
-        if (!slot) {
-            return res.status(400).json({ error: 'slot обов\'язковий' });
+        if (!slot || !VALID_SLOTS.includes(slot)) {
+            return res.status(400).json({ error: `slot обов\'язковий (${VALID_SLOTS.join(', ')})` });
         }
 
         const result = await gamification.unequipSlot(req.user.username, slot);
@@ -182,11 +186,12 @@ router.post('/unequip', async (req, res) => {
 // GET /coins/history — coin transaction history
 router.get('/coins/history', async (req, res) => {
     try {
-        const { limit = 50, offset = 0 } = req.query;
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 200);
+        const offset = Math.max(parseInt(req.query.offset) || 0, 0);
         const history = await gamification.getCoinHistory(
             req.user.username,
-            parseInt(limit) || 50,
-            parseInt(offset) || 0
+            limit,
+            offset
         );
         res.json(history);
     } catch (err) {
@@ -198,15 +203,16 @@ router.get('/coins/history', async (req, res) => {
 // POST /coins/gift — gift coins to another user
 router.post('/coins/gift', async (req, res) => {
     try {
-        const { toUser, amount } = req.body;
-        if (!toUser || !amount) {
-            return res.status(400).json({ error: 'toUser та amount обов\'язкові' });
+        const { toUser } = req.body;
+        const amount = parseInt(req.body.amount);
+        if (!toUser || !Number.isInteger(amount) || amount < 1 || amount > 10000) {
+            return res.status(400).json({ error: 'toUser та amount (1-10000) обов\'язкові' });
         }
         if (toUser === req.user.username) {
             return res.status(400).json({ error: 'Не можна дарувати собі' });
         }
 
-        const result = await gamification.giftCoins(req.user.username, toUser, parseInt(amount));
+        const result = await gamification.giftCoins(req.user.username, toUser, amount);
         if (!result.success) {
             return res.status(400).json({ error: result.error });
         }
@@ -220,12 +226,13 @@ router.post('/coins/gift', async (req, res) => {
 // POST /coins/award — admin: award coins
 router.post('/coins/award', requireRole('admin', 'creator', 'director'), async (req, res) => {
     try {
-        const { username, amount, reason } = req.body;
-        if (!username || !amount) {
-            return res.status(400).json({ error: 'username та amount обов\'язкові' });
+        const { username, reason } = req.body;
+        const amount = parseInt(req.body.amount);
+        if (!username || !Number.isInteger(amount) || amount === 0 || amount < -10000 || amount > 10000) {
+            return res.status(400).json({ error: 'username та amount (-10000..10000, не 0) обов\'язкові' });
         }
 
-        await gamification.awardCoins(username, parseInt(amount), reason || 'Нагорода від адміна', 'admin');
+        await gamification.awardCoins(username, amount, reason || 'Нагорода від адміна', 'admin');
         res.json({ success: true });
     } catch (err) {
         log.error('Award coins error', err);
@@ -236,8 +243,10 @@ router.post('/coins/award', requireRole('admin', 'creator', 'director'), async (
 // GET /leaderboard — top users
 router.get('/leaderboard', async (req, res) => {
     try {
-        const { sort = 'xp', limit = 20 } = req.query;
-        const leaderboard = await gamification.getLeaderboard(sort, parseInt(limit) || 20);
+        const VALID_SORTS = ['xp', 'coins', 'level', 'achievements'];
+        const sort = VALID_SORTS.includes(req.query.sort) ? req.query.sort : 'xp';
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+        const leaderboard = await gamification.getLeaderboard(sort, limit);
         res.json(leaderboard);
     } catch (err) {
         log.error('Leaderboard error', err);

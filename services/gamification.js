@@ -45,7 +45,8 @@ async function ensureCurrency(username) {
     await pool.query(
         `INSERT INTO game_currency (username, coins)
          VALUES ($1, 0)
-         ON CONFLICT (username) DO NOTHING`,
+         ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username
+         RETURNING *`,
         [username]
     );
 }

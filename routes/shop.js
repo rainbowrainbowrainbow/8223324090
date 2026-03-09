@@ -34,7 +34,7 @@ router.post('/buy', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        const item = await client.query('SELECT * FROM shop_items WHERE id = $1 AND is_available = true', [item_id]);
+        const item = await client.query('SELECT * FROM shop_items WHERE id = $1 AND is_active = true', [item_id]);
         if (item.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Товар не знайдено' });
@@ -53,7 +53,11 @@ router.post('/buy', requireRole(...ANY_ROLE), async (req, res) => {
             }
         }
 
-        // Check balance
+        // Ensure wallet exists, then lock for update
+        await client.query(
+            'INSERT INTO game_wallets (user_id, coins) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING',
+            [req.user.id]
+        );
         const wallet = await client.query(
             'SELECT coins FROM game_wallets WHERE user_id = $1 FOR UPDATE',
             [req.user.id]

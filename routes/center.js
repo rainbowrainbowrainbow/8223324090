@@ -87,7 +87,7 @@ router.get('/overview', async (req, res) => {
             pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date >= $1 AND date <= $2 AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [weekStart, today]),
             pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date >= $1 AND date <= $2 AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [monthStart, today]),
             // Workers
-            pool.query('SELECT id, name, display_name, type, purpose, is_active, updated_at FROM worker_roles ORDER BY created_at').catch(() => ({ rows: [] })),
+            pool.query('SELECT id, name, display_name, type, purpose, is_active, updated_at FROM worker_roles ORDER BY created_at').catch(err => { log.warn('Worker roles fetch failed', err.message); return { rows: [] }; }),
             // Tasks stats
             pool.query(`SELECT
                 COUNT(*) FILTER (WHERE status = 'done') AS done,

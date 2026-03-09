@@ -191,7 +191,7 @@ router.get('/verify', async (req, res) => {
         });
     } catch (err) {
         log.error(`Backup verify error: ${err.message}`);
-        res.status(500).json({ ok: false, error: err.message });
+        res.status(500).json({ ok: false, error: 'Помилка перевірки бекапу' });
     }
 });
 

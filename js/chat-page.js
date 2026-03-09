@@ -433,6 +433,46 @@
         panel.appendChild(grid);
     }
 
+    // Emoji search keywords map (emoji → Ukrainian/English keywords)
+    var EMOJI_KEYWORDS = {
+        '\u{1F600}': 'smile усмішка', '\u{1F603}': 'smile happy щасливий', '\u{1F604}': 'grin радість',
+        '\u{1F601}': 'grin радість', '\u{1F606}': 'laugh сміх', '\u{1F605}': 'sweat піт',
+        '\u{1F602}': 'joy сльози радості lol', '\u{1F923}': 'rofl сміх lol', '\u{1F642}': 'slight smile',
+        '\u{1F609}': 'wink підморгування', '\u{1F60A}': 'blush рум\'янець', '\u{1F607}': 'angel ангел',
+        '\u{1F970}': 'love hearts кохання', '\u{1F60D}': 'heart eyes кохання love',
+        '\u{1F618}': 'kiss поцілунок', '\u{1F60B}': 'yummy смачно', '\u{1F914}': 'think думати hmm',
+        '\u{1F610}': 'neutral нейтральний', '\u{1F612}': 'unamused незадоволений',
+        '\u{1F644}': 'rolling eyes очі', '\u{1F60C}': 'relieved полегшення',
+        '\u{1F634}': 'sleep сон zzz', '\u{1F637}': 'mask маска', '\u{1F912}': 'sick хворий',
+        '\u{1F922}': 'nausea нудота', '\u{1F927}': 'sneeze чхання', '\u{1F60E}': 'cool круто sunglasses',
+        '\u{1F913}': 'nerd ботан', '\u{1F615}': 'confused збентежений', '\u{1F622}': 'cry плакати',
+        '\u{1F62D}': 'sob плакати cry', '\u{1F631}': 'scream крик', '\u{1F621}': 'angry злий',
+        '\u{1F620}': 'angry злий', '\u{1F608}': 'devil диявол', '\u{1F480}': 'skull череп',
+        '\u{1F4A9}': 'poop какашка', '\u{1F921}': 'clown клоун', '\u{1F47B}': 'ghost привид',
+        '\u{1F47D}': 'alien інопланетянин', '\u{1F916}': 'robot робот',
+        '\u{1F44D}': 'thumbs up лайк like ok', '\u{1F44E}': 'thumbs down не лайк dislike',
+        '\u{1F44A}': 'fist кулак', '\u{1F44F}': 'clap аплодисменти bravo',
+        '\u{1F64C}': 'raise hands руки hooray', '\u{1F64F}': 'pray молитва please',
+        '\u{1F4AA}': 'muscle м\'язи strong сила', '\u{270C}\uFE0F': 'peace мир victory',
+        '\u{1F918}': 'rock рок', '\u{1F44B}': 'wave привіт hello hi',
+        '\u{1F44C}': 'ok добре perfect', '\u{2764}\uFE0F': 'heart серце love кохання',
+        '\u{1F494}': 'broken heart розбите серце', '\u{1F495}': 'two hearts серця',
+        '\u{2705}': 'check done готово', '\u{274C}': 'cross ні no', '\u{2753}': 'question питання',
+        '\u{2757}': 'exclamation важливо', '\u{1F4AF}': 'hundred 100 percent',
+        '\u{1F525}': 'fire вогонь hot гаряче', '\u{2B50}': 'star зірка',
+        '\u{1F4A5}': 'boom вибух', '\u{1F389}': 'party свято tada', '\u{1F38A}': 'confetti конфетті',
+        '\u{1F3AF}': 'bullseye ціль target', '\u{1F3C6}': 'trophy кубок winner',
+        '\u{1F436}': 'dog собака пес', '\u{1F431}': 'cat кіт кішка',
+        '\u{1F42D}': 'mouse миша', '\u{1F430}': 'rabbit кролик', '\u{1F43B}': 'bear ведмідь',
+        '\u{1F43C}': 'panda панда', '\u{1F428}': 'koala коала', '\u{1F42F}': 'tiger тигр',
+        '\u{1F981}': 'lion лев', '\u{1F984}': 'unicorn єдиноріг',
+        '\u{1F34E}': 'apple яблуко', '\u{1F349}': 'watermelon кавун', '\u{1F353}': 'strawberry полуниця',
+        '\u{1F34C}': 'banana банан', '\u{1F352}': 'cherry вишня', '\u{1F355}': 'pizza піца',
+        '\u{1F354}': 'burger бургер', '\u{1F35F}': 'fries картопля', '\u{1F32D}': 'hotdog хотдог',
+        '\u{26BD}': 'football soccer футбол', '\u{1F3C0}': 'basketball баскетбол',
+        '\u{1F3AE}': 'game гра', '\u{1F3B5}': 'music музика', '\u{1F3A4}': 'mic мікрофон karaoke'
+    };
+
     function _renderEmojiGrid(grid, category, search) {
         grid.innerHTML = '';
         var emojis = [];
@@ -442,11 +482,20 @@
             emojis = EMOJI_DATA[category] || [];
         }
         if (search) {
-            // Simple search: just show all matching across categories
+            var q = search.toLowerCase();
             emojis = [];
             Object.keys(EMOJI_DATA).forEach(function (k) {
-                emojis = emojis.concat(EMOJI_DATA[k]);
+                EMOJI_DATA[k].forEach(function (e) {
+                    var kw = EMOJI_KEYWORDS[e] || '';
+                    if (kw.toLowerCase().indexOf(q) !== -1 || e === q) {
+                        emojis.push(e);
+                    }
+                });
             });
+            if (emojis.length === 0) {
+                grid.innerHTML = '<div class="chat-emoji-panel-empty">Нічого не знайдено</div>';
+                return;
+            }
         }
         var row = document.createElement('div');
         row.className = 'chat-emoji-panel-row';
@@ -2190,7 +2239,7 @@
         var f = meta.file;
         if (f.type === 'image') {
             return '<div class="chat-file-attachment chat-image-attachment">' +
-                '<img src="' + _esc(f.url) + '" alt="' + _esc(f.name) + '" class="chat-attached-image" loading="lazy" onclick="window.open(this.src,\'_blank\')">' +
+                '<img src="' + _esc(f.url) + '" alt="' + _esc(f.name) + '" class="chat-attached-image" loading="lazy" style="cursor:zoom-in">' +
             '</div>';
         }
         // Audio/voice message
@@ -5231,5 +5280,258 @@
         randomAvatar.classList.add('blink');
         setTimeout(function () { randomAvatar.classList.remove('blink'); }, 300);
     }, 5000);
+
+    // ==========================================
+    // v22.1: UNREAD SEPARATOR
+    // ==========================================
+    var _lastReadSeq = {};
+
+    var _origLoadMessages = typeof _loadMessages === 'function' ? _loadMessages : null;
+    // Inject unread divider after messages are rendered
+    function _insertUnreadDivider() {
+        if (!_currentChannel) return;
+        var channelId = _currentChannel.id;
+        var lastRead = _lastReadSeq[channelId];
+        if (!lastRead) return;
+        var existing = document.querySelector('.chat-unread-divider');
+        if (existing) return; // Already shown
+        var messages = document.querySelectorAll('.chat-message[data-seq]');
+        for (var i = 0; i < messages.length; i++) {
+            var seq = parseInt(messages[i].dataset.seq, 10);
+            if (seq > lastRead) {
+                var divider = document.createElement('div');
+                divider.className = 'chat-unread-divider';
+                divider.innerHTML = '<span class="chat-unread-divider-text">Нові повідомлення</span>';
+                messages[i].parentNode.insertBefore(divider, messages[i]);
+                divider.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                break;
+            }
+        }
+    }
+
+    // Track last read seq per channel
+    document.addEventListener('parkws', function (e) {
+        var d = e.detail;
+        if (d && d.eventType === 'chat:read' && d.payload) {
+            if (String(d.payload.userId) === _currentUserId) {
+                _lastReadSeq[d.payload.channelId] = d.payload.seq;
+            }
+        }
+    });
+
+    // ==========================================
+    // v22.1: IMAGE LIGHTBOX WITH GALLERY
+    // ==========================================
+    function _openLightbox(imgSrc) {
+        var images = [];
+        document.querySelectorAll('.chat-attached-image, .chat-attached-gif').forEach(function (img) {
+            images.push(img.src);
+        });
+        var idx = images.indexOf(imgSrc);
+        if (idx === -1) { idx = 0; images = [imgSrc]; }
+
+        function render(i) {
+            var existing = document.querySelector('.chat-lightbox-overlay');
+            if (existing) existing.remove();
+
+            var overlay = document.createElement('div');
+            overlay.className = 'chat-lightbox-overlay';
+            overlay.innerHTML =
+                '<button class="chat-lightbox-close" aria-label="Закрити">&times;</button>' +
+                (images.length > 1 ? '<button class="chat-lightbox-nav prev" aria-label="Попереднє">&#8249;</button>' : '') +
+                '<img class="chat-lightbox-img" src="' + images[i] + '" alt="Зображення">' +
+                (images.length > 1 ? '<button class="chat-lightbox-nav next" aria-label="Наступне">&#8250;</button>' : '') +
+                (images.length > 1 ? '<span class="chat-lightbox-counter">' + (i + 1) + ' / ' + images.length + '</span>' : '');
+
+            overlay.querySelector('.chat-lightbox-close').addEventListener('click', function () { overlay.remove(); });
+            overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+            if (images.length > 1) {
+                overlay.querySelector('.chat-lightbox-nav.prev').addEventListener('click', function (e) { e.stopPropagation(); render((i - 1 + images.length) % images.length); });
+                overlay.querySelector('.chat-lightbox-nav.next').addEventListener('click', function (e) { e.stopPropagation(); render((i + 1) % images.length); });
+            }
+            document.addEventListener('keydown', function handler(e) {
+                if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', handler); }
+                if (e.key === 'ArrowLeft' && images.length > 1) { render((i - 1 + images.length) % images.length); document.removeEventListener('keydown', handler); }
+                if (e.key === 'ArrowRight' && images.length > 1) { render((i + 1) % images.length); document.removeEventListener('keydown', handler); }
+            });
+            document.body.appendChild(overlay);
+        }
+        render(idx);
+    }
+
+    // Replace window.open with lightbox for images
+    document.addEventListener('click', function (e) {
+        var img = e.target.closest('.chat-attached-image, .chat-attached-gif');
+        if (img) {
+            e.preventDefault();
+            e.stopPropagation();
+            _openLightbox(img.src);
+        }
+    });
+
+    // ==========================================
+    // v22.1: SCROLL-TO-BOTTOM UNREAD BADGE
+    // ==========================================
+    var _unreadWhileScrolled = 0;
+    var _scrollBadgeEl = null;
+
+    function _updateScrollBadge() {
+        if (!_scrollBottomBtn) return;
+        if (_unreadWhileScrolled > 0 && _scrollBottomBtn.classList.contains('visible')) {
+            if (!_scrollBadgeEl) {
+                _scrollBadgeEl = document.createElement('span');
+                _scrollBadgeEl.className = 'chat-scroll-bottom-badge';
+                _scrollBottomBtn.style.position = 'relative';
+                _scrollBottomBtn.appendChild(_scrollBadgeEl);
+            }
+            _scrollBadgeEl.textContent = _unreadWhileScrolled > 99 ? '99+' : _unreadWhileScrolled;
+            _scrollBadgeEl.style.display = '';
+        } else if (_scrollBadgeEl) {
+            _scrollBadgeEl.style.display = 'none';
+        }
+    }
+
+    // Track new messages while scrolled up
+    var _origOnNewMsg = _onNewMessage;
+    _onNewMessage = function (payload) {
+        var wasAtBottom = _messagesEl && (_messagesEl.scrollHeight - _messagesEl.scrollTop - _messagesEl.clientHeight < 200);
+        _origOnNewMsg(payload);
+        if (!wasAtBottom && payload.message && String(payload.message.userId) !== _currentUserId) {
+            _unreadWhileScrolled++;
+            _updateScrollBadge();
+        }
+    };
+
+    // Reset badge when scrolling to bottom
+    if (_scrollBottomBtn) {
+        var _origScrollClick = _scrollBottomBtn.onclick;
+        _scrollBottomBtn.addEventListener('click', function () {
+            _unreadWhileScrolled = 0;
+            _updateScrollBadge();
+        });
+    }
+    if (_messagesEl) {
+        _messagesEl.addEventListener('scroll', function () {
+            var distFromBottom = _messagesEl.scrollHeight - _messagesEl.scrollTop - _messagesEl.clientHeight;
+            if (distFromBottom < 50) {
+                _unreadWhileScrolled = 0;
+                _updateScrollBadge();
+                // Remove unread divider
+                var divider = document.querySelector('.chat-unread-divider');
+                if (divider) divider.remove();
+            }
+        });
+    }
+
+    // ==========================================
+    // v22.1: DRAG OVERLAY WITH TEXT HINT
+    // ==========================================
+    var _dragOverlay = null;
+    if (_chatMain) {
+        // Override existing drag handlers with improved version
+        _chatMain.addEventListener('dragenter', function (e) {
+            e.preventDefault();
+            if (!_dragOverlay) {
+                _dragOverlay = document.createElement('div');
+                _dragOverlay.className = 'chat-drag-overlay';
+                _dragOverlay.innerHTML = '<span class="chat-drag-overlay-icon">📎</span><span class="chat-drag-overlay-text">Перетягніть файл сюди</span>';
+                _chatMain.appendChild(_dragOverlay);
+            }
+        });
+        _chatMain.addEventListener('dragleave', function (e) {
+            if (e.relatedTarget && _chatMain.contains(e.relatedTarget)) return;
+            if (_dragOverlay) { _dragOverlay.remove(); _dragOverlay = null; }
+        });
+        _chatMain.addEventListener('drop', function () {
+            if (_dragOverlay) { _dragOverlay.remove(); _dragOverlay = null; }
+        });
+    }
+
+    // ==========================================
+    // v22.1: REACTION DETAIL POPUP
+    // ==========================================
+    var _reactionDetailTimeout = null;
+    document.addEventListener('mouseenter', function (e) {
+        var chip = e.target.closest('.chat-reaction-chip');
+        if (!chip) return;
+        clearTimeout(_reactionDetailTimeout);
+        _reactionDetailTimeout = setTimeout(function () {
+            var existing = document.querySelector('.chat-reaction-detail');
+            if (existing) existing.remove();
+            var emoji = chip.dataset.emoji;
+            var names = chip.getAttribute('title');
+            if (!names) return;
+            var popup = document.createElement('div');
+            popup.className = 'chat-reaction-detail';
+            var namesList = names.split(', ');
+            popup.innerHTML = '<div class="chat-reaction-detail-emoji">' + emoji + '</div>' +
+                namesList.map(function (n) { return '<div class="chat-reaction-detail-user">' + n + '</div>'; }).join('');
+            chip.style.position = 'relative';
+            chip.appendChild(popup);
+        }, 400);
+    }, true);
+    document.addEventListener('mouseleave', function (e) {
+        var chip = e.target.closest('.chat-reaction-chip');
+        if (!chip) return;
+        clearTimeout(_reactionDetailTimeout);
+        var popup = chip.querySelector('.chat-reaction-detail');
+        if (popup) popup.remove();
+    }, true);
+
+    // ==========================================
+    // v22.1: ARIA + KEYBOARD NAVIGATION
+    // ==========================================
+    // Add roles to channel list
+    var channelsList = document.getElementById('chatChannelsList');
+    if (channelsList) channelsList.setAttribute('role', 'listbox');
+
+    // Keyboard nav for channels (Up/Down arrows)
+    if (channelsList) {
+        channelsList.addEventListener('keydown', function (e) {
+            var items = channelsList.querySelectorAll('.chat-channel-item');
+            var focused = document.activeElement;
+            var idx = Array.prototype.indexOf.call(items, focused);
+            if (e.key === 'ArrowDown' && idx < items.length - 1) {
+                e.preventDefault();
+                items[idx + 1].focus();
+            } else if (e.key === 'ArrowUp' && idx > 0) {
+                e.preventDefault();
+                items[idx - 1].focus();
+            } else if (e.key === 'Enter' && focused.classList.contains('chat-channel-item')) {
+                focused.click();
+            }
+        });
+    }
+
+    // Escape closes panels
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        var lightbox = document.querySelector('.chat-lightbox-overlay');
+        if (lightbox) { lightbox.remove(); return; }
+        var threadPanel = document.getElementById('chatThreadPanel');
+        if (threadPanel && threadPanel.style.display !== 'none') {
+            var closeBtn = document.getElementById('chatThreadClose');
+            if (closeBtn) closeBtn.click();
+            return;
+        }
+        var infoPanel = document.getElementById('chatInfoPanel');
+        if (infoPanel && infoPanel.classList.contains('open')) {
+            var infCloseBtn = document.getElementById('chatInfoPanelClose');
+            if (infCloseBtn) infCloseBtn.click();
+            return;
+        }
+        var contextMenu = document.getElementById('chatContextMenu');
+        if (contextMenu && contextMenu.style.display !== 'none') {
+            contextMenu.style.display = 'none';
+            return;
+        }
+        if (_emojiPanelOpen) { _toggleEmojiPanel(); return; }
+    });
+
+    // Add aria-labels to header buttons
+    ['chatSearchMsgBtn', 'chatPinBtn', 'chatMuteBtn', 'chatWallpaperBtn', 'chatSummaryBtn', 'chatStatsBtn', 'chatInfoBtn'].forEach(function (id) {
+        var btn = document.getElementById(id);
+        if (btn && !btn.getAttribute('aria-label')) btn.setAttribute('aria-label', btn.title || '');
+    });
 
 })();

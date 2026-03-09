@@ -352,69 +352,79 @@
         }
 
         /* Dark mode */
-        [data-theme="dark"] .fin-stat-card {
-            background: var(--gray-800);
-            border-color: var(--gray-700);
+        body.dark-mode .fin-stat-card {
+            background: #2A2A4A;
+            border-color: #3D3D5C;
         }
-        [data-theme="dark"] .fin-stat-card .fin-stat-label { color: var(--gray-400); }
-        [data-theme="dark"] .fin-tabs { background: var(--gray-800); }
-        [data-theme="dark"] .fin-tab { color: var(--gray-400); }
-        [data-theme="dark"] .fin-tab.active {
-            background: var(--gray-700);
-            color: var(--gray-200);
+        body.dark-mode .fin-stat-card .fin-stat-label { color: #9CA3AF; }
+        body.dark-mode .fin-tabs { background: #1E1E38; }
+        body.dark-mode .fin-tab { color: #9CA3AF; }
+        body.dark-mode .fin-tab:hover { color: #E2E8F0; background: rgba(255,255,255,0.05); }
+        body.dark-mode .fin-tab.active {
+            background: #2A2A4A;
+            color: #E2E8F0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         }
-        [data-theme="dark"] .fin-table-wrap,
-        [data-theme="dark"] .fin-chart,
-        [data-theme="dark"] .fin-cat-section {
-            background: var(--gray-800);
-            border-color: var(--gray-700);
+        body.dark-mode .fin-table-wrap,
+        body.dark-mode .fin-chart,
+        body.dark-mode .fin-cat-section {
+            background: #2A2A4A;
+            border-color: #3D3D5C;
         }
-        [data-theme="dark"] .fin-table thead th {
-            background: var(--gray-700);
-            color: var(--gray-400);
-            border-bottom-color: var(--gray-600);
+        body.dark-mode .fin-table thead th {
+            background: #1E1E38;
+            color: #9CA3AF;
+            border-bottom-color: #3D3D5C;
         }
-        [data-theme="dark"] .fin-table td {
-            border-bottom-color: var(--gray-700);
-            color: var(--gray-300);
+        body.dark-mode .fin-table td {
+            border-bottom-color: #3D3D5C;
+            color: #E2E8F0;
         }
-        [data-theme="dark"] .fin-table tbody tr:hover {
+        body.dark-mode .fin-table tbody tr:hover {
             background: rgba(16,185,129,0.05);
         }
-        [data-theme="dark"] .fin-filters input,
-        [data-theme="dark"] .fin-filters select {
-            background: var(--gray-800);
-            border-color: var(--gray-700);
-            color: var(--gray-200);
+        body.dark-mode .fin-filters input,
+        body.dark-mode .fin-filters select {
+            background: #1E1E38;
+            border-color: #3D3D5C;
+            color: #E2E8F0;
         }
-        [data-theme="dark"] .fin-pagination button {
-            background: var(--gray-800);
-            border-color: var(--gray-700);
-            color: var(--gray-300);
+        body.dark-mode .fin-pagination button {
+            background: #2A2A4A;
+            border-color: #3D3D5C;
+            color: #E2E8F0;
         }
-        [data-theme="dark"] .fin-chart h4 { color: var(--gray-300); }
-        [data-theme="dark"] .fin-monthly-table th {
-            background: var(--gray-700);
-            color: var(--gray-400);
-            border-bottom-color: var(--gray-600);
+        body.dark-mode .fin-pagination button.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
         }
-        [data-theme="dark"] .fin-monthly-table td {
-            border-bottom-color: var(--gray-700);
-            color: var(--gray-300);
+        body.dark-mode .fin-chart h4 { color: #E2E8F0; }
+        body.dark-mode .fin-bar-label { color: #9CA3AF; }
+        body.dark-mode .fin-monthly-table th {
+            background: #1E1E38;
+            color: #9CA3AF;
+            border-bottom-color: #3D3D5C;
         }
-        [data-theme="dark"] .fin-monthly-table tfoot td {
-            border-top-color: var(--gray-600);
+        body.dark-mode .fin-monthly-table td {
+            border-bottom-color: #3D3D5C;
+            color: #E2E8F0;
         }
-        [data-theme="dark"] .fin-cat-row {
-            border-bottom-color: var(--gray-700);
+        body.dark-mode .fin-monthly-table tfoot td {
+            border-top-color: #3D3D5C;
         }
-        [data-theme="dark"] .fin-cat-bar { background: var(--gray-700); }
-        [data-theme="dark"] .fin-payment-badge {
-            background: var(--gray-700);
-            color: var(--gray-300);
+        body.dark-mode .fin-cat-section h4 { color: inherit; }
+        body.dark-mode .fin-cat-name { color: #E2E8F0; }
+        body.dark-mode .fin-cat-row {
+            border-bottom-color: #3D3D5C;
         }
-        [data-theme="dark"] .fin-type-badge.income { background: #064E3B; color: #6EE7B7; }
-        [data-theme="dark"] .fin-type-badge.expense { background: #7F1D1D; color: #FCA5A5; }
+        body.dark-mode .fin-cat-bar { background: #3D3D5C; }
+        body.dark-mode .fin-payment-badge {
+            background: #3D3D5C;
+            color: #E2E8F0;
+        }
+        body.dark-mode .fin-type-badge.income { background: #064E3B; color: #6EE7B7; }
+        body.dark-mode .fin-type-badge.expense { background: #7F1D1D; color: #FCA5A5; }
 
         /* Responsive */
         @media (max-width: 768px) {

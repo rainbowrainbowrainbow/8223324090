@@ -14,7 +14,8 @@ let currentStep = 0;
 
 const CATEGORY_LABELS = {
     booking: '📅 Бронювання', print: '🎓 Друк',
-    hr: '👥 HR', boss: '🧠 Boss', 'art-director': '🎬 Art Director'
+    hr: '👥 HR', boss: '🧠 Boss', 'art-director': '🎬 Art Director',
+    finance: '💰 Фінанси', gamification: '🎮 Гейміфікація'
 };
 
 // ==========================================

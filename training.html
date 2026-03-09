@@ -103,12 +103,26 @@
         .empty-state { text-align: center; padding: 40px; color: var(--gray-400, #CBD5E0); }
 
         /* Dark mode */
+        .dark-mode .training-page h1 { color: #E2E8F0; }
         .dark-mode .training-stat,
         .dark-mode .contributors,
-        .dark-mode .material-card { background: var(--dark-card, #2D3748); }
-        .dark-mode .pending-card { background: #3D3520; border-left-color: #C9A84C; }
-        .dark-mode .filter-chip { background: rgba(255,255,255,0.08); color: var(--gray-400, #CBD5E0); }
+        .dark-mode .material-card { background: #2A2A4A; border: 1px solid #3D3D5C; box-shadow: none; }
+        .dark-mode .training-stat .stat-value { color: var(--primary, #C9A84C); }
+        .dark-mode .training-stat .stat-label { color: #9CA3AF; }
+        .dark-mode .contributors h3 { color: #E2E8F0; }
+        .dark-mode .contributor-row { color: #E2E8F0; }
+        .dark-mode .material-card .card-title { color: #E2E8F0; }
+        .dark-mode .material-card .card-content { color: #9CA3AF; }
+        .dark-mode .material-card .card-date { color: #6B7280; }
+        .dark-mode .material-card .card-category { background: rgba(201,168,76,0.2); color: #C9A84C; }
+        .dark-mode .material-card .card-source { color: #6B7280; border-top-color: #3D3D5C; }
+        .dark-mode .pending-card { background: #3D3520; border-left-color: #C9A84C; color: #E2E8F0; }
+        .dark-mode .pending-card .pending-content { color: #9CA3AF; }
+        .dark-mode .filter-chip { background: rgba(255,255,255,0.08); color: #9CA3AF; }
+        .dark-mode .filter-chip:hover { background: rgba(255,255,255,0.12); color: #E2E8F0; }
         .dark-mode .filter-chip.active { background: var(--primary, #C9A84C); color: #1a202c; }
+        .dark-mode .empty-state { color: #6B7280; }
+        .dark-mode .send-prompt-btn { background: var(--primary, #C9A84C); color: #1a202c; }
     </style>
 </head>
 <body>

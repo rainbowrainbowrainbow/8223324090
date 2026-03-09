@@ -97,6 +97,7 @@ function _handleConnection(ws, req) {
         username: null,
         role: null,
         subscribedDates: new Set(),
+        subscribedChannels: new Set(),
         missedPongs: 0,
         alive: true
     };
@@ -170,6 +171,29 @@ function _handleMessage(ws, rawData, authTimeout) {
 
         case 'ping':
             _send(ws, { type: 'pong', timestamp: Date.now() });
+            break;
+
+        // Chat channel subscription
+        case 'CHAT_JOIN':
+            if (message.channelId) {
+                ws._pzp.subscribedChannels.add(Number(message.channelId));
+            }
+            break;
+
+        case 'CHAT_LEAVE':
+            if (message.channelId) {
+                ws._pzp.subscribedChannels.delete(Number(message.channelId));
+            }
+            break;
+
+        case 'CHAT_TYPING':
+            if (message.channelId) {
+                broadcastToChannel(Number(message.channelId), 'chat:typing', {
+                    channelId: Number(message.channelId),
+                    userId: ws._pzp.userId,
+                    username: ws._pzp.username
+                }, ws._pzp.userId);
+            }
             break;
 
         default:
@@ -346,6 +370,46 @@ function sendToUser(userId, eventType, data) {
 }
 
 /**
+ * Broadcast to all clients subscribed to a specific chat channel.
+ * @param {number} channelId - Target channel ID
+ * @param {string} eventType - Event type (e.g. 'chat:message')
+ * @param {object} data - Event payload
+ * @param {string|null} [excludeUserId] - User ID to exclude
+ */
+function broadcastToChannel(channelId, eventType, data, excludeUserId) {
+    if (!_wss) return;
+
+    const message = JSON.stringify({
+        type: eventType,
+        payload: data || {},
+        meta: { timestamp: new Date().toISOString() }
+    });
+
+    let sent = 0;
+    const numChannelId = Number(channelId);
+
+    for (const [userId, connections] of _clients) {
+        if (excludeUserId && userId === String(excludeUserId)) continue;
+
+        for (const ws of connections) {
+            if (ws.readyState !== 1) continue;
+            if (!ws._pzp.subscribedChannels.has(numChannelId)) continue;
+
+            try {
+                ws.send(message);
+                sent++;
+            } catch (err) {
+                log.error('broadcastToChannel send error:', err.message);
+            }
+        }
+    }
+
+    if (sent > 0) {
+        log.info(`broadcastToChannel [${eventType}] ch:${channelId} to ${sent} client(s)`);
+    }
+}
+
+/**
  * Send a message to a specific user by username (all their connections).
  * Useful for Kleshnya webhook where we know username but not userId.
  * @param {string} username - Target username
@@ -456,6 +520,7 @@ function getWSS() {
 module.exports = {
     initWebSocket,
     broadcast,
+    broadcastToChannel,
     sendToUser,
     sendToUsername,
     getConnectedClientsCount,

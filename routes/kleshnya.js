@@ -318,10 +318,9 @@ router.post('/chat', async (req, res) => {
             );
         }
 
-        // --- Bridge path: mark as pending for OpenClaw polling ---
-        if (BRIDGE_ENABLED && activeSessionId) {
-            const genTrigger = detectGenerationTrigger(text);
-
+        // --- Bridge path: only for media generation (image/audio/video) ---
+        const genTrigger = detectGenerationTrigger(text);
+        if (BRIDGE_ENABLED && activeSessionId && genTrigger) {
             // Mark message as pending (OpenClaw will pick it up via GET /pending-messages)
             await pool.query(
                 'UPDATE kleshnya_chat SET is_generating = TRUE WHERE id = $1',
@@ -335,11 +334,9 @@ router.post('/chat', async (req, res) => {
                 status: 'pending',
                 session_id: activeSessionId,
                 message_id: savedUser.id,
-                action: genTrigger ? 'generating' : 'thinking',
-                generation: genTrigger ? { skill: genTrigger.type, prompt: text } : undefined,
-                message: genTrigger
-                    ? `Зараз створюю ${genTrigger.label}! ⏳ ~30 сек...`
-                    : undefined
+                action: 'generating',
+                generation: { skill: genTrigger.type, prompt: text },
+                message: `Зараз створюю ${genTrigger.label}! ⏳ ~30 сек...`
             });
         }
 

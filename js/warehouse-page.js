@@ -40,12 +40,13 @@ let qtyModalItemId = null;
 // ==========================================
 
 function showNotification(message, type = '') {
-    const el = document.getElementById('notification');
-    if (!el) return;
-    document.getElementById('notificationText').textContent = message;
-    el.className = 'notification' + (type ? ` ${type}` : '');
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 3000);
+    let c = document.getElementById('toastContainer');
+    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+    const t = document.createElement('div');
+    t.className = 'toast' + (type ? ' ' + type : '');
+    t.textContent = message;
+    c.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
 function escapeHtml(str) {
@@ -72,7 +73,8 @@ async function initPage() {
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
 
-    canManage = user.role === 'admin' || user.role === 'manager';
+    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    canManage = MANAGE_ROLES.includes(user.role);
     const addBtn = document.getElementById('addItemBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 
@@ -320,7 +322,7 @@ async function saveItem() {
 }
 
 async function deleteItem(itemId) {
-    if (!confirm('Видалити цю позицію зі складу?')) return;
+    if (!await confirmModal('Видалити цю позицію зі складу?', { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDeleteWarehouseItem(itemId);
     if (result && result.success) {
         showNotification('Позицію видалено', 'success');
@@ -345,7 +347,7 @@ function openUseModal(itemId) {
     document.getElementById('qtyModalReason').placeholder = 'Щоденне використання';
     document.getElementById('qtyModalConfirm').textContent = 'Списати';
     document.getElementById('qtyModalConfirm').className = 'btn-page-primary';
-    document.getElementById('qtyModalConfirm').style.background = '#EF4444';
+    document.getElementById('qtyModalConfirm').style.background = document.body.classList.contains('dark-mode') ? 'rgba(239,68,68,0.8)' : '#EF4444';
     document.getElementById('qtyModal').style.display = '';
     document.getElementById('qtyModalAmount').focus();
 }
@@ -637,7 +639,7 @@ async function removeProcItem(listId, itemId) {
 
 async function completeProcList() {
     if (!currentProcListId) return;
-    if (!confirm('Закупити все? Позиції, пов\'язані зі складом, будуть поповнені автоматично.')) return;
+    if (!await confirmModal('Закупити все? Позиції, пов\'язані зі складом, будуть поповнені автоматично.', { type: 'warning', okText: 'Закупити' })) return;
 
     const result = await apiCompleteProcurement(currentProcListId);
     if (result && result.success) {

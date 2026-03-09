@@ -23,12 +23,13 @@ let catalogFilter = 'all';
 // ==========================================
 
 function showNotification(message, type = '') {
-    const el = document.getElementById('notification');
-    if (!el) return;
-    document.getElementById('notificationText').textContent = message;
-    el.className = 'notification' + (type ? ` ${type}` : '');
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 3000);
+    let c = document.getElementById('toastContainer');
+    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+    const t = document.createElement('div');
+    t.className = 'toast' + (type ? ' ' + type : '');
+    t.textContent = message;
+    c.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
 // ==========================================
@@ -402,6 +403,8 @@ function renderPrices(prices) {
                 <th>Назва</th>
                 <th>Категорія</th>
                 <th>Ціна</th>
+                <th>З дати</th>
+                <th>Програма</th>
                 <th>Оновлено</th>
                 ${isAdminUser ? '<th>Дії</th>' : ''}
             </tr>
@@ -412,6 +415,12 @@ function renderPrices(prices) {
         const updatedInfo = p.updated_by
             ? `${p.updated_by}, ${new Date(p.updated_at).toLocaleDateString('uk-UA')}`
             : '';
+        const linkedBadge = p.product_id
+            ? `<span class="price-linked-badge" title="Прив'язано до ${p.product_id}">🔗 ${p.product_id}</span>`
+            : (isAdminUser ? `<button class="price-link-btn" onclick="linkPriceToProduct('${escapeHtml(p.code)}')" title="Прив'язати до програми">🔗 Прив'язати</button>` : `<span class="price-unlinked-badge">—</span>`);
+        const effectiveDate = p.effective_from
+            ? new Date(p.effective_from).toLocaleDateString('uk-UA')
+            : 'зараз';
 
         html += `<tr data-code="${p.code}">
             <td>
@@ -421,13 +430,18 @@ function renderPrices(prices) {
             <td><span class="price-category-badge">${escapeHtml(p.category) || '—'}</span></td>
             <td>
                 ${isAdminUser
-                    ? `<input type="number" class="price-inline-input" value="${p.value}" data-code="${escapeHtml(p.code)}" data-original="${p.value}"
-                        onkeydown="if(event.key==='Enter')savePriceInline(this)"
-                        onblur="savePriceInline(this)">
-                       <span class="price-unit">${escapeHtml(p.unit) || ''}</span>`
+                    ? `<div class="price-inline-wrap">
+                        <input type="number" class="price-inline-input" value="${p.value}" data-code="${escapeHtml(p.code)}" data-original="${p.value}" data-product-id="${p.product_id || ''}"
+                            onkeydown="if(event.key==='Enter')confirmPriceChange(this)"
+                            oninput="this.parentElement.querySelector('.price-save-btn').classList.toggle('changed', this.value!=this.dataset.original)">
+                        <span class="price-unit">${escapeHtml(p.unit) || ''}</span>
+                        <button class="price-save-btn" onclick="confirmPriceChange(this.parentElement.querySelector('.price-inline-input'))" title="Зберегти">✓</button>
+                       </div>`
                     : `<span class="price-value-cell">${p.value}</span><span class="price-unit">${escapeHtml(p.unit) || ''}</span>`
                 }
             </td>
+            <td><span class="price-effective">${effectiveDate}</span></td>
+            <td>${linkedBadge}</td>
             <td><span class="price-updated">${updatedInfo}</span></td>
             ${isAdminUser ? `<td class="price-actions">
                 <button class="btn-price-delete" onclick="deletePrice('${escapeHtml(p.code)}')" title="Видалити">✕</button>
@@ -456,22 +470,159 @@ function appendPriceAddRow(container) {
     container.insertAdjacentHTML('beforeend', addHtml);
 }
 
-async function savePriceInline(input) {
+// v20.9.25: Price change with confirmation dialog
+function confirmPriceChange(input) {
     const code = input.dataset.code;
     const newValue = parseInt(input.value);
     const original = parseInt(input.dataset.original);
+    const productId = input.dataset.productId;
 
     if (isNaN(newValue) || newValue === original) return;
 
-    const result = await apiUpdatePrice(code, { value: newValue });
-    if (result.success) {
-        input.dataset.original = newValue;
-        input.style.borderColor = '#2E7D32';
-        setTimeout(() => { input.style.borderColor = ''; }, 1000);
-        showNotification(`Ціну ${code} оновлено: ${newValue}`, 'success');
-    } else {
+    const diff = newValue - original;
+    const diffText = diff > 0 ? `+${diff}` : `${diff}`;
+    const linkedText = productId ? `\n\nЦіна автоматично оновиться в каталозі програм (${productId}).` : '\n\n⚠ Ціна НЕ прив\'язана до програми — бронювання не зміниться.';
+
+    // Build confirmation dialog
+    const todayStr = new Date().toISOString().split('T')[0];
+    const overlay = document.createElement('div');
+    overlay.className = 'price-confirm-overlay';
+    overlay.innerHTML = `
+        <div class="price-confirm-dialog">
+            <h3>Підтвердження зміни ціни</h3>
+            <p><b>${code}</b>: ${original} → ${newValue} ₴ (${diffText} ₴)</p>
+            <p style="font-size:12px;color:var(--gray-500)">${linkedText.replace(/\n/g, '<br>')}</p>
+            <div class="price-confirm-date">
+                <label>Коли вступає в дію:</label>
+                <div class="price-date-options">
+                    <button class="price-date-btn active" data-date="now">Прямо зараз</button>
+                    <button class="price-date-btn" data-date="custom">З певної дати</button>
+                </div>
+                <div class="price-date-custom" style="display:none">
+                    <div class="price-date-fields">
+                        <input type="date" class="price-date-input" value="${todayStr}" min="${todayStr}">
+                        <input type="time" class="price-time-input" value="08:00">
+                    </div>
+                    <span class="price-date-hint">Мінімум — сьогодні. Заднім числом не можна.</span>
+                </div>
+            </div>
+            <div class="price-confirm-actions">
+                <button class="btn-confirm-cancel">Скасувати</button>
+                <button class="btn-confirm-save">Зберегти</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const dateInput = overlay.querySelector('.price-date-input');
+    const timeInput = overlay.querySelector('.price-time-input');
+    const customBlock = overlay.querySelector('.price-date-custom');
+    const dateBtns = overlay.querySelectorAll('.price-date-btn');
+    let useCustomDate = false;
+
+    dateBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            dateBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            useCustomDate = btn.dataset.date === 'custom';
+            customBlock.style.display = useCustomDate ? '' : 'none';
+        });
+    });
+
+    overlay.querySelector('.btn-confirm-cancel').addEventListener('click', () => {
         input.value = original;
-        showNotification(result.error || 'Помилка оновлення', 'error');
+        overlay.remove();
+    });
+    overlay.querySelector('.btn-confirm-save').addEventListener('click', async () => {
+        let effectiveFrom = undefined;
+        if (useCustomDate) {
+            const dateVal = dateInput.value;
+            const timeVal = timeInput.value || '08:00';
+            if (!dateVal) {
+                showNotification('Оберіть дату введення в дію', 'error');
+                return;
+            }
+            // Validate not in the past
+            const chosen = new Date(`${dateVal}T${timeVal}`);
+            if (chosen < new Date()) {
+                showNotification('Дата не може бути в минулому', 'error');
+                return;
+            }
+            effectiveFrom = `${dateVal}T${timeVal}`;
+        }
+
+        overlay.querySelector('.btn-confirm-save').disabled = true;
+        overlay.querySelector('.btn-confirm-save').textContent = 'Збереження...';
+        const result = await apiUpdatePrice(code, { value: newValue, effectiveFrom });
+        overlay.remove();
+        if (result.success) {
+            input.dataset.original = newValue;
+            input.style.borderColor = '#2E7D32';
+            setTimeout(() => { input.style.borderColor = ''; }, 1500);
+            const syncMsg = result.productSynced ? ' (ціна в каталозі оновлена!)' : '';
+            const dateMsg = effectiveFrom ? ` з ${new Date(effectiveFrom).toLocaleString('uk-UA')}` : '';
+            showNotification(`Ціну ${code} оновлено: ${newValue} ₴${dateMsg}${syncMsg}`, 'success');
+            if (result.productSynced && typeof loadCatalog === 'function') {
+                loadCatalog();
+            }
+        } else {
+            input.value = original;
+            showNotification(result.error || 'Помилка оновлення', 'error');
+        }
+    });
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) { input.value = original; overlay.remove(); }
+    });
+}
+
+// Legacy compat
+async function savePriceInline(input) { confirmPriceChange(input); }
+
+// v20.9.25: Link price_rule to a product
+async function linkPriceToProduct(code) {
+    try {
+        const resp = await fetch(`${API_BASE}/products?active=true`, { headers: getAuthHeaders() });
+        if (!resp.ok) throw new Error('Помилка завантаження програм');
+        const data = await resp.json();
+        const products = data.products || data || [];
+        if (!products.length) { showNotification('Немає програм для прив\'язки', 'error'); return; }
+
+        const select = products.map(p => `<option value="${p.id}">${p.name} (${p.id}) — ${p.price} ₴</option>`).join('');
+        const overlay = document.createElement('div');
+        overlay.className = 'price-confirm-overlay';
+        overlay.innerHTML = `
+            <div class="price-confirm-dialog">
+                <h3>Прив'язати до програми</h3>
+                <p>Ціна <b>${code}</b> буде автоматично оновлюватись у каталозі.</p>
+                <select id="linkProductSelect" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-family:inherit;font-size:14px;min-height:44px">
+                    <option value="">— Оберіть програму —</option>
+                    ${select}
+                </select>
+                <div class="price-confirm-actions">
+                    <button class="btn-confirm-cancel">Скасувати</button>
+                    <button class="btn-confirm-save">Прив'язати</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('.btn-confirm-cancel').addEventListener('click', () => overlay.remove());
+        overlay.querySelector('.btn-confirm-save').addEventListener('click', async () => {
+            const productId = document.getElementById('linkProductSelect').value;
+            if (!productId) { showNotification('Оберіть програму', 'error'); return; }
+            const result = await apiUpdatePrice(code, { productId });
+            overlay.remove();
+            if (result.success) {
+                showNotification(`Ціну ${code} прив'язано до ${productId}`, 'success');
+                loadPrices();
+            } else {
+                showNotification(result.error || 'Помилка', 'error');
+            }
+        });
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    } catch (err) {
+        showNotification(err.message, 'error');
     }
 }
 
@@ -497,7 +648,7 @@ async function addNewPrice() {
 }
 
 async function deletePrice(code) {
-    if (!confirm(`Видалити ціну "${code}"?`)) return;
+    if (!await confirmModal(`Видалити ціну "${code}"?`, { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDeletePrice(code);
     if (result.success) {
         showNotification(`Ціну ${code} видалено`, 'success');
@@ -553,8 +704,8 @@ function renderReport(report) {
     }) : '';
 
     container.innerHTML = `
-        <div class="report-content">${report.text}</div>
-        <div class="report-meta">${report.author ? `Автор: ${report.author}` : ''} ${date ? `| ${date}` : ''}</div>
+        <div class="report-content">${escapeHtml(report.text)}</div>
+        <div class="report-meta">${report.author ? `Автор: ${escapeHtml(report.author)}` : ''} ${date ? `| ${date}` : ''}</div>
     `;
 }
 
@@ -856,7 +1007,7 @@ async function submitNewDiscount() {
 }
 
 async function deleteDiscount(id) {
-    if (!confirm('Деактивувати цей промокод?')) return;
+    if (!await confirmModal('Деактивувати цей промокод?', { type: 'warning', okText: 'Деактивувати' })) return;
     const result = await apiDeleteDiscount(id);
     if (result.success) {
         showNotification('Промокод деактивовано', 'success');
@@ -995,7 +1146,7 @@ async function submitNewProposal() {
 }
 
 async function deleteProposal(id) {
-    if (!confirm('Видалити цю пропозицію?')) return;
+    if (!await confirmModal('Видалити цю пропозицію?', { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDeleteProposal(id);
     if (result.success) {
         showNotification('Пропозицію видалено', 'success');
@@ -1150,6 +1301,11 @@ function renderGoals(goals, kpi) {
 function showGoalsForm() {
     const el = document.getElementById('goalsContent');
     if (!el) return;
+    // Ensure section is expanded so the form is visible
+    const section = el.closest('.center-section');
+    if (section && section.classList.contains('collapsed')) {
+        section.classList.remove('collapsed');
+    }
     if (document.getElementById('goalsFormInline')) {
         document.getElementById('goalsFormInline').remove();
         return;
@@ -1722,35 +1878,111 @@ function renderEventLog(data) {
         return;
     }
 
-    const actionLabels = { create: 'Створено', edit: 'Змінено', delete: 'Видалено', status_change: 'Статус' };
-    const actionIcons = { create: '&#43;', edit: '&#9998;', delete: '&#10005;', status_change: '&#8634;' };
-    const actionClasses = { create: 'create', edit: 'edit', delete: 'delete', status_change: 'edit' };
+    const actionLabels = {
+        create: '📅 Створено бронювання', edit: '✏️ Змінено бронювання',
+        delete: '🗑️ Видалено', permanent_delete: '💥 Видалено назавжди',
+        shift: '🔄 Перенесено', status_change: '📊 Статус змінено',
+        undo_create: '↩️ Скасовано створення', undo_delete: '↩️ Відновлено',
+        undo_edit: '↩️ Скасовано зміну', undo_shift: '↩️ Скасовано перенос',
+        afisha_create: '🎭 Афіша створена', afisha_edit: '🎭 Афіша змінена',
+        afisha_move: '🎭 Афіша перенесена', afisha_delete: '🎭 Афіша видалена',
+        tasks_generated: '📋 Завдання створені', automation_triggered: '🤖 Автоматизація',
+        certificate_create: '📄 Сертифікат видано', certificate_batch: '📦 Пакет сертифікатів',
+        certificate_used: '✅ Сертифікат використано', certificate_revoked: '❌ Сертифікат анульовано',
+        certificate_edit: '✏️ Сертифікат змінено', certificate_deleted: '🗑️ Сертифікат видалено',
+        certificate_delete: '🗑️ Сертифікат видалено', certificate_blocked: '🔒 Сертифікат заблоковано',
+        certificate_expired: '⏰ Сертифікат прострочено',
+        contractor_response: '🤝 Відповідь підрядника',
+        line_create: '➕ Аніматор доданий', line_delete: '➖ Аніматор видалений',
+        line_rename: '✏️ Аніматор перейменований'
+    };
+    const actionClasses = {
+        create: 'create', edit: 'edit', delete: 'delete', permanent_delete: 'delete',
+        shift: 'edit', status_change: 'edit',
+        undo_create: 'edit', undo_delete: 'create', undo_edit: 'edit', undo_shift: 'edit',
+        afisha_create: 'create', afisha_edit: 'edit', afisha_move: 'edit', afisha_delete: 'delete',
+        certificate_create: 'create', certificate_used: 'create',
+        certificate_revoked: 'delete', certificate_deleted: 'delete', certificate_delete: 'delete'
+    };
 
     el.innerHTML = '<div class="event-timeline">' + events.slice(0, 50).map(e => {
         const label = actionLabels[e.action] || e.action;
-        const icon = actionIcons[e.action] || '&#8226;';
         const cls = actionClasses[e.action] || 'edit';
         const time = e.timestamp ? new Date(e.timestamp).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
 
-        let details = '';
-        if (e.data) {
-            if (e.data.id) details += `#${e.data.id} `;
-            if (e.data.program_name) details += escapeHtml(e.data.program_name) + ' ';
-            else if (e.data.programName) details += escapeHtml(e.data.programName) + ' ';
-            if (e.data.date) details += `(${e.data.date}) `;
-            if (e.data.status) details += `→ ${e.data.status}`;
-        }
+        const details = buildEventDetails(e);
 
         return `
         <div class="event-row">
-            <div class="event-icon ${cls}">${icon}</div>
+            <div class="event-dot ${cls}"></div>
             <div class="event-info">
-                <div class="event-info-action">${label} <span style="font-weight:400;color:var(--gray-500)">— ${escapeHtml(e.user || '')}</span></div>
+                <div class="event-info-action">${label} <span style="font-weight:400;opacity:0.7">— ${escapeHtml(e.user || 'система')}</span></div>
                 ${details ? `<div class="event-info-details">${details}</div>` : ''}
             </div>
             <div class="event-time">${time}</div>
         </div>`;
     }).join('') + '</div>';
+}
+
+function buildEventDetails(e) {
+    const d = e.data || {};
+    const action = e.action;
+
+    // Booking actions
+    if (['create', 'edit', 'delete', 'permanent_delete', 'shift', 'status_change',
+         'undo_create', 'undo_delete', 'undo_edit', 'undo_shift'].includes(action)) {
+        const parts = [];
+        const name = d.label || d.programName || d.program_name || d.programCode || '';
+        if (d.id) parts.push(`<b>${escapeHtml(d.id)}</b>`);
+        if (name) parts.push(escapeHtml(name));
+        if (d.room) parts.push(escapeHtml(d.room));
+        if (d.date && d.time) parts.push(`${d.date} ${d.time}`);
+        else if (d.date) parts.push(d.date);
+        if (action === 'status_change' && d.status) {
+            parts.push(d.status === 'confirmed' ? '→ Підтверджено' : '→ Попереднє');
+        }
+        if (action === 'shift' && d.newDate) parts.push(`→ ${d.newDate} ${d.newTime || ''}`);
+        return parts.join(' · ');
+    }
+
+    // Afisha actions
+    if (action.startsWith('afisha_')) {
+        const parts = [];
+        if (d.title) parts.push(`<b>${escapeHtml(d.title)}</b>`);
+        if (d.type) parts.push(d.type);
+        if (d.date && d.time) parts.push(`${d.date} ${d.time}`);
+        else if (d.date) parts.push(d.date);
+        if (action === 'afisha_move' && d.from && d.to) {
+            parts.push(`${escapeHtml(d.from)} → ${escapeHtml(d.to)}`);
+        }
+        return parts.join(' · ');
+    }
+
+    // Certificate actions
+    if (action.startsWith('certificate_')) {
+        const parts = [];
+        if (d.certCode) parts.push(`<b>${escapeHtml(d.certCode)}</b>`);
+        if (d.displayValue) parts.push(escapeHtml(d.displayValue));
+        if (d.typeText) parts.push(escapeHtml(d.typeText));
+        if (action === 'certificate_batch' && d.quantity) parts.push(`${d.quantity} шт.`);
+        return parts.join(' · ');
+    }
+
+    // Automation/tasks
+    if (action === 'automation_triggered') {
+        return `${escapeHtml(d.rule_name || '')} → ${escapeHtml(d.booking_id || '')}`;
+    }
+    if (action === 'tasks_generated') {
+        return `${escapeHtml(d.title || '')} — ${d.count || 0} завдань`;
+    }
+
+    // Fallback — show all meaningful fields
+    const parts = [];
+    if (d.id) parts.push(`#${d.id}`);
+    if (d.label || d.title || d.name) parts.push(escapeHtml(d.label || d.title || d.name));
+    if (d.room) parts.push(d.room);
+    if (d.date) parts.push(d.date);
+    return parts.join(' · ');
 }
 
 // ==========================================
@@ -1944,6 +2176,119 @@ async function loadEventLog() {
 }
 
 // ==========================================
+// v20.7.0: HOT LEADS
+// ==========================================
+
+async function loadHotLeads() {
+    const container = document.getElementById('hotLeadsList');
+    if (!container) return;
+    try {
+        const resp = await fetch('/api/leads/hot', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') } });
+        const data = await resp.json();
+        if (!data.success || !data.leads.length) {
+            container.innerHTML = '<div class="center-empty-mini">Немає гарячих лідів — все під контролем 👍</div>';
+            return;
+        }
+        const badge = document.getElementById('hotLeadsCount');
+        if (badge) { badge.textContent = data.leads.length; badge.style.display = ''; }
+
+        container.innerHTML = data.leads.map(l => `
+            <div class="hot-lead-card" data-id="${l.id}">
+                <div class="hot-lead-info">
+                    <strong>${escapeHtml(l.client_name || 'Без імені')}</strong>
+                    ${l.program_name ? ' • ' + escapeHtml(l.program_name) : ''}
+                    ${l.children_count ? ' • ' + l.children_count + ' дітей' : ''}
+                    <div class="hot-lead-meta">
+                        Запит: ${new Date(l.created_at).toLocaleString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        • Без відповіді ${Math.round(l.hours_waiting)} год
+                    </div>
+                </div>
+                <div class="hot-lead-actions">
+                    ${l.phone ? `<a href="tel:${l.phone}" class="btn-lead-action">📞</a>` : ''}
+                    <button class="btn-lead-action" onclick="updateLeadStatus(${l.id}, 'contacted')" title="Зв'язались">✅</button>
+                    <button class="btn-lead-action" onclick="updateLeadStatus(${l.id}, 'lost')" title="Закрити">✖</button>
+                </div>
+            </div>
+        `).join('');
+    } catch {
+        container.innerHTML = '<div class="center-empty-mini">Помилка завантаження</div>';
+    }
+}
+
+async function updateLeadStatus(id, status) {
+    try {
+        await fetch('/api/leads/' + id, {
+            method: 'PATCH',
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        });
+        loadHotLeads();
+    } catch { /* silent */ }
+}
+
+// Add Lead modal (simple prompt-based)
+function initAddLeadBtn() {
+    const btn = document.getElementById('addLeadBtn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+        const name = prompt("Ім'я клієнта:");
+        if (!name) return;
+        const phone = prompt('Телефон (необов\'язково):');
+        try {
+            await fetch('/api/leads', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_name: name, phone: phone || null })
+            });
+            loadHotLeads();
+        } catch { /* silent */ }
+    });
+}
+
+// ==========================================
+// v20.7.0: MANAGER CONVERSION
+// ==========================================
+
+async function loadConversion() {
+    const container = document.getElementById('conversionGrid');
+    if (!container) return;
+    try {
+        const now = new Date();
+        const resp = await fetch(`/api/analytics/conversion?period=month&year=${now.getFullYear()}&month=${now.getMonth() + 1}`, {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+        });
+        const data = await resp.json();
+        if (!data.success || !data.managers.length) {
+            container.innerHTML = '<div class="center-empty-mini">Немає даних за цей місяць</div>';
+            return;
+        }
+        container.innerHTML = `
+            <table class="conversion-table">
+                <thead><tr>
+                    <th>Менеджер</th><th>Бронювань</th><th>Підтверджено</th><th>Конверсія</th><th>Середній чек</th><th>Виручка</th>
+                </tr></thead>
+                <tbody>${data.managers.map(m => `
+                    <tr>
+                        <td><strong>${escapeHtml(m.name)}</strong></td>
+                        <td>${m.total_bookings}</td>
+                        <td>${m.booked}</td>
+                        <td>
+                            <div class="conversion-bar-wrap">
+                                <div class="conversion-bar" style="width:${m.conversion}%;background:${m.conversion >= 70 ? '#38A169' : m.conversion >= 50 ? '#D69E2E' : '#E53E3E'}"></div>
+                                <span>${m.conversion}%</span>
+                            </div>
+                        </td>
+                        <td>${m.avg_check.toLocaleString('uk-UA')} ₴</td>
+                        <td><strong>${m.revenue.toLocaleString('uk-UA')} ₴</strong></td>
+                    </tr>
+                `).join('')}</tbody>
+            </table>`;
+    } catch {
+        container.innerHTML = '<div class="center-empty-mini">Помилка завантаження</div>';
+    }
+}
+
+// ==========================================
 // SIDEBAR + AUTH
 // ==========================================
 
@@ -1980,7 +2325,8 @@ async function initAuth() {
     }
 
     AppState.currentUser = user;
-    isAdminUser = user.role === 'admin';
+    const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+    isAdminUser = ADMIN_ROLES.includes(user.role);
 
     // Set username
     const userEl = document.getElementById('currentUser');
@@ -2063,8 +2409,11 @@ async function initCenterPage() {
         loadCrossSell(),
         loadCatalog(),
         loadReconciliation(),
-        loadEventLog()
+        loadEventLog(),
+        loadHotLeads(),
+        loadConversion()
     ]);
+    initAddLeadBtn();
 
     // Load goals after overview (needs KPI data)
     await loadGoals();

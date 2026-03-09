@@ -14,7 +14,8 @@ let currentStep = 0;
 
 const CATEGORY_LABELS = {
     booking: '📅 Бронювання', print: '🎓 Друк',
-    hr: '👥 HR', boss: '🧠 Boss', 'art-director': '🎬 Art Director'
+    hr: '👥 HR', boss: '🧠 Boss', 'art-director': '🎬 Art Director',
+    finance: '💰 Фінанси', gamification: '🎮 Гейміфікація'
 };
 
 // ==========================================
@@ -22,12 +23,13 @@ const CATEGORY_LABELS = {
 // ==========================================
 
 function showNotification(message, type = '') {
-    const el = document.getElementById('notification');
-    if (!el) return;
-    document.getElementById('notificationText').textContent = message;
-    el.className = 'notification' + (type ? ` ${type}` : '');
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 3000);
+    let c = document.getElementById('toastContainer');
+    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+    const t = document.createElement('div');
+    t.className = 'toast' + (type ? ' ' + type : '');
+    t.textContent = message;
+    c.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
 // ==========================================
@@ -438,7 +440,8 @@ async function initAuth() {
         return false;
     }
     AppState.currentUser = user;
-    isAdminUser = user.role === 'admin';
+    const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+    isAdminUser = ADMIN_ROLES.includes(user.role);
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
     const logoutBtn = document.getElementById('logoutBtn');

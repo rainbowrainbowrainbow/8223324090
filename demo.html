@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Event Maestro | Demo & Packages</title>
-    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
+    <title>Event Genix | Demo & Packages</title>
+    <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=18.3">
-    <link rel="stylesheet" href="css/layout.css?v=18.3">
-    <link rel="stylesheet" href="css/pages.css?v=18.3">
-    <link rel="stylesheet" href="css/modals.css?v=18.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=18.3">
-    <link rel="stylesheet" href="css/responsive.css?v=18.3">
+    <link rel="stylesheet" href="css/base.css?v=22.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=22.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=22.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         .demo-page { padding: 16px; max-width: 1400px; margin: 0 auto; }
         .demo-page h1 { font-size: 22px; font-weight: 900; margin-bottom: 20px; }
@@ -213,28 +213,14 @@
     <div id="mainApp">
         <aside class="sidebar-nav" id="sidebarNav">
             <div class="sidebar-logo">
-                <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
                 <div class="em-logo">
-                    <span class="em-logo-title">Event Maestro</span>
+                    <span class="em-logo-title">Event Genix</span>
                     <span class="em-logo-sub">AI First CRM</span>
                 </div>
             </div>
-            <nav class="sidebar-links">
-                <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
-                <a href="/programs" class="nav-link"><span class="nav-icon">П</span> <span class="nav-text">Програми</span></a>
-                <a href="/staff" class="nav-link"><span class="nav-icon">Г</span> <span class="nav-text">Графік</span></a>
-                <a href="/hr" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">H</span> <span class="nav-text">HR</span></a>
-                <a href="/designs" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Д</span> <span class="nav-text">Дизайни</span></a>
-                <a href="/customers" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
-                <a href="/finance" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
-                <a href="/analytics" class="nav-link sidebar-no-viewer hidden"><span class="nav-icon">А</span> <span class="nav-text">Аналітика</span></a>
-                <a href="/warehouse" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
-                <a href="/center" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
-                <a href="/art-director" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
-                <a href="/demo" class="nav-link active sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
-                <a href="/status" class="nav-link"><span class="nav-icon nav-icon--status">St</span> <span class="nav-text">Статус</span></a>
-                <a href="/kleshnya" class="nav-link nav-link-kleshnya sidebar-admin-only hidden"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
+            <nav class="sidebar-links" id="sidebarLinks">
+                <!-- Populated by sidebar.js -->
             </nav>
         </aside>
 
@@ -242,17 +228,12 @@
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
-                    <div class="em-logo">
-                        <span class="em-logo-title">Event Maestro</span>
-                        <span class="em-logo-sub">AI First CRM</span>
-                    </div>
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
                 </div>
                 <nav class="header-nav">
                     <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
                     <a href="/center" class="nav-link"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
                     <a href="/demo" class="nav-link active"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
-                    <a href="/kleshnya" class="nav-link nav-link-kleshnya"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
                 </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
@@ -341,9 +322,11 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=18.3"></script>
-    <script src="js/api.js?v=18.3"></script>
-    <script src="js/auth.js?v=18.3"></script>
-    <script src="js/demo-page.js?v=18.3"></script>
+    <script src="js/config.js?v=22.3.0"></script>
+    <script src="js/api.js?v=22.3.0"></script>
+    <script src="js/auth.js?v=22.3.0"></script>
+    <script src="js/components/sidebar.js?v=22.3.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/demo-page.js?v=22.3.0"></script>
 </body>
 </html>

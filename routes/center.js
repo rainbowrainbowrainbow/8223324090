@@ -17,6 +17,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { requireMinRole } = require('../middleware/auth');
 
 const log = createLogger('Center');
 
@@ -86,7 +87,7 @@ router.get('/overview', async (req, res) => {
             pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date >= $1 AND date <= $2 AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [weekStart, today]),
             pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date >= $1 AND date <= $2 AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [monthStart, today]),
             // Workers
-            pool.query('SELECT id, name, display_name, type, purpose, is_active, updated_at FROM worker_roles ORDER BY created_at').catch(() => ({ rows: [] })),
+            pool.query('SELECT id, name, display_name, type, purpose, is_active, updated_at FROM worker_roles ORDER BY created_at').catch(err => { log.warn('Worker roles fetch failed', err.message); return { rows: [] }; }),
             // Tasks stats
             pool.query(`SELECT
                 COUNT(*) FILTER (WHERE status = 'done') AS done,
@@ -260,38 +261,81 @@ router.get('/prices/:code', async (req, res) => {
     }
 });
 
-// PUT /api/center/prices/:code — update price (admin only)
-router.put('/prices/:code', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ success: false, error: 'Тільки для адміністраторів' });
+// PUT /api/center/prices/:code — update price (senior_manager+)
+// v20.9.25: syncs price to products table if product_id is linked
+router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) => {
+    const client = await pool.connect();
     try {
-        const { value, name, unit, category, description } = req.body;
+        const { value, name, unit, category, description, effectiveFrom, productId } = req.body;
         if (value === undefined && !name) {
             return res.status(400).json({ success: false, error: 'Вкажіть value або name' });
         }
-        const result = await pool.query(
+
+        // v20.9.25: Block past effective dates
+        if (effectiveFrom) {
+            const effectiveDate = new Date(effectiveFrom);
+            const now = new Date();
+            // Allow a 5-minute grace period for slight clock differences
+            now.setMinutes(now.getMinutes() - 5);
+            if (effectiveDate < now) {
+                return res.status(400).json({ success: false, error: 'Дата введення в дію не може бути в минулому' });
+            }
+        }
+
+        await client.query('BEGIN');
+
+        // Update product_id if provided (one-time link)
+        if (productId !== undefined) {
+            await client.query('UPDATE price_rules SET product_id = $1 WHERE code = $2', [productId || null, req.params.code]);
+        }
+
+        const result = await client.query(
             `UPDATE price_rules SET
                 value = COALESCE($1, value),
                 name = COALESCE($2, name),
                 unit = COALESCE($3, unit),
                 category = COALESCE($4, category),
                 description = COALESCE($5, description),
+                effective_from = $6,
                 updated_at = NOW(),
-                updated_by = $6
-             WHERE code = $7 RETURNING *`,
-            [value !== undefined ? value : null, name || null, unit || null, category || null, description || null, req.user.username, req.params.code]
+                updated_by = $7
+             WHERE code = $8 RETURNING *`,
+            [value !== undefined ? value : null, name || null, unit || null, category || null, description || null, effectiveFrom || null, req.user.username, req.params.code]
         );
-        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Ціну не знайдено' });
-        log.info(`Price ${req.params.code} updated to ${value} by ${req.user.username}`);
-        res.json({ success: true, price: result.rows[0] });
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Ціну не знайдено' });
+        }
+
+        const priceRule = result.rows[0];
+        let productSynced = false;
+
+        // v20.9.25: Sync price to products table if linked and effective now
+        if (value !== undefined && priceRule.product_id) {
+            const isEffectiveNow = !effectiveFrom || new Date(effectiveFrom) <= new Date();
+            if (isEffectiveNow) {
+                const syncResult = await client.query(
+                    'UPDATE products SET price = $1, updated_by = $2 WHERE id = $3 RETURNING id',
+                    [value, req.user.username, priceRule.product_id]
+                );
+                productSynced = syncResult.rowCount > 0;
+            }
+        }
+
+        await client.query('COMMIT');
+        log.info(`Price ${req.params.code} updated to ${value} by ${req.user.username}${productSynced ? ' (synced to product)' : ''}`);
+        res.json({ success: true, price: priceRule, productSynced });
     } catch (err) {
+        await client.query('ROLLBACK');
         log.error('PUT /center/prices/:code error', err);
         res.status(500).json({ success: false, error: 'Помилка оновлення ціни' });
+    } finally {
+        client.release();
     }
 });
 
-// POST /api/center/prices — create new price rule (admin only)
-router.post('/prices', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ success: false, error: 'Тільки для адміністраторів' });
+// POST /api/center/prices — create new price rule (senior_manager+)
+router.post('/prices', requireMinRole('senior_manager'), async (req, res) => {
     try {
         const { code, name, value, unit, category, description } = req.body;
         if (!code || !name || value === undefined) {
@@ -311,9 +355,8 @@ router.post('/prices', async (req, res) => {
     }
 });
 
-// DELETE /api/center/prices/:code — delete price rule (admin only)
-router.delete('/prices/:code', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ success: false, error: 'Тільки для адміністраторів' });
+// DELETE /api/center/prices/:code — delete price rule (senior_manager+)
+router.delete('/prices/:code', requireMinRole('senior_manager'), async (req, res) => {
     try {
         const result = await pool.query('DELETE FROM price_rules WHERE code = $1 RETURNING code', [req.params.code]);
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Ціну не знайдено' });
@@ -422,7 +465,7 @@ router.get('/clients', async (req, res) => {
         if (search && search.trim()) {
             query = `SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
                 c.total_bookings, c.total_spent, c.first_visit, c.last_visit,
-                c.loyalty_tier
+                c.loyalty_tier_id
                 FROM customers c
                 WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.child_name ILIKE $1 OR c.instagram ILIKE $1
                 ORDER BY c.last_visit DESC NULLS LAST
@@ -431,7 +474,7 @@ router.get('/clients', async (req, res) => {
         } else {
             query = `SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
                 c.total_bookings, c.total_spent, c.first_visit, c.last_visit,
-                c.loyalty_tier
+                c.loyalty_tier_id
                 FROM customers c
                 ORDER BY c.last_visit DESC NULLS LAST
                 LIMIT $1`;
@@ -476,8 +519,7 @@ router.get('/goals', async (req, res) => {
     }
 });
 
-router.post('/goals', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ success: false, error: 'Тільки для адмінів' });
+router.post('/goals', requireMinRole('senior_manager'), async (req, res) => {
     try {
         const { weeklyRevenue, weeklyBookings, monthlyRevenue, monthlyBookings } = req.body;
         const data = JSON.stringify({ weeklyRevenue, weeklyBookings, monthlyRevenue, monthlyBookings, updatedBy: req.user.username, updatedAt: new Date().toISOString() });
@@ -516,7 +558,7 @@ router.get('/briefing', async (req, res) => {
             pool.query(`
                 SELECT id, title, status, priority, assigned_to, date, deadline
                 FROM tasks
-                WHERE (date >= $1 AND date <= $2) OR (deadline >= $1 AND deadline <= $2) OR (status IN ('todo', 'in_progress'))
+                WHERE (date >= $1 AND date <= $2) OR (deadline >= $1::date AND deadline <= $2::date) OR (status IN ('todo', 'in_progress'))
                 ORDER BY priority DESC, date
             `, [from, to]),
             pool.query(`

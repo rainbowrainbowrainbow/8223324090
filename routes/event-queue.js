@@ -67,8 +67,8 @@ router.get('/overview', async (req, res) => {
                 COUNT(*) as total
              FROM rule_definitions`),
             pool.query(`SELECT
-                COUNT(*) FILTER (WHERE status = 'success') as success,
-                COUNT(*) FILTER (WHERE status = 'error') as errors,
+                COUNT(*) FILTER (WHERE result = 'success') as success,
+                COUNT(*) FILTER (WHERE result = 'error') as errors,
                 COUNT(*) as total
              FROM rule_execution_log WHERE executed_at > NOW() - INTERVAL '24 hours'`)
         ]);

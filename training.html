@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Навчання</title>
+    <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Genix">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=22.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=22.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=22.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.3.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        .training-page { padding: 16px; max-width: 1200px; margin: 0 auto; }
+        .training-page h1 { font-size: 22px; font-weight: 900; margin-bottom: 12px; }
+
+        /* Stats row */
+        .training-stats { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+        .training-stat {
+            background: #fff; border-radius: 12px; padding: 12px 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06); flex: 1; min-width: 120px;
+        }
+        .training-stat .stat-value { font-size: 24px; font-weight: 900; color: var(--primary, #C9A84C); }
+        .training-stat .stat-label { font-size: 12px; color: var(--gray-500, #A0AEC0); font-weight: 600; }
+
+        /* Category filters */
+        .training-filters { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+        .filter-chip {
+            padding: 6px 14px; border: none; border-radius: 20px;
+            font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+            background: rgba(0,0,0,0.05); color: var(--gray-600, #718096);
+            transition: all 0.15s;
+        }
+        .filter-chip.active { background: var(--primary, #C9A84C); color: #1a202c; }
+
+        /* Content layout */
+        .training-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+        @media (max-width: 768px) { .training-layout { grid-template-columns: 1fr; } }
+
+        /* Left panel */
+        .training-sidebar { display: flex; flex-direction: column; gap: 12px; }
+        .training-sidebar .contributors {
+            background: #fff; border-radius: 12px; padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        .contributors h3 { font-size: 14px; font-weight: 800; margin-bottom: 8px; }
+        .contributor-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 4px 0; font-size: 13px;
+        }
+        .contributor-row .count { font-weight: 800; color: var(--primary, #C9A84C); }
+        .send-prompt-btn {
+            background: var(--primary, #C9A84C); color: #1a202c; border: none;
+            padding: 12px; border-radius: 10px; font-weight: 800; font-size: 14px;
+            cursor: pointer; width: 100%; font-family: inherit;
+        }
+        .send-prompt-btn:hover { filter: brightness(0.95); }
+
+        /* Material cards */
+        .materials-list { display: flex; flex-direction: column; gap: 10px; }
+        .material-card {
+            background: #fff; border-radius: 12px; padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        .material-card .card-header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+        }
+        .material-card .card-category {
+            font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+            background: rgba(245,200,66,0.15); color: #b8860b;
+        }
+        .material-card .card-date { font-size: 11px; color: var(--gray-400, #CBD5E0); }
+        .material-card .card-title { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
+        .material-card .card-content { font-size: 13px; color: var(--gray-600, #718096); line-height: 1.5; }
+        .material-card .card-source {
+            font-size: 11px; color: var(--gray-400, #CBD5E0); margin-top: 8px;
+            border-top: 1px solid var(--gray-100, #F7FAFC); padding-top: 8px;
+        }
+
+        /* Pending review section */
+        .pending-section { margin-top: 16px; }
+        .pending-section h2 { font-size: 16px; font-weight: 800; margin-bottom: 8px; }
+        .pending-card {
+            background: #FFFBEB; border-radius: 12px; padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 8px;
+            border-left: 3px solid var(--primary, #C9A84C);
+        }
+        .pending-card .pending-staff { font-size: 14px; font-weight: 800; margin-bottom: 4px; }
+        .pending-card .pending-content { font-size: 13px; margin-bottom: 8px; line-height: 1.5; }
+        .pending-card .pending-actions { display: flex; gap: 8px; }
+        .btn-approve, .btn-reject {
+            padding: 6px 14px; border: none; border-radius: 8px;
+            font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+        }
+        .btn-approve { background: #48BB78; color: #fff; }
+        .btn-reject { background: #FC8181; color: #fff; }
+
+        .empty-state { text-align: center; padding: 40px; color: var(--gray-400, #CBD5E0); }
+
+        /* Dark mode */
+        .dark-mode .training-page h1 { color: #E2E8F0; }
+        .dark-mode .training-stat,
+        .dark-mode .contributors,
+        .dark-mode .material-card { background: #2A2A4A; border: 1px solid #3D3D5C; box-shadow: none; }
+        .dark-mode .training-stat .stat-value { color: var(--primary, #C9A84C); }
+        .dark-mode .training-stat .stat-label { color: #9CA3AF; }
+        .dark-mode .contributors h3 { color: #E2E8F0; }
+        .dark-mode .contributor-row { color: #E2E8F0; }
+        .dark-mode .material-card .card-title { color: #E2E8F0; }
+        .dark-mode .material-card .card-content { color: #9CA3AF; }
+        .dark-mode .material-card .card-date { color: #6B7280; }
+        .dark-mode .material-card .card-category { background: rgba(201,168,76,0.2); color: #C9A84C; }
+        .dark-mode .material-card .card-source { color: #6B7280; border-top-color: #3D3D5C; }
+        .dark-mode .pending-card { background: #3D3520; border-left-color: #C9A84C; color: #E2E8F0; }
+        .dark-mode .pending-card .pending-content { color: #9CA3AF; }
+        .dark-mode .filter-chip { background: rgba(255,255,255,0.08); color: #9CA3AF; }
+        .dark-mode .filter-chip:hover { background: rgba(255,255,255,0.12); color: #E2E8F0; }
+        .dark-mode .filter-chip.active { background: var(--primary, #C9A84C); color: #1a202c; }
+        .dark-mode .empty-state { color: #6B7280; }
+        .dark-mode .send-prompt-btn { background: var(--primary, #C9A84C); color: #1a202c; }
+    </style>
+</head>
+<body>
+    <script>
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+
+    <div id="mainApp">
+        <!-- Sidebar -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-logo">
+                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                <div class="em-logo">
+                    <span class="em-title">Event Genix</span>
+                </div>
+                <button class="sidebar-collapse-btn" id="sidebarCollapseBtn"><span class="collapse-icon">«</span><span class="collapse-text">Згорнути</span></button>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks">
+                <!-- Populated by sidebar.js -->
+            </nav>
+        </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <button class="sidebar-toggle" id="sidebarToggle">☰</button>
+                <h2>Навчання персоналу</h2>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <main class="main-content training-page">
+            <!-- Stats -->
+            <div class="training-stats" id="trainingStats">
+                <div class="training-stat">
+                    <div class="stat-value" id="statTotal">—</div>
+                    <div class="stat-label">Матеріалів</div>
+                </div>
+                <div class="training-stat">
+                    <div class="stat-value" id="statWeek">—</div>
+                    <div class="stat-label">Цього тижня</div>
+                </div>
+                <div class="training-stat">
+                    <div class="stat-value" id="statPending">—</div>
+                    <div class="stat-label">Очікує</div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="training-filters" id="categoryFilters">
+                <button class="filter-chip active" data-cat="all">Всі</button>
+                <button class="filter-chip" data-cat="Аніматори">Аніматори</button>
+                <button class="filter-chip" data-cat="Адміністрація">Адміністрація</button>
+                <button class="filter-chip" data-cat="Безпека">Безпека</button>
+                <button class="filter-chip" data-cat="Сервіс">Сервіс</button>
+                <button class="filter-chip" data-cat="Продажі">Продажі</button>
+                <button class="filter-chip" data-cat="Загальне">Загальне</button>
+            </div>
+
+            <!-- Layout: sidebar + materials -->
+            <div class="training-layout">
+                <div class="training-sidebar">
+                    <div class="contributors">
+                        <h3>Топ внесок</h3>
+                        <div id="topContributors"></div>
+                    </div>
+                    <button class="send-prompt-btn" id="sendPromptBtn">Відправити запит</button>
+                </div>
+
+                <div>
+                    <!-- Pending review -->
+                    <div class="pending-section" id="pendingSection" style="display:none">
+                        <h2>Очікує перегляду</h2>
+                        <div id="pendingList"></div>
+                    </div>
+
+                    <!-- Materials list -->
+                    <div class="materials-list" id="materialsList">
+                        <div class="empty-state">Завантаження...</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/config.js?v=22.3.0"></script>
+    <script src="js/api.js?v=22.3.0"></script>
+    <script src="js/auth.js?v=22.3.0"></script>
+    <script src="js/components/sidebar.js?v=22.3.0"></script>
+    <script>
+    (async function() {
+        // Auth check
+        const token = localStorage.getItem('pzp_token');
+        if (!token) { window.location.href = '/'; return; }
+
+        // Init sidebar
+        if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
+
+        const API = window.API_BASE || '';
+        const headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+
+        let currentCategory = 'all';
+
+        // Load stats
+        async function loadStats() {
+            try {
+                const res = await fetch(API + '/api/training/stats', { headers });
+                if (!res.ok) return;
+                const data = await res.json();
+                document.getElementById('statTotal').textContent = data.totalMaterials || 0;
+                document.getElementById('statWeek').textContent = data.thisWeekInputs || 0;
+
+                // Top contributors
+                const tc = document.getElementById('topContributors');
+                if (data.topContributors && data.topContributors.length > 0) {
+                    tc.innerHTML = data.topContributors.map(c =>
+                        `<div class="contributor-row"><span>${c.name}</span><span class="count">${c.count}</span></div>`
+                    ).join('');
+                } else {
+                    tc.innerHTML = '<div style="font-size:12px;color:var(--gray-400)">Ще немає даних</div>';
+                }
+            } catch (e) { console.error('Stats error', e); }
+        }
+
+        // Load materials
+        async function loadMaterials() {
+            try {
+                const catParam = currentCategory !== 'all' ? `&category=${encodeURIComponent(currentCategory)}` : '';
+                const res = await fetch(API + `/api/training/materials?limit=50${catParam}`, { headers });
+                if (!res.ok) return;
+                const data = await res.json();
+                const list = document.getElementById('materialsList');
+
+                if (!data.materials || data.materials.length === 0) {
+                    list.innerHTML = '<div class="empty-state">Немає матеріалів</div>';
+                    return;
+                }
+
+                list.innerHTML = data.materials.map(m => {
+                    const date = m.created_at ? new Date(m.created_at).toLocaleDateString('uk-UA') : '';
+                    return `<div class="material-card">
+                        <div class="card-header">
+                            <span class="card-category">${m.category || 'Загальне'}</span>
+                            <span class="card-date">${date}</span>
+                        </div>
+                        <div class="card-title">${escapeHtml(m.title || '')}</div>
+                        <div class="card-content">${escapeHtml(m.content || '')}</div>
+                        ${m.source_staff_name ? `<div class="card-source">Від: ${escapeHtml(m.source_staff_name)}</div>` : ''}
+                    </div>`;
+                }).join('');
+            } catch (e) { console.error('Materials error', e); }
+        }
+
+        // Load pending (for managers+)
+        async function loadPending() {
+            try {
+                const res = await fetch(API + '/api/training/weekly-pending', { headers });
+                if (!res.ok) { document.getElementById('pendingSection').style.display = 'none'; return; }
+                const data = await res.json();
+
+                const pending = (data.inputs || []).filter(i => i.status === 'pending');
+                document.getElementById('statPending').textContent = pending.length;
+
+                const section = document.getElementById('pendingSection');
+                const list = document.getElementById('pendingList');
+
+                if (pending.length === 0) {
+                    section.style.display = 'none';
+                    return;
+                }
+
+                section.style.display = 'block';
+                list.innerHTML = pending.map(p => {
+                    const date = p.created_at ? new Date(p.created_at).toLocaleDateString('uk-UA') : '';
+                    return `<div class="pending-card" data-id="${p.id}">
+                        <div class="pending-staff">${escapeHtml(p.staff_name || p.current_staff_name || 'Невідомий')} <span style="font-weight:400;font-size:11px;color:var(--gray-400)">${date}</span></div>
+                        <div class="pending-content">${escapeHtml(p.content)}</div>
+                        <div class="pending-actions">
+                            <button class="btn-approve" onclick="reviewInput(${p.id}, 'approve')">Підтвердити</button>
+                            <button class="btn-reject" onclick="reviewInput(${p.id}, 'reject')">Відхилити</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                document.getElementById('pendingSection').style.display = 'none';
+            }
+        }
+
+        // Review input
+        window.reviewInput = async function(id, action) {
+            try {
+                const res = await fetch(API + '/api/training/review', {
+                    method: 'POST', headers,
+                    body: JSON.stringify({ decisions: [{ id, action }] })
+                });
+                if (res.ok) {
+                    // Remove card with animation
+                    const card = document.querySelector(`.pending-card[data-id="${id}"]`);
+                    if (card) { card.style.opacity = '0.3'; setTimeout(() => card.remove(), 300); }
+                    loadStats();
+                    loadMaterials();
+                }
+            } catch (e) { console.error('Review error', e); }
+        };
+
+        // Category filter clicks
+        document.getElementById('categoryFilters').addEventListener('click', (e) => {
+            const chip = e.target.closest('.filter-chip');
+            if (!chip) return;
+            document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            currentCategory = chip.dataset.cat;
+            loadMaterials();
+        });
+
+        // Send prompt button
+        document.getElementById('sendPromptBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('sendPromptBtn');
+            btn.textContent = 'Відправляю...';
+            btn.disabled = true;
+            try {
+                const res = await fetch(API + '/api/training/send-weekly-prompt', { method: 'POST', headers });
+                const data = await res.json();
+                btn.textContent = data.success ? `Відправлено (${data.sent})` : 'Помилка';
+            } catch (e) {
+                btn.textContent = 'Помилка';
+            }
+            setTimeout(() => { btn.textContent = 'Відправити запит'; btn.disabled = false; }, 3000);
+        });
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initial load
+        loadStats();
+        loadMaterials();
+        loadPending();
+    })();
+    </script>
+</body>
+</html>

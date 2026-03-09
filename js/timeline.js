@@ -50,97 +50,9 @@ function canViewHistory() {
     return AppState.currentUser !== null;
 }
 
-// v5.8: Quick Stats Bar — show summary for selected date
-// v5.11: Filter by existing lines + exclude linked bookings
-// v11.1: Stats-only bar + separate floating widget
-// v19.2: Rich widget cards
-function updateQuickStats(bookings, lineIds) {
-    const bar = document.getElementById('quickStatsBar');
-    if (!bar || isViewer()) return;
-
-    // Filter: only bookings on existing lines, exclude linked (extra hosts)
-    const mainBookings = bookings.filter(b => !b.linkedTo && (!lineIds || lineIds.includes(b.lineId)));
-    const preliminary = mainBookings.filter(b => b.status === 'preliminary');
-    const confirmed = mainBookings.filter(b => b.status === 'confirmed');
-    const total = mainBookings.reduce((sum, b) => sum + (b.price || 0), 0);
-
-    // Build widget cards
-    let html = '';
-
-    // 1. Bookings count
-    html += `<div class="qs-card">
-        <div class="qs-icon green">📅</div>
-        <div class="qs-info"><div class="qs-value">${mainBookings.length}</div><div class="qs-label">Бронювань</div></div>
-    </div>`;
-
-    // 2. Revenue
-    html += `<div class="qs-card">
-        <div class="qs-icon blue">💰</div>
-        <div class="qs-info"><div class="qs-value">${formatPrice(total)}</div><div class="qs-label">Дохід за день</div></div>
-    </div>`;
-
-    // 3. Confirmed
-    html += `<div class="qs-card">
-        <div class="qs-icon green">✅</div>
-        <div class="qs-info"><div class="qs-value">${confirmed.length}</div><div class="qs-label">Підтверджено</div></div>
-    </div>`;
-
-    // 4. Preliminary
-    html += `<div class="qs-card">
-        <div class="qs-icon amber">⏳</div>
-        <div class="qs-info"><div class="qs-value">${preliminary.length}</div><div class="qs-label">Попередніх</div></div>
-    </div>`;
-
-    // 5. Animators
-    if (lineIds && lineIds.length > 0) {
-        html += `<div class="qs-card">
-            <div class="qs-icon purple">👥</div>
-            <div class="qs-info"><div class="qs-value">${lineIds.length}</div><div class="qs-label">Аніматорів</div></div>
-        </div>`;
-    }
-
-    bar.innerHTML = html;
-    bar.classList.remove('hidden');
-
-    // Load async extra widgets (tasks, certificates) — fire-and-forget
-    loadExtraWidgets(bar);
-
-    // v11.1: Init floating Kleshnya widget (non-blocking)
-    initKleshnyaWidget();
-}
-
-// v19.2: Load extra dashboard widgets asynchronously
-async function loadExtraWidgets(bar) {
-    try {
-        // Fetch today's tasks count
-        const dateStr = document.getElementById('timelineDate')?.value;
-        if (!dateStr) return;
-
-        const [tasksRes, certsRes] = await Promise.all([
-            fetch('/api/tasks?date=' + dateStr, { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') } }).then(r => r.ok ? r.json() : []).catch(() => []),
-            fetch('/api/certificates?status=active', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') } }).then(r => r.ok ? r.json() : []).catch(() => [])
-        ]);
-
-        const tasks = Array.isArray(tasksRes) ? tasksRes : [];
-        const certs = Array.isArray(certsRes) ? certsRes : [];
-
-        if (tasks.length > 0) {
-            const done = tasks.filter(t => t.status === 'done').length;
-            bar.innerHTML += `<div class="qs-card">
-                <div class="qs-icon rose">📝</div>
-                <div class="qs-info"><div class="qs-value">${done}/${tasks.length}</div><div class="qs-label">Задач виконано</div></div>
-            </div>`;
-        }
-
-        if (certs.length > 0) {
-            bar.innerHTML += `<div class="qs-card">
-                <div class="qs-icon purple">📄</div>
-                <div class="qs-info"><div class="qs-value">${certs.length}</div><div class="qs-label">Сертифікатів</div></div>
-            </div>`;
-        }
-    } catch (e) {
-        // Non-critical, ignore errors
-    }
+// v5.8: Quick Stats Bar — removed in v20.9.1 (redundant with dashboard)
+function updateQuickStats() {
+    // v21.12: Kleshnya widget removed
 }
 
 // ==========================================
@@ -294,7 +206,7 @@ function getTimeRange(date) {
 
 function initializeTimeline() {
     AppState.selectedDate = new Date();
-    document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
+    const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
     renderTimeline();
 }
 
@@ -365,7 +277,7 @@ async function renderTimeline() {
             delete AppState.cachedLines[retryDateStr];
             // Only retry if still on the same date
             if (formatDate(AppState.selectedDate) === retryDateStr) {
-                console.log('[Timeline] Retrying render — lines were empty');
+                // Retrying render — lines were empty
                 renderTimeline();
             }
         }, 2000);
@@ -394,8 +306,8 @@ async function renderTimeline() {
     // [FIX] Показуємо день тижня + дату — зручно на мобільному (вертикальний режим)
     const dd = String(selectedDate.getDate()).padStart(2, '0');
     const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
-    document.getElementById('dayOfWeekLabel').textContent = `${DAYS[dayOfWeek]}, ${dd}.${mm}`;
-    document.getElementById('workingHours').textContent = isWeekend ? '10:00-20:00' : '12:00-20:00';
+    const _dowEl = document.getElementById('dayOfWeekLabel'); if (_dowEl) _dowEl.textContent = `${DAYS[dayOfWeek]}, ${dd}.${mm}`;
+    const _whEl = document.getElementById('workingHours'); if (_whEl) _whEl.textContent = isWeekend ? '10:00-20:00' : '12:00-20:00';
 
     container.innerHTML = '';
 
@@ -522,6 +434,27 @@ function applyStatusFilter() {
     updateFilterBanner();
 }
 
+// v20.11.0: Keyboard navigation for booking blocks
+document.addEventListener('keydown', (e) => {
+    const focused = document.activeElement;
+    if (!focused || !focused.classList.contains('booking-block')) return;
+
+    if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        focused.click();
+        return;
+    }
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const blocks = Array.from(document.querySelectorAll('.booking-block:not(.status-hidden)'));
+        const idx = blocks.indexOf(focused);
+        if (idx === -1) return;
+        const next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+        if (next >= 0 && next < blocks.length) blocks[next].focus();
+    }
+});
+
 // v5.15: Dim "Today" button when already on today
 function updateTodayButton() {
     const btn = document.getElementById('todayBtn');
@@ -563,7 +496,10 @@ function createBookingBlock(booking, startHour) {
     // v7.0.1: Apply status filter immediately to prevent flash of hidden bookings
     const filter = AppState.statusFilter || 'all';
     const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
-    block.className = `booking-block ${booking.category}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}`;
+    block.className = `booking-block ${booking.category}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${booking.category === 'banquet' ? ' banquet-block' : ''}`;
+    block.setAttribute('tabindex', '0');
+    block.setAttribute('role', 'button');
+    block.setAttribute('aria-label', `${booking.label || booking.category} ${booking.time} ${booking.room || ''}`);
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 
@@ -712,22 +648,8 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
         });
     }
 
-    // Click on header → open afisha modal
-    lineEl.querySelector('.line-header').addEventListener('click', (e) => {
-        if (e.target.closest('.afisha-dist-btn')) return;
-        openAfishaModalAt(formatDate(date), null);
-    });
-
-    // Click on empty cells → open afisha modal with pre-filled time
-    if (!isViewer()) {
-        lineEl.querySelectorAll('.grid-cell').forEach(cell => {
-            cell.addEventListener('click', (e) => {
-                if (e.target === cell) {
-                    openAfishaModalAt(formatDate(date), cell.dataset.time);
-                }
-            });
-        });
-    }
+    // v20.9.11: Click on afisha header/cells no longer opens modal (moved to Settings → Afisha)
+    // openAfishaModalAt is still accessible via afishaBtn in the menu
 }
 
 function createAfishaBlock(event, startHour) {
@@ -785,6 +707,14 @@ function createAfishaBlock(event, startHour) {
         initAfishaDrag(block, event, startHour);
     } else if (!isViewer()) {
         block.addEventListener('click', () => editAfishaItem(event.id));
+    }
+
+    // v20.8.0: Context menu for moving afisha between lines
+    if (!isViewer()) {
+        block.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            _showAfishaLineMenu(e, event);
+        });
     }
 
     block.addEventListener('mouseenter', (e) => showAfishaTooltip(e, event));
@@ -1921,6 +1851,79 @@ async function _endAfishaDrag() {
     _afishaDragState = null;
 }
 
+// v20.8.0: Context menu for moving afisha to another line
+function _showAfishaLineMenu(e, event) {
+    // Remove any existing menu
+    const old = document.querySelector('.afisha-line-menu');
+    if (old) old.remove();
+
+    // Get available lines from the timeline
+    const lineHeaders = document.querySelectorAll('.line-header[data-line-id]');
+    const lines = [];
+    lineHeaders.forEach(h => {
+        const lid = h.dataset.lineId;
+        if (lid === 'afisha') return;
+        const nameEl = h.querySelector('.line-name');
+        const name = nameEl ? nameEl.textContent : `Лінія ${lid}`;
+        lines.push({ id: parseInt(lid), name });
+    });
+
+    if (lines.length === 0) return;
+
+    const menu = document.createElement('div');
+    menu.className = 'afisha-line-menu';
+    menu.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:10000;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.15);padding:4px 0;min-width:180px;font-size:13px;font-family:inherit;`;
+
+    const title = document.createElement('div');
+    title.style.cssText = 'padding:6px 14px;font-weight:700;font-size:11px;color:#718096;text-transform:uppercase;border-bottom:1px solid #edf2f7;';
+    title.textContent = 'Перемістити на лінію';
+    menu.appendChild(title);
+
+    // Unassign option
+    const unassign = document.createElement('div');
+    unassign.style.cssText = 'padding:8px 14px;cursor:pointer;';
+    unassign.textContent = '— Без лінії (афіша)';
+    unassign.onmouseenter = () => unassign.style.background = document.body.classList.contains('dark-mode') ? 'rgba(255,255,255,0.08)' : '#f7fafc';
+    unassign.onmouseleave = () => unassign.style.background = '';
+    unassign.onclick = () => { _moveAfishaToLine(event.id, null); menu.remove(); };
+    if (event.line_id == null) unassign.style.fontWeight = '700';
+    menu.appendChild(unassign);
+
+    for (const line of lines) {
+        const item = document.createElement('div');
+        item.style.cssText = 'padding:8px 14px;cursor:pointer;';
+        item.textContent = line.name;
+        if (event.line_id === line.id) item.style.fontWeight = '700';
+        item.onmouseenter = () => item.style.background = document.body.classList.contains('dark-mode') ? 'rgba(255,255,255,0.08)' : '#f7fafc';
+        item.onmouseleave = () => item.style.background = '';
+        item.onclick = () => { _moveAfishaToLine(event.id, line.id); menu.remove(); };
+        menu.appendChild(item);
+    }
+
+    document.body.appendChild(menu);
+
+    // Close on click outside
+    const closeHandler = (ev) => {
+        if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', closeHandler, true); }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler, true), 0);
+}
+
+async function _moveAfishaToLine(afishaId, lineId) {
+    try {
+        const resp = await fetch(`${API_BASE}/afisha/${afishaId}/line`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ line_id: lineId })
+        });
+        if (!resp.ok) throw new Error('API error');
+        showNotification(lineId ? `Афіша переміщена на лінію` : 'Афіша повернута в загальний рядок');
+        loadTimeline();
+    } catch {
+        showNotification('Помилка переміщення', 'error');
+    }
+}
+
 document.addEventListener('mousemove', (e) => _moveAfishaDrag(e.clientX));
 document.addEventListener('mouseup', () => _endAfishaDrag());
 document.addEventListener('touchmove', (e) => {
@@ -2049,8 +2052,8 @@ async function renderMultiDayTimeline() {
 
     const dates = buildMultiDayDates();
 
-    document.getElementById('dayOfWeekLabel').textContent = `${AppState.daysToShow} днів`;
-    document.getElementById('workingHours').textContent = `${formatDate(dates[0])} - ${formatDate(dates[dates.length - 1])}`;
+    const _dowEl2 = document.getElementById('dayOfWeekLabel'); if (_dowEl2) _dowEl2.textContent = `${AppState.daysToShow} днів`;
+    const _whEl2 = document.getElementById('workingHours'); if (_whEl2) _whEl2.textContent = `${formatDate(dates[0])} - ${formatDate(dates[dates.length - 1])}`;
 
     let multiDayHtml = '<div class="multi-day-container">';
     for (const date of dates) {
@@ -2125,7 +2128,7 @@ function changeDate(days) {
     const newDate = new Date(AppState.selectedDate);
     newDate.setDate(newDate.getDate() + days);
     AppState.selectedDate = newDate;
-    document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
+    const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
     renderTimeline();
 }
 
@@ -2195,20 +2198,12 @@ function updateRoomLoadPanel(bookings, date) {
     const roomMinutes = {};
     ALL_ROOMS_DISPLAY.forEach(r => { roomMinutes[r] = 0; });
 
+    // v20.9.7: Будь-яке бронювання в кімнаті = 100% на весь день
     const activeBookings = bookings.filter(b => b.status !== 'cancelled' && b.room && b.room !== 'Інше');
     activeBookings.forEach(b => {
         const room = b.room;
         if (!(room in roomMinutes)) return;
-        const bStartMin = timeToMinutes(b.time);
-        const bEndMin = bStartMin + (b.duration || 60);
-        // Clamp to working hours
-        const dayStartMin = start * 60;
-        const dayEndMin = end * 60;
-        const overlapStart = Math.max(bStartMin, dayStartMin);
-        const overlapEnd = Math.min(bEndMin, dayEndMin);
-        if (overlapEnd > overlapStart) {
-            roomMinutes[room] += (overlapEnd - overlapStart);
-        }
+        roomMinutes[room] = totalMinutes; // 100% — будь-яка активність = весь день зайнятий
     });
 
     let occupiedCount = 0;

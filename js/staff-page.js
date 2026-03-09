@@ -54,12 +54,13 @@ const MONTHS_UK = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', '
 // ==========================================
 
 function showNotification(message, type = '') {
-    const el = document.getElementById('notification');
-    if (!el) return;
-    document.getElementById('notificationText').textContent = message;
-    el.className = 'notification' + (type ? ` ${type}` : '');
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 3000);
+    let c = document.getElementById('toastContainer');
+    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+    const t = document.createElement('div');
+    t.className = 'toast' + (type ? ' ' + type : '');
+    t.textContent = message;
+    c.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
 function getMonday(d) {
@@ -523,8 +524,7 @@ async function handleCopyWeek() {
         ? 'всіх відділів'
         : (StaffState.departments[StaffState.activeDept] || StaffState.activeDept);
 
-    const ok = confirm(`Скопіювати графік ${deptLabel} з тижня ${fromMonday} на тиждень ${toMonday}?\n\nІснуючі записи будуть перезаписані.`);
-    if (!ok) return;
+    if (!await confirmModal(`Скопіювати графік ${deptLabel} з тижня ${fromMonday} на тиждень ${toMonday}?\n\nІснуючі записи будуть перезаписані.`, { type: 'warning', okText: 'Копіювати' })) return;
 
     const result = await copyWeekSchedule(fromMonday, toMonday, StaffState.activeDept);
     if (result.success) {
@@ -726,7 +726,8 @@ async function initPage() {
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
 
-    const canManage = user.role === 'admin' || user.role === 'manager';
+    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    const canManage = MANAGE_ROLES.includes(user.role);
     const addBtn = document.getElementById('addStaffBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 

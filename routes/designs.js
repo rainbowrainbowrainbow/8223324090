@@ -315,6 +315,28 @@ router.post('/upload', upload.array('files', 20), async (req, res) => {
 // DYNAMIC ROUTES (/:id)
 // ==========================================
 
+// --- GET /api/designs/:id/download — Download with correct headers (v20.8.0) ---
+router.get('/:id/download', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query('SELECT filename, original_name, mime_type FROM designs WHERE id = $1', [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Дизайн не знайдено' });
+        }
+        const { filename, original_name, mime_type } = result.rows[0];
+        const filePath = path.join(UPLOADS_DIR, filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'Файл не знайдено на диску' });
+        }
+        res.setHeader('Content-Type', mime_type || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(original_name || filename)}"`);
+        fs.createReadStream(filePath).pipe(res);
+    } catch (err) {
+        log.error('Error downloading design', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // --- PUT /api/designs/:id — Update design metadata ---
 router.put('/:id', async (req, res) => {
     try {

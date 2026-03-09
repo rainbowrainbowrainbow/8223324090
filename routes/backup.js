@@ -122,14 +122,16 @@ router.post('/restore', async (req, res) => {
             if (m) tablesWithData.add(m[1].toLowerCase());
         }
 
-        // Fix serial counters for restored tables
+        // Fix serial counters for restored tables (use SAVEPOINT to avoid aborting transaction)
         for (const table of tablesWithData) {
             try {
+                await client.query('SAVEPOINT seq_fix');
                 await client.query(
                     `SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 0) + 1, false)`
                 );
+                await client.query('RELEASE SAVEPOINT seq_fix');
             } catch {
-                // Table may not have serial 'id' column — skip
+                await client.query('ROLLBACK TO SAVEPOINT seq_fix');
             }
         }
 
@@ -189,7 +191,7 @@ router.get('/verify', async (req, res) => {
         });
     } catch (err) {
         log.error(`Backup verify error: ${err.message}`);
-        res.status(500).json({ ok: false, error: err.message });
+        res.status(500).json({ ok: false, error: 'Помилка перевірки бекапу' });
     }
 });
 

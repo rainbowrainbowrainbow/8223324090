@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Ліди</title>
+    <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=22.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=22.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=22.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.3.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* Standalone page layout */
+        .standalone-page {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 24px 20px 40px;
+            min-height: 100vh;
+        }
+        .standalone-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 28px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #E2E8F0;
+        }
+        .standalone-header .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 14px;
+            border-radius: var(--radius-sm);
+            background: #E2E8F0;
+            color: #334155;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+            transition: all .15s;
+            white-space: nowrap;
+            min-height: 40px;
+            border: 1px solid #CBD5E1;
+        }
+        .standalone-header .back-link:hover {
+            background: #CBD5E1;
+            color: #1E293B;
+        }
+        .standalone-header h1 {
+            font-family: var(--font-heading);
+            font-size: 28px;
+            font-weight: 800;
+            color: #0F172A;
+            margin: 0;
+            letter-spacing: -0.5px;
+        }
+
+        /* Stats row */
+        .leads-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .leads-stat {
+            background: #FFFFFF;
+            border-radius: var(--radius-card);
+            padding: 16px;
+            border: 1.5px solid #CBD5E1;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            text-align: center;
+            transition: transform .15s, box-shadow .15s;
+        }
+        .leads-stat:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-sm);
+        }
+        .leads-stat .stat-val { font-family: var(--font-heading); font-size: 28px; font-weight: 800; line-height: 1.2; }
+        .leads-stat .stat-lbl { font-size: 11px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+        .leads-stat.new .stat-val { color: #3B82F6; }
+        .leads-stat.contact .stat-val { color: #F59E0B; }
+        .leads-stat.proposal .stat-val { color: #F97316; }
+        .leads-stat.booked .stat-val { color: #10B981; }
+        .leads-stat.lost .stat-val { color: #EF4444; }
+
+        /* Toolbar */
+        .leads-toolbar {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .leads-toolbar .btn-add {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 10px 22px;
+            border-radius: var(--radius-sm);
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            font-size: 14px;
+            min-height: 44px;
+            transition: all .15s;
+            box-shadow: 0 2px 8px rgba(16,185,129,0.25);
+        }
+        .leads-toolbar .btn-add:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+        }
+        .leads-toolbar .btn-add:active {
+            transform: translateY(0) scale(0.97);
+        }
+        .leads-toolbar .filter-btns {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .leads-toolbar .filter-btn {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            border: 1.5px solid #CBD5E1;
+            background: #F1F5F9;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+            font-family: inherit;
+            color: #334155;
+            min-height: 44px;
+            transition: all .15s;
+        }
+        .leads-toolbar .filter-btn:hover {
+            border-color: #10B981;
+            color: #059669;
+            background: #ECFDF5;
+        }
+        .leads-toolbar .filter-btn.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+            box-shadow: 0 2px 8px rgba(16,185,129,0.2);
+        }
+        .leads-toolbar .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 14px;
+            border: 1.5px solid #CBD5E1;
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+            font-family: inherit;
+            min-height: 44px;
+            background: #FFFFFF;
+            color: #1E293B;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        .leads-toolbar .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+        }
+
+        /* Table */
+        .leads-table-wrap {
+            overflow-x: auto;
+            background: #FFFFFF;
+            border-radius: var(--radius-card);
+            border: 1.5px solid #CBD5E1;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .leads-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .leads-table th {
+            text-align: left;
+            padding: 14px 16px;
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: #475569;
+            border-bottom: 2px solid #CBD5E1;
+            white-space: nowrap;
+            background: #F1F5F9;
+        }
+        .leads-table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--gray-50);
+            vertical-align: middle;
+        }
+        .leads-table tr:hover { background: rgba(16,185,129,.03); }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .status-badge.new { background: #DBEAFE; color: #1D4ED8; }
+        .status-badge.contact { background: #FEF3C7; color: #92400E; }
+        .status-badge.proposal { background: #FFEDD5; color: #9A3412; }
+        .status-badge.booked { background: #D1FAE5; color: #065F46; }
+        .status-badge.completed { background: #D1FAE5; color: #065F46; }
+        .status-badge.lost { background: #FEE2E2; color: #991B1B; }
+
+        .lead-actions { display: flex; gap: 6px; }
+        .lead-actions button {
+            padding: 6px 14px;
+            border-radius: var(--radius-xs);
+            border: 1.5px solid #CBD5E1;
+            background: #F8FAFC;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
+            font-family: inherit;
+            min-height: 36px;
+            white-space: nowrap;
+            transition: all .15s;
+            color: #334155;
+        }
+        .lead-actions .btn-convert {
+            background: #10B981;
+            color: #fff;
+            border-color: #10B981;
+        }
+        .lead-actions .btn-convert:hover { background: #059669; transform: translateY(-1px); }
+        .lead-actions .btn-edit:hover { background: var(--gray-50); border-color: var(--gray-300); }
+        .lead-actions .btn-delete { color: #EF4444; border-color: #FCA5A5; }
+        .lead-actions .btn-delete:hover { background: #FEE2E2; }
+
+        /* Modal */
+        .lead-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.5);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .lead-modal-overlay.active { display: flex; }
+        .lead-modal {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 28px;
+            width: min(90vw, 500px);
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-xl);
+        }
+        .lead-modal h2 {
+            font-family: var(--font-heading);
+            font-size: 20px;
+            font-weight: 800;
+            margin: 0 0 20px;
+        }
+        .lead-modal .form-group {
+            margin-bottom: 14px;
+        }
+        .lead-modal label {
+            display: block;
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: var(--gray-600);
+            margin-bottom: 6px;
+        }
+        .lead-modal input,
+        .lead-modal select,
+        .lead-modal textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1.5px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+            font-family: inherit;
+            min-height: 44px;
+            box-sizing: border-box;
+            color: var(--gray-800);
+            transition: border-color .15s, box-shadow .15s;
+        }
+        .lead-modal input:focus,
+        .lead-modal select:focus,
+        .lead-modal textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+        }
+        .lead-modal textarea { min-height: 70px; resize: vertical; }
+        .lead-modal .modal-btns {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: flex-end;
+        }
+        .lead-modal .btn-save {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 10px 24px;
+            border-radius: var(--radius-sm);
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            min-height: 44px;
+            transition: all .15s;
+            box-shadow: 0 2px 8px rgba(16,185,129,0.25);
+        }
+        .lead-modal .btn-save:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+        .lead-modal .btn-cancel {
+            background: var(--gray-100);
+            color: var(--gray-700);
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            min-height: 44px;
+            transition: all .15s;
+        }
+        .lead-modal .btn-cancel:hover { background: var(--gray-200); }
+
+        .empty-state {
+            text-align: center;
+            padding: 48px 20px;
+            color: var(--gray-400);
+            font-size: 15px;
+        }
+
+        /* Dark mode overrides — using body.dark-mode (consistent with dark-mode.css) */
+        body.dark-mode .standalone-header { border-color: rgba(255,255,255,0.08); }
+        body.dark-mode .standalone-header h1 { color: #E2E8F0; }
+        body.dark-mode .standalone-header .back-link { background: rgba(255,255,255,0.06); color: #D1D5DB; border-color: rgba(255,255,255,0.1); }
+        body.dark-mode .standalone-header .back-link:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        body.dark-mode .leads-stat,
+        body.dark-mode .leads-table-wrap {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(255,255,255,0.08);
+        }
+        body.dark-mode .leads-stat .stat-lbl { color: #9CA3AF; }
+        body.dark-mode .leads-table th { border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); color: #9CA3AF; }
+        body.dark-mode .leads-table td { border-color: rgba(255,255,255,0.04); color: #E2E8F0; }
+        body.dark-mode .leads-table tr:hover { background: rgba(255,255,255,0.04); }
+        body.dark-mode .leads-toolbar .filter-btn { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #D1D5DB; }
+        body.dark-mode .leads-toolbar .filter-btn:hover { background: rgba(16,185,129,0.1); border-color: var(--primary); color: var(--primary); }
+        body.dark-mode .leads-toolbar .filter-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        body.dark-mode .leads-toolbar .search-input { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #E2E8F0; }
+        body.dark-mode .lead-modal { background: #1e1e32; color: #E2E8F0; }
+        body.dark-mode .lead-modal h2 { color: #E2E8F0; }
+        body.dark-mode .lead-modal label { color: #9CA3AF; }
+        body.dark-mode .lead-modal input,
+        body.dark-mode .lead-modal textarea { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: #E2E8F0; }
+        body.dark-mode .lead-modal select { background: #252540; border-color: rgba(255,255,255,0.12); color: #E2E8F0; }
+        body.dark-mode .lead-modal select option { background: #252540; color: #E2E8F0; }
+        body.dark-mode .lead-modal .btn-cancel { background: rgba(255,255,255,0.08); color: #D1D5DB; }
+        body.dark-mode .lead-actions button { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #D1D5DB; }
+        body.dark-mode .lead-actions .btn-convert { background: #10B981; color: #fff; border-color: #10B981; }
+        body.dark-mode .lead-actions .btn-delete { color: #F87171; border-color: rgba(239,68,68,0.3); }
+        body.dark-mode .empty-state { color: #6B7280; }
+        body.dark-mode .lead-modal-overlay.active { background: rgba(0,0,0,0.7); }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .standalone-page { padding: 16px 12px 32px; }
+            .standalone-header h1 { font-size: 22px; }
+            .leads-toolbar { flex-direction: column; align-items: stretch; }
+            .leads-toolbar .btn-add { text-align: center; }
+            .leads-toolbar .filter-btns { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+            .leads-toolbar .search-input { min-width: 0; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar-nav" id="sidebarNav">
+        <div class="sidebar-logo">
+            <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+            <div class="em-logo"><span class="em-title">Event Genix</span></div>
+            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn"><span class="collapse-icon">«</span><span class="collapse-text">Згорнути</span></button>
+        </div>
+        <nav class="sidebar-links" id="sidebarLinks">
+            <!-- Populated by sidebar.js -->
+        </nav>
+    </aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <div class="page-container">
+        <header class="header">
+            <div class="header-left">
+                <button class="sidebar-toggle" id="sidebarToggle">☰</button>
+                <h2>Ліди</h2>
+            </div>
+        </header>
+
+        <main class="main-content">
+
+        <main class="standalone-content" id="leadsApp">
+            <!-- Stats -->
+            <div class="leads-stats" id="leadsStats"></div>
+
+            <!-- Toolbar -->
+            <div class="leads-toolbar">
+                <button class="btn-add" id="addLeadBtn">+ Новий лід</button>
+                <div class="filter-btns" id="filterBtns">
+                    <button class="filter-btn active" data-status="">Всі</button>
+                    <button class="filter-btn" data-status="new">Нові</button>
+                    <button class="filter-btn" data-status="contact">В роботі</button>
+                    <button class="filter-btn" data-status="proposal">Пропозиція</button>
+                    <button class="filter-btn" data-status="booked">Заброньовано</button>
+                    <button class="filter-btn" data-status="lost">Втрачено</button>
+                </div>
+                <input type="text" class="search-input" id="leadsSearch" aria-label="Пошук за ім'ям, телефоном..." placeholder="Пошук за ім'ям, телефоном...">
+            </div>
+
+            <!-- Table -->
+            <div class="leads-table-wrap">
+                <table class="leads-table">
+                    <thead>
+                        <tr>
+                            <th>Ім'я</th>
+                            <th>Телефон</th>
+                            <th>Джерело</th>
+                            <th>Статус</th>
+                            <th>Дата запиту</th>
+                            <th>Відповідальний</th>
+                            <th>Дії</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leadsTableBody">
+                        <tr><td colspan="7" class="empty-state">Завантаження...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add/Edit Lead Modal -->
+    <div class="lead-modal-overlay" id="leadModal">
+        <div class="lead-modal">
+            <h2 id="leadModalTitle">Новий лід</h2>
+            <input type="hidden" id="leadEditId">
+            <div class="form-group">
+                <label>Ім'я *</label>
+                <input type="text" id="leadName" aria-label="Ім'я клієнта" placeholder="Ім'я клієнта">
+            </div>
+            <div class="form-group">
+                <label>Телефон</label>
+                <input type="tel" id="leadPhone" aria-label="+380..." placeholder="+380..." inputmode="tel">
+            </div>
+            <div class="form-group">
+                <label>Instagram</label>
+                <input type="text" id="leadInstagram" aria-label="@username" placeholder="@username">
+            </div>
+            <div class="form-group">
+                <label>Джерело</label>
+                <select id="leadSource">
+                    <option value="">— не вказано —</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="google">Google</option>
+                    <option value="recommendation">Рекомендація</option>
+                    <option value="site">Сайт</option>
+                    <option value="phone">Телефон</option>
+                    <option value="walk-in">Прийшли</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Бажана дата</label>
+                <input type="date" id="leadEventDate">
+            </div>
+            <div class="form-group">
+                <label>Кількість дітей</label>
+                <input type="number" id="leadChildrenCount" min="1" max="100" aria-label="10" placeholder="10">
+            </div>
+            <div class="form-group">
+                <label>Нотатки</label>
+                <textarea id="leadNotes" rows="3" aria-label="Додаткова інформація..." placeholder="Додаткова інформація..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Відповідальний</label>
+                <select id="leadAssignedTo">
+                    <option value="">— не призначено —</option>
+                </select>
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancel" id="leadModalCancel">Скасувати</button>
+                <button class="btn-save" id="leadModalSave">Зберегти</button>
+            </div>
+        </div>
+    </div>
+    </main>
+    </div>
+
+    <script src="js/config.js?v=22.3.0"></script>
+    <script src="js/api.js?v=22.3.0"></script>
+    <script src="js/auth.js?v=22.3.0"></script>
+    <script src="js/components/sidebar.js?v=22.3.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/leads-page.js?v=22.3.0"></script>
+</body>
+</html>

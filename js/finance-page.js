@@ -34,12 +34,13 @@ async function apiRequest(method, url, body) {
 }
 
 function showNotification(message, type = '') {
-    const el = document.getElementById('notification');
-    if (!el) return;
-    document.getElementById('notificationText').textContent = message;
-    el.className = 'notification' + (type ? ` ${type}` : '');
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 3000);
+    let c = document.getElementById('toastContainer');
+    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+    const t = document.createElement('div');
+    t.className = 'toast' + (type ? ' ' + type : '');
+    t.textContent = message;
+    c.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
 // ==========================================
@@ -222,7 +223,7 @@ async function saveTransaction() {
 }
 
 async function deleteTransaction(id) {
-    if (!confirm('Видалити транзакцію?')) return;
+    if (!await confirmModal('Видалити транзакцію?', { type: 'danger', okText: 'Видалити' })) return;
     try {
         await apiRequest('DELETE', `/api/finance/transactions/${id}`);
         showNotification('Транзакцію видалено');
@@ -771,7 +772,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('currentUser').textContent = user.name || user.username;
 
         // Role-based visibility
-        if (user.role === 'admin') {
+        const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+        if (MANAGE_ROLES.includes(user.role)) {
             const addBtn = document.getElementById('addTransactionBtn');
             if (addBtn) addBtn.style.display = '';
             const exportBtn = document.getElementById('exportCsvBtn');

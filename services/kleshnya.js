@@ -609,11 +609,13 @@ async function getAllPoints() {
     const month = getCurrentMonth();
     try {
         const result = await pool.query(
-            `SELECT username,
-                    COALESCE(SUM(permanent_points), 0) as permanent_total,
-                    COALESCE(MAX(CASE WHEN month = $1 THEN monthly_points ELSE 0 END), 0) as monthly_current
-             FROM user_points
-             GROUP BY username
+            `SELECT up.username,
+                    COALESCE(SUM(up.permanent_points), 0) as permanent_total,
+                    COALESCE(MAX(CASE WHEN up.month = $1 THEN up.monthly_points ELSE 0 END), 0) as monthly_current,
+                    u.role, u.name
+             FROM user_points up
+             LEFT JOIN users u ON up.username = u.username
+             GROUP BY up.username, u.role, u.name
              ORDER BY permanent_total DESC`,
             [month]
         );

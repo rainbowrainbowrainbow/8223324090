@@ -1,11 +1,11 @@
 {
-  "name": "Event Maestro — AI First CRM",
-  "short_name": "Event Maestro",
-  "description": "Event Maestro — AI First CRM для дитячих розважальних центрів",
+  "name": "Event Genix — AI First CRM",
+  "short_name": "Event Genix",
+  "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0a0f",
-  "theme_color": "#F5C842",
+  "background_color": "#0D0D0D",
+  "theme_color": "#C9A84C",
   "orientation": "any",
   "lang": "uk",
   "icons": [

@@ -52,12 +52,13 @@ const RFM_SEGMENTS = {
 // ==========================================
 
 function showNotification(message, type = '') {
-    const el = document.getElementById('notification');
-    if (!el) return;
-    document.getElementById('notificationText').textContent = message;
-    el.className = 'notification' + (type ? ` ${type}` : '');
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 3000);
+    let c = document.getElementById('toastContainer');
+    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+    const t = document.createElement('div');
+    t.className = 'toast' + (type ? ' ' + type : '');
+    t.textContent = message;
+    c.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
 function escapeHtml(str) {
@@ -476,7 +477,7 @@ window.editCustomer = async function(id) {
 };
 
 window.confirmDeleteCustomer = async function(id) {
-    if (!confirm('Видалити клієнта? Бронювання будуть відв\'язані.')) return;
+    if (!await confirmModal('Видалити клієнта? Бронювання будуть відв\'язані.', { type: 'danger', okText: 'Видалити' })) return;
     try {
         await deleteCustomer(id);
         document.getElementById('customerDetailModal').classList.add('hidden');
@@ -498,7 +499,7 @@ function switchTab(tab) {
     document.getElementById('tabRfm').style.display = tab === 'rfm' ? '' : 'none';
 
     if (tab === 'rfm' && !CrmState.rfmData) {
-        fetchRFM().then(renderRFM);
+        fetchRFM().then(renderRFM).catch(function() { /* RFM load failed */ });
     }
 }
 
@@ -564,7 +565,8 @@ async function initPage() {
 
     document.getElementById('currentUser').textContent = user.name;
 
-    const canManage = user.role === 'admin' || user.role === 'manager';
+    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    const canManage = MANAGE_ROLES.includes(user.role);
     document.getElementById('addCustomerBtn').style.display = canManage ? '' : 'none';
     document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';
 

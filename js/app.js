@@ -31,6 +31,8 @@ function initializeApp() {
     initializeEventListeners();
     // v15.1: CRM customer toggle + autocomplete
     if (typeof initCustomerCRM === 'function') initCustomerCRM();
+    // v20.11.0: Initialize form validation
+    if (typeof BookingForm !== 'undefined' && BookingForm.init) BookingForm.init();
     // v19.11: Room Load Panel
     if (typeof initRoomLoadPanel === 'function') initRoomLoadPanel();
     AppState.nowLineInterval = setInterval(renderNowLine, 60000);
@@ -38,6 +40,11 @@ function initializeApp() {
 
 function loadPreferences() {
     AppState.darkMode = initDarkMode();
+    // Sync toggle checkbox and icon with actual dark mode state
+    const darkToggle = document.getElementById('darkModeToggle');
+    if (darkToggle) darkToggle.checked = AppState.darkMode;
+    const darkIcon = document.getElementById('darkModeIcon');
+    if (darkIcon) darkIcon.textContent = AppState.darkMode ? '☀️' : '🌙';
     AppState.compactMode = localStorage.getItem('pzp_compact_mode') === 'true';
     AppState.zoomLevel = parseInt(localStorage.getItem('pzp_zoom_level')) || 15;
     AppState.statusFilter = localStorage.getItem('pzp_status_filter') || 'all';
@@ -89,6 +96,27 @@ function initializeEventListeners() {
     initSettingsListeners();
     initUIControlListeners();
     initModalListeners();
+    initConnectionStatusListeners();
+}
+
+// v20.10.0: WS connection status + offline queue badge
+function initConnectionStatusListeners() {
+    const dot = document.getElementById('wsStatusDot');
+    const badge = document.getElementById('offlineBadge');
+
+    window.addEventListener('wsStatusChange', (e) => {
+        if (!dot) return;
+        dot.classList.toggle('ws-connected', e.detail.connected);
+        dot.classList.toggle('ws-disconnected', !e.detail.connected);
+        dot.title = e.detail.connected ? 'Підключено' : 'Відключено';
+    });
+
+    window.addEventListener('offlineQueueChange', (e) => {
+        if (!badge) return;
+        const count = e.detail?.count || 0;
+        badge.textContent = count;
+        badge.classList.toggle('hidden', count === 0);
+    });
 }
 
 function initAuthListeners() {
@@ -142,7 +170,6 @@ function initTimelineListeners() {
             AppState.statusFilter = btn.dataset.filter;
             localStorage.setItem('pzp_status_filter', AppState.statusFilter);
             applyStatusFilter();
-            updateFilterBanner();
         });
     });
 
@@ -172,6 +199,16 @@ function initTimelineListeners() {
 
     const historyBtnEl = document.getElementById('historyBtn');
     if (historyBtnEl) historyBtnEl.addEventListener('click', showHistory);
+
+    // v20.10.0: History CSV export
+    const historyExportBtn = document.getElementById('historyExportBtn');
+    if (historyExportBtn) historyExportBtn.addEventListener('click', () => {
+        if (typeof SettingsHistory !== 'undefined' && _lastHistoryItems.length > 0) {
+            SettingsHistory.exportCSV(_lastHistoryItems);
+        } else {
+            showNotification('Немає даних для експорту', 'error');
+        }
+    });
 
     // v5.16: History filter buttons
     const historyFilterApply = document.getElementById('historyFilterApply');
@@ -236,6 +273,12 @@ function initBookingFormListeners() {
     if (freeRoomsBtn) {
         freeRoomsBtn.addEventListener('click', showFreeRooms);
     }
+
+    // v20.7.0: Age recommendations listener
+    if (typeof initAgeRecoListener === 'function') initAgeRecoListener();
+
+    // v20.7.0: Sales scripts quick-access
+    if (typeof initScriptsQuickAccess === 'function') initScriptsQuickAccess();
 }
 
 function initSettingsListeners() {
@@ -380,6 +423,9 @@ function initUIControlListeners() {
     const darkToggle = document.getElementById('darkModeToggle');
     if (darkToggle) darkToggle.addEventListener('change', toggleDarkMode);
 
+    // Night settings init
+    if (typeof initNightSettings === 'function') initNightSettings();
+
     const compactToggle = document.getElementById('compactModeToggle');
     if (compactToggle) compactToggle.addEventListener('change', toggleCompactMode);
 
@@ -471,6 +517,7 @@ function initUIControlListeners() {
         sidebarDashboardBtn: () => { if (typeof showDashboard === 'function') showDashboard(); },
         sidebarSettingsBtn: () => { if (typeof showSettings === 'function') showSettings(); },
         sidebarDigestBtn: () => { if (typeof sendDailyDigest === 'function') sendDailyDigest(); },
+        sidebarPointsBtn: () => { if (typeof showPointsPanel === 'function') showPointsPanel(); },
     };
     for (const [id, handler] of Object.entries(sidebarActions)) {
         const el = document.getElementById(id);

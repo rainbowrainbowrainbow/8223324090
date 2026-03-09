@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>Event Genix | Вікторина</title>
+    <link rel="stylesheet" href="css/base.css?v=22.10.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.10.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.10.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.10.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="icon" href="images/favicon.ico">
+    <style>
+        .quiz-page { max-width: 600px; margin: 0 auto; padding: 16px; }
+        .quiz-back-link { color: var(--primary); text-decoration: none; font-size: var(--font-sm); }
+        .quiz-back-link:hover { text-decoration: underline; }
+
+        .quiz-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 16px; border-radius: 12px;
+            background: var(--surface); border: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
+        .quiz-title { font-size: 1.3rem; font-weight: 700; }
+        .quiz-timer { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+        .quiz-timer.warning { color: var(--error); animation: pulse-scale 0.5s ease infinite alternate; }
+        .quiz-progress-bar {
+            width: 100%; height: 6px; border-radius: 3px;
+            background: var(--gray-200); margin-bottom: 16px; overflow: hidden;
+        }
+        .quiz-progress-fill {
+            height: 100%; border-radius: 3px; background: var(--primary);
+            transition: width 0.4s ease;
+        }
+        .quiz-score-display {
+            display: flex; gap: 12px; justify-content: center; margin-bottom: 16px;
+        }
+        .quiz-score-item {
+            padding: 6px 14px; border-radius: 20px; font-weight: 600;
+            font-size: var(--font-sm); background: var(--surface); border: 1px solid var(--border);
+        }
+        .quiz-score-item.correct { border-color: var(--success); color: var(--success); }
+        .quiz-score-item.coins { border-color: var(--warning); color: var(--warning); }
+
+        .quiz-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px; margin-bottom: 16px;
+        }
+        .quiz-category {
+            display: inline-block; padding: 3px 10px; border-radius: 12px;
+            font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+            background: var(--primary-light); color: var(--primary);
+            margin-bottom: 12px;
+        }
+        .quiz-difficulty { margin-left: 8px; }
+        .quiz-difficulty.easy { background: #dcfce7; color: #16a34a; }
+        .quiz-difficulty.hard { background: #fef3c7; color: #d97706; }
+
+        .quiz-question-text {
+            font-size: 1.15rem; font-weight: 600; line-height: 1.4;
+            margin-bottom: 20px;
+        }
+
+        .quiz-answers { display: flex; flex-direction: column; gap: 10px; }
+        .quiz-answer-btn {
+            width: 100%; text-align: left; padding: 14px 18px; border-radius: 12px;
+            border: 2px solid var(--border); background: var(--surface);
+            cursor: pointer; font-size: 1rem; font-weight: 500;
+            transition: all 0.2s ease; min-height: 48px;
+        }
+        .quiz-answer-btn:hover:not(:disabled) {
+            border-color: var(--primary); background: var(--primary-light);
+            transform: translateY(-1px);
+        }
+        .quiz-answer-btn:active:not(:disabled) { transform: scale(0.98); }
+        .quiz-answer-btn.correct {
+            border-color: #16a34a; background: #dcfce7; color: #16a34a;
+            animation: answer-correct 0.4s ease;
+        }
+        .quiz-answer-btn.wrong {
+            border-color: #dc2626; background: #fee2e2; color: #dc2626;
+            animation: answer-wrong 0.3s ease;
+        }
+        .quiz-answer-btn:disabled { opacity: 0.6; cursor: default; }
+
+        .quiz-explanation {
+            margin-top: 16px; padding: 12px 16px; border-radius: 10px;
+            background: var(--primary-light); border-left: 3px solid var(--primary);
+            font-size: var(--font-sm); line-height: 1.5;
+            animation: slideDown 0.3s ease;
+        }
+
+        .quiz-start-screen {
+            text-align: center; padding: 40px 20px;
+        }
+        .quiz-start-icon { font-size: 4rem; margin-bottom: 16px; }
+        .quiz-start-screen h3 { font-size: 1.4rem; margin-bottom: 8px; }
+        .quiz-start-subtitle { color: var(--gray-500); margin-bottom: 24px; }
+        .quiz-start-btn {
+            padding: 14px 32px; border-radius: 12px; border: none;
+            background: var(--primary); color: white; font-size: 1.1rem;
+            font-weight: 700; cursor: pointer; transition: all 0.2s ease;
+            min-height: 48px;
+        }
+        .quiz-start-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .quiz-start-btn.pulse { animation: pulse-scale 1.5s ease infinite; }
+
+        .quiz-stats {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+            margin: 20px 0;
+        }
+        .quiz-stat { text-align: center; padding: 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
+        .quiz-stat-value { font-size: 1.4rem; font-weight: 800; }
+        .quiz-stat-label { font-size: 0.7rem; color: var(--gray-500); margin-top: 2px; }
+
+        .quiz-cooldown {
+            text-align: center; padding: 40px; color: var(--gray-400);
+        }
+        .quiz-cooldown-timer { font-size: 2rem; font-weight: 800; color: var(--primary); }
+
+        .quiz-result {
+            text-align: center; padding: 32px 20px;
+        }
+        .quiz-result-icon { font-size: 4rem; margin-bottom: 12px; }
+        .quiz-result h2 { font-size: 1.5rem; margin-bottom: 16px; }
+        .quiz-result-score {
+            font-size: 3rem; font-weight: 800; color: var(--primary);
+            margin: 8px 0;
+        }
+        .quiz-result-coins { font-size: 1.2rem; color: var(--warning); font-weight: 600; }
+        .quiz-result-details {
+            display: flex; flex-direction: column; gap: 8px;
+            margin: 20px 0; text-align: left;
+        }
+        .quiz-result-item {
+            display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+            border-radius: 8px; background: var(--surface); border: 1px solid var(--border);
+            font-size: var(--font-sm);
+        }
+        .quiz-result-item.correct { border-left: 3px solid #16a34a; }
+        .quiz-result-item.wrong { border-left: 3px solid #dc2626; }
+
+        @keyframes answer-correct { 0% { transform: scale(1); } 50% { transform: scale(1.03); } 100% { transform: scale(1); } }
+        @keyframes answer-wrong { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse-scale { 0% { transform: scale(1); } 100% { transform: scale(1.05); } }
+
+        .dark-mode .quiz-difficulty.easy { background: rgba(22,163,106,0.15); }
+        .dark-mode .quiz-difficulty.hard { background: rgba(217,119,6,0.15); }
+        .dark-mode .quiz-answer-btn.correct { background: rgba(22,163,106,0.15); }
+        .dark-mode .quiz-answer-btn.wrong { background: rgba(220,38,38,0.15); }
+    </style>
+</head>
+<body>
+    <div id="mainApp" class="main-app" style="padding:20px">
+        <div style="text-align:center;padding:40px;color:var(--gray-400)">Завантаження...</div>
+    </div>
+    <script src="js/config.js?v=22.10.0"></script>
+    <script src="js/api.js?v=22.10.0"></script>
+    <script>
+    /**
+     * minigame-quiz.js — Quiz Minigame (Park Knowledge)
+     * v22.10.0
+     */
+    const QUIZ_TIME_PER_Q = 15;
+    let quizStatus = null;
+    let quizSession = null;
+    let quizQuestions = [];
+    let currentQIdx = 0;
+    let quizScore = 0;
+    let quizCoins = 0;
+    let quizTimer = null;
+    let quizTimeLeft = QUIZ_TIME_PER_Q;
+    let quizAnswers = [];
+    let quizAnswered = false;
+
+    async function initQuizPage() {
+        if (localStorage.getItem('pzp_dark_mode') === 'true') document.body.classList.add('dark-mode');
+        const token = localStorage.getItem('pzp_token');
+        if (!token) { window.location.href = '/'; return; }
+
+        try {
+            const r = await fetch('/api/quiz/status', { headers: getAuthHeaders(false) });
+            if (handleAuthError(r)) return;
+            quizStatus = await r.json();
+        } catch (e) {
+            console.error('Quiz status error', e);
+        }
+        renderQuizUI();
+    }
+
+    function renderQuizUI() {
+        const canPlay = quizStatus?.canPlay !== false;
+        const cooldown = quizStatus?.cooldownLeft || 0;
+        const todayGames = quizStatus?.todayGames || 0;
+
+        document.getElementById('mainApp').innerHTML = `
+        <div class="quiz-page">
+            <div style="margin-bottom:12px">
+                <a href="/profile" class="quiz-back-link">\u2190 \u041d\u0430\u0437\u0430\u0434</a>
+            </div>
+
+            <div class="quiz-card">
+                ${!canPlay ? `
+                    <div class="quiz-cooldown">
+                        ${cooldown > 0
+                            ? `<p>\u041a\u0443\u043b\u0434\u0430\u0443\u043d...</p><div class="quiz-cooldown-timer" id="cooldownTimer">${Math.floor(cooldown / 60)}:${(cooldown % 60).toString().padStart(2, '0')}</div>`
+                            : `<p>\u041f\u043e\u0432\u0435\u0440\u043d\u0438\u0441\u044c \u0437\u0430\u0432\u0442\u0440\u0430! \ud83e\udd95</p><p>\u0422\u0438 \u0432\u0436\u0435 \u0437\u0456\u0433\u0440\u0430\u0432 ${todayGames}/${quizStatus?.maxDaily || 3} \u0432\u0456\u043a\u0442\u043e\u0440\u0438\u043d \u0441\u044c\u043e\u0433\u043e\u0434\u043d\u0456</p>`
+                        }
+                    </div>
+                ` : `
+                    <div class="quiz-start-screen">
+                        <div class="quiz-start-icon">\ud83e\udde0</div>
+                        <h3>\u0412\u0456\u043a\u0442\u043e\u0440\u0438\u043d\u0430 \u043f\u0430\u0440\u043a\u0443</h3>
+                        <p class="quiz-start-subtitle">${quizStatus?.questionsPerGame || 5} \u043f\u0438\u0442\u0430\u043d\u044c \u00b7 ${QUIZ_TIME_PER_Q}\u0441 \u043d\u0430 \u043a\u043e\u0436\u043d\u0435 \u00b7 \u0434\u043e 75 \u043c\u043e\u043d\u0435\u0442</p>
+                        <div class="quiz-stats">
+                            <div class="quiz-stat">
+                                <div class="quiz-stat-value">${quizStatus?.totalGames || 0}</div>
+                                <div class="quiz-stat-label">\u0406\u0433\u043e\u0440</div>
+                            </div>
+                            <div class="quiz-stat">
+                                <div class="quiz-stat-value">${quizStatus?.bestCorrect || 0}/${quizStatus?.questionsPerGame || 5}</div>
+                                <div class="quiz-stat-label">\u0420\u0435\u043a\u043e\u0440\u0434</div>
+                            </div>
+                            <div class="quiz-stat">
+                                <div class="quiz-stat-value">${quizStatus?.bestCoins || 0}</div>
+                                <div class="quiz-stat-label">\u041c\u0430\u043a\u0441 \u043c\u043e\u043d\u0435\u0442</div>
+                            </div>
+                        </div>
+                        <button class="quiz-start-btn pulse" onclick="startQuiz()">\u25b6\ufe0f \u041f\u043e\u0447\u0430\u0442\u0438 \u0432\u0456\u043a\u0442\u043e\u0440\u0438\u043d\u0443</button>
+                    </div>
+                `}
+            </div>
+
+            <div class="quiz-card" style="font-size:var(--font-sm);color:var(--gray-500)">
+                <div style="margin-bottom:8px;font-weight:600;color:var(--gray-700)">\ud83d\udcda \u041a\u0430\u0442\u0435\u0433\u043e\u0440\u0456\u0457:</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    <span style="padding:3px 8px;background:var(--primary-light);border-radius:8px">\ud83c\udfaa \u041f\u0430\u0440\u043a</span>
+                    <span style="padding:3px 8px;background:var(--primary-light);border-radius:8px">\ud83c\udfad \u041f\u0440\u043e\u0433\u0440\u0430\u043c\u0438</span>
+                    <span style="padding:3px 8px;background:var(--primary-light);border-radius:8px">\ud83d\udee1\ufe0f \u0411\u0435\u0437\u043f\u0435\u043a\u0430</span>
+                    <span style="padding:3px 8px;background:var(--primary-light);border-radius:8px">\ud83c\udf89 \u0406\u0441\u0442\u043e\u0440\u0456\u044f</span>
+                </div>
+            </div>
+
+            <div style="text-align:center;color:var(--gray-500);font-size:var(--font-sm);margin-top:8px">
+                \u0406\u0433\u043e\u0440 \u0441\u044c\u043e\u0433\u043e\u0434\u043d\u0456: ${todayGames}/${quizStatus?.maxDaily || 3}
+            </div>
+        </div>`;
+
+        if (cooldown > 0) {
+            let left = cooldown;
+            const interval = setInterval(() => {
+                left--;
+                const el = document.getElementById('cooldownTimer');
+                if (el) el.textContent = `${Math.floor(left / 60)}:${(left % 60).toString().padStart(2, '0')}`;
+                if (left <= 0) { clearInterval(interval); location.reload(); }
+            }, 1000);
+        }
+    }
+
+    async function startQuiz() {
+        try {
+            const r = await fetch('/api/quiz/start', { method: 'POST', headers: getAuthHeaders() });
+            if (!r.ok && r.status !== 429 && r.status !== 400) { showNotification('Помилка сервера', 'error'); return; }
+            const data = await r.json();
+            if (data.error) { showNotification(data.error, 'error'); return; }
+
+            quizSession = data.sessionId;
+            quizQuestions = data.questions;
+            currentQIdx = 0;
+            quizScore = 0;
+            quizCoins = 0;
+            quizAnswers = [];
+            renderQuestion();
+        } catch (e) {
+            showNotification('Помилка: ' + e.message, 'error');
+        }
+    }
+
+    function renderQuestion() {
+        if (currentQIdx >= quizQuestions.length) {
+            completeQuiz();
+            return;
+        }
+
+        const q = quizQuestions[currentQIdx];
+        quizTimeLeft = QUIZ_TIME_PER_Q;
+        quizAnswered = false;
+
+        const diffClass = q.difficulty === 'easy' ? 'easy' : q.difficulty === 'hard' ? 'hard' : '';
+        const diffLabel = q.difficulty === 'easy' ? '\u041b\u0435\u0433\u043a\u043e' : q.difficulty === 'hard' ? '\u0421\u043a\u043b\u0430\u0434\u043d\u043e' : '\u041d\u043e\u0440\u043c\u0430\u043b\u044c\u043d\u043e';
+
+        document.getElementById('mainApp').innerHTML = `
+        <div class="quiz-page">
+            <div class="quiz-header">
+                <div>\ud83e\udde0 ${currentQIdx + 1}/${quizQuestions.length}</div>
+                <div id="quizTimer" class="quiz-timer">${QUIZ_TIME_PER_Q}</div>
+            </div>
+            <div class="quiz-progress-bar">
+                <div class="quiz-progress-fill" style="width:${((currentQIdx) / quizQuestions.length) * 100}%"></div>
+            </div>
+            <div class="quiz-score-display">
+                <span class="quiz-score-item correct">\u2705 ${quizScore}</span>
+                <span class="quiz-score-item coins">\ud83d\udcb0 ${quizCoins}</span>
+            </div>
+
+            <div class="quiz-card">
+                <span class="quiz-category">${getCategoryLabel(q.category)}</span>
+                <span class="quiz-category quiz-difficulty ${diffClass}">${diffLabel}</span>
+                <div class="quiz-question-text">${q.question}</div>
+                <div class="quiz-answers" id="quizAnswers">
+                    ${q.answers.map((a, i) => `
+                        <button class="quiz-answer-btn" onclick="answerQuestion(${i})" data-idx="${i}">
+                            ${String.fromCharCode(65 + i)}. ${a}
+                        </button>
+                    `).join('')}
+                </div>
+                <div id="quizExplanation"></div>
+            </div>
+        </div>`;
+
+        startQuizTimer();
+    }
+
+    function getCategoryLabel(cat) {
+        const labels = { park: '\ud83c\udfaa \u041f\u0430\u0440\u043a', programs: '\ud83c\udfad \u041f\u0440\u043e\u0433\u0440\u0430\u043c\u0438', safety: '\ud83d\udee1\ufe0f \u0411\u0435\u0437\u043f\u0435\u043a\u0430', fun: '\ud83c\udf89 \u0420\u043e\u0437\u0432\u0430\u0433\u0438', history: '\ud83d\udcda \u0406\u0441\u0442\u043e\u0440\u0456\u044f' };
+        return labels[cat] || cat;
+    }
+
+    function startQuizTimer() {
+        clearInterval(quizTimer);
+        quizTimer = setInterval(() => {
+            quizTimeLeft--;
+            const el = document.getElementById('quizTimer');
+            if (el) {
+                el.textContent = quizTimeLeft;
+                el.className = 'quiz-timer' + (quizTimeLeft <= 5 ? ' warning' : '');
+            }
+            if (quizTimeLeft <= 0) {
+                clearInterval(quizTimer);
+                if (!quizAnswered) answerQuestion(-1); // timeout = wrong
+            }
+        }, 1000);
+    }
+
+    function answerQuestion(idx) {
+        if (quizAnswered) return;
+        quizAnswered = true;
+        clearInterval(quizTimer);
+
+        const timeMs = (QUIZ_TIME_PER_Q - quizTimeLeft) * 1000;
+        quizAnswers.push({
+            questionId: quizQuestions[currentQIdx].id,
+            answerIndex: idx,
+            timeMs
+        });
+
+        // Highlight correct/wrong (we don't know correct here, show after complete)
+        const btns = document.querySelectorAll('.quiz-answer-btn');
+        btns.forEach(btn => btn.disabled = true);
+
+        if (idx >= 0 && btns[idx]) {
+            btns[idx].classList.add('selected');
+            btns[idx].style.borderColor = 'var(--primary)';
+            btns[idx].style.fontWeight = '700';
+        }
+
+        // Move to next question after short delay
+        setTimeout(() => {
+            currentQIdx++;
+            renderQuestion();
+        }, 800);
+    }
+
+    async function completeQuiz() {
+        clearInterval(quizTimer);
+
+        try {
+            const r = await fetch('/api/quiz/complete', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ sessionId: quizSession, answers: quizAnswers })
+            });
+            if (!r.ok) { showNotification('Помилка збереження результатів', 'error'); return; }
+            const data = await r.json();
+            if (data.error) { showNotification(data.error, 'error'); return; }
+
+            renderQuizResult(data);
+        } catch (e) {
+            showNotification('Помилка: ' + e.message, 'error');
+        }
+    }
+
+    function renderQuizResult(data) {
+        const pct = Math.round((data.correctCount / data.totalQuestions) * 100);
+        const icon = pct === 100 ? '\ud83c\udfc6' : pct >= 60 ? '\ud83c\udf1f' : pct >= 40 ? '\ud83d\udc4d' : '\ud83d\udcda';
+        const title = pct === 100 ? '\u0406\u0434\u0435\u0430\u043b\u044c\u043d\u043e!' : pct >= 60 ? '\u0427\u0443\u0434\u043e\u0432\u043e!' : pct >= 40 ? '\u041d\u0435\u043f\u043e\u0433\u0430\u043d\u043e!' : '\u0421\u043f\u0440\u043e\u0431\u0443\u0439 \u0449\u0435!';
+
+        document.getElementById('mainApp').innerHTML = `
+        <div class="quiz-page">
+            <div class="quiz-card">
+                <div class="quiz-result">
+                    <div class="quiz-result-icon">${icon}</div>
+                    <h2>${title}</h2>
+                    <div class="quiz-result-score">${data.correctCount}/${data.totalQuestions}</div>
+                    <div class="quiz-result-coins">+${data.coinsEarned} \u043c\u043e\u043d\u0435\u0442 \ud83d\udcb0</div>
+                    ${data.isPerfect ? '<div style="margin-top:8px;color:var(--warning);font-weight:700">\u2b50 \u041f\u0435\u0440\u0444\u0435\u043a\u0442\u043d\u0438\u0439 \u0440\u0430\u0443\u043d\u0434!</div>' : ''}
+                </div>
+
+                <div class="quiz-result-details">
+                    ${data.results.map((r, i) => `
+                        <div class="quiz-result-item ${r.correct ? 'correct' : 'wrong'}">
+                            <span>${r.correct ? '\u2705' : '\u274c'}</span>
+                            <div style="flex:1">
+                                <div style="font-weight:600">\u041f\u0438\u0442\u0430\u043d\u043d\u044f ${i + 1}</div>
+                                ${r.explanation ? `<div style="color:var(--gray-500);margin-top:2px">${r.explanation}</div>` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div style="display:flex;gap:8px;justify-content:center;margin-top:16px">
+                    <button class="quiz-start-btn" onclick="location.reload()" style="font-size:0.9rem;padding:10px 20px">\ud83d\udd04 \u0429\u0435 \u0440\u0430\u0437</button>
+                    <button class="quiz-start-btn" onclick="location.href='/profile'" style="font-size:0.9rem;padding:10px 20px;background:var(--gray-200);color:var(--gray-700)">\u2190 \u041f\u0440\u043e\u0444\u0456\u043b\u044c</button>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function showNotification(msg, type) {
+        const el = document.createElement('div');
+        const dk = document.body.classList.contains('dark-mode');
+        const errBg = dk ? 'rgba(239,68,68,0.15)' : '#fee2e2';
+        const okBg = dk ? 'rgba(22,163,106,0.15)' : '#dcfce7';
+        const errClr = dk ? '#FCA5A5' : '#dc2626';
+        const okClr = dk ? '#6EE7B7' : '#16a34a';
+        el.style.cssText = `position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;z-index:9999;background:${type === 'error' ? errBg : okBg};color:${type === 'error' ? errClr : okClr};box-shadow:0 4px 12px rgba(0,0,0,${dk ? '0.4' : '0.1'})`;
+        el.textContent = msg;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 3000);
+    }
+
+    document.addEventListener('DOMContentLoaded', initQuizPage);
+    </script>
+</body>
+</html>

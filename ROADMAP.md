@@ -1,4 +1,4 @@
-# Event Maestro — Improvement Playbook
+# Event Genix — Improvement Playbook
 
 > Версія: 1.1
 > Дата: 24.02.2026

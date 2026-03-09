@@ -2206,6 +2206,46 @@ describe('Health Check Details', () => {
         const res = await request('GET', '/api/health');
         assert.equal(res.status, 200);
     });
+
+    it('GET /api/health — includes version field', async () => {
+        const res = await request('GET', '/api/health');
+        assert.equal(res.status, 200);
+        assert.ok('version' in res.data, 'Health should include version');
+        assert.ok(typeof res.data.version === 'string', 'Version should be a string');
+        assert.match(res.data.version, /^\d+\.\d+\.\d+$/, 'Version should match semver pattern');
+    });
+});
+
+// ==========================================
+// VERSION
+// ==========================================
+
+describe('Version', () => {
+    it('GET /api/version — returns version info', async () => {
+        const res = await request('GET', '/api/version');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.version, 'Should return version');
+        assert.ok(res.data.name, 'Should return app name');
+    });
+
+    it('GET /api/version — does not require auth', async () => {
+        const res = await request('GET', '/api/version');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.version);
+    });
+
+    it('GET /api/version — matches package.json version', async () => {
+        const res = await request('GET', '/api/version');
+        assert.equal(res.status, 200);
+        const healthRes = await request('GET', '/api/health');
+        assert.equal(res.data.version, healthRes.data.version, 'Version endpoint and health should report same version');
+    });
+
+    it('GET /api/version — version matches semver format', async () => {
+        const res = await request('GET', '/api/version');
+        assert.equal(res.status, 200);
+        assert.match(res.data.version, /^\d+\.\d+\.\d+$/, 'Should be valid semver');
+    });
 });
 
 // ==========================================
@@ -2225,7 +2265,7 @@ describe('Static Pages', () => {
         const fetchRes = await fetch(`${require('./helpers').BASE_URL}/`);
         assert.equal(fetchRes.status, 200);
         const body = await fetchRes.text();
-        assert.ok(body.includes('Event Maestro'), 'Should contain site name');
+        assert.ok(body.includes('Event Genix'), 'Should contain site name');
     });
 });
 

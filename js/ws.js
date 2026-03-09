@@ -22,6 +22,11 @@
 var ParkWS = (function () {
     'use strict';
 
+    // v20.10.0: Debug logging (only when localStorage.pzp_debug = 'true')
+    function _debug(...args) {
+        if (localStorage.getItem('pzp_debug') === 'true') console.log(...args);
+    }
+
     // Connection state
     var _ws = null;
     var _connected = false;
@@ -34,6 +39,12 @@ var ParkWS = (function () {
 
     // Currently subscribed dates
     var _subscribedDates = new Set();
+
+    // Currently subscribed chat channels
+    var _subscribedChannels = new Set();
+
+    // Typing debounce timer
+    var _typingTimer = null;
 
     // ==========================================
     // CONNECT
@@ -51,13 +62,13 @@ var ParkWS = (function () {
 
         var token = localStorage.getItem('pzp_token');
         if (!token) {
-            console.log('[WS] No auth token, skipping WebSocket connection');
+            _debug('[WS] No auth token, skipping WebSocket connection');
             return;
         }
 
         // Don't connect when offline
         if (!navigator.onLine) {
-            console.log('[WS] Browser is offline, deferring WebSocket connection');
+            _debug('[WS] Browser is offline, deferring WebSocket connection');
             return;
         }
 
@@ -67,7 +78,7 @@ var ParkWS = (function () {
         var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         var wsUrl = protocol + '//' + window.location.host + '/ws';
 
-        console.log('[WS] Connecting to:', wsUrl);
+        _debug('[WS] Connecting to:', wsUrl);
 
         try {
             _ws = new WebSocket(wsUrl);
@@ -78,7 +89,7 @@ var ParkWS = (function () {
         }
 
         _ws.onopen = function () {
-            console.log('[WS] Connection opened, authenticating...');
+            _debug('[WS] Connection opened, authenticating...');
             // Send auth token as first message
             _send({
                 type: 'auth',
@@ -95,7 +106,7 @@ var ParkWS = (function () {
             _connected = false;
             _ws = null;
 
-            console.log('[WS] Connection closed (code:', event.code, ', reason:', event.reason || 'none', ')');
+            _debug('[WS] Connection closed (code:', event.code, ', reason:', event.reason || 'none', ')');
 
             // Notify UI about disconnection
             _dispatchStatus(false);
@@ -132,6 +143,7 @@ var ParkWS = (function () {
         _connected = false;
         _reconnectAttempts = 0;
         _subscribedDates.clear();
+        _subscribedChannels.clear();
 
         if (_reconnectTimer) {
             clearTimeout(_reconnectTimer);
@@ -148,7 +160,7 @@ var ParkWS = (function () {
         }
 
         _dispatchStatus(false);
-        console.log('[WS] Disconnected intentionally');
+        _debug('[WS] Disconnected intentionally');
     }
 
     // ==========================================
@@ -207,13 +219,20 @@ var ParkWS = (function () {
 
         switch (message.type) {
             case 'auth:success':
+                var wasReconnect = _reconnectAttempts > 0;
                 _connected = true;
                 _reconnectAttempts = 0;
-                console.log('[WS] Authenticated as:', message.payload.username,
+                _debug('[WS] Authenticated as:', message.payload.username,
                     '(clients:', message.payload.connectedClients, ')');
                 _dispatchStatus(true);
+                // v21.14.0: Show synced toast on reconnect
+                if (wasReconnect) {
+                    _showConnectionToast('Синхронізовано', 'success');
+                }
                 // Re-subscribe to previously subscribed dates
                 _resubscribeDates();
+                // Fetch chat unread badge
+                _updateChatBadge();
                 break;
 
             case 'error':
@@ -244,8 +263,53 @@ var ParkWS = (function () {
                 _handleSettingsEvent(message);
                 break;
 
+            // Chat events
+            case 'chat:message':
+                window.dispatchEvent(new CustomEvent('ws:chat', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
+                // Update unread badge + show toast on non-chat pages
+                if (window.location.pathname !== '/chat') {
+                    _incrementChatBadge();
+                    var chatMsg = message.payload && message.payload.message;
+                    if (chatMsg && typeof showNotification === 'function') {
+                        var sender = chatMsg.displayName || chatMsg.username || '';
+                        var preview = (chatMsg.content || '').substring(0, 60);
+                        showNotification(sender + ': ' + preview);
+                    }
+                }
+                break;
+            case 'chat:typing':
+            case 'chat:typing_stop':
+            case 'chat:reaction':
+            case 'chat:read':
+            case 'chat:mention':
+            case 'chat:member-added':
+            case 'chat:channel-invite':
+                window.dispatchEvent(new CustomEvent('ws:chat', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
+                break;
+
+            // Guardian events
+            case 'guardian:mood':
+            case 'guardian:event':
+                window.dispatchEvent(new CustomEvent('ws:chat', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
+                break;
+
+            // Chat inline events (edits, mutes, deletes)
+            case 'chat:message-edited':
+            case 'chat:user-muted':
+            case 'chat:delete':
+                window.dispatchEvent(new CustomEvent('ws:chat', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
+                break;
+
             default:
-                console.log('[WS] Unknown event:', message.type);
+                _debug('[WS] Unknown event:', message.type);
                 break;
         }
     }
@@ -255,7 +319,7 @@ var ParkWS = (function () {
      * Invalidates the booking cache and triggers timeline re-render.
      */
     function _handleBookingEvent(message) {
-        console.log('[WS] Booking event:', message.type, message.payload);
+        _debug('[WS] Booking event:', message.type, message.payload);
 
         // Invalidate booking cache for the affected date
         var affectedDate = _extractDateFromPayload(message.payload);
@@ -280,7 +344,7 @@ var ParkWS = (function () {
      * Invalidates the lines cache and triggers timeline re-render.
      */
     function _handleLineEvent(message) {
-        console.log('[WS] Line event:', message.type, message.payload);
+        _debug('[WS] Line event:', message.type, message.payload);
 
         // Invalidate lines cache for the affected date
         var affectedDate = _extractDateFromPayload(message.payload);
@@ -304,7 +368,7 @@ var ParkWS = (function () {
      * Handle settings-related events.
      */
     function _handleSettingsEvent(message) {
-        console.log('[WS] Settings event:', message.type, message.payload);
+        _debug('[WS] Settings event:', message.type, message.payload);
 
         // Dispatch custom event for settings panel to pick up
         window.dispatchEvent(new CustomEvent('ws:settings', {
@@ -329,7 +393,7 @@ var ParkWS = (function () {
         _refreshTimer = setTimeout(function () {
             _refreshTimer = null;
             if (typeof renderTimeline === 'function') {
-                console.log('[WS] Triggering timeline refresh');
+                _debug('[WS] Triggering timeline refresh');
                 renderTimeline();
             }
         }, 300); // 300ms debounce
@@ -357,14 +421,19 @@ var ParkWS = (function () {
 
         // Don't reconnect when offline — wait for online event
         if (!navigator.onLine) {
-            console.log('[WS] Offline — will reconnect when online');
+            _debug('[WS] Offline — will reconnect when online');
             return;
         }
 
         var delay = _reconnectDelays[Math.min(_reconnectAttempts, _reconnectDelays.length - 1)];
         _reconnectAttempts++;
 
-        console.log('[WS] Reconnecting in', delay / 1000, 's (attempt', _reconnectAttempts, ')');
+        _debug('[WS] Reconnecting in', delay / 1000, 's (attempt', _reconnectAttempts, ')');
+
+        // v21.14.0: Show reconnecting toast on first attempt only
+        if (_reconnectAttempts === 1) {
+            _showConnectionToast('Перепідключення...', '');
+        }
 
         _reconnectTimer = setTimeout(function () {
             _reconnectTimer = null;
@@ -379,15 +448,57 @@ var ParkWS = (function () {
         for (var dateStr of _subscribedDates) {
             _send({ type: 'JOIN_DATE', date: dateStr });
         }
+        // Also re-subscribe to chat channels
+        for (var channelId of _subscribedChannels) {
+            _send({ type: 'CHAT_JOIN', channelId: channelId });
+        }
+    }
+
+    // ==========================================
+    // CHAT CHANNEL SUBSCRIPTION
+    // ==========================================
+
+    function joinChannel(channelId) {
+        _subscribedChannels.add(channelId);
+        if (isConnected()) {
+            _send({ type: 'CHAT_JOIN', channelId: channelId });
+        }
+    }
+
+    function leaveChannel(channelId) {
+        _subscribedChannels.delete(channelId);
+        if (isConnected()) {
+            _send({ type: 'CHAT_LEAVE', channelId: channelId });
+        }
+    }
+
+    function sendChatTyping(channelId) {
+        if (!isConnected()) return;
+        if (_typingTimer) return; // Already sent recently
+        _send({ type: 'CHAT_TYPING', channelId: channelId });
+        _typingTimer = setTimeout(function () { _typingTimer = null; }, 3000);
+    }
+
+    function send(obj) {
+        _send(obj);
     }
 
     // ==========================================
     // NETWORK EVENTS
     // ==========================================
 
+    // v21.14.0: UI toast helpers for connection status
+    var _lastOfflineToastTime = 0;
+    function _showConnectionToast(message, type) {
+        if (typeof showNotification === 'function') {
+            showNotification(message, type || '');
+        }
+    }
+
     // Resume reconnection when browser goes back online
     window.addEventListener('online', function () {
-        console.log('[WS] Browser is online');
+        _debug('[WS] Browser is online');
+        _showConnectionToast('З\'єднання відновлено', 'success');
         if (!_connected && !_intentionalClose && localStorage.getItem('pzp_token')) {
             // Wait for offline queue sync to complete first, then reconnect
             setTimeout(function () {
@@ -398,7 +509,8 @@ var ParkWS = (function () {
 
     // Pause reconnection when browser goes offline
     window.addEventListener('offline', function () {
-        console.log('[WS] Browser is offline, pausing reconnection');
+        _debug('[WS] Browser is offline, pausing reconnection');
+        _showConnectionToast('Ви офлайн — зміни збережені локально', 'error');
         if (_reconnectTimer) {
             clearTimeout(_reconnectTimer);
             _reconnectTimer = null;
@@ -419,6 +531,38 @@ var ParkWS = (function () {
             } catch (err) {
                 console.error('[WS] Send error:', err);
             }
+        }
+    }
+
+    /**
+     * Fetch chat unread count and update the sidebar badge.
+     */
+    function _updateChatBadge() {
+        var token = localStorage.getItem('pzp_token');
+        if (!token) return;
+        fetch('/api/chat/unread', { headers: { 'Authorization': 'Bearer ' + token } })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (data) _setChatBadge(data.total || 0);
+            })
+            .catch(function () {});
+    }
+
+    function _incrementChatBadge() {
+        var badge = document.getElementById('chatUnreadBadge');
+        if (!badge) return;
+        var current = parseInt(badge.textContent || '0', 10);
+        _setChatBadge(current + 1);
+    }
+
+    function _setChatBadge(count) {
+        var badge = document.getElementById('chatUnreadBadge');
+        if (!badge) return;
+        if (count > 0) {
+            badge.textContent = count > 99 ? '99+' : String(count);
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
         }
     }
 
@@ -452,6 +596,10 @@ var ParkWS = (function () {
         disconnect: disconnect,
         isConnected: isConnected,
         subscribeDate: subscribeDate,
-        unsubscribeDate: unsubscribeDate
+        unsubscribeDate: unsubscribeDate,
+        joinChannel: joinChannel,
+        leaveChannel: leaveChannel,
+        sendChatTyping: sendChatTyping,
+        send: send
     };
 })();

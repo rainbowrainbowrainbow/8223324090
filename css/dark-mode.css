@@ -13,8 +13,8 @@ body.dark-mode {
     --gray-100: #252540;
     --gray-200: #333350;
     --gray-300: #444466;
-    --gray-400: #6B7280;
-    --gray-500: #9CA3AF;
+    --gray-400: #9CA3AF;
+    --gray-500: #D1D5DB;
     --gray-600: #D1D5DB;
     --gray-700: #E5E7EB;
     --gray-800: #F3F4F6;
@@ -33,7 +33,7 @@ body.dark-mode {
     --glass-bg: rgba(26,26,46,0.85);
     --glass-border: rgba(255,255,255,0.05);
 
-    background-color: #0f0f1a;
+    background-color: #0D0D0D;
     background-image:
         radial-gradient(ellipse at 20% 50%, rgba(16,185,129,0.06) 0%, transparent 50%),
         radial-gradient(ellipse at 80% 20%, rgba(59,130,246,0.05) 0%, transparent 50%),
@@ -148,25 +148,7 @@ body.dark-mode .sidebar-overlay {
     background: rgba(0,0,0,0.65);
 }
 
-/* Quick stats cards dark */
-body.dark-mode .qs-card {
-    background: var(--white);
-    border-color: var(--gray-200);
-}
-
-body.dark-mode .qs-value { color: #F3F4F6; }
-body.dark-mode .qs-label { color: #9CA3AF; }
-
-body.dark-mode .qs-icon.green { background: rgba(16,185,129,0.15); }
-body.dark-mode .qs-icon.blue { background: rgba(59,130,246,0.15); }
-body.dark-mode .qs-icon.amber { background: rgba(245,158,11,0.15); }
-body.dark-mode .qs-icon.purple { background: rgba(139,92,246,0.15); }
-body.dark-mode .qs-icon.rose { background: rgba(244,63,94,0.15); }
-
-body.dark-mode .qs-card:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.04);
-    border-color: var(--gray-300);
-}
+/* Quick stats cards removed in v20.9.1 (redundant with dashboard) */
 
 /* Skeleton dark */
 body.dark-mode .skeleton {
@@ -174,8 +156,8 @@ body.dark-mode .skeleton {
     background-size: 200% 100%;
 }
 
-/* Notification dark — slightly transparent */
-body.dark-mode .notification {
+/* Toast dark — slightly transparent */
+body.dark-mode .toast {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
 }
@@ -424,7 +406,22 @@ body.dark-mode .toggle-mini:hover {
 }
 
 body.dark-mode .toggle-mini-label {
-    color: #D1D5DB;
+    color: #F3F4F6;
+}
+
+/* Ensure toggle-mini emoji/icon is also visible */
+body.dark-mode .toggle-mini span {
+    color: #F3F4F6;
+}
+
+/* v20.9.8: Active toggle-mini in dark mode — keep white text */
+body.dark-mode .toggle-mini:has(input:checked) {
+    background: var(--primary);
+    border-color: var(--primary-dark);
+}
+body.dark-mode .toggle-mini:has(input:checked) .toggle-mini-label,
+body.dark-mode .toggle-mini:has(input:checked) span {
+    color: #ffffff !important;
 }
 
 body.dark-mode .btn-undo {
@@ -666,6 +663,7 @@ body.dark-mode .pf-check {
 body.dark-mode .btn-nav {
     background: var(--gray-100);
     border-color: var(--gray-300);
+    color: #E2E8F0;
 }
 
 /* v7.8.5: Glass buttons in dark mode */
@@ -745,12 +743,7 @@ body.dark-mode .status-badge--cancelled {
     border-color: rgba(239,68,68,0.3);
 }
 
-/* Quick stats bar in dark */
-body.dark-mode .quick-stats-bar {
-    border-color: rgba(16,185,129,0.2);
-    background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.05) 100%);
-    color: #6EE7B7;
-}
+/* Quick stats bar removed in v20.9.1 */
 
 /* Kleshnya futuristic terminal in dark — enhanced glow */
 body.dark-mode .kleshnya-fab {
@@ -830,6 +823,10 @@ body.dark-mode .btn-status-toggle {
 body.dark-mode .day-label {
     background: linear-gradient(135deg, #10B981 0%, #059669 100%);
     color: #FFFFFF;
+}
+
+body.dark-mode .working-hours {
+    color: #9CA3AF;
 }
 
 /* Toggle slider */
@@ -1336,6 +1333,7 @@ body.dark-mode .btn-invite-copy {
 /* v7.9.2: Kanban board dark mode */
 body.dark-mode .kanban-col {
     background: rgba(255,255,255,0.05);
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
 }
 body.dark-mode .kanban-col-header {
@@ -1348,6 +1346,7 @@ body.dark-mode .kanban-col-count {
 }
 body.dark-mode .task-card {
     background: rgba(255,255,255,0.08);
+    -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     border-left-color: var(--gray-300);
 }
@@ -1424,6 +1423,15 @@ body.dark-mode .cert-stat-chip.expired { background: rgba(245,158,11,0.1); borde
 body.dark-mode .dash-trend-up { color: #34D399; background: rgba(16,185,129,0.15); }
 body.dark-mode .dash-trend-down { color: #F87171; background: rgba(239,68,68,0.15); }
 
+/* Tasks page badges — dark mode */
+body.dark-mode .badge-human { background: rgba(21,101,192,0.2); color: #64B5F6; }
+body.dark-mode .badge-bot { background: rgba(123,31,162,0.2); color: #CE93D8; }
+body.dark-mode .deadline-ok { background: rgba(46,125,50,0.2); color: #81C784; }
+body.dark-mode .deadline-soon { background: rgba(230,81,0,0.2); color: #FFB74D; }
+body.dark-mode .deadline-overdue { background: rgba(198,40,40,0.2); color: #EF9A9A; }
+body.dark-mode .points-permanent { background: rgba(245,127,23,0.2); color: #FFD54F; }
+body.dark-mode .points-monthly { background: rgba(46,125,50,0.2); color: #81C784; }
+
 /* v15.1: CRM Customer section */
 body.dark-mode .customer-data-section {
     background: rgba(255,255,255,0.03);
@@ -1449,7 +1457,412 @@ body.dark-mode .booking-customer-info {
 body.dark-mode .booking-customer-info .customer-header { color: #e2e8f0; }
 body.dark-mode .booking-customer-info .customer-detail { color: #94A3B8; }
 
+/* ==========================================
+   CHAT — Dark Mode
+   ========================================== */
+body.dark-mode {
+    --chat-bubble-own: #5c3d99;
+    --chat-bubble-other: #2a2a3e;
+    --chat-mention-bg: rgba(124, 92, 191, 0.2);
+    --chat-mention-color: #C4B5FD;
+    --chat-bg: #0f0f1a;
+}
+
+body.dark-mode .chat-codeblock {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.1);
+}
+body.dark-mode .chat-inline-code {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.12);
+    color: #f97583;
+}
+body.dark-mode .chat-blockquote {
+    color: var(--gray-400);
+    background: rgba(124, 92, 191, 0.1);
+    border-left-color: #7C5CBF;
+}
+body.dark-mode .chat-thread-panel {
+    background: #1e1e30;
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-thread-header {
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-thread-root {
+    background: rgba(124, 92, 191, 0.1);
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-thread-badge {
+    background: rgba(124, 92, 191, 0.15);
+    border-color: rgba(124, 92, 191, 0.3);
+    color: #C4B5FD;
+}
+body.dark-mode .chat-thread-input-area {
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-file-attachment {
+    background: rgba(255,255,255,0.06);
+}
+body.dark-mode .chat-file-attachment:hover {
+    background: rgba(255,255,255,0.1);
+}
+body.dark-mode .chat-file-name {
+    color: #C4B5FD;
+}
+body.dark-mode .chat-file-preview {
+    background: rgba(124, 92, 191, 0.15);
+    border-color: rgba(255,255,255,0.1);
+}
+body.dark-mode .chat-link-preview {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.1);
+}
+body.dark-mode .chat-link-preview:hover {
+    background: rgba(255,255,255,0.08);
+}
+body.dark-mode .chat-link-preview-title {
+    color: #C4B5FD;
+}
+
+body.dark-mode .ephemeral-message.own .chat-bubble {
+    background: linear-gradient(135deg, #1a3a2a 60%, rgba(239,68,68,0.12));
+}
+body.dark-mode .ephemeral-message:not(.own) .chat-bubble {
+    background: linear-gradient(135deg, #1e1e30 60%, rgba(239,68,68,0.12));
+}
+body.dark-mode .chat-ephemeral-badge {
+    background: rgba(239,68,68,0.15);
+    color: #FCA5A5;
+}
+
+body.dark-mode .chat-stats-panel {
+    background: #1e1e30;
+    color: #e0e0e0;
+}
+body.dark-mode .chat-stats-header {
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-stats-bar {
+    background: rgba(255,255,255,0.08);
+}
+body.dark-mode .chat-stats-num {
+    background: rgba(124,92,191,0.12);
+}
+body.dark-mode .chat-stats-leader-row.me {
+    background: rgba(124,92,191,0.15);
+}
+
+body.dark-mode .chat-sidebar {
+    background: #1e1e30;
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-sidebar-header {
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-search-input {
+    background: #2a2a3e;
+    border-color: #3a3a4e;
+    color: #e0e0e0;
+}
+body.dark-mode .chat-channel-item:hover {
+    background: #2a2a3e;
+}
+body.dark-mode .chat-channel-item.active {
+    background: rgba(124, 92, 191, 0.15);
+}
+body.dark-mode .chat-header {
+    background: #1e1e30;
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-search-bar {
+    background: #1e1e30;
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-search-bar-input {
+    color: #e0e0e0;
+}
+body.dark-mode .chat-input-area {
+    background: #1e1e30;
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-input {
+    background: #2a2a3e;
+    border-color: #3a3a4e;
+    color: #e0e0e0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+body.dark-mode .chat-input:focus {
+    border-color: #7c5cbf;
+    box-shadow: 0 0 0 3px rgba(124,92,191,0.15), 0 1px 3px rgba(0,0,0,0.15);
+}
+body.dark-mode .chat-bubble {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+body.dark-mode .chat-bubble:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+body.dark-mode .chat-bubble-content {
+    color: #e8e8f0;
+}
+body.dark-mode .chat-message.own .chat-bubble-content {
+    color: #f0f0f8;
+}
+body.dark-mode .chat-message.own .chat-bubble-time {
+    color: rgba(255, 255, 255, 0.5);
+}
+body.dark-mode .chat-message.own .chat-bubble-username {
+    color: rgba(255, 255, 255, 0.7);
+}
+body.dark-mode .chat-read-check.sent {
+    color: rgba(255, 255, 255, 0.4);
+}
+body.dark-mode .chat-read-check.read {
+    color: #7c5cbf;
+}
+body.dark-mode .chat-msg-actions {
+    background: #2a2a3e;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35), 0 0 0 0.5px rgba(255,255,255,0.06);
+}
+body.dark-mode .chat-context-menu {
+    background: #2a2a3e;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 0 0.5px rgba(255,255,255,0.06);
+}
+body.dark-mode .chat-send-btn {
+    box-shadow: 0 2px 8px rgba(124,92,191,0.3);
+}
+body.dark-mode .chat-send-btn:hover {
+    box-shadow: 0 4px 14px rgba(124,92,191,0.4);
+}
+body.dark-mode .chat-channel-item.active {
+    box-shadow: 0 0 0 1px rgba(124,92,191,0.2);
+}
+body.dark-mode .chat-scroll-bottom {
+    background: #2a2a3e;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+body.dark-mode .chat-date-divider span {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+body.dark-mode .chat-emoji-picker {
+    background: #2a2a3e;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+body.dark-mode .chat-reply-block {
+    background: rgba(16, 185, 129, 0.08);
+}
+body.dark-mode .chat-reply-preview {
+    background: #2a2a3e;
+}
+body.dark-mode .chat-reaction-chip {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+body.dark-mode .chat-reaction-chip:hover {
+    background: rgba(255, 255, 255, 0.14);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+body.dark-mode .chat-reaction-chip.own {
+    background: rgba(16, 185, 129, 0.18);
+    border-color: rgba(16, 185, 129, 0.35);
+    box-shadow: 0 1px 4px rgba(16,185,129,0.2);
+}
+body.dark-mode .chat-reaction-chip.own:hover {
+    box-shadow: 0 2px 8px rgba(16,185,129,0.35);
+}
+body.dark-mode .chat-reaction-count {
+    color: #94A3B8;
+}
+body.dark-mode .chat-message.emoji-only .chat-bubble-content {
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.3));
+}
+body.dark-mode .chat-date-divider span {
+    background: #2a2a3e;
+    color: #94A3B8;
+}
+body.dark-mode .chat-empty-icon {
+    background: #2a2a3e;
+}
+body.dark-mode .chat-scroll-bottom {
+    background: #2a2a3e;
+}
+body.dark-mode .chat-mention-popup {
+    background: #2a2a3e;
+}
+body.dark-mode .chat-mention-item:hover,
+body.dark-mode .chat-mention-item.active {
+    background: #3a3a4e;
+}
+body.dark-mode .chat-info-panel {
+    background: #1e1e30;
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-info-panel-header {
+    border-color: #2a2a3e;
+}
+body.dark-mode .chat-info-member:hover {
+    background: #2a2a3e;
+}
+
 /* Scrollbar improvement */
 body.dark-mode ::-webkit-scrollbar-track {
     background: #0f0f1a;
 }
+
+/* Guardian watch bar dark mode */
+body.dark-mode .guardian-watch-bar {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08));
+    border-bottom-color: rgba(99, 102, 241, 0.2);
+}
+
+body.dark-mode .guardian-mood-label {
+    color: var(--gray-400);
+}
+
+body.dark-mode .guardian-watch-log-btn {
+    border-color: rgba(99, 102, 241, 0.25);
+    color: var(--gray-400);
+}
+
+body.dark-mode .guardian-log-panel {
+    background: var(--chat-bg, #1a1a2e);
+    border-bottom-color: rgba(99, 102, 241, 0.25);
+}
+
+body.dark-mode .guardian-log-header {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+body.dark-mode .guardian-log-entry-text {
+    color: var(--gray-300);
+}
+
+body.dark-mode .guardian-log-entry.severity-danger {
+    background: rgba(239, 68, 68, 0.08);
+}
+
+body.dark-mode .guardian-log-entry.severity-warning {
+    background: rgba(245, 158, 11, 0.06);
+}
+
+/* ==========================================
+   v22.3: DARK MODE GAPS FIX — comprehensive pass
+   ========================================== */
+
+/* Confirm dialog */
+body.dark-mode .confirm-dialog {
+    background: #1e1e32;
+    color: #E2E8F0;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 8px 16px rgba(0,0,0,0.3), 0 24px 56px rgba(0,0,0,0.5);
+}
+body.dark-mode .confirm-title { color: #F3F4F6; }
+body.dark-mode .confirm-msg { color: #D1D5DB; }
+
+/* Age recommendations section */
+body.dark-mode .age-reco-section {
+    background: linear-gradient(135deg, #2d2400 0%, #3d3000 100%);
+    border-color: rgba(217,119,6,0.3);
+}
+body.dark-mode .age-reco-hint { color: #FCD34D; }
+body.dark-mode .age-reco-btn {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(217,119,6,0.4);
+    color: #FCD34D;
+}
+body.dark-mode .age-reco-btn:hover {
+    background: rgba(217,119,6,0.2);
+    border-color: #D97706;
+}
+body.dark-mode .age-reco-tag {
+    background: rgba(217,119,6,0.15);
+    color: #FCD34D;
+}
+
+/* Undo button hover */
+body.dark-mode .btn-undo:hover {
+    background: rgba(245,158,11,0.15);
+    border-color: var(--warning);
+    color: #FCD34D;
+}
+
+/* Telegram chat type badge */
+body.dark-mode .telegram-chat-item .chat-type {
+    background: rgba(59,130,246,0.15);
+    color: #93C5FD;
+}
+
+/* Btn-auto-time hover */
+body.dark-mode .btn-auto-time:hover {
+    border-color: #8B5CF6;
+    background: rgba(139,92,246,0.15);
+}
+
+/* Afisha line header */
+body.dark-mode .afisha-line-header .line-name { color: #C4B5FD; }
+body.dark-mode .afisha-line-header .line-sub { color: #A78BFA; }
+
+/* Automation info text colors */
+body.dark-mode .invite-section-header { color: #FCD34D; }
+body.dark-mode .invite-preview { color: #FBBF24; }
+
+/* Features info text dark-brown fix */
+body.dark-mode .automation-info { color: #C4B5FD; }
+body.dark-mode .automation-status { color: #A78BFA; }
+
+/* Duration badges in controls.css */
+body.dark-mode .duration-short {
+    background: rgba(59,130,246,0.2);
+    color: #93C5FD;
+}
+body.dark-mode .duration-long {
+    background: rgba(245,158,11,0.2);
+    color: #FCD34D;
+}
+
+/* Pages — danger button hover */
+body.dark-mode .btn-danger:hover {
+    background: rgba(239,68,68,0.2);
+}
+
+/* Scripts quick access */
+body.dark-mode .scripts-quick-access {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.08);
+}
+
+/* General: any remaining hardcoded #92400E text */
+body.dark-mode .hosts-warning-text { color: #FCD34D; }
+
+/* Confirm dialog icon variants */
+body.dark-mode .confirm-dialog.danger .confirm-icon {
+    background: rgba(239,68,68,0.15);
+}
+body.dark-mode .confirm-dialog.success .confirm-icon {
+    background: rgba(16,185,129,0.15);
+}
+body.dark-mode .confirm-dialog.warning .confirm-icon {
+    background: rgba(245,158,11,0.15);
+}
+
+/* Login form placeholder */
+body.dark-mode .login-form input::placeholder {
+    color: #6B7280;
+}
+
+/* Status background CSS variables for dark mode */
+body.dark-mode {
+    --status-confirmed-bg: rgba(16,185,129,0.15);
+    --status-confirmed-color: #6EE7B7;
+    --status-confirmed-border: rgba(16,185,129,0.3);
+    --status-preliminary-bg: rgba(245,158,11,0.15);
+    --status-preliminary-color: #FCD34D;
+    --status-preliminary-border: rgba(245,158,11,0.3);
+    --status-cancelled-bg: rgba(239,68,68,0.15);
+    --status-cancelled-color: #FCA5A5;
+    --status-cancelled-border: rgba(239,68,68,0.3);
+}
+
+/* Standalone pages — auth page corrections */
+body.dark-mode .auth-tagline { color: #9CA3AF; }
+body.dark-mode .auth-footer { color: #6B7280; }

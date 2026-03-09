@@ -7,12 +7,13 @@
 // ==========================================
 
 function showNotification(message, type = '') {
-    const el = document.getElementById('notification');
-    if (!el) return;
-    document.getElementById('notificationText').textContent = message;
-    el.className = 'notification' + (type ? ` ${type}` : '');
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 3000);
+    let c = document.getElementById('toastContainer');
+    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+    const t = document.createElement('div');
+    t.className = 'toast' + (type ? ' ' + type : '');
+    t.textContent = message;
+    c.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
 function escapeHtml(str) {
@@ -39,7 +40,22 @@ async function initPage() {
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
 
-    const canManage = user.role === 'admin' || user.role === 'manager';
+    // v20.8.0: Embedded mode — read-only (no edit/delete/add)
+    const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === '1';
+    if (isEmbedded) {
+        AppState.embedded = true;
+        const sidebar = document.getElementById('sidebarNav');
+        const header = document.querySelector('.header');
+        const loginOverlay = document.getElementById('loginOverlay');
+        if (sidebar) sidebar.style.display = 'none';
+        if (header) header.style.display = 'none';
+        if (loginOverlay) loginOverlay.style.display = 'none';
+        const main = document.querySelector('.page-container');
+        if (main) main.style.marginLeft = '0';
+    }
+
+    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    const canManage = !isEmbedded && MANAGE_ROLES.includes(user.role);
     const addBtn = document.getElementById('addProductBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 
@@ -119,7 +135,8 @@ function renderProducts() {
         return;
     }
 
-    const canManage = AppState.currentUser && (AppState.currentUser.role === 'admin' || AppState.currentUser.role === 'manager');
+    const MGMT_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    const canManage = !AppState.embedded && AppState.currentUser && MGMT_ROLES.includes(AppState.currentUser.role);
 
     grid.innerHTML = filtered.map(p => `
         <div class="card program-card${p.isActive === false ? ' inactive' : ''}" data-id="${escapeHtml(p.id)}">
@@ -249,7 +266,7 @@ async function saveProduct() {
 }
 
 async function deleteProduct(productId) {
-    if (!confirm('Деактивувати цю програму?')) return;
+    if (!await confirmModal('Деактивувати цю програму?', { type: 'warning', okText: 'Деактивувати' })) return;
     const result = await apiDeleteProduct(productId);
     if (result && result.success) {
         showNotification('Програму деактивовано', 'success');

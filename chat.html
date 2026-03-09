@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Командний чат</title>
+    <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=22.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=22.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=22.3.0">
+    <link rel="stylesheet" href="css/chat.css?v=22.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.3.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        .main-content { padding: 0 !important; max-width: none !important; }
+    </style>
+</head>
+<body>
+    <div id="loginScreen" class="login-screen hidden"></div>
+
+    <div id="mainApp" class="main-app hidden">
+        <!-- Sidebar nav -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-logo">
+                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                <div class="em-logo">
+                    <span class="em-logo-title">Event Genix</span>
+                    <span class="em-logo-sub">AI First CRM</span>
+                </div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks">
+                <!-- Populated by sidebar.js -->
+            </nav>
+        </aside>
+
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                </div>
+                <nav class="header-nav">
+                    <a href="/" class="nav-link"><span class="nav-icon">T</span> <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
+                    <a href="/chat" class="nav-link active"><span class="nav-icon">Чт</span> <span class="nav-text">Чат</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name" role="button" tabindex="0"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content" style="margin-left: 220px;">
+            <div class="chat-layout">
+                <!-- Chat channels sidebar -->
+                <div class="chat-sidebar" id="chatSidebar">
+                    <div class="chat-sidebar-header">
+                        <div class="chat-sidebar-top">
+                            <h2 class="chat-sidebar-title">Канали</h2>
+                            <div class="chat-sidebar-top-actions">
+                                <button class="chat-sidebar-action-btn" id="chatNewDm" title="Особисте повідомлення">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                </button>
+                                <button class="chat-sidebar-action-btn" id="chatNewChannel" title="Новий канал">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="chat-search">
+                            <svg class="chat-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" class="chat-search-input" id="chatSearchInput" aria-label="Пошук каналів..." placeholder="Пошук каналів...">
+                        </div>
+                    </div>
+                    <div class="chat-channels-list" id="chatChannelsList"></div>
+                    <div class="chat-sidebar-footer">
+                        <div class="chat-theme-toggle">
+                            <button class="chat-theme-btn" id="chatThemeBtn" title="Переключити тему">
+                                <span id="chatThemeIcon">🌙</span> <span id="chatThemeLabel">Тема</span>
+                            </button>
+                            <button class="chat-theme-btn chat-theme-auto-btn" id="chatThemeAutoBtn" title="Налаштування авто-теми">⚙️</button>
+                        </div>
+                        <div class="chat-theme-settings" id="chatThemeSettings" style="display:none">
+                            <label class="chat-theme-setting-row">
+                                <span>Початок ночі:</span>
+                                <select id="chatNightStart" class="chat-theme-select"></select>
+                            </label>
+                            <label class="chat-theme-setting-row">
+                                <span>Кінець ночі:</span>
+                                <select id="chatNightEnd" class="chat-theme-select"></select>
+                            </label>
+                            <label class="chat-theme-setting-row">
+                                <input type="checkbox" id="chatAutoNight" checked> Авто нічна тема
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="chat-sidebar-overlay" id="chatSidebarOverlay"></div>
+
+                <!-- Chat main area -->
+                <div class="chat-main">
+                    <div class="chat-header">
+                        <button class="chat-header-toggle" id="chatToggleSidebar">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                        </button>
+                        <div class="chat-header-info">
+                            <div class="chat-header-name" id="chatHeaderName">Оберіть канал</div>
+                            <div class="chat-header-desc" id="chatHeaderDesc"></div>
+                        </div>
+                        <div class="chat-header-actions">
+                            <button class="chat-header-action-btn" id="chatSearchMsgBtn" title="Пошук повідомлень">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            </button>
+                            <button class="chat-header-action-btn" id="chatPinBtn" title="Закріплені повідомлення">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L12 12"/><path d="M18 8L18 12C18 15.31 15.31 18 12 18C8.69 18 6 15.31 6 12L6 8"/><path d="M12 18L12 22"/></svg>
+                            </button>
+                            <button class="chat-header-action-btn" id="chatMuteBtn" title="Сповіщення каналу">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                            </button>
+                            <button class="chat-header-action-btn" id="chatWallpaperBtn" title="Фон чату">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                            </button>
+                            <button class="chat-header-action-btn" id="chatSummaryBtn" title="Резюме розмови (AI)">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                            </button>
+                            <button class="chat-header-action-btn" id="chatStatsBtn" title="Статистика чату">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
+                            </button>
+                            <button class="chat-header-action-btn" id="chatInfoBtn" title="Учасники каналу">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Search bar (hidden by default) -->
+                    <div class="chat-search-bar" id="chatSearchBar" style="display:none">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" class="chat-search-bar-input" id="chatSearchMsgInput" aria-label="Пошук повідомлень у каналі..." placeholder="Пошук повідомлень у каналі...">
+                        <span class="chat-search-bar-count" id="chatSearchMsgCount"></span>
+                        <button class="chat-search-bar-close" id="chatSearchMsgClose">&times;</button>
+                    </div>
+
+                    <!-- Guardian watching bar -->
+                    <div class="guardian-watch-bar" id="guardianWatchBar" style="display:none">
+                        <div class="guardian-watch-eyes" id="guardianWatchEyes">👀</div>
+                        <div class="guardian-watch-mood" id="guardianWatchMood">
+                            <span class="guardian-mood-emoji" id="guardianMoodEmoji">👀</span>
+                            <span class="guardian-mood-label" id="guardianMoodLabel">Спостерігаю</span>
+                        </div>
+                        <button class="guardian-watch-digest-btn" id="guardianDigestBtn" title="Дайджест каналу">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                            📊
+                        </button>
+                        <button class="guardian-watch-log-btn" id="guardianLogBtn" title="Журнал безпеки">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            <span class="guardian-log-badge" id="guardianLogBadge" style="display:none">0</span>
+                        </button>
+                    </div>
+
+                    <!-- Guardian digest panel (available to ALL users) -->
+                    <div class="guardian-digest-panel" id="guardianDigestPanel" style="display:none">
+                        <div class="guardian-digest-header">
+                            <span>📊 Дайджест каналу</span>
+                            <div class="guardian-digest-nav">
+                                <button class="guardian-digest-nav-btn" id="guardianDigestPrev" title="Попередній день">←</button>
+                                <span class="guardian-digest-date" id="guardianDigestDate"></span>
+                                <button class="guardian-digest-nav-btn" id="guardianDigestNext" title="Наступний день">→</button>
+                            </div>
+                            <button class="guardian-digest-close" id="guardianDigestClose">&times;</button>
+                        </div>
+                        <div class="guardian-digest-content" id="guardianDigestContent">
+                            <div class="guardian-digest-empty">Завантаження...</div>
+                        </div>
+                    </div>
+
+                    <!-- Guardian security log panel (slide-down, admin only) -->
+                    <div class="guardian-log-panel" id="guardianLogPanel" style="display:none">
+                        <div class="guardian-log-header">
+                            <span>🛡️ Журнал безпеки (реальний час)</span>
+                            <button class="guardian-log-close" id="guardianLogClose">&times;</button>
+                        </div>
+                        <div class="guardian-log-entries" id="guardianLogEntries">
+                            <div class="guardian-log-empty">Немає подій</div>
+                        </div>
+                    </div>
+
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="chat-empty">
+                            <div class="chat-empty-icon">
+                                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            </div>
+                            <div class="chat-empty-title">Командний чат</div>
+                            <div class="chat-empty-hint">Оберіть канал зліва, щоб почати спілкування з командою</div>
+                        </div>
+                    </div>
+
+                    <button class="chat-scroll-bottom" id="chatScrollBottom" title="Донизу">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+
+                    <div class="chat-typing" id="chatTyping"></div>
+
+                    <div class="chat-input-area" style="position: relative;">
+                        <div class="chat-reply-preview" id="chatReplyPreview">
+                            <div class="chat-reply-preview-bar"></div>
+                            <div class="chat-reply-preview-text">
+                                <div class="chat-reply-preview-user" id="chatReplyUser"></div>
+                                <div class="chat-reply-preview-content" id="chatReplyContent"></div>
+                            </div>
+                            <button class="chat-reply-close" id="chatReplyClose">&times;</button>
+                        </div>
+                        <!-- Edit preview -->
+                        <div class="chat-edit-preview" id="chatEditPreview" style="display:none">
+                            <div class="chat-edit-preview-bar"></div>
+                            <div class="chat-edit-preview-text">
+                                <div class="chat-edit-preview-label">Редагування</div>
+                                <div class="chat-edit-preview-content" id="chatEditContent"></div>
+                            </div>
+                            <button class="chat-reply-close" id="chatEditClose">&times;</button>
+                        </div>
+                        <div class="chat-mention-popup" id="chatMentionPopup"></div>
+                        <!-- Full emoji picker popup -->
+                        <div class="chat-emoji-panel" id="chatEmojiPanel" style="display:none"></div>
+                        <!-- File upload preview -->
+                        <div class="chat-file-preview" id="chatFilePreview" style="display:none">
+                            <div class="chat-file-preview-content" id="chatFilePreviewContent"></div>
+                            <button class="chat-reply-close" id="chatFilePreviewClose">&times;</button>
+                        </div>
+                        <input type="file" id="chatFileInput" style="display:none" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.mp3,.mp4,.ogg,.wav,.webm">
+                        <div class="chat-input-row">
+                            <button class="chat-input-icon-btn" id="chatFileBtn" title="Прикріпити файл">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                            </button>
+                            <button class="chat-input-icon-btn" id="chatStickerBtn" title="Стікери">
+                                <span style="font-size:18px">🦕</span>
+                            </button>
+                            <button class="chat-input-icon-btn" id="chatGifBtn" title="GIF">
+                                <span style="font-weight:800;font-size:12px;letter-spacing:-0.5px">GIF</span>
+                            </button>
+                            <button class="chat-input-icon-btn" id="chatEmojiToggle" title="Емоджі">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                            </button>
+                            <textarea class="chat-input" id="chatInput" aria-label="Написати повідомлення..." placeholder="Написати повідомлення..." rows="1" disabled></textarea>
+                            <button class="chat-voice-btn" id="chatVoiceBtn" title="Голосове повідомлення">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                            </button>
+                            <div class="chat-voice-recording" id="chatVoiceRecording" style="display:none">
+                                <span class="chat-voice-dot"></span>
+                                <span class="chat-voice-timer" id="chatVoiceTimer">0:00</span>
+                                <button class="chat-voice-cancel" id="chatVoiceCancel">Скасувати</button>
+                                <button class="chat-voice-send" id="chatVoiceSend">Надіслати</button>
+                            </div>
+                            <button class="chat-schedule-btn" id="chatScheduleBtn" title="Відкласти відправку">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            </button>
+                            <button class="chat-send-btn" id="chatSendBtn" disabled title="Надіслати">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right panel (info / pinned / profile) -->
+                <div class="chat-info-panel" id="chatInfoPanel">
+                    <div class="chat-info-panel-header">
+                        <h3 class="chat-info-panel-title" id="chatInfoPanelTitle">Учасники</h3>
+                        <button class="chat-info-panel-close" id="chatInfoPanelClose">&times;</button>
+                    </div>
+                    <div class="chat-info-panel-body" id="chatInfoPanelBody"></div>
+                </div>
+
+                <!-- Thread panel (slides from right) -->
+                <div class="chat-thread-panel" id="chatThreadPanel" style="display:none">
+                    <div class="chat-thread-header">
+                        <h3 class="chat-thread-title">Тред</h3>
+                        <button class="chat-thread-close" id="chatThreadClose">&times;</button>
+                    </div>
+                    <div class="chat-thread-root" id="chatThreadRoot"></div>
+                    <div class="chat-thread-messages" id="chatThreadMessages"></div>
+                    <div class="chat-thread-input-area">
+                        <textarea class="chat-input chat-thread-input" id="chatThreadInput" aria-label="Відповісти в треді..." placeholder="Відповісти в треді..." rows="1"></textarea>
+                        <button class="chat-send-btn" id="chatThreadSendBtn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Context menu (floating) -->
+        <div class="chat-context-menu" id="chatContextMenu" style="display:none">
+            <button class="chat-context-item" data-action="reply">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                Відповісти
+            </button>
+            <button class="chat-context-item" data-action="edit">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Редагувати
+            </button>
+            <button class="chat-context-item" data-action="pin">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L12 12"/><path d="M18 8L18 12C18 15.31 15.31 18 12 18C8.69 18 6 15.31 6 12L6 8"/><path d="M12 18L12 22"/></svg>
+                Закріпити
+            </button>
+            <button class="chat-context-item" data-action="react">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                Реакція
+            </button>
+            <button class="chat-context-item" data-action="profile">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Профіль
+            </button>
+            <button class="chat-context-item" data-action="dm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Написати особисто
+            </button>
+            <button class="chat-context-item" data-action="thread">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h6"/></svg>
+                Тред
+            </button>
+            <button class="chat-context-item" data-action="forward">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+                Переслати
+            </button>
+            <button class="chat-context-item" data-action="bookmark">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                Зберегти
+            </button>
+            <div class="chat-context-divider"></div>
+            <button class="chat-context-item" data-action="create-task">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                Створити задачу
+            </button>
+            <div class="chat-context-divider"></div>
+            <button class="chat-context-item chat-context-danger" data-action="delete">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Видалити
+            </button>
+        </div>
+
+        <!-- Forward message modal -->
+        <div class="chat-modal-overlay" id="chatForwardOverlay" style="display:none">
+            <div class="chat-modal">
+                <h3 class="chat-modal-title">Переслати повідомлення</h3>
+                <div class="chat-modal-field">
+                    <label>Оберіть канал</label>
+                    <div id="chatForwardChannelList" class="chat-forward-list"></div>
+                </div>
+                <div class="chat-modal-actions">
+                    <button class="chat-modal-cancel" id="chatForwardCancel">Скасувати</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create channel modal -->
+        <div class="chat-modal-overlay" id="chatNewChannelOverlay" style="display:none">
+            <div class="chat-modal">
+                <h3 class="chat-modal-title">Новий канал</h3>
+                <div class="chat-modal-field">
+                    <label>Назва</label>
+                    <input type="text" id="chatNewChannelName" aria-label="продажі" placeholder="продажі" maxlength="40">
+                </div>
+                <div class="chat-modal-field">
+                    <label>Опис (необов'язково)</label>
+                    <input type="text" id="chatNewChannelDesc" aria-label="Обговорення продажів" placeholder="Обговорення продажів" maxlength="200">
+                </div>
+                <div class="chat-modal-actions">
+                    <button class="chat-modal-btn chat-modal-btn-cancel" id="chatNewChannelCancel">Скасувати</button>
+                    <button class="chat-modal-btn chat-modal-btn-primary" id="chatNewChannelCreate">Створити</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- DM user picker modal -->
+        <div class="chat-modal-overlay" id="chatDmOverlay" style="display:none">
+            <div class="chat-modal">
+                <h3 class="chat-modal-title">Особисте повідомлення</h3>
+                <div class="chat-modal-field">
+                    <label>Оберіть користувача</label>
+                    <input type="text" id="chatDmSearch" aria-label="Пошук..." placeholder="Пошук..." maxlength="40">
+                </div>
+                <div class="chat-dm-user-list" id="chatDmUserList"></div>
+                <div class="chat-modal-actions">
+                    <button class="chat-modal-btn chat-modal-btn-cancel" id="chatDmCancel">Скасувати</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add member to channel modal -->
+        <div class="chat-modal-overlay" id="chatAddMemberOverlay" style="display:none">
+            <div class="chat-modal">
+                <h3 class="chat-modal-title">Додати учасника</h3>
+                <div class="chat-modal-field">
+                    <label>Оберіть користувача</label>
+                    <input type="text" id="chatAddMemberSearch" aria-label="Пошук..." placeholder="Пошук..." maxlength="40">
+                </div>
+                <div class="chat-dm-user-list" id="chatAddMemberList"></div>
+                <div class="chat-modal-actions">
+                    <button class="chat-modal-btn chat-modal-btn-cancel" id="chatAddMemberCancel">Скасувати</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js?v=22.3.0"></script>
+    <script src="js/api.js?v=22.3.0"></script>
+    <script src="js/auth.js?v=22.3.0"></script>
+    <script src="js/components/sidebar.js?v=22.3.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/ws.js?v=22.3.0"></script>
+    <script src="js/chat-page.js?v=22.3.0"></script>
+</body>
+</html>

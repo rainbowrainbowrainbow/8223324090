@@ -48,8 +48,8 @@ function validateEnv() {
     // Used in: services/telegram.js
     if (!process.env.TELEGRAM_BOT_TOKEN) {
         warnings.push(
-            'TELEGRAM_BOT_TOKEN not set. Using hardcoded fallback. ' +
-            'Set TELEGRAM_BOT_TOKEN for your own bot.'
+            'TELEGRAM_BOT_TOKEN not set. Telegram notifications disabled. ' +
+            'Set TELEGRAM_BOT_TOKEN to enable bot messaging.'
         );
     }
 

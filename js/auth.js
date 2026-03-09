@@ -33,6 +33,8 @@ async function login(username, password) {
         localStorage.setItem('pzp_token', data.token);
         localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
         showMainApp();
+        // v22.5: Check daily login reward
+        checkDailyLogin();
         return { success: true };
     } catch (err) {
         console.error('Login error:', err);
@@ -54,25 +56,126 @@ function logout() {
 function showLoginScreen() {
     document.getElementById('loginScreen').classList.remove('hidden');
     document.getElementById('mainApp').classList.add('hidden');
+    // Hide floating buttons that are outside mainApp
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const improvementFab = document.getElementById('improvementFab');
+    if (sidebarToggle) sidebarToggle.classList.add('hidden');
+    if (improvementFab) improvementFab.classList.add('hidden');
+}
+
+// v22.0.0: Role hierarchy — 25 roles (higher index = more permissions)
+const ROLE_HIERARCHY = [
+    'waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista',
+    'reception', 'animator', 'pastry_chef', 'head_pastry', 'cook', 'head_chef',
+    'instructor', 'senior_instructor', 'admin', 'hr', 'it_specialist',
+    'marketer', 'art_director', 'accountant', 'manager', 'senior_manager',
+    'vice_director', 'director', 'creator'
+];
+const ROLE_LEVEL = {};
+ROLE_HIERARCHY.forEach((r, i) => ROLE_LEVEL[r] = i);
+
+const ROLE_NAMES = {
+    creator: 'Творець', director: 'Директор', vice_director: 'Заст. директора',
+    senior_manager: 'Старший менеджер', manager: 'Менеджер',
+    accountant: 'Бухгалтер', art_director: 'Арт-директор', marketer: 'Маркетолог',
+    it_specialist: 'IT-спеціаліст', hr: 'HR-менеджер',
+    admin: 'Адміністратор',
+    senior_instructor: 'Старший інструктор', instructor: 'Інструктор',
+    head_chef: 'Шеф-кухар', cook: 'Кухар', head_pastry: 'Шеф-кондитер', pastry_chef: 'Кондитер',
+    animator: 'Аніматор', reception: 'Рецепція', barista: 'Бариста',
+    wardrobe: 'Гардеробник', cleaning: 'Клінінг', maintenance: 'Технік',
+    dishwasher: 'Посудомийник', waiter: 'Офіціант'
+};
+
+// v22.0.0: Role groups for cleaner access control
+const _MANAGEMENT_UP = ['creator', 'director', 'vice_director', 'senior_manager'];
+const _MANAGER_UP = [..._MANAGEMENT_UP, 'manager'];
+const _ADMIN_UP = [..._MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'];
+const _ALL_STAFF = ROLE_HIERARCHY.filter(r => r !== 'waiter');
+
+const PAGE_ACCESS = {
+    '/dashboard': ROLE_HIERARCHY.slice(),
+    '/':          _ALL_STAFF,
+    '/tasks':     _ALL_STAFF,
+    '/chat':      _ALL_STAFF,
+    '/center':    _MANAGEMENT_UP,
+    '/art':       [..._MANAGEMENT_UP, 'art_director'],
+    '/customers': [..._ADMIN_UP, 'reception'],
+    '/staff':     [..._MANAGEMENT_UP, 'hr'],
+    '/warehouse': [..._MANAGEMENT_UP, 'admin'],
+    '/training':  [..._MANAGER_UP, 'senior_instructor', 'instructor'],
+    '/settings':  ['creator', 'director'],
+    '/demo':      _MANAGER_UP,
+    '/programs':  [..._ADMIN_UP, 'senior_instructor'],
+    '/hr':        [..._MANAGEMENT_UP, 'hr'],
+    '/finance':   ['creator', 'director', 'accountant'],
+    '/analytics': _MANAGEMENT_UP,
+    '/status':    _MANAGEMENT_UP,
+};
+
+const ACTION_PERMISSIONS = {
+    create_booking:  [..._ADMIN_UP, 'reception'],
+    edit_booking:    [..._ADMIN_UP, 'reception'],
+    cancel_booking:  _MANAGER_UP,
+    delete_booking:  ['creator', 'director'],
+    manage_users:    ['creator', 'director'],
+    view_revenue:    [..._MANAGEMENT_UP, 'accountant'],
+    manage_settings: ['creator', 'director'],
+    export_data:     _MANAGEMENT_UP,
+};
+
+function getUserRole() {
+    // v22.0.0: Test panel support — creator can simulate other roles
+    const testRole = localStorage.getItem('pzp_test_role');
+    if (testRole && AppState.currentUser && AppState.currentUser.role === 'creator') {
+        return testRole;
+    }
+    return AppState.currentUser ? AppState.currentUser.role : null;
+}
+
+function hasMinRole(minRole) {
+    const role = getUserRole();
+    return role && (ROLE_LEVEL[role] || 0) >= (ROLE_LEVEL[minRole] || 99);
+}
+
+function canAccess(action) {
+    const role = getUserRole();
+    const allowed = ACTION_PERMISSIONS[action];
+    return role && allowed && allowed.includes(role);
+}
+
+function canAccessPage(page) {
+    const role = getUserRole();
+    const allowed = PAGE_ACCESS[page];
+    if (!allowed) return true; // unknown page = allow
+    return role && allowed.includes(role);
 }
 
 function isViewer() {
-    return AppState.currentUser && AppState.currentUser.role === 'viewer';
+    const role = getUserRole();
+    const viewerRoles = ['waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista', 'reception', 'animator', 'pastry_chef', 'cook', 'instructor'];
+    return viewerRoles.includes(role);
 }
 
-// v7.1: Can manage products (admin or manager)
 function canManageProducts() {
-    return AppState.currentUser && (AppState.currentUser.role === 'admin' || AppState.currentUser.role === 'manager');
+    return hasMinRole('manager');
 }
 
 function isAdmin() {
-    return AppState.currentUser && AppState.currentUser.role === 'admin';
+    return hasMinRole('admin');
+}
+
+function isManagement() {
+    return hasMinRole('senior_manager');
 }
 
 function showMainApp() {
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('mainApp').classList.remove('hidden');
     document.getElementById('currentUser').textContent = AppState.currentUser.name;
+    // Show floating buttons hidden during logout
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    if (sidebarToggle) sidebarToggle.classList.remove('hidden');
 
     // v8.6: Close all panels/modals on page load to prevent stale empty views
     document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
@@ -84,10 +187,10 @@ function showMainApp() {
     const backdrop = document.getElementById('panelBackdrop');
     if (backdrop) backdrop.classList.add('hidden');
 
-    // Settings (gear) — тільки для адмінів
+    // Settings (gear) — тільки для creator/director
     const settingsBtn = document.getElementById('settingsBtn');
     if (settingsBtn) {
-        settingsBtn.classList.toggle('hidden', AppState.currentUser.role !== 'admin');
+        settingsBtn.classList.toggle('hidden', !canAccess('manage_settings'));
     }
 
     // Certificates — доступно всім ролям
@@ -108,21 +211,25 @@ function showMainApp() {
         programsTabBtn.classList.remove('hidden');
     }
 
-    // v17.10: Sidebar role-based visibility
-    const isAdmin = AppState.currentUser.role === 'admin';
-    const isViewerRole = isViewer();
+    // v20.1.0: Sidebar role-based visibility via page access matrix
+    const role = getUserRole();
+    document.querySelectorAll('[data-page-access]').forEach(el => {
+        const page = el.dataset.pageAccess;
+        el.classList.toggle('hidden', !canAccessPage(page));
+    });
+    // Legacy classes for backward compat
     document.querySelectorAll('.sidebar-admin-only').forEach(el => {
-        el.classList.toggle('hidden', !isAdmin);
+        el.classList.toggle('hidden', !canAccess('manage_settings'));
     });
     document.querySelectorAll('.sidebar-no-viewer').forEach(el => {
-        el.classList.toggle('hidden', isViewerRole);
+        el.classList.toggle('hidden', isViewer());
     });
     // Sidebar certificates — visible to all
     const sidebarCerts = document.getElementById('sidebarCertificatesBtn');
     if (sidebarCerts) sidebarCerts.classList.remove('hidden');
 
-    // Viewer: сховати кнопки редагування
-    if (isViewer()) {
+    // v20.1.0: Hide booking creation buttons for roles that can't create
+    if (!canAccess('create_booking')) {
         const addLineBtn = document.getElementById('addLineBtn');
         if (addLineBtn) addLineBtn.style.display = 'none';
         const exportBtn = document.getElementById('exportTimelineBtn');
@@ -161,6 +268,12 @@ function showMainApp() {
 
     // v8.0: Show improvement suggestion FAB
     if (typeof showImprovementFab === 'function') showImprovementFab();
+
+    // v20.2.0: Initialize floating command panel
+    if (typeof CommandPanel !== 'undefined') CommandPanel.init();
+
+    // Idle hint bubbles near cmd-fab
+    if (typeof IdleHints !== 'undefined') IdleHints.init();
 
     // v10.3: Personal cabinet — click on username
     const userNameEl = document.getElementById('currentUser');
@@ -255,8 +368,7 @@ async function openProfileModal() {
     // Store data globally for tab re-renders
     window._profileData = data;
 
-    const roleNames = { admin: 'Адміністратор', user: 'Користувач', viewer: 'Глядач', manager: 'Менеджер' };
-    const roleName = roleNames[data.user.role] || data.user.role;
+    const roleName = ROLE_NAMES[data.user.role] || data.user.role;
     const tgStatus = data.user.telegramConnected;
     const rank = data.leaderboard.rank ? `#${data.leaderboard.rank}` : '—';
 
@@ -278,6 +390,7 @@ async function openProfileModal() {
 
         <div class="prof-tabs" role="tablist">
             <button class="prof-tab active" data-tab="today" role="tab">Сьогодні</button>
+            <button class="prof-tab" data-tab="game" role="tab">Профіль</button>
             <button class="prof-tab" data-tab="tasks" role="tab">Задачі</button>
             <button class="prof-tab" data-tab="stats" role="tab">Стати</button>
             <button class="prof-tab" data-tab="settings" role="tab">Налашт.</button>
@@ -307,6 +420,7 @@ function _profileRenderTab(tabName, data, achDefs) {
 
     switch (tabName) {
         case 'today': container.innerHTML = _profileTabToday(data); break;
+        case 'game': _profileTabGame(container, data); break;
         case 'tasks': container.innerHTML = _profileTabTasks(data); break;
         case 'stats': container.innerHTML = _profileTabStats(data, achDefs); break;
         case 'settings': container.innerHTML = _profileTabSettings(data); break;
@@ -613,6 +727,251 @@ function _profileTabSettings(data) {
         </div>`;
 }
 
+// ==========================================
+// TAB: ГРА (Gamification — achievements, shop, inventory, leaderboard)
+// ==========================================
+let _gameTabData = null;
+let _gameSubTab = 'achievements';
+
+async function _profileTabGame(container, data) {
+    container.innerHTML = '<div class="profile-loading">Завантаження...</div>';
+
+    const username = data.user.username;
+    const [profile, achievements, shop, leaderboard] = await Promise.all([
+        apiGamificationProfile(username),
+        apiGamificationAchievements(),
+        apiGamificationShop(),
+        apiGamificationLeaderboard('xp')
+    ]);
+
+    _gameTabData = { profile, achievements, shop, leaderboard, username };
+
+    if (!profile) {
+        // Fallback: show avatar and basic info even without gamification
+        const name = data.user.name || username;
+        const letter = (name || '?')[0].toUpperCase();
+        container.innerHTML = `
+            <div class="prof-section" style="text-align:center;padding:24px 16px">
+                <div class="character-display" style="margin:0 auto 16px;width:120px;height:120px;position:relative">
+                    <div class="character-bg" style="font-size:60px;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0.2">🌳</div>
+                    <div class="character-avatar" style="width:80px;height:80px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)">${letter}</div>
+                </div>
+                <h3 style="margin:0 0 4px;font-size:var(--font-lg)">${name}</h3>
+                <div style="color:var(--gray-500);margin-bottom:16px">${data.user.role || ''}</div>
+                <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+                    <a href="/game" class="game-start-btn" style="text-decoration:none;padding:10px 20px;font-size:var(--font-sm)">🎮 Міні-гра</a>
+                    <a href="/profile" class="game-start-btn" style="text-decoration:none;padding:10px 20px;font-size:var(--font-sm);background:var(--gray-200);color:var(--gray-700)">👤 Повний профіль</a>
+                </div>
+                <div style="margin-top:16px;color:var(--gray-400);font-size:var(--font-sm)">Система досягнень завантажується...</div>
+            </div>`;
+        return;
+    }
+
+    _gameSubTab = 'achievements';
+    _renderGameTab(container);
+}
+
+function _renderGameTab(container) {
+    const { profile, achievements, shop, leaderboard } = _gameTabData;
+    const p = profile; // API returns flat object with profile, currency, level, etc.
+    const profileData = p.profile || {};
+    const level = p.level || { level: 1, title: 'Новачок', xp: 0, xpForNext: 100 };
+    const coins = p.currency ? p.currency.coins : 0;
+    const xp = profileData.xp || 0;
+
+    // XP progress
+    const xpForCurrent = level.xpForCurrent || 0;
+    const xpForNext = level.xpForNext || 100;
+    const xpProgress = xpForNext > xpForCurrent ? Math.min(100, Math.round((xp - xpForCurrent) / (xpForNext - xpForCurrent) * 100)) : 100;
+
+    const headerHTML = `
+        <div class="game-profile-header">
+            <div class="game-level-badge">Lv.${level.level}</div>
+            <div class="game-profile-info">
+                <div class="game-title">${level.title || 'Новачок'}</div>
+                <div class="game-xp-bar">
+                    <div class="game-xp-fill" style="width:${xpProgress}%"></div>
+                </div>
+                <div class="game-xp-text">${xp} / ${xpForNext} XP</div>
+            </div>
+            <div class="game-coins">${coins} <span class="game-coin-icon">&#x1FA99;</span></div>
+        </div>
+    `;
+
+    // Sub-tabs
+    const subTabs = [
+        { key: 'achievements', label: 'Досягнення' },
+        { key: 'inventory', label: 'Інвентар' },
+        { key: 'shop', label: 'Магазин' },
+        { key: 'leaderboard', label: 'Лідери' }
+    ];
+    const subTabsHTML = `<div class="game-sub-tabs">${subTabs.map(t =>
+        `<button class="game-sub-tab ${_gameSubTab === t.key ? 'active' : ''}" onclick="_switchGameSubTab('${t.key}')">${t.label}</button>`
+    ).join('')}</div>`;
+
+    let contentHTML = '';
+    switch (_gameSubTab) {
+        case 'achievements': contentHTML = _renderGameAchievements(achievements, profile); break;
+        case 'inventory': contentHTML = _renderGameInventory(); break;
+        case 'shop': contentHTML = _renderGameShop(shop, coins); break;
+        case 'leaderboard': contentHTML = _renderGameLeaderboard(leaderboard); break;
+    }
+
+    container.innerHTML = headerHTML + subTabsHTML + `<div class="game-content">${contentHTML}</div>`;
+}
+
+function _switchGameSubTab(tab) {
+    _gameSubTab = tab;
+    const container = document.getElementById('profTabContent');
+    if (container && _gameTabData) _renderGameTab(container);
+}
+
+function _renderGameAchievements(achievements, profile) {
+    if (!achievements || !Array.isArray(achievements) || achievements.length === 0) {
+        return '<div class="profile-empty">Немає досягнень</div>';
+    }
+    const items = achievements;
+    if (items.length === 0) return '<div class="profile-empty">Немає досягнень</div>';
+
+    const unlocked = items.filter(a => a.unlocked).length;
+    const rarityColors = { common: '#9CA3AF', uncommon: '#34D399', rare: '#60A5FA', epic: '#A78BFA', legendary: '#FBBF24' };
+
+    const html = items.map(a => {
+        const cls = a.unlocked ? 'unlocked' : 'locked';
+        const rarityColor = rarityColors[a.rarity] || '#9CA3AF';
+        const rewardText = a.reward_type === 'coins' ? `${a.reward_value} монет` :
+                          a.reward_type === 'xp' ? `${a.reward_value} XP` : (a.reward_value || '');
+        return `<div class="game-ach-card ${cls}">
+            <div class="game-ach-icon">${a.icon || '?'}</div>
+            <div class="game-ach-body">
+                <div class="game-ach-name">${a.name || a.key}</div>
+                <div class="game-ach-desc">${a.description || ''}</div>
+                ${rewardText ? `<div class="game-ach-reward">${rewardText}</div>` : ''}
+            </div>
+            <div class="game-ach-rarity" style="color:${rarityColor}">${a.rarity || ''}</div>
+        </div>`;
+    }).join('');
+
+    return `<div class="game-ach-header">${unlocked}/${items.length} відкрито</div>${html}`;
+}
+
+function _renderGameInventory() {
+    const profile = _gameTabData.profile || {};
+    const inventory = profile.inventory || [];
+    const equipped = profile.equipped || [];
+
+    if (inventory.length === 0) {
+        return '<div class="profile-empty">Інвентар порожній. Придбайте предмети в магазині!</div>';
+    }
+
+    const equippedIds = new Set(equipped.map(e => e.item_id));
+
+    const html = inventory.map(item => {
+        const isEquipped = equippedIds.has(item.id || item.item_id);
+        return `<div class="game-inv-item ${isEquipped ? 'equipped' : ''}" onclick="_gameToggleEquip(${item.id || item.item_id}, '${item.type || 'badge'}', ${isEquipped})">
+            <div class="game-inv-icon">${item.icon || '?'}</div>
+            <div class="game-inv-name">${item.name || ''}</div>
+            ${isEquipped ? '<div class="game-inv-badge">Активно</div>' : ''}
+        </div>`;
+    }).join('');
+
+    return `<div class="game-inv-grid">${html}</div>`;
+}
+
+function _renderGameShop(shop, coins) {
+    if (!shop || !Array.isArray(shop) || shop.length === 0) {
+        return '<div class="profile-empty">Магазин порожній</div>';
+    }
+
+    const items = shop;
+    const html = items.map(item => {
+        const owned = item.owned;
+        const canBuy = !owned && coins >= (item.price_coins || 0);
+        const featured = item.is_featured ? 'featured' : '';
+        return `<div class="game-shop-item ${featured} ${owned ? 'owned' : ''}">
+            <div class="game-shop-icon">${item.icon || '?'}</div>
+            <div class="game-shop-body">
+                <div class="game-shop-name">${item.name || ''}</div>
+                <div class="game-shop-desc">${item.description || ''}</div>
+                <div class="game-shop-price">${item.price_coins || 0} <span class="game-coin-icon">&#x1FA99;</span></div>
+            </div>
+            <div class="game-shop-action">
+                ${owned ? '<span class="game-shop-owned">Придбано</span>' :
+                  `<button class="game-shop-buy ${canBuy ? '' : 'disabled'}" onclick="_gameBuyItem(${item.id})" ${canBuy ? '' : 'disabled'}>Купити</button>`}
+            </div>
+        </div>`;
+    }).join('');
+
+    return html;
+}
+
+function _renderGameLeaderboard(leaderboard) {
+    if (!leaderboard || !Array.isArray(leaderboard) || leaderboard.length === 0) {
+        return '<div class="profile-empty">Лідерборд порожній</div>';
+    }
+
+    const items = leaderboard;
+    const medalColors = ['#FBBF24', '#CBD5E0', '#CD7F32'];
+    const currentUser = AppState.currentUser?.username;
+
+    const html = items.map((u, i) => {
+        const medal = i < 3 ? `<span style="color:${medalColors[i]}; font-size:18px">${['&#x1F947;','&#x1F948;','&#x1F949;'][i]}</span>` : `<span class="game-lb-rank">${i + 1}</span>`;
+        const isMe = u.username === currentUser;
+        return `<div class="game-lb-row ${isMe ? 'me' : ''}">
+            ${medal}
+            <div class="game-lb-name">${u.display_name || u.username}${isMe ? ' (ви)' : ''}</div>
+            <div class="game-lb-stats">
+                <span class="game-lb-xp">Lv.${u.level || 1}</span>
+                <span class="game-lb-val">${u.xp || 0} XP</span>
+            </div>
+        </div>`;
+    }).join('');
+
+    // Sort buttons
+    const sortBtns = `<div class="game-lb-sort">
+        <button class="game-sub-tab active" onclick="_gameLeaderboardSort('xp')">XP</button>
+        <button class="game-sub-tab" onclick="_gameLeaderboardSort('coins')">Монети</button>
+        <button class="game-sub-tab" onclick="_gameLeaderboardSort('achievements')">Досягнення</button>
+    </div>`;
+
+    return sortBtns + html;
+}
+
+async function _gameBuyItem(shopItemId) {
+    const result = await apiGamificationBuy(shopItemId);
+    if (result.success) {
+        if (typeof showNotification === 'function') showNotification('Придбано!', 'success');
+        // Refresh game tab
+        const container = document.getElementById('profTabContent');
+        if (container && window._profileData) _profileTabGame(container, window._profileData);
+    } else {
+        if (typeof showNotification === 'function') showNotification(result.error || 'Помилка покупки', 'error');
+    }
+}
+
+async function _gameToggleEquip(itemId, type, isEquipped) {
+    let result;
+    if (isEquipped) {
+        result = await apiGamificationUnequip(type);
+    } else {
+        result = await apiGamificationEquip(itemId);
+    }
+    if (result.success) {
+        const container = document.getElementById('profTabContent');
+        if (container && window._profileData) _profileTabGame(container, window._profileData);
+    }
+}
+
+async function _gameLeaderboardSort(sortBy) {
+    const lb = await apiGamificationLeaderboard(sortBy);
+    if (lb && _gameTabData) {
+        _gameTabData.leaderboard = lb;
+        _gameSubTab = 'leaderboard';
+        const container = document.getElementById('profTabContent');
+        if (container) _renderGameTab(container);
+    }
+}
+
 // Quick status change from profile
 async function profileQuickStatus(taskId, status) {
     const btn = event.target;
@@ -699,6 +1058,52 @@ async function profileLoadMoreActivity() {
     list.insertAdjacentHTML('beforeend', profileRenderActivityItems(data.items));
     window._profileActivityOffset = offset + data.items.length;
     if (data.items.length < 20 && btn) btn.remove();
+}
+
+// v22.5: Daily login reward check
+async function checkDailyLogin() {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        if (!token) return;
+        const r = await fetch('/api/wallet/daily-login', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+        if (data.alreadyClaimed) return;
+        showDailyLoginPopup(data);
+    } catch (e) { /* silent */ }
+}
+
+function showDailyLoginPopup(data) {
+    const REWARDS = [10, 15, 20, 25, 30, 40, 50];
+    let streakHtml = '';
+    for (let i = 0; i < 7; i++) {
+        const isClaimed = i < data.dayIndex - 1;
+        const isToday = i === data.dayIndex - 1;
+        streakHtml += `
+        <div class="streak-day ${isClaimed ? 'claimed' : ''} ${isToday ? 'today' : ''}">
+            <div class="streak-coins">${REWARDS[i]}</div>
+            <div class="streak-label">Д${i + 1}</div>
+        </div>`;
+    }
+
+    const popup = document.createElement('div');
+    popup.className = 'daily-login-popup';
+    popup.innerHTML = `
+    <div class="daily-login-card">
+        <div class="daily-login-title">Щоденний бонус!</div>
+        <div class="daily-login-subtitle">День ${data.loginStreak} серії</div>
+        <div class="daily-streak-row">${streakHtml}</div>
+        <div class="daily-login-reward">+${data.reward} монет</div>
+        ${data.bonusItem ? `<div class="daily-login-bonus">Бонус: ${data.bonusItem}!</div>` : ''}
+        <button class="daily-login-close" onclick="this.closest('.daily-login-popup').remove()">Забрати</button>
+    </div>`;
+    document.body.appendChild(popup);
+
+    // Auto-close after 10s
+    setTimeout(() => { if (popup.parentNode) popup.remove(); }, 10000);
 }
 
 // v10.4: Auto-init profile handler on any page (sub-pages don't call showMainApp)

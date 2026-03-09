@@ -1,7 +1,16 @@
 /**
- * Event Maestro — AI First CRM
+ * Event Genix — AI First CRM
  * config.js - Константи, конфігурація та глобальний стан
  */
+
+// ==========================================
+// UTILITIES
+// ==========================================
+
+function debounce(fn, ms) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
 
 // ==========================================
 // ПРОГРАМИ (з тривалістю в назві)
@@ -159,15 +168,20 @@ function formatPrice(amount) {
  */
 function initDarkMode() {
     const saved = localStorage.getItem('pzp_dark_mode');
+    const autoEnabled = localStorage.getItem('pzp_autoNight') !== 'false';
     let isDark;
     if (saved === 'true') {
         isDark = true;
     } else if (saved === 'false') {
         isDark = false;
-    } else {
-        // Авто: темна тема з 20:00 до 07:00
+    } else if (autoEnabled) {
+        // Авто: темна тема з configurable часу (default 19:00-07:00)
         const hour = new Date().getHours();
-        isDark = hour >= 20 || hour < 7;
+        const autoStart = parseInt(localStorage.getItem('pzp_night_start') || '19', 10);
+        const autoEnd = parseInt(localStorage.getItem('pzp_night_end') || '7', 10);
+        isDark = (autoStart > autoEnd) ? (hour >= autoStart || hour < autoEnd) : (hour >= autoStart && hour < autoEnd);
+    } else {
+        isDark = false;
     }
     document.body.classList.toggle('dark-mode', isDark);
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
@@ -258,4 +272,77 @@ function getProductsSync() {
         return AppState.products;
     }
     return PROGRAMS;
+}
+
+// v21.14.0: Auto-init dark mode on all pages that load config.js
+initDarkMode();
+
+// v21.15.0: Fallback showNotification for pages without ui.js
+// Provides toast functionality for ws.js offline/reconnect indicators
+if (typeof showNotification === 'undefined') {
+    window.showNotification = function(message, type) {
+        let container = document.getElementById('toastContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'toast-container';
+            container.setAttribute('aria-live', 'polite');
+            document.body.appendChild(container);
+        }
+        const toast = document.createElement('div');
+        toast.className = 'toast' + (type ? ' ' + type : '');
+        toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function() {
+            toast.classList.add('toast-exit');
+            setTimeout(function() { toast.remove(); }, 300);
+        }, 3000);
+    };
+}
+
+// v22.8.0: Fallback confirmModal for pages without ui.js
+if (typeof confirmModal === 'undefined') {
+    window.confirmModal = function(message, options) {
+        options = options || {};
+        var icons = { danger: '🗑️', success: '✅', warning: '⚠️' };
+        return new Promise(function(resolve) {
+            var okText = options.okText || 'Підтвердити';
+            var cancelText = options.cancelText || 'Скасувати';
+            var type = options.type || 'warning';
+            var icon = icons[type] || '❓';
+            var closed = false;
+
+            var overlay = document.createElement('div');
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML =
+                '<div class="confirm-dialog ' + type + '">' +
+                    '<div class="confirm-icon">' + icon + '</div>' +
+                    '<div class="confirm-message">' + message + '</div>' +
+                    '<div class="confirm-actions">' +
+                        '<button class="confirm-btn confirm-cancel">' + cancelText + '</button>' +
+                        '<button class="confirm-btn confirm-ok ' + type + '">' + okText + '</button>' +
+                    '</div>' +
+                '</div>';
+
+            function close(result) {
+                if (closed) return;
+                closed = true;
+                overlay.classList.add('confirm-exit');
+                document.removeEventListener('keydown', onKey);
+                setTimeout(function() { overlay.remove(); }, 200);
+                resolve(result);
+            }
+
+            overlay.querySelector('.confirm-cancel').addEventListener('click', function() { close(false); });
+            overlay.querySelector('.confirm-ok').addEventListener('click', function() { close(true); });
+            overlay.addEventListener('click', function(e) { if (e.target === overlay) close(false); });
+
+            function onKey(e) { if (e.key === 'Escape') close(false); }
+            document.addEventListener('keydown', onKey);
+
+            document.body.appendChild(overlay);
+            requestAnimationFrame(function() { overlay.querySelector('.confirm-ok').focus(); });
+        });
+    };
 }

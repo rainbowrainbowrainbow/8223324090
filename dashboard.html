@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Дашборд</title>
+    <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Genix">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=22.9.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.9.0">
+    <link rel="stylesheet" href="css/pages.css?v=22.9.0">
+    <link rel="stylesheet" href="css/modals.css?v=22.9.0">
+    <link rel="stylesheet" href="css/dashboard.css?v=22.9.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.9.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.9.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+    <!-- Login screen (shared pattern) -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-container">
+            <div class="login-logo">
+                <img src="images/gear-logo.svg" alt="Event Genix" class="login-logo-img">
+            </div>
+            <h1>Event Genix</h1>
+            <p class="login-subtitle">AI First CRM v22.9.0</p>
+            <form id="loginForm" onsubmit="return false;">
+                <input type="text" id="loginUsername" placeholder="Логін" autocomplete="username" required aria-label="Логін">
+                <input type="password" id="loginPassword" placeholder="Пароль" autocomplete="current-password" required aria-label="Пароль">
+                <button type="submit" class="btn-login" id="loginBtn">Увійти</button>
+                <div id="loginError" class="login-error hidden"></div>
+            </form>
+        </div>
+    </div>
+
+    <div id="mainApp" class="hidden">
+        <!-- Sidebar -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-logo">
+                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                <div class="em-logo">
+                    <span class="em-logo-title">Event Genix</span>
+                    <span class="em-logo-sub">AI First CRM</span>
+                </div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks">
+                <!-- Populated by sidebar.js -->
+            </nav>
+        </aside>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="logo">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                </div>
+                <nav class="header-nav">
+                    <a href="/dashboard" class="nav-link active"><span class="nav-icon">🏠</span> <span class="nav-text">Дашборд</span></a>
+                    <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
+                    <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
+                </nav>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name" role="button" tabindex="0" title="Особистий кабінет"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container">
+            <div class="dashboard-page">
+                <div class="dashboard-header">
+                    <div>
+                        <h1>Дашборд</h1>
+                        <div class="dashboard-greeting" id="dashboardGreeting"></div>
+                    </div>
+                    <div class="dashboard-actions">
+                        <button class="dashboard-btn" onclick="DashboardPage.openSettings()">Налаштувати</button>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid" id="dashboardGrid">
+                    <div class="widget-loading">Завантаження...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Sidebar overlay -->
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+    <!-- Toast container -->
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+    <!-- Profile modal -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-wide">
+            <span class="modal-close">&times;</span>
+            <div id="profileContent"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/config.js?v=22.9.0"></script>
+    <script src="js/api.js?v=22.9.0"></script>
+    <script src="js/auth.js?v=22.9.0"></script>
+    <script src="js/components/sidebar.js?v=22.9.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/dashboard-page.js?v=22.9.0"></script>
+    <script>
+    // Login handler
+    document.getElementById('loginForm').addEventListener('submit', async () => {
+        const username = document.getElementById('loginUsername').value;
+        const password = document.getElementById('loginPassword').value;
+        const errorEl = document.getElementById('loginError');
+        errorEl.classList.add('hidden');
+
+        const result = await login(username, password);
+        if (!result.success) {
+            errorEl.textContent = result.error;
+            errorEl.classList.remove('hidden');
+        } else {
+            // Redirect to dashboard after login
+            if (window.location.pathname !== '/dashboard') {
+                window.location.href = '/dashboard';
+            } else {
+                DashboardPage.init();
+            }
+        }
+    });
+
+    // Logout handler
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+
+    // Check session on load
+    (async function() {
+        const token = localStorage.getItem('pzp_token');
+        if (token) {
+            const user = await apiVerifyToken();
+            if (user) {
+                AppState.currentUser = user;
+                document.getElementById('loginScreen').classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+                document.getElementById('currentUser').textContent = user.name;
+                return;
+            }
+        }
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('mainApp').classList.add('hidden');
+    })();
+    </script>
+</body>
+</html>

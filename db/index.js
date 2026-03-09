@@ -175,11 +175,14 @@ async function initDatabase() {
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
                 password_hash VARCHAR(255) NOT NULL,
-                role VARCHAR(20) NOT NULL DEFAULT 'user',
+                role VARCHAR(50) NOT NULL DEFAULT 'admin',
                 name VARCHAR(100) NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active)');
 
         // Seed default users if table is empty
         // LLM HINT: Test user is admin/admin123. Real users have Ukrainian names.
@@ -187,16 +190,16 @@ async function initDatabase() {
         const userCount = await pool.query('SELECT COUNT(*) FROM users');
         if (parseInt(userCount.rows[0].count) === 0) {
             const defaultUsers = [
-                { username: 'admin', password: 'admin123', role: 'admin', name: 'Адмін' },
-                { username: 'Vitalina', password: 'Vitalina109', role: 'admin', name: 'Віталіна' },
-                { username: 'Dasha', password: 'Dasha743', role: 'admin', name: 'Даша' },
-                { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
-                { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
-                { username: 'Animator', password: 'Animator612', role: 'admin', name: 'Аніматор' },
-                { username: 'Anli', password: 'Anli384', role: 'admin', name: 'Анлі' },
-                { username: 'Zhenya', password: 'Zhenya527', role: 'admin', name: 'Женя' },
-                { username: 'Lera', password: 'Lera691', role: 'admin', name: 'Лера' },
-                { username: 'Anna', password: 'Anna321', role: 'admin', name: 'Анна' },
+                { username: 'admin', password: 'admin123', role: 'creator', name: 'Адмін' },
+                { username: 'Vitalina', password: 'Vitalina109', role: 'director', name: 'Віталіна' },
+                { username: 'Dasha', password: 'Dasha743', role: 'manager', name: 'Даша' },
+                { username: 'Natalia', password: 'Natalia875', role: 'director', name: 'Наталія' },
+                { username: 'Sergey', password: 'Sergey232', role: 'creator', name: 'Сергій' },
+                { username: 'Animator', password: 'Animator612', role: 'animator', name: 'Аніматор' },
+                { username: 'Anli', password: 'Anli384', role: 'manager', name: 'Анлі' },
+                { username: 'Zhenya', password: 'Zhenya527', role: 'animator', name: 'Женя' },
+                { username: 'Lera', password: 'Lera691', role: 'animator', name: 'Лера' },
+                { username: 'Anna', password: 'Anna321', role: 'animator', name: 'Анна' },
                 { username: 'Artem', password: 'Arte529', role: 'admin', name: 'Артем' }
             ];
             for (const u of defaultUsers) {
@@ -224,15 +227,15 @@ async function initDatabase() {
         );
         if (resetCheck.rows.length === 0) {
             const defaultUsers = [
-                { username: 'admin', password: 'admin123', role: 'admin', name: 'Адмін' },
-                { username: 'Vitalina', password: 'Vitalina109', role: 'admin', name: 'Віталіна' },
-                { username: 'Dasha', password: 'Dasha743', role: 'admin', name: 'Даша' },
-                { username: 'Natalia', password: 'Natalia875', role: 'admin', name: 'Наталія' },
-                { username: 'Sergey', password: 'Sergey232', role: 'admin', name: 'Сергій' },
-                { username: 'Animator', password: 'Animator612', role: 'admin', name: 'Аніматор' },
-                { username: 'Anli', password: 'Anli384', role: 'admin', name: 'Анлі' },
-                { username: 'Zhenya', password: 'Zhenya527', role: 'admin', name: 'Женя' },
-                { username: 'Lera', password: 'Lera691', role: 'admin', name: 'Лера' }
+                { username: 'admin', password: 'admin123', role: 'creator', name: 'Адмін' },
+                { username: 'Vitalina', password: 'Vitalina109', role: 'director', name: 'Віталіна' },
+                { username: 'Dasha', password: 'Dasha743', role: 'manager', name: 'Даша' },
+                { username: 'Natalia', password: 'Natalia875', role: 'director', name: 'Наталія' },
+                { username: 'Sergey', password: 'Sergey232', role: 'creator', name: 'Сергій' },
+                { username: 'Animator', password: 'Animator612', role: 'animator', name: 'Аніматор' },
+                { username: 'Anli', password: 'Anli384', role: 'manager', name: 'Анлі' },
+                { username: 'Zhenya', password: 'Zhenya527', role: 'animator', name: 'Женя' },
+                { username: 'Lera', password: 'Lera691', role: 'animator', name: 'Лера' }
             ];
             let created = 0, updated = 0;
             for (const u of defaultUsers) {
@@ -498,6 +501,12 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_lines_by_date_date ON lines_by_date(date)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)');
 
+        // v20.9.26: Performance indexes
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_program_id ON bookings(program_id)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_history_action ON history(action)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by)');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_lines_by_date_line_date ON lines_by_date(line_id, date)');
+
         // v8.3: Booking automation rules
         await pool.query(`
             CREATE TABLE IF NOT EXISTS automation_rules (
@@ -575,6 +584,26 @@ async function initDatabase() {
         // v8.7: Season column for seasonal certificate backgrounds
         await pool.query(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS season VARCHAR(10) DEFAULT 'winter'`);
 
+        // v15.1: CRM — customers table (created early because certificates references it)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS customers (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                phone VARCHAR(30),
+                instagram VARCHAR(100),
+                child_name VARCHAR(200),
+                child_birthday DATE,
+                source VARCHAR(50),
+                notes TEXT,
+                total_bookings INTEGER DEFAULT 0,
+                total_spent INTEGER DEFAULT 0,
+                first_visit DATE,
+                last_visit DATE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
         // v15.1: Link certificates to customers
         await pool.query(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)`);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_certificates_customer_id ON certificates(customer_id)');
@@ -600,17 +629,7 @@ async function initDatabase() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_user_action_log_username ON user_action_log(username)');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_user_action_log_created_at ON user_action_log(created_at)');
 
-        // v10.6: Achievements system
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS user_achievements (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) NOT NULL,
-                achievement_key VARCHAR(50) NOT NULL,
-                unlocked_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE(username, achievement_key)
-            )
-        `);
-        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_achievements_username ON user_achievements(username)');
+        // v10.6→v22.4: Achievements system (table managed by migration 032)
 
         // v10.6: User streaks
         await pool.query(`

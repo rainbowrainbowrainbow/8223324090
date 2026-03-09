@@ -3,7 +3,7 @@
  */
 function securityHeaders(req, res, next) {
     res.set('X-Content-Type-Options', 'nosniff');
-    res.set('X-Frame-Options', 'DENY');
+    res.set('X-Frame-Options', 'SAMEORIGIN');
     res.set('X-XSS-Protection', '1; mode=block');
     res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     // v19.14: Content-Security-Policy
@@ -13,8 +13,9 @@ function securityHeaders(req, res, next) {
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data: blob:",
-        "connect-src 'self' ws: wss:",
-        "frame-ancestors 'none'"
+        "connect-src 'self' ws: wss: https://*.up.railway.app https://docs.google.com",
+        "frame-src 'self'",
+        "frame-ancestors 'self'"
     ].join('; '));
     if (req.secure || req.get('x-forwarded-proto') === 'https') {
         res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');

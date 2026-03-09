@@ -324,6 +324,13 @@
     border-left: 3px solid rgba(0,0,0,0.12);
 }
 
+/* v20.11.0: Keyboard focus ring */
+.booking-block:focus-visible {
+    outline: 2px solid var(--primary, #D4A843);
+    outline-offset: 2px;
+    z-index: 20;
+}
+
 .booking-block:hover {
     transform: translateY(-2px);
     z-index: 20;
@@ -337,6 +344,10 @@
 .booking-block.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #DB2777 100%); }
 .booking-block.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }
 .booking-block.custom { background: linear-gradient(135deg, var(--custom) 0%, #475569 100%); }
+/* v20.9.14: Banquet block style */
+.booking-block.banquet-block { border-left: 4px solid #F59E0B; background: rgba(245, 158, 11, 0.15); }
+.booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
+.mini-booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
 
 .booking-block .title {
     white-space: nowrap;

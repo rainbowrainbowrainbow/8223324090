@@ -3,18 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Event Maestro | HR</title>
-    <meta name="description" content="Event Maestro — AI First CRM для дитячих розважальних центрів">
-    <meta property="og:title" content="Event Maestro">
+    <title>Event Genix | HR</title>
+    <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=18.0">
-    <link rel="stylesheet" href="css/layout.css?v=18.0">
-    <link rel="stylesheet" href="css/pages.css?v=18.0">
-    <link rel="stylesheet" href="css/modals.css?v=18.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=18.0">
-    <link rel="stylesheet" href="css/responsive.css?v=18.0">
+    <link rel="stylesheet" href="css/base.css?v=22.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=22.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=22.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         /* ==========================================
            HR TABS
@@ -51,8 +51,10 @@
             color: var(--primary);
             box-shadow: var(--shadow-xs);
         }
-        body.dark-mode .hr-tabs { background: var(--gray-800); }
-        body.dark-mode .hr-tab.active { background: var(--gray-700); color: var(--primary-light); }
+        body.dark-mode .hr-tabs { background: #1E1E38; }
+        body.dark-mode .hr-tab { color: #9CA3AF; }
+        body.dark-mode .hr-tab:hover { color: #E2E8F0; background: rgba(255,255,255,0.05); }
+        body.dark-mode .hr-tab.active { background: #2A2A4A; color: var(--primary-light); }
 
         .hr-tab-content { display: none; }
         .hr-tab-content.active { display: block; }
@@ -653,26 +655,33 @@
         body.dark-mode .hr-team-card,
         body.dark-mode .hr-report-stat,
         body.dark-mode .hr-modal {
-            background: var(--gray-800);
-            border-color: var(--gray-700);
+            background: #2A2A4A;
+            border-color: #3D3D5C;
+            color: #E2E8F0;
         }
+        body.dark-mode .hr-summary-card .hr-summary-value { color: inherit; }
+        body.dark-mode .hr-summary-card .hr-summary-label { color: #9CA3AF; }
         body.dark-mode .hr-staff-name,
         body.dark-mode .hr-team-name,
         body.dark-mode .hr-today-date,
         body.dark-mode .hr-week-label,
         body.dark-mode .hr-modal h3 {
-            color: var(--gray-100);
+            color: #E2E8F0;
         }
-        body.dark-mode .hr-schedule-table th { background: var(--gray-800); color: var(--gray-400); border-color: var(--gray-700); }
-        body.dark-mode .hr-schedule-table td { border-color: var(--gray-700); }
-        body.dark-mode .hr-schedule-table td:first-child { background: var(--gray-800); }
-        body.dark-mode .hr-schedule-wrap { border-color: var(--gray-700); }
-        body.dark-mode .hr-report-table { background: var(--gray-800); border-color: var(--gray-700); }
-        body.dark-mode .hr-report-table th { background: var(--gray-900); border-color: var(--gray-700); }
-        body.dark-mode .hr-report-table td { border-color: var(--gray-700); color: var(--gray-300); }
-        body.dark-mode .hr-context-menu { background: var(--gray-800); border-color: var(--gray-700); }
-        body.dark-mode .hr-context-item { color: var(--gray-300); }
-        body.dark-mode .hr-context-item:hover { background: var(--gray-700); }
+        body.dark-mode .hr-staff-role,
+        body.dark-mode .hr-staff-dept { color: #9CA3AF; }
+        body.dark-mode .hr-clock-btn { background: #3D3D5C; color: #E2E8F0; border-color: #4A4A6A; }
+        body.dark-mode .hr-clock-btn:hover { background: #4A4A6A; }
+        body.dark-mode .hr-schedule-table th { background: #1E1E38; color: #9CA3AF; border-color: #3D3D5C; }
+        body.dark-mode .hr-schedule-table td { border-color: #3D3D5C; color: #E2E8F0; }
+        body.dark-mode .hr-schedule-table td:first-child { background: #1E1E38; }
+        body.dark-mode .hr-schedule-wrap { border-color: #3D3D5C; }
+        body.dark-mode .hr-report-table { background: #2A2A4A; border-color: #3D3D5C; }
+        body.dark-mode .hr-report-table th { background: #1E1E38; border-color: #3D3D5C; color: #9CA3AF; }
+        body.dark-mode .hr-report-table td { border-color: #3D3D5C; color: #E2E8F0; }
+        body.dark-mode .hr-context-menu { background: #2A2A4A; border-color: #3D3D5C; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+        body.dark-mode .hr-context-item { color: #E2E8F0; }
+        body.dark-mode .hr-context-item:hover { background: #3D3D5C; }
 
         /* ==========================================
            RESPONSIVE
@@ -860,15 +869,15 @@
         .ai-task-form button:hover { background: #4F46E5; }
 
         /* Dark mode AI workers */
-        body.dark-mode .ai-worker { background: var(--gray-800); border-color: var(--gray-700); }
-        body.dark-mode .ai-worker-name { color: var(--gray-100); }
-        body.dark-mode .ai-worker-role { color: var(--gray-300); }
-        body.dark-mode .ai-worker-desc { color: var(--gray-400); }
-        body.dark-mode .ai-worker-toggle { background: var(--gray-700); border-color: var(--gray-600); color: var(--gray-300); }
-        body.dark-mode .ai-worker-toggle:hover { background: var(--gray-600); }
-        body.dark-mode .ai-worker-panel { background: var(--gray-700); border-color: var(--gray-600); color: var(--gray-400); }
-        body.dark-mode .ai-worker-panel h5 { color: var(--gray-300); }
-        body.dark-mode .ai-task-form input { background: var(--gray-700); border-color: var(--gray-600); color: var(--gray-200); }
+        body.dark-mode .ai-worker { background: #2A2A4A; border-color: #3D3D5C; }
+        body.dark-mode .ai-worker-name { color: #E2E8F0; }
+        body.dark-mode .ai-worker-role { color: #9CA3AF; }
+        body.dark-mode .ai-worker-desc { color: #9CA3AF; }
+        body.dark-mode .ai-worker-toggle { background: #3D3D5C; border-color: #4A4A6A; color: #E2E8F0; }
+        body.dark-mode .ai-worker-toggle:hover { background: #4A4A6A; }
+        body.dark-mode .ai-worker-panel { background: #1E1E38; border-color: #3D3D5C; color: #9CA3AF; }
+        body.dark-mode .ai-worker-panel h5 { color: #E2E8F0; }
+        body.dark-mode .ai-task-form input { background: #1E1E38; border-color: #3D3D5C; color: #E2E8F0; }
     </style>
 </head>
 <body>
@@ -884,39 +893,21 @@
         <!-- Бокове меню -->
         <aside class="sidebar-nav" id="sidebarNav">
             <div class="sidebar-logo">
-                <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
+                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
                 <div class="em-logo">
-                    <span class="em-logo-title">Event Maestro</span>
+                    <span class="em-logo-title">Event Genix</span>
                     <span class="em-logo-sub">AI First CRM</span>
                 </div>
             </div>
-            <nav class="sidebar-links">
-                <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
-                <a href="/programs" class="nav-link"><span class="nav-icon">П</span> <span class="nav-text">Програми</span></a>
-                <a href="/staff" class="nav-link"><span class="nav-icon">Г</span> <span class="nav-text">Графік</span></a>
-                <a href="/hr" class="nav-link active"><span class="nav-icon">H</span> <span class="nav-text">HR</span></a>
-                <a href="/designs" class="nav-link"><span class="nav-icon">Д</span> <span class="nav-text">Дизайни</span></a>
-                <a href="/customers" class="nav-link"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
-                <a href="/finance" class="nav-link"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
-                <a href="/analytics" class="nav-link"><span class="nav-icon">А</span> <span class="nav-text">Аналітика</span></a>
-                <a href="/warehouse" class="nav-link"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
-                <a href="/center" class="nav-link"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
-                <a href="/art-director" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
-                <a href="/demo" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
-                <a href="/status" class="nav-link"><span class="nav-icon nav-icon--status">St</span> <span class="nav-text">Статус</span></a>
-                <a href="/kleshnya" class="nav-link nav-link-kleshnya"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
+            <nav class="sidebar-links" id="sidebarLinks">
+                <!-- Populated by sidebar.js -->
             </nav>
         </aside>
 
         <header class="header">
             <div class="header-content">
                 <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Maestro" class="logo-img-small">
-                    <div class="em-logo">
-                        <span class="em-logo-title">Event Maestro</span>
-                        <span class="em-logo-sub">AI First CRM</span>
-                    </div>
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
                 </div>
                 <nav class="header-nav">
                     <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
@@ -926,8 +917,6 @@
                     <a href="/warehouse" class="nav-link"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
                     <a href="/customers" class="nav-link"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
                     <a href="/finance" class="nav-link"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
-                    <a href="/analytics" class="nav-link"><span class="nav-icon">А</span> <span class="nav-text">Аналітика</span></a>
-                    <a href="/kleshnya" class="nav-link nav-link-kleshnya"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
                 </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
@@ -986,7 +975,7 @@
             <!-- TAB 3: TEAM -->
             <div id="tab-team" class="hr-tab-content">
                 <div class="hr-team-filters">
-                    <input type="text" id="teamSearch" class="hr-team-search" placeholder="Пошук за ім'ям або телефоном...">
+                    <input type="text" id="teamSearch" class="hr-team-search" aria-label="Пошук за ім'ям або телефоном..." placeholder="Пошук за ім'ям або телефоном...">
                     <select id="teamRoleFilter" class="hr-team-select">
                         <option value="">Всі ролі</option>
                         <option value="animator">Аніматор</option>
@@ -1088,7 +1077,7 @@
             </div>
             <div class="form-group">
                 <label>Телефон</label>
-                <input type="tel" id="editPhone" placeholder="+380...">
+                <input type="tel" id="editPhone" aria-label="+380..." placeholder="+380...">
             </div>
             <div class="form-group">
                 <label>Дата народження</label>
@@ -1096,11 +1085,11 @@
             </div>
             <div class="form-group">
                 <label>Екстрений контакт</label>
-                <input type="text" id="editEmergencyContact" placeholder="Мама, Петренко О.В.">
+                <input type="text" id="editEmergencyContact" aria-label="Мама, Петренко О.В." placeholder="Мама, Петренко О.В.">
             </div>
             <div class="form-group">
                 <label>Телефон екстр. контакту</label>
-                <input type="tel" id="editEmergencyPhone" placeholder="+380...">
+                <input type="tel" id="editEmergencyPhone" aria-label="+380..." placeholder="+380...">
             </div>
             <div class="form-group">
                 <label>Ставка грн/год</label>
@@ -1108,7 +1097,23 @@
             </div>
             <div class="form-group">
                 <label>Telegram ID</label>
-                <input type="text" id="editTelegramId" placeholder="123456789">
+                <input type="text" id="editTelegramId" aria-label="123456789" placeholder="123456789">
+            </div>
+            <div class="form-group">
+                <label>Telegram Username</label>
+                <input type="text" id="editTelegramUsername" aria-label="@username" placeholder="@username">
+            </div>
+            <div class="form-group">
+                <label>Тип контракту</label>
+                <select id="editContractType">
+                    <option value="parttime">Часткова зайнятість</option>
+                    <option value="fulltime">Повна зайнятість</option>
+                    <option value="freelance">Фріланс</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Навички (через кому)</label>
+                <input type="text" id="editSkills" aria-label="анімація, квести, МК..." placeholder="анімація, квести, МК...">
             </div>
             <div class="form-group">
                 <label>Нотатки</label>
@@ -1136,7 +1141,7 @@
             </div>
             <div class="form-group">
                 <label>Причина корекції</label>
-                <textarea id="corrNotes" rows="2" placeholder="Забув відмітитись..."></textarea>
+                <textarea id="corrNotes" rows="2" aria-label="Забув відмітитись..." placeholder="Забув відмітитись..."></textarea>
             </div>
             <div class="hr-modal-actions">
                 <button id="corrCancel" class="btn-secondary">Скасувати</button>
@@ -1157,9 +1162,11 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=18.0"></script>
-    <script src="js/api.js?v=18.0"></script>
-    <script src="js/auth.js?v=18.0"></script>
-    <script src="js/hr-page.js?v=18.0"></script>
+    <script src="js/config.js?v=22.3.0"></script>
+    <script src="js/api.js?v=22.3.0"></script>
+    <script src="js/auth.js?v=22.3.0"></script>
+    <script src="js/components/sidebar.js?v=22.3.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/hr-page.js?v=22.3.0"></script>
 </body>
 </html>

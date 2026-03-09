@@ -46,12 +46,13 @@ let pollTimer = null;
 // ==========================================
 
 function showNotification(message, type = '') {
-    const el = document.getElementById('notification');
-    if (!el) return;
-    document.getElementById('notificationText').textContent = message;
-    el.className = 'notification' + (type ? ` ${type}` : '');
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 3000);
+    let c = document.getElementById('toastContainer');
+    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+    const t = document.createElement('div');
+    t.className = 'toast' + (type ? ' ' + type : '');
+    t.textContent = message;
+    c.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
 function escapeHtml(str) {
@@ -152,7 +153,8 @@ async function initPage() {
 
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
-    canManage = user.role === 'admin' || user.role === 'manager';
+    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    canManage = MANAGE_ROLES.includes(user.role);
 
     document.getElementById('logoutBtn').addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
@@ -311,7 +313,7 @@ function renderToday(data) {
 async function handleClock(staffId, action, name, workedMin) {
     if (action === 'out') {
         const worked = fmtMinutes(workedMin) || 'невідомо';
-        if (!confirm(`Завершити зміну для ${name}?\nВідпрацьовано: ${worked}`)) return;
+        if (!await confirmModal(`Завершити зміну для ${name}?\nВідпрацьовано: ${worked}`, { type: 'warning', okText: 'Завершити' })) return;
     }
     const endpoint = action === 'out' ? '/clock-out' : '/clock-in';
     const data = await hrFetch(endpoint, {
@@ -607,7 +609,7 @@ async function saveShift() {
 
 async function deleteShift() {
     if (!editingShift || !editingShift.existing) return;
-    if (!confirm('Видалити зміну?')) return;
+    if (!await confirmModal('Видалити зміну?', { type: 'danger', okText: 'Видалити' })) return;
     const data = await hrFetch(`/shifts/${editingShift.existing.id}`, { method: 'DELETE' });
     if (data && data.success) {
         showNotification('Зміну видалено', 'success');
@@ -625,7 +627,7 @@ async function copyWeek() {
     nextWeek.setDate(nextWeek.getDate() + 7);
     const targetWeek = formatDate(nextWeek);
 
-    if (!confirm(`Копіювати розклад тижня ${sourceWeek} → ${targetWeek}?`)) return;
+    if (!await confirmModal(`Копіювати розклад тижня ${sourceWeek} → ${targetWeek}?`, { type: 'warning', okText: 'Копіювати' })) return;
 
     const data = await hrFetch('/shifts/copy-week', {
         method: 'POST',
@@ -725,6 +727,9 @@ function openStaffEdit(staffId) {
     document.getElementById('editEmergencyPhone').value = s.emergency_phone || '';
     document.getElementById('editHourlyRate').value = s.hourly_rate || 0;
     document.getElementById('editTelegramId').value = s.telegram_id || '';
+    document.getElementById('editTelegramUsername').value = s.telegram_username || '';
+    document.getElementById('editContractType').value = s.contract_type || 'parttime';
+    document.getElementById('editSkills').value = (s.skills || []).join(', ');
     document.getElementById('editNotes').value = s.notes || '';
 
     document.getElementById('staffEditModal').style.display = 'flex';
@@ -740,6 +745,9 @@ async function saveStaffEdit() {
         emergency_phone: document.getElementById('editEmergencyPhone').value || null,
         hourly_rate: parseFloat(document.getElementById('editHourlyRate').value) || 0,
         telegram_id: document.getElementById('editTelegramId').value || null,
+        telegram_username: document.getElementById('editTelegramUsername').value || null,
+        contract_type: document.getElementById('editContractType').value || 'parttime',
+        skills: document.getElementById('editSkills').value ? document.getElementById('editSkills').value.split(',').map(s => s.trim()).filter(Boolean) : null,
         notes: document.getElementById('editNotes').value || null
     };
 

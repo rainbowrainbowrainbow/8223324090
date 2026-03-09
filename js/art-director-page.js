@@ -53,12 +53,13 @@ const NEXT_STATUS = {
 // ==========================================
 
 function showNotification(message, type = '') {
-    const el = document.getElementById('notification');
-    if (!el) return;
-    document.getElementById('notificationText').textContent = message;
-    el.className = 'notification' + (type ? ` ${type}` : '');
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 3000);
+    let c = document.getElementById('toastContainer');
+    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+    const t = document.createElement('div');
+    t.className = 'toast' + (type ? ' ' + type : '');
+    t.textContent = message;
+    c.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
 // ==========================================
@@ -441,7 +442,7 @@ async function openContentDetail(id) {
 }
 
 async function deleteContent(id) {
-    if (!confirm('Видалити цей контент?')) return;
+    if (!await confirmModal('Видалити цей контент?', { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDelete(`/content/${id}`);
     if (result.success) {
         showNotification('Контент видалено', 'success');
@@ -694,7 +695,7 @@ function renderBrandItem(item, category) {
 }
 
 async function deleteBrandItem(id) {
-    if (!confirm('Видалити це правило?')) return;
+    if (!await confirmModal('Видалити це правило?', { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDelete(`/brand/${id}`);
     if (result.success) {
         showNotification('Правило видалено', 'success');
@@ -758,7 +759,8 @@ async function initAuth() {
     }
 
     AppState.currentUser = user;
-    isAdminUser = user.role === 'admin';
+    const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+    isAdminUser = ADMIN_ROLES.includes(user.role);
 
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
@@ -872,6 +874,13 @@ async function initArtDirectorPage() {
 
     setupTabs();
     setupModals();
+
+    // v20.8.0: Handle ?tab= URL parameter (for programs/designs deep-link)
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    if (urlTab) {
+        const tabBtn = document.querySelector(`.artdir-tab[data-tab="${urlTab}"]`);
+        if (tabBtn) tabBtn.click();
+    }
 
     // Load initial data
     const [_, templatesData] = await Promise.all([

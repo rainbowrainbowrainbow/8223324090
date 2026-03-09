@@ -84,7 +84,7 @@ async function runMigrations(pool) {
             log.info('Migration applied: ' + version);
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});
-            log.error('Migration failed: ' + version, err);
+            log.error('Migration failed: ' + version + ' — ' + err.message + (err.detail ? ' | ' + err.detail : '') + (err.hint ? ' | hint: ' + err.hint : ''));
             throw err;
         } finally {
             client.release();

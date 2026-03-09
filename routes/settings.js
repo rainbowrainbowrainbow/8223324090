@@ -105,9 +105,16 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
     }
 });
 
+// v20.13: Version endpoint — returns package.json version
+router.get('/version', (req, res) => {
+    const pkg = require('../package.json');
+    res.json({ version: pkg.version, name: pkg.name || 'park-booking' });
+});
+
 // Health check — v19.17: deep health check with DB pool, memory, uptime
 router.get('/health', async (req, res) => {
-    const checks = { database: 'unknown', uptime: process.uptime(), timestamp: new Date().toISOString() };
+    const pkg = require('../package.json');
+    const checks = { version: pkg.version, database: 'unknown', uptime: process.uptime(), timestamp: new Date().toISOString() };
     const mem = process.memoryUsage();
     checks.memory = {
         rss: Math.round(mem.rss / 1024 / 1024) + 'MB',

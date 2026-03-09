@@ -158,6 +158,10 @@ app.use('/api', require('./routes/shop')); // /api/inventory, /api/profile/:id, 
 app.use('/api/notes', require('./routes/notes'));
 app.use('/api/minigame', require('./routes/minigame'));
 
+// v22.5.0: Gamification v2 — Room, Quests, Titles
+app.use('/api/room', require('./routes/room'));
+app.use('/api/quests', require('./routes/quests'));
+
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
 

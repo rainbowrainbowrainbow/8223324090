@@ -126,7 +126,7 @@ router.put('/profile/equip', requireRole(...ANY_ROLE), async (req, res) => {
     const { item_id, slot } = req.body;
     if (!item_id || !slot) return res.status(400).json({ error: 'item_id та slot обов\'язкові' });
 
-    const validSlots = ['background', 'head', 'body', 'hand', 'frame'];
+    const validSlots = ['background', 'head', 'body', 'hand', 'frame', 'effect'];
     if (!validSlots.includes(slot)) return res.status(400).json({ error: 'Невірний слот' });
 
     try {
@@ -167,7 +167,7 @@ router.put('/profile/equip', requireRole(...ANY_ROLE), async (req, res) => {
 // PUT /api/profile/unequip — unequip slot
 router.put('/profile/unequip', requireRole(...ANY_ROLE), async (req, res) => {
     const { slot } = req.body;
-    const validSlots = ['background', 'head', 'body', 'hand', 'frame'];
+    const validSlots = ['background', 'head', 'body', 'hand', 'frame', 'effect'];
     if (!slot || !validSlots.includes(slot)) return res.status(400).json({ error: 'Невірний слот' });
 
     try {

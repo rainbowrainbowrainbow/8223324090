@@ -33,6 +33,8 @@ async function login(username, password) {
         localStorage.setItem('pzp_token', data.token);
         localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
         showMainApp();
+        // v22.5: Check daily login reward
+        checkDailyLogin();
         return { success: true };
     } catch (err) {
         console.error('Login error:', err);
@@ -784,6 +786,52 @@ async function profileLoadMoreActivity() {
     list.insertAdjacentHTML('beforeend', profileRenderActivityItems(data.items));
     window._profileActivityOffset = offset + data.items.length;
     if (data.items.length < 20 && btn) btn.remove();
+}
+
+// v22.5: Daily login reward check
+async function checkDailyLogin() {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        if (!token) return;
+        const r = await fetch('/api/wallet/daily-login', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+        if (data.alreadyClaimed) return;
+        showDailyLoginPopup(data);
+    } catch (e) { /* silent */ }
+}
+
+function showDailyLoginPopup(data) {
+    const REWARDS = [10, 15, 20, 25, 30, 40, 50];
+    let streakHtml = '';
+    for (let i = 0; i < 7; i++) {
+        const isClaimed = i < data.dayIndex - 1;
+        const isToday = i === data.dayIndex - 1;
+        streakHtml += `
+        <div class="streak-day ${isClaimed ? 'claimed' : ''} ${isToday ? 'today' : ''}">
+            <div class="streak-coins">${REWARDS[i]}</div>
+            <div class="streak-label">Д${i + 1}</div>
+        </div>`;
+    }
+
+    const popup = document.createElement('div');
+    popup.className = 'daily-login-popup';
+    popup.innerHTML = `
+    <div class="daily-login-card">
+        <div class="daily-login-title">Щоденний бонус!</div>
+        <div class="daily-login-subtitle">День ${data.loginStreak} серії</div>
+        <div class="daily-streak-row">${streakHtml}</div>
+        <div class="daily-login-reward">+${data.reward} монет</div>
+        ${data.bonusItem ? `<div class="daily-login-bonus">Бонус: ${data.bonusItem}!</div>` : ''}
+        <button class="daily-login-close" onclick="this.closest('.daily-login-popup').remove()">Забрати</button>
+    </div>`;
+    document.body.appendChild(popup);
+
+    // Auto-close after 10s
+    setTimeout(() => { if (popup.parentNode) popup.remove(); }, 10000);
 }
 
 // v10.4: Auto-init profile handler on any page (sub-pages don't call showMainApp)

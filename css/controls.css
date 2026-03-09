@@ -33,6 +33,7 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    position: relative;
 }
 
 .zoom-controls {
@@ -104,6 +105,108 @@
     font-size: var(--font-xs);
     font-weight: 700;
     color: var(--gray-500);
+}
+
+/* ==========================================
+   NIGHT SETTINGS
+   ========================================== */
+
+.btn-night-settings {
+    padding: 6px 8px;
+    border: 1px solid var(--gray-200);
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 14px;
+    min-height: 36px;
+    transition: all 0.15s;
+}
+
+.btn-night-settings:hover {
+    background: var(--gray-100);
+}
+
+.night-settings-panel {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 100;
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    min-width: 220px;
+    margin-top: 4px;
+}
+
+.night-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--gray-600);
+}
+
+.night-settings-row:last-child {
+    margin-bottom: 0;
+}
+
+.night-settings-select {
+    padding: 4px 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--white);
+    color: var(--gray-700);
+    min-height: 32px;
+}
+
+body.dark-mode .night-settings-panel {
+    background: var(--gray-800, #1f2937);
+    border-color: var(--gray-700, #374151);
+}
+
+body.dark-mode .night-settings-row {
+    color: var(--gray-400, #9ca3af);
+}
+
+body.dark-mode .night-settings-select {
+    background: var(--gray-700, #374151);
+    border-color: var(--gray-600, #4b5563);
+    color: var(--gray-300, #d1d5db);
+}
+
+body.dark-mode .btn-night-settings {
+    background: var(--gray-700, #374151);
+    border-color: var(--gray-600, #4b5563);
+}
+
+.btn-reset-auto {
+    width: 100%;
+    padding: 6px 10px;
+    margin-top: 4px;
+    border: 1px solid var(--gray-300);
+    background: var(--gray-50);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--gray-600);
+    transition: all 0.15s;
+}
+
+.btn-reset-auto:hover {
+    background: var(--primary, #6366f1);
+    color: white;
+    border-color: var(--primary, #6366f1);
+}
+
+body.dark-mode .btn-reset-auto {
+    background: var(--gray-700, #374151);
+    border-color: var(--gray-600, #4b5563);
+    color: var(--gray-400, #9ca3af);
 }
 
 /* ==========================================

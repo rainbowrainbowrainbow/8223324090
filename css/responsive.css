@@ -71,6 +71,49 @@
 }
 
 /* ==========================================
+   TABLET PORTRAIT (769px–1023px) — v21.14.0
+   ========================================== */
+
+@media (min-width: 769px) and (max-width: 1023px) {
+    /* Sidebar: narrower overlay on tablet */
+    .sidebar-nav {
+        width: 200px !important;
+    }
+
+    .sidebar-nav.collapsed {
+        width: 56px !important;
+    }
+
+    /* Main content: adapt to narrower sidebar */
+    .main-content,
+    .page-container {
+        margin-left: 200px !important;
+    }
+
+    .sidebar-nav.collapsed ~ .main-content,
+    .sidebar-nav.collapsed ~ .page-container {
+        margin-left: 56px !important;
+    }
+
+    /* Timeline columns: narrower on tablet */
+    .line-header { width: 100px; min-width: 100px; }
+
+    /* Modals: slightly smaller */
+    .modal-content { max-width: 85%; }
+    .modal-wide { max-width: 90%; }
+
+    /* Booking panel: fit within tablet viewport */
+    .booking-panel,
+    .certificates-panel {
+        width: 340px;
+    }
+
+    /* Grid adjustments for dashboard */
+    .dashboard-grid { grid-template-columns: repeat(3, 1fr); }
+    .points-boards-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ==========================================
    MOBILE (<=768px)
    ========================================== */
 
@@ -78,6 +121,17 @@
     /* v7.8.6: Prevent horizontal scroll on mobile */
     html, body {
         overflow-x: hidden;
+    }
+
+    /* v21.14.0: iOS zoom prevention — all inputs 16px+ */
+    input, select, textarea {
+        font-size: 16px !important;
+    }
+
+    /* v21.14.0: WCAG 2.1 touch targets — 44px minimum */
+    button, .btn, [role="button"], a.nav-link,
+    .chip, .tag, .filter-chip, .task-filter-btn {
+        min-height: 44px;
     }
 
     /* v17.10: Sidebar — off-canvas on mobile */
@@ -849,22 +903,6 @@
     .form-section { margin-bottom: 12px; }
     .control-panel { padding: 8px 12px; gap: 8px; }
     .modal-content { max-height: 90vh; }
-}
-
-/* ==========================================
-   KLESHNYA WIDGET — RESPONSIVE (v11.1)
-   ========================================== */
-
-@media (max-width: 480px) {
-    .kleshnya-widget { bottom: 16px; right: 16px; }
-    .kleshnya-fab { width: 52px; height: 52px; }
-    .kleshnya-fab-icon { font-size: 24px; }
-    .kleshnya-fab-ring { inset: -4px; }
-    .kleshnya-fab-sonar { inset: -5px; }
-    .kleshnya-popup { width: calc(100vw - 32px); right: -8px; bottom: 66px; }
-    .kleshnya-q-label { font-size: 10px; }
-    .kleshnya-popup-title { font-size: 11px; letter-spacing: 1px; }
-
 }
 
 /* ==========================================

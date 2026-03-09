@@ -7,12 +7,12 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=20.80">
-    <link rel="stylesheet" href="css/layout.css?v=20.80">
-    <link rel="stylesheet" href="css/pages.css?v=20.80">
-    <link rel="stylesheet" href="css/modals.css?v=20.80">
-    <link rel="stylesheet" href="css/dark-mode.css?v=20.80">
-    <link rel="stylesheet" href="css/responsive.css?v=20.80">
+    <link rel="stylesheet" href="css/base.css?v=22.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=22.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=22.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -587,20 +587,8 @@
                     <span class="em-logo-sub">AI First CRM</span>
                 </div>
             </div>
-            <nav class="sidebar-links">
-                <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
-                <a href="/programs" class="nav-link"><span class="nav-icon">П</span> <span class="nav-text">Програми</span></a>
-                <a href="/staff" class="nav-link active"><span class="nav-icon">Г</span> <span class="nav-text">Графік</span></a>
-                <a href="/hr" class="nav-link"><span class="nav-icon">H</span> <span class="nav-text">HR</span></a>
-                <a href="/designs" class="nav-link"><span class="nav-icon">Д</span> <span class="nav-text">Дизайни</span></a>
-                <a href="/customers" class="nav-link"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
-                <a href="/finance" class="nav-link"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
-                <a href="/warehouse" class="nav-link"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
-                <a href="/center" class="nav-link"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
-                <a href="/art-director" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
-                <a href="/demo" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
-                <a href="/kleshnya" class="nav-link nav-link-kleshnya"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
+            <nav class="sidebar-links" id="sidebarLinks">
+                <!-- Populated by sidebar.js -->
             </nav>
         </aside>
         <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
@@ -685,7 +673,7 @@
             </div>
             <div class="form-group">
                 <label>Примітка</label>
-                <input type="text" id="schNote" placeholder="Необов'язково">
+                <input type="text" id="schNote" aria-label="Необов'язково" placeholder="Необов'язково">
             </div>
             <div class="modal-actions">
                 <button id="schSaveBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
@@ -736,7 +724,7 @@
             </div>
             <div class="form-group">
                 <label>Примітка</label>
-                <input type="text" id="fillNote" placeholder="Необов'язково">
+                <input type="text" id="fillNote" aria-label="Необов'язково" placeholder="Необов'язково">
             </div>
             <div class="modal-actions">
                 <button id="fillSaveBtn" class="btn-page-primary" style="flex:1">Заповнити</button>
@@ -760,10 +748,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=20.80"></script>
-    <script src="js/api.js?v=20.80"></script>
-    <script src="js/auth.js?v=20.80"></script>
-    <script src="js/staff-page.js?v=20.80"></script>
+    <script src="js/config.js?v=22.3.0"></script>
+    <script src="js/api.js?v=22.3.0"></script>
+    <script src="js/auth.js?v=22.3.0"></script>
+    <script src="js/components/sidebar.js?v=22.3.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/staff-page.js?v=22.3.0"></script>
     <script>
     // Sidebar toggle for mobile
     (function(){

@@ -301,6 +301,14 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const actor = req.user?.username || 'system';
         await kleshnya.logTaskAction(parseInt(id), 'updated', null, title, actor);
 
+        // v22.2.0: Gamification — award coins + XP on task completion
+        if (status === 'done' && actor !== 'system') {
+            try {
+                const { onTaskComplete } = require('../services/gamification');
+                onTaskComplete(actor, result.rows[0]).catch(() => {});
+            } catch (e) { /* gamification not ready */ }
+        }
+
         // v19.10: Notify on task assignment
         if (assigned_to) {
             notifyTaskAssignment(result.rows[0], actor).catch(() => {});
@@ -323,6 +331,14 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
         const actor = req.user?.username || 'system';
         const kleshnya = getKleshnya();
         const task = await kleshnya.updateTaskStatus(parseInt(id), status, actor);
+
+        // v22.2.0: Gamification — award coins + XP on task completion
+        if (status === 'done' && actor !== 'system') {
+            try {
+                const { onTaskComplete } = require('../services/gamification');
+                onTaskComplete(actor, task).catch(() => {});
+            } catch (e) { /* gamification not ready */ }
+        }
 
         res.json({ success: true, task });
     } catch (err) {

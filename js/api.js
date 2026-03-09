@@ -567,6 +567,83 @@ async function apiGetProfileActivity(filters = {}) {
     }
 }
 
+// v22.3: Gamification API helpers
+async function apiGamificationProfile(username) {
+    try {
+        const response = await fetch(`${API_BASE}/gamification/profile/${encodeURIComponent(username)}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch { return null; }
+}
+
+async function apiGamificationShop() {
+    try {
+        const response = await fetch(`${API_BASE}/gamification/shop`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch { return null; }
+}
+
+async function apiGamificationBuy(shopItemId) {
+    try {
+        const response = await fetch(`${API_BASE}/gamification/shop/buy`, {
+            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ shopItemId })
+        });
+        if (handleAuthError(response)) return { success: false };
+        return await response.json();
+    } catch { return { success: false }; }
+}
+
+async function apiGamificationEquip(itemId) {
+    try {
+        const response = await fetch(`${API_BASE}/gamification/equip`, {
+            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ itemId })
+        });
+        if (handleAuthError(response)) return { success: false };
+        return await response.json();
+    } catch { return { success: false }; }
+}
+
+async function apiGamificationUnequip(slot) {
+    try {
+        const response = await fetch(`${API_BASE}/gamification/unequip`, {
+            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ slot })
+        });
+        if (handleAuthError(response)) return { success: false };
+        return await response.json();
+    } catch { return { success: false }; }
+}
+
+async function apiGamificationLeaderboard(sortBy) {
+    try {
+        const qs = sortBy ? `?sortBy=${sortBy}` : '';
+        const response = await fetch(`${API_BASE}/gamification/leaderboard${qs}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch { return null; }
+}
+
+async function apiGamificationAchievements() {
+    try {
+        const response = await fetch(`${API_BASE}/gamification/achievements`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch { return null; }
+}
+
+async function apiGamificationCoinHistory() {
+    try {
+        const response = await fetch(`${API_BASE}/gamification/coins/history`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) return null;
+        return await response.json();
+    } catch { return null; }
+}
+
 // v8.4: Certificates API
 async function apiGetCertificates(filters = {}) {
     try {

@@ -7,12 +7,12 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=20.80">
-    <link rel="stylesheet" href="css/layout.css?v=20.80">
-    <link rel="stylesheet" href="css/pages.css?v=20.80">
-    <link rel="stylesheet" href="css/modals.css?v=20.80">
-    <link rel="stylesheet" href="css/dark-mode.css?v=20.80">
-    <link rel="stylesheet" href="css/responsive.css?v=20.80">
+    <link rel="stylesheet" href="css/base.css?v=22.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=22.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=22.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=22.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=22.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -301,20 +301,8 @@
                     <span class="em-logo-sub">AI First CRM</span>
                 </div>
             </div>
-            <nav class="sidebar-links">
-                <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
-                <a href="/programs" class="nav-link"><span class="nav-icon">П</span> <span class="nav-text">Програми</span></a>
-                <a href="/staff" class="nav-link"><span class="nav-icon">Г</span> <span class="nav-text">Графік</span></a>
-                <a href="/hr" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">H</span> <span class="nav-text">HR</span></a>
-                <a href="/designs" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Д</span> <span class="nav-text">Дизайни</span></a>
-                <a href="/customers" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
-                <a href="/finance" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
-                <a href="/warehouse" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
-                <a href="/center" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
-                <a href="/art-director" class="nav-link active sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
-                <a href="/demo" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
-                <a href="/kleshnya" class="nav-link nav-link-kleshnya sidebar-admin-only hidden"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
+            <nav class="sidebar-links" id="sidebarLinks">
+                <!-- Populated by sidebar.js -->
             </nav>
         </aside>
 
@@ -399,7 +387,7 @@
                             <option value="normal">Звичайний</option>
                             <option value="low">Низький</option>
                         </select>
-                        <input type="text" id="pipelineSearch" placeholder="Пошук...">
+                        <input type="text" id="pipelineSearch" aria-label="Пошук..." placeholder="Пошук...">
                         <button class="btn-create" id="btnCreateContent">+ Створити</button>
                     </div>
                     <div class="pipeline-kanban" id="pipelineKanban">
@@ -487,7 +475,7 @@
                         </div>
                         <div>
                             <label style="font-size:12px; font-weight:700; display:block; margin-bottom:4px;">Відповідальний</label>
-                            <input type="text" id="contentAssignee" placeholder="Ім'я" style="width:100%; padding:8px 12px; border:1.5px solid var(--gray-200); border-radius:10px; font-family:inherit; font-size:13px; box-sizing:border-box;">
+                            <input type="text" id="contentAssignee" aria-label="Ім'я" placeholder="Ім'я" style="width:100%; padding:8px 12px; border:1.5px solid var(--gray-200); border-radius:10px; font-family:inherit; font-size:13px; box-sizing:border-box;">
                         </div>
                     </div>
                     <div>
@@ -534,7 +522,7 @@
                     </div>
                     <div>
                         <label style="font-size:12px; font-weight:700; display:block; margin-bottom:4px;">Значення *</label>
-                        <input type="text" id="brandValue" required placeholder="#10B981, Nunito, текст правила..." style="width:100%; padding:8px 12px; border:1.5px solid var(--gray-200); border-radius:10px; font-family:inherit; font-size:14px; box-sizing:border-box;">
+                        <input type="text" id="brandValue" required aria-label="#10B981, Nunito, текст правила..." placeholder="#10B981, Nunito, текст правила..." style="width:100%; padding:8px 12px; border:1.5px solid var(--gray-200); border-radius:10px; font-family:inherit; font-size:14px; box-sizing:border-box;">
                     </div>
                     <div>
                         <label style="font-size:12px; font-weight:700; display:block; margin-bottom:4px;">Опис</label>
@@ -561,10 +549,11 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=20.80"></script>
-    <script src="js/api.js?v=20.80"></script>
-    <script src="js/auth.js?v=20.80"></script>
-    <script src="js/components/sidebar.js?v=20.80"></script>
-    <script src="js/art-director-page.js?v=20.80"></script>
+    <script src="js/config.js?v=22.3.0"></script>
+    <script src="js/api.js?v=22.3.0"></script>
+    <script src="js/auth.js?v=22.3.0"></script>
+    <script src="js/components/sidebar.js?v=22.3.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/art-director-page.js?v=22.3.0"></script>
 </body>
 </html>

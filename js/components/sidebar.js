@@ -1,23 +1,31 @@
 /**
- * js/components/sidebar.js — Unified sidebar navigation (v20.6.0)
+ * js/components/sidebar.js — Unified sidebar navigation (v22.0.0)
  * Single source of truth for sidebar on ALL pages.
  * Determines active page from window.location.pathname.
  * Applies role-based visibility using PAGE_ACCESS from auth.js.
- * v20.6.0: Status badges (building/testing/updated/in_tests/ready)
+ * v22.0.0: Dashboard as HOME, merged pages (leads→customers, designs→art)
  */
 
 const Sidebar = (() => {
+    // v22.0.0: NAV_ITEMS — dashboard as HOME, merged pages
     const NAV_ITEMS = [
-        { href: '/',          icon: 'T',  label: 'Таймлайн' },
+        { href: '/dashboard', icon: 'Д',  label: 'Дашборд' },
+        { href: '/',          icon: 'Т',  label: 'Таймлайн' },
         { href: '/center',    icon: 'Ц',  label: 'Центр' },
         { href: '/tasks',     icon: 'З',  label: 'Задачі' },
-        { href: '/art',       icon: 'А',  label: 'Арт' },
+        { href: '/chat',      icon: 'Чт', label: 'Чат' },
         { href: '/customers', icon: 'К',  label: 'Клієнти' },
-        { href: '/staff',     icon: 'Ш',  label: 'Персонал' },
+        { href: '/programs',  icon: 'П',  label: 'Програми' },
+        { href: '/staff',     icon: 'Ш',  label: 'Команда' },
+        { href: '/art',       icon: 'А',  label: 'Арт' },
         { href: '/warehouse', icon: 'С',  label: 'Склад' },
         { href: '/training',  icon: 'Н',  label: 'Навчання' },
-        { href: '/kleshnya',  icon: 'GX', label: 'Event Genix' },
-        { href: '/settings',  icon: 'Л',  label: 'Налаштування' },
+        { href: '/hr',        icon: 'HR', label: 'Кадри' },
+        { href: '/finance',   icon: 'Ф',  label: 'Фінанси' },
+        { href: '/analytics', icon: 'Ан', label: 'Аналітика' },
+        { href: '/demo',      icon: 'De', label: 'Демо' },
+        { href: '/status',    icon: 'Ст', label: 'Статус' },
+        { href: '/settings',  icon: '⚙',  label: 'Налаштування' },
     ];
 
     // v20.6.0: Status badge config

@@ -595,7 +595,11 @@ async function sendDailyDigest() {
         if (result.success) {
             showNotification('Дайджест відправлено в Telegram!', 'success');
         } else {
-            showNotification(result.reason === 'no_chat_id' ? 'Telegram Chat ID не налаштовано' : 'Помилка відправки дайджесту', 'error');
+            const msgs = {
+                'no_chat_id': 'Telegram Chat ID не налаштовано',
+                'No bot token configured': 'Telegram Bot Token не налаштовано. Встановіть TELEGRAM_BOT_TOKEN'
+            };
+            showNotification(msgs[result.reason] || 'Помилка: ' + (result.reason || 'невідома'), 'error');
         }
     } catch (err) {
         console.error('Digest send error:', err);

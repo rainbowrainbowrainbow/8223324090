@@ -52,8 +52,7 @@ function canViewHistory() {
 
 // v5.8: Quick Stats Bar — removed in v20.9.1 (redundant with dashboard)
 function updateQuickStats() {
-    // v11.1: Init floating Kleshnya widget (non-blocking)
-    initKleshnyaWidget();
+    // v21.12: Kleshnya widget removed
 }
 
 // ==========================================

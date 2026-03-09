@@ -63,49 +63,73 @@ function showLoginScreen() {
     if (improvementFab) improvementFab.classList.add('hidden');
 }
 
-// v20.1.0: Role hierarchy and access helpers
-const ROLE_HIERARCHY = ['waiter', 'animator', 'instructor', 'senior_instructor', 'admin', 'manager', 'senior_manager', 'vice_director', 'director', 'creator'];
+// v22.0.0: Role hierarchy — 25 roles (higher index = more permissions)
+const ROLE_HIERARCHY = [
+    'waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista',
+    'reception', 'animator', 'pastry_chef', 'head_pastry', 'cook', 'head_chef',
+    'instructor', 'senior_instructor', 'admin', 'hr', 'it_specialist',
+    'marketer', 'art_director', 'accountant', 'manager', 'senior_manager',
+    'vice_director', 'director', 'creator'
+];
 const ROLE_LEVEL = {};
 ROLE_HIERARCHY.forEach((r, i) => ROLE_LEVEL[r] = i);
 
 const ROLE_NAMES = {
     creator: 'Творець', director: 'Директор', vice_director: 'Заст. директора',
-    senior_manager: 'Старший менеджер', manager: 'Менеджер', admin: 'Адміністратор',
+    senior_manager: 'Старший менеджер', manager: 'Менеджер',
+    accountant: 'Бухгалтер', art_director: 'Арт-директор', marketer: 'Маркетолог',
+    it_specialist: 'IT-спеціаліст', hr: 'HR-менеджер',
+    admin: 'Адміністратор',
     senior_instructor: 'Старший інструктор', instructor: 'Інструктор',
-    animator: 'Аніматор', waiter: 'Офіціант'
+    head_chef: 'Шеф-кухар', cook: 'Кухар', head_pastry: 'Шеф-кондитер', pastry_chef: 'Кондитер',
+    animator: 'Аніматор', reception: 'Рецепція', barista: 'Бариста',
+    wardrobe: 'Гардеробник', cleaning: 'Клінінг', maintenance: 'Технік',
+    dishwasher: 'Посудомийник', waiter: 'Офіціант'
 };
 
+// v22.0.0: Role groups for cleaner access control
+const _MANAGEMENT_UP = ['creator', 'director', 'vice_director', 'senior_manager'];
+const _MANAGER_UP = [..._MANAGEMENT_UP, 'manager'];
+const _ADMIN_UP = [..._MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'];
+const _ALL_STAFF = ROLE_HIERARCHY.filter(r => r !== 'waiter');
+
 const PAGE_ACCESS = {
-    '/':          ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
-    '/tasks':     ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor', 'instructor', 'animator'],
-    '/center':    ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/art':       ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/customers': ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    '/staff':     ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/warehouse': ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/designs':   ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    '/training':  ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
+    '/dashboard': ROLE_HIERARCHY.slice(),
+    '/':          _ALL_STAFF,
+    '/tasks':     _ALL_STAFF,
+    '/chat':      _ALL_STAFF,
+    '/center':    _MANAGEMENT_UP,
+    '/art':       [..._MANAGEMENT_UP, 'art_director'],
+    '/customers': [..._ADMIN_UP, 'reception'],
+    '/staff':     [..._MANAGEMENT_UP, 'hr'],
+    '/warehouse': [..._MANAGEMENT_UP, 'admin'],
+    '/training':  [..._MANAGER_UP, 'senior_instructor', 'instructor'],
     '/settings':  ['creator', 'director'],
-    '/demo':      ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
-    '/programs':  ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'senior_instructor'],
-    '/hr':        ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/finance':   ['creator', 'director'],
-    '/analytics': ['creator', 'director', 'vice_director', 'senior_manager'],
-    '/status':    ['creator', 'director', 'vice_director', 'senior_manager'],
+    '/demo':      _MANAGER_UP,
+    '/programs':  [..._ADMIN_UP, 'senior_instructor'],
+    '/hr':        [..._MANAGEMENT_UP, 'hr'],
+    '/finance':   ['creator', 'director', 'accountant'],
+    '/analytics': _MANAGEMENT_UP,
+    '/status':    _MANAGEMENT_UP,
 };
 
 const ACTION_PERMISSIONS = {
-    create_booking:  ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    edit_booking:    ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'],
-    cancel_booking:  ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
+    create_booking:  [..._ADMIN_UP, 'reception'],
+    edit_booking:    [..._ADMIN_UP, 'reception'],
+    cancel_booking:  _MANAGER_UP,
     delete_booking:  ['creator', 'director'],
     manage_users:    ['creator', 'director'],
-    view_revenue:    ['creator', 'director', 'vice_director', 'senior_manager'],
+    view_revenue:    [..._MANAGEMENT_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
-    export_data:     ['creator', 'director', 'vice_director', 'senior_manager'],
+    export_data:     _MANAGEMENT_UP,
 };
 
 function getUserRole() {
+    // v22.0.0: Test panel support — creator can simulate other roles
+    const testRole = localStorage.getItem('pzp_test_role');
+    if (testRole && AppState.currentUser && AppState.currentUser.role === 'creator') {
+        return testRole;
+    }
     return AppState.currentUser ? AppState.currentUser.role : null;
 }
 
@@ -129,7 +153,8 @@ function canAccessPage(page) {
 
 function isViewer() {
     const role = getUserRole();
-    return role === 'waiter' || role === 'animator' || role === 'instructor';
+    const viewerRoles = ['waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista', 'reception', 'animator', 'pastry_chef', 'cook', 'instructor'];
+    return viewerRoles.includes(role);
 }
 
 function canManageProducts() {
@@ -365,6 +390,7 @@ async function openProfileModal() {
 
         <div class="prof-tabs" role="tablist">
             <button class="prof-tab active" data-tab="today" role="tab">Сьогодні</button>
+            <button class="prof-tab" data-tab="game" role="tab">Гра</button>
             <button class="prof-tab" data-tab="tasks" role="tab">Задачі</button>
             <button class="prof-tab" data-tab="stats" role="tab">Стати</button>
             <button class="prof-tab" data-tab="settings" role="tab">Налашт.</button>
@@ -394,6 +420,7 @@ function _profileRenderTab(tabName, data, achDefs) {
 
     switch (tabName) {
         case 'today': container.innerHTML = _profileTabToday(data); break;
+        case 'game': _profileTabGame(container, data); break;
         case 'tasks': container.innerHTML = _profileTabTasks(data); break;
         case 'stats': container.innerHTML = _profileTabStats(data, achDefs); break;
         case 'settings': container.innerHTML = _profileTabSettings(data); break;
@@ -698,6 +725,235 @@ function _profileTabSettings(data) {
         <div class="prof-section">
             <button class="btn-profile-action prof-logout-btn" onclick="logout()">Вийти з акаунту</button>
         </div>`;
+}
+
+// ==========================================
+// TAB: ГРА (Gamification — achievements, shop, inventory, leaderboard)
+// ==========================================
+let _gameTabData = null;
+let _gameSubTab = 'achievements';
+
+async function _profileTabGame(container, data) {
+    container.innerHTML = '<div class="profile-loading">Завантаження...</div>';
+
+    const username = data.user.username;
+    const [profile, achievements, shop, leaderboard] = await Promise.all([
+        apiGamificationProfile(username),
+        apiGamificationAchievements(),
+        apiGamificationShop(),
+        apiGamificationLeaderboard('xp')
+    ]);
+
+    _gameTabData = { profile, achievements, shop, leaderboard, username };
+
+    if (!profile) {
+        container.innerHTML = '<div class="prof-section"><div class="profile-empty">Гейміфікація недоступна</div></div>';
+        return;
+    }
+
+    _gameSubTab = 'achievements';
+    _renderGameTab(container);
+}
+
+function _renderGameTab(container) {
+    const { profile, achievements, shop, leaderboard } = _gameTabData;
+    const p = profile; // API returns flat object with profile, currency, level, etc.
+    const profileData = p.profile || {};
+    const level = p.level || { level: 1, title: 'Новачок', xp: 0, xpForNext: 100 };
+    const coins = p.currency ? p.currency.coins : 0;
+    const xp = profileData.xp || 0;
+
+    // XP progress
+    const xpForCurrent = level.xpForCurrent || 0;
+    const xpForNext = level.xpForNext || 100;
+    const xpProgress = xpForNext > xpForCurrent ? Math.min(100, Math.round((xp - xpForCurrent) / (xpForNext - xpForCurrent) * 100)) : 100;
+
+    const headerHTML = `
+        <div class="game-profile-header">
+            <div class="game-level-badge">Lv.${level.level}</div>
+            <div class="game-profile-info">
+                <div class="game-title">${level.title || 'Новачок'}</div>
+                <div class="game-xp-bar">
+                    <div class="game-xp-fill" style="width:${xpProgress}%"></div>
+                </div>
+                <div class="game-xp-text">${xp} / ${xpForNext} XP</div>
+            </div>
+            <div class="game-coins">${coins} <span class="game-coin-icon">&#x1FA99;</span></div>
+        </div>
+    `;
+
+    // Sub-tabs
+    const subTabs = [
+        { key: 'achievements', label: 'Досягнення' },
+        { key: 'inventory', label: 'Інвентар' },
+        { key: 'shop', label: 'Магазин' },
+        { key: 'leaderboard', label: 'Лідери' }
+    ];
+    const subTabsHTML = `<div class="game-sub-tabs">${subTabs.map(t =>
+        `<button class="game-sub-tab ${_gameSubTab === t.key ? 'active' : ''}" onclick="_switchGameSubTab('${t.key}')">${t.label}</button>`
+    ).join('')}</div>`;
+
+    let contentHTML = '';
+    switch (_gameSubTab) {
+        case 'achievements': contentHTML = _renderGameAchievements(achievements, profile); break;
+        case 'inventory': contentHTML = _renderGameInventory(); break;
+        case 'shop': contentHTML = _renderGameShop(shop, coins); break;
+        case 'leaderboard': contentHTML = _renderGameLeaderboard(leaderboard); break;
+    }
+
+    container.innerHTML = headerHTML + subTabsHTML + `<div class="game-content">${contentHTML}</div>`;
+}
+
+function _switchGameSubTab(tab) {
+    _gameSubTab = tab;
+    const container = document.getElementById('profTabContent');
+    if (container && _gameTabData) _renderGameTab(container);
+}
+
+function _renderGameAchievements(achievements, profile) {
+    if (!achievements || !Array.isArray(achievements) || achievements.length === 0) {
+        return '<div class="profile-empty">Немає досягнень</div>';
+    }
+    const items = achievements;
+    if (items.length === 0) return '<div class="profile-empty">Немає досягнень</div>';
+
+    const unlocked = items.filter(a => a.unlocked).length;
+    const rarityColors = { common: '#9CA3AF', uncommon: '#34D399', rare: '#60A5FA', epic: '#A78BFA', legendary: '#FBBF24' };
+
+    const html = items.map(a => {
+        const cls = a.unlocked ? 'unlocked' : 'locked';
+        const rarityColor = rarityColors[a.rarity] || '#9CA3AF';
+        const rewardText = a.reward_type === 'coins' ? `${a.reward_value} монет` :
+                          a.reward_type === 'xp' ? `${a.reward_value} XP` : (a.reward_value || '');
+        return `<div class="game-ach-card ${cls}">
+            <div class="game-ach-icon">${a.icon || '?'}</div>
+            <div class="game-ach-body">
+                <div class="game-ach-name">${a.name || a.key}</div>
+                <div class="game-ach-desc">${a.description || ''}</div>
+                ${rewardText ? `<div class="game-ach-reward">${rewardText}</div>` : ''}
+            </div>
+            <div class="game-ach-rarity" style="color:${rarityColor}">${a.rarity || ''}</div>
+        </div>`;
+    }).join('');
+
+    return `<div class="game-ach-header">${unlocked}/${items.length} відкрито</div>${html}`;
+}
+
+function _renderGameInventory() {
+    const profile = _gameTabData.profile || {};
+    const inventory = profile.inventory || [];
+    const equipped = profile.equipped || [];
+
+    if (inventory.length === 0) {
+        return '<div class="profile-empty">Інвентар порожній. Придбайте предмети в магазині!</div>';
+    }
+
+    const equippedIds = new Set(equipped.map(e => e.item_id));
+
+    const html = inventory.map(item => {
+        const isEquipped = equippedIds.has(item.id || item.item_id);
+        return `<div class="game-inv-item ${isEquipped ? 'equipped' : ''}" onclick="_gameToggleEquip(${item.id || item.item_id}, '${item.type || 'badge'}', ${isEquipped})">
+            <div class="game-inv-icon">${item.icon || '?'}</div>
+            <div class="game-inv-name">${item.name || ''}</div>
+            ${isEquipped ? '<div class="game-inv-badge">Активно</div>' : ''}
+        </div>`;
+    }).join('');
+
+    return `<div class="game-inv-grid">${html}</div>`;
+}
+
+function _renderGameShop(shop, coins) {
+    if (!shop || !Array.isArray(shop) || shop.length === 0) {
+        return '<div class="profile-empty">Магазин порожній</div>';
+    }
+
+    const items = shop;
+    const html = items.map(item => {
+        const owned = item.owned;
+        const canBuy = !owned && coins >= (item.price_coins || 0);
+        const featured = item.is_featured ? 'featured' : '';
+        return `<div class="game-shop-item ${featured} ${owned ? 'owned' : ''}">
+            <div class="game-shop-icon">${item.icon || '?'}</div>
+            <div class="game-shop-body">
+                <div class="game-shop-name">${item.name || ''}</div>
+                <div class="game-shop-desc">${item.description || ''}</div>
+                <div class="game-shop-price">${item.price_coins || 0} <span class="game-coin-icon">&#x1FA99;</span></div>
+            </div>
+            <div class="game-shop-action">
+                ${owned ? '<span class="game-shop-owned">Придбано</span>' :
+                  `<button class="game-shop-buy ${canBuy ? '' : 'disabled'}" onclick="_gameBuyItem(${item.id})" ${canBuy ? '' : 'disabled'}>Купити</button>`}
+            </div>
+        </div>`;
+    }).join('');
+
+    return html;
+}
+
+function _renderGameLeaderboard(leaderboard) {
+    if (!leaderboard || !Array.isArray(leaderboard) || leaderboard.length === 0) {
+        return '<div class="profile-empty">Лідерборд порожній</div>';
+    }
+
+    const items = leaderboard;
+    const medalColors = ['#FBBF24', '#CBD5E0', '#CD7F32'];
+    const currentUser = AppState.currentUser?.username;
+
+    const html = items.map((u, i) => {
+        const medal = i < 3 ? `<span style="color:${medalColors[i]}; font-size:18px">${['&#x1F947;','&#x1F948;','&#x1F949;'][i]}</span>` : `<span class="game-lb-rank">${i + 1}</span>`;
+        const isMe = u.username === currentUser;
+        return `<div class="game-lb-row ${isMe ? 'me' : ''}">
+            ${medal}
+            <div class="game-lb-name">${u.display_name || u.username}${isMe ? ' (ви)' : ''}</div>
+            <div class="game-lb-stats">
+                <span class="game-lb-xp">Lv.${u.level || 1}</span>
+                <span class="game-lb-val">${u.xp || 0} XP</span>
+            </div>
+        </div>`;
+    }).join('');
+
+    // Sort buttons
+    const sortBtns = `<div class="game-lb-sort">
+        <button class="game-sub-tab active" onclick="_gameLeaderboardSort('xp')">XP</button>
+        <button class="game-sub-tab" onclick="_gameLeaderboardSort('coins')">Монети</button>
+        <button class="game-sub-tab" onclick="_gameLeaderboardSort('achievements')">Досягнення</button>
+    </div>`;
+
+    return sortBtns + html;
+}
+
+async function _gameBuyItem(shopItemId) {
+    const result = await apiGamificationBuy(shopItemId);
+    if (result.success) {
+        if (typeof showNotification === 'function') showNotification('Придбано!', 'success');
+        // Refresh game tab
+        const container = document.getElementById('profTabContent');
+        if (container && window._profileData) _profileTabGame(container, window._profileData);
+    } else {
+        if (typeof showNotification === 'function') showNotification(result.error || 'Помилка покупки', 'error');
+    }
+}
+
+async function _gameToggleEquip(itemId, type, isEquipped) {
+    let result;
+    if (isEquipped) {
+        result = await apiGamificationUnequip(type);
+    } else {
+        result = await apiGamificationEquip(itemId);
+    }
+    if (result.success) {
+        const container = document.getElementById('profTabContent');
+        if (container && window._profileData) _profileTabGame(container, window._profileData);
+    }
+}
+
+async function _gameLeaderboardSort(sortBy) {
+    const lb = await apiGamificationLeaderboard(sortBy);
+    if (lb && _gameTabData) {
+        _gameTabData.leaderboard = lb;
+        _gameSubTab = 'leaderboard';
+        const container = document.getElementById('profTabContent');
+        if (container) _renderGameTab(container);
+    }
 }
 
 // Quick status change from profile

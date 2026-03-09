@@ -4,6 +4,62 @@
 
 ---
 
+## v22.0.0–v22.3.0 — Dashboard, Gamification, Game Profile (2026-03-08–09)
+
+### v22.3.0 — Game Profile (09.03.2026)
+- Таб "Гра" в профілі (клік на нікнейм) — досягнення, магазин, інвентар, лідерборд
+- XP progress bar, рівень, титул, монети в шапці
+- Купівля предметів і екіпування з профілю
+- Dashboard dark mode fix — картки #2A2A4A з видимими бордерами
+- 8 API helper функцій для gamification, 300 рядків CSS
+
+### v22.2.0 — Gamification MVP (09.03.2026)
+- Gamification service (727 рядків): XP, рівні, монети, стріки
+- Achievement catalog — 20 досягнень з рідкостями та нагородами
+- Character items — backgrounds, frames, hats, weapons, shields, outfits, effects, badges
+- Shop — магазин предметів за монети з інвентарем
+- Leaderboard — таблиця лідерів по XP/монетах/досягненнях
+- API: /api/gamification/* (10 ендпоінтів)
+- DB: міграція 039_gamification.sql (10 нових таблиць)
+- Standalone profile.html + profile-page.js
+
+### v22.1.0 — Messenger UX (09.03.2026)
+- Пошук емодзі з фільтрацією по ключових словах
+- Lightbox для зображень з галереєю
+- Unread separator, scroll badge, reaction popup, drag overlay
+- ARIA, keyboard navigation, touch/mobile, safe-area-inset
+- Dashboard SQL fix (price, label, staff_schedule)
+
+### v22.0.0 — Dashboard + 25 Roles + Navigation (08.03.2026)
+- Персоналізована HOME-сторінка /dashboard з віджетами
+- 25 ролей (було 10): бухгалтер, арт-директор, маркетолог, IT, HR, шеф-кухар, кондитер, рецепція та ін.
+- Тест-панель creator для переключення ролей
+- Onboarding wizard, Widget API з кешем
+- role_definitions таблиця з departments та parent_role
+
+---
+
+## v21.12.0–v21.15.0 — Navigation, Polish, Accessibility (2026-03-08)
+
+### v21.15.0 — Unified Navigation
+- Sidebar NAV_ITEMS: 9 → 18 пунктів навігації
+- Sidebar.init() на всіх 15 standalone-сторінках
+- Уніфікована toast система на всіх page-JS файлах
+
+### v21.14.0 — Polish + A11y + Tablet
+- Синхронізація ?v= тегів на 13 standalone-сторінках
+- iOS zoom prevention (16px на input/select/textarea)
+- Touch targets 44px+ (WCAG 2.1)
+- Tablet breakpoint 769-1023px
+- Dark mode auto-init на всіх standalone-сторінках
+
+### v21.12.0–v21.13.0 — Dark Mode Fix + Role Hierarchy
+- Виправлено dark mode toggle + auto night theme
+- Configurable night time (start/end)
+- Role hierarchy display, dashboard в sidebar
+
+---
+
 ## v20.9.12–v20.9.15 — CRM Big Sprint (2026-03-03)
 
 **Supabase міграція, Ліди, Банкети, Staff Extension**

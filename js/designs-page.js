@@ -804,14 +804,14 @@ window.showCalendarDetail = showCalendarDetail;
 // ==========================================
 // NOTIFICATIONS
 // ==========================================
-function showNotification(text, type = 'success') {
-    const el = document.getElementById('notification');
-    const textEl = document.getElementById('notificationText');
-    textEl.textContent = text;
-    el.className = 'notification';
-    if (type === 'error') el.style.background = '#FEE2E2';
-    else el.style.background = '#D1FAE5';
-    setTimeout(() => el.classList.add('hidden'), 3000);
+function showNotification(message, type = '') {
+    let c = document.getElementById('toastContainer');
+    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+    const t = document.createElement('div');
+    t.className = 'toast' + (type ? ' ' + type : '');
+    t.textContent = message;
+    c.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
 // ==========================================

@@ -220,6 +220,41 @@ router.post('/', async (req, res) => {
             }, `booking_created_${b.id}`);
         }
 
+        // v21.4: Chat messenger — auto-message in #бронювання
+        if (!b.linkedTo) {
+            try {
+                const chatService = require('../services/chatService');
+                const { broadcastToChannel } = require('../services/websocket');
+                const bDate = b.date || '';
+                const bTime = b.time || '';
+                const bProgram = b.programName || b.label || b.programCode || '';
+                const bPrice = b.price ? `${Number(b.price).toLocaleString('uk-UA')} ₴` : '';
+                const bRoom = b.room || '';
+                const chatContent = `📅 Нове бронювання #${b.id}\nКлієнт: ${bProgram}\nДата: ${bDate} ${bTime}\n${bRoom ? 'Зал: ' + bRoom + '\n' : ''}${bPrice ? 'Сума: ' + bPrice : ''}`;
+                // Find #бронювання channel
+                const channels = await pool.query("SELECT id FROM chat_channels WHERE slug = 'бронювання' LIMIT 1");
+                if (channels.rows[0]) {
+                    const chId = channels.rows[0].id;
+                    const botMsg = await chatService.sendBotMessage(chId, chatContent, {
+                        contentType: 'system',
+                        metadata: { booking_id: b.id, type: 'booking_created' }
+                    });
+                    broadcastToChannel(chId, 'chat:message', { channelId: chId, message: botMsg });
+                }
+            } catch (chatErr) {
+                log.warn(`Chat booking notification failed (non-blocking): ${chatErr.message}`);
+            }
+        }
+
+        // v22.2.0: Gamification — award coins + XP on booking creation
+        const bookingActor = req.user?.username;
+        if (bookingActor) {
+            try {
+                const { onBookingCreate } = require('../services/gamification');
+                onBookingCreate(bookingActor).catch(() => {});
+            } catch (e) { /* gamification not ready */ }
+        }
+
         res.json({ success: true, booking });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create)', rbErr));

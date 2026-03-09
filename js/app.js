@@ -40,6 +40,11 @@ function initializeApp() {
 
 function loadPreferences() {
     AppState.darkMode = initDarkMode();
+    // Sync toggle checkbox and icon with actual dark mode state
+    const darkToggle = document.getElementById('darkModeToggle');
+    if (darkToggle) darkToggle.checked = AppState.darkMode;
+    const darkIcon = document.getElementById('darkModeIcon');
+    if (darkIcon) darkIcon.textContent = AppState.darkMode ? '☀️' : '🌙';
     AppState.compactMode = localStorage.getItem('pzp_compact_mode') === 'true';
     AppState.zoomLevel = parseInt(localStorage.getItem('pzp_zoom_level')) || 15;
     AppState.statusFilter = localStorage.getItem('pzp_status_filter') || 'all';
@@ -418,6 +423,9 @@ function initUIControlListeners() {
     const darkToggle = document.getElementById('darkModeToggle');
     if (darkToggle) darkToggle.addEventListener('change', toggleDarkMode);
 
+    // Night settings init
+    if (typeof initNightSettings === 'function') initNightSettings();
+
     const compactToggle = document.getElementById('compactModeToggle');
     if (compactToggle) compactToggle.addEventListener('change', toggleCompactMode);
 
@@ -509,6 +517,7 @@ function initUIControlListeners() {
         sidebarDashboardBtn: () => { if (typeof showDashboard === 'function') showDashboard(); },
         sidebarSettingsBtn: () => { if (typeof showSettings === 'function') showSettings(); },
         sidebarDigestBtn: () => { if (typeof sendDailyDigest === 'function') sendDailyDigest(); },
+        sidebarPointsBtn: () => { if (typeof showPointsPanel === 'function') showPointsPanel(); },
     };
     for (const [id, handler] of Object.entries(sidebarActions)) {
         const el = document.getElementById(id);

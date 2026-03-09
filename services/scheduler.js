@@ -71,7 +71,7 @@ async function buildAndSendDigest(date) {
     if (bookings.length === 0 && afishaEvents.length === 0) {
         const text = `📅 <b>${date}</b>\n\nНемає бронювань на цей день.`;
         const result = await sendTelegramMessage(chatId, text);
-        return { success: result?.ok || false, count: 0 };
+        return { success: result?.ok || false, count: 0, reason: result?.ok ? undefined : (result?.description || 'send_failed') };
     }
 
     await ensureDefaultLines(date);
@@ -157,7 +157,7 @@ async function buildAndSendDigest(date) {
         await scheduleAutoDelete(chatId, result.result.message_id);
     }
 
-    return { success: result?.ok || false, count: bookings.length };
+    return { success: result?.ok || false, count: bookings.length, reason: result?.ok ? undefined : (result?.description || 'send_failed') };
 }
 
 async function sendTomorrowReminder(todayStr) {
@@ -1266,6 +1266,82 @@ async function checkHotLeads() {
     }
 }
 
+/**
+ * Send scheduled chat messages that are due.
+ */
+async function checkScheduledChatMessages() {
+    try {
+        const now = new Date().toISOString();
+        const result = await pool.query(
+            `SELECT * FROM chat_messages WHERE is_scheduled = true AND scheduled_at <= $1 LIMIT 20`,
+            [now]
+        );
+        if (result.rows.length === 0) return;
+
+        const { broadcastToChannel } = require('./websocket');
+        const chatService = require('./chatService');
+
+        for (const row of result.rows) {
+            try {
+                // Mark as sent (not scheduled anymore)
+                await pool.query(
+                    'UPDATE chat_messages SET is_scheduled = false WHERE id = $1', [row.id]
+                );
+                // Broadcast to channel
+                const fullMsg = await pool.query(`
+                    SELECT cm.*, u.username, u.name AS display_name
+                    FROM chat_messages cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1
+                `, [row.id]);
+                if (fullMsg.rows[0]) {
+                    const message = chatService.mapMessageRow(fullMsg.rows[0]);
+                    broadcastToChannel(row.channel_id, 'chat:message', {
+                        channelId: row.channel_id,
+                        message
+                    });
+                }
+                log.info(`Scheduled chat message ${row.id} sent`);
+            } catch (err) {
+                log.error(`Scheduled message ${row.id} error: ${err.message}`);
+            }
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('checkScheduledChatMessages error', err);
+        }
+    }
+}
+
+/**
+ * Clean up expired chat messages (self-destruct).
+ */
+async function checkExpiredChatMessages() {
+    try {
+        const now = new Date().toISOString();
+        const result = await pool.query(
+            `SELECT id, channel_id FROM chat_messages WHERE expires_at IS NOT NULL AND expires_at <= $1 AND deleted_at IS NULL LIMIT 50`,
+            [now]
+        );
+        if (result.rows.length === 0) return;
+
+        const { broadcastToChannel } = require('./websocket');
+
+        for (const row of result.rows) {
+            await pool.query('UPDATE chat_messages SET deleted_at = NOW() WHERE id = $1', [row.id]);
+            broadcastToChannel(row.channel_id, 'chat:delete', {
+                channelId: row.channel_id,
+                messageId: row.id
+            });
+        }
+        if (result.rows.length > 0) {
+            log.info(`Cleaned ${result.rows.length} expired chat messages`);
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('checkExpiredChatMessages error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
@@ -1275,5 +1351,7 @@ module.exports = {
     checkStreakUpdates, checkBirthdayGreetings,
     checkEventQueue, checkSLABreach, checkScheduledAnnouncements,
     checkTaskOverdue, checkCustomerRetention, checkAutoReport,
-    checkHotLeads
+    checkHotLeads,
+    checkScheduledChatMessages,
+    checkExpiredChatMessages
 };

@@ -168,15 +168,20 @@ function formatPrice(amount) {
  */
 function initDarkMode() {
     const saved = localStorage.getItem('pzp_dark_mode');
+    const autoEnabled = localStorage.getItem('pzp_autoNight') !== 'false';
     let isDark;
     if (saved === 'true') {
         isDark = true;
     } else if (saved === 'false') {
         isDark = false;
-    } else {
-        // Авто: темна тема з 20:00 до 07:00
+    } else if (autoEnabled) {
+        // Авто: темна тема з configurable часу (default 19:00-07:00)
         const hour = new Date().getHours();
-        isDark = hour >= 20 || hour < 7;
+        const autoStart = parseInt(localStorage.getItem('pzp_night_start') || '19', 10);
+        const autoEnd = parseInt(localStorage.getItem('pzp_night_end') || '7', 10);
+        isDark = (autoStart > autoEnd) ? (hour >= autoStart || hour < autoEnd) : (hour >= autoStart && hour < autoEnd);
+    } else {
+        isDark = false;
     }
     document.body.classList.toggle('dark-mode', isDark);
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
@@ -267,4 +272,31 @@ function getProductsSync() {
         return AppState.products;
     }
     return PROGRAMS;
+}
+
+// v21.14.0: Auto-init dark mode on all pages that load config.js
+initDarkMode();
+
+// v21.15.0: Fallback showNotification for pages without ui.js
+// Provides toast functionality for ws.js offline/reconnect indicators
+if (typeof showNotification === 'undefined') {
+    window.showNotification = function(message, type) {
+        let container = document.getElementById('toastContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'toast-container';
+            container.setAttribute('aria-live', 'polite');
+            document.body.appendChild(container);
+        }
+        const toast = document.createElement('div');
+        toast.className = 'toast' + (type ? ' ' + type : '');
+        toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function() {
+            toast.classList.add('toast-exit');
+            setTimeout(function() { toast.remove(); }, 300);
+        }, 3000);
+    };
 }

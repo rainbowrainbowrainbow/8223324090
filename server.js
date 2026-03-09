@@ -153,6 +153,7 @@ app.use('/api/chat', require('./routes/chat'));
 app.use('/api/guardian', require('./routes/guardian'));
 app.use('/api/summary', require('./routes/summary'));
 app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/gamification', require('./routes/gamification'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -268,6 +269,10 @@ app.get('/leads', (req, res) => res.redirect(301, '/customers?tab=leads'));
 // v20.13: Team messenger
 app.get('/chat', (req, res) => {
     res.sendFile(path.join(__dirname, 'chat.html'));
+});
+// v22.2.0: Gamification profile page
+app.get('/profile', (req, res) => {
+    res.sendFile(path.join(__dirname, 'profile.html'));
 });
 
 // Landing page (separate site)

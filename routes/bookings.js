@@ -246,6 +246,15 @@ router.post('/', async (req, res) => {
             }
         }
 
+        // v22.2.0: Gamification — award coins + XP on booking creation
+        const bookingActor = req.user?.username;
+        if (bookingActor) {
+            try {
+                const { onBookingCreate } = require('../services/gamification');
+                onBookingCreate(bookingActor).catch(() => {});
+            } catch (e) { /* gamification not ready */ }
+        }
+
         res.json({ success: true, booking });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create)', rbErr));

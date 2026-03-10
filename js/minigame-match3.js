@@ -808,6 +808,17 @@ async function processCascade() {
         }
 
         renderBoard(toRemove);
+        // Add combo-level animation classes
+        if (comboCount >= 2) {
+            const boardEl = document.getElementById('gameBoard');
+            if (boardEl) {
+                const comboClass = comboCount >= 5 ? 'combo-epic' : comboCount >= 3 ? 'combo-spin' : 'combo-enhanced';
+                toRemove.forEach(m => {
+                    const cell = boardEl.querySelector(`[data-row="${m.row}"][data-col="${m.col}"]`);
+                    if (cell) cell.classList.add(comboClass);
+                });
+            }
+        }
         await sleep(280);
         removeMatches(board, toRemove);
         renderBoard();
@@ -998,7 +1009,8 @@ function renderBoard(matchedCells = [], falling = false, activatedSpecials = [])
                 content += `<span class="ice-overlay">${frozen === 2 ? '❄️' : '💧'}</span>`;
             }
 
-            html += `<div class="${classes.join(' ')}" data-row="${r}" data-col="${c}">${content}</div>`;
+            const pieceId = piece?.id || '';
+            html += `<div class="${classes.join(' ')}" data-row="${r}" data-col="${c}" data-piece-id="${pieceId}">${content}</div>`;
         }
     }
     boardEl.innerHTML = html;

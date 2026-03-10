@@ -1339,3 +1339,202 @@ body.dark-mode .game-cell.ghost-tile {
     .tarot-card { width: 100px; min-height: 150px; }
     .tarot-cards { gap: 8px; }
 }
+
+/* ==========================================
+   IDLE ANIMATIONS — Unique per piece type
+   v22.16.0 — Candy Crush style
+   ========================================== */
+
+.game-cell .piece-img {
+    animation: piece-idle-breathe 3s ease-in-out infinite;
+}
+@keyframes piece-idle-breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+}
+
+.game-cell[data-piece-id="dino"] .piece-img {
+    animation: piece-idle-wobble 4s ease-in-out infinite;
+}
+@keyframes piece-idle-wobble {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    25% { transform: rotate(-3deg) scale(1.02); }
+    75% { transform: rotate(3deg) scale(1.02); }
+}
+
+.game-cell[data-piece-id="balloon"] .piece-img {
+    animation: piece-idle-float 3s ease-in-out infinite;
+}
+@keyframes piece-idle-float {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-4px) scale(1.03); }
+}
+
+.game-cell[data-piece-id="cake"] .piece-img {
+    animation: piece-idle-rotate 5s ease-in-out infinite;
+}
+@keyframes piece-idle-rotate {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(3deg); }
+    75% { transform: rotate(-3deg); }
+}
+
+.game-cell[data-piece-id="star"] .piece-img {
+    animation: piece-idle-shimmer 2s ease-in-out infinite;
+}
+@keyframes piece-idle-shimmer {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2)) brightness(1); }
+    50% { transform: scale(1.06); filter: drop-shadow(0 2px 8px rgba(234,179,8,0.5)) brightness(1.15); }
+}
+
+.game-cell[data-piece-id="tent"] .piece-img {
+    animation: piece-idle-tilt 4.5s ease-in-out infinite;
+}
+@keyframes piece-idle-tilt {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    50% { transform: rotate(2deg) scale(1.02); }
+}
+
+.game-cell[data-piece-id="clown"] .piece-img {
+    animation: piece-idle-bounce 2.5s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+@keyframes piece-idle-bounce {
+    0%, 100% { transform: translateY(0) scale(1); }
+    40% { transform: translateY(-5px) scale(1.05); }
+    60% { transform: translateY(-2px) scale(1.02); }
+}
+
+.game-cell[data-piece-id="mask"] .piece-img {
+    animation: piece-idle-flip 6s ease-in-out infinite;
+}
+@keyframes piece-idle-flip {
+    0%, 100% { transform: scaleX(1); }
+    50% { transform: scaleX(0.95); }
+}
+
+.game-cell[data-piece-id="rocket"] .piece-img {
+    animation: piece-idle-vibrate 0.3s linear infinite, piece-idle-breathe 3s ease-in-out infinite;
+}
+@keyframes piece-idle-vibrate {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-0.5px); }
+    75% { transform: translateX(0.5px); }
+}
+
+.game-cell[data-piece-id="gem"] .piece-img {
+    animation: piece-idle-sparkle 2.5s ease-in-out infinite;
+}
+@keyframes piece-idle-sparkle {
+    0%, 100% { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2)) brightness(1); }
+    50% { filter: drop-shadow(0 2px 12px rgba(59,130,246,0.6)) brightness(1.2); }
+}
+
+/* ==========================================
+   COMBO-ENHANCED MATCH ANIMATIONS
+   ========================================== */
+
+.game-cell.combo-enhanced.matched {
+    animation: match-combo-enhanced 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes match-combo-enhanced {
+    0% { transform: scale(1); opacity: 1; }
+    20% { transform: scale(1.5); filter: brightness(1.5); box-shadow: 0 0 20px rgba(245,158,11,0.6); }
+    50% { transform: scale(0.8); opacity: 0.5; }
+    100% { transform: scale(0); opacity: 0; filter: brightness(2); }
+}
+
+.game-cell.combo-spin.matched {
+    animation: match-combo-spin 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes match-combo-spin {
+    0% { transform: scale(1) rotate(0deg); opacity: 1; }
+    20% { transform: scale(1.6) rotate(90deg); filter: brightness(1.6); box-shadow: 0 0 25px rgba(168,85,247,0.6); }
+    50% { transform: scale(1.2) rotate(270deg); opacity: 0.6; }
+    100% { transform: scale(0) rotate(540deg); opacity: 0; }
+}
+
+.game-cell.combo-epic.matched {
+    animation: match-combo-epic 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+@keyframes match-combo-epic {
+    0% { transform: scale(1) rotate(0deg); opacity: 1; }
+    10% { transform: scale(2.2) rotate(45deg); box-shadow: 0 0 40px rgba(239,68,68,0.7), 0 0 60px rgba(234,179,8,0.5), 0 0 80px rgba(168,85,247,0.3); filter: brightness(2); }
+    25% { transform: scale(1.8) rotate(180deg); box-shadow: 0 0 50px rgba(59,130,246,0.7), 0 0 70px rgba(34,197,94,0.5); }
+    50% { transform: scale(2.5) rotate(360deg); opacity: 0.5; background: linear-gradient(135deg, rgba(239,68,68,0.3), rgba(234,179,8,0.3), rgba(34,197,94,0.3), rgba(59,130,246,0.3), rgba(168,85,247,0.3)); }
+    100% { transform: scale(0) rotate(720deg); opacity: 0; }
+}
+
+/* ==========================================
+   ENHANCED SPECIAL ACTIVATION EFFECTS
+   ========================================== */
+
+.game-cell.exploding::before {
+    content: '';
+    position: absolute;
+    inset: -20px;
+    border-radius: 50%;
+    border: 3px solid rgba(239,68,68,0.6);
+    animation: bomb-shockwave 0.5s ease-out forwards;
+    pointer-events: none;
+    z-index: 10;
+}
+@keyframes bomb-shockwave {
+    0% { transform: scale(0.3); opacity: 1; border-width: 4px; }
+    60% { transform: scale(2.5); opacity: 0.5; border-width: 2px; }
+    100% { transform: scale(4); opacity: 0; border-width: 1px; }
+}
+
+.game-cell.zapping::before {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    background: linear-gradient(90deg, transparent, rgba(234,179,8,0.6), transparent);
+    animation: lightning-chain 0.45s ease forwards;
+    pointer-events: none;
+    z-index: 10;
+}
+@keyframes lightning-chain {
+    0% { transform: scaleX(0); opacity: 1; }
+    30% { transform: scaleX(3); opacity: 0.8; }
+    100% { transform: scaleX(5); opacity: 0; }
+}
+
+.game-cell.cross-blasting::before {
+    content: '';
+    position: absolute;
+    inset: -15px;
+    background: linear-gradient(45deg, transparent 40%, rgba(59,130,246,0.5) 48%, rgba(59,130,246,0.8) 50%, rgba(59,130,246,0.5) 52%, transparent 60%),
+                linear-gradient(-45deg, transparent 40%, rgba(59,130,246,0.5) 48%, rgba(59,130,246,0.8) 50%, rgba(59,130,246,0.5) 52%, transparent 60%);
+    animation: cross-xbeam 0.55s ease forwards;
+    pointer-events: none;
+    z-index: 10;
+}
+@keyframes cross-xbeam {
+    0% { transform: scale(0.5); opacity: 1; }
+    30% { transform: scale(2); opacity: 0.8; }
+    100% { transform: scale(4); opacity: 0; }
+}
+
+.game-cell.rainbow-clear::before {
+    content: '';
+    position: absolute;
+    inset: -25px;
+    border-radius: 50%;
+    background: conic-gradient(rgba(239,68,68,0.6), rgba(245,158,11,0.6), rgba(234,179,8,0.6), rgba(34,197,94,0.6), rgba(59,130,246,0.6), rgba(168,85,247,0.6), rgba(239,68,68,0.6));
+    animation: rainbow-confetti 0.6s ease forwards;
+    pointer-events: none;
+    z-index: 10;
+}
+@keyframes rainbow-confetti {
+    0% { transform: scale(0.3) rotate(0deg); opacity: 1; }
+    40% { transform: scale(2) rotate(180deg); opacity: 0.7; }
+    100% { transform: scale(3.5) rotate(360deg); opacity: 0; }
+}
+
+.game-cell.selected .piece-img {
+    animation: selected-glow 0.8s ease-in-out infinite !important;
+}
+@keyframes selected-glow {
+    0%, 100% { filter: drop-shadow(0 0 8px rgba(201,168,76,0.6)) brightness(1.1); transform: scale(1.1); }
+    50% { filter: drop-shadow(0 0 16px rgba(201,168,76,0.9)) brightness(1.25); transform: scale(1.15); }
+}

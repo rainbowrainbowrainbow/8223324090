@@ -411,6 +411,34 @@ const SKILLS = [
         keywords: ['аналітик', 'analytic', 'тренд', 'trend', 'порівня', 'compar', 'топ програм', 'статистик'],
         handler: handleAnalytics,
         examples: ['Топ програм', 'Порівняй з минулим місяцем']
+    },
+    // --- Contour 2: Dev skills ---
+    {
+        id: 'agents',
+        name: 'Агенти',
+        icon: '🤖',
+        description: 'Статус LLM-агентів, активність, саммарі',
+        keywords: ['агент', 'agent', 'клод', 'claude', 'клешня бот', 'anthropic', 'хто робив', 'що зробив', 'що зробила', 'коміти', 'commit'],
+        handler: handleAgents,
+        examples: ['Статус агентів', 'Що зробив Клод?', 'Коміти за сьогодні']
+    },
+    {
+        id: 'guard',
+        name: 'Охоронець',
+        icon: '🛡️',
+        description: 'Статус, звіти, правила Охоронця',
+        keywords: ['охоронець', 'guardian', 'guard', 'охорон', 'модераці', 'правил guardian', 'безпек'],
+        handler: handleGuard,
+        examples: ['Статус Охоронця', 'Звіт Охоронця', 'Правила Охоронця']
+    },
+    {
+        id: 'summary',
+        name: 'Саммарі',
+        icon: '📝',
+        description: 'Саммарі роботи агентів за період',
+        keywords: ['саммарі', 'summary', 'підсумок', 'підсумки', 'що нового', 'огляд'],
+        handler: handleSummary,
+        examples: ['Саммарі за сьогодні', 'Що нового?']
     }
 ];
 
@@ -1258,6 +1286,144 @@ async function handleAnalytics(lower, username) {
         message: msg,
         suggestions: ['Топ програм', 'Виручка за тиждень', 'Бронювання', 'Команда']
     };
+}
+
+// --- Contour 2: Dev Skill Handlers ---
+
+async function handleAgents(lower) {
+    try {
+        const { getActivityFeed, getAgentStatus } = require('./agentTracker');
+        const status = await getAgentStatus();
+
+        if (lower.includes('активн') || lower.includes('коміт') || lower.includes('commit') || lower.includes('стрічк')) {
+            // Activity feed
+            const feed = await getActivityFeed({ limit: 10 });
+            if (feed.length === 0) {
+                return { message: '🤖 Стрічка активності порожня. Спробуй синхронізувати git.', suggestions: ['Статус агентів', 'Саммарі'] };
+            }
+            let msg = '🤖 <b>Остання активність:</b>\n\n';
+            for (const a of feed) {
+                const time = new Date(a.createdAt).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
+                const tag = a.agentTag === 'claude-code' ? '🤖' : a.agentTag === 'kleshnya' ? '🦀' : a.agentTag === 'anthropic' ? '🧠' : '👤';
+                msg += `${time} ${tag} [${a.agentTag}] ${a.summary}\n`;
+                if (a.details?.diff_stat) msg += `   ↳ ${a.details.diff_stat}\n`;
+            }
+            return { message: msg, suggestions: ['Статус агентів', 'Саммарі за сьогодні', 'Що зробив Клод?'] };
+        }
+
+        // Default: status
+        if (status.length === 0) {
+            return { message: '🤖 Немає даних про агентів. Потрібна синхронізація git.', suggestions: ['Бронювання', 'Задачі'] };
+        }
+        let msg = '🤖 <b>Статус агентів:</b>\n\n';
+        for (const s of status) {
+            const tag = s.agentTag === 'claude-code' ? '🤖' : s.agentTag === 'kleshnya' ? '🦀' : s.agentTag === 'anthropic' ? '🧠' : '👤';
+            const state = s.isOnline ? '🟢 працює' : '⚪ offline';
+            const time = new Date(s.lastActive).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+            msg += `${tag} <b>${s.agentTag}</b> — ${state}\n`;
+            msg += `   Останнє: ${s.lastSummary?.substring(0, 60) || '—'}\n`;
+            msg += `   🕐 ${time}\n\n`;
+        }
+        return { message: msg, suggestions: ['Коміти за сьогодні', 'Саммарі', 'Звіт Охоронця'] };
+    } catch (err) {
+        log.error('handleAgents error', err);
+        return { message: '🤖 Помилка при отриманні статусу агентів.', suggestions: ['Задачі', 'Бронювання'] };
+    }
+}
+
+async function handleGuard(lower) {
+    try {
+        const { getMood, getGuardianState } = require('./guardian');
+
+        if (lower.includes('правил') || lower.includes('rule')) {
+            // Rules list
+            const result = await pool.query('SELECT * FROM guardian_rules WHERE is_active = true ORDER BY severity DESC');
+            if (result.rows.length === 0) {
+                return { message: '🛡️ Активних правил немає.', suggestions: ['Статус Охоронця', 'Агенти'] };
+            }
+            let msg = '🛡️ <b>Правила Охоронця:</b>\n\n';
+            for (const r of result.rows) {
+                const sev = r.severity === 'critical' ? '🔴' : r.severity === 'high' ? '🟠' : r.severity === 'medium' ? '🟡' : '🟢';
+                msg += `${sev} <b>${r.name}</b> — ${r.action} (${r.rule_type})\n`;
+            }
+            msg += `\nВсього: ${result.rows.length} правил`;
+            return { message: msg, suggestions: ['Статус Охоронця', 'Звіт Охоронця', 'Агенти'] };
+        }
+
+        if (lower.includes('звіт') || lower.includes('report') || lower.includes('дайджест')) {
+            // Last report
+            const result = await pool.query(`
+                SELECT gr.*, cc.name AS channel_name
+                FROM guardian_reports gr
+                LEFT JOIN chat_channels cc ON cc.id = gr.channel_id
+                ORDER BY gr.created_at DESC LIMIT 3
+            `);
+            if (result.rows.length === 0) {
+                return { message: '🛡️ Звітів поки немає. Вони генеруються щовечора о 21:00.', suggestions: ['Статус Охоронця', 'Агенти'] };
+            }
+            let msg = '🛡️ <b>Останні звіти Охоронця:</b>\n\n';
+            for (const r of result.rows) {
+                msg += `📅 <b>${r.report_date}</b> | #${r.channel_name || '?'}\n`;
+                msg += `${r.summary?.substring(0, 200) || 'Без саммарі'}...\n\n`;
+            }
+            return { message: msg, suggestions: ['Правила Охоронця', 'Статус Охоронця', 'Агенти'] };
+        }
+
+        // Default: status
+        const mood = getMood();
+        const state = getGuardianState();
+        const todayResult = await pool.query(`
+            SELECT action_type, COUNT(*) cnt FROM guardian_actions
+            WHERE created_at::date = CURRENT_DATE GROUP BY action_type
+        `);
+        const todayStats = {};
+        todayResult.rows.forEach(r => { todayStats[r.action_type] = parseInt(r.cnt); });
+
+        let msg = `🛡️ <b>Охоронець</b> ${mood.emoji} ${mood.label}\n\n`;
+        msg += `<b>Сьогодні:</b>\n`;
+        msg += `🚫 Блокувань: ${todayStats.mute || 0}\n`;
+        msg += `🔒 Замасковано: ${todayStats.mask || 0}\n`;
+        msg += `🗑️ Видалено: ${todayStats.delete || 0}\n`;
+        msg += `🔍 Перевірено: ${todayStats.scan || 0}\n`;
+        const memoryChannels = Object.keys(state.memory || {}).length;
+        msg += `\n📊 Каналів під наглядом: ${memoryChannels}`;
+        return { message: msg, suggestions: ['Правила Охоронця', 'Звіт Охоронця', 'Агенти', 'Саммарі'] };
+    } catch (err) {
+        log.error('handleGuard error', err);
+        return { message: '🛡️ Помилка при отриманні статусу Охоронця.', suggestions: ['Задачі', 'Бронювання'] };
+    }
+}
+
+async function handleSummary(lower) {
+    try {
+        const { generateSummary } = require('./agentTracker');
+
+        let period = 'today';
+        if (lower.includes('тижд') || lower.includes('week')) period = 'week';
+        else if (lower.includes('сесі') || lower.includes('session')) period = 'session';
+
+        const result = await generateSummary(period);
+        if (!result || !result.summary) {
+            return { message: '📝 Немає даних для саммарі. Потрібна синхронізація git.', suggestions: ['Статус агентів', 'Задачі'] };
+        }
+
+        let msg = `📝 <b>Саммарі за ${period === 'today' ? 'сьогодні' : period === 'week' ? 'тиждень' : 'сесію'}:</b>\n\n`;
+        msg += result.summary + '\n';
+        if (result.stats && Object.keys(result.stats).length > 0) {
+            msg += '\n<b>Статистика:</b>\n';
+            for (const [tag, s] of Object.entries(result.stats)) {
+                const parts = [];
+                if (s.features) parts.push(`${s.features} фіч`);
+                if (s.fixes) parts.push(`${s.fixes} фіксів`);
+                if (s.commits) parts.push(`${s.commits} комітів`);
+                msg += `  ${tag}: ${parts.join(', ') || 'без деталей'}\n`;
+            }
+        }
+        return { message: msg, suggestions: ['Саммарі за тиждень', 'Статус агентів', 'Коміти'] };
+    } catch (err) {
+        log.error('handleSummary error', err);
+        return { message: '📝 Помилка при генерації саммарі.', suggestions: ['Статус агентів', 'Задачі'] };
+    }
 }
 
 // --- Exports ---

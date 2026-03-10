@@ -208,6 +208,115 @@ router.get('/stats', async (req, res) => {
     }
 });
 
+// ==========================================
+// GUARDIAN RULES CRUD (Contour 2)
+// ==========================================
+
+/**
+ * GET /api/guardian/rules
+ * List all guardian rules (active by default).
+ */
+router.get('/rules', async (req, res) => {
+    try {
+        const { active } = req.query;
+        let query = 'SELECT * FROM guardian_rules';
+        const params = [];
+        if (active !== 'all') {
+            query += ' WHERE is_active = true';
+        }
+        query += ' ORDER BY severity DESC, created_at';
+        const result = await pool.query(query, params);
+        res.json(result.rows.map(r => ({
+            id: r.id,
+            ruleType: r.rule_type,
+            name: r.name,
+            pattern: r.pattern,
+            action: r.action,
+            severity: r.severity,
+            channelScope: r.channel_scope,
+            isActive: r.is_active,
+            metadata: r.metadata,
+            createdBy: r.created_by,
+            createdAt: r.created_at
+        })));
+    } catch (err) {
+        log.error('GET /rules error', err);
+        res.status(500).json({ error: 'Не вдалось отримати правила' });
+    }
+});
+
+/**
+ * POST /api/guardian/rules
+ * Create a new guardian rule.
+ */
+router.post('/rules', async (req, res) => {
+    try {
+        const { ruleType, name, pattern, action, severity, channelScope, metadata } = req.body;
+        if (!name || !action) {
+            return res.status(400).json({ error: 'name та action обовʼязкові' });
+        }
+        const result = await pool.query(
+            `INSERT INTO guardian_rules (rule_type, name, pattern, action, severity, channel_scope, metadata, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [ruleType || 'keyword', name, pattern, action, severity || 'medium',
+             channelScope || null, JSON.stringify(metadata || {}), req.user.id]
+        );
+        const r = result.rows[0];
+        res.json({
+            id: r.id, ruleType: r.rule_type, name: r.name, pattern: r.pattern,
+            action: r.action, severity: r.severity, isActive: r.is_active
+        });
+    } catch (err) {
+        log.error('POST /rules error', err);
+        res.status(500).json({ error: 'Не вдалось створити правило' });
+    }
+});
+
+/**
+ * PUT /api/guardian/rules/:id
+ * Update a guardian rule.
+ */
+router.put('/rules/:id', async (req, res) => {
+    try {
+        const { name, pattern, action, severity, channelScope, isActive, metadata } = req.body;
+        const result = await pool.query(
+            `UPDATE guardian_rules SET
+                name = COALESCE($1, name),
+                pattern = COALESCE($2, pattern),
+                action = COALESCE($3, action),
+                severity = COALESCE($4, severity),
+                channel_scope = COALESCE($5, channel_scope),
+                is_active = COALESCE($6, is_active),
+                metadata = COALESCE($7, metadata),
+                updated_at = NOW()
+             WHERE id = $8 RETURNING *`,
+            [name, pattern, action, severity, channelScope, isActive,
+             metadata ? JSON.stringify(metadata) : null, req.params.id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Правило не знайдено' });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        log.error('PUT /rules error', err);
+        res.status(500).json({ error: 'Не вдалось оновити правило' });
+    }
+});
+
+/**
+ * DELETE /api/guardian/rules/:id
+ * Delete a guardian rule.
+ */
+router.delete('/rules/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM guardian_rules WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /rules error', err);
+        res.status(500).json({ error: 'Не вдалось видалити правило' });
+    }
+});
+
 /**
  * GET /api/guardian/mood
  * Get current guardian mood

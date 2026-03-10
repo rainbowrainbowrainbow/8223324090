@@ -151,6 +151,7 @@ app.use('/api/leads', require('./routes/leads'));
 app.use('/api/scripts', require('./routes/scripts'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/guardian', require('./routes/guardian'));
+app.use('/api/agents', require('./routes/agents'));
 app.use('/api/summary', require('./routes/summary'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/gamification', require('./routes/gamification'));
@@ -471,7 +472,16 @@ runMigrations(pool).then(() => {
         }
         schedulerIntervals.push(setInterval(guardScheduler('flushGuardianLearn', flushGuardianLearn), 5 * 60 * 1000));
 
-        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn');
+        // Contour 2: Agent activity tracking — parse git log every 30 min
+        async function syncAgentActivities() {
+            const { parseGitLog } = require('./services/agentTracker');
+            await parseGitLog(24);
+        }
+        schedulerIntervals.push(setInterval(guardScheduler('syncAgentActivities', syncAgentActivities, { dedup: 'hourly' }), 30 * 60 * 1000));
+        // Run initial sync on startup
+        syncAgentActivities().catch(err => log.error('Initial agent sync error', err.message));
+
+        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn + agent-tracker');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

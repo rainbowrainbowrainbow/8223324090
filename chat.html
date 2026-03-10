@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="css/pages.css?v=22.3.0">
     <link rel="stylesheet" href="css/modals.css?v=22.3.0">
     <link rel="stylesheet" href="css/chat.css?v=22.3.0">
+    <link rel="stylesheet" href="css/agents.css?v=22.18.0">
     <link rel="stylesheet" href="css/dark-mode.css?v=22.3.0">
     <link rel="stylesheet" href="css/responsive.css?v=22.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -184,6 +185,43 @@
                         </div>
                         <div class="guardian-log-entries" id="guardianLogEntries">
                             <div class="guardian-log-empty">Немає подій</div>
+                        </div>
+                    </div>
+
+                    <!-- Contour 2: Agent Status Bar -->
+                    <div class="agent-status-bar" id="agentStatusBar" style="display:none">
+                        <div class="agent-status-items" id="agentStatusItems">
+                            <!-- Filled by JS -->
+                        </div>
+                        <div class="agent-status-actions">
+                            <button class="agent-status-action-btn" id="agentFeedToggle" title="Стрічка активності">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+                            </button>
+                            <button class="agent-status-action-btn" id="agentSyncBtn" title="Синхронізувати git">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Contour 2: Agent Activity Feed panel -->
+                    <div class="agent-feed-panel" id="agentFeedPanel" style="display:none">
+                        <div class="agent-feed-header">
+                            <span>🤖 Стрічка активності агентів</span>
+                            <div class="agent-feed-filters">
+                                <button class="agent-feed-filter active" data-agent="all">Всі</button>
+                                <button class="agent-feed-filter" data-agent="claude-code">🤖 Claude</button>
+                                <button class="agent-feed-filter" data-agent="kleshnya">🦀 Клешня</button>
+                                <button class="agent-feed-filter" data-agent="anthropic">🧠 Anthropic</button>
+                            </div>
+                            <button class="agent-feed-close" id="agentFeedClose">&times;</button>
+                        </div>
+                        <div class="agent-feed-entries" id="agentFeedEntries">
+                            <div class="agent-feed-loading">Завантаження...</div>
+                        </div>
+                        <div class="agent-feed-summary" id="agentFeedSummary" style="display:none">
+                            <div class="agent-feed-summary-title">📊 Саммарі за сьогодні</div>
+                            <div class="agent-feed-summary-content" id="agentFeedSummaryContent"></div>
+                            <button class="agent-feed-summary-refresh" id="agentSummaryRefresh">🔄 Оновити саммарі</button>
                         </div>
                     </div>
 
@@ -411,5 +449,6 @@
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/ws.js?v=22.3.0"></script>
     <script src="js/chat-page.js?v=22.3.0"></script>
+    <script src="js/agents-panel.js?v=22.18.0"></script>
 </body>
 </html>

@@ -3,86 +3,45 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v22.3.0**. Бранч `claude/event-genix-crm-handoff-7ANWR`.
+Версія **v22.17.0** (коміт). package.json: `22.12.0` (не збампив Клешня). Бранч `main`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **package.json**: `"version": "22.3.0"`
-- **Бранч**: `claude/event-genix-crm-handoff-7ANWR`
-- **Що нового у v22.3.0**: Game Profile — таб "Гра" в профілі (досягнення, магазин, інвентар, лідерборд)
+- **Останній коміт**: v22.17.0 — Match-3 UI polish
+- **package.json**: `"version": "22.12.0"` (розсинхрон — Клешня комітив без бампу package.json)
+- **Бранч**: `main`
+- **Що нового**: Match-3 Candy Crush стиль, custom art assets, UI polish
 
 ### Тести
-- **296 тестів**, 296 pass, 0 fail
-- Запуск: `PGUSER=postgres PGPASSWORD=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MAX=5000 node --test tests/api.test.js`
+- **296+ тестів** (api.test.js)
+- Запуск: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MAX=5000 node --test tests/api.test.js`
 - automation.test.js — 28 тестів ЗАВЖДИ фейляться (pre-existing, НЕ наші)
 
 ### Сервер
 ```bash
-PGUSER=postgres PGPASSWORD=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MAX=5000 node server.js
+PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MAX=5000 node server.js
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Що зроблено в цій сесії (від v22.0.0 до v22.3.0)
+## Останні зміни (v22.4.0 → v22.17.0)
 
-### v22.0.0 — Dashboard + 25 Roles + Navigation
-- **Dashboard** — персоналізована HOME-сторінка `/dashboard` з віджетами (задачі, бронювання, графік, команда, погода, курси, оголошення)
-- **25 ролей** — розширення з 10 до 25 (бухгалтер, арт-директор, маркетолог, IT, HR, шеф-кухар, кондитер, рецепція, бариста, клінінг, технік та ін.)
-- **Навігація** — дашборд як головна, мердж сторінок, sidebar з динамічними NAV_ITEMS
-- **Тест-панель** — creator може переключати ролі для тестування інтерфейсів
-- **Onboarding** — вибір віджетів при першому вході на дашборд
-- **Widget API** — `/api/dashboard/*` ендпоінти, кеш для погоди/курсів
-- **Role DB** — нова таблиця role_definitions з 25 ролями, departments, parent_role
+### v22.4–v22.9 (Claude Code, 09.03.2026)
+- **Gamification V2** — Quiz, Streaks, Room page, Match-3 improvements
+- **Match-3 Epic** — 9x9 grid, frozen tiles, cross special, combo system
+- **Game fixes** — game over screen, start layout, dashboard stale cache
 
-### v22.1.0 — Messenger UX
-- **Пошук емодзі** — реальна фільтрація по ключових словах (укр/eng)
-- **Lightbox** — повноекранний перегляд зображень з галереєю ←→
-- **Unread separator** — роздільник "Нові повідомлення" при переключенні каналів
-- **Scroll badge** — кнопка ↓ з кількістю нових при скролі вгору
-- **Reaction popup** — hover на реакціях показує список хто поставив
-- **Drag overlay** — візуальне "Перетягніть файл сюди" при drag&drop
-- **ARIA** — keyboard navigation в каналах, focus-visible, Escape закриває панелі
-- **Touch/Mobile** — safe-area-inset, 44px touch targets
-- **Dashboard fix** — виправлені SQL запити віджетів (price, label, staff_schedule)
+### v22.10–v22.11 (Claude Code, 09.03.2026)
+- **Dark Mode Polish** — 92 нових overrides + JS color fixes, confirm icons, status vars
+- **Security Hardening** — input validation, race conditions, error disclosure
+- **Gamification Hardening** — DB integrity, bug fixes, tests
+- **Match-3 Mystic Edition** — tarot cards, bosses, events, modern UI
 
-### v22.2.0 — Gamification MVP
-- **Gamification service** — `services/gamification.js` (727 рядків): XP, рівні, монети, стріки
-- **Achievement catalog** — 20 досягнень (one_time, repeatable, rare, secret, seasonal)
-- **Character items** — backgrounds, frames, hats, weapons, shields, outfits, effects, badges
-- **Shop** — магазин предметів за монети, купівля, інвентар, екіпування
-- **Leaderboard** — таблиця лідерів по XP/монетах/досягненнях
-- **API** — `/api/gamification/*` (10 ендпоінтів: profile, achievements, shop, equip, coins, leaderboard)
-- **DB** — міграція 039_gamification.sql: 10 нових таблиць
-- **Standalone profile** — `profile.html` + `js/profile-page.js` (повна сторінка гейміфікації)
-
-### v22.3.0 — Game Profile + Dashboard Dark Mode Fix
-- **Таб "Гра" в профілі** — клік на нікнейм → модалка з 5 табами (Сьогодні, **Гра**, Задачі, Стати, Налашт.)
-- **Game sub-tabs** — Досягнення, Інвентар, Магазин, Лідери — все в одному місці
-- **XP progress bar** — рівень, титул, монети в шапці ігрового профілю
-- **Магазин в профілі** — купівля предметів за монети без переходу на окрему сторінку
-- **Інвентар** — екіпувати/зняти предмети одним кліком
-- **Dashboard dark mode** — картки `#2A2A4A` з видимими бордерами (було `#252540` → зливалося з фоном `#0D0D0D`)
-- **8 API helpers** — `apiGamification*()` функції в api.js
-- **CSS** — ~300 рядків нових стилів для game tab (features.css) з dark mode
-- **Version bump** — v22.3.0 на 21 HTML сторінці, tagline, changelog
-
-## Змінені файли (ця сесія)
-```
-package.json            — version 22.3.0
-index.html              — version bump, changelog entries, ?v= tags
-dashboard.html          — version bump, dark mode flash prevention, ?v= tags
-profile.html            — version bump
-css/dashboard.css       — dark mode fix: solid backgrounds, visible borders, hover effects
-css/features.css        — +300 рядків game tab styles (achievements, shop, inventory, leaderboard)
-js/api.js               — +8 apiGamification*() functions
-js/auth.js              — +200 рядків: game tab, sub-tabs, render functions, buy/equip/leaderboard
-js/dashboard-page.js    — widget-based personalized dashboard
-js/profile-page.js      — standalone gamification page
-services/gamification.js — gamification service (XP, coins, achievements, shop, leaderboard)
-routes/gamification.js  — gamification API routes
-db/migrations/039_gamification.sql — 10 new tables
-+ 16 standalone HTML pages — version bump ?v= tags
-```
+### v22.12–v22.17 (Клешня, 09-10.03.2026)
+- **Match-3 custom art assets** — v22.12.0
+- **Candy Crush icons** — idle/combo/special animations v22.16.0
+- **Icon fix** — replace v4 icons with consistent v3/final candy style
+- **UI polish** — contrast, style, mystical vibe v22.17.0
 
 ## Що готово (коротко, всі попередні версії)
 - v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
@@ -100,17 +59,19 @@ db/migrations/039_gamification.sql — 10 new tables
 - v19.0–v19.17: Event Queue, Rule Engine, Deep Integration, UI Polish, Search, Loyalty, Charts, Backend Hardening, Monitoring
 - v20.0–v20.12: Milestone, Role System, Command Panel, Navigation, Sales, Rebranding, Tests, Security, UX, Validation, Swagger
 - v21.12–v21.15: Dark Mode Fix, Night Settings, Polish, A11y, Tablet, Unified Navigation
-- **v22.0–v22.3: Dashboard, Messenger UX, Gamification, Game Profile (ПОТОЧНА СЕСІЯ)**
+- v22.0–v22.3: Dashboard, Messenger UX, Gamification, Game Profile
+- **v22.4–v22.17: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security**
 
 ## Незроблені баги
 - **BUG-001** — Тімур бот: зайвий текст при decline/other — НЕ ЗРОБЛЕНО
 - **CRM-VAL-001** — Минула дата в бронюванні — НЕ ЗРОБЛЕНО (бекенд валідація)
+- **VERSION-SYNC** — package.json (22.12.0) розсинхронізований з комітами (v22.17.0)
 
 ## Архітектура
 - **21+ сторінок**, **40+ routes**, 18+ services, 5 middleware
 - **~105+ таблиць**, 80+ індексів, 44 міграції
 - ~90 000+ рядків коду
-- 296 тестів (296 pass)
+- 296+ тестів
 
 ## Відомі проблеми / пастки
 - **Dark mode gray inversion**: gray-800 = #F3F4F6 = БІЛИЙ в dark mode! Використовуй rgba(255,255,255,0.08)
@@ -121,6 +82,7 @@ db/migrations/039_gamification.sql — 10 new tables
 - **Toast замість Notification**: `#toastContainer` + `showNotification()` створює toast елементи
 - **_debug() у ws.js/offline.js**: Показує тільки при `localStorage.pzp_debug = 'true'`
 - **Multi-agent**: Завжди git fetch + перевіряй чи хтось не змінив файли. Коміти з тегом `[claude-code]`
+- **Version mismatch**: Клешня комітить з v22.XX в повідомленні, але не бампить package.json
 
 ## Деплой
 - `main` — staging (PR мерджаться сюди)
@@ -128,4 +90,4 @@ db/migrations/039_gamification.sql — 10 new tables
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-09, v22.3.0, сесія claude-code*
+*Оновлено: 2026-03-10, v22.17.0, сесія claude-code*

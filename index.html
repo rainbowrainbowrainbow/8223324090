@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=20.00">
-    <link rel="stylesheet" href="css/auth.css?v=20.00">
-    <link rel="stylesheet" href="css/layout.css?v=20.00">
-    <link rel="stylesheet" href="css/timeline.css?v=20.00">
-    <link rel="stylesheet" href="css/panel.css?v=20.00">
-    <link rel="stylesheet" href="css/modals.css?v=20.00">
-    <link rel="stylesheet" href="css/controls.css?v=20.00">
-    <link rel="stylesheet" href="css/features.css?v=20.00">
-    <link rel="stylesheet" href="css/dark-mode.css?v=20.00">
-    <link rel="stylesheet" href="css/responsive.css?v=20.00">
-    <link rel="stylesheet" href="css/pages.css?v=20.00">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=20.00">
+    <link rel="stylesheet" href="css/base.css?v=22.17">
+    <link rel="stylesheet" href="css/auth.css?v=22.17">
+    <link rel="stylesheet" href="css/layout.css?v=22.17">
+    <link rel="stylesheet" href="css/timeline.css?v=22.17">
+    <link rel="stylesheet" href="css/panel.css?v=22.17">
+    <link rel="stylesheet" href="css/modals.css?v=22.17">
+    <link rel="stylesheet" href="css/controls.css?v=22.17">
+    <link rel="stylesheet" href="css/features.css?v=22.17">
+    <link rel="stylesheet" href="css/dark-mode.css?v=22.17">
+    <link rel="stylesheet" href="css/responsive.css?v=22.17">
+    <link rel="stylesheet" href="css/pages.css?v=22.17">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=22.17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v22.16.0 — Candy Crush Animations</p>
+                <p class="tagline">AI First CRM v22.17.0 — Match-3 UI Polish</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v20.2.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v22.17.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1155,6 +1155,14 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                                 <div class="changelog-section">
+                    <h4>v22.17.0 — Match-3 UI Polish (Клешня, 10.03.2026)</h4>
+                    <ul>
+                        <li><b>Контраст</b> — покращений контраст та читабельність Match-3 інтерфейсу</li>
+                        <li><b>Стиль</b> — оновлений mystical vibe дизайн ігрового поля</li>
+                        <li><b>Іконки</b> — виправлені v3/final candy style іконки</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v22.16.0 — Candy Crush іконки + анімації (Клешня, 10.03.2026)</h4>
                     <ul>
                         <li><b>Нові іконки</b> — 13 Candy Crush стиль іконок (sticker, no border) для Match-3</li>
@@ -1165,15 +1173,21 @@
                     </ul>
                 </div>
                                 <div class="changelog-section">
-                    <h4>v20.2.0 — Bugfix Release (Клешня, 02.03.2026)</h4>
+                    <h4>v22.13.0 — Bugfix Release (Клешня, 02.03.2026)</h4>
                     <ul>
                         <li><b>Фікс</b> — інтерполяція змінних в повідомленнях скасування бронювань ({booking_number}, {label}, {time})</li>
                         <li><b>Фікс</b> — захист від NaN в timeToMinutes/minutesToTime (усуває дублювання в 00:00)</li>
                         <li><b>Фікс</b> — сумісність з iPhone 11 Safari: canvas null guard, dynamic viewport height</li>
                     </ul>
                 </div>
+                <div class="changelog-section">
+                    <h4>v22.12.0 — Match-3 Custom Art Assets (Клешня, 10.03.2026)</h4>
+                    <ul>
+                        <li><b>Custom art</b> — унікальні арт-ассети для Match-3 гри</li>
+                    </ul>
+                </div>
 <div class="changelog-section">
-                    <h4>v22.16.0 — Candy Crush Animations (Claude Code, 26.02.2026)</h4>
+                    <h4>v20.0.0 — Room Load + Backend Hardening (Claude Code, 26.02.2026)</h4>
                     <ul>
                         <li><b>Room Load Panel</b> — навантаження кімнат на таймлайні (15 кімнат)</li>
                         <li><b>8 оптимізацій бекенду</b> — N+1 fix, CSP, retry queue, LRU cache, timeouts</li>
@@ -3091,23 +3105,23 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=20.00"></script>
-    <script src="js/api.js?v=20.00"></script>
-    <script src="js/ui.js?v=20.00"></script>
-    <script src="js/auth.js?v=20.00"></script>
-    <script src="js/timeline.js?v=20.00"></script>
-    <script src="js/booking.js?v=20.00"></script>
-    <script src="js/settings.js?v=20.00"></script>
-    <script src="js/booking-form.js?v=20.00"></script>
-    <script src="js/booking-linked.js?v=20.00"></script>
-    <script src="js/settings-dashboard.js?v=20.00"></script>
-    <script src="js/settings-history.js?v=20.00"></script>
-    <script src="js/settings-afisha.js?v=20.00"></script>
-    <script src="js/settings-certificates.js?v=20.00"></script>
-    <script src="js/offline.js?v=20.00"></script>
-    <script src="js/search.js?v=20.00"></script>
-    <script src="js/ws.js?v=20.00"></script>
-    <script src="js/app.js?v=20.00"></script>
-    <script src="js/kleshnya-widget.js?v=20.00"></script>
+    <script src="js/config.js?v=22.17"></script>
+    <script src="js/api.js?v=22.17"></script>
+    <script src="js/ui.js?v=22.17"></script>
+    <script src="js/auth.js?v=22.17"></script>
+    <script src="js/timeline.js?v=22.17"></script>
+    <script src="js/booking.js?v=22.17"></script>
+    <script src="js/settings.js?v=22.17"></script>
+    <script src="js/booking-form.js?v=22.17"></script>
+    <script src="js/booking-linked.js?v=22.17"></script>
+    <script src="js/settings-dashboard.js?v=22.17"></script>
+    <script src="js/settings-history.js?v=22.17"></script>
+    <script src="js/settings-afisha.js?v=22.17"></script>
+    <script src="js/settings-certificates.js?v=22.17"></script>
+    <script src="js/offline.js?v=22.17"></script>
+    <script src="js/search.js?v=22.17"></script>
+    <script src="js/ws.js?v=22.17"></script>
+    <script src="js/app.js?v=22.17"></script>
+    <script src="js/kleshnya-widget.js?v=22.17"></script>
 </body>
 </html>

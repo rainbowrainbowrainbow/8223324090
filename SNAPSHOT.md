@@ -3,13 +3,13 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v22.17.0** (коміт). package.json: `22.12.0` (не збампив Клешня). Бранч `main`.
+Версія **v22.17.0**. package.json: `22.17.0` (синхронізовано). Бранч `main`.
 
 ## Актуальний стан
 
 ### Версія та бранч
 - **Останній коміт**: v22.17.0 — Match-3 UI polish
-- **package.json**: `"version": "22.12.0"` (розсинхрон — Клешня комітив без бампу package.json)
+- **package.json**: `"version": "22.17.0"` (синхронізовано)
 - **Бранч**: `main`
 - **Що нового**: Match-3 Candy Crush стиль, custom art assets, UI polish
 

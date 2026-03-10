@@ -321,14 +321,34 @@
         formData.append('file', file);
         if (caption) formData.append('caption', caption);
 
+        // Show progress bar
+        var progressBar = _showUploadProgress();
+
         try {
             var token = localStorage.getItem('pzp_token');
-            var resp = await fetch('/api/chat/channels/' + _currentChannel.id + '/upload', {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + token },
-                body: formData
+            await new Promise(function (resolve, reject) {
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/chat/channels/' + _currentChannel.id + '/upload');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+
+                xhr.upload.onprogress = function (e) {
+                    if (e.lengthComputable && progressBar) {
+                        var pct = Math.round((e.loaded / e.total) * 100);
+                        progressBar.bar.style.width = pct + '%';
+                        progressBar.text.textContent = pct + '%';
+                    }
+                };
+
+                xhr.onload = function () {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve();
+                    } else {
+                        reject(new Error('Upload failed: ' + xhr.status));
+                    }
+                };
+                xhr.onerror = function () { reject(new Error('Upload network error')); };
+                xhr.send(formData);
             });
-            if (!resp.ok) throw new Error('Upload failed: ' + resp.status);
 
             // Clear
             _pendingFile = null;
@@ -339,6 +359,29 @@
         } catch (err) {
             console.error('[Chat] Upload error:', err);
             showNotification('Помилка завантаження файлу', 'error');
+        } finally {
+            _hideUploadProgress(progressBar);
+        }
+    }
+
+    function _showUploadProgress() {
+        var container = document.querySelector('.chat-input-area');
+        if (!container) return null;
+        var wrap = document.createElement('div');
+        wrap.className = 'chat-upload-progress';
+        wrap.innerHTML = '<div class="chat-upload-progress-track"><div class="chat-upload-progress-bar"></div></div><span class="chat-upload-progress-text">0%</span>';
+        container.insertBefore(wrap, container.firstChild);
+        return {
+            el: wrap,
+            bar: wrap.querySelector('.chat-upload-progress-bar'),
+            text: wrap.querySelector('.chat-upload-progress-text')
+        };
+    }
+
+    function _hideUploadProgress(pb) {
+        if (pb && pb.el) {
+            pb.bar.style.width = '100%';
+            setTimeout(function () { pb.el.remove(); }, 500);
         }
     }
 
@@ -771,6 +814,17 @@
 
             var avatarEditBtn = isOwnProfile ? '<button class="chat-profile-avatar-edit" data-edit-avatar="1" title="Змінити аватар">✏️</button>' : '';
 
+            // Last seen / online status
+            var presenceHtml = '';
+            if (!isOwnProfile) {
+                var isOnline = _onlineUsers[String(profile.id)];
+                if (isOnline) {
+                    presenceHtml = '<div class="chat-profile-presence online">онлайн</div>';
+                } else if (profile.lastSeenAt) {
+                    presenceHtml = '<div class="chat-profile-presence">' + _formatLastSeen(profile.lastSeenAt) + '</div>';
+                }
+            }
+
             body.innerHTML =
                 '<div class="chat-profile-card">' +
                     '<div class="chat-profile-avatar-wrap">' +
@@ -779,6 +833,7 @@
                     '</div>' +
                     '<div class="chat-profile-name">' + _esc(profile.displayName) + '</div>' +
                     '<div class="chat-profile-username">@' + _esc(profile.username) + '</div>' +
+                    presenceHtml +
                     '<div class="chat-profile-role-badge">' + roleLabel + '</div>' +
                     '<div class="chat-profile-fields">' + fields + '</div>' +
                     '<div class="chat-profile-actions">' +
@@ -1662,16 +1717,45 @@
         });
     }
 
-    // Reconnect: drain offline queue
+    // Reconnect: drain offline queue + gap-fill missed messages
     window.addEventListener('wsStatusChange', function (e) {
         if (e.detail && e.detail.connected) {
             _playSoundAlways('connect');
             _drainOfflineQueue();
             if (_currentChannel && typeof ParkWS !== 'undefined') {
                 ParkWS.joinChannel(_currentChannel.id);
+                // Gap-fill: load messages missed during disconnection
+                _gapFillMessages();
             }
         }
     });
+
+    async function _gapFillMessages() {
+        if (!_currentChannel) return;
+        var container = document.getElementById('chatMessages');
+        if (!container) return;
+        // Find the last message seq in DOM
+        var allMsgs = container.querySelectorAll('.chat-message[data-seq]');
+        if (allMsgs.length === 0) return;
+        var lastSeq = parseInt(allMsgs[allMsgs.length - 1].dataset.seq, 10);
+        if (!lastSeq || lastSeq <= 0) return;
+
+        try {
+            var missed = await _api('GET', '/channels/' + _currentChannel.id + '/messages/after/' + lastSeq);
+            if (missed && missed.length > 0) {
+                missed.forEach(function (msg) {
+                    // Skip if already rendered
+                    if (container.querySelector('[data-message-id="' + msg.id + '"]')) return;
+                    _appendMessage(msg);
+                });
+                // Mark as read
+                var maxSeq = missed[missed.length - 1].seq;
+                _api('PUT', '/channels/' + _currentChannel.id + '/read', { seq: maxSeq });
+            }
+        } catch (err) {
+            console.error('[Chat] Gap-fill error:', err);
+        }
+    }
 
     // Keyboard shortcut: Escape
     document.addEventListener('keydown', function (e) {
@@ -1842,8 +1926,10 @@
                     : d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
             }
 
+            var dmOnlineDot = isDm && ch.dmOtherUserId ? '<span class="chat-online-dot sidebar-dot" data-user-id="' + ch.dmOtherUserId + '"></span>' : '';
+
             el.innerHTML =
-                '<div class="' + iconClass + ' ' + colorClass + '">' + icon + '</div>' +
+                '<div class="' + iconClass + ' ' + colorClass + '">' + icon + dmOnlineDot + '</div>' +
                 '<div class="chat-channel-info">' +
                     '<div class="chat-channel-name-row">' +
                         '<div class="chat-channel-name">' + _esc(ch.name) + '</div>' +
@@ -2482,9 +2568,31 @@
         if (!container) return;
         var el = document.createElement('div');
         el.className = 'chat-system-message guardian-system-msg';
-        el.innerHTML = '<div class="chat-system-text">' + text + '</div>';
+        var textDiv = document.createElement('div');
+        textDiv.className = 'chat-system-text';
+        textDiv.textContent = text;
+        el.appendChild(textDiv);
         container.appendChild(el);
         container.scrollTop = container.scrollHeight;
+    }
+
+    // Max messages in DOM before trimming (virtual scroll lite)
+    var MAX_DOM_MESSAGES = 500;
+    var TRIM_BATCH = 100;
+
+    function _trimOldMessages() {
+        var container = document.getElementById('chatMessages');
+        if (!container) return;
+        var msgs = container.querySelectorAll('.chat-message');
+        if (msgs.length > MAX_DOM_MESSAGES) {
+            var toRemove = msgs.length - MAX_DOM_MESSAGES + TRIM_BATCH;
+            for (var i = 0; i < toRemove && i < msgs.length; i++) {
+                // Also remove preceding date dividers
+                var prev = msgs[i].previousElementSibling;
+                if (prev && prev.classList.contains('chat-date-divider')) prev.remove();
+                msgs[i].remove();
+            }
+        }
     }
 
     function _appendMessage(msg) {
@@ -2498,8 +2606,6 @@
         var lastMsg = container.querySelector('.chat-message:last-child');
         var isGrouped = false;
         if (lastMsg && lastMsg.dataset.messageId) {
-            var lastUserId = lastMsg.classList.contains('own') ? _currentUserId : (lastMsg.querySelector('.chat-avatar') || {}).dataset ? null : null;
-            // Simplified: group if same user class
             var newIsOwn = String(msg.userId) === _currentUserId;
             var lastIsOwn = lastMsg.classList.contains('own');
             if (newIsOwn === lastIsOwn && !msg.replyTo) {
@@ -2509,6 +2615,9 @@
 
         container.appendChild(_createMessageEl(msg, isGrouped));
         container.scrollTop = container.scrollHeight;
+
+        // Trim old messages to prevent DOM bloat
+        _trimOldMessages();
 
         // Trigger dino mega effects for sticker messages
         if (msg.contentType === 'sticker') {
@@ -5197,15 +5306,38 @@
     // ==========================================
     var _onlineUsers = {};
 
+    // Format last seen time as human-readable string
+    function _formatLastSeen(dateStr) {
+        if (!dateStr) return '';
+        var now = new Date();
+        var seen = new Date(dateStr);
+        var diffMs = now - seen;
+        var diffMin = Math.floor(diffMs / 60000);
+        var diffHours = Math.floor(diffMs / 3600000);
+        var diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMin < 1) return 'був щойно';
+        if (diffMin < 60) return 'був ' + diffMin + ' ' + _pluralize(diffMin, 'хвилину', 'хвилини', 'хвилин') + ' тому';
+        if (diffHours < 24) return 'був ' + diffHours + ' ' + _pluralize(diffHours, 'годину', 'години', 'годин') + ' тому';
+        if (diffDays < 7) return 'був ' + diffDays + ' ' + _pluralize(diffDays, 'день', 'дні', 'днів') + ' тому';
+        return 'був ' + seen.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
+    }
+
+    // Fetch online users on init
+    (async function () {
+        try {
+            var resp = await _api('GET', '/online');
+            if (resp && resp.onlineUserIds) {
+                resp.onlineUserIds.forEach(function (id) { _onlineUsers[String(id)] = true; });
+                _updateOnlineDots();
+            }
+        } catch (e) { /* ignore */ }
+    })();
+
     function _updateOnlineDots() {
         document.querySelectorAll('.chat-online-dot').forEach(function (dot) {
             var userId = dot.dataset.userId;
-            if (_onlineUsers[userId]) {
-                dot.classList.add('online');
-                dot.classList.remove('away');
-            } else {
-                dot.classList.remove('online');
-            }
+            dot.classList.toggle('online', !!_onlineUsers[userId]);
         });
     }
 
@@ -5339,7 +5471,7 @@
             overlay.innerHTML =
                 '<button class="chat-lightbox-close" aria-label="Закрити">&times;</button>' +
                 (images.length > 1 ? '<button class="chat-lightbox-nav prev" aria-label="Попереднє">&#8249;</button>' : '') +
-                '<img class="chat-lightbox-img" src="' + images[i] + '" alt="Зображення">' +
+                '<img class="chat-lightbox-img" src="' + _esc(images[i]) + '" alt="Зображення">' +
                 (images.length > 1 ? '<button class="chat-lightbox-nav next" aria-label="Наступне">&#8250;</button>' : '') +
                 (images.length > 1 ? '<span class="chat-lightbox-counter">' + (i + 1) + ' / ' + images.length + '</span>' : '');
 

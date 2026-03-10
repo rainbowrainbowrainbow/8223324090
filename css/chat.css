@@ -6621,6 +6621,91 @@ body.dark-mode .guardian-digest-generate-btn {
     }
 }
 
+/* ==========================================
+   UPLOAD PROGRESS BAR (#5)
+   ========================================== */
+.chat-upload-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--surface, #f8f9fa);
+    border-bottom: 1px solid var(--gray-200, #e5e7eb);
+}
+.chat-upload-progress-track {
+    flex: 1;
+    height: 4px;
+    background: var(--gray-200, #e5e7eb);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.chat-upload-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--primary, #6366f1);
+    border-radius: 2px;
+    transition: width 0.15s ease;
+}
+.chat-upload-progress-text {
+    font-size: 11px;
+    color: var(--gray-500, #6b7280);
+    min-width: 32px;
+    text-align: right;
+}
+
+/* ==========================================
+   ONLINE STATUS DOTS (#1)
+   ========================================== */
+.chat-online-dot {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--surface, #fff);
+    background: var(--gray-300, #d1d5db);
+    transition: background 0.3s ease;
+    display: none;
+}
+.chat-online-dot.online {
+    display: block;
+    background: #22c55e;
+    animation: onlinePulse 2s ease-in-out infinite;
+}
+.chat-avatar {
+    position: relative;
+}
+.chat-online-dot.sidebar-dot {
+    width: 8px;
+    height: 8px;
+    bottom: -1px;
+    right: -1px;
+}
+@keyframes onlinePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+    50% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 0); }
+}
+
+/* Channel icon needs relative for online dot */
+.chat-channel-dm-icon {
+    position: relative;
+}
+
+/* ==========================================
+   LAST SEEN / PRESENCE IN PROFILE (#2)
+   ========================================== */
+.chat-profile-presence {
+    font-size: 12px;
+    color: var(--gray-400, #9ca3af);
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+.chat-profile-presence.online {
+    color: #22c55e;
+    font-weight: 600;
+}
+
 /* Mobile improvements */
 @media (max-width: 768px) {
     .chat-context-item {

@@ -37,6 +37,7 @@ const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { createLogger } = require('../utils/logger');
 
+const { requireRole } = require('../middleware/auth');
 const log = createLogger('Staff');
 
 const STATUS_UK = { working: 'Робочий', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний', remote: 'Віддалено' };
@@ -135,7 +136,7 @@ router.get('/schedule', async (req, res) => {
 });
 
 // PUT /api/staff/schedule — upsert a single schedule entry
-router.put('/schedule', async (req, res) => {
+router.put('/schedule', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
     try {
         const { staffId, date, shiftStart, shiftEnd, status, note } = req.body;
         if (!staffId || !date) {
@@ -164,7 +165,7 @@ router.put('/schedule', async (req, res) => {
  * Example: set a whole week for one person, or one day for all animators.
  * Returns count of upserted entries.
  */
-router.post('/schedule/bulk', async (req, res) => {
+router.post('/schedule/bulk', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
     try {
         const { entries } = req.body;
         if (!Array.isArray(entries) || entries.length === 0) {
@@ -202,7 +203,7 @@ router.post('/schedule/bulk', async (req, res) => {
  * Copies 7 days of schedule. Optional department filter.
  * Existing entries in target week are overwritten.
  */
-router.post('/schedule/copy-week', async (req, res) => {
+router.post('/schedule/copy-week', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
     try {
         const { fromMonday, toMonday, department } = req.body;
         if (!fromMonday || !toMonday) {
@@ -380,7 +381,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/staff — create new employee
 // LLM HINT: telegramUsername is optional — used for @-mentions in schedule notifications
-router.post('/', async (req, res) => {
+router.post('/', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
     try {
         const { name, department, position, phone, hireDate, color, telegramUsername } = req.body;
         if (!name || !department || !position) {
@@ -400,7 +401,7 @@ router.post('/', async (req, res) => {
 
 // PUT /api/staff/:id — update employee
 // LLM HINT: telegramUsername — set to Telegram @username (without @) for schedule notifications
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
     try {
         const { name, department, position, phone, hireDate, color, isActive, telegramUsername } = req.body;
         // Only update telegram_username if explicitly passed (even empty string clears it)
@@ -423,7 +424,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/staff/:id — remove employee
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
     try {
         await pool.query('DELETE FROM staff WHERE id=$1', [req.params.id]);
         res.json({ success: true });

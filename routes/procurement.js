@@ -8,7 +8,11 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
+const { requireRole } = require('../middleware/auth');
 const log = createLogger('Procurement');
+
+// RBAC: Procurement — management + admin only
+router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'));
 
 const VALID_DEPARTMENTS = ['animators', 'admin', 'cafe', 'tech', 'cleaning', 'security'];
 const VALID_STATUSES = ['draft', 'approved', 'in_progress', 'purchased', 'delivered', 'cancelled'];

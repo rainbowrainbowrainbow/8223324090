@@ -9,7 +9,11 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
+const { requireRole } = require('../middleware/auth');
 const log = createLogger('Finance');
+
+// RBAC: Finance access — creator, director, accountant only
+router.use(requireRole('creator', 'director', 'accountant'));
 
 // ==========================================
 // HELPERS
@@ -26,14 +30,6 @@ function getMonthRange(year, month) {
         to: `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
     };
 }
-
-// Role check: only admin
-router.use((req, res, next) => {
-    if (req.user && req.user.role === 'viewer') {
-        return res.status(403).json({ error: 'Insufficient permissions' });
-    }
-    next();
-});
 
 // ==========================================
 // CATEGORIES

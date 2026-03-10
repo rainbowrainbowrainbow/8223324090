@@ -11,7 +11,11 @@ const { createLogger } = require('../utils/logger');
 const crypto = require('crypto');
 
 const { logAdminAction } = require('../services/adminAudit');
+const { requireRole } = require('../middleware/auth');
 const log = createLogger('Backup');
+
+// RBAC: All backup operations restricted to creator/director only
+router.use(requireRole('creator', 'director'));
 
 // Whitelist of allowed table names for restore statements
 const ALLOWED_TABLES = new Set(BACKUP_TABLES);

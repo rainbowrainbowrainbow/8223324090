@@ -901,22 +901,27 @@ async function loadDashboardData(period, customFrom, customTo) {
         params.period = period;
     }
 
-    // Load all 3 API endpoints in parallel
-    const [revenueData, programsData, loadData] = await Promise.all([
-        apiGetStatsRevenue(params),
-        apiGetStatsPrograms(params),
-        apiGetStatsLoad(params)
-    ]);
+    try {
+        // Load all 3 API endpoints in parallel
+        const [revenueData, programsData, loadData] = await Promise.all([
+            apiGetStatsRevenue(params),
+            apiGetStatsPrograms(params),
+            apiGetStatsLoad(params)
+        ]);
 
-    dashboardData = { revenueData, programsData, loadData, period, customFrom, customTo };
+        dashboardData = { revenueData, programsData, loadData, period, customFrom, customTo };
 
-    // Fallback: if new API fails, use old client-side approach
-    if (!revenueData) {
-        await showDashboardFallback();
-        return;
+        // Fallback: if new API fails, use old client-side approach
+        if (!revenueData) {
+            await showDashboardFallback();
+            return;
+        }
+
+        renderEnhancedDashboard();
+    } catch (err) {
+        console.error('loadDashboardData error:', err);
+        container.innerHTML = '<div class="dash-empty-state">Помилка завантаження даних. Спробуйте ще раз.</div>';
     }
-
-    renderEnhancedDashboard();
 }
 
 // Fallback to old client-side dashboard if new API is not mounted
@@ -982,13 +987,19 @@ function renderEnhancedDashboard() {
         </div>`;
     }
 
+    // Check if there's any data at all
+    const hasBookingData = revenueData && revenueData.totals && revenueData.totals.count > 0;
+    const hasDailyData = revenueData && revenueData.daily && revenueData.daily.length > 0;
+    const hasProgramData = programsData && programsData.byCount && programsData.byCount.length > 0;
+    const hasLoadData = loadData && loadData.byDayOfWeek && loadData.byDayOfWeek.length > 0;
+
     // 4. Daily revenue chart (CSS bars)
-    if (revenueData && revenueData.daily && revenueData.daily.length > 0) {
+    if (hasDailyData) {
         html += renderDailyRevenueChart(revenueData.daily);
     }
 
     // 5. Top programs (toggle: by count / by revenue)
-    if (programsData) {
+    if (hasProgramData) {
         html += renderEnhancedTopPrograms(programsData);
     }
 
@@ -998,7 +1009,7 @@ function renderEnhancedDashboard() {
     }
 
     // 7. Day-of-week chart
-    if (loadData && loadData.byDayOfWeek && loadData.byDayOfWeek.length > 0) {
+    if (hasLoadData) {
         html += renderWeekdayChart(loadData.byDayOfWeek);
     }
 
@@ -1015,6 +1026,18 @@ function renderEnhancedDashboard() {
     // 10. Animator workload
     if (loadData && loadData.animatorWorkload && loadData.animatorWorkload.length > 0) {
         html += renderAnimatorWorkload(loadData.animatorWorkload);
+    }
+
+    // Show empty state if no charts/data
+    if (!hasBookingData && !hasDailyData && !hasProgramData && !hasLoadData) {
+        html += `<div class="dash-empty-state">
+            <div style="text-align:center;padding:32px 16px;color:var(--gray-500);">
+                <div style="font-size:48px;margin-bottom:12px;">📊</div>
+                <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Немає даних за обраний період</div>
+                <div style="font-size:14px;">Створіть бронювання, щоб побачити статистику.</div>
+                <div style="font-size:13px;margin-top:8px;">Спробуйте інший період або діапазон дат.</div>
+            </div>
+        </div>`;
     }
 
     container.innerHTML = html;

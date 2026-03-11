@@ -15,13 +15,17 @@ const log = createLogger('OmniNormalizer');
 // ---------------------------------------------------------------------------
 
 function buildResult(fields) {
+  const text = fields.text || null;
   return {
     channel: fields.channel || 'unknown',
     externalId: fields.externalId || null,
     senderName: fields.senderName || null,
-    text: fields.text || null,
+    text,
+    content: text, // alias — omni-hub uses content
     contentType: fields.contentType || 'text',
     mediaUrl: fields.mediaUrl || null,
+    phone: fields.phone || null,
+    externalMessageId: fields.externalMessageId || null,
     rawEvent: fields.rawEvent || null,
     meta: fields.meta || {},
   };
@@ -79,6 +83,8 @@ function normalizeTelegram(payload) {
     text,
     contentType,
     mediaUrl,
+    phone: message.contact?.phone_number || null,
+    externalMessageId: message.message_id ? String(message.message_id) : null,
     rawEvent: payload,
     meta: {
       chatId: message.chat?.id || null,
@@ -120,7 +126,7 @@ function normalizeViber(payload) {
     mediaUrl = null;
   }
   if (contentType === 'contact' && message.contact) {
-    text = message.contact.phone_number || null;
+    text = (message.contact && message.contact.phone_number) || null;
     mediaUrl = null;
   }
   if (contentType === 'sticker') {
@@ -134,6 +140,8 @@ function normalizeViber(payload) {
     text,
     contentType,
     mediaUrl,
+    phone: (message.contact && message.contact.phone_number) || sender.phone || null,
+    externalMessageId: payload.message_token ? String(payload.message_token) : null,
     rawEvent: payload,
     meta: {
       event,
@@ -162,6 +170,8 @@ function normalizeSms(payload) {
     text,
     contentType: 'text',
     mediaUrl: null,
+    phone,
+    externalMessageId: payload.message_id || payload.id || null,
     rawEvent: payload,
     meta: {
       messageId: payload.message_id || payload.id || null,
@@ -179,9 +189,14 @@ function normalizeSms(payload) {
 // ---------------------------------------------------------------------------
 
 function normalizeFacebook(payload) {
-  // Facebook sends batches in entry[].messaging[]
-  const entry = (payload.entry && payload.entry[0]) || {};
-  const messaging = (entry.messaging && entry.messaging[0]) || {};
+  // Accept both full webhook payload AND individual messaging event (from route pre-parse)
+  let messaging;
+  if (payload.sender && (payload.message || payload.postback)) {
+    messaging = payload; // already extracted by route
+  } else {
+    const entry = (payload.entry && payload.entry[0]) || {};
+    messaging = (entry.messaging && entry.messaging[0]) || {};
+  }
   const sender = messaging.sender || {};
   const message = messaging.message || {};
 
@@ -217,11 +232,11 @@ function normalizeFacebook(payload) {
     text,
     contentType,
     mediaUrl,
+    externalMessageId: message.mid || null,
     rawEvent: payload,
     meta: {
       messageId: message.mid || null,
       timestamp: messaging.timestamp || null,
-      pageId: entry.id || null,
       isEcho: message.is_echo || false,
     },
   });
@@ -235,8 +250,14 @@ function normalizeFacebook(payload) {
 // ---------------------------------------------------------------------------
 
 function normalizeInstagram(payload) {
-  const entry = (payload.entry && payload.entry[0]) || {};
-  const messaging = (entry.messaging && entry.messaging[0]) || {};
+  // Accept both full webhook payload AND individual messaging event (from route pre-parse)
+  let messaging;
+  if (payload.sender && (payload.message || payload.postback)) {
+    messaging = payload;
+  } else {
+    const entry = (payload.entry && payload.entry[0]) || {};
+    messaging = (entry.messaging && entry.messaging[0]) || {};
+  }
   const sender = messaging.sender || {};
   const message = messaging.message || {};
 
@@ -273,11 +294,11 @@ function normalizeInstagram(payload) {
     text,
     contentType,
     mediaUrl,
+    externalMessageId: message.mid || null,
     rawEvent: payload,
     meta: {
       messageId: message.mid || null,
       timestamp: messaging.timestamp || null,
-      igAccountId: entry.id || null,
       isStoryReply: !!(message.reply_to && message.reply_to.story),
     },
   });
@@ -302,6 +323,8 @@ function normalizeBinotel(payload) {
     text: null,
     contentType: 'audio',
     mediaUrl: payload.recordUrl || payload.record_url || null,
+    phone: callerNumber,
+    externalMessageId: payload.generalCallID || payload.call_id || null,
     rawEvent: payload,
     meta: {
       callId: payload.generalCallID || payload.call_id || null,

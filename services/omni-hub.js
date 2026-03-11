@@ -29,6 +29,7 @@ function mapConversationRow(row) {
     status: row.status,
     assignedTo: row.assigned_to,
     lastMessageAt: row.last_message_at,
+    lastMessage: row.last_message || null,
     unreadCount: row.unread_count,
     meta: row.meta,
     createdAt: row.created_at,
@@ -289,11 +290,11 @@ async function sendToChannel(channel, externalId, text, meta) {
     case 'viber':
       return sendViber(externalId, text, meta);
     case 'sms':
-      return sendSMS(externalId, text, meta);
+      return sendSMS(externalId, text);
     case 'facebook':
       return sendFacebook(externalId, text, meta);
     case 'instagram':
-      return sendInstagram(externalId, text, meta);
+      return sendInstagram(externalId, text);
     default:
       logger.warn(`Unknown channel: ${channel}`);
       throw new Error(`Unsupported channel: ${channel}`);
@@ -333,7 +334,10 @@ async function getConversations(filters = {}) {
   const offsetIdx = idx++;
 
   const result = await pool.query(
-    `SELECT c.*
+    `SELECT c.*,
+            (SELECT cm.content FROM conversation_messages cm
+             WHERE cm.conversation_id = c.id
+             ORDER BY cm.created_at DESC LIMIT 1) AS last_message
      FROM conversations c
      ${where}
      ORDER BY c.last_message_at DESC NULLS LAST
@@ -436,19 +440,43 @@ async function sendManualMessage(conversationId, text, senderName) {
 // 10. updateConversationStatus
 // ---------------------------------------------------------------------------
 
-async function updateConversationStatus(conversationId, status) {
+async function updateConversationStatus(conversationId, status, assignedTo, metaUpdate) {
   const valid = ['open', 'closed', 'pending', 'spam'];
-  if (!valid.includes(status)) {
-    throw new Error(`Invalid status: ${status}. Must be one of: ${valid.join(', ')}`);
+
+  const sets = [];
+  const params = [];
+  let idx = 1;
+
+  if (status) {
+    if (!valid.includes(status)) {
+      throw new Error(`Invalid status: ${status}. Must be one of: ${valid.join(', ')}`);
+    }
+    sets.push(`status = $${idx++}`);
+    params.push(status);
   }
+  if (assignedTo !== undefined) {
+    sets.push(`assigned_to = $${idx++}`);
+    params.push(assignedTo);
+  }
+  if (metaUpdate && typeof metaUpdate === 'object') {
+    sets.push(`meta = meta || $${idx++}::jsonb`);
+    params.push(JSON.stringify(metaUpdate));
+  }
+
+  if (sets.length === 0) {
+    throw new Error('Nothing to update');
+  }
+
+  sets.push('updated_at = NOW()');
+  params.push(conversationId);
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     const result = await client.query(
-      `UPDATE conversations SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
-      [status, conversationId]
+      `UPDATE conversations SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      params
     );
 
     if (result.rows.length === 0) {

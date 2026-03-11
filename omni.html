@@ -543,7 +543,7 @@
             if (searchQuery) params.set('search', searchQuery);
             const res = await api('/conversations?' + params);
             if (res.success) {
-                conversations = res.data || [];
+                conversations = (res.data && res.data.conversations) || [];
                 renderConversations();
             }
         }
@@ -551,7 +551,7 @@
         async function loadMessages(convId) {
             const res = await api('/conversations/' + convId + '/messages?limit=100');
             if (res.success) {
-                renderMessages(res.data || []);
+                renderMessages((res.data && res.data.messages) || res.data || []);
             }
         }
 
@@ -566,10 +566,11 @@
             const res = await api('/stats');
             if (res.success && res.data) {
                 const d = res.data;
+                const byStatus = d.byStatus || {};
                 statsEl.innerHTML =
                     '<span class="omni-stat">Всього: <b>' + (d.total || 0) + '</b></span>' +
-                    '<span class="omni-stat">Відкриті: <b>' + (d.open || 0) + '</b></span>' +
-                    '<span class="omni-stat">Очікують: <b>' + (d.pending || 0) + '</b></span>';
+                    '<span class="omni-stat">Відкриті: <b>' + (byStatus.open || 0) + '</b></span>' +
+                    '<span class="omni-stat">Очікують: <b>' + (byStatus.pending || 0) + '</b></span>';
             }
         }
 
@@ -775,7 +776,8 @@
                         if (data.type === 'omni:message' || data.type === 'omni:conversation') {
                             loadConversations();
                             loadStats();
-                            if (currentConvId && data.data && data.data.conversationId === currentConvId) {
+                            var evtConvId = data.data && (data.data.conversation && data.data.conversation.id || data.data.message && data.data.message.conversationId);
+                        if (currentConvId && evtConvId === currentConvId) {
                                 loadMessages(currentConvId);
                             }
                         }

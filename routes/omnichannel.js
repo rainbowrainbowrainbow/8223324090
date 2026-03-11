@@ -187,11 +187,12 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
 // Update conversation status
 router.patch('/conversations/:id', auth, async (req, res) => {
     try {
-        const { status, assigned_to } = req.body;
+        const { status, assigned_to, meta } = req.body;
         const updated = await getHub().updateConversationStatus(
             parseInt(req.params.id),
             status,
-            assigned_to
+            assigned_to,
+            meta
         );
         res.json({ success: true, data: updated });
     } catch (err) {

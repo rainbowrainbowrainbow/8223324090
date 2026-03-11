@@ -45,7 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_conv_messages_direction ON conversation_messages(
 -- Quick replies — pre-configured response templates
 CREATE TABLE IF NOT EXISTS quick_replies (
     id SERIAL PRIMARY KEY,
-    title VARCHAR(100) NOT NULL,
+    title VARCHAR(100) NOT NULL UNIQUE,
     content TEXT NOT NULL,
     category VARCHAR(50) DEFAULT 'general',
     sort_order INTEGER DEFAULT 0,
@@ -74,4 +74,4 @@ INSERT INTO quick_replies (title, content, category, sort_order) VALUES
     ('Бронювання', 'Для бронювання свята потрібно: дата, час, кількість дітей та вік. Підкажіть ці деталі?', 'booking', 3),
     ('Ціни', 'Ціни залежать від програми та кількості дітей. Зараз підберемо найкращий варіант для вас!', 'pricing', 4),
     ('Дякуємо', 'Дякуємо за звернення! Якщо будуть питання — пишіть, завжди раді допомогти! 🎉', 'closing', 5)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (title) DO NOTHING;

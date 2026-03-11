@@ -795,12 +795,25 @@
             }, 30000);
         }
 
-        // Wait for auth
-        if (window.authReady) {
-            window.authReady.then(init);
-        } else {
-            document.addEventListener('DOMContentLoaded', () => setTimeout(init, 500));
-        }
+        // Auth check (standalone page pattern — same as chat-page.js)
+        document.addEventListener('DOMContentLoaded', function() {
+            var token = localStorage.getItem('pzp_token');
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+            var savedUser = localStorage.getItem('pzp_current_user');
+            if (savedUser) {
+                try {
+                    var parsed = JSON.parse(savedUser);
+                    var userEl = document.getElementById('currentUser');
+                    if (userEl) userEl.textContent = parsed.name || parsed.username || '';
+                } catch (e) { /* ignore */ }
+            }
+            document.getElementById('mainApp').classList.remove('hidden');
+            if (typeof ParkWS !== 'undefined') ParkWS.connect();
+            init();
+        });
     })();
     </script>
 </body>

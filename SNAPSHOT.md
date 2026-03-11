@@ -8,10 +8,10 @@
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: v23.0.0 — Major Release: Full Version Sync
+- **Останній коміт**: fix: rename @TimurParkRozvagbot → @LeoParkBot
 - **package.json**: `"version": "23.0.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **Що нового**: Повна синхронізація версій, Landing carousel + Manager Guide (Kleshnya), всі ?v= теги оновлені
+- **Що нового**: Повна синхронізація версій, Landing carousel + Manager Guide (Kleshnya), Leo rename fix, deployed branch audit
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -34,6 +34,8 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
   - Cache busting ?v=23.0.0 на всіх CSS/JS ресурсах
   - Swagger API версія оновлена з 20.12.0 до 23.0.0
   - Dashboard/game.html version fixes
+  - **Deployed branch audit** — перевірено 178 комітів deployed, всі фічі синхронізовані
+  - **Leo rename** — @TimurParkRozvagbot → @LeoParkBot в HR page (останній залишок)
 
 ### v22.20.0 (Claude Code, 11.03.2026)
 - **Guardian Phase 3 — Analytics & Intelligence:**
@@ -103,8 +105,17 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - **v22.4–v22.20: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security, Tech Debt, Guardian Phase 2+3**
 - **v23.0.0: Major Release — Full Version Sync, Landing Carousel, Manager Guide**
 
+## Аудит deployed vs main (11.03.2026)
+- **Результат**: ВСІ фічі з deployed (v17.4.1) інтегровані в main (v23.0.0)
+- Write rate limiters ✅, Phantom animator fix ✅, mapBookingRow fields ✅
+- Daily digest ✅, Auth bypass /kleshnya/sync-chat ✅, Dark mode auto-init ✅
+- Svitlana Task Bot ✅, Contractors CRUD ✅, Кімната Поні ✅
+- @TimurParkRozvagbot → @LeoParkBot ✅ (зафіксовано)
+- Diamond Quest (feat/initial-diamond-quest) — Java/Minecraft плагін, НЕ наш проект
+- Людські файли (сертифікатні фони) — вже в images/certificate/
+
 ## Незроблені баги
-- **BUG-001** — Тімур бот: зайвий текст при decline/other — НЕ ЗРОБЛЕНО
+- **BUG-001** — Лєо бот: зайвий текст при decline/other — НЕ ЗРОБЛЕНО
 - **CRM-VAL-001** — Минула дата в бронюванні — НЕ ЗРОБЛЕНО (бекенд валідація)
 - **VERSION-SYNC** — ВИПРАВЛЕНО в v23.0.0 (всі файли синхронізовані)
 
@@ -145,4 +156,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-11, v23.0.0, сесія claude-code*
+*Оновлено: 2026-03-11, v23.0.0 + deployed audit, сесія claude-code*

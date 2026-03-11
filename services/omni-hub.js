@@ -266,7 +266,10 @@ async function generateAndSendAIResponse(conversation, message) {
 
   // Deliver to the external channel
   try {
-    await sendToChannel(conversation.channel, conversation.externalId, aiText, {});
+    const delivery = await sendToChannel(conversation.channel, conversation.externalId, aiText, {});
+    if (delivery && delivery.success === false) {
+      logger.warn(`Delivery failed via ${conversation.channel}: ${delivery.error || 'unknown'}`);
+    }
   } catch (err) {
     logger.error(`Failed to deliver AI response via ${conversation.channel}`, err);
   }
@@ -423,7 +426,11 @@ async function sendManualMessage(conversationId, text, senderName) {
     const saved = mapMessageRow(msg.rows[0]);
 
     // Deliver to external channel (fire-and-forget after commit)
-    sendToChannel(conversation.channel, conversation.externalId, text, {}).catch((err) => {
+    sendToChannel(conversation.channel, conversation.externalId, text, {}).then((delivery) => {
+      if (delivery && delivery.success === false) {
+        logger.warn(`Manual message delivery failed via ${conversation.channel}: ${delivery.error || 'unknown'}`);
+      }
+    }).catch((err) => {
       logger.error(`Failed to deliver manual message via ${conversation.channel}`, err);
     });
 

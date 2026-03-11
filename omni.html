@@ -518,11 +518,24 @@
         }
 
         async function api(path, opts = {}) {
-            const res = await fetch(API_BASE + '/api/omni' + path, {
-                headers: getHeaders(),
-                ...opts
-            });
-            return res.json();
+            try {
+                const res = await fetch(API_BASE + '/api/omni' + path, {
+                    ...opts,
+                    headers: { ...getHeaders(), ...(opts.headers || {}) }
+                });
+                if (res.status === 401 || res.status === 403) {
+                    localStorage.removeItem('pzp_token');
+                    window.location.href = '/';
+                    return { success: false, error: 'Сесія закінчилась' };
+                }
+                if (!res.ok) {
+                    return { success: false, error: 'Помилка сервера: ' + res.status };
+                }
+                return await res.json();
+            } catch (err) {
+                console.error('API error:', err);
+                return { success: false, error: 'Помилка мережі' };
+            }
         }
 
         // ---- Channel icons ----
@@ -698,7 +711,7 @@
             if (!s) return '';
             const el = document.createElement('span');
             el.textContent = s;
-            return el.innerHTML;
+            return el.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         function formatTime(ts) {

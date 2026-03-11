@@ -15,10 +15,15 @@ const log = createLogger('OmniNormalizer');
 // ---------------------------------------------------------------------------
 
 function buildResult(fields) {
+  const externalId = fields.externalId ? String(fields.externalId) : null;
+  if (!externalId) {
+    log.warn(`Skipping message with empty externalId for channel=${fields.channel}`);
+    return null;
+  }
   const text = fields.text || null;
   return {
     channel: fields.channel || 'unknown',
-    externalId: fields.externalId || null,
+    externalId,
     senderName: fields.senderName || null,
     text,
     content: text, // alias — omni-hub uses content

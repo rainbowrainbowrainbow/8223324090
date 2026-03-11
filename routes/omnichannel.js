@@ -83,7 +83,7 @@ router.get('/webhook/meta', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
-    if (mode === 'subscribe' && token === process.env.META_VERIFY_TOKEN) {
+    if (mode === 'subscribe' && process.env.META_VERIFY_TOKEN && token === process.env.META_VERIFY_TOKEN) {
         return res.status(200).send(challenge);
     }
     res.sendStatus(403);

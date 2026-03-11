@@ -91,8 +91,8 @@ function normalizePhone(phone) {
     if (digits.startsWith('80') && digits.length === 11) {
         return '+3' + digits;
     }
-    // Return as-is with + prefix if already looks international
-    return digits.startsWith('+') ? phone : '+' + digits;
+    // Return with + prefix for international format
+    return '+' + digits;
 }
 
 /**

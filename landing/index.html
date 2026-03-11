@@ -232,37 +232,26 @@
     <div class="container">
         <h2 class="section__title section__title--gold fade-in">Наша команда</h2>
         <p class="section__subtitle fade-in">Люди які створюють магію кожного дня</p>
-        <div class="team-carousel-wrap fade-in">
-            <button class="team-carousel-btn team-carousel-btn--prev" aria-label="Попередній">&#8592;</button>
-            <div class="team-carousel">
-                <div class="team-carousel-track" id="teamTrack">
-                    <div class="team-card">
-                        <div class="team-card__photo">
-                            <img src="images/team-karina.jpg" alt="Карина" onerror="this.style.display='none';this.parentElement.querySelector('.team-card__placeholder').style.display='flex'">
-                            <div class="team-card__placeholder" style="display:none">К</div>
-                        </div>
-                        <div class="team-card__info">
-                            <div class="team-card__name">Карина Крамаренко</div>
-                            <div class="team-card__role">Топ-менеджер</div>
-                            <div class="team-card__bio">Серце нашої команди. Координує всі процеси та забезпечує бездоганний сервіс для кожного клієнта.</div>
-                        </div>
-                    </div>
-                    <div class="team-card">
-                        <div class="team-card__photo">
-                            <img src="images/team-anli.jpg" alt="Анлі" onerror="this.style.display='none';this.parentElement.querySelector('.team-card__placeholder').style.display='flex'">
-                            <div class="team-card__placeholder" style="display:none">А</div>
-                        </div>
-                        <div class="team-card__info">
-                            <div class="team-card__name">Анлі Лектор</div>
-                            <div class="team-card__role">Демонстратор продукту</div>
-                            <div class="team-card__bio">Представляє Event Genix на локаціях. Перший контакт з клієнтами.</div>
-                        </div>
-                    </div>
+        <div class="team-cards fade-in">
+            <div class="team-card">
+                <div class="team-card__photo">
+                    <img src="images/team-karina.jpg" alt="Карина Крамаренко" onerror="this.style.display='none';this.parentElement.querySelector('.team-card__placeholder').style.display='flex'">
+                    <div class="team-card__placeholder" style="display:none">К</div>
                 </div>
+                <div class="team-card__name">Карина Крамаренко</div>
+                <div class="team-card__role">Топ-менеджер</div>
+                <div class="team-card__bio">Серце нашої команди. Координує всі процеси та забезпечує бездоганний сервіс для кожного клієнта.</div>
             </div>
-            <button class="team-carousel-btn team-carousel-btn--next" aria-label="Наступний">&#8594;</button>
+            <div class="team-card">
+                <div class="team-card__photo">
+                    <img src="images/team-anli.jpg" alt="Анлі Лектор" onerror="this.style.display='none';this.parentElement.querySelector('.team-card__placeholder').style.display='flex'">
+                    <div class="team-card__placeholder" style="display:none">А</div>
+                </div>
+                <div class="team-card__name">Анлі Лектор</div>
+                <div class="team-card__role">Демонстратор продукту</div>
+                <div class="team-card__bio">Представляє Event Genix на локаціях. Перший контакт з клієнтами.</div>
+            </div>
         </div>
-        <div class="team-carousel-dots" id="teamDots"></div>
     </div>
 </section>
 

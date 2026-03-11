@@ -647,121 +647,49 @@ h1, h2, h3, h4 {
 /* =====================
    TEAM
    ===================== */
-/* --- TEAM CAROUSEL --- */
-.team-carousel-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-top: 48px;
-}
-
-.team-carousel {
-    overflow: hidden;
-    flex: 1;
-    border-radius: 20px;
-}
-
-.team-carousel-track {
-    display: flex;
-    gap: 24px;
-    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    will-change: transform;
-}
-
-.team-carousel-btn {
-    flex-shrink: 0;
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: rgba(201, 168, 76, 0.1);
-    border: 1px solid rgba(201, 168, 76, 0.3);
-    color: #C9A84C;
-    font-size: 20px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    z-index: 2;
-}
-
-.team-carousel-btn:hover {
-    background: rgba(201, 168, 76, 0.2);
-    border-color: rgba(201, 168, 76, 0.6);
-    transform: scale(1.08);
-}
-
-.team-carousel-btn:disabled {
-    opacity: 0.3;
-    cursor: default;
-    transform: none;
-}
-
-.team-carousel-dots {
+/* --- TEAM SECTION --- */
+.team-cards {
     display: flex;
     justify-content: center;
-    gap: 8px;
-    margin-top: 24px;
-}
-
-.team-carousel-dots .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: rgba(201, 168, 76, 0.25);
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.team-carousel-dots .dot.active {
-    background: #C9A84C;
-    width: 24px;
-    border-radius: 4px;
-}
-
-/* Legacy grid (fallback — не використовується) */
-.team-grid {
-    display: flex;
-    gap: 24px;
+    gap: 32px;
+    flex-wrap: wrap;
     margin-top: 48px;
 }
 
 .team-card {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 20px;
-    padding: 32px 20px 28px;
-    overflow: hidden;
-    transition: all 0.4s ease;
+    width: 260px;
+    flex-shrink: 0;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 24px;
+    padding: 36px 24px 28px;
     text-align: center;
+    transition: all 0.3s ease;
 }
 
 .team-card:hover {
-    border-color: rgba(201, 168, 76, 0.3);
-    box-shadow: 0 8px 40px rgba(201, 168, 76, 0.1);
+    border-color: rgba(201,168,76,0.35);
+    box-shadow: 0 8px 40px rgba(201,168,76,0.08);
     transform: translateY(-4px);
 }
 
 .team-card__photo {
-    width: 110px;
-    height: 110px;
+    width: 130px;
+    height: 130px;
     border-radius: 50%;
     overflow: hidden;
     margin: 0 auto 20px;
-    border: 2px solid rgba(201, 168, 76, 0.4);
-    background: linear-gradient(135deg, rgba(201, 168, 76, 0.1), rgba(201, 168, 76, 0.03));
+    border: 2.5px solid rgba(201,168,76,0.45);
+    background: rgba(201,168,76,0.06);
+    flex-shrink: 0;
 }
 
 .team-card__photo img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 0.5s ease;
-}
-
-.team-card:hover .team-card__photo img {
-    transform: scale(1.05);
+    object-position: center top;
+    display: block;
 }
 
 .team-card__placeholder {
@@ -770,39 +698,38 @@ h1, h2, h3, h4 {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 72px;
+    font-size: 52px;
     font-weight: 800;
     color: #C9A84C;
-    background: linear-gradient(135deg, rgba(201, 168, 76, 0.08), rgba(201, 168, 76, 0.02));
-}
-
-.team-card__info {
-    padding: 0;
 }
 
 .team-card__name {
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 22px;
+    font-size: 19px;
     font-weight: 700;
     margin-bottom: 4px;
+    color: #E8E8E8;
 }
 
 .team-card__role {
-    font-size: 14px;
+    font-size: 12px;
     color: #C9A84C;
-    font-weight: 500;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 1.5px;
     margin-bottom: 12px;
 }
 
 .team-card__bio {
-    font-size: 15px;
-    color: #888888;
-    line-height: 1.6;
-    font-weight: 300;
+    font-size: 14px;
+    color: #777;
+    line-height: 1.65;
 }
+
+/* Legacy — не використовується */
+.team-grid { display: none; }
+.team-carousel-wrap { display: none; }
+.team-carousel-dots { display: none; }
 
 /* =====================
    SOCIAL PROOF

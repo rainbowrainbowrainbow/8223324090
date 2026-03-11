@@ -29,7 +29,7 @@
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-logo-img">
             </div>
             <h1>Event Genix</h1>
-            <p class="login-subtitle">AI First CRM v22.9.0</p>
+            <p class="login-subtitle">AI First CRM v22.18.1</p>
             <form id="loginForm" onsubmit="return false;">
                 <input type="text" id="loginUsername" placeholder="Логін" autocomplete="username" required aria-label="Логін">
                 <input type="password" id="loginPassword" placeholder="Пароль" autocomplete="current-password" required aria-label="Пароль">
@@ -147,6 +147,7 @@
                 document.getElementById('loginScreen').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
                 document.getElementById('currentUser').textContent = user.name;
+                DashboardPage.init();
                 return;
             }
         }

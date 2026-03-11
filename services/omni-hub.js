@@ -13,6 +13,16 @@ const { sendInstagram } = require('./omni-instagram');
 
 const logger = createLogger('omni-hub');
 
+const VALID_CHANNELS = ['telegram', 'viber', 'sms', 'facebook', 'instagram', 'binotel'];
+const VALID_STATUSES = ['open', 'closed', 'pending', 'spam'];
+const MAX_NAME_LEN = 255;
+const MAX_SEARCH_LEN = 255;
+
+function safeTruncate(str, maxLen) {
+  if (!str || typeof str !== 'string') return str;
+  return str.length > maxLen ? str.slice(0, maxLen) : str;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers: snake_case DB rows → camelCase API objects
 // ---------------------------------------------------------------------------
@@ -60,8 +70,12 @@ function mapMessageRow(row) {
 // ---------------------------------------------------------------------------
 
 async function findOrCreateConversation(channel, externalId, senderName, phone) {
-  const client = await pool.connect();
+  const safeName = safeTruncate(senderName, MAX_NAME_LEN);
+  const safePhone = safeTruncate(phone, 50);
+
+  let client;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     const existing = await client.query(
@@ -71,10 +85,9 @@ async function findOrCreateConversation(channel, externalId, senderName, phone) 
 
     if (existing.rows.length > 0) {
       const conv = existing.rows[0];
-      // Update name / phone if they changed
       if (
-        (senderName && senderName !== conv.customer_name) ||
-        (phone && phone !== conv.customer_phone)
+        (safeName && safeName !== conv.customer_name) ||
+        (safePhone && safePhone !== conv.customer_phone)
       ) {
         const updated = await client.query(
           `UPDATE conversations
@@ -83,7 +96,7 @@ async function findOrCreateConversation(channel, externalId, senderName, phone) 
                  updated_at     = NOW()
            WHERE id = $3
            RETURNING *`,
-          [senderName || conv.customer_name, phone || conv.customer_phone, conv.id]
+          [safeName || conv.customer_name, safePhone || conv.customer_phone, conv.id]
         );
         await client.query('COMMIT');
         return mapConversationRow(updated.rows[0]);
@@ -98,18 +111,18 @@ async function findOrCreateConversation(channel, externalId, senderName, phone) 
          (channel, external_id, customer_name, customer_phone, status, unread_count, meta, last_message_at, created_at, updated_at)
        VALUES ($1, $2, $3, $4, 'open', 0, '{}'::jsonb, NOW(), NOW(), NOW())
        RETURNING *`,
-      [channel, externalId, senderName || 'Unknown', phone || null]
+      [channel, externalId, safeName || 'Unknown', safePhone || null]
     );
 
     await client.query('COMMIT');
     logger.info(`New conversation created: channel=${channel} externalId=${externalId}`);
     return mapConversationRow(inserted.rows[0]);
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK').catch(() => {});
     logger.error('findOrCreateConversation error', e);
     throw e;
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 
@@ -118,8 +131,9 @@ async function findOrCreateConversation(channel, externalId, senderName, phone) 
 // ---------------------------------------------------------------------------
 
 async function saveInboundMessage(conversationId, normalized) {
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     const msg = await client.query(
@@ -151,11 +165,11 @@ async function saveInboundMessage(conversationId, normalized) {
     await client.query('COMMIT');
     return mapMessageRow(msg.rows[0]);
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK').catch(() => {});
     logger.error('saveInboundMessage error', e);
     throw e;
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 
@@ -164,8 +178,9 @@ async function saveInboundMessage(conversationId, normalized) {
 // ---------------------------------------------------------------------------
 
 async function saveOutboundMessage(conversationId, content, contentType, meta) {
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     const msg = await client.query(
@@ -190,11 +205,11 @@ async function saveOutboundMessage(conversationId, content, contentType, meta) {
     await client.query('COMMIT');
     return mapMessageRow(msg.rows[0]);
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK').catch(() => {});
     logger.error('saveOutboundMessage error', e);
     throw e;
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 
@@ -312,7 +327,14 @@ async function sendToChannel(channel, externalId, text, meta) {
 // ---------------------------------------------------------------------------
 
 async function getConversations(filters = {}) {
-  const { status, channel, search, limit = 50, offset = 0 } = filters;
+  let { status, channel, search, limit = 50, offset = 0 } = filters;
+
+  // Validate and sanitize inputs
+  if (status && !VALID_STATUSES.includes(status)) status = null;
+  if (channel && !VALID_CHANNELS.includes(channel)) channel = null;
+  if (search) search = safeTruncate(String(search), MAX_SEARCH_LEN);
+  limit = Math.max(1, Math.min(Number(limit) || 50, 200));
+  offset = Math.max(0, Number(offset) || 0);
 
   const conditions = [];
   const params = [];
@@ -402,8 +424,9 @@ async function sendManualMessage(conversationId, text, senderName) {
 
   const conversation = mapConversationRow(convResult.rows[0]);
 
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     const msg = await client.query(
@@ -411,7 +434,7 @@ async function sendManualMessage(conversationId, text, senderName) {
          (conversation_id, direction, sender_name, content, content_type, ai_generated, meta, created_at)
        VALUES ($1, 'outbound', $2, $3, 'text', false, '{}'::jsonb, NOW())
        RETURNING *`,
-      [conversationId, senderName || 'Operator', text]
+      [conversationId, safeTruncate(senderName, MAX_NAME_LEN) || 'Operator', text]
     );
 
     await client.query(
@@ -438,11 +461,11 @@ async function sendManualMessage(conversationId, text, senderName) {
 
     return saved;
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK').catch(() => {});
     logger.error('sendManualMessage error', e);
     throw e;
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 
@@ -451,20 +474,21 @@ async function sendManualMessage(conversationId, text, senderName) {
 // ---------------------------------------------------------------------------
 
 async function updateConversationStatus(conversationId, status, assignedTo, metaUpdate) {
-  const valid = ['open', 'closed', 'pending', 'spam'];
-
   const sets = [];
   const params = [];
   let idx = 1;
 
   if (status) {
-    if (!valid.includes(status)) {
-      throw new Error(`Invalid status: ${status}. Must be one of: ${valid.join(', ')}`);
+    if (!VALID_STATUSES.includes(status)) {
+      throw new Error(`Invalid status: ${status}. Must be one of: ${VALID_STATUSES.join(', ')}`);
     }
     sets.push(`status = $${idx++}`);
     params.push(status);
   }
   if (assignedTo !== undefined) {
+    if (assignedTo !== null && (typeof assignedTo !== 'string' || assignedTo.length > 100)) {
+      throw new Error('Invalid assignedTo: must be a string up to 100 characters or null');
+    }
     sets.push(`assigned_to = $${idx++}`);
     params.push(assignedTo);
   }
@@ -480,8 +504,9 @@ async function updateConversationStatus(conversationId, status, assignedTo, meta
   sets.push('updated_at = NOW()');
   params.push(conversationId);
 
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     const result = await client.query(
@@ -500,11 +525,11 @@ async function updateConversationStatus(conversationId, status, assignedTo, meta
 
     return conversation;
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK').catch(() => {});
     logger.error('updateConversationStatus error', e);
     throw e;
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 

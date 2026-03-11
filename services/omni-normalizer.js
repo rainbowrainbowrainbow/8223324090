@@ -10,26 +10,48 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('OmniNormalizer');
 
+const MAX_TEXT_LEN = 10000;
+const MAX_NAME_LEN = 255;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+function safeString(val, maxLen) {
+  if (val == null) return null;
+  const s = String(val);
+  return maxLen && s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
+function isValidUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  return url.startsWith('https://') || url.startsWith('http://');
+}
+
+function safeCoords(lat, lon) {
+  const la = Number(lat);
+  const lo = Number(lon);
+  if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+  return `${la},${lo}`;
+}
+
 function buildResult(fields) {
-  const externalId = fields.externalId ? String(fields.externalId) : null;
+  const externalId = fields.externalId ? String(fields.externalId).trim() : null;
   if (!externalId) {
     log.warn(`Skipping message with empty externalId for channel=${fields.channel}`);
     return null;
   }
-  const text = fields.text || null;
+  const text = safeString(fields.text, MAX_TEXT_LEN);
+  const mediaUrl = fields.mediaUrl && isValidUrl(fields.mediaUrl) ? fields.mediaUrl : (fields.mediaUrl || null);
   return {
     channel: fields.channel || 'unknown',
     externalId,
-    senderName: fields.senderName || null,
+    senderName: safeString(fields.senderName, MAX_NAME_LEN),
     text,
     content: text, // alias — omni-hub uses content
     contentType: fields.contentType || 'text',
-    mediaUrl: fields.mediaUrl || null,
-    phone: fields.phone || null,
+    mediaUrl,
+    phone: safeString(fields.phone, 50),
     externalMessageId: fields.externalMessageId || null,
     rawEvent: fields.rawEvent || null,
     meta: fields.meta || {},
@@ -75,7 +97,7 @@ function normalizeTelegram(payload) {
 
   let text = message.text || message.caption || null;
   if (contentType === 'location' && message.location) {
-    text = `${message.location.latitude},${message.location.longitude}`;
+    text = safeCoords(message.location.latitude, message.location.longitude) || text;
   }
   if (contentType === 'contact' && message.contact) {
     text = message.contact.phone_number || null;
@@ -127,7 +149,7 @@ function normalizeViber(payload) {
   let mediaUrl = message.media || null;
 
   if (contentType === 'location' && message.location) {
-    text = `${message.location.lat},${message.location.lon}`;
+    text = safeCoords(message.location.lat, message.location.lon) || text;
     mediaUrl = null;
   }
   if (contentType === 'contact' && message.contact) {
@@ -225,7 +247,7 @@ function normalizeFacebook(payload) {
 
     if (attType === 'location' && attachment.payload?.coordinates) {
       const coords = attachment.payload.coordinates;
-      text = `${coords.lat},${coords.long}`;
+      text = safeCoords(coords.lat, coords.long) || text;
       mediaUrl = null;
     }
   }
@@ -363,9 +385,10 @@ function normalize(channel, payload) {
   const fn = normalizers[channel];
   if (!fn) {
     log.warn('Unknown channel, returning raw payload', { channel });
+    const raw = JSON.stringify(payload);
     return buildResult({
       channel,
-      text: JSON.stringify(payload),
+      text: raw.length > MAX_TEXT_LEN ? raw.slice(0, MAX_TEXT_LEN) : raw,
       rawEvent: payload,
       meta: { warning: 'unknown_channel' },
     });
@@ -378,7 +401,7 @@ function normalize(channel, payload) {
     return buildResult({
       channel,
       rawEvent: payload,
-      meta: { error: err.message },
+      meta: { error: err?.message || String(err) },
     });
   }
 }

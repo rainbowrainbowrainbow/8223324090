@@ -42,15 +42,19 @@ function turboSmsRequest(path, body) {
             }
         };
 
-        const req = https.request(options, (res) => {
+        const req = https.request(options, (httpRes) => {
             let data = '';
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => {
+            httpRes.on('data', (chunk) => { data += chunk; });
+            httpRes.on('end', () => {
+                if (httpRes.statusCode >= 400) {
+                    reject(new Error(`TurboSMS API HTTP ${httpRes.statusCode}: ${data.slice(0, 200)}`));
+                    return;
+                }
                 try {
                     const parsed = JSON.parse(data);
                     resolve(parsed);
                 } catch (err) {
-                    reject(new Error(`TurboSMS API returned non-JSON: ${data.slice(0, 200)}`));
+                    reject(new Error(`TurboSMS API returned non-JSON (HTTP ${httpRes.statusCode}): ${data.slice(0, 200)}`));
                 }
             });
         });

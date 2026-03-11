@@ -44,19 +44,26 @@ function fbRequest(method, path, body) {
             }
         };
 
-        const req = https.request(options, (res) => {
+        const req = https.request(options, (httpRes) => {
             let data = '';
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => {
+            httpRes.on('data', (chunk) => { data += chunk; });
+            httpRes.on('end', () => {
                 try {
                     const parsed = JSON.parse(data);
                     if (parsed.error) {
-                        reject(new Error(parsed.error.message || JSON.stringify(parsed.error)));
+                        const err = new Error(parsed.error.message || JSON.stringify(parsed.error));
+                        err.statusCode = httpRes.statusCode;
+                        err.fbErrorCode = parsed.error.code;
+                        reject(err);
+                        return;
+                    }
+                    if (httpRes.statusCode >= 400) {
+                        reject(new Error(`Facebook API HTTP ${httpRes.statusCode}: ${data.slice(0, 200)}`));
                         return;
                     }
                     resolve(parsed);
                 } catch (err) {
-                    reject(new Error(`FB API returned non-JSON: ${data.slice(0, 200)}`));
+                    reject(new Error(`FB API returned non-JSON (HTTP ${httpRes.statusCode}): ${data.slice(0, 200)}`));
                 }
             });
         });
@@ -189,11 +196,17 @@ async function getUserProfile(userId, fields) {
     }
 
     try {
-        const fieldList = (fields && fields.length > 0) ? fields.join(',') : 'first_name,last_name,profile_pic';
+        const validFieldPattern = /^[a-z_]+$/i;
+        const defaultFields = 'first_name,last_name,profile_pic';
+        let fieldList = defaultFields;
+        if (Array.isArray(fields) && fields.length > 0) {
+            const sanitized = fields.filter(f => typeof f === 'string' && validFieldPattern.test(f));
+            fieldList = sanitized.length > 0 ? sanitized.join(',') : defaultFields;
+        }
 
         log.debug('Fetching FB user profile', { userId, fields: fieldList });
 
-        const response = await fbRequest('GET', `/${userId}?fields=${fieldList}`, null);
+        const response = await fbRequest('GET', `/${userId}?fields=${encodeURIComponent(fieldList)}`, null);
 
         log.info('FB user profile fetched', { userId, name: response.first_name });
         return {

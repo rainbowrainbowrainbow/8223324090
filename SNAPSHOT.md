@@ -3,18 +3,15 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v22.20.0**. package.json: `22.20.0`. Бранч `claude/update-snapshot-version-OJyXi`.
-
-**УВАГА:** package.json на `origin/main` = `22.12.0` (VERSION-SYNC баг).
+Версія **v23.0.0**. package.json: `23.0.0`. Бранч `claude/update-snapshot-version-OJyXi`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: v22.20.0 — Guardian Phase 3: Analytics & Intelligence
-- **package.json**: `"version": "22.20.0"`
-- **origin/main package.json**: `"version": "22.12.0"` (VERSION-SYNC баг)
+- **Останній коміт**: v23.0.0 — Major Release: Full Version Sync
+- **package.json**: `"version": "23.0.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **Що нового**: Guardian Phase 3 — Chat Commands, Health Scores, Sentiment Analysis, Analytics Panel, Trust System, Auto-Escalation, Weekly Reports
+- **Що нового**: Повна синхронізація версій, Landing carousel + Manager Guide (Kleshnya), всі ?v= теги оновлені
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -27,7 +24,16 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v22.20.0)
+## Останні зміни (v22.4.0 → v23.0.0)
+
+### v23.0.0 (Claude Code, 11.03.2026)
+- **Major Release: Full Version Sync**
+  - Повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js
+  - Landing carousel з командою + Anli Lektor [kleshnya]
+  - Manager Guide — нова сторінка для менеджерів [kleshnya]
+  - Cache busting ?v=23.0.0 на всіх CSS/JS ресурсах
+  - Swagger API версія оновлена з 20.12.0 до 23.0.0
+  - Dashboard/game.html version fixes
 
 ### v22.20.0 (Claude Code, 11.03.2026)
 - **Guardian Phase 3 — Analytics & Intelligence:**
@@ -95,11 +101,12 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - v21.12–v21.15: Dark Mode Fix, Night Settings, Polish, A11y, Tablet, Unified Navigation
 - v22.0–v22.3: Dashboard, Messenger UX, Gamification, Game Profile
 - **v22.4–v22.20: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security, Tech Debt, Guardian Phase 2+3**
+- **v23.0.0: Major Release — Full Version Sync, Landing Carousel, Manager Guide**
 
 ## Незроблені баги
 - **BUG-001** — Тімур бот: зайвий текст при decline/other — НЕ ЗРОБЛЕНО
 - **CRM-VAL-001** — Минула дата в бронюванні — НЕ ЗРОБЛЕНО (бекенд валідація)
-- **VERSION-SYNC** — origin/main package.json (22.12.0) розсинхронізований з комітами (v22.20.0)
+- **VERSION-SYNC** — ВИПРАВЛЕНО в v23.0.0 (всі файли синхронізовані)
 
 ## Архітектура (актуальна)
 
@@ -138,4 +145,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-11, v22.20.0, сесія claude-code*
+*Оновлено: 2026-03-11, v23.0.0, сесія claude-code*

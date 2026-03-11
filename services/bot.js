@@ -22,6 +22,27 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('ClawdBot');
 
+/**
+ * Resolve real actor name from Telegram username/chatId.
+ * Checks users table first, then staff table, falls back to fromName or 'telegram'.
+ */
+async function resolveActorName(fromUsername, fromChatId, fromName) {
+    if (fromUsername) {
+        const userRes = await pool.query(
+            'SELECT username FROM users WHERE telegram_username = $1 OR telegram_chat_id = $2 LIMIT 1',
+            [fromUsername, fromChatId]
+        );
+        if (userRes.rows.length > 0) return userRes.rows[0].username;
+
+        const staffRes = await pool.query(
+            'SELECT name FROM staff WHERE telegram_username = $1 LIMIT 1',
+            [fromUsername]
+        );
+        if (staffRes.rows.length > 0) return staffRes.rows[0].name;
+    }
+    return fromName || 'telegram';
+}
+
 const CATEGORY_NAMES = {
     quest: 'Квести', animation: 'Анімація', show: 'Шоу',
     photo: 'Фото', masterclass: 'Майстер-класи', pinata: 'Піньяти', custom: 'Інше'
@@ -423,15 +444,7 @@ async function handleDone(chatId, threadId, args, fromUsername) {
     try {
         const { updateTaskStatus } = require('./kleshnya');
 
-        // Determine actor
-        let actor = 'telegram';
-        const userResult = await pool.query(
-            'SELECT username FROM users WHERE telegram_username = $1 OR telegram_chat_id = $2 LIMIT 1',
-            [fromUsername, chatId]
-        );
-        if (userResult.rows.length > 0) {
-            actor = userResult.rows[0].username;
-        }
+        const actor = await resolveActorName(fromUsername, chatId, null);
 
         const task = await updateTaskStatus(taskId, 'done', actor);
 
@@ -853,4 +866,4 @@ async function handleCertUse(certId, callbackQueryId, chatId, threadId) {
     }
 }
 
-module.exports = { handleBotCommand, handleCertUse, registerBotCommands };
+module.exports = { handleBotCommand, handleCertUse, registerBotCommands, resolveActorName };

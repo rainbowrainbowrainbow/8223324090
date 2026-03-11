@@ -902,14 +902,15 @@ async function loadDashboardData(period, customFrom, customTo) {
     }
 
     try {
-        // Load all 3 API endpoints in parallel
-        const [revenueData, programsData, loadData] = await Promise.all([
+        // Load all 4 API endpoints in parallel
+        const [revenueData, programsData, loadData, forecastData] = await Promise.all([
             apiGetStatsRevenue(params),
             apiGetStatsPrograms(params),
-            apiGetStatsLoad(params)
+            apiGetStatsLoad(params),
+            apiFetch('/api/stats/forecast?days=14').catch(() => null)
         ]);
 
-        dashboardData = { revenueData, programsData, loadData, period, customFrom, customTo };
+        dashboardData = { revenueData, programsData, loadData, forecastData, period, customFrom, customTo };
 
         // Fallback: if new API fails, use old client-side approach
         if (!revenueData) {
@@ -967,7 +968,7 @@ function renderFallbackRevenueCards(todayBookings, weekBookings, monthBookings, 
 
 function renderEnhancedDashboard() {
     const container = document.getElementById('dashboardContent');
-    const { revenueData, programsData, loadData, period, customFrom, customTo } = dashboardData;
+    const { revenueData, programsData, loadData, forecastData, period, customFrom, customTo } = dashboardData;
 
     let html = '';
 
@@ -1026,6 +1027,11 @@ function renderEnhancedDashboard() {
     // 10. Animator workload
     if (loadData && loadData.animatorWorkload && loadData.animatorWorkload.length > 0) {
         html += renderAnimatorWorkload(loadData.animatorWorkload);
+    }
+
+    // 11. Forecast (v22.18)
+    if (forecastData && forecastData.forecast && forecastData.forecast.length > 0) {
+        html += renderForecastChart(forecastData);
     }
 
     // Show empty state if no charts/data
@@ -1244,6 +1250,58 @@ function renderAnimatorWorkload(animators) {
             }).join('')}
         </div>
     </div>`;
+}
+
+// v22.18: Forecast chart
+function renderForecastChart(data) {
+    const { forecast, peakDays, peakHours, trendDirection, trendSlope } = data;
+    const maxPredicted = Math.max(...forecast.map(f => f.predicted), 1);
+
+    const trendIcon = trendDirection === 'growing' ? '📈' : trendDirection === 'declining' ? '📉' : '➡️';
+    const trendText = trendDirection === 'growing' ? 'Зростання' : trendDirection === 'declining' ? 'Спад' : 'Стабільно';
+
+    let html = `<div class="dashboard-section">
+        <h4>🔮 Прогноз завантаженості (14 днів)</h4>
+        <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+            <div class="dash-card" style="flex:1;min-width:120px;">
+                <div class="dash-card-title">Тренд</div>
+                <div class="dash-card-value" style="font-size:18px;">${trendIcon} ${trendText}</div>
+                <div class="dash-card-sub">${trendSlope > 0 ? '+' : ''}${trendSlope} бр/тижд</div>
+            </div>`;
+
+    if (peakDays && peakDays.length > 0) {
+        html += `<div class="dash-card" style="flex:1;min-width:120px;">
+            <div class="dash-card-title">Пікові дні</div>
+            <div class="dash-card-value" style="font-size:14px;">${peakDays.map(d => d.dayName).join(', ')}</div>
+            <div class="dash-card-sub">~${peakDays[0].avg} бр/день</div>
+        </div>`;
+    }
+
+    if (peakHours && peakHours.length > 0) {
+        html += `<div class="dash-card" style="flex:1;min-width:120px;">
+            <div class="dash-card-title">Пікові години</div>
+            <div class="dash-card-value" style="font-size:14px;">${peakHours.slice(0, 3).map(h => h.hour + ':00').join(', ')}</div>
+            <div class="dash-card-sub">найбільше бронювань</div>
+        </div>`;
+    }
+
+    html += `</div>
+        <div class="dash-bars">
+            ${forecast.map(f => {
+                const pct = Math.round(f.predicted / maxPredicted * 100);
+                const dateShort = f.date.slice(5); // MM-DD
+                const isWeekend = f.dayName === 'Сб' || f.dayName === 'Нд';
+                const barColor = isWeekend ? 'var(--primary)' : 'var(--success)';
+                return `<div class="dash-bar-row">
+                    <span class="dash-bar-label" style="${isWeekend ? 'font-weight:700' : ''}">${f.dayName} ${dateShort}</span>
+                    <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+                    <span class="dash-bar-value">${f.predicted} бр.</span>
+                </div>`;
+            }).join('')}
+        </div>
+    </div>`;
+
+    return html;
 }
 
 function switchDashboardPeriod(period) {

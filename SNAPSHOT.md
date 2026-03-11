@@ -3,15 +3,15 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v23.1.0**. package.json: `23.1.0`. Бранч `claude/update-snapshot-version-OJyXi`.
+Версія **v23.2.0**. package.json: `23.2.0`. Бранч `claude/update-snapshot-version-OJyXi`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] Landing Page Event Genix v1.0
-- **package.json**: `"version": "23.1.0"`
+- **Останній коміт**: feat: [claude-code] OmniClaw — омніканальна комунікація v1.0
+- **package.json**: `"version": "23.2.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **Що нового**: Landing Page v1.0 — повний редизайн лендінгу, demo-request API, 9 секцій, iOnboard/OmniClaw
+- **Що нового**: OmniClaw v1.0 — єдиний inbox для 6 каналів (Telegram, Viber, SMS, Facebook, Instagram, Binotel)
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -24,7 +24,19 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v23.1.0)
+## Останні зміни (v22.4.0 → v23.2.0)
+
+### v23.2.0 (Claude Code, 11.03.2026)
+- **OmniClaw — Омніканальна комунікація v1.0**
+  - Єдиний inbox для 6 каналів: Telegram, Viber, SMS, Facebook, Instagram, Binotel
+  - services/omni-hub.js — центральний хаб, роутинг повідомлень, AI авто-відповіді
+  - services/omni-normalizer.js — уніфікація форматів з 6 каналів
+  - services/omni-viber.js, omni-sms.js, omni-facebook.js, omni-instagram.js
+  - routes/omnichannel.js — webhooks (публічні) + CRM API (auth)
+  - omni.html — повноцінний UI inbox з chat bubbles, фільтри каналів, швидкі відповіді
+  - DB міграція 052: conversations, conversation_messages, quick_replies
+  - WebSocket real-time оновлення
+  - AI toggle per conversation (через Клешня chat engine)
 
 ### v23.1.0 (Claude Code + Клешня, 11.03.2026)
 - **Landing Page Event Genix v1.0** — повний редизайн лендінгу
@@ -113,6 +125,7 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - **v22.4–v22.20: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security, Tech Debt, Guardian Phase 2+3**
 - **v23.0.0: Major Release — Full Version Sync, Landing Carousel, Manager Guide**
 - **v23.1.0: Landing Page Event Genix v1.0 — повний редизайн, demo-request API**
+- **v23.2.0: OmniClaw — омніканальна комунікація v1.0, 6 каналів, AI авто-відповіді**
 
 ## Аудит deployed vs main (11.03.2026)
 - **Результат**: ВСІ фічі з deployed (v17.4.1) інтегровані в main (v23.0.0)
@@ -132,13 +145,13 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 
 | Метрика | Значення |
 |---------|----------|
-| Routes | 61 файлів |
-| Services | 30 файлів |
+| Routes | 62 файлів |
+| Services | 35 файлів |
 | Middleware | 6 файлів |
 | Frontend JS | 44 модулі |
-| HTML сторінки | 25 |
+| HTML сторінки | 26 |
 | CSS файли | 17 |
-| DB міграції | 51 (001–051) |
+| DB міграції | 52 (001–052) |
 | DB таблиці | 48+ (core) + міграції |
 | Залежності | 15 npm packages |
 | JS код | ~90 000 рядків |
@@ -165,4 +178,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-11, v23.1.0 + Landing Page v1.0, сесія claude-code*
+*Оновлено: 2026-03-11, v23.2.0 + OmniClaw v1.0, сесія claude-code*

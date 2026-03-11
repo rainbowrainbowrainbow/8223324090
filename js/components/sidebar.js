@@ -14,6 +14,7 @@ const Sidebar = (() => {
         { href: '/center',    icon: 'Ц',  label: 'Центр' },
         { href: '/tasks',     icon: 'З',  label: 'Задачі' },
         { href: '/chat',      icon: 'Чт', label: 'Чат' },
+        { href: '/omni',      icon: 'Om', label: 'OmniClaw' },
         { href: '/customers', icon: 'К',  label: 'Клієнти' },
         { href: '/programs',  icon: 'П',  label: 'Програми' },
         { href: '/staff',     icon: 'Ш',  label: 'Команда' },

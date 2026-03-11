@@ -10,7 +10,7 @@ const { createLogger } = require('../utils/logger');
 const log = createLogger('OmniFacebook');
 
 const FB_PAGE_TOKEN = process.env.FB_PAGE_TOKEN || '';
-const FB_API_VERSION = 'v18.0';
+const FB_API_VERSION = process.env.FB_API_VERSION || 'v21.0';
 
 const SOCKET_TIMEOUT = 15000;
 const RESPONSE_TIMEOUT = 15000;
@@ -30,8 +30,7 @@ function fbRequest(method, path, body) {
     return new Promise((resolve, reject) => {
         const payload = body ? JSON.stringify(body) : null;
 
-        const separator = path.includes('?') ? '&' : '?';
-        const fullPath = `/${FB_API_VERSION}${path}${separator}access_token=${FB_PAGE_TOKEN}`;
+        const fullPath = `/${FB_API_VERSION}${path}`;
 
         const options = {
             hostname: 'graph.facebook.com',
@@ -40,6 +39,7 @@ function fbRequest(method, path, body) {
             method,
             headers: {
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${FB_PAGE_TOKEN}`,
                 ...(payload && { 'Content-Length': Buffer.byteLength(payload) })
             }
         };

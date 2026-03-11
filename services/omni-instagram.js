@@ -11,7 +11,7 @@ const { createLogger } = require('../utils/logger');
 const log = createLogger('OmniInstagram');
 
 const IG_PAGE_TOKEN = process.env.IG_PAGE_TOKEN || '';
-const IG_API_VERSION = 'v18.0';
+const IG_API_VERSION = process.env.IG_API_VERSION || 'v21.0';
 
 const SOCKET_TIMEOUT = 15000;
 const RESPONSE_TIMEOUT = 15000;
@@ -31,8 +31,7 @@ function igRequest(method, path, body) {
     return new Promise((resolve, reject) => {
         const payload = body ? JSON.stringify(body) : null;
 
-        const separator = path.includes('?') ? '&' : '?';
-        const fullPath = `/${IG_API_VERSION}${path}${separator}access_token=${IG_PAGE_TOKEN}`;
+        const fullPath = `/${IG_API_VERSION}${path}`;
 
         const options = {
             hostname: 'graph.facebook.com',
@@ -41,6 +40,7 @@ function igRequest(method, path, body) {
             method,
             headers: {
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${IG_PAGE_TOKEN}`,
                 ...(payload && { 'Content-Length': Buffer.byteLength(payload) })
             }
         };

@@ -4,6 +4,7 @@
  * Public webhooks (no auth): /webhook/viber, /webhook/sms, /webhook/meta, /webhook/binotel
  * CRM API (auth required): conversations, messages, send, stats, quick-replies
  */
+const crypto = require('crypto');
 const express = require('express');
 const router = express.Router();
 const { createLogger } = require('../utils/logger');
@@ -22,6 +23,37 @@ let normalizer = null;
 function getNormalizer() {
     if (!normalizer) normalizer = require('../services/omni-normalizer');
     return normalizer;
+}
+
+// ═══════════════════════════════════════════════
+// Webhook signature verification helpers
+// ═══════════════════════════════════════════════
+
+function verifyViberSignature(req) {
+    const token = process.env.VIBER_TOKEN;
+    if (!token) return true; // skip if not configured
+    const sig = req.headers['x-viber-content-signature'];
+    if (!sig) return false;
+    const expected = crypto.createHmac('sha256', token)
+        .update(JSON.stringify(req.body))
+        .digest('hex');
+    return sig === expected;
+}
+
+function verifyMetaSignature(req) {
+    const secret = process.env.META_APP_SECRET;
+    if (!secret) return true; // skip if not configured
+    const sig = req.headers['x-hub-signature-256'];
+    if (!sig) return false;
+    const expected = 'sha256=' + crypto.createHmac('sha256', secret)
+        .update(JSON.stringify(req.body))
+        .digest('hex');
+    return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+}
+
+function parseId(val) {
+    const n = parseInt(val, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 // ═══════════════════════════════════════════════
@@ -45,6 +77,10 @@ router.post('/webhook/telegram', async (req, res) => {
 // Viber webhook
 router.post('/webhook/viber', async (req, res) => {
     try {
+        if (!verifyViberSignature(req)) {
+            log.warn('Viber webhook signature verification failed');
+            return res.status(403).json({ status: 1, status_message: 'invalid signature' });
+        }
         const body = req.body;
         // Viber sends webhook verification
         if (body.event === 'webhook') {
@@ -91,6 +127,10 @@ router.get('/webhook/meta', (req, res) => {
 
 router.post('/webhook/meta', async (req, res) => {
     try {
+        if (!verifyMetaSignature(req)) {
+            log.warn('Meta webhook signature verification failed');
+            return res.status(403).json({ ok: false, error: 'invalid signature' });
+        }
         const body = req.body;
         if (body.object === 'page' || body.object === 'instagram') {
             const entries = body.entry || [];
@@ -153,8 +193,10 @@ router.get('/conversations', auth, async (req, res) => {
 router.get('/conversations/:id/messages', auth, async (req, res) => {
     try {
         const { limit = 50, offset = 0 } = req.query;
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
         const messages = await getHub().getMessages(
-            parseInt(req.params.id),
+            id,
             Math.min(parseInt(limit) || 50, 200),
             parseInt(offset) || 0
         );
@@ -169,11 +211,13 @@ router.get('/conversations/:id/messages', auth, async (req, res) => {
 router.post('/conversations/:id/send', auth, async (req, res) => {
     try {
         const { text } = req.body;
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
         if (!text || !text.trim()) {
             return res.status(400).json({ success: false, error: 'Текст повідомлення обов\'язковий' });
         }
         const message = await getHub().sendManualMessage(
-            parseInt(req.params.id),
+            id,
             text.trim(),
             req.user.username
         );
@@ -187,9 +231,11 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
 // Update conversation status
 router.patch('/conversations/:id', auth, async (req, res) => {
     try {
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
         const { status, assigned_to, meta } = req.body;
         const updated = await getHub().updateConversationStatus(
-            parseInt(req.params.id),
+            id,
             status,
             assigned_to,
             meta
@@ -227,7 +273,9 @@ router.get('/quick-replies', auth, async (req, res) => {
 router.post('/setup/viber', auth, async (req, res) => {
     try {
         const { url } = req.body;
-        if (!url) return res.status(400).json({ success: false, error: 'URL обов\'язковий' });
+        if (!url || typeof url !== 'string' || !url.startsWith('https://')) {
+            return res.status(400).json({ success: false, error: 'Потрібен валідний HTTPS URL' });
+        }
         const { setViberWebhook } = require('../services/omni-viber');
         const result = await setViberWebhook(url);
         res.json(result);

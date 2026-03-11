@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { generateDailyReport, runDailyReports, ensureGuardianMemberships, getMood, getGuardianState, clearMuteCache } = require('../services/guardian');
+const { generateDailyReport, runDailyReports, ensureGuardianMemberships, getMood, getGuardianState, clearMuteCache, alertDirector } = require('../services/guardian');
 
 const log = createLogger('GuardianRoute');
 
@@ -314,6 +314,79 @@ router.delete('/rules/:id', async (req, res) => {
     } catch (err) {
         log.error('DELETE /rules error', err);
         res.status(500).json({ error: 'Не вдалось видалити правило' });
+    }
+});
+
+/**
+ * POST /api/guardian/action
+ * Handle inline action buttons from Guardian DM alerts.
+ * Actions: mute_both, warn, watch, unmute
+ */
+router.post('/action', async (req, res) => {
+    try {
+        const { action, channelId, userId, username } = req.body;
+        if (!action) {
+            return res.status(400).json({ error: 'action обовʼязковий' });
+        }
+
+        const adminUser = req.user;
+        let response = '';
+
+        switch (action) {
+            case 'mute_both': {
+                // Mute both parties in the channel (find recent conflict aggressors)
+                const recentMutes = await pool.query(`
+                    SELECT DISTINCT user_id, (details->>'username')::text AS username
+                    FROM guardian_actions
+                    WHERE channel_id = $1 AND action_type = 'mute'
+                    AND created_at > NOW() - INTERVAL '10 minutes'
+                    ORDER BY created_at DESC LIMIT 2
+                `, [channelId]);
+                for (const mute of recentMutes.rows) {
+                    await pool.query(
+                        'INSERT INTO chat_mutes (channel_id, user_id, reason, muted_until) VALUES ($1, $2, $3, NOW() + INTERVAL \'10 minutes\')',
+                        [channelId, mute.user_id, 'Директор: мютити обох']
+                    );
+                }
+                response = `🔇 Обох учасників замютовано на 10 хв (${adminUser.username})`;
+                break;
+            }
+            case 'warn': {
+                // Send warning to user
+                await alertDirector(
+                    `⚠️ <b>Попередження від директора</b>\n` +
+                    `@${username}, будь ласка, дотримуйтесь правил спілкування.\n` +
+                    `Наступне порушення — блокування на довший термін.`
+                );
+                response = `⚠️ Попередження відправлено @${username} (${adminUser.username})`;
+                break;
+            }
+            case 'watch': {
+                response = `👀 Директор спостерігає за ситуацією (${adminUser.username})`;
+                break;
+            }
+            case 'unmute': {
+                if (userId) {
+                    await pool.query('UPDATE chat_mutes SET muted_until = NOW() WHERE user_id = $1 AND channel_id = $2 AND muted_until > NOW()', [userId, channelId]);
+                    clearMuteCache(channelId, userId);
+                    response = `🔊 @${username || userId} розмютовано (${adminUser.username})`;
+                }
+                break;
+            }
+            default:
+                return res.status(400).json({ error: `Невідома дія: ${action}` });
+        }
+
+        // Log the director's action
+        await pool.query(
+            'INSERT INTO guardian_actions (action_type, channel_id, target_user_id, details) VALUES ($1, $2, $3, $4)',
+            [`director_${action}`, channelId || null, userId || null, JSON.stringify({ response, adminId: adminUser.id })]
+        );
+
+        res.json({ success: true, message: response });
+    } catch (err) {
+        log.error('POST /action error', err);
+        res.status(500).json({ error: 'Не вдалось виконати дію' });
     }
 });
 

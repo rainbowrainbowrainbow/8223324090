@@ -4183,6 +4183,107 @@ body.dark-mode .chat-theme-select {
     background: transparent;
 }
 
+/* Guardian Security Panel — Stats Summary */
+.guardian-stats-summary {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--gray-200);
+    background: var(--gray-50);
+}
+
+.guardian-stats-row {
+    display: flex;
+    gap: 16px;
+    justify-content: space-around;
+    margin-bottom: 8px;
+}
+
+.guardian-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.guardian-stat-val {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.guardian-stat-lbl {
+    font-size: 11px;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.guardian-active-mutes {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--gray-200);
+    font-size: 13px;
+}
+
+.guardian-mute-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+}
+
+.guardian-unmute-btn {
+    background: var(--danger);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    margin-left: auto;
+}
+
+.guardian-unmute-btn:hover {
+    opacity: 0.85;
+}
+
+/* Guardian Action Buttons (inline in DM alerts) */
+.guardian-action-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.guardian-action-btn {
+    background: var(--white);
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: inherit;
+}
+
+.guardian-action-btn:hover {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.guardian-action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.guardian-action-result {
+    font-size: 12px;
+    color: var(--primary);
+    padding: 4px 0;
+    font-style: italic;
+}
+
 /* Guardian pulse animation for the shield in profile */
 @keyframes guardianPulse {
     0%, 100% { box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3); }

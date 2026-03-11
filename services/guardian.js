@@ -22,6 +22,28 @@ const log = createLogger('Guardian');
 const GUARDIAN_USERNAME = 'guardian';
 const MUTE_DURATION_MS = 1 * 60 * 1000; // 1 minute
 
+// Telegram alerts for critical events (Contour 2)
+const BOSS_TELEGRAM_ID = process.env.BOSS_TELEGRAM_ID || '674972415';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+
+// Rate limiter for Telegram alerts (max 1 per 30s per type)
+const _telegramAlertCooldowns = {};
+const TELEGRAM_COOLDOWN_MS = 30 * 1000;
+
+// Repeat offender tracker: { userId: { count, lastIncident } }
+const _repeatOffenders = {};
+const REPEAT_OFFENDER_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
+const REPEAT_OFFENDER_THRESHOLD = 3;
+
+// Spam tracker: { userId: { timestamps[] } }
+const _spamTracker = {};
+const SPAM_WINDOW_MS = 30 * 1000;
+const SPAM_THRESHOLD = 10;
+
+// Hourly block tracker: { `${userId}:${hour}`: count }
+const _hourlyBlocks = {};
+const HOURLY_BLOCK_THRESHOLD = 5;
+
 // AI setup — OpenRouter (cheap models) or Anthropic fallback
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -91,6 +113,104 @@ async function callLLM(systemPrompt, userMessage, maxTokens) {
     }
 
     return null;
+}
+
+/**
+ * Send critical alert to director via Telegram.
+ * Only fires for: conflict high, sensitive data, 5+ blocks/hour, mass spam.
+ */
+async function alertDirectorTelegram(htmlContent, alertType) {
+    if (!TELEGRAM_BOT_TOKEN) return;
+
+    // Rate limit: 1 alert per type per 30s
+    const now = Date.now();
+    const cooldownKey = alertType || 'generic';
+    if (_telegramAlertCooldowns[cooldownKey] && now - _telegramAlertCooldowns[cooldownKey] < TELEGRAM_COOLDOWN_MS) {
+        return;
+    }
+    _telegramAlertCooldowns[cooldownKey] = now;
+
+    try {
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: BOSS_TELEGRAM_ID,
+                text: htmlContent,
+                parse_mode: 'HTML'
+            })
+        });
+        log.info(`Telegram alert sent [${alertType}]: ${htmlContent.substring(0, 60)}...`);
+    } catch (err) {
+        log.error('Telegram alert failed', err.message);
+    }
+}
+
+/**
+ * Track repeat offender (3+ incidents per week → alert).
+ */
+function trackRepeatOffender(userId, username, channelId) {
+    const now = Date.now();
+    if (!_repeatOffenders[userId]) {
+        _repeatOffenders[userId] = { count: 0, lastIncident: 0, username };
+    }
+    const offender = _repeatOffenders[userId];
+    // Reset if outside window
+    if (now - offender.lastIncident > REPEAT_OFFENDER_WINDOW_MS) {
+        offender.count = 0;
+    }
+    offender.count++;
+    offender.lastIncident = now;
+    offender.username = username;
+
+    if (offender.count === REPEAT_OFFENDER_THRESHOLD) {
+        alertDirectorTelegram(
+            `🔴 <b>Повторний порушник!</b>\n` +
+            `Користувач: @${username}\n` +
+            `Порушень за тиждень: ${offender.count}\n` +
+            `Потрібне втручання директора`,
+            `repeat-offender-${userId}`
+        );
+    }
+}
+
+/**
+ * Track spam (10+ messages in 30s → alert).
+ */
+function trackSpam(userId, username, channelId) {
+    const now = Date.now();
+    if (!_spamTracker[userId]) _spamTracker[userId] = [];
+    _spamTracker[userId].push(now);
+    // Clean old timestamps
+    _spamTracker[userId] = _spamTracker[userId].filter(ts => now - ts < SPAM_WINDOW_MS);
+
+    if (_spamTracker[userId].length >= SPAM_THRESHOLD) {
+        alertDirectorTelegram(
+            `🔴 <b>Масовий спам!</b>\n` +
+            `Користувач: @${username}\n` +
+            `${_spamTracker[userId].length} повідомлень за 30 сек`,
+            `spam-${userId}`
+        );
+        _spamTracker[userId] = []; // Reset after alert
+    }
+}
+
+/**
+ * Track hourly blocks (5+ from same user → Telegram alert).
+ */
+function trackHourlyBlocks(userId, username) {
+    const hour = new Date().toISOString().substring(0, 13); // "2026-03-11T14"
+    const key = `${userId}:${hour}`;
+    _hourlyBlocks[key] = (_hourlyBlocks[key] || 0) + 1;
+
+    if (_hourlyBlocks[key] === HOURLY_BLOCK_THRESHOLD) {
+        alertDirectorTelegram(
+            `🔴 <b>5+ блокувань за годину!</b>\n` +
+            `Користувач: @${username}\n` +
+            `Блокувань: ${_hourlyBlocks[key]}`,
+            `hourly-blocks-${key}`
+        );
+    }
 }
 
 // Cache guardian user ID
@@ -170,6 +290,16 @@ const SENSITIVE_PATTERNS = [
     { regex: /\b[А-ЯІЇЄҐA-Z]{2}\s?\d{6}\b/g, replace: '** ******', type: 'passport' },
     // ІПН/РНОКПП (Ukrainian tax ID, 10 digits)
     { regex: /\b\d{10}\b/g, replace: '**********', type: 'tax_id' },
+    // Passwords: "пароль: xxx", "password: xxx", "пароль xxx", "pass: xxx"
+    { regex: /(?:парол[ьі]|password|pass|pwd)\s*[:=]\s*\S{3,}/gi, replace: '*****: [замасковано]', type: 'password' },
+    // JWT tokens (base64.base64.base64)
+    { regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, replace: '[JWT замасковано]', type: 'jwt' },
+    // API keys / Bearer tokens (long alphanumeric strings with common prefixes)
+    { regex: /\b(?:sk-|pk-|api[_-]?key|bearer)\s*[:=]?\s*[A-Za-z0-9_-]{20,}\b/gi, replace: '[API ключ замасковано]', type: 'api_key' },
+    // Ukrainian addresses: вул./вулиця + name + number
+    { regex: /(?:вул(?:иця|\.)?|просп(?:ект|\.)?|бульв(?:ар|\.)?|пров(?:улок|\.))\s+[А-ЯІЇЄҐа-яіїєґ']+\s*,?\s*(?:буд(?:инок|\.)?)?\s*\d{1,4}[а-яА-Я]?/gi, replace: '[адреса замасковано]', type: 'address' },
+    // Date of birth patterns: ДД.ММ.РРРР, ДД/ММ/РРРР (years 1940-2025)
+    { regex: /\b(?:0[1-9]|[12]\d|3[01])[./](?:0[1-9]|1[0-2])[./](?:19[4-9]\d|20[0-2]\d)\b/g, replace: '[дата замасковано]', type: 'dob' },
 ];
 
 /**
@@ -245,12 +375,17 @@ async function maskSensitiveInMessage(messageId, channelId, content, username) {
         });
 
         // DM director about the incident
-        await alertDirector(
-            `🛡️ <b>Маскування даних</b>\n` +
+        const alertText = `🛡️ <b>Маскування даних</b>\n` +
             `Канал: #${await getChannelSlug(channelId)}\n` +
             `Користувач: @${username}\n` +
-            `Тип: ${result.types.join(', ')}`
-        );
+            `Тип: ${result.types.join(', ')}`;
+        await alertDirector(alertText);
+
+        // Critical types → also alert via Telegram
+        const criticalTypes = ['card', 'iban', 'passport', 'tax_id', 'password', 'jwt'];
+        if (result.types.some(t => criticalTypes.includes(t))) {
+            alertDirectorTelegram(alertText, `sensitive-${channelId}`);
+        }
 
         log.info(`Masked sensitive data [${result.types.join(',')}] in msg:${messageId} by ${username}`);
         return true;
@@ -266,7 +401,7 @@ async function maskSensitiveInMessage(messageId, channelId, content, username) {
 
 // Recent messages per channel for conflict analysis
 const _recentMessages = {};
-const CONFLICT_WINDOW = 5; // analyze last N messages
+const CONFLICT_WINDOW = 15; // analyze last N messages (expanded from 5)
 
 // Track muted users: { `${channelId}:${userId}`: mutedUntilTimestamp }
 const _activeMutes = {};
@@ -330,14 +465,24 @@ async function muteUser(channelId, userId, username, reason) {
             severity: 'danger'
         });
 
-        // DM director about mute
-        await alertDirector(
+        // DM director about mute — with inline action buttons
+        const slug = await getChannelSlug(channelId);
+        await alertDirectorWithActions(
             `🚨 <b>Блокування користувача</b>\n` +
-            `Канал: #${await getChannelSlug(channelId)}\n` +
+            `Канал: #${slug}\n` +
             `Користувач: @${username}\n` +
             `Причина: ${reason}\n` +
-            `До: ${mutedUntil.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}`
+            `До: ${mutedUntil.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}`,
+            [
+                { action: 'mute_both', label: '🔇 Мютити обох', channelId, userId },
+                { action: 'warn', label: '⚠️ Попередження', channelId, userId, username },
+                { action: 'watch', label: '👀 Спостерігаю', channelId, userId }
+            ]
         );
+
+        // Track repeat offender + hourly blocks for Telegram alerts
+        trackRepeatOffender(userId, username, channelId);
+        trackHourlyBlocks(userId, username);
 
         log.info(`Muted ${username} (id:${userId}) in ch:${channelId} until ${mutedUntil.toISOString()}`);
     } catch (err) {
@@ -847,10 +992,12 @@ async function aiConflictCheck(messages) {
         ).join('\n');
 
         const text = await callLLM(
-            `Ти — модератор чату. Проаналізуй останні повідомлення і визнач чи є конфлікт або агресія.
+            `Ти — модератор чату дитячого парку. Проаналізуй останні повідомлення і визнач чи є конфлікт або агресія.
 Відповідай ТІЛЬКИ у форматі JSON: {"conflict": true/false, "severity": "low"/"medium"/"high", "aggressors": ["username"], "reason": "короткий опис"}
 Якщо конфлікту немає — {"conflict": false}
-Враховуй контекст: жарти та легке підколювання — це нормально. Шукай справжню агресію та образи.`,
+Враховуй контекст: жарти та легке підколювання — це нормально. Шукай справжню агресію та образи.
+Звертай увагу на ланцюжки відповідей (reply chains) — конфлікт може розвиватися через кілька відповідей.
+Якщо бачиш ескалацію (кожне наступне повідомлення більш агресивне) — severity: "high".`,
             chatLog, 200
         );
         if (!text) return null;
@@ -892,6 +1039,19 @@ async function analyzeConflict(channelId, userId, username, content, messageId) 
                         aiResult.reason || 'Конфліктна поведінка');
                 }
             }
+
+            // High severity conflict → Telegram alert to director
+            if (aiResult.severity === 'high') {
+                const slug = await getChannelSlug(channelId);
+                alertDirectorTelegram(
+                    `🚨 <b>Серйозний конфлікт!</b>\n` +
+                    `Канал: #${slug}\n` +
+                    `Учасники: ${aggressors.map(a => '@' + a).join(', ')}\n` +
+                    `Причина: ${aiResult.reason || 'Конфліктна поведінка'}`,
+                    `conflict-high-${channelId}`
+                );
+            }
+
             return aggressors.length > 0;
         }
     }
@@ -982,13 +1142,28 @@ async function generateDailyReport(channelId, dateStr) {
             ? `\n<b>🤖 AI-модерація:</b>\n- Заблоковано спроб обходу фільтру: ${findingsCount}\n- Користувачі: ${[...new Set(findings.map(f => f.username))].join(', ')}\n- Причини: ${[...new Set(findings.map(f => f.reason))].slice(0, 3).join('; ')}`
             : '';
 
+        // Count unique participants
+        const uniqueUsers = [...new Set(messages.map(m => m.username))];
+        const totalUsers = uniqueUsers.length;
+        const userMsgCounts = {};
+        messages.forEach(m => { userMsgCounts[m.username] = (userMsgCounts[m.username] || 0) + 1; });
+        const sortedUsers = Object.entries(userMsgCounts).sort((a, b) => b[1] - a[1]);
+        const mostActive = sortedUsers[0] ? `@${sortedUsers[0][0]} (${sortedUsers[0][1]} msg)` : 'н/д';
+        const leastActive = sortedUsers.length > 1 ? `@${sortedUsers[sortedUsers.length - 1][0]} (${sortedUsers[sortedUsers.length - 1][1]} msg)` : 'н/д';
+
         const summary = await callLLM(
             `Ти — Guardian, AI-модератор корпоративного чату розважального парку "Парк Закревського Періоду".
 Створи щоденний звіт з чату для директора. Формат:
 
-📊 <b>Звіт за [дата]</b> | #${channel?.slug || 'канал'}
+📊 <b>Звіт по командному чату — ${dateStr}</b>
 
-<b>👥 Хто про що:</b>
+<b>👥 Активність:</b>
+• Всього повідомлень: ${messages.length}
+• Активних учасників: ${totalUsers}
+• Найактивніший: ${mostActive}
+• Найтихіший: ${leastActive}
+
+<b>💬 Теми розмов (по учасниках):</b>
 - @username1 — обговорював [тема], запитував про [тема]
 - @username2 — повідомив про [тема], домовився з @username3 про [тема]
 (перелічи КОЖНОГО активного учасника та коротко що він обговорював/робив)
@@ -997,14 +1172,19 @@ async function generateDailyReport(channelId, dateStr) {
 - Ключові теми та рішення (2-3 пункти)
 
 <b>⚠️ Важливе:</b>
-- Рішення, домовленості, дедлайни, задачі
+- Рішення, домовленості, дедлайни, задачі (якщо є)
 
 <b>🛡️ Модерація:</b>
-- Блокувань: ${actionCounts.mute || 0}, Замасковано: ${actionCounts.mask || 0}, AI-блокувань: ${findingsCount}
+• Заблоковано: ${actionCounts.mute || 0} повідомлень
+• Замасковано: ${actionCounts.mask || 0}
+• AI-блокувань: ${findingsCount}
 ${findingsSection}
 
+<b>⚠️ Незвичайне:</b>
+- Вкажи незвичайну активність: спам, великі паузи, раптові теми (якщо були)
+
 Пиши українською, лаконічно. Ігноруй дрібні привітання. Фокусуйся на робочих темах та хто чим займався.`,
-            `Повідомлення за ${dateStr}:\n\n${chatLog}`, 600
+            `Повідомлення за ${dateStr}:\n\n${chatLog}`, 800
         ) || 'Не вдалось згенерувати звіт';
 
         // Clear findings for this channel after report
@@ -1265,6 +1445,9 @@ async function sendGuardianMessage(channelId, content) {
 async function preCheckMessage({ channelId, userId, username, content }) {
     if (!content) return { blocked: false };
 
+    // 0. Track spam (fire-and-forget)
+    trackSpam(userId, username, channelId);
+
     // 1. Check if muted
     if (isUserMuted(channelId, userId)) {
         log.info(`Blocked muted user ${username} in ch:${channelId}`);
@@ -1467,6 +1650,84 @@ async function getDirectorUserId() {
     }
 }
 
+/**
+ * Send DM to director with inline action buttons (metadata).
+ * Frontend renders buttons based on message metadata.actions array.
+ */
+async function alertDirectorWithActions(content, actions) {
+    try {
+        const directorId = await getDirectorUserId();
+        if (!directorId) return;
+
+        const guardianId = await getGuardianUserId();
+        if (!guardianId) return;
+
+        let dmChannel = await pool.query(`
+            SELECT c.id FROM chat_channels c
+            JOIN chat_channel_members m1 ON m1.channel_id = c.id AND m1.user_id = $1
+            JOIN chat_channel_members m2 ON m2.channel_id = c.id AND m2.user_id = $2
+            WHERE c.is_dm = true
+            LIMIT 1
+        `, [guardianId, directorId]);
+
+        let channelId;
+        if (dmChannel.rows.length > 0) {
+            channelId = dmChannel.rows[0].id;
+        } else {
+            const ch = await pool.query(`
+                INSERT INTO chat_channels (name, slug, is_dm, created_by)
+                VALUES ('Guardian → Director', 'dm-guardian-director', true, $1)
+                RETURNING id
+            `, [guardianId]);
+            channelId = ch.rows[0].id;
+            await pool.query('INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2), ($1, $3)', [channelId, guardianId, directorId]);
+        }
+
+        // Send message with action metadata
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
+            const seq = seqResult.rows[0].seq;
+
+            const metadata = JSON.stringify({ source: 'guardian', actions: actions || [] });
+            const result = await client.query(`
+                INSERT INTO chat_messages (channel_id, user_id, seq, content, is_bot, content_type, metadata)
+                VALUES ($1, $2, $3, $4, true, 'bot', $5)
+                RETURNING *
+            `, [channelId, guardianId, seq, content, metadata]);
+            await client.query('COMMIT');
+
+            const msg = result.rows[0];
+            broadcastToChannel(channelId, 'chat:message', {
+                channelId,
+                message: {
+                    id: msg.id,
+                    channelId: msg.channel_id,
+                    userId: msg.user_id,
+                    seq: msg.seq,
+                    content: msg.content,
+                    isBot: true,
+                    contentType: 'bot',
+                    metadata: { source: 'guardian', actions: actions || [] },
+                    createdAt: msg.created_at,
+                    username: GUARDIAN_USERNAME,
+                    displayName: 'Guardian 🛡️'
+                }
+            });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+
+        log.info(`Alert with actions sent to director: ${content.substring(0, 50)}...`);
+    } catch (err) {
+        log.error('Failed to alert director with actions', err);
+    }
+}
+
 async function alertDirector(content) {
     try {
         const directorId = await getDirectorUserId();
@@ -1571,6 +1832,8 @@ module.exports = {
     getGuardianState,
     broadcastGuardianEvent,
     alertDirector,
+    alertDirectorWithActions,
+    alertDirectorTelegram,
     flushLearnBatch,
     preCheckMessage,
     GUARDIAN_USERNAME

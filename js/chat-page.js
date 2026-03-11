@@ -2175,6 +2175,7 @@
                 _renderFileAttachment(msg) +
                 '<div class="chat-bubble-content">' + content + '</div>' +
                 _renderLinkPreview(msg) +
+                _renderGuardianActions(msg) +
                 (msg.threadReplyCount > 0 ? '<button class="chat-thread-badge" data-thread-id="' + msg.id + '">' + msg.threadReplyCount + ' відп.</button>' : '') +
                 reactionsHtml +
                 '<div class="chat-msg-actions">' +
@@ -2238,6 +2239,37 @@
                 _showUserProfile(msg.userId);
             });
         }
+
+        // Guardian action button clicks (admin only)
+        el.querySelectorAll('.guardian-action-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var action = btn.dataset.guardianAction;
+                var payload = {
+                    action: action,
+                    channelId: parseInt(btn.dataset.channel) || null,
+                    userId: parseInt(btn.dataset.user) || null,
+                    username: btn.dataset.username || null
+                };
+                btn.disabled = true;
+                btn.textContent = '⏳...';
+                fetch('/api/guardian/action', {
+                    method: 'POST',
+                    headers: Object.assign({ 'Content-Type': 'application/json' }, _headers()),
+                    body: JSON.stringify(payload)
+                }).then(function (r) { return r.json(); })
+                .then(function (data) {
+                    btn.textContent = data.success ? '✅' : '❌';
+                    // Replace all action buttons with response text
+                    var container = btn.closest('.guardian-action-buttons');
+                    if (container && data.message) {
+                        container.innerHTML = '<div class="guardian-action-result">' + _esc(data.message) + '</div>';
+                    }
+                }).catch(function () {
+                    btn.textContent = '❌';
+                    btn.disabled = false;
+                });
+            });
+        });
 
         // Check for ephemeral (self-destruct) messages
         _checkEphemeralMessage(msg, el);
@@ -2369,6 +2401,27 @@
                 (lp.description ? '<div class="chat-link-preview-desc">' + _esc(lp.description) + '</div>' : '') +
             '</div>' +
         '</a>';
+    }
+
+    /**
+     * Render inline action buttons for Guardian DM alerts.
+     * Only shown for admin users on messages with metadata.actions.
+     */
+    function _renderGuardianActions(msg) {
+        if (!_isAdmin) return '';
+        var meta = msg.metadata;
+        if (!meta || !meta.actions || !Array.isArray(meta.actions) || meta.actions.length === 0) return '';
+
+        var html = '<div class="guardian-action-buttons">';
+        meta.actions.forEach(function (act) {
+            html += '<button class="guardian-action-btn" data-guardian-action="' + _esc(act.action) + '"' +
+                (act.channelId ? ' data-channel="' + act.channelId + '"' : '') +
+                (act.userId ? ' data-user="' + act.userId + '"' : '') +
+                (act.username ? ' data-username="' + _esc(act.username) + '"' : '') +
+                '>' + _esc(act.label) + '</button>';
+        });
+        html += '</div>';
+        return html;
     }
 
     /** Format bot messages — allow safe HTML tags (<b>, <i>, <br>, <li>, <ul>) */
@@ -4796,9 +4849,46 @@
     async function _loadGuardianEvents() {
         if (!_isAdmin || !_guardianLogEntries) return;
         try {
-            var actions = await _fetchJson('/api/guardian/actions?limit=20');
+            // Load stats + actions in parallel
+            var [stats, actions, activeMutes] = await Promise.all([
+                _fetchJson('/api/guardian/stats'),
+                _fetchJson('/api/guardian/actions?limit=30'),
+                _fetchJson('/api/guardian/mutes/active')
+            ]);
+
+            _guardianLogEntries.innerHTML = '';
+
+            // Stats summary bar at top
+            if (stats) {
+                var statsEl = document.createElement('div');
+                statsEl.className = 'guardian-stats-summary';
+                var todayMutes = (stats.today && stats.today.mute) || 0;
+                var todayMasks = (stats.today && stats.today.mask) || 0;
+                var todayDeletes = (stats.today && stats.today.delete) || 0;
+                var muteCount = (activeMutes && activeMutes.length) || stats.activeMutes || 0;
+                statsEl.innerHTML =
+                    '<div class="guardian-stats-row">' +
+                        '<div class="guardian-stat"><span class="guardian-stat-val">' + todayMutes + '</span><span class="guardian-stat-lbl">Блокувань</span></div>' +
+                        '<div class="guardian-stat"><span class="guardian-stat-val">' + todayMasks + '</span><span class="guardian-stat-lbl">Замасковано</span></div>' +
+                        '<div class="guardian-stat"><span class="guardian-stat-val">' + todayDeletes + '</span><span class="guardian-stat-lbl">Видалено</span></div>' +
+                        '<div class="guardian-stat"><span class="guardian-stat-val">' + muteCount + '</span><span class="guardian-stat-lbl">Мутів зараз</span></div>' +
+                    '</div>';
+                // Active mutes list
+                if (activeMutes && activeMutes.length > 0) {
+                    var mutesHtml = '<div class="guardian-active-mutes"><b>Активні мути:</b>';
+                    activeMutes.forEach(function (m) {
+                        var until = '';
+                        try { until = new Date(m.mutedUntil).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }); } catch (e) {}
+                        mutesHtml += '<div class="guardian-mute-item">🔇 @' + _esc(m.username) + ' — до ' + until +
+                            ' <button class="guardian-unmute-btn" data-mute-id="' + m.id + '" data-channel="' + m.channelId + '" data-user="' + m.userId + '">Зняти</button></div>';
+                    });
+                    mutesHtml += '</div>';
+                    statsEl.innerHTML += mutesHtml;
+                }
+                _guardianLogEntries.appendChild(statsEl);
+            }
+
             if (actions && actions.length > 0) {
-                _guardianLogEntries.innerHTML = '';
                 actions.forEach(function (a) {
                     var ev = {
                         type: a.actionType,
@@ -4810,6 +4900,16 @@
                     _guardianLogEntries.appendChild(_buildLogEntry(ev));
                 });
             }
+
+            // Delegate unmute button clicks
+            _guardianLogEntries.addEventListener('click', function (e) {
+                var btn = e.target.closest('.guardian-unmute-btn');
+                if (!btn) return;
+                var muteId = btn.dataset.muteId;
+                fetch('/api/guardian/mutes/' + muteId, { method: 'DELETE', headers: _headers() })
+                    .then(function () { _loadGuardianEvents(); })
+                    .catch(function () {});
+            });
         } catch (e) { /* ignore */ }
     }
 

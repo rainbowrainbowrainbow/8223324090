@@ -1746,6 +1746,39 @@ body.dark-mode .guardian-log-entry.severity-warning {
     background: rgba(245, 158, 11, 0.06);
 }
 
+body.dark-mode .guardian-stats-summary {
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .guardian-stat-val {
+    color: #a78bfa;
+}
+
+body.dark-mode .guardian-stat-lbl {
+    color: #9CA3AF;
+}
+
+body.dark-mode .guardian-active-mutes {
+    border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .guardian-action-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #E2E8F0;
+}
+
+body.dark-mode .guardian-action-btn:hover {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+body.dark-mode .guardian-action-result {
+    color: #a78bfa;
+}
+
 /* ==========================================
    v22.3: DARK MODE GAPS FIX — comprehensive pass
    ========================================== */

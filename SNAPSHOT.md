@@ -3,18 +3,18 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v22.18.0**. package.json: `22.18.0` (локально синхронізовано). Бранч `main`.
+Версія **v22.19.0**. package.json: `22.19.0`. Бранч `claude/update-snapshot-version-OJyXi`.
 
-**УВАГА:** package.json на `origin/main` = `22.12.0` (Клешня не бампив). Локально виправлено до `22.18.0`.
+**УВАГА:** package.json на `origin/main` = `22.12.0` (VERSION-SYNC баг).
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: v22.18.0 — CRM Tech Debt + Features (#18-#26)
-- **package.json**: `"version": "22.18.0"` (локально)
+- **Останній коміт**: v22.19.0 — Guardian Contour System Phase 2
+- **package.json**: `"version": "22.19.0"`
 - **origin/main package.json**: `"version": "22.12.0"` (VERSION-SYNC баг)
-- **Бранч**: `main`
-- **Що нового**: Match-3 Candy/Mystic, Dark Mode Polish, Security Hardening, Gamification V2
+- **Бранч**: `claude/update-snapshot-version-OJyXi`
+- **Що нового**: Guardian Phase 2 — Telegram алерти, inline кнопки, Security Panel, розширені патерни, покращений звіт
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -27,7 +27,19 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v22.18.0)
+## Останні зміни (v22.4.0 → v22.19.0)
+
+### v22.19.0 (Claude Code, 11.03.2026)
+- **Guardian Contour System Phase 2:**
+  - Telegram алерти для критичних подій (конфлікт high, sensitive data, 5+ блокувань/год, спам)
+  - Inline action кнопки в Guardian DM (мютити обох, попередження, спостерігаю)
+  - Security Panel UI — статистика, активні мути, unmute кнопки
+  - Conflict detector вікно збільшено до 15 повідомлень + reply chain awareness
+  - Нові SENSITIVE_PATTERNS: паролі, JWT, API ключі, адреси, дати народження
+  - Покращений формат щоденного звіту (активність, учасники, незвичайне)
+  - Repeat offender tracking (3+ порушення/тиждень → Telegram алерт)
+  - Spam detection (10+ повідомлень за 30 сек → Telegram алерт)
+  - Dark mode підтримка для нових компонентів
 
 ### v22.18.0 (Claude Code, 10.03.2026)
 - **CRM Tech Debt + Features** — issues #18-#26
@@ -67,7 +79,7 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - v20.0–v20.12: Milestone, Role System, Command Panel, Navigation, Sales, Rebranding, Tests, Security, UX, Validation, Swagger
 - v21.12–v21.15: Dark Mode Fix, Night Settings, Polish, A11y, Tablet, Unified Navigation
 - v22.0–v22.3: Dashboard, Messenger UX, Gamification, Game Profile
-- **v22.4–v22.18: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security, Tech Debt**
+- **v22.4–v22.19: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security, Tech Debt, Guardian Phase 2**
 
 ## Незроблені баги
 - **BUG-001** — Тімур бот: зайвий текст при decline/other — НЕ ЗРОБЛЕНО
@@ -110,4 +122,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-11, v22.18.0, сесія claude-code*
+*Оновлено: 2026-03-11, v22.19.0, сесія claude-code*

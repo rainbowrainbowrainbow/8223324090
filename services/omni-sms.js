@@ -85,7 +85,10 @@ function turboSmsRequest(path, body) {
  * @returns {string} Phone in +380XXXXXXXXX format
  */
 function normalizePhone(phone) {
-    const digits = phone.replace(/\D/g, '');
+    const digits = phone.replace(/\D/g, '').slice(0, 15); // E.164 max 15 digits
+    if (!digits || digits.length < 7) {
+        throw new Error(`Invalid phone number: too short (${digits.length} digits)`);
+    }
     if (digits.startsWith('380') && digits.length === 12) {
         return '+' + digits;
     }

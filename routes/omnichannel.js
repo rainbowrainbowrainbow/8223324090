@@ -37,7 +37,23 @@ function verifyViberSignature(req) {
     const expected = crypto.createHmac('sha256', token)
         .update(JSON.stringify(req.body))
         .digest('hex');
-    return sig === expected;
+    try {
+        return crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'));
+    } catch {
+        return false; // length mismatch
+    }
+}
+
+function verifyWebhookSecret(req, envKey) {
+    const secret = process.env[envKey];
+    if (!secret) return true; // skip if not configured
+    const provided = req.headers['x-webhook-secret'];
+    if (!provided) return false;
+    try {
+        return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(secret));
+    } catch {
+        return false;
+    }
 }
 
 function verifyMetaSignature(req) {
@@ -102,6 +118,10 @@ router.post('/webhook/viber', async (req, res) => {
 // SMS webhook (TurboSMS delivery reports or inbound)
 router.post('/webhook/sms', async (req, res) => {
     try {
+        if (!verifyWebhookSecret(req, 'SMS_WEBHOOK_SECRET')) {
+            log.warn('SMS webhook secret verification failed');
+            return res.status(403).json({ ok: false, error: 'invalid secret' });
+        }
         const normalized = getNormalizer().normalizeSms(req.body);
         if (normalized) {
             await getHub().processInboundMessage(normalized);
@@ -158,6 +178,10 @@ router.post('/webhook/meta', async (req, res) => {
 // Binotel webhook (phone calls)
 router.post('/webhook/binotel', async (req, res) => {
     try {
+        if (!verifyWebhookSecret(req, 'BINOTEL_WEBHOOK_SECRET')) {
+            log.warn('Binotel webhook secret verification failed');
+            return res.status(403).json({ ok: false, error: 'invalid secret' });
+        }
         const normalized = getNormalizer().normalizeBinotel(req.body);
         if (normalized) {
             await getHub().processInboundMessage(normalized);

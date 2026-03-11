@@ -361,16 +361,20 @@
     var current = 0;
     var slides = track.querySelectorAll('.tc-slide');
     var total = slides.length;
+    if (total === 0) return;
 
     function slideWidth() {
-        return slides[0] ? slides[0].offsetWidth + 0 : 320;
+        var w = slides[0].getBoundingClientRect().width || slides[0].offsetWidth;
+        return w > 0 ? w : 320;
     }
 
     function goTo(idx) {
-        current = Math.max(0, Math.min(idx, total - 1));
+        // Циклічна навігація
+        current = ((idx % total) + total) % total;
         track.style.transform = 'translateX(-' + (current * slideWidth()) + 'px)';
-        if (btnPrev) btnPrev.disabled = current === 0;
-        if (btnNext) btnNext.disabled = current === total - 1;
+        // Кнопки завжди активні (циклічна карусель)
+        if (btnPrev) btnPrev.disabled = false;
+        if (btnNext) btnNext.disabled = false;
         document.querySelectorAll('#tcDots .dot').forEach(function(d, i) {
             d.classList.toggle('active', i === current);
         });

@@ -1,6 +1,6 @@
 'use strict';
 
-const pool = require('../db/pool');
+const { pool } = require('../db');
 const { generateChatResponse } = require('./kleshnya-chat');
 const { getWSS } = require('./websocket');
 const { sendTelegramMessage } = require('./telegram');
@@ -295,6 +295,9 @@ async function sendToChannel(channel, externalId, text, meta) {
       return sendFacebook(externalId, text, meta);
     case 'instagram':
       return sendInstagram(externalId, text);
+    case 'binotel':
+      logger.info(`Binotel is inbound-only, skipping outbound to ${externalId}`);
+      return null;
     default:
       logger.warn(`Unknown channel: ${channel}`);
       throw new Error(`Unsupported channel: ${channel}`);

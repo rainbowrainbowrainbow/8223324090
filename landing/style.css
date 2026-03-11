@@ -645,6 +645,95 @@ h1, h2, h3, h4 {
 }
 
 /* =====================
+   TEAM
+   ===================== */
+.team-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 24px;
+    margin-top: 48px;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.team-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 20px;
+    padding: 32px 20px 28px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.team-card:hover {
+    border-color: rgba(201, 168, 76, 0.3);
+    box-shadow: 0 8px 40px rgba(201, 168, 76, 0.1);
+    transform: translateY(-4px);
+}
+
+.team-card__photo {
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    overflow: hidden;
+    margin: 0 auto 20px;
+    border: 2px solid rgba(201, 168, 76, 0.4);
+    background: linear-gradient(135deg, rgba(201, 168, 76, 0.1), rgba(201, 168, 76, 0.03));
+}
+
+.team-card__photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    transition: transform 0.4s ease;
+}
+
+.team-card:hover .team-card__photo img {
+    transform: scale(1.08);
+}
+
+.team-card__placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 40px;
+    font-weight: 800;
+    color: #C9A84C;
+}
+
+.team-card__info {
+    /* no extra padding needed */
+}
+
+.team-card__name {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.team-card__role {
+    font-size: 12px;
+    color: #C9A84C;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+}
+
+.team-card__bio {
+    font-size: 13px;
+    color: #888888;
+    line-height: 1.6;
+    font-weight: 300;
+}
+
+/* =====================
    SOCIAL PROOF
    ===================== */
 .facts {

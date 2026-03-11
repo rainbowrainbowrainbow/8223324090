@@ -149,6 +149,7 @@ app.use('/api/training', require('./routes/training'));
 app.use('/api/sales', require('./routes/sales'));
 app.use('/api/page-statuses', require('./routes/page-statuses'));
 app.use('/api/leads', require('./routes/leads'));
+app.use('/api/landing', require('./routes/landing'));
 app.use('/api/scripts', require('./routes/scripts'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/guardian', require('./routes/guardian'));

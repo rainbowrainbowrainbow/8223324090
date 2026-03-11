@@ -3,15 +3,15 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v23.0.0**. package.json: `23.0.0`. Бранч `claude/update-snapshot-version-OJyXi`.
+Версія **v23.1.0**. package.json: `23.1.0`. Бранч `claude/update-snapshot-version-OJyXi`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: fix: rename @TimurParkRozvagbot → @LeoParkBot
-- **package.json**: `"version": "23.0.0"`
+- **Останній коміт**: feat: [claude-code] Landing Page Event Genix v1.0
+- **package.json**: `"version": "23.1.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **Що нового**: Повна синхронізація версій, Landing carousel + Manager Guide (Kleshnya), Leo rename fix, deployed branch audit
+- **Що нового**: Landing Page v1.0 — повний редизайн лендінгу, demo-request API, 9 секцій, iOnboard/OmniClaw
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -24,7 +24,15 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v23.0.0)
+## Останні зміни (v22.4.0 → v23.1.0)
+
+### v23.1.0 (Claude Code + Клешня, 11.03.2026)
+- **Landing Page Event Genix v1.0** — повний редизайн лендінгу
+  - 9 секцій: Nav, Hero з мокапом Клешні, 12 модулів, Story таймлайн, Команда (Сергій + Каріна + Клешня), Ціни (4 пакети), Соціальний доказ, Demo форма, Footer
+  - Нові фічі в описі: iOnboard (відео-реєстрація), OmniClaw (всі канали), Центр цін
+  - Demo форма → POST /api/landing/demo-request → Telegram сповіщення
+  - routes/landing.js — новий API route
+  - Mobile-responsive, Space Grotesk + Inter, glassmorphism design
 
 ### v23.0.0 (Claude Code, 11.03.2026)
 - **Major Release: Full Version Sync**
@@ -104,6 +112,7 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - v22.0–v22.3: Dashboard, Messenger UX, Gamification, Game Profile
 - **v22.4–v22.20: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security, Tech Debt, Guardian Phase 2+3**
 - **v23.0.0: Major Release — Full Version Sync, Landing Carousel, Manager Guide**
+- **v23.1.0: Landing Page Event Genix v1.0 — повний редизайн, demo-request API**
 
 ## Аудит deployed vs main (11.03.2026)
 - **Результат**: ВСІ фічі з deployed (v17.4.1) інтегровані в main (v23.0.0)
@@ -156,4 +165,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-11, v23.0.0 + deployed audit, сесія claude-code*
+*Оновлено: 2026-03-11, v23.1.0 + Landing Page v1.0, сесія claude-code*

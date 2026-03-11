@@ -7,7 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const { createLogger } = require('../utils/logger');
-const auth = require('../middleware/auth');
+const { authenticateToken: auth } = require('../middleware/auth');
 
 const log = createLogger('OmniRoutes');
 

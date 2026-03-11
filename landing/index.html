@@ -10,6 +10,31 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="/images/favicon.ico">
+
+    <!-- TEAM PHOTO FIX: circular avatar override -->
+    <style>
+        .team-card__photo {
+            width: 110px !important;
+            height: 110px !important;
+            border-radius: 50% !important;
+            aspect-ratio: unset !important;
+            margin: 0 auto 20px !important;
+            border: 2px solid rgba(201, 168, 76, 0.4) !important;
+            position: relative;
+        }
+        .team-card {
+            padding: 32px 20px 28px !important;
+        }
+        .team-card__info {
+            padding: 0 !important;
+        }
+        .team-grid {
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important;
+        }
+        .team-card__placeholder {
+            font-size: 40px !important;
+        }
+    </style>
 </head>
 <body>
 

@@ -351,54 +351,52 @@
 // =====================
 // TEAM CAROUSEL v2
 // =====================
-var tcCurrent = 0;
-
-function tcMove(dir) {
-    var track = document.getElementById('tcTrack');
-    if (!track) return;
-    var slides = track.querySelectorAll('.tc-slide');
-    tcCurrent = Math.max(0, Math.min(tcCurrent + dir, slides.length - 1));
-    track.style.transform = 'translateX(-' + (tcCurrent * 320) + 'px)';
-    tcUpdateDots(slides.length);
-    tcUpdateBtns(slides.length);
-}
-
-function tcUpdateDots(total) {
-    var dots = document.querySelectorAll('#tcDots .dot');
-    dots.forEach(function(d, i) { d.classList.toggle('active', i === tcCurrent); });
-}
-
-function tcUpdateBtns(total) {
-    var prev = document.querySelector('.tc-btn--prev');
-    var next = document.querySelector('.tc-btn--next');
-    if (prev) prev.disabled = tcCurrent === 0;
-    if (next) next.disabled = tcCurrent === total - 1;
-}
-
-(function initTC() {
+(function() {
     var track = document.getElementById('tcTrack');
     var dotsWrap = document.getElementById('tcDots');
-    if (!track || !dotsWrap) return;
+    var btnPrev = document.querySelector('.tc-btn--prev');
+    var btnNext = document.querySelector('.tc-btn--next');
+    if (!track) return;
+
+    var current = 0;
     var slides = track.querySelectorAll('.tc-slide');
+    var total = slides.length;
+
+    function slideWidth() {
+        return slides[0] ? slides[0].offsetWidth + 0 : 320;
+    }
+
+    function goTo(idx) {
+        current = Math.max(0, Math.min(idx, total - 1));
+        track.style.transform = 'translateX(-' + (current * slideWidth()) + 'px)';
+        if (btnPrev) btnPrev.disabled = current === 0;
+        if (btnNext) btnNext.disabled = current === total - 1;
+        document.querySelectorAll('#tcDots .dot').forEach(function(d, i) {
+            d.classList.toggle('active', i === current);
+        });
+    }
+
+    // Кнопки
+    if (btnPrev) btnPrev.addEventListener('click', function() { goTo(current - 1); });
+    if (btnNext) btnNext.addEventListener('click', function() { goTo(current + 1); });
 
     // Dots
-    slides.forEach(function(_, i) {
-        var d = document.createElement('button');
-        d.className = 'dot' + (i === 0 ? ' active' : '');
-        d.addEventListener('click', function() {
-            tcCurrent = i - 1;
-            tcMove(1);
+    if (dotsWrap) {
+        slides.forEach(function(_, i) {
+            var d = document.createElement('button');
+            d.className = 'dot' + (i === 0 ? ' active' : '');
+            d.addEventListener('click', function() { goTo(i); });
+            dotsWrap.appendChild(d);
         });
-        dotsWrap.appendChild(d);
-    });
+    }
 
-    // Touch swipe
+    // Swipe
     var startX = 0;
     track.addEventListener('touchstart', function(e) { startX = e.touches[0].clientX; }, {passive:true});
     track.addEventListener('touchend', function(e) {
         var diff = startX - e.changedTouches[0].clientX;
-        if (Math.abs(diff) > 40) tcMove(diff > 0 ? 1 : -1);
+        if (Math.abs(diff) > 40) goTo(diff > 0 ? current + 1 : current - 1);
     });
 
-    tcUpdateBtns(slides.length);
+    goTo(0);
 })();

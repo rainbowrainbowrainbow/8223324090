@@ -346,3 +346,73 @@
         });
     });
 })();
+
+// =====================
+// TEAM CAROUSEL
+// =====================
+(function initTeamCarousel() {
+    const track = document.getElementById('teamTrack');
+    const dotsWrap = document.getElementById('teamDots');
+    if (!track) return;
+
+    const cards = Array.from(track.children);
+    const total = cards.length;
+    let current = 0;
+
+    // Кожна карточка займає всю ширину трека
+    function getCardWidth() {
+        return track.parentElement.offsetWidth;
+    }
+
+    function setCardWidths() {
+        const w = getCardWidth();
+        cards.forEach(c => { c.style.minWidth = w + 'px'; });
+        goTo(current, false);
+    }
+
+    // Dots
+    cards.forEach((_, i) => {
+        const dot = document.createElement('div');
+        dot.className = 'dot' + (i === 0 ? ' active' : '');
+        dot.addEventListener('click', () => goTo(i));
+        dotsWrap.appendChild(dot);
+    });
+
+    function updateDots() {
+        dotsWrap.querySelectorAll('.dot').forEach((d, i) => {
+            d.classList.toggle('active', i === current);
+        });
+    }
+
+    function updateBtns() {
+        const prev = document.querySelector('.team-carousel-btn--prev');
+        const next = document.querySelector('.team-carousel-btn--next');
+        if (prev) prev.disabled = current === 0;
+        if (next) next.disabled = current === total - 1;
+    }
+
+    function goTo(idx, animate = true) {
+        current = Math.max(0, Math.min(idx, total - 1));
+        const w = getCardWidth() + 24; // gap
+        if (!animate) track.style.transition = 'none';
+        track.style.transform = `translateX(-${current * w}px)`;
+        if (!animate) setTimeout(() => track.style.transition = '', 10);
+        updateDots();
+        updateBtns();
+    }
+
+    document.querySelector('.team-carousel-btn--prev')?.addEventListener('click', () => goTo(current - 1));
+    document.querySelector('.team-carousel-btn--next')?.addEventListener('click', () => goTo(current + 1));
+
+    // Touch/swipe
+    let startX = 0;
+    track.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+    track.addEventListener('touchend', e => {
+        const diff = startX - e.changedTouches[0].clientX;
+        if (Math.abs(diff) > 50) goTo(diff > 0 ? current + 1 : current - 1);
+    });
+
+    setCardWidths();
+    window.addEventListener('resize', setCardWidths);
+    updateBtns();
+})();

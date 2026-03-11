@@ -3,15 +3,18 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v22.17.0**. package.json: `22.17.0` (синхронізовано). Бранч `main`.
+Версія **v22.18.0**. package.json: `22.18.0` (локально синхронізовано). Бранч `main`.
+
+**УВАГА:** package.json на `origin/main` = `22.12.0` (Клешня не бампив). Локально виправлено до `22.18.0`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: v22.17.0 — Match-3 UI polish
-- **package.json**: `"version": "22.17.0"` (синхронізовано)
+- **Останній коміт**: v22.18.0 — CRM Tech Debt + Features (#18-#26)
+- **package.json**: `"version": "22.18.0"` (локально)
+- **origin/main package.json**: `"version": "22.12.0"` (VERSION-SYNC баг)
 - **Бранч**: `main`
-- **Що нового**: Match-3 Candy Crush стиль, custom art assets, UI polish
+- **Що нового**: Match-3 Candy/Mystic, Dark Mode Polish, Security Hardening, Gamification V2
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -24,11 +27,15 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v22.17.0)
+## Останні зміни (v22.4.0 → v22.18.0)
+
+### v22.18.0 (Claude Code, 10.03.2026)
+- **CRM Tech Debt + Features** — issues #18-#26
 
 ### v22.4–v22.9 (Claude Code, 09.03.2026)
 - **Gamification V2** — Quiz, Streaks, Room page, Match-3 improvements
 - **Match-3 Epic** — 9x9 grid, frozen tiles, cross special, combo system
+- **Custom confirm modals** — замінено всі native confirm()/alert()
 - **Game fixes** — game over screen, start layout, dashboard stale cache
 
 ### v22.10–v22.11 (Claude Code, 09.03.2026)
@@ -60,23 +67,36 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - v20.0–v20.12: Milestone, Role System, Command Panel, Navigation, Sales, Rebranding, Tests, Security, UX, Validation, Swagger
 - v21.12–v21.15: Dark Mode Fix, Night Settings, Polish, A11y, Tablet, Unified Navigation
 - v22.0–v22.3: Dashboard, Messenger UX, Gamification, Game Profile
-- **v22.4–v22.17: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security**
+- **v22.4–v22.18: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security, Tech Debt**
 
 ## Незроблені баги
 - **BUG-001** — Тімур бот: зайвий текст при decline/other — НЕ ЗРОБЛЕНО
 - **CRM-VAL-001** — Минула дата в бронюванні — НЕ ЗРОБЛЕНО (бекенд валідація)
-- **VERSION-SYNC** — package.json (22.12.0) розсинхронізований з комітами (v22.17.0)
+- **VERSION-SYNC** — origin/main package.json (22.12.0) розсинхронізований з комітами (v22.18.0)
 
-## Архітектура
-- **21+ сторінок**, **40+ routes**, 18+ services, 5 middleware
-- **~105+ таблиць**, 80+ індексів, 44 міграції
-- ~90 000+ рядків коду
-- 296+ тестів
+## Архітектура (актуальна)
+
+| Метрика | Значення |
+|---------|----------|
+| Routes | 61 файлів |
+| Services | 30 файлів |
+| Middleware | 6 файлів |
+| Frontend JS | 44 модулі |
+| HTML сторінки | 25 |
+| CSS файли | 17 |
+| DB міграції | 50 (001–050) |
+| DB таблиці | 40+ (core) + міграції |
+| Залежності | 15 npm packages |
+| JS код | ~87 000 рядків |
+| HTML код | ~16 500 рядків |
+| CSS код | ~24 300 рядків |
+| **Всього коду** | **~128 000 рядків** |
+| Тести | 296+ |
 
 ## Відомі проблеми / пастки
 - **Dark mode gray inversion**: gray-800 = #F3F4F6 = БІЛИЙ в dark mode! Використовуй rgba(255,255,255,0.08)
 - **Dashboard dark mode**: Фон сторінки `#0D0D0D`, картки мають бути `#2A2A4A+` щоб були видимі
-- **Версіонування 5 кроків**: package.json → all HTML `?v=` tags (21 файлів) → tagline → changelog button → changelog entry
+- **Версіонування 5 кроків**: package.json → all HTML `?v=` tags (25 файлів) → tagline → changelog button → changelog entry
 - **Два профілі**: `profile.html` (standalone, повний) та модалка в `auth.js` (вбудована, з game tab)
 - **Gamification API**: Повертає масиви/об'єкти напряму, БЕЗ `{ success: true, data: [...] }` обгортки
 - **Toast замість Notification**: `#toastContainer` + `showNotification()` створює toast елементи
@@ -90,4 +110,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-10, v22.17.0, сесія claude-code*
+*Оновлено: 2026-03-11, v22.18.0, сесія claude-code*

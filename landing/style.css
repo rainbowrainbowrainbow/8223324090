@@ -1243,3 +1243,28 @@ h1, h2, h3, h4 {
         font-size: 20px;
     }
 }
+
+/* ===================== */
+/* TEAM CARDS — THEMED   */
+/* ===================== */
+
+/* Карина — ромбоподібна решітка */
+.tc-slide--karina {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M20 0 L40 20 L20 40 L0 20 Z' fill='none' stroke='rgba(201,168,76,0.09)' stroke-width='1'/%3E%3C/svg%3E");
+    background-size: 40px 40px;
+}
+
+/* АнЛі — хвильовий патерн */
+.tc-slide--anli {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='20'%3E%3Cpath d='M0 10 Q15 0 30 10 Q45 20 60 10' fill='none' stroke='rgba(201,168,76,0.09)' stroke-width='1.5'/%3E%3C/svg%3E");
+    background-size: 60px 20px;
+}
+
+/* Саша — шестикутники */
+.tc-slide--sasha {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='46'%3E%3Cpolygon points='20,2 38,12 38,34 20,44 2,34 2,12' fill='none' stroke='rgba(201,168,76,0.09)' stroke-width='1'/%3E%3C/svg%3E");
+    background-size: 40px 46px;
+}

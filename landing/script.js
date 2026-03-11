@@ -403,4 +403,15 @@
     });
 
     goTo(0);
+
+    // Автопрокрутка кожні 4 секунди
+    var autoTimer = setInterval(function() { goTo(current + 1); }, 4000);
+    var wrap = track.closest('.tc-wrap');
+    if (wrap) {
+        wrap.addEventListener('mouseenter', function() { clearInterval(autoTimer); });
+        wrap.addEventListener('mouseleave', function() {
+            clearInterval(autoTimer);
+            autoTimer = setInterval(function() { goTo(current + 1); }, 4000);
+        });
+    }
 })();

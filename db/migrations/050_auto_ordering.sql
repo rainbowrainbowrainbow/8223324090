@@ -1,5 +1,19 @@
 -- v22.18: Auto-ordering when stock is low (#26)
 
+-- Ensure contractors table exists (created by initDatabase, needed here for FK)
+CREATE TABLE IF NOT EXISTS contractors (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    specialty JSONB DEFAULT '[]',
+    telegram_chat_id BIGINT,
+    telegram_username VARCHAR(100),
+    invite_token VARCHAR(50) UNIQUE,
+    phone VARCHAR(30),
+    notes TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Auto-order rules (which items trigger auto-ordering)
 CREATE TABLE IF NOT EXISTS auto_order_rules (
     id SERIAL PRIMARY KEY,

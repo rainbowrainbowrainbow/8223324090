@@ -118,6 +118,7 @@ app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/task-templates', require('./routes/task-templates'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/certificates', require('./routes/certificates'));
+app.use('/api/recurring', require('./routes/recurring'));
 app.use('/api/points', require('./routes/points'));
 app.use('/api/kleshnya', require('./routes/kleshnya'));
 app.use('/api/designs', require('./routes/designs'));
@@ -300,10 +301,7 @@ app.use('/landing', express.static(path.join(__dirname, 'landing')));
 app.get('/landing', (req, res) => {
     res.sendFile(path.join(__dirname, 'landing', 'index.html'));
 });
-// v22.4.0: profile, shop, game pages
-app.get('/profile', (req, res) => {
-    res.sendFile(path.join(__dirname, 'profile.html'));
-});
+// v22.4.0: shop, game pages
 app.get('/shop', (req, res) => {
     res.sendFile(path.join(__dirname, 'shop.html'));
 });
@@ -343,9 +341,11 @@ process.on('uncaughtException', (err) => {
 let server;
 const schedulerIntervals = [];
 
-// v20.5.0: Run migrations FIRST (they create tables like warehouse_stock),
-// then initDatabase (which adds columns/indexes and seeds data).
-runMigrations(pool).then(() => {
+// v22.20.1: Two-phase init — initDatabase creates base tables (indexes are safe via safeQuery),
+// then migrations add columns/constraints, then initDatabase again for remaining indexes/seeds.
+initDatabase().then(() => {
+    return runMigrations(pool);
+}).then(() => {
     return initDatabase();
 }).catch(err => {
     log.error('Failed to initialize database, exiting', err);

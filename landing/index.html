@@ -232,26 +232,35 @@
     <div class="container">
         <h2 class="section__title section__title--gold fade-in">Наша команда</h2>
         <p class="section__subtitle fade-in">Люди які створюють магію кожного дня</p>
-        <div class="team-cards fade-in">
-            <div class="team-card">
-                <div class="team-card__photo">
-                    <img src="images/team-karina.jpg" alt="Карина Крамаренко" onerror="this.style.display='none';this.parentElement.querySelector('.team-card__placeholder').style.display='flex'">
-                    <div class="team-card__placeholder" style="display:none">К</div>
+        <!-- TEAM CAROUSEL v2 -->
+        <div class="tc-wrap fade-in">
+            <button class="tc-btn tc-btn--prev" onclick="tcMove(-1)">&#8592;</button>
+            <div class="tc-viewport">
+                <div class="tc-track" id="tcTrack">
+
+                    <div class="tc-slide">
+                        <div class="tc-photo">
+                            <img src="images/team-karina.jpg" alt="Карина Крамаренко">
+                        </div>
+                        <div class="tc-name">Карина Крамаренко</div>
+                        <div class="tc-role">Топ-менеджер</div>
+                        <div class="tc-bio">Серце нашої команди. Координує всі процеси та забезпечує бездоганний сервіс для кожного клієнта.</div>
+                    </div>
+
+                    <div class="tc-slide">
+                        <div class="tc-photo">
+                            <img src="images/team-anli.jpg" alt="Анлі Лектор">
+                        </div>
+                        <div class="tc-name">Анлі Лектор</div>
+                        <div class="tc-role">Демонстратор продукту</div>
+                        <div class="tc-bio">Представляє Event Genix на локаціях. Перший контакт з клієнтами.</div>
+                    </div>
+
                 </div>
-                <div class="team-card__name">Карина Крамаренко</div>
-                <div class="team-card__role">Топ-менеджер</div>
-                <div class="team-card__bio">Серце нашої команди. Координує всі процеси та забезпечує бездоганний сервіс для кожного клієнта.</div>
             </div>
-            <div class="team-card">
-                <div class="team-card__photo">
-                    <img src="images/team-anli.jpg" alt="Анлі Лектор" onerror="this.style.display='none';this.parentElement.querySelector('.team-card__placeholder').style.display='flex'">
-                    <div class="team-card__placeholder" style="display:none">А</div>
-                </div>
-                <div class="team-card__name">Анлі Лектор</div>
-                <div class="team-card__role">Демонстратор продукту</div>
-                <div class="team-card__bio">Представляє Event Genix на локаціях. Перший контакт з клієнтами.</div>
-            </div>
+            <button class="tc-btn tc-btn--next" onclick="tcMove(1)">&#8594;</button>
         </div>
+        <div class="tc-dots" id="tcDots"></div>
     </div>
 </section>
 

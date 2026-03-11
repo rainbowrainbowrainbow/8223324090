@@ -347,72 +347,58 @@
     });
 })();
 
+
 // =====================
-// TEAM CAROUSEL
+// TEAM CAROUSEL v2
 // =====================
-(function initTeamCarousel() {
-    const track = document.getElementById('teamTrack');
-    const dotsWrap = document.getElementById('teamDots');
+var tcCurrent = 0;
+
+function tcMove(dir) {
+    var track = document.getElementById('tcTrack');
     if (!track) return;
+    var slides = track.querySelectorAll('.tc-slide');
+    tcCurrent = Math.max(0, Math.min(tcCurrent + dir, slides.length - 1));
+    track.style.transform = 'translateX(-' + (tcCurrent * 320) + 'px)';
+    tcUpdateDots(slides.length);
+    tcUpdateBtns(slides.length);
+}
 
-    const cards = Array.from(track.children);
-    const total = cards.length;
-    let current = 0;
+function tcUpdateDots(total) {
+    var dots = document.querySelectorAll('#tcDots .dot');
+    dots.forEach(function(d, i) { d.classList.toggle('active', i === tcCurrent); });
+}
 
-    // Кожна карточка займає всю ширину трека
-    function getCardWidth() {
-        return track.parentElement.offsetWidth;
-    }
+function tcUpdateBtns(total) {
+    var prev = document.querySelector('.tc-btn--prev');
+    var next = document.querySelector('.tc-btn--next');
+    if (prev) prev.disabled = tcCurrent === 0;
+    if (next) next.disabled = tcCurrent === total - 1;
+}
 
-    function setCardWidths() {
-        const w = getCardWidth();
-        cards.forEach(c => { c.style.minWidth = w + 'px'; });
-        goTo(current, false);
-    }
+(function initTC() {
+    var track = document.getElementById('tcTrack');
+    var dotsWrap = document.getElementById('tcDots');
+    if (!track || !dotsWrap) return;
+    var slides = track.querySelectorAll('.tc-slide');
 
     // Dots
-    cards.forEach((_, i) => {
-        const dot = document.createElement('div');
-        dot.className = 'dot' + (i === 0 ? ' active' : '');
-        dot.addEventListener('click', () => goTo(i));
-        dotsWrap.appendChild(dot);
-    });
-
-    function updateDots() {
-        dotsWrap.querySelectorAll('.dot').forEach((d, i) => {
-            d.classList.toggle('active', i === current);
+    slides.forEach(function(_, i) {
+        var d = document.createElement('button');
+        d.className = 'dot' + (i === 0 ? ' active' : '');
+        d.addEventListener('click', function() {
+            tcCurrent = i - 1;
+            tcMove(1);
         });
-    }
-
-    function updateBtns() {
-        const prev = document.querySelector('.team-carousel-btn--prev');
-        const next = document.querySelector('.team-carousel-btn--next');
-        if (prev) prev.disabled = current === 0;
-        if (next) next.disabled = current === total - 1;
-    }
-
-    function goTo(idx, animate = true) {
-        current = Math.max(0, Math.min(idx, total - 1));
-        const w = getCardWidth() + 24; // gap
-        if (!animate) track.style.transition = 'none';
-        track.style.transform = `translateX(-${current * w}px)`;
-        if (!animate) setTimeout(() => track.style.transition = '', 10);
-        updateDots();
-        updateBtns();
-    }
-
-    document.querySelector('.team-carousel-btn--prev')?.addEventListener('click', () => goTo(current - 1));
-    document.querySelector('.team-carousel-btn--next')?.addEventListener('click', () => goTo(current + 1));
-
-    // Touch/swipe
-    let startX = 0;
-    track.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
-    track.addEventListener('touchend', e => {
-        const diff = startX - e.changedTouches[0].clientX;
-        if (Math.abs(diff) > 50) goTo(diff > 0 ? current + 1 : current - 1);
+        dotsWrap.appendChild(d);
     });
 
-    setCardWidths();
-    window.addEventListener('resize', setCardWidths);
-    updateBtns();
+    // Touch swipe
+    var startX = 0;
+    track.addEventListener('touchstart', function(e) { startX = e.touches[0].clientX; }, {passive:true});
+    track.addEventListener('touchend', function(e) {
+        var diff = startX - e.changedTouches[0].clientX;
+        if (Math.abs(diff) > 40) tcMove(diff > 0 ? 1 : -1);
+    });
+
+    tcUpdateBtns(slides.length);
 })();

@@ -25,7 +25,7 @@ const Sidebar = (() => {
         { href: '/analytics', icon: 'Ан', label: 'Аналітика' },
         { href: '/demo',      icon: 'De', label: 'Демо' },
         { href: '/status',    icon: 'Ст', label: 'Статус' },
-        { href: '/settings',  icon: '⚙',  label: 'Налаштування' },
+        { href: '#settings',  icon: '⚙',  label: 'Налаштування', action: 'showSettings' },
     ];
 
     // v20.6.0: Status badge config
@@ -101,7 +101,8 @@ const Sidebar = (() => {
             const isActive = currentPath === item.href ||
                 (item.href !== '/' && currentPath.startsWith(item.href));
 
-            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}">
+            const actionAttr = item.action ? ` data-action="${item.action}" onclick="event.preventDefault(); if(typeof ${item.action}==='function') ${item.action}();"` : '';
+            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${actionAttr}>
                 <span class="nav-icon">${item.icon}</span>
                 <span class="nav-text">${item.label}</span>
             </a>`;

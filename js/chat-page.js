@@ -5362,6 +5362,13 @@
     async function _initPushNotifications() {
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
         try {
+            // Request notification permission
+            var permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                console.log('[Chat] Notification permission denied');
+                return;
+            }
+
             var reg = await navigator.serviceWorker.ready;
             // Check if already subscribed
             var existing = await reg.pushManager.getSubscription();
@@ -5369,7 +5376,10 @@
 
             // Get VAPID key from server
             var resp = await _api('GET', '/push/vapid-key');
-            if (!resp || !resp.publicKey) return;
+            if (!resp || !resp.publicKey) {
+                console.warn('[Chat] No VAPID public key from server');
+                return;
+            }
 
             var subscription = await reg.pushManager.subscribe({
                 userVisibleOnly: true,

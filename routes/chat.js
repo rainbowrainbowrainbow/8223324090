@@ -53,17 +53,31 @@ setInterval(() => {
     }
 }, 300000);
 
+// Auto-generate VAPID keys if not set
+let _vapidReady = false;
+try {
+    const webpush = require('web-push');
+    if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+        const vapidKeys = webpush.generateVAPIDKeys();
+        process.env.VAPID_PUBLIC_KEY = vapidKeys.publicKey;
+        process.env.VAPID_PRIVATE_KEY = vapidKeys.privateKey;
+        log.info('VAPID keys auto-generated (set VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY env vars for persistence)');
+    }
+    webpush.setVapidDetails(
+        'mailto:' + (process.env.VAPID_EMAIL || 'admin@eventgenix.com'),
+        process.env.VAPID_PUBLIC_KEY,
+        process.env.VAPID_PRIVATE_KEY
+    );
+    _vapidReady = true;
+} catch (err) {
+    log.warn('web-push init failed:', err.message);
+}
+
 // Push notification helper (fire-and-forget)
 async function sendPushToChannel(channelId, senderUserId, title, body) {
+    if (!_vapidReady) return;
     try {
         const webpush = require('web-push');
-        if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
-
-        webpush.setVapidDetails(
-            'mailto:' + (process.env.VAPID_EMAIL || 'admin@eventgenix.com'),
-            process.env.VAPID_PUBLIC_KEY,
-            process.env.VAPID_PRIVATE_KEY
-        );
 
         const pool = require('../db').pool;
         // Get push subscriptions for channel members (excluding sender)

@@ -17,7 +17,7 @@ const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
@@ -271,6 +271,9 @@ app.get('/art', (req, res) => {
 });
 app.get('/art-director', (req, res) => res.redirect(301, '/art'));
 app.get('/art-director.html', (req, res) => res.redirect(301, '/art'));
+app.get('/checkin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'checkin.html'));
+});
 app.get('/demo', (req, res) => {
     res.sendFile(path.join(__dirname, 'demo.html'));
 });
@@ -436,6 +439,10 @@ runMigrations(pool).then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkExpiredChatMessages', checkExpiredChatMessages, { dedup: null }), 60000));
         // v19.15: Telegram notification retry queue (every 30s)
         schedulerIntervals.push(setInterval(() => processRetryQueue().catch(err => log.error('Retry queue error', err)), 30000));
+        // v22.18: Auto review requests (hourly) + Team pulse reminder (daily) + Auto ordering (hourly)
+        schedulerIntervals.push(setInterval(guardScheduler('checkAutoReviewRequests', checkAutoReviewRequests, { dedup: 'hourly' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkTeamPulseReminder', checkTeamPulseReminder, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkAutoOrdering', checkAutoOrdering, { dedup: 'hourly' }), 60000));
         // v20.4.0: Training prompts (Mon 09:00 Kyiv) + summary (Fri 17:00 Kyiv)
         async function checkTrainingPrompts() {
             const { getKyivTimeStr, getKyivDate } = require('./services/booking');

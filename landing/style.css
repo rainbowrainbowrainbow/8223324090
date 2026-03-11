@@ -37,16 +37,6 @@ img {
     height: auto;
 }
 
-/* Team carousel photo - override global img reset */
-.tc-photo img {
-    width: 100% !important;
-    height: 100% !important;
-    max-width: none !important;
-    object-fit: cover !important;
-    object-position: center top !important;
-    display: block !important;
-}
-
 a {
     color: inherit;
     text-decoration: none;
@@ -729,12 +719,28 @@ h1, h2, h3, h4 {
     height: 140px !important;
     min-width: 140px !important;
     min-height: 140px !important;
+    max-width: 140px !important;
+    max-height: 140px !important;
     border-radius: 50% !important;
     overflow: hidden !important;
     margin: 0 auto 24px !important;
     border: 2px solid rgba(201,168,76,0.4);
     flex-shrink: 0 !important;
-    display: block;
+    flex-grow: 0 !important;
+    display: block !important;
+    position: relative !important;
+}
+
+.tc-photo img {
+    position: absolute !important;
+    top: 0 !important; left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: cover !important;
+    object-position: center top !important;
+    display: block !important;
 }
 
 .tc-name {

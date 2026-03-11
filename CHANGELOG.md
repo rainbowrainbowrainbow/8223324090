@@ -1,6 +1,32 @@
-# CHANGELOG — Park Booking System
+# CHANGELOG — Event Genix CRM
 
 > Журнал змін. Останні версії зверху, детально. Старі — коротко внизу.
+
+---
+
+## v22.18.0 — CRM Tech Debt + Features (2026-03-10)
+- Issues #18–#26: технічний борг та нові фічі
+- Version bump та синхронізація
+
+## v22.12.0–v22.17.0 — Match-3 Candy Crush Edition (2026-03-09–10)
+- **v22.17.0** — UI polish: contrast, style, mystical vibe [kleshnya]
+- **v22.16.0** — Candy Crush icons + idle/combo/special animations [kleshnya]
+- **v22.15.0** — Icon fix: replace v4 icons with consistent v3/final candy style [kleshnya]
+- **v22.12.0** — Match-3 custom art assets [kleshnya]
+
+## v22.10.0–v22.11.0 — Dark Mode Polish + Mystic Edition (2026-03-09)
+- **v22.11.0** — Match-3 Mystic Edition: tarot cards, bosses, events, modern UI [claude-code]
+- **v22.10.0** — Dark Mode Polish: 92 нових overrides + JS color fixes [claude-code]
+- Security Hardening — input validation, race conditions, error disclosure [claude-code]
+- Gamification Hardening — DB integrity, bug fixes, tests [claude-code]
+
+## v22.4.0–v22.9.0 — Gamification V2 + Match-3 Epic (2026-03-09)
+- **v22.9.0** — Match-3 Epic Edition: 9x9 grid, frozen tiles, cross special, combo system [claude-code]
+- **v22.8.0** — Redesigned confirm dialogs, replaced native confirm()/alert() [claude-code]
+- **v22.7.0** — Match-3 upgrade: special pieces, scoring fix, dashboard & profile fixes [claude-code]
+- **v22.6.0** — Stability audit + version bump [claude-code]
+- **v22.5.0** — Custom confirm modals, purchase effects, cooldown reset, chat fix [claude-code]
+- **v22.4.0** — Gamification V2: Quiz, Streaks, Room page, Match-3 improvements [claude-code]
 
 ---
 

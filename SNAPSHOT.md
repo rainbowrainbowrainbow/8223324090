@@ -3,15 +3,15 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v23.2.0**. package.json: `23.2.0`. Бранч `claude/update-snapshot-version-OJyXi`.
+Версія **v23.3.0**. package.json: `23.3.0`. Бранч `claude/update-snapshot-version-OJyXi`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] OmniClaw — омніканальна комунікація v1.0
-- **package.json**: `"version": "23.2.0"`
+- **Останній коміт**: chore: [claude-code] version bump v23.3.0 — OmniClaw Security Hardening
+- **package.json**: `"version": "23.3.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **Що нового**: OmniClaw v1.0 — єдиний inbox для 6 каналів (Telegram, Viber, SMS, Facebook, Instagram, Binotel)
+- **Що нового**: OmniClaw Security Hardening — webhook auth, pool safety, input validation, HTTP checks
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -24,7 +24,18 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v23.2.0)
+## Останні зміни (v22.4.0 → v23.3.0)
+
+### v23.3.0 (Claude Code, 11.03.2026)
+- **OmniClaw Security Hardening**
+  - Webhook signature verification: Viber HMAC-SHA256, Meta X-Hub-Signature-256, SMS/Binotel X-Webhook-Secret
+  - FB/IG tokens: URL query → Authorization Bearer header
+  - Graph API v18.0 → v21.0 (configurable via env)
+  - pool.connect() safety: try-catch у 5 функціях omni-hub.js
+  - Input validation: truncate names/phones, whitelist status/channel, parseId на route params
+  - HTTP status checks в усіх 4 API адаптерах
+  - Normalizer: safeCoords, safeString, isValidUrl, E.164 phone cap
+  - Нові env: META_APP_SECRET, SMS_WEBHOOK_SECRET, BINOTEL_WEBHOOK_SECRET
 
 ### v23.2.0 (Claude Code, 11.03.2026)
 - **OmniClaw — Омніканальна комунікація v1.0**
@@ -126,6 +137,7 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - **v23.0.0: Major Release — Full Version Sync, Landing Carousel, Manager Guide**
 - **v23.1.0: Landing Page Event Genix v1.0 — повний редизайн, demo-request API**
 - **v23.2.0: OmniClaw — омніканальна комунікація v1.0, 6 каналів, AI авто-відповіді**
+- **v23.3.0: OmniClaw Security Hardening — webhook auth, pool safety, input validation, HTTP checks**
 
 ## Аудит deployed vs main (11.03.2026)
 - **Результат**: ВСІ фічі з deployed (v17.4.1) інтегровані в main (v23.0.0)
@@ -178,4 +190,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-11, v23.2.0 + OmniClaw v1.0, сесія claude-code*
+*Оновлено: 2026-03-11, v23.3.0 + OmniClaw Security Hardening, сесія claude-code*

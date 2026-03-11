@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=23.2.0">
-    <link rel="stylesheet" href="css/auth.css?v=23.2.0">
-    <link rel="stylesheet" href="css/layout.css?v=23.2.0">
-    <link rel="stylesheet" href="css/timeline.css?v=23.2.0">
-    <link rel="stylesheet" href="css/panel.css?v=23.2.0">
-    <link rel="stylesheet" href="css/modals.css?v=23.2.0">
-    <link rel="stylesheet" href="css/controls.css?v=23.2.0">
-    <link rel="stylesheet" href="css/features.css?v=23.2.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=23.2.0">
-    <link rel="stylesheet" href="css/responsive.css?v=23.2.0">
-    <link rel="stylesheet" href="css/pages.css?v=23.2.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=23.2.0">
+    <link rel="stylesheet" href="css/base.css?v=23.3.0">
+    <link rel="stylesheet" href="css/auth.css?v=23.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=23.3.0">
+    <link rel="stylesheet" href="css/timeline.css?v=23.3.0">
+    <link rel="stylesheet" href="css/panel.css?v=23.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=23.3.0">
+    <link rel="stylesheet" href="css/controls.css?v=23.3.0">
+    <link rel="stylesheet" href="css/features.css?v=23.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=23.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=23.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=23.3.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=23.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v23.2.0 — OmniClaw</p>
+                <p class="tagline">AI First CRM v23.3.0 — OmniClaw Security</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v23.2.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v23.3.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1184,7 +1184,7 @@
                         <li><b>Version Sync</b> — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG</li>
                         <li><b>Landing Carousel</b> — команда з каруселлю, Anli Lektor, swipe/dots/arrows [kleshnya]</li>
                         <li><b>Manager Guide</b> — нова сторінка для менеджерів з продажу [kleshnya]</li>
-                        <li><b>Cache Busting</b> — ?v=23.2.0 на всіх CSS/JS ресурсах (25 файлів)</li>
+                        <li><b>Cache Busting</b> — ?v=23.3.0 на всіх CSS/JS ресурсах (25 файлів)</li>
                         <li><b>Swagger API</b> — оновлена версія OpenAPI spec до v23.0.0</li>
                     </ul>
                 </div>
@@ -1647,6 +1647,18 @@
                         <li><b>Unread Badge</b> — лічильник непрочитаних у навігації на всіх сторінках</li>
                         <li><b>Звуки</b> — 6 звукових нотифікацій (нове повідомлення, відправлено, mention)</li>
                         <li><b>Dark Mode</b> — повна підтримка темної теми з фіолетовими бабблами</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v23.3.0 — OmniClaw Security Hardening (Claude Code, 11.03.2026)</h4>
+                    <ul>
+                        <li><b>Webhook Auth</b> — HMAC-SHA256 для Viber, X-Hub-Signature-256 для Meta, X-Webhook-Secret для SMS/Binotel</li>
+                        <li><b>API Security</b> — FB/IG токени з URL в Authorization header, Graph API v21.0</li>
+                        <li><b>Pool Safety</b> — pool.connect() в try-catch (5 місць), запобігає unhandled rejection</li>
+                        <li><b>Input Validation</b> — truncate names/phones, whitelist status/channel, parseId на route params</li>
+                        <li><b>HTTP Checks</b> — перевірка status code в усіх 4 API адаптерах (FB, IG, SMS, Viber)</li>
+                        <li><b>Normalizer</b> — safeCoords, safeString, isValidUrl, E.164 phone cap (15 digits)</li>
+                        <li><b>Timing-Safe</b> — crypto.timingSafeEqual для всіх signature перевірок</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -3940,23 +3952,23 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=23.2.0"></script>
-    <script src="js/api.js?v=23.2.0"></script>
-    <script src="js/ui.js?v=23.2.0"></script>
-    <script src="js/auth.js?v=23.2.0"></script>
-    <script src="js/timeline.js?v=23.2.0"></script>
-    <script src="js/booking.js?v=23.2.0"></script>
-    <script src="js/settings.js?v=23.2.0"></script>
-    <script src="js/booking-form.js?v=23.2.0"></script>
-    <script src="js/booking-linked.js?v=23.2.0"></script>
-    <script src="js/settings-dashboard.js?v=23.2.0"></script>
-    <script src="js/settings-history.js?v=23.2.0"></script>
-    <script src="js/settings-afisha.js?v=23.2.0"></script>
-    <script src="js/settings-certificates.js?v=23.2.0"></script>
-    <script src="js/offline.js?v=23.2.0"></script>
-    <script src="js/search.js?v=23.2.0"></script>
-    <script src="js/ws.js?v=23.2.0"></script>
-    <script src="js/app.js?v=23.2.0"></script>
-    <script src="js/kleshnya-widget.js?v=23.2.0"></script>
+    <script src="js/config.js?v=23.3.0"></script>
+    <script src="js/api.js?v=23.3.0"></script>
+    <script src="js/ui.js?v=23.3.0"></script>
+    <script src="js/auth.js?v=23.3.0"></script>
+    <script src="js/timeline.js?v=23.3.0"></script>
+    <script src="js/booking.js?v=23.3.0"></script>
+    <script src="js/settings.js?v=23.3.0"></script>
+    <script src="js/booking-form.js?v=23.3.0"></script>
+    <script src="js/booking-linked.js?v=23.3.0"></script>
+    <script src="js/settings-dashboard.js?v=23.3.0"></script>
+    <script src="js/settings-history.js?v=23.3.0"></script>
+    <script src="js/settings-afisha.js?v=23.3.0"></script>
+    <script src="js/settings-certificates.js?v=23.3.0"></script>
+    <script src="js/offline.js?v=23.3.0"></script>
+    <script src="js/search.js?v=23.3.0"></script>
+    <script src="js/ws.js?v=23.3.0"></script>
+    <script src="js/app.js?v=23.3.0"></script>
+    <script src="js/kleshnya-widget.js?v=23.3.0"></script>
 </body>
 </html>

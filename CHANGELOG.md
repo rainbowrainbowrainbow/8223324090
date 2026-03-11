@@ -4,6 +4,18 @@
 
 ---
 
+## v23.3.0 — OmniClaw Security Hardening (2026-03-11)
+- **Webhook Signature Verification** — Viber HMAC-SHA256 (X-Viber-Content-Signature), Meta X-Hub-Signature-256 з timingSafeEqual, SMS/Binotel X-Webhook-Secret header [claude-code]
+- **API Token Security** — FB/IG access_token перенесено з URL query string в Authorization: Bearer header [claude-code]
+- **Graph API Update** — v18.0 → v21.0, конфігурується через FB_API_VERSION / IG_API_VERSION env [claude-code]
+- **Pool Safety** — pool.connect() обгорнуто в try-catch у 5 функціях omni-hub.js (запобігає unhandled rejection при вичерпаному пулі) [claude-code]
+- **Input Validation** — senderName/phone truncate до DB limits (255/50), getConversations whitelist status/channel, assignedTo type+length check, parseId на всіх route :id params [claude-code]
+- **HTTP Status Checks** — перевірка statusCode в fbRequest, igRequest, turboSmsRequest, viberRequest (розрізняє 429/401/500) [claude-code]
+- **Normalizer Hardening** — safeCoords() перевіряє Number.isFinite, safeString() з maxLen, isValidUrl() protocol check, JSON.stringify cap для unknown channels [claude-code]
+- **Phone Validation** — normalizePhone() E.164 cap (15 digits max), reject < 7 digits [claude-code]
+- **getUserProfile Security** — fields array sanitized з regex whitelist /^[a-z_]+$/i + encodeURIComponent [claude-code]
+- **Нові env vars** — META_APP_SECRET, SMS_WEBHOOK_SECRET, BINOTEL_WEBHOOK_SECRET (всі опціональні, graceful skip) [claude-code]
+
 ## v23.0.0 — Major Release: Full Version Sync (2026-03-11)
 - **Version Sync** — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG [claude-code]
 - **Landing Carousel** — команда з каруселлю, Anli Lektor, swipe/dots/arrows [kleshnya]

@@ -3,18 +3,18 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v22.19.0**. package.json: `22.19.0`. Бранч `claude/update-snapshot-version-OJyXi`.
+Версія **v22.20.0**. package.json: `22.20.0`. Бранч `claude/update-snapshot-version-OJyXi`.
 
 **УВАГА:** package.json на `origin/main` = `22.12.0` (VERSION-SYNC баг).
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: v22.19.0 — Guardian Contour System Phase 2
-- **package.json**: `"version": "22.19.0"`
+- **Останній коміт**: v22.20.0 — Guardian Phase 3: Analytics & Intelligence
+- **package.json**: `"version": "22.20.0"`
 - **origin/main package.json**: `"version": "22.12.0"` (VERSION-SYNC баг)
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **Що нового**: Guardian Phase 2 — Telegram алерти, inline кнопки, Security Panel, розширені патерни, покращений звіт
+- **Що нового**: Guardian Phase 3 — Chat Commands, Health Scores, Sentiment Analysis, Analytics Panel, Trust System, Auto-Escalation, Weekly Reports
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -27,7 +27,22 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v22.19.0)
+## Останні зміни (v22.4.0 → v22.20.0)
+
+### v22.20.0 (Claude Code, 11.03.2026)
+- **Guardian Phase 3 — Analytics & Intelligence:**
+  - 14 Guardian chat commands: /g help, status, stats, mood, health, top, history, mute, unmute, trust, report, rules, learn, config
+  - Channel Health Score (0-100): 🟢🟡🔴 real-time indicator, auto-calculation, history tracking, WebSocket broadcasts
+  - Sentiment Tracking: keyword-based mood analysis per message, per-user/per-channel summaries
+  - Guardian Analytics Panel: 5 tabs (overview, health, mood, heatmap, trust) з повною dark mode підтримкою
+  - Activity Heatmap: 7×24 grid hourly message/conflict counts
+  - Trust Score System: 0-100 scoring, 4 levels (trusted/normal/watched/restricted), auto-update on incidents
+  - Auto-Escalation: 5-level escalation (warn → mute 1m → 10m → 30m+TG → ban 1 day)
+  - Weekly Reports: Monday digest with trends, comparisons, recommendations, Telegram delivery
+  - Command Autocomplete: interactive suggestions при введенні /g в чаті
+  - 29 API endpoints: health, mood, trust, analytics, escalation, weekly-reports, command
+  - 8 нових DB таблиць: channel_health, health_history, mood_tracking, commands_log, weekly_reports, trust_scores, escalation_config, activity_heatmap
+  - Migration 051: guardian_phase3.sql
 
 ### v22.19.0 (Claude Code, 11.03.2026)
 - **Guardian Contour System Phase 2:**
@@ -79,12 +94,12 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - v20.0–v20.12: Milestone, Role System, Command Panel, Navigation, Sales, Rebranding, Tests, Security, UX, Validation, Swagger
 - v21.12–v21.15: Dark Mode Fix, Night Settings, Polish, A11y, Tablet, Unified Navigation
 - v22.0–v22.3: Dashboard, Messenger UX, Gamification, Game Profile
-- **v22.4–v22.19: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security, Tech Debt, Guardian Phase 2**
+- **v22.4–v22.20: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security, Tech Debt, Guardian Phase 2+3**
 
 ## Незроблені баги
 - **BUG-001** — Тімур бот: зайвий текст при decline/other — НЕ ЗРОБЛЕНО
 - **CRM-VAL-001** — Минула дата в бронюванні — НЕ ЗРОБЛЕНО (бекенд валідація)
-- **VERSION-SYNC** — origin/main package.json (22.12.0) розсинхронізований з комітами (v22.18.0)
+- **VERSION-SYNC** — origin/main package.json (22.12.0) розсинхронізований з комітами (v22.20.0)
 
 ## Архітектура (актуальна)
 
@@ -96,13 +111,13 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 | Frontend JS | 44 модулі |
 | HTML сторінки | 25 |
 | CSS файли | 17 |
-| DB міграції | 50 (001–050) |
-| DB таблиці | 40+ (core) + міграції |
+| DB міграції | 51 (001–051) |
+| DB таблиці | 48+ (core) + міграції |
 | Залежності | 15 npm packages |
-| JS код | ~87 000 рядків |
-| HTML код | ~16 500 рядків |
-| CSS код | ~24 300 рядків |
-| **Всього коду** | **~128 000 рядків** |
+| JS код | ~90 000 рядків |
+| HTML код | ~17 000 рядків |
+| CSS код | ~25 000 рядків |
+| **Всього коду** | **~132 000 рядків** |
 | Тести | 296+ |
 
 ## Відомі проблеми / пастки
@@ -115,6 +130,7 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - **_debug() у ws.js/offline.js**: Показує тільки при `localStorage.pzp_debug = 'true'`
 - **Multi-agent**: Завжди git fetch + перевіряй чи хтось не змінив файли. Коміти з тегом `[claude-code]`
 - **Version mismatch**: Клешня комітить з v22.XX в повідомленні, але не бампить package.json
+- **Guardian commands**: `/g` або `/guardian` в чаті — 14 команд, admin-only для модерації
 
 ## Деплой
 - `main` — staging (PR мерджаться сюди)
@@ -122,4 +138,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-11, v22.19.0, сесія claude-code*
+*Оновлено: 2026-03-11, v22.20.0, сесія claude-code*

@@ -432,17 +432,37 @@ function clearMuteCache(channelId, userId) {
  * Mute user in channel for 1 minute.
  */
 async function muteUser(channelId, userId, username, reason) {
-    const mutedUntil = new Date(Date.now() + MUTE_DURATION_MS);
-    const key = `${channelId}:${userId}`;
-    _activeMutes[key] = mutedUntil.getTime();
-
     try {
+        // Use auto-escalation to determine mute duration
+        const escalation = await checkEscalation(userId, channelId);
+        let muteDurationMs = escalation.muteDurationMs || MUTE_DURATION_MS;
+
+        // Check trust score — restricted users get 2x duration
+        const trust = await getTrustScore(userId);
+        if (trust.level === 'restricted') {
+            muteDurationMs = muteDurationMs * 2;
+        }
+
+        // If escalation says warn only (level 1), still mute but for minimum duration
+        if (escalation.action === 'warn' && escalation.level === 1) {
+            muteDurationMs = MUTE_DURATION_MS; // default 1 min
+        }
+
+        const mutedUntil = new Date(Date.now() + muteDurationMs);
+        const muteDurationMinutes = Math.round(muteDurationMs / 60000);
+        const key = `${channelId}:${userId}`;
+        _activeMutes[key] = mutedUntil.getTime();
+
         await pool.query(
             'INSERT INTO chat_mutes (channel_id, user_id, reason, muted_until) VALUES ($1, $2, $3, $4)',
             [channelId, userId, reason, mutedUntil]
         );
 
-        await logAction('mute', channelId, userId, null, { reason, until: mutedUntil, username });
+        await logAction('mute', channelId, userId, null, {
+            reason, until: mutedUntil, username,
+            escalationLevel: escalation.level,
+            trustLevel: trust.level
+        });
 
         // NO public message — just broadcast mute event (user sees mute countdown overlay)
         broadcastToChannel(channelId, 'chat:user-muted', {
@@ -461,7 +481,7 @@ async function muteUser(channelId, userId, username, reason) {
             type: 'mute',
             channelId,
             username,
-            details: `Заблоковано на 1 хв: ${reason}`,
+            details: `Заблоковано на ${muteDurationMinutes} хв (рівень ${escalation.level}): ${reason}`,
             severity: 'danger'
         });
 
@@ -472,7 +492,9 @@ async function muteUser(channelId, userId, username, reason) {
             `Канал: #${slug}\n` +
             `Користувач: @${username}\n` +
             `Причина: ${reason}\n` +
-            `До: ${mutedUntil.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}`,
+            `Рівень ескалації: ${escalation.level} (інцидентів: ${escalation.incidentCount})\n` +
+            `Довіра: ${trust.score}/100 (${trust.level})\n` +
+            `До: ${mutedUntil.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })} (${muteDurationMinutes} хв)`,
             [
                 { action: 'mute_both', label: '🔇 Мютити обох', channelId, userId },
                 { action: 'warn', label: '⚠️ Попередження', channelId, userId, username },
@@ -480,11 +502,40 @@ async function muteUser(channelId, userId, username, reason) {
             ]
         );
 
+        // Telegram alert for high escalation levels
+        if (escalation.notifyTelegram) {
+            alertDirectorTelegram(
+                `🚨 <b>Ескалація рівень ${escalation.level}!</b>\n` +
+                `Користувач: @${username}\n` +
+                `Канал: #${slug}\n` +
+                `Інцидентів за 24г: ${escalation.incidentCount}\n` +
+                `Мут: ${muteDurationMinutes} хв`,
+                `escalation-${userId}`
+            );
+        }
+
         // Track repeat offender + hourly blocks for Telegram alerts
         trackRepeatOffender(userId, username, channelId);
         trackHourlyBlocks(userId, username);
 
-        log.info(`Muted ${username} (id:${userId}) in ch:${channelId} until ${mutedUntil.toISOString()}`);
+        // Update trust score on mute
+        updateTrustScore(userId, -10, 'mute').catch(err => {
+            log.error('Trust score update on mute failed', err);
+        });
+
+        // Update activity heatmap
+        updateActivityHeatmap(channelId, 'mute').catch(err => {
+            log.error('Activity heatmap mute update failed', err);
+        });
+
+        // Track repeated offense for trust
+        if (escalation.level >= 3) {
+            updateTrustScore(userId, -15, 'repeated_offense').catch(err => {
+                log.error('Trust score update on repeated offense failed', err);
+            });
+        }
+
+        log.info(`Muted ${username} (id:${userId}) in ch:${channelId} for ${muteDurationMinutes}min (escalation:${escalation.level}, trust:${trust.level}) until ${mutedUntil.toISOString()}`);
     } catch (err) {
         log.error('Failed to mute user', err);
     }
@@ -1536,6 +1587,16 @@ async function processMessage(message) {
             log.error('Conflict analysis error', err);
         }
     })();
+
+    // 4. Sentiment analysis (fire-and-forget)
+    analyzeSentiment(channelId, userId, messageId, content).catch(err => {
+        log.error('Sentiment analysis error', err);
+    });
+
+    // 5. Activity heatmap update (fire-and-forget)
+    updateActivityHeatmap(channelId, 'message').catch(err => {
+        log.error('Activity heatmap update error', err);
+    });
 }
 
 // ==========================================
@@ -1819,6 +1880,1371 @@ startMoodCycle();
 // Load dynamic toxic words from DB
 loadDynamicToxicWords().catch(() => {});
 
+// ==========================================
+// GUARDIAN CHAT COMMANDS (/g or /guardian)
+// ==========================================
+
+/**
+ * Log a guardian command execution to the database.
+ */
+async function logGuardianCommand(channelId, userId, username, command, args) {
+    try {
+        await pool.query(
+            `INSERT INTO guardian_commands_log (channel_id, user_id, username, command, args)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [channelId, userId, username, command, JSON.stringify(args)]
+        );
+    } catch (err) {
+        log.error('Failed to log guardian command', err);
+    }
+}
+
+/**
+ * Handle /g or /guardian chat commands.
+ * Returns { handled: true, response: "..." } if the command was recognized,
+ * or { handled: false } if not a guardian command.
+ */
+async function handleGuardianCommand(channelId, userId, username, commandText, isAdmin) {
+    // Parse command: strip /g or /guardian prefix
+    const trimmed = commandText.trim();
+    let body = '';
+    if (trimmed.startsWith('/guardian ')) {
+        body = trimmed.slice('/guardian '.length).trim();
+    } else if (trimmed === '/guardian') {
+        body = 'help';
+    } else if (trimmed.startsWith('/g ')) {
+        body = trimmed.slice('/g '.length).trim();
+    } else if (trimmed === '/g') {
+        body = 'help';
+    } else {
+        return { handled: false };
+    }
+
+    const parts = body.split(/\s+/);
+    const cmd = (parts[0] || 'help').toLowerCase();
+    const args = parts.slice(1);
+
+    // Log every command
+    await logGuardianCommand(channelId, userId, username, cmd, args);
+
+    try {
+        switch (cmd) {
+            case 'help':
+                return { handled: true, response: cmdHelp(isAdmin) };
+            case 'status':
+                return { handled: true, response: await cmdStatus(channelId) };
+            case 'stats':
+                return { handled: true, response: await cmdStats(channelId, args[0]) };
+            case 'mood':
+                return { handled: true, response: await cmdMood(channelId) };
+            case 'health':
+                return { handled: true, response: await cmdHealth(channelId) };
+            case 'top':
+                if (!isAdmin) return { handled: true, response: '🔒 Ця команда доступна тільки адміністраторам.' };
+                return { handled: true, response: await cmdTop(channelId, args[0]) };
+            case 'history':
+                if (!isAdmin) return { handled: true, response: '🔒 Ця команда доступна тільки адміністраторам.' };
+                return { handled: true, response: await cmdHistory(args[0]) };
+            case 'mute':
+                if (!isAdmin) return { handled: true, response: '🔒 Ця команда доступна тільки адміністраторам.' };
+                return { handled: true, response: await cmdMute(channelId, args[0], args[1]) };
+            case 'unmute':
+                if (!isAdmin) return { handled: true, response: '🔒 Ця команда доступна тільки адміністраторам.' };
+                return { handled: true, response: await cmdUnmute(channelId, args[0]) };
+            case 'trust':
+                if (!isAdmin) return { handled: true, response: '🔒 Ця команда доступна тільки адміністраторам.' };
+                return { handled: true, response: await cmdTrust(args) };
+            case 'report':
+                if (!isAdmin) return { handled: true, response: '🔒 Ця команда доступна тільки адміністраторам.' };
+                return { handled: true, response: await cmdReport(channelId) };
+            case 'rules':
+                if (!isAdmin) return { handled: true, response: '🔒 Ця команда доступна тільки адміністраторам.' };
+                return { handled: true, response: await cmdRules() };
+            case 'learn':
+                if (!isAdmin) return { handled: true, response: '🔒 Ця команда доступна тільки адміністраторам.' };
+                return { handled: true, response: await cmdLearn(args) };
+            case 'config':
+                if (!isAdmin) return { handled: true, response: '🔒 Ця команда доступна тільки адміністраторам.' };
+                return { handled: true, response: cmdConfig() };
+            default:
+                return { handled: true, response: `❓ Невідома команда: "${cmd}". Введіть /g help для списку команд.` };
+        }
+    } catch (err) {
+        log.error(`Guardian command error [${cmd}]`, err);
+        return { handled: true, response: `⚠️ Помилка виконання команди "${cmd}": ${err.message}` };
+    }
+}
+
+// --- Command implementations ---
+
+function cmdHelp(isAdmin) {
+    let text = `🛡️ **Guardian — Команди**\n\n`;
+    text += `📋 Доступні всім:\n`;
+    text += `  /g help — Показати цю довідку\n`;
+    text += `  /g status — Стан Guardian: настрій, мьюти, дії\n`;
+    text += `  /g stats [today|week|month] — Статистика за період\n`;
+    text += `  /g mood — Настрій команди в каналі\n`;
+    text += `  /g health — Здоров'я каналу з розбивкою\n`;
+    if (isAdmin) {
+        text += `\n🔐 Тільки для адмінів:\n`;
+        text += `  /g top [offenders|helpers] — Топ-5 порушників або помічників\n`;
+        text += `  /g history @username — Історія модерації користувача\n`;
+        text += `  /g mute @username [хвилини] — Замʼютити (за замовч. 5 хв)\n`;
+        text += `  /g unmute @username — Зняти мʼют\n`;
+        text += `  /g trust @username [+|-] [причина] — Змінити рівень довіри\n`;
+        text += `  /g report — Згенерувати звіт за сьогодні\n`;
+        text += `  /g rules — Показати активні правила\n`;
+        text += `  /g learn word1, word2 — Додати слова до фільтра\n`;
+        text += `  /g config — Поточна конфігурація Guardian\n`;
+    }
+    return text;
+}
+
+async function cmdStatus(channelId) {
+    const state = getGuardianState();
+    const mood = getMood();
+
+    // Count active mutes
+    const now = Date.now();
+    let activeMutes = 0;
+    for (const key of Object.keys(_activeMutes)) {
+        if (_activeMutes[key] > now) activeMutes++;
+    }
+
+    // Today's actions count
+    let todayActions = 0;
+    try {
+        const r = await pool.query(
+            `SELECT COUNT(*)::int AS cnt FROM guardian_actions
+             WHERE created_at >= CURRENT_DATE`
+        );
+        todayActions = r.rows[0]?.cnt || 0;
+    } catch { /* ignore */ }
+
+    // Channel health
+    const health = _channelHealth[channelId];
+    const healthStr = health
+        ? `${health.score}/100 (останній інцидент: ${health.lastIncident ? new Date(health.lastIncident).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv' }) : 'немає'})`
+        : 'немає даних';
+
+    return `🛡️ **Guardian Status**\n\n` +
+        `${mood.emoji} Настрій: ${mood.label} (${mood.level})\n` +
+        `🔇 Активних мʼютів: ${activeMutes}\n` +
+        `📊 Дій сьогодні: ${todayActions}\n` +
+        `💚 Здоровʼя каналу: ${healthStr}`;
+}
+
+async function cmdStats(channelId, period) {
+    const validPeriods = { today: 'CURRENT_DATE', week: "CURRENT_DATE - INTERVAL '7 days'", month: "CURRENT_DATE - INTERVAL '30 days'" };
+    const periodKey = (period && validPeriods[period]) ? period : 'today';
+    const since = validPeriods[periodKey];
+
+    try {
+        const r = await pool.query(
+            `SELECT action_type, COUNT(*)::int AS cnt
+             FROM guardian_actions
+             WHERE created_at >= ${since}
+               AND ($1::int IS NULL OR channel_id = $1)
+             GROUP BY action_type
+             ORDER BY cnt DESC`,
+            [channelId || null]
+        );
+
+        const stats = {};
+        let total = 0;
+        for (const row of r.rows) {
+            stats[row.action_type] = row.cnt;
+            total += row.cnt;
+        }
+
+        const periodLabels = { today: 'сьогодні', week: 'за тиждень', month: 'за місяць' };
+        let text = `📊 **Статистика Guardian (${periodLabels[periodKey]})**\n\n`;
+        text += `Всього дій: ${total}\n`;
+        text += `🔍 Просканованих: ${stats['scan'] || 0}\n`;
+        text += `🚫 Заблокованих: ${stats['block'] || 0}\n`;
+        text += `🔇 Замʼючених: ${stats['mute'] || 0}\n`;
+        text += `🎭 Замаскованих: ${stats['mask'] || 0}\n`;
+        if (stats['warn']) text += `⚠️ Попереджень: ${stats['warn']}\n`;
+        if (stats['escalate']) text += `🚨 Ескалацій: ${stats['escalate']}\n`;
+        return text;
+    } catch (err) {
+        return `⚠️ Не вдалося отримати статистику: ${err.message}`;
+    }
+}
+
+async function cmdMood(channelId) {
+    try {
+        const r = await pool.query(
+            `SELECT AVG(sentiment)::numeric(3,2) AS avg_sentiment,
+                    COUNT(*)::int AS total,
+                    mode() WITHIN GROUP (ORDER BY emoji) AS top_emoji
+             FROM guardian_mood_tracking
+             WHERE channel_id = $1
+               AND created_at >= CURRENT_DATE - INTERVAL '24 hours'`,
+            [channelId]
+        );
+
+        const row = r.rows[0];
+        const avgSentiment = row?.avg_sentiment ? parseFloat(row.avg_sentiment) : null;
+        const topEmoji = row?.top_emoji || '—';
+        const total = row?.total || 0;
+
+        // Mood trend
+        let trend = '➡️ Стабільний';
+        if (avgSentiment !== null) {
+            if (avgSentiment > 0.5) trend = '📈 Позитивний';
+            else if (avgSentiment > 0.2) trend = '🙂 Добрий';
+            else if (avgSentiment < -0.3) trend = '📉 Негативний';
+            else if (avgSentiment < -0.1) trend = '😐 Нейтральний';
+        }
+
+        // Top emojis
+        let topEmojis = topEmoji;
+        try {
+            const re = await pool.query(
+                `SELECT emoji, COUNT(*)::int AS cnt
+                 FROM guardian_mood_tracking
+                 WHERE channel_id = $1 AND created_at >= CURRENT_DATE - INTERVAL '24 hours'
+                   AND emoji IS NOT NULL
+                 GROUP BY emoji ORDER BY cnt DESC LIMIT 5`,
+                [channelId]
+            );
+            if (re.rows.length > 0) {
+                topEmojis = re.rows.map(r => `${r.emoji} (${r.cnt})`).join(', ');
+            }
+        } catch { /* ignore */ }
+
+        return `😊 **Настрій каналу**\n\n` +
+            `📊 Середній сентимент: ${avgSentiment !== null ? avgSentiment.toFixed(2) : 'немає даних'}\n` +
+            `${trend}\n` +
+            `💬 Повідомлень проаналізовано: ${total}\n` +
+            `🏆 Топ емоджі: ${topEmojis}`;
+    } catch (err) {
+        return `⚠️ Не вдалося отримати настрій: ${err.message}`;
+    }
+}
+
+async function cmdHealth(channelId) {
+    try {
+        const r = await pool.query(
+            `SELECT score, toxicity_score, spam_score, conflict_score, engagement_score, updated_at
+             FROM guardian_channel_health
+             WHERE channel_id = $1
+             ORDER BY updated_at DESC LIMIT 1`,
+            [channelId]
+        );
+
+        if (!r.rows.length) {
+            // Fallback to in-memory health
+            const health = _channelHealth[channelId];
+            if (health) {
+                return `💚 **Здоровʼя каналу**: ${health.score}/100\n(дані з памʼяті)`;
+            }
+            return `💚 **Здоровʼя каналу**: немає даних для цього каналу.`;
+        }
+
+        const h = r.rows[0];
+        const scoreEmoji = h.score >= 80 ? '💚' : h.score >= 50 ? '💛' : '❤️';
+
+        return `${scoreEmoji} **Здоровʼя каналу: ${h.score}/100**\n\n` +
+            `🧪 Токсичність: ${h.toxicity_score ?? '—'}/100\n` +
+            `📨 Спам: ${h.spam_score ?? '—'}/100\n` +
+            `⚔️ Конфлікти: ${h.conflict_score ?? '—'}/100\n` +
+            `💬 Залученість: ${h.engagement_score ?? '—'}/100\n` +
+            `🕐 Оновлено: ${h.updated_at ? new Date(h.updated_at).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '—'}`;
+    } catch (err) {
+        return `⚠️ Не вдалося отримати здоровʼя каналу: ${err.message}`;
+    }
+}
+
+async function cmdTop(channelId, type) {
+    const category = (type || 'offenders').toLowerCase();
+
+    if (category === 'helpers') {
+        try {
+            const r = await pool.query(
+                `SELECT username, AVG(sentiment)::numeric(3,2) AS avg_sent, COUNT(*)::int AS cnt
+                 FROM guardian_mood_tracking
+                 WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+                   AND sentiment > 0
+                 GROUP BY username
+                 ORDER BY avg_sent DESC, cnt DESC
+                 LIMIT 5`
+            );
+            if (!r.rows.length) return `🌟 Немає даних про помічників за цей тиждень.`;
+
+            let text = `🌟 **Топ-5 помічників (тиждень)**\n\n`;
+            r.rows.forEach((row, i) => {
+                text += `${i + 1}. @${row.username} — сентимент: ${row.avg_sent}, повідомлень: ${row.cnt}\n`;
+            });
+            return text;
+        } catch (err) {
+            return `⚠️ Не вдалося отримати топ помічників: ${err.message}`;
+        }
+    }
+
+    // Default: offenders
+    try {
+        const r = await pool.query(
+            `SELECT ga.target_user_id, u.username, COUNT(*)::int AS cnt
+             FROM guardian_actions ga
+             LEFT JOIN users u ON u.id = ga.target_user_id
+             WHERE ga.action_type IN ('mute', 'block', 'warn')
+               AND ga.created_at >= CURRENT_DATE - INTERVAL '7 days'
+             GROUP BY ga.target_user_id, u.username
+             ORDER BY cnt DESC
+             LIMIT 5`
+        );
+        if (!r.rows.length) return `😇 Немає порушників за цей тиждень!`;
+
+        let text = `🚨 **Топ-5 порушників (тиждень)**\n\n`;
+        r.rows.forEach((row, i) => {
+            text += `${i + 1}. @${row.username || 'ID:' + row.target_user_id} — порушень: ${row.cnt}\n`;
+        });
+        return text;
+    } catch (err) {
+        return `⚠️ Не вдалося отримати топ порушників: ${err.message}`;
+    }
+}
+
+async function cmdHistory(usernameArg) {
+    if (!usernameArg) return `⚠️ Вкажіть імʼя користувача: /g history @username`;
+    const uname = usernameArg.replace(/^@/, '');
+
+    try {
+        // Find user
+        const ur = await pool.query('SELECT id FROM users WHERE username = $1', [uname]);
+        if (!ur.rows.length) return `⚠️ Користувача @${uname} не знайдено.`;
+        const targetId = ur.rows[0].id;
+
+        // Actions history
+        const ar = await pool.query(
+            `SELECT action_type, COUNT(*)::int AS cnt
+             FROM guardian_actions
+             WHERE target_user_id = $1
+             GROUP BY action_type
+             ORDER BY cnt DESC`,
+            [targetId]
+        );
+
+        // Trust score
+        let trustScore = null;
+        try {
+            const tr = await pool.query(
+                'SELECT score, reason, updated_at FROM guardian_trust_scores WHERE user_id = $1',
+                [targetId]
+            );
+            if (tr.rows.length) trustScore = tr.rows[0];
+        } catch { /* table may not exist */ }
+
+        let text = `📋 **Історія модерації: @${uname}**\n\n`;
+
+        if (ar.rows.length) {
+            text += `📊 Дії:\n`;
+            for (const row of ar.rows) {
+                const icons = { mute: '🔇', block: '🚫', warn: '⚠️', mask: '🎭', escalate: '🚨' };
+                text += `  ${icons[row.action_type] || '•'} ${row.action_type}: ${row.cnt}\n`;
+            }
+        } else {
+            text += `✅ Порушень не зафіксовано.\n`;
+        }
+
+        if (trustScore) {
+            text += `\n🤝 Рівень довіри: ${trustScore.score}\n`;
+            if (trustScore.reason) text += `   Причина: ${trustScore.reason}\n`;
+            text += `   Оновлено: ${new Date(trustScore.updated_at).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' })}`;
+        }
+
+        return text;
+    } catch (err) {
+        return `⚠️ Не вдалося отримати історію: ${err.message}`;
+    }
+}
+
+async function cmdMute(channelId, usernameArg, minutesArg) {
+    if (!usernameArg) return `⚠️ Вкажіть імʼя: /g mute @username [хвилини]`;
+    const uname = usernameArg.replace(/^@/, '');
+    const minutes = parseInt(minutesArg) || 5;
+
+    try {
+        const ur = await pool.query('SELECT id FROM users WHERE username = $1', [uname]);
+        if (!ur.rows.length) return `⚠️ Користувача @${uname} не знайдено.`;
+        const targetId = ur.rows[0].id;
+
+        // Custom duration mute
+        const mutedUntil = new Date(Date.now() + minutes * 60 * 1000);
+        const key = `${channelId}:${targetId}`;
+        _activeMutes[key] = mutedUntil.getTime();
+
+        await pool.query(
+            'INSERT INTO chat_mutes (channel_id, user_id, reason, muted_until) VALUES ($1, $2, $3, $4)',
+            [channelId, targetId, `Ручний мʼют через /g mute (${minutes} хв)`, mutedUntil]
+        );
+
+        await logAction('mute', channelId, targetId, null, { reason: `Manual mute via /g command`, minutes, username: uname });
+
+        broadcastToChannel(channelId, 'chat:user-muted', {
+            channelId,
+            userId: targetId,
+            username: uname,
+            mutedUntil: mutedUntil.toISOString(),
+            reason: `Ручний мʼют (${minutes} хв)`
+        });
+
+        return `🔇 @${uname} замʼючено на ${minutes} хв (до ${mutedUntil.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })}).`;
+    } catch (err) {
+        return `⚠️ Не вдалося замʼютити: ${err.message}`;
+    }
+}
+
+async function cmdUnmute(channelId, usernameArg) {
+    if (!usernameArg) return `⚠️ Вкажіть імʼя: /g unmute @username`;
+    const uname = usernameArg.replace(/^@/, '');
+
+    try {
+        const ur = await pool.query('SELECT id FROM users WHERE username = $1', [uname]);
+        if (!ur.rows.length) return `⚠️ Користувача @${uname} не знайдено.`;
+        const targetId = ur.rows[0].id;
+
+        clearMuteCache(channelId, targetId);
+
+        await pool.query(
+            'UPDATE chat_mutes SET muted_until = NOW() WHERE channel_id = $1 AND user_id = $2 AND muted_until > NOW()',
+            [channelId, targetId]
+        );
+
+        broadcastToChannel(channelId, 'chat:user-unmuted', {
+            channelId,
+            userId: targetId,
+            username: uname
+        });
+
+        return `🔊 @${uname} розмʼючено.`;
+    } catch (err) {
+        return `⚠️ Не вдалося розмʼютити: ${err.message}`;
+    }
+}
+
+async function cmdTrust(args) {
+    // /g trust @username [+|-] [reason...]
+    if (!args.length) return `⚠️ Формат: /g trust @username [+|-] [причина]`;
+    const uname = args[0].replace(/^@/, '');
+    const direction = args[1]; // '+' or '-'
+    const reason = args.slice(2).join(' ') || null;
+
+    if (direction !== '+' && direction !== '-') {
+        return `⚠️ Вкажіть напрямок: + (підвищити) або - (знизити). Приклад: /g trust @${uname} + Допомагає новачкам`;
+    }
+
+    const delta = direction === '+' ? 10 : -10;
+
+    try {
+        const ur = await pool.query('SELECT id FROM users WHERE username = $1', [uname]);
+        if (!ur.rows.length) return `⚠️ Користувача @${uname} не знайдено.`;
+        const targetId = ur.rows[0].id;
+
+        const r = await pool.query(
+            `INSERT INTO guardian_trust_scores (user_id, username, score, reason, updated_at)
+             VALUES ($1, $2, $3, $4, NOW())
+             ON CONFLICT (user_id)
+             DO UPDATE SET score = guardian_trust_scores.score + $3,
+                           reason = COALESCE($4, guardian_trust_scores.reason),
+                           updated_at = NOW()
+             RETURNING score`,
+            [targetId, uname, delta, reason]
+        );
+
+        const newScore = r.rows[0].score;
+        const emoji = direction === '+' ? '📈' : '📉';
+        return `${emoji} Довіра @${uname}: ${newScore} (${direction === '+' ? '+' : ''}${delta})${reason ? `\nПричина: ${reason}` : ''}`;
+    } catch (err) {
+        return `⚠️ Не вдалося оновити довіру: ${err.message}`;
+    }
+}
+
+async function cmdReport(channelId) {
+    try {
+        const report = await generateDailyReport(channelId);
+        if (report) {
+            return `📝 **Звіт згенеровано:**\n\n${report}`;
+        }
+        return `📝 Звіт згенеровано та відправлено директору.`;
+    } catch (err) {
+        return `⚠️ Не вдалося згенерувати звіт: ${err.message}`;
+    }
+}
+
+async function cmdRules() {
+    try {
+        const toxicCount = TOXIC_KEYWORDS_BASE.length + _dynamicToxicWords.length;
+        let text = `📏 **Правила Guardian**\n\n`;
+        text += `🔤 Базових токсичних слів: ${TOXIC_KEYWORDS_BASE.length}\n`;
+        text += `📚 Динамічних (навчених): ${_dynamicToxicWords.length}\n`;
+        text += `📋 Всього в фільтрі: ${toxicCount}\n\n`;
+        text += `⚙️ Активні правила:\n`;
+        text += `  • Авто-мʼют за токсичність\n`;
+        text += `  • Маскування чутливих даних (телефони, картки, ІПН)\n`;
+        text += `  • Анти-спам (${SPAM_THRESHOLD} повідомлень / ${SPAM_WINDOW_MS / 1000}с)\n`;
+        text += `  • Рецидивісти (${REPEAT_OFFENDER_THRESHOLD} порушення / тиждень)\n`;
+        text += `  • Погодинний ліміт блокувань: ${HOURLY_BLOCK_THRESHOLD}\n`;
+        return text;
+    } catch (err) {
+        return `⚠️ Не вдалося отримати правила: ${err.message}`;
+    }
+}
+
+async function cmdLearn(args) {
+    // Args: ["word1,", "word2,", "word3"] or ["word1", "word2"]
+    const rawText = args.join(' ');
+    const words = rawText.split(/[,\s]+/).map(w => w.trim().toLowerCase()).filter(w => w.length >= 2);
+
+    if (!words.length) return `⚠️ Вкажіть слова: /g learn word1, word2, word3`;
+
+    const added = [];
+    const skipped = [];
+
+    for (const word of words) {
+        if (TOXIC_KEYWORDS_BASE.includes(word) || _dynamicToxicWords.includes(word)) {
+            skipped.push(word);
+            continue;
+        }
+        try {
+            await pool.query(
+                `INSERT INTO guardian_toxic_words (word) VALUES ($1) ON CONFLICT DO NOTHING`,
+                [word]
+            );
+            _dynamicToxicWords.push(word);
+            added.push(word);
+        } catch {
+            skipped.push(word);
+        }
+    }
+
+    let text = `📚 **Навчання фільтра**\n\n`;
+    if (added.length) text += `✅ Додано: ${added.join(', ')}\n`;
+    if (skipped.length) text += `⏭️ Пропущено (вже є): ${skipped.join(', ')}\n`;
+    text += `📋 Всього в фільтрі: ${TOXIC_KEYWORDS_BASE.length + _dynamicToxicWords.length}`;
+    return text;
+}
+
+function cmdConfig() {
+    const state = getGuardianState();
+    const aiEnabled = !!process.env.ANTHROPIC_API_KEY;
+
+    let text = `⚙️ **Конфігурація Guardian**\n\n`;
+    text += `🤖 AI аналіз: ${aiEnabled ? '✅ Увімкнено' : '❌ Вимкнено'}\n`;
+    text += `${state.mood.emoji} Поточний настрій: ${state.mood.label}\n`;
+    text += `🔇 Тривалість мʼюту: ${MUTE_DURATION_MS / 1000}с (авто) / 5 хв (ручний)\n`;
+    text += `📨 Спам поріг: ${SPAM_THRESHOLD} повідомлень / ${SPAM_WINDOW_MS / 1000}с\n`;
+    text += `🔄 Рецидивіст поріг: ${REPEAT_OFFENDER_THRESHOLD} за тиждень\n`;
+    text += `⏰ Погодинний ліміт: ${HOURLY_BLOCK_THRESHOLD} блокувань\n`;
+    text += `📱 Telegram алерти: ${TELEGRAM_BOT_TOKEN ? '✅' : '❌'}\n`;
+    text += `👤 Boss Telegram ID: ${BOSS_TELEGRAM_ID}\n`;
+    text += `🧠 Каналів у памʼяті: ${Object.keys(state.memory).length}\n`;
+    text += `📊 Історія настрою: ${state.moodHistory.length} записів`;
+    return text;
+}
+
+// ==========================================
+// CHANNEL HEALTH SCORE SYSTEM
+// ==========================================
+
+/**
+ * Calculate health score (0-100) for a channel based on incidents.
+ */
+async function calculateChannelHealth(channelId) {
+    try {
+        const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
+
+        // Count conflicts today (mutes)
+        const conflictsRes = await pool.query(
+            `SELECT COUNT(*) cnt FROM guardian_actions
+             WHERE channel_id = $1 AND action_type = 'mute' AND created_at::date = $2::date`,
+            [channelId, todayStr]
+        );
+        const conflicts = parseInt(conflictsRes.rows[0]?.cnt || 0);
+
+        // Count mask events today
+        const masksRes = await pool.query(
+            `SELECT COUNT(*) cnt FROM guardian_actions
+             WHERE channel_id = $1 AND action_type = 'mask' AND created_at::date = $2::date`,
+            [channelId, todayStr]
+        );
+        const masks = parseInt(masksRes.rows[0]?.cnt || 0);
+
+        // Count spam detections today
+        const spamRes = await pool.query(
+            `SELECT COUNT(*) cnt FROM guardian_actions
+             WHERE channel_id = $1 AND action_type IN ('block_precheck', 'delete') AND created_at::date = $2::date`,
+            [channelId, todayStr]
+        );
+        const spamIncidents = parseInt(spamRes.rows[0]?.cnt || 0);
+
+        // Count active mutes
+        const activeMutesRes = await pool.query(
+            `SELECT COUNT(*) cnt FROM chat_mutes
+             WHERE channel_id = $1 AND muted_until > NOW()`,
+            [channelId]
+        );
+        const activeMutes = parseInt(activeMutesRes.rows[0]?.cnt || 0);
+
+        // Count total messages today (for positive factor)
+        const messagesRes = await pool.query(
+            `SELECT COUNT(*) cnt FROM chat_messages
+             WHERE channel_id = $1 AND created_at::date = $2::date AND deleted_at IS NULL AND is_bot = false`,
+            [channelId, todayStr]
+        );
+        const totalMessages = parseInt(messagesRes.rows[0]?.cnt || 0);
+        const totalIncidents = conflicts + masks + spamIncidents;
+        const cleanMessages = Math.max(0, totalMessages - totalIncidents);
+
+        // Calculate score
+        let score = 100;
+        score -= conflicts * 15;
+        score -= masks * 10;
+        score -= spamIncidents * 20;
+        score -= activeMutes * 10;
+        score += Math.floor(cleanMessages / 50) * 5;
+        score = Math.max(0, Math.min(100, score));
+
+        const level = getChannelHealthLevel(score);
+        const prevScore = _channelHealth[channelId]?.score;
+
+        // Update in-memory cache
+        _channelHealth[channelId] = { score, level, updatedAt: new Date().toISOString() };
+
+        // Upsert into guardian_channel_health
+        await pool.query(`
+            INSERT INTO guardian_channel_health (channel_id, score, level, conflicts_today, masks_today, spam_today, active_mutes, clean_messages)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (channel_id) DO UPDATE SET
+                score = EXCLUDED.score, level = EXCLUDED.level,
+                conflicts_today = EXCLUDED.conflicts_today, masks_today = EXCLUDED.masks_today,
+                spam_today = EXCLUDED.spam_today, active_mutes = EXCLUDED.active_mutes,
+                clean_messages = EXCLUDED.clean_messages, updated_at = NOW()
+        `, [channelId, score, level, conflicts, masks, spamIncidents, activeMutes, cleanMessages]);
+
+        // Store history
+        await pool.query(`
+            INSERT INTO guardian_health_history (channel_id, score, level)
+            VALUES ($1, $2, $3)
+        `, [channelId, score, level]);
+
+        // Alert if score drops below 40
+        if (score < 40 && (prevScore === undefined || prevScore >= 40)) {
+            const slug = await getChannelSlug(channelId);
+            alertDirectorTelegram(
+                `🔴 <b>Здоров'я каналу критичне!</b>\n` +
+                `Канал: #${slug}\n` +
+                `Бал: ${score}/100 (${level})\n` +
+                `Конфлікти: ${conflicts}, Маски: ${masks}, Спам: ${spamIncidents}`,
+                `channel-health-${channelId}`
+            );
+        }
+
+        // Broadcast WebSocket event if score changed
+        if (prevScore === undefined || prevScore !== score) {
+            broadcast('guardian:health', {
+                channelId,
+                score,
+                level,
+                prevScore: prevScore || null
+            });
+        }
+
+        return { score, level, conflicts, masks, spamIncidents, activeMutes, cleanMessages };
+    } catch (err) {
+        log.error('Failed to calculate channel health', err);
+        return null;
+    }
+}
+
+/**
+ * Update health scores for all channels (called by scheduler).
+ */
+async function updateAllChannelHealth() {
+    try {
+        const guardianId = await getGuardianUserId();
+        if (!guardianId) return;
+
+        const channels = await pool.query(`
+            SELECT c.id FROM chat_channels c
+            JOIN chat_channel_members m ON m.channel_id = c.id AND m.user_id = $1
+            WHERE c.is_dm = false OR c.is_dm IS NULL
+        `, [guardianId]);
+
+        for (const ch of channels.rows) {
+            await calculateChannelHealth(ch.id);
+        }
+        log.info(`Channel health updated for ${channels.rows.length} channels`);
+    } catch (err) {
+        log.error('Failed to update all channel health', err);
+    }
+}
+
+/**
+ * Get health level label from score.
+ */
+function getChannelHealthLevel(score) {
+    if (score >= 80) return 'green';
+    if (score >= 40) return 'yellow';
+    return 'red';
+}
+
+// ==========================================
+// TEAM MOOD / SENTIMENT TRACKING
+// ==========================================
+
+const POSITIVE_WORDS = [
+    'дякую', 'супер', 'клас', 'круто', 'молодець', 'чудово', 'вітаю', 'люблю',
+    'прекрасно', 'добре', 'згоден', 'так', 'ура', '❤️', '👍', '🎉', '😊', '💪',
+    '🔥', 'красиво', 'файно', 'здорово', 'відмінно', 'чіткий', 'потужно'
+];
+
+const NEGATIVE_WORDS = [
+    'проблема', 'помилка', 'баг', 'зламав', 'не працює', 'жах', 'погано', 'відстій',
+    'ненавиджу', 'бісить', 'дратує', 'фу', '😡', '😤', '👎', 'кошмар', 'жесть',
+    'хрінь', 'фігня'
+];
+
+const EMOTION_KEYWORDS = {
+    joy: ['ура', 'супер', 'круто', 'клас', '🎉', '😊', 'вау', 'чудово', 'здорово'],
+    gratitude: ['дякую', 'вдячний', 'вдячна', 'спасибі', 'дяка', '🙏', 'респект'],
+    frustration: ['не працює', 'баг', 'помилка', 'зламав', 'фігня', 'хрінь', 'знову', 'опять'],
+    anger: ['бісить', 'дратує', 'ненавиджу', 'жах', 'кошмар', '😡', '😤', 'жесть', 'відстій']
+};
+
+/**
+ * Analyze sentiment of a message using keyword-based approach.
+ */
+async function analyzeSentiment(channelId, userId, messageId, content) {
+    try {
+        if (!content || content.length < 2) return;
+
+        const lower = content.toLowerCase();
+
+        let positiveCount = 0;
+        let negativeCount = 0;
+
+        for (const word of POSITIVE_WORDS) {
+            if (lower.includes(word)) positiveCount++;
+        }
+        for (const word of NEGATIVE_WORDS) {
+            if (lower.includes(word)) negativeCount++;
+        }
+
+        const total = positiveCount + negativeCount;
+        let score = 0;
+        if (total > 0) {
+            score = (positiveCount - negativeCount) / total;
+        }
+        // Clamp to -1.0 to +1.0
+        score = Math.max(-1.0, Math.min(1.0, score));
+
+        // Detect emotions
+        const emotions = [];
+        for (const [emotion, keywords] of Object.entries(EMOTION_KEYWORDS)) {
+            if (keywords.some(kw => lower.includes(kw))) {
+                emotions.push(emotion);
+            }
+        }
+        if (emotions.length === 0) emotions.push('neutral');
+
+        // Store in guardian_mood_tracking
+        await pool.query(`
+            INSERT INTO guardian_mood_tracking (channel_id, user_id, message_id, sentiment_score, emotions, positive_count, negative_count)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `, [channelId, userId, messageId, score, JSON.stringify(emotions), positiveCount, negativeCount]);
+
+        // If positive mood, award trust
+        if (score > 0.5) {
+            updateTrustScore(userId, 1, 'positive_mood').catch(err => {
+                log.error('Trust score update on positive mood failed', err);
+            });
+        }
+
+        return { score, emotions, positiveCount, negativeCount };
+    } catch (err) {
+        log.error('Failed to analyze sentiment', err);
+        return null;
+    }
+}
+
+/**
+ * Get mood summary for a channel over a period.
+ */
+async function getChannelMoodSummary(channelId, period) {
+    try {
+        let dateFilter;
+        if (period === 'today') {
+            dateFilter = "created_at::date = CURRENT_DATE";
+        } else if (period === 'week') {
+            dateFilter = "created_at >= NOW() - INTERVAL '7 days'";
+        } else {
+            dateFilter = "created_at::date = CURRENT_DATE";
+        }
+
+        const result = await pool.query(`
+            SELECT
+                COUNT(*) AS total_messages,
+                AVG(sentiment_score) AS avg_sentiment,
+                COUNT(*) FILTER (WHERE sentiment_score > 0.3) AS positive_count,
+                COUNT(*) FILTER (WHERE sentiment_score < -0.3) AS negative_count,
+                COUNT(*) FILTER (WHERE sentiment_score BETWEEN -0.3 AND 0.3) AS neutral_count
+            FROM guardian_mood_tracking
+            WHERE channel_id = $1 AND ${dateFilter}
+        `, [channelId]);
+
+        const row = result.rows[0];
+
+        // Get top emotions
+        const emotionsResult = await pool.query(`
+            SELECT emotions FROM guardian_mood_tracking
+            WHERE channel_id = $1 AND ${dateFilter}
+        `, [channelId]);
+
+        const emotionCounts = {};
+        for (const r of emotionsResult.rows) {
+            const emo = typeof r.emotions === 'string' ? JSON.parse(r.emotions) : r.emotions;
+            if (Array.isArray(emo)) {
+                for (const e of emo) {
+                    emotionCounts[e] = (emotionCounts[e] || 0) + 1;
+                }
+            }
+        }
+
+        return {
+            totalMessages: parseInt(row.total_messages || 0),
+            avgSentiment: parseFloat(row.avg_sentiment || 0),
+            positiveCount: parseInt(row.positive_count || 0),
+            negativeCount: parseInt(row.negative_count || 0),
+            neutralCount: parseInt(row.neutral_count || 0),
+            topEmotions: Object.entries(emotionCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(([emotion, count]) => ({ emotion, count })),
+            period
+        };
+    } catch (err) {
+        log.error('Failed to get channel mood summary', err);
+        return null;
+    }
+}
+
+/**
+ * Get mood profile for a specific user.
+ */
+async function getUserMoodProfile(userId) {
+    try {
+        const result = await pool.query(`
+            SELECT
+                COUNT(*) AS total_messages,
+                AVG(sentiment_score) AS avg_sentiment,
+                MIN(sentiment_score) AS min_sentiment,
+                MAX(sentiment_score) AS max_sentiment,
+                COUNT(*) FILTER (WHERE sentiment_score > 0.3) AS positive_count,
+                COUNT(*) FILTER (WHERE sentiment_score < -0.3) AS negative_count
+            FROM guardian_mood_tracking
+            WHERE user_id = $1
+        `, [userId]);
+
+        const row = result.rows[0];
+
+        // Recent trend (last 7 days vs previous 7 days)
+        const trendResult = await pool.query(`
+            SELECT
+                AVG(sentiment_score) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days') AS recent_avg,
+                AVG(sentiment_score) FILTER (WHERE created_at >= NOW() - INTERVAL '14 days' AND created_at < NOW() - INTERVAL '7 days') AS prev_avg
+            FROM guardian_mood_tracking
+            WHERE user_id = $1
+        `, [userId]);
+
+        const trend = trendResult.rows[0];
+        const recentAvg = parseFloat(trend.recent_avg || 0);
+        const prevAvg = parseFloat(trend.prev_avg || 0);
+
+        return {
+            totalMessages: parseInt(row.total_messages || 0),
+            avgSentiment: parseFloat(row.avg_sentiment || 0),
+            minSentiment: parseFloat(row.min_sentiment || 0),
+            maxSentiment: parseFloat(row.max_sentiment || 0),
+            positiveCount: parseInt(row.positive_count || 0),
+            negativeCount: parseInt(row.negative_count || 0),
+            trend: recentAvg - prevAvg,
+            trendLabel: recentAvg > prevAvg ? 'improving' : recentAvg < prevAvg ? 'declining' : 'stable'
+        };
+    } catch (err) {
+        log.error('Failed to get user mood profile', err);
+        return null;
+    }
+}
+
+// ==========================================
+// WEEKLY REPORT SYSTEM
+// ==========================================
+
+/**
+ * Generate weekly report (called Monday 9:00 AM).
+ */
+async function generateWeeklyReport() {
+    try {
+        // Previous Monday-Sunday
+        const now = new Date();
+        const kyivNow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+        const dayOfWeek = kyivNow.getDay(); // 0=Sun, 1=Mon
+        const lastSunday = new Date(kyivNow);
+        lastSunday.setDate(kyivNow.getDate() - (dayOfWeek === 0 ? 0 : dayOfWeek));
+        lastSunday.setHours(23, 59, 59, 999);
+        const lastMonday = new Date(lastSunday);
+        lastMonday.setDate(lastSunday.getDate() - 6);
+        lastMonday.setHours(0, 0, 0, 0);
+
+        const periodStart = lastMonday.toLocaleDateString('sv-SE');
+        const periodEnd = lastSunday.toLocaleDateString('sv-SE');
+
+        // Previous week for comparison
+        const prevSunday = new Date(lastMonday);
+        prevSunday.setDate(lastMonday.getDate() - 1);
+        const prevMonday = new Date(prevSunday);
+        prevMonday.setDate(prevSunday.getDate() - 6);
+        const prevStart = prevMonday.toLocaleDateString('sv-SE');
+        const prevEnd = prevSunday.toLocaleDateString('sv-SE');
+
+        // Stats for current week
+        const statsRes = await pool.query(`
+            SELECT
+                (SELECT COUNT(*) FROM chat_messages WHERE created_at::date BETWEEN $1 AND $2 AND deleted_at IS NULL AND is_bot = false) AS total_messages,
+                (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'mute' AND created_at::date BETWEEN $1 AND $2) AS conflicts,
+                (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'mask' AND created_at::date BETWEEN $1 AND $2) AS masks,
+                (SELECT COUNT(*) FROM guardian_toxic_words WHERE created_at::date BETWEEN $1 AND $2) AS new_toxic_words
+        `, [periodStart, periodEnd]);
+
+        const stats = statsRes.rows[0];
+        const totalMessages = parseInt(stats.total_messages || 0);
+        const conflicts = parseInt(stats.conflicts || 0);
+        const masks = parseInt(stats.masks || 0);
+        const newToxicWords = parseInt(stats.new_toxic_words || 0);
+
+        // Count mutes for the week
+        const mutesRes = await pool.query(`
+            SELECT COUNT(*) cnt FROM chat_mutes
+            WHERE created_at::date BETWEEN $1 AND $2
+        `, [periodStart, periodEnd]);
+        const mutes = parseInt(mutesRes.rows[0]?.cnt || 0);
+
+        // Stats for previous week (comparison)
+        const prevStatsRes = await pool.query(`
+            SELECT
+                (SELECT COUNT(*) FROM chat_messages WHERE created_at::date BETWEEN $1 AND $2 AND deleted_at IS NULL AND is_bot = false) AS total_messages,
+                (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'mute' AND created_at::date BETWEEN $1 AND $2) AS conflicts,
+                (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'mask' AND created_at::date BETWEEN $1 AND $2) AS masks
+        `, [prevStart, prevEnd]);
+
+        const prevStats = prevStatsRes.rows[0];
+        const prevMessages = parseInt(prevStats.total_messages || 0);
+        const prevConflicts = parseInt(prevStats.conflicts || 0);
+
+        // Trend calculation
+        const msgTrend = prevMessages > 0 ? ((totalMessages - prevMessages) / prevMessages * 100).toFixed(1) : 'N/A';
+        const conflictTrend = prevConflicts > 0 ? ((conflicts - prevConflicts) / prevConflicts * 100).toFixed(1) : 'N/A';
+
+        // Channel breakdown
+        const channelBreakdown = await pool.query(`
+            SELECT c.id, c.name, c.slug,
+                (SELECT COUNT(*) FROM chat_messages cm WHERE cm.channel_id = c.id AND cm.created_at::date BETWEEN $1 AND $2 AND cm.deleted_at IS NULL AND cm.is_bot = false) AS msg_count,
+                (SELECT COUNT(*) FROM guardian_actions ga WHERE ga.channel_id = c.id AND ga.action_type = 'mute' AND ga.created_at::date BETWEEN $1 AND $2) AS mute_count
+            FROM chat_channels c
+            WHERE (c.is_dm = false OR c.is_dm IS NULL)
+            ORDER BY msg_count DESC
+        `, [periodStart, periodEnd]);
+
+        // Top 5 offenders
+        const offendersRes = await pool.query(`
+            SELECT u.username, COUNT(*) cnt
+            FROM chat_mutes cm
+            JOIN users u ON u.id = cm.user_id
+            WHERE cm.created_at::date BETWEEN $1 AND $2
+            GROUP BY u.username
+            ORDER BY cnt DESC
+            LIMIT 5
+        `, [periodStart, periodEnd]);
+
+        // Top 5 positive contributors
+        const positiveRes = await pool.query(`
+            SELECT u.username, AVG(gmt.sentiment_score) avg_score, COUNT(*) msg_count
+            FROM guardian_mood_tracking gmt
+            JOIN users u ON u.id = gmt.user_id
+            WHERE gmt.created_at::date BETWEEN $1 AND $2
+            GROUP BY u.username
+            HAVING COUNT(*) >= 5
+            ORDER BY avg_score DESC
+            LIMIT 5
+        `, [periodStart, periodEnd]);
+
+        // Build report
+        let report = `📊 <b>Тижневий звіт Guardian</b>\n`;
+        report += `📅 ${periodStart} — ${periodEnd}\n\n`;
+
+        report += `<b>📈 Загальна статистика:</b>\n`;
+        report += `• Повідомлень: ${totalMessages} (${msgTrend !== 'N/A' ? (parseFloat(msgTrend) >= 0 ? '+' : '') + msgTrend + '%' : 'перший тиждень'})\n`;
+        report += `• Конфліктів: ${conflicts} (${conflictTrend !== 'N/A' ? (parseFloat(conflictTrend) >= 0 ? '+' : '') + conflictTrend + '%' : 'перший тиждень'})\n`;
+        report += `• Блокувань (mute): ${mutes}\n`;
+        report += `• Замасковано даних: ${masks}\n`;
+        report += `• Нових токсичних слів: ${newToxicWords}\n\n`;
+
+        report += `<b>📋 Канали:</b>\n`;
+        for (const ch of channelBreakdown.rows) {
+            if (parseInt(ch.msg_count) === 0) continue;
+            const healthData = _channelHealth[ch.id];
+            const healthStr = healthData ? ` | Здоров'я: ${healthData.score}/100` : '';
+            report += `• #${ch.slug || ch.name}: ${ch.msg_count} msg, ${ch.mute_count} mutes${healthStr}\n`;
+        }
+
+        if (offendersRes.rows.length > 0) {
+            report += `\n<b>⚠️ Топ-5 порушників:</b>\n`;
+            for (const o of offendersRes.rows) {
+                report += `• @${o.username}: ${o.cnt} блокувань\n`;
+            }
+        }
+
+        if (positiveRes.rows.length > 0) {
+            report += `\n<b>🌟 Топ-5 позитивних:</b>\n`;
+            for (const p of positiveRes.rows) {
+                report += `• @${p.username}: настрій ${parseFloat(p.avg_score).toFixed(2)} (${p.msg_count} msg)\n`;
+            }
+        }
+
+        // Recommendations
+        if (AI_ENABLED) {
+            const aiRecommendation = await callLLM(
+                `Ти — Guardian AI, модератор чату дитячого парку. На основі тижневої статистики дай 2-3 коротких рекомендації для покращення атмосфери у чаті. Відповідай українською, лаконічно.`,
+                `Повідомлень: ${totalMessages}, Конфлікти: ${conflicts}, Блокувань: ${mutes}, Замасковано: ${masks}, Тренд повідомлень: ${msgTrend}%, Тренд конфліктів: ${conflictTrend}%`,
+                200
+            );
+            if (aiRecommendation) {
+                report += `\n<b>💡 Рекомендації AI:</b>\n${aiRecommendation}\n`;
+            }
+        } else {
+            report += `\n<b>💡 Рекомендації:</b>\n`;
+            if (conflicts > 5) report += `• Високий рівень конфліктів — розглянути профілактичні заходи\n`;
+            if (masks > 10) report += `• Багато витоків даних — нагадати команді про безпеку\n`;
+            if (totalMessages < 50) report += `• Низька активність — перевірити залученість команди\n`;
+            if (conflicts === 0 && masks === 0) report += `• Відмінний тиждень! Продовжувати в тому ж дусі\n`;
+        }
+
+        // Save to DB
+        await pool.query(`
+            INSERT INTO guardian_weekly_reports (period_start, period_end, report_html, total_messages, conflicts, mutes, masks, new_toxic_words)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [periodStart, periodEnd, report, totalMessages, conflicts, mutes, masks, newToxicWords]);
+
+        // Send via Telegram
+        await sendWeeklyReportTelegram(report);
+
+        log.info(`Weekly report generated for ${periodStart} — ${periodEnd}`);
+        return report;
+    } catch (err) {
+        log.error('Failed to generate weekly report', err);
+        return null;
+    }
+}
+
+/**
+ * Send weekly report to director via Telegram.
+ */
+async function sendWeeklyReportTelegram(report) {
+    try {
+        // Telegram has 4096 char limit, split if needed
+        if (report.length <= 4000) {
+            await alertDirectorTelegram(report, 'weekly-report');
+        } else {
+            // Split into chunks
+            const chunks = [];
+            let remaining = report;
+            while (remaining.length > 0) {
+                const chunk = remaining.substring(0, 4000);
+                const lastNewline = chunk.lastIndexOf('\n');
+                if (lastNewline > 3000 && remaining.length > 4000) {
+                    chunks.push(remaining.substring(0, lastNewline));
+                    remaining = remaining.substring(lastNewline);
+                } else {
+                    chunks.push(chunk);
+                    remaining = remaining.substring(4000);
+                }
+            }
+            for (const chunk of chunks) {
+                await alertDirectorTelegram(chunk, 'weekly-report');
+            }
+        }
+
+        // Also send as DM in chat
+        await alertDirector(report);
+    } catch (err) {
+        log.error('Failed to send weekly report via Telegram', err);
+    }
+}
+
+// ==========================================
+// ACTIVITY HEATMAP DATA
+// ==========================================
+
+/**
+ * Update activity heatmap for a channel (hourly buckets).
+ */
+async function updateActivityHeatmap(channelId, eventType) {
+    try {
+        const now = new Date();
+        const kyivStr = now.toLocaleString('en-US', { timeZone: 'Europe/Kyiv' });
+        const kyivDate = new Date(kyivStr);
+        const dateStr = kyivDate.toLocaleDateString('sv-SE');
+        const hour = kyivDate.getHours();
+
+        // Determine which column to increment
+        let messageInc = 0, conflictInc = 0, muteInc = 0;
+        if (eventType === 'message') messageInc = 1;
+        else if (eventType === 'conflict') conflictInc = 1;
+        else if (eventType === 'mute') muteInc = 1;
+
+        await pool.query(`
+            INSERT INTO guardian_activity_heatmap (channel_id, date, hour, message_count, conflict_count, mute_count)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (channel_id, date, hour) DO UPDATE SET
+                message_count = guardian_activity_heatmap.message_count + EXCLUDED.message_count,
+                conflict_count = guardian_activity_heatmap.conflict_count + EXCLUDED.conflict_count,
+                mute_count = guardian_activity_heatmap.mute_count + EXCLUDED.mute_count,
+                updated_at = NOW()
+        `, [channelId, dateStr, hour, messageInc, conflictInc, muteInc]);
+    } catch (err) {
+        log.error('Failed to update activity heatmap', err);
+    }
+}
+
+/**
+ * Get activity heatmap data for a channel.
+ */
+async function getActivityHeatmap(channelId, days) {
+    try {
+        days = days || 7;
+        const result = await pool.query(`
+            SELECT date, hour, message_count, conflict_count, mute_count
+            FROM guardian_activity_heatmap
+            WHERE channel_id = $1 AND date >= CURRENT_DATE - $2::int
+            ORDER BY date, hour
+        `, [channelId, days]);
+
+        // Also get avg sentiment per hour bucket from mood tracking
+        const sentimentResult = await pool.query(`
+            SELECT
+                created_at::date AS date,
+                EXTRACT(HOUR FROM created_at AT TIME ZONE 'Europe/Kyiv') AS hour,
+                AVG(sentiment_score) AS avg_sentiment
+            FROM guardian_mood_tracking
+            WHERE channel_id = $1 AND created_at >= NOW() - ($2 || ' days')::interval
+            GROUP BY created_at::date, EXTRACT(HOUR FROM created_at AT TIME ZONE 'Europe/Kyiv')
+            ORDER BY date, hour
+        `, [channelId, days]);
+
+        // Merge sentiment data into heatmap
+        const sentimentMap = {};
+        for (const r of sentimentResult.rows) {
+            const key = `${r.date}:${r.hour}`;
+            sentimentMap[key] = parseFloat(r.avg_sentiment || 0);
+        }
+
+        return result.rows.map(r => ({
+            date: r.date,
+            hour: r.hour,
+            messageCount: parseInt(r.message_count || 0),
+            conflictCount: parseInt(r.conflict_count || 0),
+            muteCount: parseInt(r.mute_count || 0),
+            avgSentiment: sentimentMap[`${r.date}:${r.hour}`] || 0
+        }));
+    } catch (err) {
+        log.error('Failed to get activity heatmap', err);
+        return [];
+    }
+}
+
+// ==========================================
+// AUTO-ESCALATION SYSTEM
+// ==========================================
+
+/**
+ * Check escalation level for a user based on recent incidents.
+ */
+async function checkEscalation(userId, channelId) {
+    try {
+        // Count incidents in last 24 hours
+        const incidentsRes = await pool.query(`
+            SELECT COUNT(*) cnt FROM guardian_actions
+            WHERE target_user_id = $1 AND action_type IN ('mute', 'block_precheck')
+              AND created_at >= NOW() - INTERVAL '24 hours'
+        `, [userId]);
+        const incidentCount = parseInt(incidentsRes.rows[0]?.cnt || 0);
+
+        // Get escalation config from DB (seeded in migration)
+        let levels;
+        try {
+            const configRes = await pool.query(`
+                SELECT level, min_incidents, action, mute_duration_minutes, notify_telegram
+                FROM guardian_escalation_config
+                ORDER BY level ASC
+            `);
+            levels = configRes.rows;
+        } catch (e) {
+            // Fallback if table doesn't exist
+            levels = [
+                { level: 1, min_incidents: 1, action: 'warn', mute_duration_minutes: 0, notify_telegram: false },
+                { level: 2, min_incidents: 2, action: 'mute', mute_duration_minutes: 1, notify_telegram: false },
+                { level: 3, min_incidents: 3, action: 'mute', mute_duration_minutes: 10, notify_telegram: false },
+                { level: 4, min_incidents: 4, action: 'mute', mute_duration_minutes: 30, notify_telegram: true },
+                { level: 5, min_incidents: 5, action: 'mute', mute_duration_minutes: 1440, notify_telegram: true }
+            ];
+        }
+
+        // Find matching escalation level (highest that matches)
+        let matchedLevel = null;
+        for (const lvl of levels) {
+            if (incidentCount >= parseInt(lvl.min_incidents)) {
+                matchedLevel = lvl;
+            }
+        }
+
+        if (!matchedLevel) {
+            return { level: 0, action: 'none', muteDurationMs: MUTE_DURATION_MS, notifyTelegram: false, incidentCount };
+        }
+
+        const muteDurationMs = parseInt(matchedLevel.mute_duration_minutes) * 60 * 1000 || MUTE_DURATION_MS;
+
+        return {
+            level: parseInt(matchedLevel.level),
+            action: matchedLevel.action,
+            muteDurationMs,
+            notifyTelegram: matchedLevel.notify_telegram,
+            incidentCount
+        };
+    } catch (err) {
+        log.error('Failed to check escalation', err);
+        return { level: 0, action: 'none', muteDurationMs: MUTE_DURATION_MS, notifyTelegram: false, incidentCount: 0 };
+    }
+}
+
+/**
+ * Get current escalation level for a user (info only).
+ */
+async function getEscalationLevel(userId) {
+    try {
+        const incidentsRes = await pool.query(`
+            SELECT COUNT(*) cnt FROM guardian_actions
+            WHERE target_user_id = $1 AND action_type IN ('mute', 'block_precheck')
+              AND created_at >= NOW() - INTERVAL '24 hours'
+        `, [userId]);
+        const incidentCount = parseInt(incidentsRes.rows[0]?.cnt || 0);
+
+        if (incidentCount >= 5) return { level: 5, incidentCount };
+        if (incidentCount >= 4) return { level: 4, incidentCount };
+        if (incidentCount >= 3) return { level: 3, incidentCount };
+        if (incidentCount >= 2) return { level: 2, incidentCount };
+        if (incidentCount >= 1) return { level: 1, incidentCount };
+        return { level: 0, incidentCount };
+    } catch (err) {
+        log.error('Failed to get escalation level', err);
+        return { level: 0, incidentCount: 0 };
+    }
+}
+
+// ==========================================
+// TRUST SCORE SYSTEM
+// ==========================================
+
+/**
+ * Update trust score for a user.
+ * delta: positive or negative change
+ * reason: 'mute', 'repeated_offense', 'clean_messages', 'positive_mood'
+ */
+async function updateTrustScore(userId, delta, reason) {
+    try {
+        // For positive_mood: max once per day
+        if (reason === 'positive_mood') {
+            const todayCheck = await pool.query(`
+                SELECT id FROM guardian_trust_history
+                WHERE user_id = $1 AND reason = 'positive_mood' AND created_at::date = CURRENT_DATE
+                LIMIT 1
+            `, [userId]);
+            if (todayCheck.rows.length > 0) return; // Already awarded today
+        }
+
+        // Upsert trust score
+        await pool.query(`
+            INSERT INTO guardian_trust_scores (user_id, score, level)
+            VALUES ($1, GREATEST(0, LEAST(100, 50 + $2)), $3)
+            ON CONFLICT (user_id) DO UPDATE SET
+                score = GREATEST(0, LEAST(100, guardian_trust_scores.score + $2)),
+                level = $3,
+                updated_at = NOW()
+        `, [userId, delta, getTrustLevel(50 + delta)]);
+
+        // Update the level based on actual score
+        const currentRes = await pool.query(
+            'SELECT score FROM guardian_trust_scores WHERE user_id = $1',
+            [userId]
+        );
+        if (currentRes.rows.length > 0) {
+            const currentScore = parseInt(currentRes.rows[0].score);
+            const level = getTrustLevel(currentScore);
+            await pool.query(
+                'UPDATE guardian_trust_scores SET level = $1 WHERE user_id = $2',
+                [level, userId]
+            );
+        }
+
+        // Log history
+        await pool.query(`
+            INSERT INTO guardian_trust_history (user_id, delta, reason)
+            VALUES ($1, $2, $3)
+        `, [userId, delta, reason]);
+
+        log.info(`Trust score updated for user ${userId}: ${delta > 0 ? '+' : ''}${delta} (${reason})`);
+    } catch (err) {
+        log.error('Failed to update trust score', err);
+    }
+}
+
+/**
+ * Get trust score for a user.
+ */
+async function getTrustScore(userId) {
+    try {
+        const result = await pool.query(
+            'SELECT score, level, updated_at FROM guardian_trust_scores WHERE user_id = $1',
+            [userId]
+        );
+        if (result.rows.length === 0) {
+            return { score: 50, level: 'normal', userId };
+        }
+        const row = result.rows[0];
+        return {
+            score: parseInt(row.score),
+            level: row.level,
+            updatedAt: row.updated_at,
+            userId
+        };
+    } catch (err) {
+        log.error('Failed to get trust score', err);
+        return { score: 50, level: 'normal', userId };
+    }
+}
+
+/**
+ * Get trust level label from score.
+ */
+function getTrustLevel(score) {
+    if (score >= 80) return 'trusted';
+    if (score >= 40) return 'normal';
+    if (score >= 20) return 'watched';
+    return 'restricted';
+}
+
 module.exports = {
     processMessage,
     isUserMuted,
@@ -1836,5 +3262,27 @@ module.exports = {
     alertDirectorTelegram,
     flushLearnBatch,
     preCheckMessage,
-    GUARDIAN_USERNAME
+    handleGuardianCommand,
+    GUARDIAN_USERNAME,
+    // Channel Health
+    calculateChannelHealth,
+    updateAllChannelHealth,
+    getChannelHealthLevel,
+    // Sentiment Tracking
+    analyzeSentiment,
+    getChannelMoodSummary,
+    getUserMoodProfile,
+    // Weekly Reports
+    generateWeeklyReport,
+    sendWeeklyReportTelegram,
+    // Activity Heatmap
+    updateActivityHeatmap,
+    getActivityHeatmap,
+    // Auto-Escalation
+    checkEscalation,
+    getEscalationLevel,
+    // Trust Score
+    updateTrustScore,
+    getTrustScore,
+    getTrustLevel
 };

@@ -2476,6 +2476,26 @@
             return;
         }
 
+        // Handle /g commands — Guardian command system (Phase 3)
+        if (content.startsWith('/g ') || content === '/g') {
+            var cmdText = content.substring(2).trim();
+            input.value = '';
+            _autoGrow(input);
+            if (_cmdSuggestions) _cmdSuggestions.style.display = 'none';
+            try {
+                var cmdResult = await _api('POST', '/guardian/command', {
+                    channelId: _currentChannel.id,
+                    command: cmdText
+                });
+                if (cmdResult && cmdResult.response) {
+                    _appendSystemMessage(cmdResult.response);
+                }
+            } catch (err) {
+                _appendSystemMessage('🛡️ Помилка виконання команди Guardian');
+            }
+            return;
+        }
+
         // Handle /guardian command — invite guardian to channel
         if (content === '/guardian' || content === '/охоронець') {
             input.value = '';
@@ -4913,6 +4933,375 @@
         } catch (e) { /* ignore */ }
     }
 
+    // ==========================================
+    // GUARDIAN PHASE 3 — Analytics Panel, Health, Mood, Commands
+    // ==========================================
+
+    var _analyticsPanel = document.getElementById('guardianAnalyticsPanel');
+    var _analyticsBtn = document.getElementById('guardianAnalyticsBtn');
+    var _analyticsClose = document.getElementById('guardianAnalyticsClose');
+    var _analyticsBody = document.getElementById('guardianAnalyticsBody');
+    var _healthIndicator = document.getElementById('guardianHealthIndicator');
+    var _healthDot = document.getElementById('guardianHealthDot');
+    var _healthScore = document.getElementById('guardianHealthScore');
+    var _cmdSuggestions = document.getElementById('guardianCmdSuggestions');
+    var _cmdList = document.getElementById('guardianCmdList');
+    var _analyticsOpen = false;
+
+    // Guardian commands definition
+    var _guardianCommands = [
+        { cmd: 'help', icon: '❓', desc: 'Показати всі команди', admin: false },
+        { cmd: 'status', icon: '📊', desc: 'Стан Guardian', admin: false },
+        { cmd: 'stats', icon: '📈', desc: 'Статистика за період', admin: false },
+        { cmd: 'mood', icon: '😊', desc: 'Настрій команди', admin: false },
+        { cmd: 'health', icon: '💚', desc: 'Здоров\'я каналу', admin: false },
+        { cmd: 'top', icon: '🏆', desc: 'Топ порушників/помічників', admin: true },
+        { cmd: 'history', icon: '📜', desc: 'Історія користувача', admin: true },
+        { cmd: 'mute', icon: '🔇', desc: 'Замутити користувача', admin: true },
+        { cmd: 'unmute', icon: '🔊', desc: 'Розмутити користувача', admin: true },
+        { cmd: 'trust', icon: '⭐', desc: 'Змінити рівень довіри', admin: true },
+        { cmd: 'report', icon: '📝', desc: 'Згенерувати звіт', admin: true },
+        { cmd: 'rules', icon: '📋', desc: 'Список правил', admin: true },
+        { cmd: 'learn', icon: '🧠', desc: 'Додати слова до фільтру', admin: true },
+        { cmd: 'config', icon: '⚙️', desc: 'Конфігурація Guardian', admin: true }
+    ];
+
+    function _initGuardianPhase3() {
+        // Analytics button — admin only
+        if (_analyticsBtn) {
+            if (_isAdmin) {
+                _analyticsBtn.style.display = '';
+            }
+            _analyticsBtn.addEventListener('click', function () {
+                _analyticsOpen = !_analyticsOpen;
+                if (_analyticsPanel) {
+                    _analyticsPanel.style.display = _analyticsOpen ? 'block' : 'none';
+                }
+                if (_analyticsOpen) {
+                    _loadAnalyticsTab('overview');
+                }
+            });
+        }
+
+        // Analytics close
+        if (_analyticsClose) {
+            _analyticsClose.addEventListener('click', function () {
+                _analyticsOpen = false;
+                if (_analyticsPanel) _analyticsPanel.style.display = 'none';
+            });
+        }
+
+        // Tab switching
+        if (_analyticsBody) {
+            document.querySelectorAll('.guardian-tab').forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    document.querySelectorAll('.guardian-tab').forEach(function (t) { t.classList.remove('active'); });
+                    tab.classList.add('active');
+                    var tabName = tab.dataset.tab;
+                    document.querySelectorAll('.guardian-analytics-tab-content').forEach(function (tc) { tc.classList.remove('active'); });
+                    var target = document.getElementById('guardianTab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+                    if (target) target.classList.add('active');
+                    _loadAnalyticsTab(tabName);
+                });
+            });
+        }
+
+        // Channel health — fetch initial
+        _fetchChannelHealth();
+
+        // Command suggestions — listen for /g in chat input
+        var chatInput = document.getElementById('chatInput');
+        if (chatInput && _cmdSuggestions) {
+            chatInput.addEventListener('input', function () {
+                var val = chatInput.value.trim();
+                if (val.startsWith('/g ') || val === '/g') {
+                    _showCommandSuggestions(val.substring(2).trim());
+                } else if (val.startsWith('/guardian ') || val === '/guardian') {
+                    _showCommandSuggestions(val.substring(9).trim());
+                } else {
+                    _cmdSuggestions.style.display = 'none';
+                }
+            });
+        }
+
+        // Handle WebSocket health updates
+        window.addEventListener('ws:chat', function (e) {
+            if (e.detail && e.detail.eventType === 'guardian:health') {
+                _onHealthUpdate(e.detail.payload);
+            }
+        });
+    }
+
+    // Show command autocomplete suggestions
+    function _showCommandSuggestions(query) {
+        if (!_cmdList) return;
+        var filtered = _guardianCommands.filter(function (c) {
+            if (c.admin && !_isAdmin) return false;
+            if (!query) return true;
+            return c.cmd.startsWith(query.toLowerCase());
+        });
+        if (filtered.length === 0) {
+            _cmdSuggestions.style.display = 'none';
+            return;
+        }
+        _cmdList.innerHTML = filtered.map(function (c) {
+            return '<div class="guardian-cmd-item" data-cmd="' + c.cmd + '">' +
+                '<span class="guardian-cmd-icon">' + c.icon + '</span>' +
+                '<div class="guardian-cmd-text">' +
+                    '<span class="guardian-cmd-name">/g ' + c.cmd + '</span>' +
+                    '<span class="guardian-cmd-desc">' + c.desc + '</span>' +
+                '</div>' +
+                (c.admin ? '<span class="guardian-cmd-badge">admin</span>' : '') +
+            '</div>';
+        }).join('');
+        _cmdSuggestions.style.display = 'block';
+
+        // Click to fill command
+        _cmdList.querySelectorAll('.guardian-cmd-item').forEach(function (item) {
+            item.addEventListener('click', function () {
+                var chatInput = document.getElementById('chatInput');
+                if (chatInput) {
+                    chatInput.value = '/g ' + item.dataset.cmd + ' ';
+                    chatInput.focus();
+                }
+                _cmdSuggestions.style.display = 'none';
+            });
+        });
+    }
+
+    // Fetch and display channel health
+    async function _fetchChannelHealth() {
+        if (!_healthIndicator) return;
+        try {
+            var health = await _fetchJson('/api/guardian/health');
+            if (health && Array.isArray(health) && health.length > 0) {
+                // Find current channel or show average
+                var current = null;
+                if (_currentChannelId) {
+                    current = health.find(function (h) { return h.channelId === _currentChannelId; });
+                }
+                if (!current) {
+                    var avg = Math.round(health.reduce(function (s, h) { return s + h.score; }, 0) / health.length);
+                    current = { score: avg, level: avg >= 80 ? 'green' : avg >= 40 ? 'yellow' : 'red' };
+                }
+                _updateHealthIndicator(current.score, current.level);
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function _updateHealthIndicator(score, level) {
+        if (_healthDot) {
+            _healthDot.textContent = level === 'green' ? '🟢' : level === 'yellow' ? '🟡' : '🔴';
+        }
+        if (_healthScore) {
+            _healthScore.textContent = score;
+        }
+        if (_healthIndicator) {
+            _healthIndicator.className = 'guardian-health-indicator' + (level !== 'green' ? ' health-' + level : '');
+        }
+    }
+
+    function _onHealthUpdate(payload) {
+        if (payload && payload.score !== undefined) {
+            _updateHealthIndicator(payload.score, payload.level);
+        }
+    }
+
+    // Load analytics tab data
+    async function _loadAnalyticsTab(tab) {
+        switch (tab) {
+            case 'overview': return _loadAnalyticsOverview();
+            case 'health': return _loadAnalyticsHealth();
+            case 'mood': return _loadAnalyticsMood();
+            case 'heatmap': return _loadAnalyticsHeatmap();
+            case 'trust': return _loadAnalyticsTrust();
+        }
+    }
+
+    async function _loadAnalyticsOverview() {
+        var grid = document.getElementById('guardianOverviewGrid');
+        if (!grid) return;
+        try {
+            var [stats, overview] = await Promise.all([
+                _fetchJson('/api/guardian/stats'),
+                _fetchJson('/api/guardian/analytics/overview')
+            ]);
+            var data = overview || {};
+            var today = (stats && stats.today) || {};
+            var total = (stats && stats.total) || {};
+            grid.innerHTML =
+                _overviewCard('🛡️', today.mute || 0, 'Блокувань сьогодні', total.mute) +
+                _overviewCard('🔒', today.mask || 0, 'Замасковано сьогодні', total.mask) +
+                _overviewCard('💬', data.totalMessages || 0, 'Повідомлень всього') +
+                _overviewCard('🔇', stats.activeMutes || 0, 'Активних мутів') +
+                _overviewCard('💚', data.healthAvg || 0, 'Здоров\'я середнє') +
+                _overviewCard('😊', data.moodAvg !== undefined ? (data.moodAvg > 0 ? '+' : '') + data.moodAvg.toFixed(2) : '—', 'Настрій середній') +
+                _overviewCard('📊', data.activeChannels || 0, 'Активних каналів') +
+                _overviewCard('⚡', data.totalConflicts || 0, 'Конфліктів');
+        } catch (e) {
+            grid.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Не вдалось завантажити</div>';
+        }
+    }
+
+    function _overviewCard(icon, value, label, total) {
+        var trendHtml = '';
+        if (total !== undefined) {
+            trendHtml = '<div class="card-trend neutral">всього: ' + total + '</div>';
+        }
+        return '<div class="guardian-overview-card">' +
+            '<div class="card-icon">' + icon + '</div>' +
+            '<div class="card-value">' + value + '</div>' +
+            '<div class="card-label">' + label + '</div>' +
+            trendHtml +
+        '</div>';
+    }
+
+    async function _loadAnalyticsHealth() {
+        var container = document.getElementById('guardianHealthChannels');
+        if (!container) return;
+        try {
+            var health = await _fetchJson('/api/guardian/health');
+            if (!health || !Array.isArray(health)) {
+                container.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Немає даних</div>';
+                return;
+            }
+            container.innerHTML = health.map(function (ch) {
+                return '<div class="guardian-health-card">' +
+                    '<div class="guardian-health-card-header">' +
+                        '<span class="guardian-health-card-name">' + _esc(ch.channelName || 'Канал #' + ch.channelId) + '</span>' +
+                        '<span class="guardian-health-badge ' + ch.level + '">' +
+                            (ch.level === 'green' ? '🟢' : ch.level === 'yellow' ? '🟡' : '🔴') + ' ' + ch.score +
+                        '</span>' +
+                    '</div>' +
+                    '<div class="guardian-health-bar"><div class="guardian-health-bar-fill ' + ch.level + '" style="width:' + ch.score + '%"></div></div>' +
+                '</div>';
+            }).join('');
+        } catch (e) {
+            container.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Помилка завантаження</div>';
+        }
+    }
+
+    async function _loadAnalyticsMood() {
+        var summary = document.getElementById('guardianMoodSummary');
+        var users = document.getElementById('guardianMoodUsers');
+        if (!summary) return;
+        try {
+            var channelId = _currentChannelId;
+            var mood = channelId ? await _fetchJson('/api/guardian/mood/channel/' + channelId + '?period=today') : null;
+            if (!mood) {
+                summary.innerHTML = '<div class="guardian-mood-card neutral"><div class="mood-emoji">😐</div><div class="mood-value">—</div><div class="mood-label">Немає даних</div></div>';
+                return;
+            }
+            var dist = mood.distribution || {};
+            summary.innerHTML =
+                '<div class="guardian-mood-card positive"><div class="mood-emoji">😊</div><div class="mood-value">' + (dist.positive || 0) + '</div><div class="mood-label">Позитивних</div></div>' +
+                '<div class="guardian-mood-card neutral"><div class="mood-emoji">😐</div><div class="mood-value">' + (dist.neutral || 0) + '</div><div class="mood-label">Нейтральних</div></div>' +
+                '<div class="guardian-mood-card negative"><div class="mood-emoji">😤</div><div class="mood-value">' + (dist.negative || 0) + '</div><div class="mood-label">Негативних</div></div>';
+
+            // Per-user mood
+            if (users && mood.byUser && mood.byUser.length > 0) {
+                users.innerHTML = mood.byUser.map(function (u) {
+                    var pct = Math.round((u.avgScore + 1) * 50);
+                    var color = u.avgScore > 0.2 ? '#10B981' : u.avgScore < -0.2 ? '#EF4444' : '#6B7280';
+                    return '<div class="guardian-mood-user-row">' +
+                        '<span class="guardian-mood-user-name">' + _esc(u.username) + '</span>' +
+                        '<div class="guardian-mood-user-bar"><div class="guardian-mood-user-bar-fill" style="width:' + pct + '%;background:' + color + '"></div></div>' +
+                        '<span class="guardian-mood-user-score" style="color:' + color + '">' + (u.avgScore > 0 ? '+' : '') + u.avgScore.toFixed(2) + '</span>' +
+                    '</div>';
+                }).join('');
+            }
+        } catch (e) {
+            summary.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Помилка</div>';
+        }
+    }
+
+    async function _loadAnalyticsHeatmap() {
+        var grid = document.getElementById('guardianHeatmapGrid');
+        var legend = document.getElementById('guardianHeatmapLegend');
+        if (!grid) return;
+        try {
+            var channelId = _currentChannelId;
+            if (!channelId) {
+                grid.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Оберіть канал</div>';
+                return;
+            }
+            var data = await _fetchJson('/api/guardian/analytics/heatmap/' + channelId + '?days=7');
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                grid.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Немає даних активності</div>';
+                return;
+            }
+
+            // Build 7x24 grid
+            var days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+            var maxCount = Math.max.apply(null, data.map(function (d) { return d.messageCount || 0; })) || 1;
+            var html = '';
+
+            // Header row (hours)
+            html += '<div class="guardian-heatmap-label"></div>';
+            for (var h = 0; h < 24; h++) {
+                html += '<div class="guardian-heatmap-label">' + (h % 3 === 0 ? h : '') + '</div>';
+            }
+
+            // Data rows
+            for (var d = 0; d < 7; d++) {
+                html += '<div class="guardian-heatmap-label">' + days[d] + '</div>';
+                for (var hr = 0; hr < 24; hr++) {
+                    var cell = data.find(function (item) {
+                        var dt = new Date(item.hourBucket);
+                        return dt.getDay() === (d + 1) % 7 && dt.getHours() === hr;
+                    });
+                    var count = cell ? cell.messageCount : 0;
+                    var level = Math.min(5, Math.ceil((count / maxCount) * 5));
+                    var conflict = cell && cell.conflictCount > 0 ? ' conflict' : '';
+                    html += '<div class="guardian-heatmap-cell level-' + level + conflict + '" title="' + count + ' повідомлень"></div>';
+                }
+            }
+            grid.innerHTML = html;
+
+            // Legend
+            if (legend) {
+                legend.innerHTML = 'Менше ' +
+                    '<div class="guardian-heatmap-legend-cell level-0"></div>' +
+                    '<div class="guardian-heatmap-legend-cell level-1"></div>' +
+                    '<div class="guardian-heatmap-legend-cell level-2"></div>' +
+                    '<div class="guardian-heatmap-legend-cell level-3"></div>' +
+                    '<div class="guardian-heatmap-legend-cell level-4"></div>' +
+                    '<div class="guardian-heatmap-legend-cell level-5"></div>' +
+                    ' Більше';
+            }
+        } catch (e) {
+            grid.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Помилка</div>';
+        }
+    }
+
+    async function _loadAnalyticsTrust() {
+        var list = document.getElementById('guardianTrustList');
+        if (!list) return;
+        try {
+            var data = await _fetchJson('/api/guardian/trust');
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                list.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Немає даних про довіру</div>';
+                return;
+            }
+            list.innerHTML = data.map(function (u) {
+                var initials = (u.username || '?').substring(0, 2).toUpperCase();
+                var barColor = u.level === 'trusted' ? '#10B981' : u.level === 'watched' ? '#F59E0B' : u.level === 'restricted' ? '#EF4444' : '#6B7280';
+                var levelLabel = u.level === 'trusted' ? 'Довірений' : u.level === 'watched' ? 'Під наглядом' : u.level === 'restricted' ? 'Обмежений' : 'Звичайний';
+                return '<div class="guardian-trust-row">' +
+                    '<div class="guardian-trust-avatar ' + u.level + '">' + initials + '</div>' +
+                    '<div class="guardian-trust-info">' +
+                        '<div class="guardian-trust-name">' + _esc(u.username) + '</div>' +
+                        '<div class="guardian-trust-level">' + levelLabel + '</div>' +
+                    '</div>' +
+                    '<div class="guardian-trust-score-bar"><div class="guardian-trust-score-fill" style="width:' + u.trustScore + '%;background:' + barColor + '"></div></div>' +
+                    '<span class="guardian-trust-score-num" style="color:' + barColor + '">' + u.trustScore + '</span>' +
+                '</div>';
+            }).join('');
+        } catch (e) {
+            list.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Помилка</div>';
+        }
+    }
+
     // Direct fetch for non-chat APIs (guardian, etc.)
     async function _fetchJson(url) {
         var resp = await fetch(url, { headers: _headers() });
@@ -4925,6 +5314,7 @@
     // Override init — show guardian bar on page load
     setTimeout(function () {
         _initGuardianUI();
+        _initGuardianPhase3();
     }, 500);
 
     // ==========================================

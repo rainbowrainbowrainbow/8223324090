@@ -14,6 +14,7 @@ const { buildAndSendDigest, sendTomorrowReminder } = require('../services/schedu
 const { handleBotCommand, handleCertUse, resolveActorName } = require('../services/bot');
 const { handleContractorCallback } = require('../services/bookingAutomation');
 const { createLogger } = require('../utils/logger');
+const { notifyNewLead } = require('../services/leadNotifier');
 
 const log = createLogger('TelegramRoute');
 
@@ -600,6 +601,9 @@ router.post('/webhook', async (req, res) => {
                         await sendTelegramMessage(update.message.chat.id,
                             '✅ <b>Дякую!</b> Твою відповідь збережено. Сергій розгляне її на цьому тижні.',
                             { parse_mode: 'HTML' });
+                    } else {
+                        // v23.4.0: Lead capture — if not a training response, capture as lead
+                        handleLeadCapture(update).catch(e => log.error('Lead capture failed', e));
                     }
                 }
             } catch (err) {
@@ -613,5 +617,78 @@ router.post('/webhook', async (req, res) => {
         res.sendStatus(200);
     }
 });
+
+/**
+ * v23.4.0: Capture new lead from Telegram private chat
+ * Fires for private messages that are NOT commands and NOT training responses
+ */
+async function handleLeadCapture(update) {
+    const msg = update.message;
+    if (!msg || msg.chat?.type !== 'private') return;
+    if (msg.text?.startsWith('/')) return;
+
+    const user = msg.from;
+    const telegramId = user?.id;
+    if (!telegramId) return;
+
+    const text = msg.text || msg.caption || '';
+
+    try {
+        // If open lead already exists for this telegram_id — append message, don't duplicate
+        const existing = await pool.query(
+            `SELECT id FROM leads
+             WHERE telegram_id = $1
+               AND status NOT IN ('booked', 'closed', 'lost')
+             LIMIT 1`,
+            [telegramId]
+        );
+
+        if (existing.rows.length > 0) {
+            if (text) {
+                await pool.query(
+                    `UPDATE leads
+                       SET notes = COALESCE(notes,'') || E'\n[TG] ' || $1,
+                           last_contact_at = NOW()
+                     WHERE id = $2`,
+                    [text.slice(0, 500), existing.rows[0].id]
+                );
+            }
+            return;
+        }
+
+        const externalId  = `tg_${telegramId}`;
+        const clientName  = [user.first_name, user.last_name].filter(Boolean).join(' ')
+                            || `TG_${telegramId}`;
+
+        const result = await pool.query(
+            `INSERT INTO leads
+               (client_name, telegram_id, source, source_channel, external_id, notes, raw_payload, status)
+             VALUES ($1, $2, 'telegram', 'telegram', $3, $4, $5, 'new')
+             ON CONFLICT (source_channel, external_id)
+               WHERE external_id IS NOT NULL DO NOTHING
+             RETURNING *`,
+            [
+                clientName,
+                telegramId,
+                externalId,
+                text.slice(0, 1000) || null,
+                JSON.stringify({ from: user, message_id: msg.message_id, text }),
+            ]
+        );
+
+        if (result.rows.length > 0) {
+            log.info(`New TG lead: ${clientName} (tg_id: ${telegramId})`);
+            notifyNewLead(result.rows[0]).catch(() => {});
+
+            await sendTelegramMessage(
+                msg.chat.id,
+                '👋 Дякуємо за звернення!\nНаш менеджер зв\'яжеться з вами найближчим часом.\n\n🎉 <b>Парк Закревського Періоду</b>',
+                { parse_mode: 'HTML' }
+            );
+        }
+    } catch (err) {
+        log.error('handleLeadCapture error', err);
+    }
+}
 
 module.exports = router;

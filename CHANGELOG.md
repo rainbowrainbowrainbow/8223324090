@@ -4,6 +4,18 @@
 
 ---
 
+## v23.4.0 — Lead Capture Integration (2026-03-11)
+- **Telegram Lead Capture** — приватні повідомлення в бот автоматично створюють лід в CRM, автовідповідь юзеру [claude-code]
+- **Universal Webhook** — `POST /api/leads/webhook/universal?source=tiktok|turbo|bnderoga` з Bearer token auth [claude-code]
+- **Facebook Lead Ads** — webhook + Graph API v21.0 для отримання даних лідів [claude-code]
+- **Instagram DM** — webhook для нових DM повідомлень → автоматичний лід [claude-code]
+- **Viber Business** — webhook з HMAC-SHA256 signature verification [claude-code]
+- **Lead Notifier** — `services/leadNotifier.js` — Telegram сповіщення менеджерам при новому ліді [claude-code]
+- **UI оновлення** — 12 джерел у sourceFilter (TG, FB, IG, Viber, TikTok, Turbo, BnD, Google, Рек, Повтор, Ручний, Інше) [claude-code]
+- **Source badges** — кольорові бейджі для кожного джерела (customers + leads pages) [claude-code]
+- **DB Migration 053** — `external_id`, `raw_payload`, `source_channel` + unique index для дедуплікації [claude-code]
+- **JWT bypass** — webhook paths відкриті без автентифікації [claude-code]
+
 ## v23.3.0 — OmniClaw Security Hardening (2026-03-11)
 - **Webhook Signature Verification** — Viber HMAC-SHA256 (X-Viber-Content-Signature), Meta X-Hub-Signature-256 з timingSafeEqual, SMS/Binotel X-Webhook-Secret header [claude-code]
 - **API Token Security** — FB/IG access_token перенесено з URL query string в Authorization: Bearer header [claude-code]

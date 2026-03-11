@@ -31,12 +31,19 @@ const CrmState = {
 };
 
 const SOURCE_LABELS = {
-    instagram: 'Instagram',
-    google: 'Google',
-    recommendation: 'Рекомендація',
-    repeat: 'Повторний',
-    other: 'Інше',
-    unknown: 'Не вказано'
+    telegram:       '🔵 TG',
+    facebook:       '🔷 FB',
+    instagram:      '🟣 IG',
+    viber:          '🟢 Viber',
+    tiktok:         '⚫ TikTok',
+    turbo:          '🟠 Turbo',
+    bnderoga:       '🟡 BnD',
+    google:         '🔍 Google',
+    recommendation: '🤝 Рекомендація',
+    repeat:         '🔄 Повторний',
+    manual:         '✏️ Ручний',
+    other:          'Інше',
+    unknown:        'Не вказано'
 };
 
 const RFM_SEGMENTS = {
@@ -209,7 +216,7 @@ function renderCustomerTable() {
             </td>
             <td>${escapeHtml(c.phone) || '—'}</td>
             <td>${c.instagram ? '@' + escapeHtml(c.instagram) : '—'}</td>
-            <td>${c.source ? `<span class="badge badge-source">${escapeHtml(sourceLabel)}</span>` : '—'}</td>
+            <td>${c.source ? `<span class="badge badge-source badge-source-${escapeHtml(c.source)}">${escapeHtml(sourceLabel)}</span>` : '—'}</td>
             <td><span class="badge badge-visits">${c.totalBookings}</span></td>
             <td><span class="badge badge-spent">${formatMoney(c.totalSpent)}</span></td>
             <td>${formatDate(c.lastVisit)}</td>

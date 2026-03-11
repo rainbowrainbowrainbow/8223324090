@@ -3,15 +3,15 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v23.3.0**. package.json: `23.3.0`. Бранч `claude/update-snapshot-version-OJyXi`.
+Версія **v23.4.0**. package.json: `23.4.0`. Бранч `claude/update-snapshot-version-OJyXi`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: chore: [claude-code] version bump v23.3.0 — OmniClaw Security Hardening
-- **package.json**: `"version": "23.3.0"`
+- **Останній коміт**: feat: [claude-code] Lead Capture Integration v23.4.0
+- **package.json**: `"version": "23.4.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **Що нового**: OmniClaw Security Hardening — webhook auth, pool safety, input validation, HTTP checks
+- **Що нового**: Lead Capture Integration — auto TG leads, webhooks FB/IG/Viber/Universal, lead notifications
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -24,7 +24,19 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v23.3.0)
+## Останні зміни (v22.4.0 → v23.4.0)
+
+### v23.4.0 (Claude Code, 11.03.2026)
+- **Lead Capture Integration**
+  - Telegram: приватні повідомлення → автоматичний лід, автовідповідь
+  - Universal webhook: POST /api/leads/webhook/universal?source=tiktok|turbo|bnderoga
+  - Facebook Lead Ads webhook + Graph API v21.0
+  - Instagram DM webhook
+  - Viber Business webhook з HMAC-SHA256
+  - services/leadNotifier.js — Telegram сповіщення менеджерам
+  - UI: 12 джерел у sourceFilter, кольорові source badges
+  - DB міграція 053: external_id, raw_payload, source_channel + unique index
+  - Нові env: UNIVERSAL_WEBHOOK_TOKEN, FB_VERIFY_TOKEN, FB_PAGE_ACCESS_TOKEN, VIBER_AUTH_TOKEN
 
 ### v23.3.0 (Claude Code, 11.03.2026)
 - **OmniClaw Security Hardening**
@@ -138,6 +150,7 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - **v23.1.0: Landing Page Event Genix v1.0 — повний редизайн, demo-request API**
 - **v23.2.0: OmniClaw — омніканальна комунікація v1.0, 6 каналів, AI авто-відповіді**
 - **v23.3.0: OmniClaw Security Hardening — webhook auth, pool safety, input validation, HTTP checks**
+- **v23.4.0: Lead Capture Integration — auto TG leads, webhooks FB/IG/Viber/Universal, lead notifications**
 
 ## Аудит deployed vs main (11.03.2026)
 - **Результат**: ВСІ фічі з deployed (v17.4.1) інтегровані в main (v23.0.0)
@@ -190,4 +203,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-11, v23.3.0 + OmniClaw Security Hardening, сесія claude-code*
+*Оновлено: 2026-03-11, v23.4.0 + Lead Capture Integration, сесія claude-code*

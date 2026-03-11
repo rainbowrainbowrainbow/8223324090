@@ -13,12 +13,20 @@ const STATUS_MAP = {
 };
 
 const SOURCE_MAP = {
-    instagram: '🟢 Instagram',
-    google: '🔍 Google',
+    telegram:       '🔵 Telegram',
+    facebook:       '🔷 Facebook',
+    instagram:      '🟣 Instagram',
+    viber:          '🟢 Viber',
+    tiktok:         '⚫ TikTok',
+    turbo:          '🟠 Turbo',
+    bnderoga:       '🟡 BnD',
+    google:         '🔍 Google',
     recommendation: '🤝 Рекомендація',
-    site: '🌐 Сайт',
-    phone: '📞 Телефон',
-    'walk-in': '🚶 Прийшли'
+    site:           '🌐 Сайт',
+    phone:          '📞 Телефон',
+    'walk-in':      '🚶 Прийшли',
+    manual:         '✏️ Ручний',
+    universal:      '🌐 Universal'
 };
 
 let currentFilter = '';

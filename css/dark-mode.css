@@ -439,6 +439,11 @@ body.dark-mode .booking-tooltip {
 body.dark-mode .booking-detail-row {
     border-bottom-color: var(--gray-200);
 }
+body.dark-mode .booking-detail-row--copyable:hover { background: rgba(255,255,255,0.04); }
+body.dark-mode .detail-copy-btn { background: rgba(255,255,255,0.08); }
+body.dark-mode .detail-copy-btn:hover { background: rgba(16,185,129,0.15); }
+body.dark-mode .detail-copy-summary-btn { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #94A3B8; }
+body.dark-mode .detail-copy-summary-btn:hover { background: rgba(16,185,129,0.1); border-color: var(--primary); color: #6ee7b7; }
 
 /* Warning banner */
 body.dark-mode .warning-banner {
@@ -1456,6 +1461,16 @@ body.dark-mode .booking-customer-info {
 }
 body.dark-mode .booking-customer-info .customer-header { color: #e2e8f0; }
 body.dark-mode .booking-customer-info .customer-detail { color: #94A3B8; }
+body.dark-mode .customer-link { color: #cbd5e1; }
+body.dark-mode .customer-link:hover { color: var(--primary); }
+body.dark-mode .customer-link--crm { color: #6ee7b7; }
+body.dark-mode .customer-row:hover { background: rgba(255,255,255,0.05); }
+body.dark-mode .customer-row span { color: #94A3B8; }
+body.dark-mode .customer-age { color: #64748B; }
+body.dark-mode .customer-action-btn { background: rgba(255,255,255,0.08); }
+body.dark-mode .customer-action-btn:hover { background: rgba(16,185,129,0.15); }
+body.dark-mode .customer-row--stats { border-top-color: rgba(255,255,255,0.08); }
+body.dark-mode .booking-customer-info--smart .customer-header { border-bottom-color: rgba(255,255,255,0.08); }
 
 /* ==========================================
    CHAT — Dark Mode

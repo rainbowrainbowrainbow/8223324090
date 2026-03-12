@@ -1,0 +1,669 @@
+/**
+ * css/role-panel.css — Role Panel (global FAB + slide-out) + Role Switcher styles
+ * v24.0.0
+ */
+
+/* ==========================================
+   ROLE SWITCHER (header dropdown)
+   ========================================== */
+
+.role-switcher {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.role-switcher-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: 1px solid var(--gray-200, #e2e8f0);
+    border-radius: 8px;
+    background: var(--gray-50, #f8fafc);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-primary, #1a202c);
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.role-switcher-btn:hover {
+    background: var(--gray-100, #edf2f7);
+    border-color: var(--gray-300, #cbd5e0);
+}
+
+.role-switcher-icon { font-size: 16px; }
+.role-switcher-label { font-weight: 500; }
+
+.role-switcher-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 280px;
+    max-height: 480px;
+    overflow-y: auto;
+    background: var(--bg-primary, #fff);
+    border: 1px solid var(--gray-200, #e2e8f0);
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+    z-index: 9999;
+    padding: 8px;
+}
+
+.role-switcher-section { padding: 4px 0; }
+
+.role-switcher-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--gray-400, #a0aec0);
+    padding: 4px 8px 6px;
+}
+
+.role-switcher-divider {
+    height: 1px;
+    background: var(--gray-100, #edf2f7);
+    margin: 4px 0;
+}
+
+.role-switcher-role-btn,
+.role-switcher-user-btn {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 7px 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-primary, #1a202c);
+    text-align: left;
+    transition: background 0.12s;
+    gap: 6px;
+}
+
+.role-switcher-role-btn:hover,
+.role-switcher-user-btn:hover {
+    background: var(--gray-50, #f8fafc);
+}
+
+.role-switcher-role-btn.active {
+    background: var(--primary-light, #ebf8ff);
+    color: var(--primary, #3182ce);
+    font-weight: 600;
+}
+
+.role-switcher-role-btn.reset,
+.role-switcher-user-btn.reset {
+    color: var(--warning, #d69e2e);
+    font-weight: 600;
+    border-top: 1px solid var(--gray-100, #edf2f7);
+    border-radius: 0 0 8px 8px;
+    margin-top: 4px;
+    padding-top: 8px;
+}
+
+.role-switcher-user-btn {
+    justify-content: space-between;
+}
+
+.role-switcher-user-name { font-weight: 500; }
+
+.role-switcher-user-role {
+    font-size: 11px;
+    color: var(--gray-400, #a0aec0);
+}
+
+.role-switcher-user-btn.active {
+    background: var(--primary-light, #ebf8ff);
+}
+
+.role-switcher-check { color: var(--primary, #3182ce); font-weight: 700; }
+
+.role-switcher-loading,
+.role-switcher-error {
+    padding: 12px 10px;
+    font-size: 12px;
+    color: var(--gray-400, #a0aec0);
+    text-align: center;
+}
+
+.role-switcher-error { color: var(--danger, #e53e3e); }
+
+/* Badge in header */
+.role-switcher-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    animation: badgePulse 2s ease-in-out infinite;
+}
+
+.role-switcher-badge.role {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+}
+
+.role-switcher-badge.imp {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: #fff;
+}
+
+.role-switcher-badge-close {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.8);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+    font-family: inherit;
+}
+
+.role-switcher-badge-close:hover { color: #fff; }
+
+@keyframes badgePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
+}
+
+/* ==========================================
+   ROLE PANEL FAB
+   ========================================== */
+
+.role-panel-fab {
+    position: fixed;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    border: none;
+    cursor: pointer;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+    transition: all 0.25s ease;
+}
+
+.role-panel-fab:hover {
+    transform: translateY(-50%) scale(1.08);
+    box-shadow: 0 6px 24px rgba(102, 126, 234, 0.5);
+}
+
+.role-panel-fab:active {
+    transform: translateY(-50%) scale(0.95);
+}
+
+.role-panel-fab .fab-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: var(--danger, #e53e3e);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 8px;
+    line-height: 1;
+}
+
+/* ==========================================
+   ROLE PANEL OVERLAY
+   ========================================== */
+
+.role-panel-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 1001;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.25s ease;
+    backdrop-filter: blur(2px);
+}
+
+.role-panel-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ==========================================
+   ROLE PANEL (slide-out)
+   ========================================== */
+
+.role-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 360px;
+    height: 100vh;
+    background: var(--bg-primary, #fff);
+    z-index: 1002;
+    transform: translateX(100%);
+    transition: transform 0.25s ease-out;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+}
+
+.role-panel.open {
+    transform: translateX(0);
+}
+
+/* Panel header */
+.role-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--gray-100, #edf2f7);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.role-panel-header-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.role-panel-user-name {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.role-panel-user-role {
+    font-size: 12px;
+    opacity: 0.85;
+}
+
+.role-panel-test-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 6px;
+    font-size: 11px;
+    margin-top: 2px;
+}
+
+.role-panel-close {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: #fff;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+
+.role-panel-close:hover {
+    background: rgba(255,255,255,0.3);
+}
+
+/* Panel content */
+.role-panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Panel blocks */
+.role-panel-block {
+    background: var(--bg-secondary, #f7fafc);
+    border: 1px solid var(--gray-100, #edf2f7);
+    border-radius: 12px;
+    padding: 14px 16px;
+    transition: box-shadow 0.15s;
+}
+
+.role-panel-block:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.role-panel-block-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary, #1a202c);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.role-panel-block-title .block-icon { font-size: 16px; }
+
+/* Schedule link button */
+.role-panel-schedule-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+    text-decoration: none;
+}
+
+.role-panel-schedule-btn:hover {
+    opacity: 0.92;
+    transform: translateY(-1px);
+}
+
+.role-panel-schedule-btn .btn-arrow {
+    margin-left: auto;
+    opacity: 0.7;
+}
+
+.role-panel-schedule-sub {
+    font-size: 12px;
+    opacity: 0.85;
+    font-weight: 400;
+    margin-top: 2px;
+}
+
+/* Task items */
+.rp-task-list { display: flex; flex-direction: column; gap: 6px; }
+
+.rp-task-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 13px;
+    border-bottom: 1px solid var(--gray-50, #f8fafc);
+}
+
+.rp-task-item:last-child { border-bottom: none; }
+
+.rp-task-check {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--gray-300, #cbd5e0);
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    background: transparent;
+    padding: 0;
+}
+
+.rp-task-check:hover {
+    border-color: var(--primary, #3182ce);
+    background: var(--primary-light, #ebf8ff);
+}
+
+.rp-task-check.done {
+    background: var(--success, #38a169);
+    border-color: var(--success, #38a169);
+    color: #fff;
+    font-size: 11px;
+}
+
+.rp-task-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rp-task-time {
+    font-size: 11px;
+    color: var(--gray-400, #a0aec0);
+    flex-shrink: 0;
+}
+
+.rp-task-priority {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.rp-task-priority.critical { background: #fed7d7; color: #c53030; }
+.rp-task-priority.high { background: #feebc8; color: #c05621; }
+.rp-task-priority.medium { background: #fefcbf; color: #975a16; }
+
+/* Shift info */
+.rp-shift-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.rp-shift-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.rp-shift-icon { font-size: 14px; flex-shrink: 0; }
+
+.rp-shift-warning {
+    background: #fefcbf;
+    color: #975a16;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Stats grid */
+.rp-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.rp-stat-card {
+    text-align: center;
+    padding: 10px 6px;
+    background: var(--bg-primary, #fff);
+    border-radius: 8px;
+    border: 1px solid var(--gray-100, #edf2f7);
+}
+
+.rp-stat-value {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text-primary, #1a202c);
+}
+
+.rp-stat-label {
+    font-size: 11px;
+    color: var(--gray-400, #a0aec0);
+    margin-top: 2px;
+}
+
+.rp-stat-link {
+    display: block;
+    text-align: center;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--primary, #3182ce);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+/* Team list */
+.rp-team-list { display: flex; flex-direction: column; gap: 4px; }
+
+.rp-team-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 13px;
+}
+
+.rp-team-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.rp-team-dot.active { background: #38a169; }
+.rp-team-dot.soon { background: #d69e2e; }
+.rp-team-dot.off { background: #a0aec0; }
+
+.rp-team-name { flex: 1; }
+
+.rp-team-status {
+    font-size: 11px;
+    color: var(--gray-400, #a0aec0);
+}
+
+/* Alerts */
+.rp-alert-list { display: flex; flex-direction: column; gap: 6px; }
+
+.rp-alert-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg-primary, #fff);
+    border-radius: 8px;
+    border: 1px solid var(--gray-100, #edf2f7);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.12s;
+    text-decoration: none;
+    color: inherit;
+}
+
+.rp-alert-item:hover {
+    background: var(--gray-50, #f8fafc);
+}
+
+.rp-alert-icon { font-size: 16px; flex-shrink: 0; }
+
+.rp-alert-text { flex: 1; }
+
+/* Empty states */
+.rp-empty {
+    text-align: center;
+    padding: 12px;
+    font-size: 13px;
+    color: var(--gray-400, #a0aec0);
+}
+
+/* ==========================================
+   DARK MODE
+   ========================================== */
+
+.dark-mode .role-switcher-btn {
+    background: var(--gray-700, #2d3748);
+    border-color: var(--gray-600, #4a5568);
+    color: var(--gray-100, #edf2f7);
+}
+
+.dark-mode .role-switcher-btn:hover {
+    background: var(--gray-600, #4a5568);
+}
+
+.dark-mode .role-switcher-dropdown {
+    background: var(--gray-800, #1a202c);
+    border-color: var(--gray-600, #4a5568);
+}
+
+.dark-mode .role-switcher-role-btn,
+.dark-mode .role-switcher-user-btn {
+    color: var(--gray-100, #edf2f7);
+}
+
+.dark-mode .role-switcher-role-btn:hover,
+.dark-mode .role-switcher-user-btn:hover {
+    background: var(--gray-700, #2d3748);
+}
+
+.dark-mode .role-panel {
+    background: var(--gray-800, #1a202c);
+}
+
+.dark-mode .role-panel-block {
+    background: var(--gray-700, #2d3748);
+    border-color: var(--gray-600, #4a5568);
+}
+
+.dark-mode .rp-stat-card {
+    background: var(--gray-800, #1a202c);
+    border-color: var(--gray-600, #4a5568);
+}
+
+.dark-mode .rp-alert-item {
+    background: var(--gray-800, #1a202c);
+    border-color: var(--gray-600, #4a5568);
+}
+
+/* ==========================================
+   RESPONSIVE
+   ========================================== */
+
+@media (max-width: 480px) {
+    .role-panel {
+        width: 100%;
+    }
+
+    .role-panel-fab {
+        right: 12px;
+        width: 44px;
+        height: 44px;
+        font-size: 20px;
+    }
+
+    .role-switcher-label {
+        display: none;
+    }
+
+    .role-switcher-dropdown {
+        width: 260px;
+        right: -40px;
+    }
+}
+
+@media (max-width: 768px) {
+    .role-panel {
+        width: min(360px, 100vw);
+    }
+}

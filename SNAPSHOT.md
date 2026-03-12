@@ -3,17 +3,17 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v23.5.0**. package.json: `23.5.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
+Версія **v24.0.0**. package.json: `24.0.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: fix: [claude-code] reorder changelog — v23.4 and v23.3 moved to correct position
-- **package.json**: `"version": "23.5.0"`
-- **Бранч**: `claude/update-snapshot-version-OJyXi` (містить merge з origin/main)
-- **origin/main**: v22.12.0 — стара, НЕ містить OmniClaw/LeadCapture/Guardian Phase 2-3
-- **origin/deployed**: v17.4.1 — продакшн, дуже стара
-- **Що нового в v23.5.0**: Version Recovery — змержено все з main (CEO slide) + claude гілки (v23.0–v23.4)
+- **Останній коміт**: feat: [claude-code] v24.0.0 — Role Panel + Role Switcher
+- **package.json**: `"version": "24.0.0"`
+- **Бранч**: `claude/update-snapshot-version-OJyXi`
+- **origin/main**: v22.12.0
+- **origin/deployed**: v17.4.1
+- **Що нового в v24.0.0**: Role Panel (глобальний FAB + slide-out панель) + Role Switcher (перемикання ролей/акаунтів) + Impersonation API
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -26,7 +26,27 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v23.5.0)
+## Останні зміни (v22.4.0 → v24.0.0)
+
+### v24.0.0 (Claude Code, 12.03.2026)
+- **Role Panel** — глобальна плаваюча панель (FAB) справа на всіх 24 сторінках
+  - Self-injecting компонент: `js/role-panel.js` + `css/role-panel.css`
+  - 6 блоків: графік, задачі, зміна, статистика, команда, алерти
+  - Контент адаптується під активну роль (матриця видимості)
+  - Кеш 60с в sessionStorage, roleSwitched event listener
+- **Role Switcher** — creator-only debug tool в хедері
+  - Режим 1: миттєве перемикання ролі (без API, instant UI update)
+  - Режим 2: імперсонація юзера (тимчасовий JWT, 1 година)
+  - Badge в хедері: 🎭 Тест / 👤 Імперсонація
+- **API endpoints**
+  - `POST /api/auth/impersonate` — creator-only, тимчасовий JWT з `imp: true` claim
+  - `GET /api/auth/users-list` — creator-only, список активних юзерів
+  - Audit log для всіх імперсонацій
+  - `DISABLE_IMPERSONATION=true` — env var для вимкнення
+- **Dashboard Dev Tools** — widget на дашборді (creator-only)
+  - Dropdown з ролями + dropdown з юзерами для тестування
+  - Badge з поточним тестовим станом
+- **Versioning** — v24.0.0 на всіх 24 HTML файлах, package.json, changelog
 
 ### v23.5.0 (Claude Code, 12.03.2026)
 - **Version Recovery & Merge**

@@ -454,40 +454,119 @@ const DashboardPage = (() => {
     function initTestPanel() {
         if (!AppState.currentUser || AppState.currentUser.role !== 'creator') return;
 
-        // FAB button
-        const fab = document.createElement('button');
-        fab.className = 'test-panel-fab';
-        fab.innerHTML = '🧪';
-        fab.title = 'Тест-панель';
-        fab.onclick = () => {
-            const panel = document.getElementById('testPanel');
-            if (panel) panel.classList.toggle('open');
-        };
-        document.body.appendChild(fab);
+        // v24.0.0: Dev Tools section on dashboard (replaces old FAB test panel)
+        const grid = document.getElementById('dashboardGrid');
+        if (!grid) return;
 
-        // Panel
-        const panel = document.createElement('div');
-        panel.className = 'test-panel';
-        panel.id = 'testPanel';
+        const devTools = document.createElement('div');
+        devTools.className = 'widget-card widget-devtools';
+        devTools.dataset.widget = 'devtools';
 
         const roleOptions = Object.entries(ROLE_NAMES).map(([key, name]) =>
             `<option value="${key}">${name} (${key})</option>`
         ).join('');
 
-        const currentTestRole = localStorage.getItem('pzp_test_role');
-        panel.innerHTML = `
-            <h4>Тест-панель ролей</h4>
-            <select id="testRoleSelect">${roleOptions}</select>
-            <div class="test-panel-actions">
-                <button class="btn-switch" onclick="DashboardPage.switchTestRole()">Переключити</button>
-                <button class="btn-reset" onclick="DashboardPage.resetTestRole()">Скинути</button>
+        const currentTestRole = localStorage.getItem('pzp_test_role') || sessionStorage.getItem('testRole');
+        const imp = sessionStorage.getItem('impersonating');
+        let statusHtml = '';
+        if (imp) {
+            statusHtml = `<div class="devtools-badge imp">👤 Імперсонація: ${imp} <button class="devtools-badge-close" id="devtoolsResetImp">&times;</button></div>`;
+        } else if (currentTestRole) {
+            statusHtml = `<div class="devtools-badge role">🎭 Тест: ${ROLE_NAMES[currentTestRole] || currentTestRole} <button class="devtools-badge-close" id="devtoolsResetRole">&times;</button></div>`;
+        }
+
+        devTools.innerHTML = `
+            <div class="widget-header">
+                <div class="widget-title">
+                    <span class="widget-title-icon">🎭</span>
+                    Dev Tools (тільки для Creator)
+                </div>
+            </div>
+            <div class="widget-body" id="widget-devtools">
+                <div class="devtools-grid">
+                    <div class="devtools-section">
+                        <label class="devtools-label">Симулювати роль:</label>
+                        <div class="devtools-row">
+                            <select id="testRoleSelect" class="devtools-select">${roleOptions}</select>
+                            <button class="devtools-btn" onclick="DashboardPage.switchTestRole()">▶</button>
+                            <button class="devtools-btn secondary" onclick="DashboardPage.resetTestRole()">✕</button>
+                        </div>
+                    </div>
+                    <div class="devtools-section">
+                        <label class="devtools-label">Симулювати юзера:</label>
+                        <div class="devtools-row">
+                            <select id="testUserSelect" class="devtools-select">
+                                <option value="">Завантаження...</option>
+                            </select>
+                            <button class="devtools-btn" onclick="DashboardPage.switchTestUser()">▶</button>
+                        </div>
+                    </div>
+                    ${statusHtml ? `<div class="devtools-section">${statusHtml}</div>` : ''}
+                </div>
             </div>
         `;
-        document.body.appendChild(panel);
+
+        // Insert as first child
+        grid.insertBefore(devTools, grid.firstChild);
 
         if (currentTestRole) {
             document.getElementById('testRoleSelect').value = currentTestRole;
-            showTestModeBadge(currentTestRole);
+        }
+
+        // Load users for impersonation dropdown
+        _loadUsersForDevtools();
+
+        // Reset handlers
+        const resetRoleBtn = document.getElementById('devtoolsResetRole');
+        if (resetRoleBtn) resetRoleBtn.onclick = () => DashboardPage.resetTestRole();
+
+        const resetImpBtn = document.getElementById('devtoolsResetImp');
+        if (resetImpBtn) resetImpBtn.onclick = () => {
+            if (typeof RoleSwitcher !== 'undefined') RoleSwitcher.resetImpersonation();
+        };
+    }
+
+    async function _loadUsersForDevtools() {
+        const select = document.getElementById('testUserSelect');
+        if (!select) return;
+        try {
+            const resp = await fetch('/api/auth/users-list', {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+            });
+            if (!resp.ok) throw new Error();
+            const users = await resp.json();
+            select.innerHTML = '<option value="">— Обрати юзера —</option>' +
+                users.filter(u => u.username !== AppState.currentUser.username)
+                    .map(u => `<option value="${u.id}">${u.name} (${ROLE_NAMES[u.role] || u.role})</option>`)
+                    .join('');
+        } catch {
+            select.innerHTML = '<option value="">Помилка</option>';
+        }
+    }
+
+    async function switchTestUser() {
+        const select = document.getElementById('testUserSelect');
+        if (!select || !select.value) return;
+        const userId = parseInt(select.value);
+        if (typeof RoleSwitcher !== 'undefined') {
+            // Use RoleSwitcher impersonation
+            try {
+                const resp = await fetch('/api/auth/impersonate', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId })
+                });
+                if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || 'Failed');
+                const data = await resp.json();
+                sessionStorage.setItem('realToken', localStorage.getItem('pzp_token'));
+                sessionStorage.setItem('realUser', JSON.stringify(AppState.currentUser));
+                sessionStorage.setItem('impersonating', data.user.username);
+                localStorage.setItem('pzp_token', data.token);
+                localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+                window.location.reload();
+            } catch (err) {
+                if (typeof showNotification === 'function') showNotification('Помилка: ' + err.message, 'error');
+            }
         }
     }
 
@@ -558,6 +637,7 @@ const DashboardPage = (() => {
         openSettings,
         switchTestRole,
         resetTestRole,
+        switchTestUser,
     };
 })();
 

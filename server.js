@@ -298,8 +298,10 @@ app.get('/training', (req, res) => {
     res.sendFile(path.join(__dirname, 'training.html'));
 });
 // v25.5.0: standalone leads page
+// Use 302 (temporary) redirect to leads.html to bust old cached 301→/customers redirect
 app.get('/leads', (req, res) => {
-    res.sendFile(path.join(__dirname, 'leads.html'));
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.redirect(302, '/leads.html');
 });
 // v20.13: Team messenger
 app.get('/chat', (req, res) => {

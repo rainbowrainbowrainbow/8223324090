@@ -21,7 +21,7 @@ const Sidebar = (() => {
         { type: 'divider' },
         { type: 'section', label: 'Управління' },
         { href: '/customers', icon: '👥', label: 'Клієнти',    access: 'management' },
-        { href: '/leads',     icon: '🔥', label: 'Ліди',       access: 'leads' },
+        { href: '/leads.html', icon: '🔥', label: 'Ліди',       access: 'leads' },
         { href: '/staff',     icon: '📋', label: 'Команда',    access: 'staff' },
         { href: '/hr',        icon: '🤝', label: 'Кадри',      access: 'hr' },
         { href: '/finance',   icon: '💰', label: 'Фінанси',    access: 'finance' },
@@ -220,14 +220,15 @@ const Sidebar = (() => {
                 continue;
             }
 
-            const isActive = currentPath === item.href ||
-                (item.href !== '/' && item.href !== '#settings' && currentPath.startsWith(item.href));
+            const hrefNorm = item.href.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+            const isActive = currentPath === hrefNorm ||
+                (hrefNorm !== '/' && hrefNorm !== '#settings' && currentPath.startsWith(hrefNorm));
 
             const actionAttr = item.action
                 ? ` data-action="${item.action}" onclick="event.preventDefault(); if(typeof ${item.action}==='function') ${item.action}();"`
                 : '';
 
-            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${actionAttr}>
+            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${hrefNorm}"${actionAttr}>
                 <span class="nav-icon">${item.icon}</span>
                 <span class="nav-text">${item.label}</span>
             </a>`;

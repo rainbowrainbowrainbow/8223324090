@@ -672,7 +672,9 @@ h1, h2, h3, h4 {
 }
 
 .case:hover {
-    border-color: rgba(201, 168, 76, 0.2);
+    border-color: rgba(201, 168, 76, 0.25);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(201, 168, 76, 0.06);
 }
 
 .case__icon {

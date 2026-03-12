@@ -601,7 +601,8 @@ async function apiGamificationProfile(username) {
         const response = await fetch(`${API_BASE}/gamification/profile/${encodeURIComponent(username)}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
-        return await response.json();
+        const json = await response.json();
+        return json.data || json;
     } catch { return null; }
 }
 
@@ -610,7 +611,8 @@ async function apiGamificationShop() {
         const response = await fetch(`${API_BASE}/gamification/shop`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
-        return await response.json();
+        const json = await response.json();
+        return json.data || json;
     } catch { return null; }
 }
 
@@ -650,7 +652,8 @@ async function apiGamificationLeaderboard(sortBy) {
         const response = await fetch(`${API_BASE}/gamification/leaderboard${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
-        return await response.json();
+        const json = await response.json();
+        return json.data || json;
     } catch { return null; }
 }
 
@@ -659,7 +662,8 @@ async function apiGamificationAchievements() {
         const response = await fetch(`${API_BASE}/gamification/achievements`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
-        return await response.json();
+        const json = await response.json();
+        return json.data || json;
     } catch { return null; }
 }
 
@@ -668,7 +672,8 @@ async function apiGamificationCoinHistory() {
         const response = await fetch(`${API_BASE}/gamification/coins/history`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
-        return await response.json();
+        const json = await response.json();
+        return json.data || json;
     } catch { return null; }
 }
 

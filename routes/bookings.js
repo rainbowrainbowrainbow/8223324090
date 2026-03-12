@@ -210,6 +210,12 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (!validateDate(main.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(main.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
 
+        // [FIX] Заборона бронювання в минулому
+        const bookingDateTime = new Date(`${main.date}T${main.time}:00`);
+        if (bookingDateTime < new Date()) {
+            return res.status(400).json({ success: false, error: 'Неможливо створити бронювання в минулому. Оберіть майбутню дату та час.' });
+        }
+
         await client.query('BEGIN');
 
         const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0);

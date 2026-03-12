@@ -41,7 +41,7 @@ router.get('/profile/:username', async (req, res) => {
         }
 
         const profile = await gamification.getProfile(username);
-        res.json(profile);
+        res.json({ success: true, data: profile });
     } catch (err) {
         log.error('Get profile error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -72,7 +72,7 @@ router.put('/profile', async (req, res) => {
         });
 
         const profile = await gamification.getProfile(req.user.username);
-        res.json(profile);
+        res.json({ success: true, data: profile });
     } catch (err) {
         log.error('Update profile error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -83,7 +83,7 @@ router.put('/profile', async (req, res) => {
 router.get('/achievements', async (req, res) => {
     try {
         const achievements = await gamification.getAchievementCatalog(req.user.username);
-        res.json(achievements);
+        res.json({ success: true, data: achievements });
     } catch (err) {
         log.error('Get achievements error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -94,7 +94,7 @@ router.get('/achievements', async (req, res) => {
 router.post('/achievements/check', async (req, res) => {
     try {
         const unlocked = await gamification.checkAchievements(req.user.username);
-        res.json({ unlocked });
+        res.json({ success: true, data: { unlocked } });
     } catch (err) {
         log.error('Check achievements error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -110,7 +110,7 @@ router.post('/achievements/unlock', requireRole('admin', 'creator', 'director'),
         }
 
         const unlocked = await gamification.checkAchievements(username, { manualKey: achievementKey });
-        res.json({ unlocked });
+        res.json({ success: true, data: { unlocked } });
     } catch (err) {
         log.error('Unlock achievement error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -121,7 +121,7 @@ router.post('/achievements/unlock', requireRole('admin', 'creator', 'director'),
 router.get('/shop', async (req, res) => {
     try {
         const items = await gamification.getShopCatalog(req.user.username);
-        res.json(items);
+        res.json({ success: true, data: items });
     } catch (err) {
         log.error('Get shop error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -140,7 +140,7 @@ router.post('/shop/buy', async (req, res) => {
         if (!result.success) {
             return res.status(400).json({ error: result.error });
         }
-        res.json(result);
+        res.json({ success: true, data: result });
     } catch (err) {
         log.error('Shop buy error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -159,7 +159,7 @@ router.post('/equip', async (req, res) => {
         if (!result.success) {
             return res.status(400).json({ error: result.error });
         }
-        res.json(result);
+        res.json({ success: true, data: result });
     } catch (err) {
         log.error('Equip error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -176,7 +176,7 @@ router.post('/unequip', async (req, res) => {
         }
 
         const result = await gamification.unequipSlot(req.user.username, slot);
-        res.json(result);
+        res.json({ success: true, data: result });
     } catch (err) {
         log.error('Unequip error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -193,7 +193,7 @@ router.get('/coins/history', async (req, res) => {
             limit,
             offset
         );
-        res.json(history);
+        res.json({ success: true, data: history });
     } catch (err) {
         log.error('Coin history error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -216,7 +216,7 @@ router.post('/coins/gift', async (req, res) => {
         if (!result.success) {
             return res.status(400).json({ error: result.error });
         }
-        res.json(result);
+        res.json({ success: true, data: result });
     } catch (err) {
         log.error('Gift coins error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -247,7 +247,7 @@ router.get('/leaderboard', async (req, res) => {
         const sort = VALID_SORTS.includes(req.query.sort) ? req.query.sort : 'xp';
         const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
         const leaderboard = await gamification.getLeaderboard(sort, limit);
-        res.json(leaderboard);
+        res.json({ success: true, data: leaderboard });
     } catch (err) {
         log.error('Leaderboard error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -304,8 +304,11 @@ router.get('/penalties/:username', async (req, res) => {
             [username]
         );
         res.json({
-            penalties: result.rows,
-            totalPoints: parseInt(totalResult.rows[0].total_points)
+            success: true,
+            data: {
+                penalties: result.rows,
+                totalPoints: parseInt(totalResult.rows[0].total_points)
+            }
         });
     } catch (err) {
         log.error('Get penalties error', err);
@@ -348,7 +351,7 @@ router.get('/penalty-stats', requireRole('admin', 'creator', 'director', 'manage
             GROUP BY staff_username, category
             ORDER BY total_points DESC
         `);
-        res.json({ stats: result.rows });
+        res.json({ success: true, data: { stats: result.rows } });
     } catch (err) {
         log.error('Penalty stats error', err);
         res.status(500).json({ error: 'Internal server error' });

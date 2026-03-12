@@ -79,6 +79,8 @@ describe('Gamification', () => {
         const res = await authRequest('GET', '/api/gamification/profile/admin');
         assert.equal(res.status, 200);
         assert.ok(res.data);
+        assert.equal(res.data.success, true);
+        assert.ok(res.data.data, 'Should have data wrapper');
     });
 
     it('GET /api/gamification/leaderboard — returns leaderboard', async () => {

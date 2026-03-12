@@ -626,14 +626,12 @@
     if (stickyCta) {
         window.addEventListener('scroll', function() {
             if (stickyDismissed) return;
-            // Show after 40% of page scrolled
             var scrollPct = window.scrollY / (document.body.scrollHeight - window.innerHeight);
             var show = scrollPct > 0.4;
             stickyCta.classList.toggle('visible', show);
-            // Push back-to-top above sticky bar when visible
+            // Hide back-to-top when sticky CTA is visible (prevents overlap)
             if (backToTop) {
-                var stickyH = stickyCta.offsetHeight || 60;
-                backToTop.style.bottom = show ? (stickyH + 16) + 'px' : '';
+                backToTop.style.display = show ? 'none' : '';
             }
         }, { passive: true });
     }

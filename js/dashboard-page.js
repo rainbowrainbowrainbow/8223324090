@@ -390,7 +390,7 @@ const DashboardPage = (() => {
             container.innerHTML = '<div class="widget-empty">Немає нових лідів</div>';
             return;
         }
-        const sourceColors = { telegram: '#0088cc', facebook: '#1877F2', instagram: '#E4405F', viber: '#7360F2', website: '#38A169', phone: '#DD6B20' };
+        const sourceColors = { telegram: '#0088cc', facebook: '#1877F2', instagram: '#E4405F', viber: '#7360F2', website: '#38A169', phone: '#DD6B20', landing: '#D69E2E' };
         const items = data.leads.slice(0, 6).map(l => {
             const color = sourceColors[l.source] || '#718096';
             const date = new Date(l.created_at).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });

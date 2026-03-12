@@ -355,14 +355,13 @@
             };
 
             try {
-                const resp = await fetch('/api/leads', {
+                const resp = await fetch('/api/leads/landing', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         name: data.name,
                         phone: data.phone,
-                        source: 'landing',
-                        notes: 'Пакет: ' + data.package
+                        package: data.package
                     })
                 });
                 if (!resp.ok) throw new Error('API error');

@@ -24,6 +24,37 @@ const FB_VERIFY_TOKEN         = process.env.FB_VERIFY_TOKEN         || '';
 const FB_PAGE_ACCESS_TOKEN    = process.env.FB_PAGE_ACCESS_TOKEN    || '';
 const VIBER_AUTH_TOKEN        = process.env.VIBER_AUTH_TOKEN        || '';
 
+// POST /api/leads/landing — public endpoint for landing page form (no auth required)
+router.post('/landing', async (req, res) => {
+    try {
+        const { name, phone, package: pkg } = req.body;
+        if (!name && !phone) {
+            return res.status(400).json({ success: false, error: 'Ім\'я або телефон обов\'язкові' });
+        }
+        const notes = pkg ? `Пакет: ${pkg}` : 'Заявка з лендінгу';
+        const result = await pool.query(`
+            INSERT INTO leads (client_name, phone, source, notes, status)
+            VALUES ($1, $2, 'landing', $3, 'new')
+            RETURNING id, client_name, phone, source, status, created_at
+        `, [name || 'Невідомий', phone || null, notes]);
+
+        const lead = result.rows[0];
+        log.info(`Landing lead created: ${lead.client_name} (${lead.phone})`);
+
+        // Notify via lead notifier if available
+        try {
+            if (typeof notifyNewLead === 'function') {
+                await notifyNewLead(lead);
+            }
+        } catch (e) { /* non-blocking */ }
+
+        res.json({ success: true, lead: { id: lead.id } });
+    } catch (err) {
+        log.error('POST /leads/landing error', err);
+        res.status(500).json({ success: false, error: 'Помилка збереження заявки' });
+    }
+});
+
 // GET /api/leads — list all leads with optional filters
 router.get('/', async (req, res) => {
     try {

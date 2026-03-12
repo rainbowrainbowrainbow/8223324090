@@ -227,9 +227,10 @@ function renderTimeScale(date) {
 
 async function renderTimeline() {
     const thisGen = ++_renderGen;
-    _debugRender(`START gen=${thisGen} date=${formatDate(AppState.selectedDate)}`);
-    // v7.0.1: Snapshot date — protect against AppState.selectedDate mutation during async ops
     const selectedDate = new Date(AppState.selectedDate);
+    console.log('[Timeline] renderTimeline START gen=' + thisGen + ' date=' + formatDate(selectedDate));
+
+    try {
 
     const addLineBtn = document.getElementById('addLineBtn');
     if (addLineBtn) addLineBtn.style.display = isViewer() ? 'none' : '';
@@ -247,33 +248,35 @@ async function renderTimeline() {
     const savedScrollLeft = timelineScroll ? timelineScroll.scrollLeft : 0;
 
     const container = document.getElementById('timelineLines');
-    // v25.4.1: Robust data fetch — each source fetches independently to prevent one failure from blocking all
+
+    // v25.4.1: Robust data fetch — each source independently
     let lines = [], bookings = [], afishaEvents = [];
     try {
-        const results = await Promise.all([
+        const [linesResult, bookingsResult, afishaResult] = await Promise.all([
             getLinesForDate(selectedDate).catch(e => { console.error('[Timeline] getLinesForDate error:', e); return []; }),
             getBookingsForDate(selectedDate).catch(e => { console.error('[Timeline] getBookingsForDate error:', e); return []; }),
             apiGetAfishaByDate(formatDate(selectedDate)).catch(() => [])
         ]);
-        lines = results[0] || [];
-        bookings = results[1] || [];
-        afishaEvents = results[2] || [];
+        lines = linesResult || [];
+        bookings = bookingsResult || [];
+        afishaEvents = afishaResult || [];
     } catch (err) {
         console.error('[Timeline] Critical fetch error:', err);
     }
 
-    _debugRender(`DATA gen=${thisGen} lines=${lines.length} bookings=${bookings.length} afisha=${afishaEvents.length} stale=${thisGen !== _renderGen}`);
+    console.log('[Timeline] DATA gen=' + thisGen + ' lines=' + lines.length + ' bookings=' + bookings.length + ' afisha=' + (afishaEvents || []).length);
 
     // v7.0: If a newer render started while we were loading data, abort this stale render
     if (thisGen !== _renderGen) {
-        _debugRender(`ABORT gen=${thisGen} (current=${_renderGen})`);
+        console.log('[Timeline] ABORT stale gen=' + thisGen + ' current=' + _renderGen);
         return;
     }
 
-    // v12.6: If lines came back empty (API error / transient failure), retry once after 2s
+    // v12.6: If lines came back empty, retry once after 2s
     if (lines.length === 0 && !AppState._linesRetryScheduled) {
         AppState._linesRetryScheduled = true;
         const retryDateStr = formatDate(selectedDate);
+        console.warn('[Timeline] Lines empty — scheduling retry in 2s');
         setTimeout(() => {
             AppState._linesRetryScheduled = false;
             delete AppState.cachedLines[retryDateStr];
@@ -285,11 +288,8 @@ async function renderTimeline() {
 
     const { start } = getTimeRange(selectedDate);
 
-    // v5.11: Pass line IDs so Quick Stats only counts bookings on existing lines
     const lineIds = lines.map(l => l.id);
     try { updateQuickStats(bookings, lineIds); } catch (e) { console.error('[Timeline] updateQuickStats error:', e); }
-
-    // v19.11: Update room load panel if open
     try { updateRoomLoadPanel(bookings, selectedDate); } catch (e) { console.error('[Timeline] updateRoomLoadPanel error:', e); }
 
     const historyBtn = document.getElementById('historyBtn');
@@ -324,6 +324,8 @@ async function renderTimeline() {
         const hasAssigned = allAfisha.some(ev => ev.line_id);
         renderAfishaLine(container, unassignedAfisha, start, selectedDate, hasAssigned);
     } catch (e) { console.error('[Timeline] renderAfishaLine error:', e); }
+
+    console.log('[Timeline] Rendering ' + lines.length + ' lines...');
 
     lines.forEach(line => {
         try {
@@ -360,6 +362,8 @@ async function renderTimeline() {
         } catch (e) { console.error('[Timeline] Error rendering line:', line?.id, e); }
     });
 
+    console.log('[Timeline] DONE gen=' + thisGen + ' rendered=' + container.querySelectorAll('.timeline-line').length + ' children');
+
     _debugRender(`RENDERED gen=${thisGen} blocks=${container.querySelectorAll('.booking-block').length}`);
 
     document.querySelectorAll('.grid-cell').forEach(cell => {
@@ -388,6 +392,14 @@ async function renderTimeline() {
         renderPendingLine();
     }
 
+    } catch (outerErr) {
+        console.error('[Timeline] CRITICAL renderTimeline error:', outerErr);
+        // Show error to user so we can diagnose
+        const container = document.getElementById('timelineLines');
+        if (container) {
+            container.innerHTML = '<div style="padding:20px;color:#ef4444;font-weight:600">⚠️ Помилка завантаження таймлайну: ' + (outerErr.message || outerErr) + '</div>';
+        }
+    }
 }
 
 // v8.6: Show/hide filter mode warning banner

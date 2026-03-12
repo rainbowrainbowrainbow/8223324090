@@ -19,7 +19,7 @@ const DashboardPage = (() => {
         announcements:  { icon: '📢', title: 'Оголошення', minRole: null },
     };
 
-    let _config = null;
+    let _config = { widgets: [], layout: {}, theme: 'default' };
     let _widgetData = {};
 
     async function init() {
@@ -65,6 +65,7 @@ const DashboardPage = (() => {
             const resp = await fetch('/api/dashboard/config', {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
             });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
             const data = await resp.json();
 
             if (data.success) {
@@ -147,6 +148,7 @@ const DashboardPage = (() => {
             const resp = await fetch(`/api/dashboard/widgets/${type}`, {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
             });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
             const result = await resp.json();
 
             if (result.success) {
@@ -155,7 +157,8 @@ const DashboardPage = (() => {
             } else {
                 container.innerHTML = '<div class="widget-empty">Помилка завантаження</div>';
             }
-        } catch {
+        } catch (err) {
+            console.error(`Widget ${type} load error:`, err);
             container.innerHTML = '<div class="widget-empty">Помилка з\'єднання</div>';
         }
     }
@@ -392,7 +395,7 @@ const DashboardPage = (() => {
             const color = sourceColors[l.source] || '#718096';
             const date = new Date(l.created_at).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
             return `<div class="widget-lead-item">
-                <div class="lead-source-dot" style="background:${color}" title="${l.source || ''}"></div>
+                <div class="lead-source-dot" style="background:${color}" title="${escapeHtml(l.source || '')}"></div>
                 <div class="lead-info">
                     <div class="lead-name">${escapeHtml(l.name || 'Без імені')}</div>
                     <div class="lead-meta">${escapeHtml(l.phone || '')} · ${date}</div>
@@ -518,9 +521,13 @@ const DashboardPage = (() => {
             </div>`;
         }).join('');
 
+        // Remove previous settings modal if open
+        const prev = document.getElementById('settingsOverlay');
+        if (prev) prev.remove();
+
         const overlay = document.createElement('div');
         overlay.className = 'onboarding-overlay';
-        overlay.id = 'onboardingOverlay';
+        overlay.id = 'settingsOverlay';
         overlay.innerHTML = `
             <div class="settings-modal">
                 <div class="settings-modal-header">
@@ -529,7 +536,7 @@ const DashboardPage = (() => {
                 </div>
                 <div class="settings-widget-list" id="settingsWidgetList">${widgetItems}</div>
                 <div class="settings-modal-footer">
-                    <button class="dashboard-btn" onclick="document.getElementById('onboardingOverlay').remove()">Скасувати</button>
+                    <button class="dashboard-btn" onclick="document.getElementById('settingsOverlay').remove()">Скасувати</button>
                     <button class="dashboard-btn primary" onclick="DashboardPage.saveSettings()">Зберегти</button>
                 </div>
             </div>
@@ -606,6 +613,7 @@ const DashboardPage = (() => {
             selected.push('tasks', 'weather');
         }
 
+        if (!_config) _config = { widgets: [], layout: {}, theme: 'default' };
         _config.widgets = selected;
 
         try {
@@ -617,9 +625,11 @@ const DashboardPage = (() => {
                 },
                 body: JSON.stringify({ widgets: selected, layout: {}, theme: 'default' })
             });
-        } catch {}
+        } catch (err) {
+            console.error('Save settings error:', err);
+        }
 
-        const overlay = document.getElementById('onboardingOverlay');
+        const overlay = document.getElementById('settingsOverlay');
         if (overlay) overlay.remove();
 
         renderWidgets();

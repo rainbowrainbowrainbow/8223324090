@@ -8,6 +8,7 @@ const { pool } = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { getDefaultWidgets } = require('../config/roles');
 const { createLogger } = require('../utils/logger');
+const { getKyivDateStr } = require('../services/booking');
 
 const log = createLogger('Dashboard');
 
@@ -84,7 +85,6 @@ router.get('/widgets/:type', async (req, res) => {
             }
 
             case 'bookings_today': {
-                const { getKyivDateStr } = require('../services/booking');
                 const today = getKyivDateStr();
                 const result = await pool.query(`
                     SELECT b.id, b.label as client_name, b.program_name as program,
@@ -98,7 +98,6 @@ router.get('/widgets/:type', async (req, res) => {
             }
 
             case 'my_schedule': {
-                const { getKyivDateStr } = require('../services/booking');
                 const today = getKyivDateStr();
                 const result = await pool.query(`
                     SELECT ss.date, ss.status, ss.shift_start as start_time, ss.shift_end as end_time, ss.note
@@ -126,7 +125,6 @@ router.get('/widgets/:type', async (req, res) => {
             }
 
             case 'quick_stats': {
-                const { getKyivDateStr } = require('../services/booking');
                 const today = getKyivDateStr();
                 const [bookings, tasks, revenue] = await Promise.all([
                     pool.query("SELECT COUNT(*) as count FROM bookings WHERE date = $1 AND status != 'cancelled'", [today]),
@@ -143,7 +141,6 @@ router.get('/widgets/:type', async (req, res) => {
 
             case 'alerts': {
                 // System alerts: overdue tasks, unconfirmed bookings, low stock
-                const { getKyivDateStr } = require('../services/booking');
                 const alertToday = getKyivDateStr();
                 const [overdue, unconfirmed] = await Promise.all([
                     pool.query(`
@@ -177,7 +174,6 @@ router.get('/widgets/:type', async (req, res) => {
             }
 
             case 'finance_today': {
-                const { getKyivDateStr } = require('../services/booking');
                 const finToday = getKyivDateStr();
                 const [revenue, expenses, bookingCount] = await Promise.all([
                     pool.query("SELECT COALESCE(SUM(price), 0) as total FROM bookings WHERE date = $1 AND status = 'confirmed'", [finToday]),
@@ -242,7 +238,6 @@ router.get('/roles', async (req, res) => {
 // GET /api/dashboard/today — aggregate "today" data for quick overview
 router.get('/today', async (req, res) => {
     try {
-        const { getKyivDateStr } = require('../services/booking');
         const today = getKyivDateStr();
 
         const [bookings, tasks, revenue, teamOnline, newLeads] = await Promise.all([
@@ -284,10 +279,10 @@ async function getCachedData(key, ttlSeconds, fetchFn) {
         const freshData = await fetchFn();
         await pool.query(`
             INSERT INTO dashboard_cache (cache_key, data, expires_at)
-            VALUES ($1, $2, NOW() + INTERVAL '${ttlSeconds} seconds')
+            VALUES ($1, $2, NOW() + make_interval(secs => $3))
             ON CONFLICT (cache_key)
-            DO UPDATE SET data = $2, expires_at = NOW() + INTERVAL '${ttlSeconds} seconds'
-        `, [key, JSON.stringify(freshData)]);
+            DO UPDATE SET data = $2, expires_at = NOW() + make_interval(secs => $3)
+        `, [key, JSON.stringify(freshData), ttlSeconds]);
 
         return freshData;
     } catch (err) {

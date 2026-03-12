@@ -126,12 +126,8 @@
             errorEl.textContent = result.error;
             errorEl.classList.remove('hidden');
         } else {
-            // Redirect to dashboard after login
-            if (window.location.pathname !== '/dashboard') {
-                window.location.href = '/dashboard';
-            } else {
-                DashboardPage.init();
-            }
+            // auth.js login() handles redirect; on /dashboard just init
+            DashboardPage.init();
         }
     });
 

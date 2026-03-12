@@ -3745,9 +3745,7 @@ img {
 /* ---- 19. Modal scroll fix on iOS ---- */
 body.modal-open {
     overflow: hidden;
-    position: fixed;
-    width: 100%;
-    /* Prevents body scroll behind modal on iOS */
+    /* position:fixed removed — caused scroll lock after close */
 }
 .modal {
     -webkit-overflow-scrolling: touch;

@@ -280,6 +280,9 @@
     function closeModal() {
         overlay.classList.remove('active');
         document.body.style.overflow = '';
+        document.body.classList.remove('modal-open');
+        document.body.style.top = '';
+        document.body.style.position = '';
         setTimeout(() => {
             form.style.display = '';
             successEl.style.display = 'none';
@@ -988,23 +991,7 @@
         }
     }
 
-    // 2. iOS: prevent body scroll when modal is open
-    var modal = document.getElementById('demoModal');
-    if (modal) {
-        var scrollY = 0;
-        var observer = new MutationObserver(function() {
-            if (modal.style.display !== 'none' && modal.style.display !== '') {
-                scrollY = window.scrollY;
-                document.body.classList.add('modal-open');
-                document.body.style.top = '-' + scrollY + 'px';
-            } else {
-                document.body.classList.remove('modal-open');
-                document.body.style.top = '';
-                window.scrollTo(0, scrollY);
-            }
-        });
-        observer.observe(modal, { attributes: true, attributeFilter: ['style'] });
-    }
+    // 2. iOS: modal scroll fix handled in openModal/closeModal directly
 
     // 3. iOS: fix 100vh issue dynamically
     function setVH() {

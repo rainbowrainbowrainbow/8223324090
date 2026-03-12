@@ -133,6 +133,20 @@ const exportLimiter = createWriteRateLimiter('export', {
     methods: ['GET']
 });
 
+// v25.3: Sensitive endpoint limiters (password change, impersonate)
+const sensitiveActionLimiter = createWriteRateLimiter('sensitive-action', {
+    windowMs: 60000,   // 1 minute
+    max: 10,
+    methods: ['POST', 'PUT', 'PATCH']
+});
+
+// v25.3: Shop buy limiter
+const shopBuyLimiter = createWriteRateLimiter('shop-buy', {
+    windowMs: 60000,
+    max: 20,
+    methods: ['POST']
+});
+
 module.exports = {
     rateLimiter,
     loginRateLimiter,
@@ -141,5 +155,7 @@ module.exports = {
     certCreateLimiter,
     certBatchLimiter,
     createWriteRateLimiter,
-    exportLimiter
+    exportLimiter,
+    sensitiveActionLimiter,
+    shopBuyLimiter
 };

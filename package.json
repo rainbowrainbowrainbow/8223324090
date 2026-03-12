@@ -1,11 +1,16 @@
 {
   "name": "event-genix",
-  "version": "25.2.0",
+  "version": "25.3.0",
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test tests/api.test.js"
+    "dev": "node --watch server.js",
+    "test": "node --test tests/api.test.js",
+    "test:unit": "node --test tests/unit/*.test.js",
+    "db:migrate": "node db/migrate.js",
+    "version:sync": "node scripts/version-sync.js --fix",
+    "health": "curl -s http://localhost:3000/api/health | node -e \"process.stdin.on('data',d=>{const h=JSON.parse(d);console.log(h.status==='ok'?'✅ OK':'❌ '+h.status,h.version,'DB:'+h.database)})\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.75.0",

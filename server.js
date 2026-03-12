@@ -12,7 +12,7 @@ const compression = require('compression');
 // --- Core modules ---
 const { pool, initDatabase } = require('./db');
 const { authenticateToken } = require('./middleware/auth');
-const { rateLimiter, loginRateLimiter } = require('./middleware/rateLimit');
+const { rateLimiter, loginRateLimiter, sensitiveActionLimiter, shopBuyLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
@@ -48,8 +48,11 @@ app.use(cors({
         if (!origin) return cb(null, true);
         const domain = process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost';
         try {
-            const host = new URL(origin).hostname;
-            cb(null, host === domain || host === 'localhost');
+            const url = new URL(origin);
+            // v25.3: Check full origin (host+port) to prevent port-spoofing
+            const allowed = url.hostname === domain ||
+                (url.hostname === 'localhost' && (!url.port || url.port === '3000'));
+            cb(null, allowed);
         } catch { cb(null, false); }
     }
 }));
@@ -100,6 +103,11 @@ app.use('/api', (req, res, next) => {
 
 // Login rate limiter (stricter: 5 attempts per minute)
 app.use('/api/auth/login', loginRateLimiter);
+// v25.3: Rate limiters for sensitive endpoints
+app.use('/api/auth/change-password', sensitiveActionLimiter);
+app.use('/api/auth/impersonate', sensitiveActionLimiter);
+app.use('/api/shop/buy', shopBuyLimiter);
+app.use('/api/gamification/shop/buy', shopBuyLimiter);
 
 // v17.9.0: API audit trail — log all mutating requests by authenticated users
 app.use('/api', apiAudit);

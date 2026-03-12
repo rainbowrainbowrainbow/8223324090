@@ -50,11 +50,6 @@ function canViewHistory() {
     return AppState.currentUser !== null;
 }
 
-// v5.8: Quick Stats Bar — removed in v20.9.1 (redundant with dashboard)
-function updateQuickStats() {
-    // v21.12: Kleshnya widget removed
-}
-
 // ==========================================
 // KLESHNYA FLOATING WIDGET — Futuristic Terminal v11.0.3
 // ==========================================

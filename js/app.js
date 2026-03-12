@@ -1,7 +1,56 @@
 /**
  * app.js - Ініціалізація та обробники подій
- * v5.0: Removed hardcoded credentials, server-side auth
+ * v25.3: Global error handler, offline indicator
  */
+
+// ==========================================
+// GLOBAL ERROR HANDLER (#24)
+// ==========================================
+
+window.onerror = function(msg, src, line, col, err) {
+    const el = document.getElementById('globalErrorBanner');
+    if (el) { el.classList.remove('hidden'); el.querySelector('.error-text').textContent = 'Помилка: ' + (msg || 'невідома'); }
+    console.error('[GlobalError]', msg, src + ':' + line + ':' + col, err);
+    return false;
+};
+window.addEventListener('unhandledrejection', function(e) {
+    console.error('[UnhandledRejection]', e.reason);
+});
+
+// ==========================================
+// OFFLINE INDICATOR (#34)
+// ==========================================
+
+(function() {
+    function createOfflineBanner() {
+        if (document.getElementById('offlineBanner')) return;
+        const banner = document.createElement('div');
+        banner.id = 'offlineBanner';
+        banner.className = 'offline-banner hidden';
+        banner.innerHTML = '<span>⚡ Ви офлайн — зміни зберігатимуться локально</span>';
+        document.body.prepend(banner);
+    }
+    function createErrorBanner() {
+        if (document.getElementById('globalErrorBanner')) return;
+        const banner = document.createElement('div');
+        banner.id = 'globalErrorBanner';
+        banner.className = 'global-error-banner hidden';
+        banner.innerHTML = '<span class="error-text"></span><button onclick="this.parentElement.classList.add(\'hidden\')" style="margin-left:12px;background:none;border:none;color:inherit;cursor:pointer;font-size:16px">&times;</button>';
+        document.body.prepend(banner);
+    }
+    function updateOffline() {
+        const banner = document.getElementById('offlineBanner');
+        if (!banner) return;
+        if (!navigator.onLine) { banner.classList.remove('hidden'); } else { banner.classList.add('hidden'); }
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        createOfflineBanner();
+        createErrorBanner();
+        updateOffline();
+    });
+    window.addEventListener('online', updateOffline);
+    window.addEventListener('offline', updateOffline);
+})();
 
 // ==========================================
 // XSS PROTECTION

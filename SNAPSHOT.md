@@ -3,17 +3,17 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v25.2.0**. package.json: `25.2.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
+Версія **v25.3.0**. package.json: `25.3.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] v25.2.0 — Profile Page Unification + Achievements
-- **package.json**: `"version": "25.2.0"`
+- **Останній коміт**: feat: [claude-code] v25.3.0 — Security Hardening + UX Polish
+- **package.json**: `"version": "25.3.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
 - **origin/main**: v24.0.0
 - **origin/deployed**: v17.4.1
-- **Що нового в v25.2.0**: Profile page — єдина система рендерингу (#mainApp), 7 вкладок (Профіль, Ачивки, Інвентар, Магазин, Рейтинг, Кімната, Квести), фільтр ачивок по категоріях, lazy-load магазину та лідерборду
+- **Що нового в v25.3.0**: Security hardening (JWT_SECRET required in prod, CORS port check, rate limiters), global error handler, offline indicator, focus-visible, tab transitions, skeleton/empty state CSS, apiCall() wrapper, npm scripts
 
 ### Тести
 - **296+ тестів** (api.test.js)

@@ -1,6 +1,6 @@
 /**
  * api.js - Всі API функції (PostgreSQL + localStorage fallback)
- * v5.0: JWT auth token in all requests
+ * v25.3: Unified apiCall wrapper to reduce try/catch duplication
  */
 
 const API_BASE = '/api';
@@ -23,6 +23,34 @@ function handleAuthError(response) {
         return true;
     }
     return false;
+}
+
+/**
+ * v25.3: Unified API call wrapper (#19)
+ * Reduces try/catch + handleAuthError boilerplate across 60+ functions.
+ * @param {string} method - HTTP method
+ * @param {string} url - API path (relative to API_BASE)
+ * @param {object|null} body - Request body (auto-stringified)
+ * @param {object} opts - { fallback: default return on error, raw: return Response }
+ * @returns {Promise<any>}
+ */
+async function apiCall(method, url, body = null, { fallback = null, raw = false } = {}) {
+    try {
+        const isGet = method === 'GET';
+        const opts = { method, headers: getAuthHeaders(!isGet) };
+        if (body && !isGet) opts.body = JSON.stringify(body);
+        const response = await fetch(`${API_BASE}${url}`, opts);
+        if (handleAuthError(response)) return fallback;
+        if (raw) return response;
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            return { success: false, error: errBody.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error(`[API] ${method} ${url}:`, err.message);
+        return fallback;
+    }
 }
 
 async function apiGetBookings(date) {

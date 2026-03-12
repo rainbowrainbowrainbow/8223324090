@@ -31,7 +31,7 @@
    ========================================== */
 
 @media (max-width: 1024px) {
-    .main-content.panel-open { padding-right: 24px; }
+    .main-content.panel-open { margin-right: 0; width: calc(100% - 220px); }
 
     /* v5.35: Panel backdrop — semi-transparent overlay */
     .panel-backdrop:not(.hidden) {

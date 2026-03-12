@@ -405,6 +405,7 @@ router.post('/webhook/facebook', async (req, res) => {
 
                 if (lead) {
                     notifyNewLead(lead).catch(() => {});
+                    try { broadcast('lead:new', { lead }); } catch (e) { /* ok */ }
                     log.info(`New FB lead: ${lead.client_name}`);
                 }
             }
@@ -444,6 +445,7 @@ router.post('/webhook/instagram', async (req, res) => {
 
                 if (lead) {
                     notifyNewLead(lead).catch(() => {});
+                    try { broadcast('lead:new', { lead }); } catch (e) { /* ok */ }
                     log.info(`New IG lead: ig_${senderId}`);
                 }
             }
@@ -486,6 +488,7 @@ router.post('/webhook/viber', async (req, res) => {
 
         if (lead) {
             notifyNewLead(lead).catch(() => {});
+            try { broadcast('lead:new', { lead }); } catch (e) { /* ok */ }
             log.info(`New Viber lead: ${sender?.name}`);
         }
     } catch (err) {

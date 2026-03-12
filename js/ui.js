@@ -277,6 +277,9 @@ function showNotification(message, type = '') {
     }, 3000);
 }
 
+// Alias for showNotification (used by chat-page.js and others)
+const showToast = showNotification;
+
 function handleError(context, error) {
     console.error(`[${context}]`, error);
     showNotification(`Помилка: ${context}`, 'error');

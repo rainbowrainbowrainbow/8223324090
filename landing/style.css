@@ -5,9 +5,9 @@
 
 /* --- DESIGN TOKENS --- */
 :root {
-    --bg:          #07070F;
-    --bg-2:        #0C0C1A;
-    --bg-card:     rgba(14,14,28,0.85);
+    --bg:          #0D0D0D;
+    --bg-2:        #141414;
+    --bg-card:     rgba(22,22,22,0.88);
     --gold:        #D4A843;
     --gold-light:  #F0C96A;
     --gold-dim:    rgba(212,168,67,0.15);
@@ -48,8 +48,7 @@ body {
     line-height: 1.6;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
-    /* Subtle noise texture */
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+
 }
 
 .container {
@@ -2291,11 +2290,11 @@ h1, h2, h3, h4 {
 }
 .orb--2 {
     width: 500px; height: 500px;
-    background: radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(212,168,67,0.06) 0%, transparent 70%);
     top: 10%; right: -120px;
     animation-duration: 25s;
     animation-delay: -8s;
-    opacity: 0.7;
+    opacity: 0.5;
 }
 .orb--3 {
     width: 400px; height: 400px;
@@ -3639,8 +3638,7 @@ button:focus-visible {
 
 /* ---- 18. Image rendering on retina/HDPI screens ---- */
 img {
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: crisp-edges;
+    image-rendering: auto;
 }
 /* Override for photos — they should be smooth */
 .crm-preview__img,
@@ -3677,32 +3675,14 @@ body.modal-open {
    ICON ANIMATIONS v2.0 — Unique per card
    ======================================== */
 
-/* Base: всі іконки "дихають" + великий розмір */
+/* Base: всі іконки */
 .card__icon {
-    font-size: 44px !important;
-    margin-bottom: 20px;
+    font-size: 36px !important;
+    margin-bottom: 16px;
     display: inline-block;
     line-height: 1;
     transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1), filter 0.3s ease;
-    will-change: transform;
     position: relative;
-}
-
-/* Breathing glow ring behind icon */
-.card__icon::after {
-    content: '';
-    position: absolute;
-    inset: -8px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(212,168,67,0.15) 0%, transparent 70%);
-    opacity: 0;
-    transition: opacity 0.3s, transform 0.4s;
-    transform: scale(0.8);
-    z-index: -1;
-}
-.card:hover .card__icon::after {
-    opacity: 1;
-    transform: scale(1.2);
 }
 
 /* Generic hover — spring bounce */

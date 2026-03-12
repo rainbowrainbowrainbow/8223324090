@@ -91,6 +91,12 @@
     padding: 8px;
     gap: 2px;
     flex: 1;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.sidebar-links.rendered {
+    opacity: 1;
 }
 
 .sidebar-links .nav-link {
@@ -247,6 +253,17 @@
     height: 1px;
     background: var(--gray-100);
     margin: 8px 0;
+}
+
+/* Timeline-specific action buttons section */
+.sidebar-actions {
+    padding: 0 8px 8px;
+}
+
+.sidebar-actions .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 /* Sidebar collapse button (desktop) */

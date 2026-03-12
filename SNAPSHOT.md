@@ -3,17 +3,17 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v24.1.0**. package.json: `24.1.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
+Версія **v24.2.0**. package.json: `24.2.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] v24.1.0 — Dashboard v24 QA + Polish
-- **package.json**: `"version": "24.1.0"`
+- **Останній коміт**: feat: [claude-code] v24.2.0 — Sidebar Rebuild
+- **package.json**: `"version": "24.2.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
 - **origin/main**: v24.0.0
 - **origin/deployed**: v17.4.1
-- **Що нового в v24.1.0**: QA фікси (API endpoints, z-index, task counter, F5 banner) + Polish (glassmorphism FAB, stagger анімації, dark mode, mobile adaptation)
+- **Що нового в v24.2.0**: Sidebar rebuild — єдине джерело sidebar.js, логічні блоки, SIDEBAR_ACCESS матриця, smooth render
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -26,7 +26,18 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v24.1.0)
+## Останні зміни (v22.4.0 → v24.2.0)
+
+### v24.2.0 (Claude Code, 12.03.2026)
+- **Sidebar Rebuild** — єдине джерело sidebar.js для всіх 24 сторінок (видалено hardcoded nav з index.html)
+- **NAV_ITEMS** — 4 логічні блоки: Щоденне (6), Управління (6), Продукт (3), Система (4)
+- **SIDEBAR_ACCESS** — матриця доступу: кожна вкладка з переліком дозволених ролей
+- **Секції та розділювачі** — `type: 'section'` і `type: 'divider'` в NAV_ITEMS
+- **Порожні секції** — автоматичне приховування блоків без доступних для ролі пунктів
+- **Smooth render** — `.sidebar-links { opacity: 0 → 1 }` для запобігання стрибків
+- **roleSwitched** — sidebar перебудовується автоматично при зміні тест-ролі
+- **Emoji іконки** — замість літерних абревіатур (🏠📅✅💬📦🎓 тощо)
+- **Timeline actions** — кнопки Історія/Афіша/Сертифікати/Налаштування виведені в окремий `#sidebarActions` блок
 
 ### v24.1.0 (Claude Code, 12.03.2026)
 - **QA Fixes**

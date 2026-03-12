@@ -1305,13 +1305,17 @@
     if (!phone) return;
     phone.addEventListener('input', function() {
         var v = this.value.replace(/\D/g,'');
-        if (v.startsWith('380')) {
-            this.value = '+' + v.slice(0,12);
-        } else if (v.startsWith('0')) {
-            this.value = '+38' + v.slice(0,10);
-        } else if (v.length > 0) {
-            this.value = '+' + v.slice(0,12);
-        }
+        if (v.startsWith('380')) v = v.slice(0,12);
+        else if (v.startsWith('0')) v = '38' + v.slice(0,10);
+        else if (v.length > 0) v = v.slice(0,12);
+        // Format: +380 XX XXX XX XX
+        var f = '+';
+        if (v.length > 0) f += v.slice(0,3);
+        if (v.length > 3) f += ' ' + v.slice(3,5);
+        if (v.length > 5) f += ' ' + v.slice(5,8);
+        if (v.length > 8) f += ' ' + v.slice(8,10);
+        if (v.length > 10) f += ' ' + v.slice(10,12);
+        this.value = f;
     });
     phone.addEventListener('focus', function() {
         if (!this.value) this.value = '+380';

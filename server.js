@@ -17,7 +17,7 @@ const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
@@ -92,7 +92,7 @@ app.use('/api', rateLimiter);
 
 // Auth middleware: protect all API endpoints except public ones
 app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path === '/version' || req.path.startsWith('/telegram/webhook') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || req.path === '/demo/login' || req.path === '/demo/scenarios' || req.path === '/packages' || req.path === '/status/public') {
+    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path === '/version' || req.path.startsWith('/telegram/webhook') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || req.path === '/demo/login' || req.path === '/demo/scenarios' || req.path === '/packages' || req.path === '/status/public' || req.path.startsWith('/leads/webhook/')) {
         return next();
     }
     authenticateToken(req, res, next);
@@ -118,6 +118,7 @@ app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/task-templates', require('./routes/task-templates'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/certificates', require('./routes/certificates'));
+app.use('/api/recurring', require('./routes/recurring'));
 app.use('/api/points', require('./routes/points'));
 app.use('/api/kleshnya', require('./routes/kleshnya'));
 app.use('/api/designs', require('./routes/designs'));
@@ -148,9 +149,11 @@ app.use('/api/training', require('./routes/training'));
 app.use('/api/sales', require('./routes/sales'));
 app.use('/api/page-statuses', require('./routes/page-statuses'));
 app.use('/api/leads', require('./routes/leads'));
+app.use('/api/landing', require('./routes/landing'));
 app.use('/api/scripts', require('./routes/scripts'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/guardian', require('./routes/guardian'));
+app.use('/api/agents', require('./routes/agents'));
 app.use('/api/summary', require('./routes/summary'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/gamification', require('./routes/gamification'));
@@ -170,6 +173,9 @@ app.use('/api/quests', require('./routes/quests'));
 // v22.10.0: Gamification v3 — Quiz, Streaks
 app.use('/api/quiz', require('./routes/quiz'));
 app.use('/api/streaks', require('./routes/streaks'));
+
+// OmniClaw — omnichannel communication
+app.use('/api/omni', require('./routes/omnichannel'));
 
 // Analytics dashboard (revenue, programs, load, trends) — must be before settingsRouter
 app.use('/api/stats', require('./routes/stats'));
@@ -270,6 +276,9 @@ app.get('/art', (req, res) => {
 });
 app.get('/art-director', (req, res) => res.redirect(301, '/art'));
 app.get('/art-director.html', (req, res) => res.redirect(301, '/art'));
+app.get('/checkin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'checkin.html'));
+});
 app.get('/demo', (req, res) => {
     res.sendFile(path.join(__dirname, 'demo.html'));
 });
@@ -296,10 +305,7 @@ app.use('/landing', express.static(path.join(__dirname, 'landing')));
 app.get('/landing', (req, res) => {
     res.sendFile(path.join(__dirname, 'landing', 'index.html'));
 });
-// v22.4.0: profile, shop, game pages
-app.get('/profile', (req, res) => {
-    res.sendFile(path.join(__dirname, 'profile.html'));
-});
+// v22.4.0: shop, game pages
 app.get('/shop', (req, res) => {
     res.sendFile(path.join(__dirname, 'shop.html'));
 });
@@ -312,6 +318,11 @@ app.get('/quiz', (req, res) => {
 });
 app.get('/room', (req, res) => {
     res.sendFile(path.join(__dirname, 'room.html'));
+});
+
+// v23.2.0: OmniClaw — omnichannel inbox
+app.get('/omni', (req, res) => {
+    res.sendFile(path.join(__dirname, 'omni.html'));
 });
 
 // SPA fallback (must be last)
@@ -339,9 +350,11 @@ process.on('uncaughtException', (err) => {
 let server;
 const schedulerIntervals = [];
 
-// v20.5.0: Run migrations FIRST (they create tables like warehouse_stock),
-// then initDatabase (which adds columns/indexes and seeds data).
-runMigrations(pool).then(() => {
+// v22.20.1: Two-phase init — initDatabase creates base tables (indexes are safe via safeQuery),
+// then migrations add columns/constraints, then initDatabase again for remaining indexes/seeds.
+initDatabase().then(() => {
+    return runMigrations(pool);
+}).then(() => {
     return initDatabase();
 }).catch(err => {
     log.error('Failed to initialize database, exiting', err);
@@ -435,6 +448,10 @@ runMigrations(pool).then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkExpiredChatMessages', checkExpiredChatMessages, { dedup: null }), 60000));
         // v19.15: Telegram notification retry queue (every 30s)
         schedulerIntervals.push(setInterval(() => processRetryQueue().catch(err => log.error('Retry queue error', err)), 30000));
+        // v22.18: Auto review requests (hourly) + Team pulse reminder (daily) + Auto ordering (hourly)
+        schedulerIntervals.push(setInterval(guardScheduler('checkAutoReviewRequests', checkAutoReviewRequests, { dedup: 'hourly' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkTeamPulseReminder', checkTeamPulseReminder, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkAutoOrdering', checkAutoOrdering, { dedup: 'hourly' }), 60000));
         // v20.4.0: Training prompts (Mon 09:00 Kyiv) + summary (Fri 17:00 Kyiv)
         async function checkTrainingPrompts() {
             const { getKyivTimeStr, getKyivDate } = require('./services/booking');
@@ -471,7 +488,16 @@ runMigrations(pool).then(() => {
         }
         schedulerIntervals.push(setInterval(guardScheduler('flushGuardianLearn', flushGuardianLearn), 5 * 60 * 1000));
 
-        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn');
+        // Contour 2: Agent activity tracking — parse git log every 30 min
+        async function syncAgentActivities() {
+            const { parseGitLog } = require('./services/agentTracker');
+            await parseGitLog(24);
+        }
+        schedulerIntervals.push(setInterval(guardScheduler('syncAgentActivities', syncAgentActivities, { dedup: 'hourly' }), 30 * 60 * 1000));
+        // Run initial sync on startup
+        syncAgentActivities().catch(err => log.error('Initial agent sync error', err.message));
+
+        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn + agent-tracker');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

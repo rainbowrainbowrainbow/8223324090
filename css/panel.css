@@ -784,3 +784,116 @@
     color: var(--gray-600);
     line-height: 1.5;
 }
+
+/* v24.3.1: Smart hyperlinks customer block */
+.booking-customer-info--smart .customer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.booking-customer-info--smart .customer-crm-link {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary);
+    text-decoration: none;
+    transition: color var(--speed-fast) var(--ease-smooth);
+}
+
+.booking-customer-info--smart .customer-crm-link:hover {
+    color: var(--primary-dark);
+    text-decoration: underline;
+}
+
+.customer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 4px;
+    border-radius: 6px;
+    transition: background var(--speed-fast) var(--ease-smooth);
+    position: relative;
+}
+
+.customer-row:hover {
+    background: rgba(0,0,0,0.04);
+}
+
+.customer-row-icon {
+    font-size: 14px;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.customer-link {
+    color: var(--gray-700);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    transition: color var(--speed-fast) var(--ease-smooth);
+}
+
+.customer-link:hover {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.customer-link--crm {
+    color: var(--primary-dark);
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.customer-row span {
+    font-size: 13px;
+    color: var(--gray-600);
+}
+
+.customer-age {
+    color: var(--gray-400);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.customer-row-actions {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity var(--speed-fast) var(--ease-smooth);
+}
+
+.customer-row:hover .customer-row-actions {
+    opacity: 1;
+}
+
+.customer-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: var(--gray-100);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    text-decoration: none;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    color: inherit;
+}
+
+.customer-action-btn:hover {
+    background: var(--primary-50);
+    transform: scale(1.1);
+}
+
+.customer-row--stats {
+    margin-top: 4px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--gray-200);
+}

@@ -382,14 +382,82 @@ body.dark-mode .confirm-cancel:hover {
 .booking-detail-row {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     padding: 12px 0;
     border-bottom: 1px solid var(--gray-100);
     font-size: var(--font-sm);
+    position: relative;
 }
 
 .booking-detail-row:last-child { border-bottom: none; }
 .booking-detail-row .label { color: var(--gray-500); }
 .booking-detail-row .value { font-weight: 700; color: var(--gray-800); }
+
+/* v24.3.1: Copyable detail rows */
+.booking-detail-row--copyable {
+    border-radius: 6px;
+    padding: 12px 4px;
+    transition: background var(--speed-fast) var(--ease-smooth);
+    cursor: default;
+}
+
+.booking-detail-row--copyable:hover {
+    background: var(--gray-50);
+}
+
+.detail-copy-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: var(--gray-100);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    flex-shrink: 0;
+    margin-left: 8px;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.booking-detail-row--copyable:hover .detail-copy-btn {
+    display: inline-flex;
+}
+
+.detail-copy-btn:hover {
+    background: var(--primary-50);
+    transform: scale(1.1);
+}
+
+/* Copy-all summary row */
+.booking-detail-row--summary {
+    justify-content: center;
+    border-bottom: none;
+    padding: 8px 0 4px;
+}
+
+.detail-copy-summary-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gray-500);
+    font-family: inherit;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.detail-copy-summary-btn:hover {
+    background: var(--primary-50);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+}
 
 .booking-actions { margin-top: 24px; }
 

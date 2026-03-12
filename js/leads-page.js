@@ -13,12 +13,20 @@ const STATUS_MAP = {
 };
 
 const SOURCE_MAP = {
-    instagram: '🟢 Instagram',
-    google: '🔍 Google',
+    telegram:       '🔵 Telegram',
+    facebook:       '🔷 Facebook',
+    instagram:      '🟣 Instagram',
+    viber:          '🟢 Viber',
+    tiktok:         '⚫ TikTok',
+    turbo:          '🟠 Turbo',
+    bnderoga:       '🟡 BnD',
+    google:         '🔍 Google',
     recommendation: '🤝 Рекомендація',
-    site: '🌐 Сайт',
-    phone: '📞 Телефон',
-    'walk-in': '🚶 Прийшли'
+    site:           '🌐 Сайт',
+    phone:          '📞 Телефон',
+    'walk-in':      '🚶 Прийшли',
+    manual:         '✏️ Ручний',
+    universal:      '🌐 Universal'
 };
 
 let currentFilter = '';
@@ -50,8 +58,8 @@ async function apiFetch(url, opts = {}) {
 document.addEventListener('DOMContentLoaded', async () => {
     if (!getToken()) { window.location.href = '/'; return; }
 
-    // Dark mode — use body.dark-mode class (consistent with dark-mode.css)
-    const saved = localStorage.getItem('darkMode');
+    // Dark mode — use pzp_dark_mode key (consistent with config.js)
+    const saved = localStorage.getItem('pzp_dark_mode');
     if (saved === 'true' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         document.body.classList.add('dark-mode');
     }

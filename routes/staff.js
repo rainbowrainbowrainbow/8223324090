@@ -37,6 +37,7 @@ const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { createLogger } = require('../utils/logger');
 
+const { requireRole } = require('../middleware/auth');
 const log = createLogger('Staff');
 
 const STATUS_UK = { working: 'Робочий', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний', remote: 'Віддалено' };
@@ -135,7 +136,7 @@ router.get('/schedule', async (req, res) => {
 });
 
 // PUT /api/staff/schedule — upsert a single schedule entry
-router.put('/schedule', async (req, res) => {
+router.put('/schedule', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
     try {
         const { staffId, date, shiftStart, shiftEnd, status, note } = req.body;
         if (!staffId || !date) {
@@ -164,7 +165,7 @@ router.put('/schedule', async (req, res) => {
  * Example: set a whole week for one person, or one day for all animators.
  * Returns count of upserted entries.
  */
-router.post('/schedule/bulk', async (req, res) => {
+router.post('/schedule/bulk', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
     try {
         const { entries } = req.body;
         if (!Array.isArray(entries) || entries.length === 0) {
@@ -202,7 +203,7 @@ router.post('/schedule/bulk', async (req, res) => {
  * Copies 7 days of schedule. Optional department filter.
  * Existing entries in target week are overwritten.
  */
-router.post('/schedule/copy-week', async (req, res) => {
+router.post('/schedule/copy-week', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'), async (req, res) => {
     try {
         const { fromMonday, toMonday, department } = req.body;
         if (!fromMonday || !toMonday) {
@@ -380,7 +381,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/staff — create new employee
 // LLM HINT: telegramUsername is optional — used for @-mentions in schedule notifications
-router.post('/', async (req, res) => {
+router.post('/', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
     try {
         const { name, department, position, phone, hireDate, color, telegramUsername } = req.body;
         if (!name || !department || !position) {
@@ -400,7 +401,7 @@ router.post('/', async (req, res) => {
 
 // PUT /api/staff/:id — update employee
 // LLM HINT: telegramUsername — set to Telegram @username (without @) for schedule notifications
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
     try {
         const { name, department, position, phone, hireDate, color, isActive, telegramUsername } = req.body;
         // Only update telegram_username if explicitly passed (even empty string clears it)
@@ -423,13 +424,123 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/staff/:id — remove employee
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
     try {
         await pool.query('DELETE FROM staff WHERE id=$1', [req.params.id]);
         res.json({ success: true });
     } catch (err) {
         log.error('DELETE /staff error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// ==========================================
+// FACE RECOGNITION CHECK-IN (v22.18)
+// ==========================================
+
+// GET /api/staff/face-descriptors — all registered face descriptors
+router.get('/face-descriptors', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT sfd.staff_id, s.name, sfd.descriptor
+            FROM staff_face_descriptors sfd
+            JOIN staff s ON s.id = sfd.staff_id
+            WHERE s.is_active = true
+        `);
+        res.json(result.rows.map(r => ({
+            staffId: r.staff_id,
+            name: r.name,
+            descriptor: r.descriptor
+        })));
+    } catch (err) {
+        if (err.message.includes('does not exist')) return res.json([]);
+        log.error('GET /face-descriptors error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/staff/:id/face-descriptor — register face descriptor for staff
+router.post('/:id/face-descriptor', async (req, res) => {
+    try {
+        const staffId = parseInt(req.params.id);
+        const { descriptor } = req.body;
+        if (!descriptor || !Array.isArray(descriptor) || descriptor.length !== 128) {
+            return res.status(400).json({ error: 'Invalid descriptor (expected 128-float array)' });
+        }
+        await pool.query(
+            `INSERT INTO staff_face_descriptors (staff_id, descriptor)
+             VALUES ($1, $2)
+             ON CONFLICT (staff_id) DO UPDATE SET descriptor = $2`,
+            [staffId, JSON.stringify(descriptor)]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        log.error('POST /face-descriptor error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/staff/checkin — record face-based check-in
+router.post('/checkin', async (req, res) => {
+    try {
+        const { staffId, method } = req.body;
+        if (!staffId) return res.status(400).json({ error: 'staffId required' });
+
+        const result = await pool.query(
+            `INSERT INTO staff_checkins (staff_id, date, check_in, method)
+             VALUES ($1, CURRENT_DATE, NOW(), $2)
+             ON CONFLICT (staff_id, date) DO UPDATE SET check_in = COALESCE(staff_checkins.check_in, NOW())
+             RETURNING *`,
+            [staffId, method || 'face']
+        );
+        const staff = await pool.query('SELECT name FROM staff WHERE id = $1', [staffId]);
+        const name = staff.rows[0]?.name || 'Unknown';
+        log.info(`Check-in: ${name} (staff #${staffId}) via ${method || 'face'}`);
+        res.json({ success: true, checkin: result.rows[0], staffName: name });
+    } catch (err) {
+        log.error('POST /checkin error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/staff/checkout — record check-out
+router.post('/checkout', async (req, res) => {
+    try {
+        const { staffId } = req.body;
+        if (!staffId) return res.status(400).json({ error: 'staffId required' });
+
+        const result = await pool.query(
+            `UPDATE staff_checkins SET check_out = NOW()
+             WHERE staff_id = $1 AND date = CURRENT_DATE
+             RETURNING *`,
+            [staffId]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'No check-in found for today' });
+        }
+        res.json({ success: true, checkin: result.rows[0] });
+    } catch (err) {
+        log.error('POST /checkout error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/staff/checkins — today's check-ins
+router.get('/checkins', async (req, res) => {
+    try {
+        const date = req.query.date || new Date().toISOString().split('T')[0];
+        const result = await pool.query(`
+            SELECT sc.*, s.name AS staff_name
+            FROM staff_checkins sc
+            JOIN staff s ON s.id = sc.staff_id
+            WHERE sc.date = $1
+            ORDER BY sc.check_in
+        `, [date]);
+        res.json(result.rows);
+    } catch (err) {
+        if (err.message.includes('does not exist')) return res.json([]);
+        log.error('GET /checkins error', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

@@ -6,13 +6,22 @@
     <title>Event Genix | Командний чат</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=22.16.0">
-    <link rel="stylesheet" href="css/layout.css?v=22.16.0">
-    <link rel="stylesheet" href="css/pages.css?v=22.16.0">
-    <link rel="stylesheet" href="css/modals.css?v=22.16.0">
-    <link rel="stylesheet" href="css/chat.css?v=22.16.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=22.16.0">
-    <link rel="stylesheet" href="css/responsive.css?v=22.16.0">
+    <link rel="stylesheet" href="css/base.css?v=24.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=24.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=24.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=24.3.0">
+    <link rel="stylesheet" href="css/chat.css?v=24.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=24.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=24.3.0">
+    <link rel="stylesheet" href="css/base.css?v=24.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=24.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=24.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=24.3.0">
+    <link rel="stylesheet" href="css/chat.css?v=24.3.0">
+    <link rel="stylesheet" href="css/agents.css?v=24.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=24.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=24.3.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=24.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -158,6 +167,13 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                             <span class="guardian-log-badge" id="guardianLogBadge" style="display:none">0</span>
                         </button>
+                        <button class="guardian-watch-analytics-btn" id="guardianAnalyticsBtn" title="Guardian Analytics" style="display:none">
+                            📈
+                        </button>
+                        <div class="guardian-health-indicator" id="guardianHealthIndicator" title="Здоров'я каналу">
+                            <span class="guardian-health-dot" id="guardianHealthDot">🟢</span>
+                            <span class="guardian-health-score" id="guardianHealthScore">100</span>
+                        </div>
                     </div>
 
                     <!-- Guardian digest panel (available to ALL users) -->
@@ -184,6 +200,102 @@
                         </div>
                         <div class="guardian-log-entries" id="guardianLogEntries">
                             <div class="guardian-log-empty">Немає подій</div>
+                        </div>
+                    </div>
+
+                    <!-- Guardian Analytics Panel (admin only) -->
+                    <div class="guardian-analytics-panel" id="guardianAnalyticsPanel" style="display:none">
+                        <div class="guardian-analytics-header">
+                            <span>📊 Guardian Analytics</span>
+                            <div class="guardian-analytics-tabs">
+                                <button class="guardian-tab active" data-tab="overview">Огляд</button>
+                                <button class="guardian-tab" data-tab="health">Здоров'я</button>
+                                <button class="guardian-tab" data-tab="mood">Настрій</button>
+                                <button class="guardian-tab" data-tab="heatmap">Активність</button>
+                                <button class="guardian-tab" data-tab="trust">Довіра</button>
+                            </div>
+                            <button class="guardian-analytics-close" id="guardianAnalyticsClose">&times;</button>
+                        </div>
+                        <div class="guardian-analytics-body" id="guardianAnalyticsBody">
+                            <!-- Tab: Overview -->
+                            <div class="guardian-analytics-tab-content active" id="guardianTabOverview">
+                                <div class="guardian-overview-grid" id="guardianOverviewGrid">
+                                    <!-- Populated by JS -->
+                                </div>
+                            </div>
+                            <!-- Tab: Health -->
+                            <div class="guardian-analytics-tab-content" id="guardianTabHealth">
+                                <div class="guardian-health-channels" id="guardianHealthChannels">
+                                    <!-- Channel health cards -->
+                                </div>
+                                <div class="guardian-health-chart" id="guardianHealthChart">
+                                    <!-- Health trend chart (canvas) -->
+                                    <canvas id="guardianHealthCanvas" width="600" height="200"></canvas>
+                                </div>
+                            </div>
+                            <!-- Tab: Mood -->
+                            <div class="guardian-analytics-tab-content" id="guardianTabMood">
+                                <div class="guardian-mood-summary" id="guardianMoodSummary">
+                                    <!-- Mood donut/bar -->
+                                </div>
+                                <div class="guardian-mood-timeline" id="guardianMoodTimeline">
+                                    <!-- Mood over time chart -->
+                                    <canvas id="guardianMoodCanvas" width="600" height="200"></canvas>
+                                </div>
+                                <div class="guardian-mood-users" id="guardianMoodUsers">
+                                    <!-- Per-user mood -->
+                                </div>
+                            </div>
+                            <!-- Tab: Heatmap -->
+                            <div class="guardian-analytics-tab-content" id="guardianTabHeatmap">
+                                <div class="guardian-heatmap-grid" id="guardianHeatmapGrid">
+                                    <!-- Activity heatmap (7x24 grid) -->
+                                </div>
+                                <div class="guardian-heatmap-legend" id="guardianHeatmapLegend"></div>
+                            </div>
+                            <!-- Tab: Trust -->
+                            <div class="guardian-analytics-tab-content" id="guardianTabTrust">
+                                <div class="guardian-trust-list" id="guardianTrustList">
+                                    <!-- User trust scores -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Contour 2: Agent Status Bar -->
+                    <div class="agent-status-bar" id="agentStatusBar" style="display:none">
+                        <div class="agent-status-items" id="agentStatusItems">
+                            <!-- Filled by JS -->
+                        </div>
+                        <div class="agent-status-actions">
+                            <button class="agent-status-action-btn" id="agentFeedToggle" title="Стрічка активності">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+                            </button>
+                            <button class="agent-status-action-btn" id="agentSyncBtn" title="Синхронізувати git">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Contour 2: Agent Activity Feed panel -->
+                    <div class="agent-feed-panel" id="agentFeedPanel" style="display:none">
+                        <div class="agent-feed-header">
+                            <span>🤖 Стрічка активності агентів</span>
+                            <div class="agent-feed-filters">
+                                <button class="agent-feed-filter active" data-agent="all">Всі</button>
+                                <button class="agent-feed-filter" data-agent="claude-code">🤖 Claude</button>
+                                <button class="agent-feed-filter" data-agent="kleshnya">🦀 Клешня</button>
+                                <button class="agent-feed-filter" data-agent="anthropic">🧠 Anthropic</button>
+                            </div>
+                            <button class="agent-feed-close" id="agentFeedClose">&times;</button>
+                        </div>
+                        <div class="agent-feed-entries" id="agentFeedEntries">
+                            <div class="agent-feed-loading">Завантаження...</div>
+                        </div>
+                        <div class="agent-feed-summary" id="agentFeedSummary" style="display:none">
+                            <div class="agent-feed-summary-title">📊 Саммарі за сьогодні</div>
+                            <div class="agent-feed-summary-content" id="agentFeedSummaryContent"></div>
+                            <button class="agent-feed-summary-refresh" id="agentSummaryRefresh">🔄 Оновити саммарі</button>
                         </div>
                     </div>
 
@@ -230,6 +342,10 @@
                             <button class="chat-reply-close" id="chatFilePreviewClose">&times;</button>
                         </div>
                         <input type="file" id="chatFileInput" style="display:none" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.mp3,.mp4,.ogg,.wav,.webm">
+                        <!-- Guardian command suggestions -->
+                        <div class="guardian-cmd-suggestions" id="guardianCmdSuggestions" style="display:none">
+                            <div class="guardian-cmd-list" id="guardianCmdList"></div>
+                        </div>
                         <div class="chat-input-row">
                             <button class="chat-input-icon-btn" id="chatFileBtn" title="Прикріпити файл">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
@@ -404,12 +520,22 @@
         </div>
     </div>
 
-    <script src="js/config.js?v=22.16.0"></script>
-    <script src="js/api.js?v=22.16.0"></script>
-    <script src="js/auth.js?v=22.16.0"></script>
-    <script src="js/components/sidebar.js?v=22.16.0"></script>
+    <script src="js/config.js?v=24.3.0"></script>
+    <script src="js/api.js?v=24.3.0"></script>
+    <script src="js/auth.js?v=24.3.0"></script>
+    <script src="js/components/sidebar.js?v=24.3.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=22.16.0"></script>
-    <script src="js/chat-page.js?v=22.16.0"></script>
+    <script src="js/ws.js?v=24.3.0"></script>
+    <script src="js/chat-page.js?v=24.3.0"></script>
+    <script src="js/config.js?v=24.3.0"></script>
+    <script src="js/api.js?v=24.3.0"></script>
+    <script src="js/auth.js?v=24.3.0"></script>
+    <script src="js/ui.js?v=24.3.0"></script>
+    <script src="js/components/sidebar.js?v=24.3.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/ws.js?v=24.3.0"></script>
+    <script src="js/chat-page.js?v=24.3.0"></script>
+    <script src="js/agents-panel.js?v=24.3.0"></script>
+    <script src="js/role-panel.js?v=24.3.0"></script>
 </body>
 </html>

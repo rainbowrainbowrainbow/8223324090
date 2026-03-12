@@ -1,0 +1,346 @@
+/* css/agents.css — Contour 2: Agent Status Bar + Activity Feed */
+
+/* ==========================================
+   AGENT STATUS BAR
+   ========================================== */
+
+.agent-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: linear-gradient(135deg, rgba(92, 61, 153, 0.08), rgba(139, 92, 246, 0.05));
+    border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+    font-size: 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.agent-status-bar::-webkit-scrollbar { display: none; }
+
+.agent-status-items {
+    display: flex;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.agent-status-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.6);
+    cursor: default;
+    transition: background 0.2s;
+}
+
+.agent-status-item:hover {
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.agent-status-dot { font-size: 8px; }
+.agent-status-icon { font-size: 14px; }
+
+.agent-status-name {
+    font-weight: 600;
+    color: var(--text-primary, #1a1a2e);
+    font-size: 11px;
+}
+
+.agent-status-summary {
+    color: var(--text-secondary, #6b7280);
+    font-size: 11px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.agent-status-empty {
+    color: var(--text-secondary, #6b7280);
+    font-style: italic;
+}
+
+.agent-status-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.agent-status-action-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: rgba(139, 92, 246, 0.1);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary, #7c3aed);
+    transition: all 0.2s;
+}
+
+.agent-status-action-btn:hover {
+    background: rgba(139, 92, 246, 0.2);
+    transform: scale(1.05);
+}
+
+.agent-status-action-btn.spinning svg {
+    animation: agent-spin 1s linear infinite;
+}
+
+@keyframes agent-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ==========================================
+   AGENT ACTIVITY FEED PANEL
+   ========================================== */
+
+.agent-feed-panel {
+    background: var(--bg-card, #ffffff);
+    border-bottom: 2px solid rgba(139, 92, 246, 0.2);
+    max-height: 400px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.agent-feed-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, rgba(92, 61, 153, 0.1), rgba(139, 92, 246, 0.05));
+    border-bottom: 1px solid rgba(139, 92, 246, 0.1);
+    font-size: 13px;
+    font-weight: 600;
+    flex-wrap: wrap;
+}
+
+.agent-feed-filters {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.agent-feed-filter {
+    padding: 2px 8px;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    background: transparent;
+    border-radius: 10px;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--text-secondary, #6b7280);
+    transition: all 0.2s;
+}
+
+.agent-feed-filter:hover,
+.agent-feed-filter.active {
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--primary, #7c3aed);
+    border-color: rgba(139, 92, 246, 0.4);
+}
+
+.agent-feed-close {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--text-secondary, #6b7280);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.agent-feed-close:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.agent-feed-entries {
+    flex: 1;
+    overflow-y: auto;
+    max-height: 250px;
+    padding: 4px 0;
+}
+
+.agent-feed-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    transition: background 0.15s;
+}
+
+.agent-feed-entry:hover {
+    background: rgba(139, 92, 246, 0.03);
+}
+
+.agent-feed-time {
+    font-size: 10px;
+    color: var(--text-secondary, #9ca3af);
+    min-width: 80px;
+    flex-shrink: 0;
+    padding-top: 2px;
+}
+
+.agent-feed-content {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.agent-feed-icon { font-size: 13px; }
+.agent-feed-type { font-size: 12px; }
+
+.agent-feed-tag {
+    font-weight: 600;
+    color: var(--primary, #7c3aed);
+    font-size: 11px;
+}
+
+.agent-feed-msg {
+    color: var(--text-primary, #1a1a2e);
+}
+
+.agent-feed-diff {
+    font-size: 10px;
+    color: var(--text-secondary, #9ca3af);
+    font-style: italic;
+}
+
+.agent-feed-empty,
+.agent-feed-loading {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-secondary, #9ca3af);
+    font-size: 13px;
+}
+
+/* Summary section */
+.agent-feed-summary {
+    padding: 10px 12px;
+    border-top: 1px solid rgba(139, 92, 246, 0.15);
+    background: rgba(139, 92, 246, 0.03);
+}
+
+.agent-feed-summary-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.agent-feed-summary-content {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-primary, #1a1a2e);
+    max-height: 100px;
+    overflow-y: auto;
+}
+
+.agent-feed-summary-refresh {
+    margin-top: 8px;
+    padding: 4px 12px;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    background: transparent;
+    border-radius: 8px;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--primary, #7c3aed);
+    transition: all 0.2s;
+}
+
+.agent-feed-summary-refresh:hover {
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.agent-feed-summary-refresh:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ==========================================
+   DARK MODE
+   ========================================== */
+
+.dark-mode .agent-status-bar {
+    background: linear-gradient(135deg, rgba(92, 61, 153, 0.15), rgba(139, 92, 246, 0.08));
+    border-bottom-color: rgba(139, 92, 246, 0.2);
+}
+
+.dark-mode .agent-status-item {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.dark-mode .agent-status-item:hover {
+    background: rgba(139, 92, 246, 0.15);
+}
+
+.dark-mode .agent-status-name {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.dark-mode .agent-status-summary {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.dark-mode .agent-status-action-btn {
+    background: rgba(139, 92, 246, 0.15);
+    color: #a78bfa;
+}
+
+.dark-mode .agent-feed-panel {
+    background: var(--bg-card, #1a1a2e);
+    border-bottom-color: rgba(139, 92, 246, 0.3);
+}
+
+.dark-mode .agent-feed-header {
+    background: linear-gradient(135deg, rgba(92, 61, 153, 0.2), rgba(139, 92, 246, 0.1));
+}
+
+.dark-mode .agent-feed-entry {
+    border-bottom-color: rgba(255, 255, 255, 0.04);
+}
+
+.dark-mode .agent-feed-entry:hover {
+    background: rgba(139, 92, 246, 0.08);
+}
+
+.dark-mode .agent-feed-tag {
+    color: #a78bfa;
+}
+
+.dark-mode .agent-feed-msg {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.dark-mode .agent-feed-summary {
+    background: rgba(139, 92, 246, 0.08);
+    border-top-color: rgba(139, 92, 246, 0.2);
+}
+
+.dark-mode .agent-feed-summary-content {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* ==========================================
+   RESPONSIVE
+   ========================================== */
+
+@media (max-width: 768px) {
+    .agent-status-summary { display: none; }
+    .agent-status-item { padding: 2px 6px; }
+    .agent-feed-filters { flex-wrap: wrap; }
+    .agent-feed-time { min-width: 60px; font-size: 9px; }
+}

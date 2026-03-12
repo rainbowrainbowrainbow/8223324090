@@ -6,7 +6,11 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
+const { requireRole } = require('../middleware/auth');
 const log = createLogger('Employees');
+
+// RBAC: Employee management — management + HR only
+router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'));
 
 // GET /api/employees — list all employee profiles
 router.get('/', async (req, res) => {

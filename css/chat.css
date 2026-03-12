@@ -4183,6 +4183,653 @@ body.dark-mode .chat-theme-select {
     background: transparent;
 }
 
+/* Guardian Security Panel — Stats Summary */
+.guardian-stats-summary {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--gray-200);
+    background: var(--gray-50);
+}
+
+.guardian-stats-row {
+    display: flex;
+    gap: 16px;
+    justify-content: space-around;
+    margin-bottom: 8px;
+}
+
+.guardian-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.guardian-stat-val {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.guardian-stat-lbl {
+    font-size: 11px;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.guardian-active-mutes {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--gray-200);
+    font-size: 13px;
+}
+
+.guardian-mute-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+}
+
+.guardian-unmute-btn {
+    background: var(--danger);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    margin-left: auto;
+}
+
+.guardian-unmute-btn:hover {
+    opacity: 0.85;
+}
+
+/* Guardian Action Buttons (inline in DM alerts) */
+.guardian-action-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.guardian-action-btn {
+    background: var(--white);
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: inherit;
+}
+
+.guardian-action-btn:hover {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.guardian-action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.guardian-action-result {
+    font-size: 12px;
+    color: var(--primary);
+    padding: 4px 0;
+    font-style: italic;
+}
+
+/* ==========================================
+   GUARDIAN PHASE 3 — Health, Analytics, Mood, Trust, Commands
+   ========================================== */
+
+/* Health Indicator in Watch Bar */
+.guardian-health-indicator {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    background: rgba(16, 185, 129, 0.1);
+    font-size: 13px;
+    font-weight: 600;
+    margin-left: 8px;
+    transition: background 0.3s;
+}
+
+.guardian-health-indicator.health-yellow {
+    background: rgba(245, 158, 11, 0.15);
+}
+
+.guardian-health-indicator.health-red {
+    background: rgba(239, 68, 68, 0.15);
+}
+
+.guardian-health-dot {
+    font-size: 14px;
+    line-height: 1;
+}
+
+.guardian-health-score {
+    color: var(--gray-700);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Analytics Button */
+.guardian-watch-analytics-btn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background 0.15s;
+    line-height: 1;
+}
+
+.guardian-watch-analytics-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+/* ==========================================
+   GUARDIAN ANALYTICS PANEL
+   ========================================== */
+
+.guardian-analytics-panel {
+    background: var(--white);
+    border-bottom: 1px solid var(--gray-200);
+    max-height: 480px;
+    overflow-y: auto;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; max-height: 0; }
+    to { opacity: 1; max-height: 480px; }
+}
+
+.guardian-analytics-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--gray-200);
+    font-weight: 700;
+    font-size: 14px;
+    position: sticky;
+    top: 0;
+    background: var(--white);
+    z-index: 2;
+}
+
+.guardian-analytics-tabs {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+.guardian-tab {
+    background: none;
+    border: 1px solid var(--gray-200);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+    color: var(--gray-600);
+}
+
+.guardian-tab:hover {
+    background: var(--gray-100);
+}
+
+.guardian-tab.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.guardian-analytics-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--gray-400);
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.guardian-analytics-close:hover {
+    color: var(--gray-700);
+}
+
+.guardian-analytics-body {
+    padding: 16px;
+}
+
+.guardian-analytics-tab-content {
+    display: none;
+}
+
+.guardian-analytics-tab-content.active {
+    display: block;
+}
+
+/* Overview Grid */
+.guardian-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+}
+
+.guardian-overview-card {
+    background: var(--gray-50);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    border: 1px solid var(--gray-100);
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.guardian-overview-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+
+.guardian-overview-card .card-icon {
+    font-size: 24px;
+    margin-bottom: 6px;
+}
+
+.guardian-overview-card .card-value {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--primary);
+    line-height: 1.2;
+}
+
+.guardian-overview-card .card-label {
+    font-size: 11px;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+}
+
+.guardian-overview-card .card-trend {
+    font-size: 11px;
+    margin-top: 4px;
+    font-weight: 600;
+}
+
+.guardian-overview-card .card-trend.up { color: #10B981; }
+.guardian-overview-card .card-trend.down { color: #EF4444; }
+.guardian-overview-card .card-trend.neutral { color: var(--gray-400); }
+
+/* Health Channels */
+.guardian-health-channels {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.guardian-health-card {
+    background: var(--gray-50);
+    border-radius: 10px;
+    padding: 14px;
+    border: 1px solid var(--gray-100);
+}
+
+.guardian-health-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.guardian-health-card-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--gray-800);
+}
+
+.guardian-health-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.guardian-health-badge.green { background: rgba(16, 185, 129, 0.15); color: #059669; }
+.guardian-health-badge.yellow { background: rgba(245, 158, 11, 0.15); color: #D97706; }
+.guardian-health-badge.red { background: rgba(239, 68, 68, 0.15); color: #DC2626; }
+
+.guardian-health-bar {
+    height: 6px;
+    background: var(--gray-200);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.guardian-health-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+.guardian-health-bar-fill.green { background: #10B981; }
+.guardian-health-bar-fill.yellow { background: #F59E0B; }
+.guardian-health-bar-fill.red { background: #EF4444; }
+
+/* Health Chart */
+.guardian-health-chart {
+    background: var(--gray-50);
+    border-radius: 10px;
+    padding: 16px;
+    border: 1px solid var(--gray-100);
+}
+
+.guardian-health-chart canvas {
+    width: 100% !important;
+    height: 200px !important;
+}
+
+/* Mood Summary */
+.guardian-mood-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.guardian-mood-card {
+    background: var(--gray-50);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+    border: 1px solid var(--gray-100);
+}
+
+.guardian-mood-card .mood-emoji {
+    font-size: 28px;
+    margin-bottom: 4px;
+}
+
+.guardian-mood-card .mood-value {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.guardian-mood-card .mood-label {
+    font-size: 11px;
+    color: var(--gray-500);
+    text-transform: uppercase;
+}
+
+.guardian-mood-card.positive .mood-value { color: #10B981; }
+.guardian-mood-card.neutral .mood-value { color: #6B7280; }
+.guardian-mood-card.negative .mood-value { color: #EF4444; }
+
+.guardian-mood-timeline canvas {
+    width: 100% !important;
+    height: 200px !important;
+}
+
+.guardian-mood-timeline {
+    background: var(--gray-50);
+    border-radius: 10px;
+    padding: 16px;
+    border: 1px solid var(--gray-100);
+    margin-bottom: 16px;
+}
+
+/* Mood Users List */
+.guardian-mood-users {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.guardian-mood-user-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.guardian-mood-user-row:last-child { border-bottom: none; }
+
+.guardian-mood-user-name {
+    font-weight: 600;
+    font-size: 13px;
+    flex: 1;
+}
+
+.guardian-mood-user-bar {
+    width: 100px;
+    height: 6px;
+    background: var(--gray-200);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.guardian-mood-user-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+.guardian-mood-user-score {
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 36px;
+    text-align: right;
+}
+
+/* Heatmap Grid */
+.guardian-heatmap-grid {
+    display: grid;
+    grid-template-columns: 40px repeat(24, 1fr);
+    gap: 2px;
+    margin-bottom: 12px;
+}
+
+.guardian-heatmap-cell {
+    aspect-ratio: 1;
+    border-radius: 3px;
+    min-height: 16px;
+    transition: transform 0.1s;
+    cursor: pointer;
+    position: relative;
+}
+
+.guardian-heatmap-cell:hover {
+    transform: scale(1.3);
+    z-index: 1;
+}
+
+.guardian-heatmap-cell[title]::after {
+    content: attr(title);
+}
+
+.guardian-heatmap-cell.level-0 { background: var(--gray-100); }
+.guardian-heatmap-cell.level-1 { background: rgba(16, 185, 129, 0.2); }
+.guardian-heatmap-cell.level-2 { background: rgba(16, 185, 129, 0.4); }
+.guardian-heatmap-cell.level-3 { background: rgba(16, 185, 129, 0.6); }
+.guardian-heatmap-cell.level-4 { background: rgba(16, 185, 129, 0.8); }
+.guardian-heatmap-cell.level-5 { background: #10B981; }
+
+.guardian-heatmap-cell.conflict { background: rgba(239, 68, 68, 0.5) !important; }
+
+.guardian-heatmap-label {
+    font-size: 10px;
+    color: var(--gray-500);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.guardian-heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+    font-size: 11px;
+    color: var(--gray-500);
+}
+
+.guardian-heatmap-legend-cell {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+}
+
+/* Trust List */
+.guardian-trust-list {
+    max-height: 350px;
+    overflow-y: auto;
+}
+
+.guardian-trust-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--gray-100);
+    transition: background 0.15s;
+}
+
+.guardian-trust-row:hover {
+    background: var(--gray-50);
+}
+
+.guardian-trust-row:last-child { border-bottom: none; }
+
+.guardian-trust-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: white;
+}
+
+.guardian-trust-avatar.trusted { background: #10B981; }
+.guardian-trust-avatar.normal { background: #6B7280; }
+.guardian-trust-avatar.watched { background: #F59E0B; }
+.guardian-trust-avatar.restricted { background: #EF4444; }
+
+.guardian-trust-info {
+    flex: 1;
+}
+
+.guardian-trust-name {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.guardian-trust-level {
+    font-size: 11px;
+    color: var(--gray-500);
+}
+
+.guardian-trust-score-bar {
+    width: 80px;
+    height: 6px;
+    background: var(--gray-200);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.guardian-trust-score-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+.guardian-trust-score-num {
+    font-size: 14px;
+    font-weight: 700;
+    min-width: 30px;
+    text-align: right;
+}
+
+/* Command Suggestions */
+.guardian-cmd-suggestions {
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.08);
+    max-height: 200px;
+    overflow-y: auto;
+    margin: 0 8px 4px;
+}
+
+.guardian-cmd-list {
+    padding: 6px;
+}
+
+.guardian-cmd-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.guardian-cmd-item:hover,
+.guardian-cmd-item.selected {
+    background: var(--gray-100);
+}
+
+.guardian-cmd-icon {
+    font-size: 16px;
+    width: 24px;
+    text-align: center;
+}
+
+.guardian-cmd-text {
+    flex: 1;
+}
+
+.guardian-cmd-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--gray-800);
+}
+
+.guardian-cmd-desc {
+    font-size: 11px;
+    color: var(--gray-500);
+}
+
+.guardian-cmd-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(239, 68, 68, 0.1);
+    color: #DC2626;
+    font-weight: 600;
+}
+
 /* Guardian pulse animation for the shield in profile */
 @keyframes guardianPulse {
     0%, 100% { box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3); }
@@ -6619,6 +7266,91 @@ body.dark-mode .guardian-digest-generate-btn {
     .chat-input-area {
         padding-bottom: env(safe-area-inset-bottom);
     }
+}
+
+/* ==========================================
+   UPLOAD PROGRESS BAR (#5)
+   ========================================== */
+.chat-upload-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--surface, #f8f9fa);
+    border-bottom: 1px solid var(--gray-200, #e5e7eb);
+}
+.chat-upload-progress-track {
+    flex: 1;
+    height: 4px;
+    background: var(--gray-200, #e5e7eb);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.chat-upload-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--primary, #6366f1);
+    border-radius: 2px;
+    transition: width 0.15s ease;
+}
+.chat-upload-progress-text {
+    font-size: 11px;
+    color: var(--gray-500, #6b7280);
+    min-width: 32px;
+    text-align: right;
+}
+
+/* ==========================================
+   ONLINE STATUS DOTS (#1)
+   ========================================== */
+.chat-online-dot {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--surface, #fff);
+    background: var(--gray-300, #d1d5db);
+    transition: background 0.3s ease;
+    display: none;
+}
+.chat-online-dot.online {
+    display: block;
+    background: #22c55e;
+    animation: onlinePulse 2s ease-in-out infinite;
+}
+.chat-avatar {
+    position: relative;
+}
+.chat-online-dot.sidebar-dot {
+    width: 8px;
+    height: 8px;
+    bottom: -1px;
+    right: -1px;
+}
+@keyframes onlinePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+    50% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 0); }
+}
+
+/* Channel icon needs relative for online dot */
+.chat-channel-dm-icon {
+    position: relative;
+}
+
+/* ==========================================
+   LAST SEEN / PRESENCE IN PROFILE (#2)
+   ========================================== */
+.chat-profile-presence {
+    font-size: 12px;
+    color: var(--gray-400, #9ca3af);
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+.chat-profile-presence.online {
+    color: #22c55e;
+    font-weight: 600;
 }
 
 /* Mobile improvements */

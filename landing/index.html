@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=3.3">
+    <link rel="stylesheet" href="style.css?v=4.1">
     <meta property="og:title" content="Event Genix — AI-система для дитячих розважальних центрів">
     <meta property="og:description" content="Автоматизуйте бронювання, команду, фінанси. Клешня — AI-дворецький що не спить поки ви відпочиваєте.">
     <meta property="og:type" content="website">
@@ -291,68 +291,134 @@
     <div class="container">
         <h2 class="section__title fade-in">Оберіть свій пакет</h2>
         <p class="section__subtitle fade-in">Починайте з базового. Додавайте коли потрібно.</p>
-        <div class="pricing-grid fade-in">
-            <div class="price-card">
+        <div class="pricing-grid pricing-grid--v2 fade-in">
+
+            <!-- БАЗОВИЙ -->
+            <div class="price-card price-card--base">
+                <div class="price-card__tag">Старт</div>
                 <div class="price-card__header">
                     <div class="price-card__name">Базовий</div>
                     <div class="price-card__price">2 000 ₴<span>/міс</span></div>
-                    <div class="price-card__setup">+ $100 підключення</div>
+                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $100</div>
                 </div>
                 <ul class="price-card__features">
-                    <li>CRM + Таймлайн</li>
-                    <li>Командний чат</li>
-                    <li>Центр цін</li>
-                    <li>Клешня (базово)</li>
-                    <li>Сертифікати</li>
-                    <li>Telegram-бот</li>
+                    <li>✅ CRM + Таймлайн івентів</li>
+                    <li>✅ Командний месенджер<br><span class="feat-sub">Веб + Android + iOS застосунок</span></li>
+                    <li>✅ Центр цін</li>
+                    <li>✅ Клешня AI (базово)</li>
+                    <li>✅ Автосертифікати</li>
+                    <li>✅ Telegram-бот</li>
+                    <li>✅ Dashboard</li>
+                    <li>✅ Склад + Навчання</li>
                 </ul>
-                <button class="btn btn--outline" data-package="basic">Отримати демо →</button>
+                <button class="btn btn--outline" data-package="basic">Спробувати безкоштовно →</button>
             </div>
+
+            <!-- HR МОДУЛЬ -->
             <div class="price-card">
                 <div class="price-card__header">
                     <div class="price-card__name">+ HR Модуль</div>
-                    <div class="price-card__price">+2 000 ₴<span>/міс</span></div>
-                    <div class="price-card__setup">+ $20 підключення</div>
+                    <div class="price-card__price">+3 000 ₴<span>/міс</span></div>
+                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $20</div>
                 </div>
                 <ul class="price-card__features">
-                    <li>Найм та навчання</li>
-                    <li>Нарахування зарплати</li>
-                    <li>Премії / депремії</li>
-                    <li>Аналітика команди</li>
+                    <li>✅ Найм та навчання</li>
+                    <li>✅ Нарахування зарплати</li>
+                    <li>✅ Премії / депремії</li>
+                    <li>✅ Система запізнень</li>
+                    <li>✅ Система задач HR</li>
+                    <li>✅ Субагенти — цифрові робітники<br><span class="feat-sub">Кожен під свою задачу</span></li>
                 </ul>
                 <button class="btn btn--outline" data-package="hr">Отримати демо →</button>
             </div>
+
+            <!-- ART DIRECTOR -->
             <div class="price-card price-card--recommended">
-                <div class="price-card__badge">Рекомендовано</div>
+                <div class="price-card__badge">🔥 Топ</div>
                 <div class="price-card__header">
                     <div class="price-card__name">+ Art Director</div>
-                    <div class="price-card__price">+5 000 ₴<span>/міс</span></div>
-                    <div class="price-card__setup">+ $50 підключення</div>
+                    <div class="price-card__price">+8 000 ₴<span>/міс</span></div>
+                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $50</div>
                 </div>
                 <ul class="price-card__features">
-                    <li>Афіші + каталоги</li>
-                    <li>Генерація квестів</li>
-                    <li>Автопіньята</li>
-                    <li>Клешня Art (100/д)</li>
+                    <li>✅ Генерація афіш</li>
+                    <li>✅ Автоквести</li>
+                    <li>✅ Автопіньята</li>
+                    <li>✅ Клешня Art (100 генерацій/день)</li>
+                    <li>✅ Брендований контент</li>
                 </ul>
                 <button class="btn btn--gold" data-package="art">Отримати демо →</button>
             </div>
+
+            <!-- ДИЗАЙНЕР -->
             <div class="price-card">
                 <div class="price-card__header">
-                    <div class="price-card__name">Повний</div>
-                    <div class="price-card__price">9 000 ₴<span>/міс</span></div>
-                    <div class="price-card__setup">$170 підключення</div>
+                    <div class="price-card__name">+ Дизайнер</div>
+                    <div class="price-card__price">+4 000 ₴<span>/міс</span></div>
+                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $30</div>
                 </div>
                 <ul class="price-card__features">
-                    <li>Все вище</li>
-                    <li>Dashboard</li>
-                    <li>Клешня 200/день</li>
-                    <li>Пріоритет підтримки</li>
+                    <li>✅ Каталоги продуктів</li>
+                    <li>✅ Гайдлайн парку</li>
+                    <li>✅ Брендбук / стильгайд</li>
+                    <li>✅ Шаблони матеріалів</li>
                 </ul>
-                <button class="btn btn--outline" data-package="full">Отримати демо →</button>
+                <button class="btn btn--outline" data-package="designer">Отримати демо →</button>
             </div>
+
+            <!-- ЗВУК -->
+            <div class="price-card price-card--sound">
+                <div class="price-card__header">
+                    <div class="price-card__name">+ Звук 🔊</div>
+                    <div class="price-card__price">+2 000 ₴<span>/міс</span></div>
+                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $10</div>
+                </div>
+                <ul class="price-card__features">
+                    <li>✅ Авто-оголошення N разів/день</li>
+                    <li>✅ Генерація пісень через агента</li>
+                    <li>✅ Генерація оголошень через агента</li>
+                    <li>✅ Голосові повідомлення команді</li>
+                </ul>
+                <button class="btn btn--outline" data-package="sound">Отримати демо →</button>
+            </div>
+
+            <!-- КЛЕШНЯ AGENT -->
+            <div class="price-card price-card--kleshnya">
+                <div class="price-card__header">
+                    <div class="price-card__name">+ Клешня Agent 🦞</div>
+                    <div class="price-card__price">+2 000 ₴<span>/міс</span></div>
+                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $10</div>
+                </div>
+                <ul class="price-card__features">
+                    <li>✅ Повний доступ до AI-агента</li>
+                    <li>✅ Відповіді 24/7 у Telegram</li>
+                    <li>✅ Авто-бронювання голосом</li>
+                    <li>✅ Ранковий бріфінг директора</li>
+                </ul>
+                <button class="btn btn--outline" data-package="kleshnya">Отримати демо →</button>
+            </div>
+
+            <!-- ПОВНИЙ -->
+            <div class="price-card price-card--full price-card--recommended">
+                <div class="price-card__badge">⭐ Все включено</div>
+                <div class="price-card__header">
+                    <div class="price-card__name">Повний пакет</div>
+                    <div class="price-card__old-price">21 000 ₴</div>
+                    <div class="price-card__price">18 000 ₴<span>/міс</span></div>
+                    <div class="price-card__setup">Знижка 14% · Підключення $170 · Розхід: 0 ₴</div>
+                </div>
+                <ul class="price-card__features">
+                    <li>✅ Всі 6 модулів включено</li>
+                    <li>✅ Клешня 200 генерацій/день</li>
+                    <li>✅ Пріоритетна підтримка 24/7</li>
+                    <li>✅ Персональний onboarding</li>
+                    <li>✅ Щомісячна аналітика від команди</li>
+                </ul>
+                <button class="btn btn--gold" data-package="full">Отримати повний пакет →</button>
+            </div>
+
         </div>
-        <p class="section__note fade-in">Ціни в гривнях. Підключення — разово, в доларах за курсом.</p>
+        <p class="section__note fade-in">Ціни в гривнях. Підключення — разово, в доларах за курсом НБУ.</p>
 
         <!-- COMPARISON TOGGLE -->
         <div class="pricing-toggle fade-in">
@@ -368,29 +434,35 @@
                         <th class="ctable__feature">Функція</th>
                         <th>Базовий</th>
                         <th>+HR</th>
-                        <th class="ctable__rec">+Art Director ⭐</th>
-                        <th>Повний</th>
+                        <th>+Art Dir.</th>
+                        <th>+Дизайнер</th>
+                        <th>+Звук</th>
+                        <th>+Клешня</th>
+                        <th class="ctable__rec">Повний ⭐</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td class="ctable__feature">CRM + Таймлайн</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Командний чат</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Центр цін</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Клешня AI</td><td>Базово</td><td>Базово</td><td>100/день</td><td>200/день</td></tr>
-                    <tr><td class="ctable__feature">Telegram-бот</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Сертифікати</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Найм / Навчання</td><td>—</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Зарплати / Премії</td><td>—</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Генерація афіш</td><td>—</td><td>—</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Автопіньята</td><td>—</td><td>—</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Дашборд</td><td>—</td><td>—</td><td>—</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Пріоритет підтримки</td><td>—</td><td>—</td><td>—</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">CRM + Таймлайн</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Месенджер (Web/Android/iOS)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Центр цін + Склад</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Клешня AI</td><td>Базово</td><td>Базово</td><td>100/день</td><td>Базово</td><td>Базово</td><td>200/день</td><td>200/день</td></tr>
+                    <tr><td class="ctable__feature">Найм / Навчання / ЗП</td><td>—</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Система запізнень + Задачі HR</td><td>—</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Субагенти (цифрові робітники)</td><td>—</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Генерація афіш / Автопіньята</td><td>—</td><td>—</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Каталоги / Гайдлайн / Брендбук</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td><td>—</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Авто-оголошення / Генерація пісень</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Клешня Agent 24/7</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Пріоритет підтримки</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✅</td></tr>
                     <tr class="ctable__price-row">
                         <td class="ctable__feature"><strong>Ціна/міс</strong></td>
                         <td>2 000 ₴</td>
-                        <td>4 000 ₴</td>
-                        <td class="ctable__rec">9 000 ₴</td>
-                        <td>9 000 ₴</td>
+                        <td>+3 000 ₴</td>
+                        <td>+8 000 ₴</td>
+                        <td>+4 000 ₴</td>
+                        <td>+2 000 ₴</td>
+                        <td>+2 000 ₴</td>
+                        <td class="ctable__rec">18 000 ₴</td>
                     </tr>
                 </tbody>
             </table>

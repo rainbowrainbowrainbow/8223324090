@@ -2395,26 +2395,15 @@ h1, h2, h3, h4 {
     border-radius: var(--radius-md);
     padding: 32px 28px;
     position: relative;
-    overflow: hidden;
+    overflow: visible;
     backdrop-filter: blur(12px);
+    transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
 }
-.card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg, rgba(212,168,67,0.2), transparent 60%, rgba(99,102,241,0.1));
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    opacity: 0;
-    transition: opacity 0.4s;
-}
-.card:hover::before { opacity: 1; }
 .card:hover {
     background: rgba(18,18,36,0.95);
     border-color: rgba(212,168,67,0.2);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25), 0 0 0 1px rgba(212,168,67,0.12);
+    z-index: 2;
 }
 
 /* ---- WAVE SECTION DIVIDERS ---- */
@@ -2822,3 +2811,108 @@ h1, h2, h3, h4 {
 /* Comparison table scroll fix */
 .compare-table { overflow-x: auto; }
 .ctable th, .ctable td { min-width: 80px; }
+
+/* ========================================
+   v4.2 BUG FIXES: overflow, card tag, feature list
+   ======================================== */
+
+/* Fix animation overflow on product cards */
+.cards--2x2, .cards--3 {
+    overflow: visible;
+}
+.cards--2x2 .card,
+.cards--3 .card {
+    overflow: hidden;
+}
+.cards--2x2 .card::before {
+    pointer-events: none;
+}
+
+/* Fix card hover going outside grid */
+.cards--2x2, .cards--3, .pricing-grid--v2 {
+    isolation: isolate;
+}
+
+/* Fix price-card__tag — inside card, not overflowing */
+.price-card__tag {
+    position: relative;
+    display: inline-block;
+    z-index: 1;
+}
+
+/* Feature list — clean checkmarks instead of emoji */
+.price-card__features li {
+    padding-left: 20px;
+    position: relative;
+    list-style: none;
+    color: var(--text-2);
+    font-size: 14px;
+    line-height: 1.5;
+}
+.price-card__features li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: var(--gold);
+    font-weight: 700;
+    font-size: 13px;
+}
+
+/* Fix pricing grid clipping — 2 rows visible */
+.pricing-grid--v2 {
+    align-items: stretch;
+}
+
+/* Price card internal overflow clip to fix animated borders */
+.price-card {
+    overflow: visible;
+}
+.price-card::before {
+    overflow: hidden;
+    pointer-events: none;
+}
+
+/* Product section card overflow fix */
+.card {
+    overflow: visible;
+}
+.card::before {
+    border-radius: inherit;
+    overflow: hidden;
+}
+
+/* Card hover — prevent shadow overflow issues */
+.card:hover {
+    z-index: 2;
+    position: relative;
+}
+
+/* Sticky CTA bar — z-index above cards */
+.sticky-cta {
+    z-index: 100;
+}
+
+/* Fix "СТАРТ" tag flowing out */
+.price-card--base {
+    padding-top: 20px;
+}
+
+/* Feature list for full card — revert to column */
+.price-card--full .price-card__features li {
+    padding-left: 20px;
+}
+
+/* Pricing grid responsive refinement */
+@media (max-width: 1100px) {
+    .pricing-grid--v2 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .price-card--full {
+        grid-column: 1 / -1;
+    }
+}
+@media (max-width: 640px) {
+    .pricing-grid--v2 {
+        grid-template-columns: 1fr;
+    }
+}

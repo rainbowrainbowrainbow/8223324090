@@ -570,3 +570,113 @@
     addTilt('.update-card', 4);
 
 })();
+
+// =====================
+// v3.2: Typewriter, ROI Calc, Sticky CTA
+// =====================
+(function() {
+    'use strict';
+
+    // --- TYPEWRITER EFFECT ---
+    var PHRASES = [
+        'Поки ви спите — вона вже працює.',
+        'Бронювання підтверджуються автоматично.',
+        'Команда знає задачі без нарад.',
+        'Звіт за тиждень — за 10 секунд.',
+        'Клешня відповідає навіть о 3 ночі.',
+        'Склад контролюється без Excel.',
+    ];
+    var twEl = document.getElementById('typewriterText');
+    if (twEl) {
+        var pi = 0, ci = 0, deleting = false, pausing = false;
+        function tick() {
+            var phrase = PHRASES[pi];
+            if (!deleting) {
+                twEl.textContent = phrase.slice(0, ci + 1);
+                ci++;
+                if (ci === phrase.length) {
+                    pausing = true;
+                    return setTimeout(function() { pausing = false; deleting = true; tick(); }, 2800);
+                }
+            } else {
+                twEl.textContent = phrase.slice(0, ci - 1);
+                ci--;
+                if (ci === 0) {
+                    deleting = false;
+                    pi = (pi + 1) % PHRASES.length;
+                    return setTimeout(tick, 400);
+                }
+            }
+            setTimeout(tick, deleting ? 30 : 55);
+        }
+        setTimeout(tick, 1200);
+    }
+
+    // --- ROI CALCULATOR ---
+    var adminsEl  = document.getElementById('roiAdmins');
+    var eventsEl  = document.getElementById('roiEvents');
+    var salaryEl  = document.getElementById('roiSalary');
+    var adminsVal = document.getElementById('roiAdminsVal');
+    var eventsVal = document.getElementById('roiEventsVal');
+    var salaryVal = document.getElementById('roiSalaryVal');
+    var hoursEl   = document.getElementById('roiHours');
+    var moneyEl   = document.getElementById('roiMoney');
+    var roiEl     = document.getElementById('roiRoi');
+
+    function fmt(n) { return n.toLocaleString('uk-UA'); }
+
+    function calcRoi() {
+        var admins = +adminsEl.value;
+        var events = +eventsEl.value;
+        var salary = +salaryEl.value;
+
+        adminsVal.textContent = admins;
+        eventsVal.textContent = events;
+        salaryVal.textContent = fmt(salary);
+
+        // 80 min/day per admin → hours/month
+        var workDays = 22;
+        var savedMinPerAdmin = 80;
+        var totalHours = Math.round((admins * savedMinPerAdmin * workDays) / 60);
+
+        // Cost of saved time
+        var hourlyRate = salary / (workDays * 8);
+        var savings = Math.round(hourlyRate * totalHours);
+
+        // ROI: (savings - plan_cost) / plan_cost
+        var planCost = 2000;
+        var roi = Math.round(((savings - planCost) / planCost) * 100);
+
+        if (hoursEl) hoursEl.textContent = totalHours + ' год';
+        if (moneyEl) moneyEl.textContent = fmt(savings) + ' ₴';
+        if (roiEl) roiEl.textContent = (roi > 0 ? '+' : '') + roi + '%';
+    }
+
+    if (adminsEl && eventsEl && salaryEl) {
+        [adminsEl, eventsEl, salaryEl].forEach(function(el) {
+            el.addEventListener('input', calcRoi);
+        });
+        calcRoi();
+    }
+
+    // --- STICKY BOTTOM CTA ---
+    var stickyCta   = document.getElementById('stickyCta');
+    var stickyClose = document.getElementById('stickyCtaClose');
+    var stickyDismissed = false;
+    var heroSection = document.getElementById('hero');
+
+    if (stickyCta && heroSection) {
+        window.addEventListener('scroll', function() {
+            if (stickyDismissed) return;
+            var heroBottom = heroSection.getBoundingClientRect().bottom;
+            stickyCta.classList.toggle('visible', heroBottom < 0);
+        }, { passive: true });
+    }
+    if (stickyClose) {
+        stickyClose.addEventListener('click', function() {
+            stickyDismissed = true;
+            stickyCta.classList.remove('visible');
+        });
+    }
+
+})();

@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=3.0">
+    <link rel="stylesheet" href="style.css?v=3.2">
     <link rel="icon" href="/images/favicon.ico">
 
 </head>
@@ -49,9 +49,11 @@
         <h1 class="hero__title animate-on-load">
             Одна кнопка.<br><span class="grad">Увесь бізнес.</span>
         </h1>
-        <p class="hero__subtitle animate-on-load" id="heroSubtitle">
-            AI-система управління для дитячих розважальних центрів.<br>
-            Поки ви спите — вона вже працює.
+        <p class="hero__subtitle animate-on-load">
+            AI-система управління для дитячих розважальних центрів.
+        </p>
+        <p class="hero__typewriter animate-on-load">
+            <span id="typewriterText"></span><span class="typewriter-cursor"></span>
         </p>
         <a href="#pricing" class="btn btn--gold animate-on-load">Отримати демо доступ</a>
         <p class="hero__note">Безкоштовно. Без зобов'язань.</p>
@@ -170,6 +172,57 @@
             </div>
         </div>
         <p class="section__note fade-in">Це не фантастика. Це те що вже працює в Парку Закревського з лютого 2026.</p>
+    </div>
+</section>
+
+<!-- ROI КАЛЬКУЛЯТОР -->
+<section class="section roi-calc" id="roi">
+    <div class="container">
+        <h2 class="section__title fade-in">Скільки ви заощадите?</h2>
+        <p class="section__subtitle fade-in">Введіть дані свого парку — побачите реальні цифри</p>
+        <div class="roi-wrap fade-in">
+            <div class="roi-inputs">
+                <div class="roi-field">
+                    <label class="roi-label">Кількість адмінів</label>
+                    <div class="roi-slider-wrap">
+                        <input type="range" class="roi-slider" id="roiAdmins" min="1" max="10" value="3">
+                        <span class="roi-val" id="roiAdminsVal">3</span>
+                    </div>
+                </div>
+                <div class="roi-field">
+                    <label class="roi-label">Подій на місяць</label>
+                    <div class="roi-slider-wrap">
+                        <input type="range" class="roi-slider" id="roiEvents" min="10" max="300" value="60" step="10">
+                        <span class="roi-val" id="roiEventsVal">60</span>
+                    </div>
+                </div>
+                <div class="roi-field">
+                    <label class="roi-label">Середня ЗП адміна (₴/міс)</label>
+                    <div class="roi-slider-wrap">
+                        <input type="range" class="roi-slider" id="roiSalary" min="8000" max="30000" value="15000" step="1000">
+                        <span class="roi-val" id="roiSalaryVal">15 000</span>
+                    </div>
+                </div>
+            </div>
+            <div class="roi-results">
+                <div class="roi-result-card">
+                    <div class="roi-result-icon">⏱️</div>
+                    <div class="roi-result-value" id="roiHours">0</div>
+                    <div class="roi-result-label">годин рутини/міс</div>
+                </div>
+                <div class="roi-result-card roi-result-card--gold">
+                    <div class="roi-result-icon">💰</div>
+                    <div class="roi-result-value" id="roiMoney">0 ₴</div>
+                    <div class="roi-result-label">економія на місяць</div>
+                </div>
+                <div class="roi-result-card">
+                    <div class="roi-result-icon">📈</div>
+                    <div class="roi-result-value" id="roiRoi">0%</div>
+                    <div class="roi-result-label">ROI від Event Genix</div>
+                </div>
+            </div>
+            <p class="roi-note">* Розрахунок базується на середньому 80 хв рутини/день на адміна, яку замінює автоматизація</p>
+        </div>
     </div>
 </section>
 
@@ -512,31 +565,43 @@
 <footer class="footer">
     <div class="container">
         <div class="footer__top">
-            <div class="footer__logo">Event Genix</div>
+            <div class="footer__brand">
+                <div class="footer__logo">Event Genix</div>
+                <p class="footer__tagline">AI-система що не спить,<br>поки ви відпочиваєте.</p>
+                <div class="footer__social">
+                    <a href="https://t.me/ArdDirector" target="_blank" rel="noopener" class="footer__social-link" title="Telegram">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.96 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                    </a>
+                </div>
+            </div>
             <div class="footer__columns">
                 <div class="footer__col">
                     <div class="footer__col-title">Продукт</div>
+                    <a href="#product">Можливості</a>
                     <a href="#pricing">Базовий пакет</a>
                     <a href="#pricing">HR-модуль</a>
                     <a href="#pricing">Art Director</a>
-                    <a href="#pricing">Ціни</a>
+                    <a href="#roi">ROI Калькулятор</a>
                 </div>
                 <div class="footer__col">
                     <div class="footer__col-title">Компанія</div>
                     <a href="#proof">Про нас</a>
                     <a href="#team">Команда</a>
-                    <a href="#product">Технологія</a>
-                    <a href="#cta">Партнерам</a>
+                    <a href="#cases">Кейси</a>
+                    <a href="#faq">FAQ</a>
+                    <a href="#updates">Оновлення</a>
                 </div>
                 <div class="footer__col">
                     <div class="footer__col-title">Контакти</div>
-                    <a href="https://t.me/ArdDirector" target="_blank" rel="noopener">@ArdDirector</a>
-                    <a href="https://t.me/ArdDirector" target="_blank" rel="noopener">Telegram</a>
+                    <a href="https://t.me/ArdDirector" target="_blank" rel="noopener">💬 @ArdDirector</a>
+                    <a href="#cta">Написати нам</a>
+                    <a href="/demo" target="_blank">Демо доступ</a>
                 </div>
             </div>
         </div>
         <div class="footer__bottom">
-            &copy; 2026 Event Genix. Зроблено в Україні. 🇺🇦
+            <span>&copy; 2026 Event Genix. Зроблено в Україні. 🇺🇦</span>
+            <span class="footer__version">v22.16 · <a href="#updates" style="color:inherit">Changelog</a></span>
         </div>
     </div>
 </footer>
@@ -578,6 +643,19 @@
 <!-- BACK TO TOP -->
 <button class="back-to-top" id="backToTop" title="Вгору">↑</button>
 
-<script src="script.js?v=3.0"></script>
+<!-- STICKY BOTTOM CTA -->
+<div class="sticky-cta" id="stickyCta">
+    <div class="sticky-cta__inner">
+        <div class="sticky-cta__text">
+            <strong>Event Genix</strong> — <span>Автоматизуйте свій парк вже сьогодні</span>
+        </div>
+        <div class="sticky-cta__actions">
+            <button class="btn btn--gold" data-package="basic" style="padding:10px 24px;font-size:14px;">Отримати демо →</button>
+            <button class="sticky-cta__close" id="stickyCtaClose">✕</button>
+        </div>
+    </div>
+</div>
+
+<script src="script.js?v=3.2"></script>
 </body>
 </html>

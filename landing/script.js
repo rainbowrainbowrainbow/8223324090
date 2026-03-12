@@ -680,3 +680,66 @@
     }
 
 })();
+
+// =====================
+// v3.3: Pricing Table Toggle, Video Preview
+// =====================
+(function() {
+    'use strict';
+
+    // --- PRICING CARDS vs TABLE TOGGLE ---
+    var btnCards  = document.getElementById('pToggleCards');
+    var btnTable  = document.getElementById('pToggleTable');
+    var pricingGrid  = document.querySelector('.pricing-grid');
+    var compareTable = document.getElementById('compareTable');
+
+    if (btnCards && btnTable && pricingGrid && compareTable) {
+        btnCards.addEventListener('click', function() {
+            pricingGrid.style.display = '';
+            compareTable.style.display = 'none';
+            btnCards.classList.add('ptoggle-btn--active');
+            btnTable.classList.remove('ptoggle-btn--active');
+        });
+        btnTable.addEventListener('click', function() {
+            pricingGrid.style.display = 'none';
+            compareTable.style.display = '';
+            btnTable.classList.add('ptoggle-btn--active');
+            btnCards.classList.remove('ptoggle-btn--active');
+        });
+    }
+
+    // --- VIDEO PREVIEW --- open modal or scroll to demo
+    var playBtn = document.getElementById('videoPlayBtn');
+    if (playBtn) {
+        playBtn.addEventListener('click', function() {
+            // Scroll to live demo section
+            var demoSection = document.getElementById('demo');
+            if (demoSection) {
+                demoSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+        // Also the whole preview inner
+        var previewInner = document.querySelector('.video-preview__inner');
+        if (previewInner) {
+            previewInner.addEventListener('click', function(e) {
+                if (e.target !== playBtn && !playBtn.contains(e.target)) {
+                    var demoSection = document.getElementById('demo');
+                    if (demoSection) demoSection.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        }
+    }
+
+    // Update navbar to include new sections
+    var navLinksEl = document.getElementById('navLinks');
+    if (navLinksEl && !navLinksEl.querySelector('[href="#how"]')) {
+        var li = document.createElement('li');
+        li.innerHTML = '<a href="#how" class="nav-a">Як це працює</a>';
+        // Insert after product link
+        var productLink = navLinksEl.querySelector('[href="#product"]');
+        if (productLink && productLink.parentNode) {
+            productLink.parentNode.insertAdjacentElement('afterend', li);
+        }
+    }
+
+})();

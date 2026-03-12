@@ -8,7 +8,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=3.2">
+    <link rel="stylesheet" href="style.css?v=3.3">
+    <meta property="og:title" content="Event Genix — AI-система для дитячих розважальних центрів">
+    <meta property="og:description" content="Автоматизуйте бронювання, команду, фінанси. Клешня — AI-дворецький що не спить поки ви відпочиваєте.">
+    <meta property="og:type" content="website">
+    <meta name="theme-color" content="#C9A84C">
     <link rel="icon" href="/images/favicon.ico">
 
 </head>
@@ -144,6 +148,55 @@
                 <div class="card__icon">💰</div>
                 <div class="card__title">Центр цін</div>
                 <div class="card__text">Змінив ціну один раз → оновилося скрізь: каталог, афіша, сайт, таймлайн.</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ЯК ЦЕ ПРАЦЮЄ -->
+<section class="section how-it-works" id="how">
+    <div class="container">
+        <h2 class="section__title fade-in">Від хаосу до системи за 4 кроки</h2>
+        <p class="section__subtitle fade-in">Впровадження без болю. Без зупинки роботи.</p>
+        <div class="steps fade-in">
+            <div class="step">
+                <div class="step__num">01</div>
+                <div class="step__icon">📞</div>
+                <h3 class="step__title">Демо-дзвінок</h3>
+                <p class="step__text">30 хвилин. Показуємо живу систему. Відповідаємо на всі питання. Без скриптів продажів.</p>
+            </div>
+            <div class="step__arrow">→</div>
+            <div class="step">
+                <div class="step__num">02</div>
+                <div class="step__icon">⚙️</div>
+                <h3 class="step__title">Налаштування</h3>
+                <p class="step__text">1 день. Вносимо ваші кімнати, програми, команду. Система готова до роботи.</p>
+            </div>
+            <div class="step__arrow">→</div>
+            <div class="step">
+                <div class="step__num">03</div>
+                <div class="step__icon">🎓</div>
+                <h3 class="step__title">Навчання команди</h3>
+                <p class="step__text">2–3 години. Онлайн або на місці. Адміни, аніматори — кожен знає свій інтерфейс.</p>
+            </div>
+            <div class="step__arrow">→</div>
+            <div class="step">
+                <div class="step__num">04</div>
+                <div class="step__icon">🚀</div>
+                <h3 class="step__title">Запуск</h3>
+                <p class="step__text">Перший робочий день. Підтримка на зв'язку. Через тиждень — звіт по економії.</p>
+            </div>
+        </div>
+        <div class="video-preview fade-in">
+            <div class="video-preview__inner">
+                <div class="video-preview__bg"></div>
+                <div class="video-preview__content">
+                    <button class="video-preview__play" id="videoPlayBtn">
+                        <span class="play-icon">▶</span>
+                    </button>
+                    <p class="video-preview__label">Живе демо Event Genix — 3 хв</p>
+                    <p class="video-preview__sub">Таймлайн, Клешня, Чат, Дашборд — все в дії</p>
+                </div>
             </div>
         </div>
     </div>
@@ -294,6 +347,57 @@
             </div>
         </div>
         <p class="section__note fade-in">Ціни в гривнях. Підключення — разово, в доларах за курсом.</p>
+
+        <!-- COMPARISON TOGGLE -->
+        <div class="pricing-toggle fade-in">
+            <button class="ptoggle-btn ptoggle-btn--active" id="pToggleCards">Картки</button>
+            <button class="ptoggle-btn" id="pToggleTable">Порівняння</button>
+        </div>
+
+        <!-- COMPARISON TABLE -->
+        <div class="compare-table fade-in" id="compareTable" style="display:none;">
+            <table class="ctable">
+                <thead>
+                    <tr>
+                        <th class="ctable__feature">Функція</th>
+                        <th>Базовий</th>
+                        <th>+HR</th>
+                        <th class="ctable__rec">+Art Director ⭐</th>
+                        <th>Повний</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td class="ctable__feature">CRM + Таймлайн</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Командний чат</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Центр цін</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Клешня AI</td><td>Базово</td><td>Базово</td><td>100/день</td><td>200/день</td></tr>
+                    <tr><td class="ctable__feature">Telegram-бот</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Сертифікати</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Найм / Навчання</td><td>—</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Зарплати / Премії</td><td>—</td><td>✅</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Генерація афіш</td><td>—</td><td>—</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Автопіньята</td><td>—</td><td>—</td><td>✅</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Дашборд</td><td>—</td><td>—</td><td>—</td><td>✅</td></tr>
+                    <tr><td class="ctable__feature">Пріоритет підтримки</td><td>—</td><td>—</td><td>—</td><td>✅</td></tr>
+                    <tr class="ctable__price-row">
+                        <td class="ctable__feature"><strong>Ціна/міс</strong></td>
+                        <td>2 000 ₴</td>
+                        <td>4 000 ₴</td>
+                        <td class="ctable__rec">9 000 ₴</td>
+                        <td>9 000 ₴</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- TRUST BADGES -->
+        <div class="trust-badges fade-in">
+            <div class="trust-badge"><span>🔒</span> SSL шифрування</div>
+            <div class="trust-badge"><span>☁️</span> Railway EU сервери</div>
+            <div class="trust-badge"><span>💾</span> Бекап щодня</div>
+            <div class="trust-badge"><span>🇺🇦</span> Зроблено в Україні</div>
+            <div class="trust-badge"><span>⚡</span> Uptime 99.9%</div>
+        </div>
     </div>
 </section>
 
@@ -656,6 +760,6 @@
     </div>
 </div>
 
-<script src="script.js?v=3.2"></script>
+<script src="script.js?v=3.3"></script>
 </body>
 </html>

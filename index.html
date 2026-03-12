@@ -1167,6 +1167,28 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v23.4.0 — Lead Capture Integration (Claude Code, 11.03.2026)</h4>
+                    <ul>
+                        <li><b>Telegram Lead Capture</b> — нові звернення в бот = автоматичний лід в CRM</li>
+                        <li><b>Webhook API</b> — Universal, Facebook, Instagram, Viber ендпоінти</li>
+                        <li><b>Оновлені джерела</b> — TG, FB, IG, Viber, TikTok, Turbo, BnD в UI</li>
+                        <li><b>Нотифікації</b> — менеджери отримують Telegram-сповіщення при новому ліді</li>
+                        <li><b>DB Migration 053</b> — external_id, raw_payload, source_channel</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v23.3.0 — OmniClaw Security Hardening (Claude Code, 11.03.2026)</h4>
+                    <ul>
+                        <li><b>Webhook Auth</b> — HMAC-SHA256 для Viber, X-Hub-Signature-256 для Meta, X-Webhook-Secret для SMS/Binotel</li>
+                        <li><b>API Security</b> — FB/IG токени з URL в Authorization header, Graph API v21.0</li>
+                        <li><b>Pool Safety</b> — pool.connect() в try-catch (5 місць), запобігає unhandled rejection</li>
+                        <li><b>Input Validation</b> — truncate names/phones, whitelist status/channel, parseId на route params</li>
+                        <li><b>HTTP Checks</b> — перевірка status code в усіх 4 API адаптерах (FB, IG, SMS, Viber)</li>
+                        <li><b>Normalizer</b> — safeCoords, safeString, isValidUrl, E.164 phone cap (15 digits)</li>
+                        <li><b>Timing-Safe</b> — crypto.timingSafeEqual для всіх signature перевірок</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v23.2.0 — OmniClaw: Омніканальна комунікація v1.0 (Claude Code, 11.03.2026)</h4>
                     <ul>
                         <li><b>OmniClaw Hub</b> — єдиний inbox для всіх каналів: Telegram, Viber, SMS, Facebook, Instagram, Binotel</li>
@@ -1657,28 +1679,6 @@
                         <li><b>Unread Badge</b> — лічильник непрочитаних у навігації на всіх сторінках</li>
                         <li><b>Звуки</b> — 6 звукових нотифікацій (нове повідомлення, відправлено, mention)</li>
                         <li><b>Dark Mode</b> — повна підтримка темної теми з фіолетовими бабблами</li>
-                    </ul>
-                </div>
-                <div class="changelog-section">
-                    <h4>v23.4.0 — Lead Capture Integration (Claude Code, 11.03.2026)</h4>
-                    <ul>
-                        <li><b>Telegram Lead Capture</b> — нові звернення в бот = автоматичний лід в CRM</li>
-                        <li><b>Webhook API</b> — Universal, Facebook, Instagram, Viber ендпоінти</li>
-                        <li><b>Оновлені джерела</b> — TG, FB, IG, Viber, TikTok, Turbo, BnD в UI</li>
-                        <li><b>Нотифікації</b> — менеджери отримують Telegram-сповіщення при новому ліді</li>
-                        <li><b>DB Migration 053</b> — external_id, raw_payload, source_channel</li>
-                    </ul>
-                </div>
-                <div class="changelog-section">
-                    <h4>v23.3.0 — OmniClaw Security Hardening (Claude Code, 11.03.2026)</h4>
-                    <ul>
-                        <li><b>Webhook Auth</b> — HMAC-SHA256 для Viber, X-Hub-Signature-256 для Meta, X-Webhook-Secret для SMS/Binotel</li>
-                        <li><b>API Security</b> — FB/IG токени з URL в Authorization header, Graph API v21.0</li>
-                        <li><b>Pool Safety</b> — pool.connect() в try-catch (5 місць), запобігає unhandled rejection</li>
-                        <li><b>Input Validation</b> — truncate names/phones, whitelist status/channel, parseId на route params</li>
-                        <li><b>HTTP Checks</b> — перевірка status code в усіх 4 API адаптерах (FB, IG, SMS, Viber)</li>
-                        <li><b>Normalizer</b> — safeCoords, safeString, isValidUrl, E.164 phone cap (15 digits)</li>
-                        <li><b>Timing-Safe</b> — crypto.timingSafeEqual для всіх signature перевірок</li>
                     </ul>
                 </div>
                 <div class="changelog-section">

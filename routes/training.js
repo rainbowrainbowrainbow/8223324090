@@ -236,6 +236,314 @@ router.get('/stats', async (req, res) => {
     }
 });
 
+// ═══════════════════════════════════════════
+// Knowledge Base endpoints (v25.0.0)
+// ═══════════════════════════════════════════
+
+// GET /api/training/knowledge-base — list articles
+router.get('/knowledge-base', async (req, res) => {
+    try {
+        const { role, category, difficulty } = req.query;
+        const params = [];
+        let where = 'WHERE kb.is_active = true';
+
+        if (role && role !== 'all') {
+            params.push(role);
+            where += ` AND (kb.role = $${params.length} OR kb.role = 'all')`;
+        }
+        if (category && category !== 'all') {
+            params.push(category);
+            where += ` AND kb.category = $${params.length}`;
+        }
+        if (difficulty && difficulty !== 'all') {
+            params.push(difficulty);
+            where += ` AND kb.difficulty = $${params.length}`;
+        }
+
+        const staffId = req.user?.id || null;
+        const result = await pool.query(
+            `SELECT kb.*,
+                    (SELECT COUNT(*) FROM training_tests t WHERE t.article_id = kb.id AND t.is_active = true) as test_count
+             ${staffId ? `, (SELECT completed_at FROM knowledge_base_progress kbp WHERE kbp.article_id = kb.id AND kbp.staff_id = ${parseInt(staffId)}) as user_completed_at` : ''}
+             FROM knowledge_base kb ${where}
+             ORDER BY kb.sort_order, kb.created_at DESC`,
+            params
+        );
+
+        res.json({ articles: result.rows });
+    } catch (err) {
+        log.error('knowledge-base list error', err);
+        res.status(500).json({ error: 'Помилка завантаження бази знань' });
+    }
+});
+
+// GET /api/training/knowledge-base/:id — single article
+router.get('/knowledge-base/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            `SELECT kb.*,
+                    (SELECT COUNT(*) FROM knowledge_base_progress WHERE article_id = kb.id AND completed_at IS NOT NULL) as total_reads
+             FROM knowledge_base kb WHERE kb.id = $1 AND kb.is_active = true`,
+            [id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Статтю не знайдено' });
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        log.error('knowledge-base get error', err);
+        res.status(500).json({ error: 'Помилка' });
+    }
+});
+
+// POST /api/training/knowledge-base/:id/mark-read — mark article as read
+router.post('/knowledge-base/:id/mark-read', async (req, res) => {
+    try {
+        const articleId = req.params.id;
+        const staffId = req.user?.id;
+        if (!staffId) return res.status(401).json({ error: 'Потрібна авторизація' });
+
+        await pool.query(
+            `INSERT INTO knowledge_base_progress (staff_id, article_id, completed_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (staff_id, article_id) DO UPDATE SET completed_at = NOW()`,
+            [staffId, articleId]
+        );
+
+        // Check badges
+        await checkTrainingBadges(staffId);
+
+        res.json({ success: true });
+    } catch (err) {
+        log.error('mark-read error', err);
+        res.status(500).json({ error: 'Помилка' });
+    }
+});
+
+// GET /api/training/tests/:articleId — get test for article
+router.get('/tests/:articleId', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT id, article_id, title, description, questions, passing_score, time_limit_seconds FROM training_tests WHERE article_id = $1 AND is_active = true',
+            [req.params.articleId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Тест не знайдено' });
+
+        const test = result.rows[0];
+        // Strip correct answers for client
+        const safeQuestions = test.questions.map(q => ({
+            question: q.question,
+            options: q.options
+        }));
+
+        res.json({ ...test, questions: safeQuestions, questionCount: test.questions.length });
+    } catch (err) {
+        log.error('get test error', err);
+        res.status(500).json({ error: 'Помилка завантаження тесту' });
+    }
+});
+
+// GET /api/training/tests-list — all available tests
+router.get('/tests-list', async (req, res) => {
+    try {
+        const staffId = req.user?.id;
+        const result = await pool.query(
+            `SELECT t.id, t.article_id, t.title, t.description, t.passing_score, t.time_limit_seconds,
+                    kb.title as article_title, kb.icon as article_icon, kb.category, kb.role,
+                    jsonb_array_length(t.questions) as question_count
+             ${staffId ? `, (SELECT MAX(score) FROM training_test_results WHERE test_id = t.id AND staff_id = ${parseInt(staffId)}) as best_score,
+                (SELECT passed FROM training_test_results WHERE test_id = t.id AND staff_id = ${parseInt(staffId)} ORDER BY completed_at DESC LIMIT 1) as last_passed` : ''}
+             FROM training_tests t
+             JOIN knowledge_base kb ON kb.id = t.article_id
+             WHERE t.is_active = true AND kb.is_active = true
+             ORDER BY kb.sort_order, t.id`
+        );
+
+        const tests = result.rows;
+
+        res.json({ tests });
+    } catch (err) {
+        log.error('tests-list error', err);
+        res.status(500).json({ error: 'Помилка' });
+    }
+});
+
+// POST /api/training/tests/:testId/submit — submit test answers
+router.post('/tests/:testId/submit', async (req, res) => {
+    try {
+        const staffId = req.user?.id;
+        if (!staffId) return res.status(401).json({ error: 'Потрібна авторизація' });
+
+        const { answers, timeSpent } = req.body;
+        if (!answers || !Array.isArray(answers)) return res.status(400).json({ error: 'Потрібні відповіді' });
+
+        // Get test with correct answers
+        const testRes = await pool.query('SELECT * FROM training_tests WHERE id = $1', [req.params.testId]);
+        if (testRes.rows.length === 0) return res.status(404).json({ error: 'Тест не знайдено' });
+
+        const test = testRes.rows[0];
+        const questions = test.questions;
+
+        // Grade
+        let correct = 0;
+        const results = questions.map((q, i) => {
+            const userAnswer = answers[i] !== undefined ? answers[i] : -1;
+            const isCorrect = userAnswer === q.correct;
+            if (isCorrect) correct++;
+            return { question: q.question, userAnswer, correct: q.correct, isCorrect, explanation: q.explanation };
+        });
+
+        const score = Math.round((correct / questions.length) * 100);
+        const passed = score >= test.passing_score;
+
+        // Save result
+        await pool.query(
+            `INSERT INTO training_test_results (test_id, staff_id, score, answers, time_spent_seconds, passed)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [test.id, staffId, score, JSON.stringify(results), timeSpent || null, passed]
+        );
+
+        // Check badges
+        await checkTrainingBadges(staffId);
+
+        res.json({ score, passed, correct, total: questions.length, results, passingScore: test.passing_score });
+    } catch (err) {
+        log.error('test submit error', err);
+        res.status(500).json({ error: 'Помилка' });
+    }
+});
+
+// GET /api/training/progress — personal progress
+router.get('/progress', async (req, res) => {
+    try {
+        const staffId = req.user?.id;
+        if (!staffId) return res.status(401).json({ error: 'Потрібна авторизація' });
+
+        const [totalArticles, readArticles, testResults, badges] = await Promise.all([
+            pool.query('SELECT COUNT(*) FROM knowledge_base WHERE is_active = true'),
+            pool.query('SELECT COUNT(*) FROM knowledge_base_progress WHERE staff_id = $1 AND completed_at IS NOT NULL', [staffId]),
+            pool.query(
+                `SELECT tr.*, t.title as test_title, t.passing_score
+                 FROM training_test_results tr
+                 JOIN training_tests t ON t.id = tr.test_id
+                 WHERE tr.staff_id = $1
+                 ORDER BY tr.completed_at DESC LIMIT 20`,
+                [staffId]
+            ),
+            pool.query('SELECT * FROM training_badges WHERE staff_id = $1 ORDER BY earned_at DESC', [staffId])
+        ]);
+
+        // Weekly activity (last 4 weeks)
+        const activity = await pool.query(
+            `SELECT
+                DATE_TRUNC('week', completed_at) as week,
+                COUNT(*) as reads
+             FROM knowledge_base_progress
+             WHERE staff_id = $1 AND completed_at > NOW() - INTERVAL '28 days'
+             GROUP BY DATE_TRUNC('week', completed_at)
+             ORDER BY week`,
+            [staffId]
+        );
+
+        res.json({
+            totalArticles: parseInt(totalArticles.rows[0].count),
+            readArticles: parseInt(readArticles.rows[0].count),
+            testResults: testResults.rows,
+            badges: badges.rows,
+            weeklyActivity: activity.rows
+        });
+    } catch (err) {
+        log.error('progress error', err);
+        res.status(500).json({ error: 'Помилка' });
+    }
+});
+
+// GET /api/training/leaderboard — top staff by training
+router.get('/leaderboard', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT s.id, s.name, s.department, s.role_type,
+                    COUNT(DISTINCT kbp.article_id) as articles_read,
+                    COALESCE(AVG(tr.score), 0) as avg_score,
+                    COUNT(DISTINCT CASE WHEN tr.passed THEN tr.test_id END) as tests_passed,
+                    COUNT(DISTINCT tb.id) as badge_count,
+                    (COUNT(DISTINCT kbp.article_id) * 10 + COALESCE(AVG(tr.score), 0) + COUNT(DISTINCT CASE WHEN tr.passed THEN tr.test_id END) * 20) as total_points
+             FROM staff s
+             LEFT JOIN knowledge_base_progress kbp ON kbp.staff_id = s.id AND kbp.completed_at IS NOT NULL
+             LEFT JOIN training_test_results tr ON tr.staff_id = s.id
+             LEFT JOIN training_badges tb ON tb.staff_id = s.id
+             WHERE s.is_active = true
+             GROUP BY s.id, s.name, s.department, s.role_type
+             HAVING COUNT(DISTINCT kbp.article_id) > 0 OR COUNT(tr.id) > 0
+             ORDER BY total_points DESC
+             LIMIT 10`
+        );
+
+        res.json({ leaderboard: result.rows });
+    } catch (err) {
+        log.error('leaderboard error', err);
+        res.status(500).json({ error: 'Помилка' });
+    }
+});
+
+// GET /api/training/overview-stats — overview for the training page header
+router.get('/overview-stats', async (req, res) => {
+    try {
+        const staffId = req.user?.id;
+        const [totalArticles, totalTests, readByUser, passedByUser] = await Promise.all([
+            pool.query('SELECT COUNT(*) FROM knowledge_base WHERE is_active = true'),
+            pool.query('SELECT COUNT(*) FROM training_tests WHERE is_active = true'),
+            staffId ? pool.query('SELECT COUNT(*) FROM knowledge_base_progress WHERE staff_id = $1 AND completed_at IS NOT NULL', [staffId]) : { rows: [{ count: 0 }] },
+            staffId ? pool.query('SELECT COUNT(DISTINCT test_id) FROM training_test_results WHERE staff_id = $1 AND passed = true', [staffId]) : { rows: [{ count: 0 }] }
+        ]);
+
+        res.json({
+            totalArticles: parseInt(totalArticles.rows[0].count),
+            totalTests: parseInt(totalTests.rows[0].count),
+            readByUser: parseInt(readByUser.rows[0].count),
+            passedByUser: parseInt(passedByUser.rows[0].count)
+        });
+    } catch (err) {
+        log.error('overview-stats error', err);
+        res.status(500).json({ error: 'Помилка' });
+    }
+});
+
+// Badge checker
+async function checkTrainingBadges(staffId) {
+    try {
+        const [readCount, testResults] = await Promise.all([
+            pool.query('SELECT COUNT(*) FROM knowledge_base_progress WHERE staff_id = $1 AND completed_at IS NOT NULL', [staffId]),
+            pool.query('SELECT score, passed FROM training_test_results WHERE staff_id = $1', [staffId])
+        ]);
+
+        const reads = parseInt(readCount.rows[0].count);
+        const badges = [];
+
+        if (reads >= 1) badges.push({ type: 'first_read', name: 'Перший крок', icon: '📖' });
+        if (reads >= 5) badges.push({ type: 'speed_reader', name: 'Книжковий черв\'як', icon: '🐛' });
+        if (reads >= 10) badges.push({ type: 'all_materials', name: 'Всезнайко', icon: '🧠' });
+
+        const passed = testResults.rows.filter(r => r.passed).length;
+        if (passed >= 1) badges.push({ type: 'quiz_master', name: 'Першій тест', icon: '✅' });
+        if (passed >= 3) badges.push({ type: 'streak_3', name: 'Тест-страйк', icon: '🔥' });
+
+        const perfect = testResults.rows.filter(r => r.score === 100).length;
+        if (perfect >= 1) badges.push({ type: 'perfect_score', name: 'Ідеальний результат', icon: '💯' });
+
+        for (const b of badges) {
+            await pool.query(
+                `INSERT INTO training_badges (staff_id, badge_type, badge_name, badge_icon)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (staff_id, badge_type) DO NOTHING`,
+                [staffId, b.type, b.name, b.icon]
+            );
+        }
+    } catch (err) {
+        log.error('badge check error', err);
+    }
+}
+
 // Helper: ISO week number
 function getISOWeek(date) {
     const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));

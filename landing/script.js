@@ -1082,3 +1082,254 @@
     }
 
 })();
+
+// =====================
+// FUN INTERACTIONS v1.0
+// =====================
+(function() {
+    'use strict';
+
+    /* =====================================================
+       1. CONFETTI — при кліці кнопок CTA
+       ===================================================== */
+    function spawnConfetti(x, y) {
+        var canvas = document.createElement('canvas');
+        canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99999;';
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        document.body.appendChild(canvas);
+        var ctx = canvas.getContext('2d');
+
+        var COLORS = ['#D4A843','#F0C96A','#6366F1','#ffffff','#ff6b6b','#4ade80','#60a5fa'];
+        var particles = [];
+        for (var i = 0; i < 120; i++) {
+            particles.push({
+                x: x, y: y,
+                vx: (Math.random() - 0.5) * 16,
+                vy: Math.random() * -14 - 4,
+                size: Math.random() * 8 + 4,
+                color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                rot: Math.random() * 360,
+                rotV: (Math.random() - 0.5) * 12,
+                shape: Math.random() > 0.5 ? 'rect' : 'circle',
+                alpha: 1,
+                gravity: 0.4 + Math.random() * 0.2
+            });
+        }
+
+        var frame;
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            var alive = false;
+            particles.forEach(function(p) {
+                if (p.alpha <= 0) return;
+                alive = true;
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += p.gravity;
+                p.vx *= 0.99;
+                p.rot += p.rotV;
+                p.alpha -= 0.018;
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.alpha);
+                ctx.fillStyle = p.color;
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rot * Math.PI / 180);
+                if (p.shape === 'rect') {
+                    ctx.fillRect(-p.size/2, -p.size/4, p.size, p.size/2);
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.size/2, 0, Math.PI*2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+            if (alive) {
+                frame = requestAnimationFrame(draw);
+            } else {
+                canvas.remove();
+                cancelAnimationFrame(frame);
+            }
+        }
+        draw();
+    }
+
+    document.querySelectorAll('.btn--gold, .btn--outline').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            var rect = btn.getBoundingClientRect();
+            spawnConfetti(rect.left + rect.width/2, rect.top + rect.height/2);
+        });
+    });
+
+
+    /* =====================================================
+       2. CURSOR SPARKS — золоті іскри за мишею (desktop)
+       ===================================================== */
+    if (!('ontouchstart' in window)) {
+        var sparkCanvas = document.createElement('canvas');
+        sparkCanvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9998;';
+        sparkCanvas.width = window.innerWidth;
+        sparkCanvas.height = window.innerHeight;
+        document.body.appendChild(sparkCanvas);
+        var sCtx = sparkCanvas.getContext('2d');
+        var sparks = [];
+        var lastX = 0, lastY = 0, moving = false, moveTimer;
+
+        window.addEventListener('resize', function() {
+            sparkCanvas.width = window.innerWidth;
+            sparkCanvas.height = window.innerHeight;
+        }, { passive: true });
+
+        document.addEventListener('mousemove', function(e) {
+            lastX = e.clientX; lastY = e.clientY;
+            moving = true;
+            clearTimeout(moveTimer);
+            moveTimer = setTimeout(function() { moving = false; }, 100);
+
+            // Spawn 1-2 sparks per mouse move
+            for (var i = 0; i < 2; i++) {
+                sparks.push({
+                    x: e.clientX + (Math.random()-0.5)*4,
+                    y: e.clientY + (Math.random()-0.5)*4,
+                    vx: (Math.random()-0.5)*2,
+                    vy: -Math.random()*2 - 0.5,
+                    size: Math.random()*3+1,
+                    alpha: 0.8 + Math.random()*0.2,
+                    color: Math.random() > 0.5 ? '#D4A843' : '#F0C96A'
+                });
+            }
+        }, { passive: true });
+
+        function drawSparks() {
+            sCtx.clearRect(0, 0, sparkCanvas.width, sparkCanvas.height);
+            sparks = sparks.filter(function(s) { return s.alpha > 0; });
+            sparks.forEach(function(s) {
+                s.x += s.vx;
+                s.y += s.vy;
+                s.vy += 0.05;
+                s.alpha -= 0.04;
+                sCtx.save();
+                sCtx.globalAlpha = Math.max(0, s.alpha);
+                sCtx.fillStyle = s.color;
+                sCtx.shadowColor = s.color;
+                sCtx.shadowBlur = 4;
+                sCtx.beginPath();
+                sCtx.arc(s.x, s.y, s.size, 0, Math.PI*2);
+                sCtx.fill();
+                sCtx.restore();
+            });
+            requestAnimationFrame(drawSparks);
+        }
+        drawSparks();
+    }
+
+
+    /* =====================================================
+       3. KONAMI CODE → Клешня easter egg 🦞
+       ===================================================== */
+    var konamiSeq = [38,38,40,40,37,39,37,39,66,65];
+    var konamiPos = 0;
+    document.addEventListener('keydown', function(e) {
+        if (e.keyCode === konamiSeq[konamiPos]) {
+            konamiPos++;
+            if (konamiPos === konamiSeq.length) {
+                konamiPos = 0;
+                showEasterEgg();
+            }
+        } else {
+            konamiPos = 0;
+        }
+    });
+
+    // Also: click "Event Genix" logo 5 times fast
+    var logoClicks = 0, logoTimer;
+    var logoEl = document.querySelector('.hero__logo');
+    if (logoEl) {
+        logoEl.addEventListener('click', function() {
+            logoClicks++;
+            clearTimeout(logoTimer);
+            logoTimer = setTimeout(function() { logoClicks = 0; }, 1500);
+            if (logoClicks >= 5) { logoClicks = 0; showEasterEgg(); }
+        });
+    }
+
+    function showEasterEgg() {
+        var egg = document.createElement('div');
+        egg.innerHTML = '<div style="text-align:center;padding:32px;"><div style="font-size:80px;animation:eggBounce 0.5s ease infinite alternate;">🦞</div><div style="font-family:Space Grotesk,sans-serif;font-size:22px;font-weight:800;color:#D4A843;margin-top:16px;">Привіт, це я — Клешня!</div><div style="color:#aaa;margin-top:8px;font-size:15px;">Розробив цей сайт за 3 дні 😎<br>Ти знайшов секрет!</div><button onclick="this.closest(\'.egg-overlay\').remove()" style="margin-top:20px;background:#D4A843;color:#0a0a18;border:none;border-radius:999px;padding:10px 28px;font-size:16px;font-weight:700;cursor:pointer;font-family:Space Grotesk,sans-serif;">🦞 Поняв!</button></div>';
+        egg.className = 'egg-overlay';
+        egg.style.cssText = 'position:fixed;inset:0;background:rgba(7,7,15,0.92);z-index:999999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);animation:eggFadeIn 0.3s ease;';
+        document.body.appendChild(egg);
+        egg.addEventListener('click', function(e) {
+            if (e.target === egg) egg.remove();
+        });
+    }
+
+    var eggStyle = document.createElement('style');
+    eggStyle.textContent = '@keyframes eggBounce{from{transform:translateY(0) rotate(-10deg)}to{transform:translateY(-12px) rotate(10deg)}}@keyframes eggFadeIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:scale(1)}}';
+    document.head.appendChild(eggStyle);
+
+
+    /* =====================================================
+       4. BUTTON RIPPLE — хвиля при кожному тапі/кліці
+       ===================================================== */
+    document.querySelectorAll('.btn, .faq-q, .price-card').forEach(function(el) {
+        el.style.position = el.style.position || 'relative';
+        el.style.overflow = 'hidden';
+        el.addEventListener('click', function(e) {
+            var rect = el.getBoundingClientRect();
+            var x = e.clientX - rect.left;
+            var y = e.clientY - rect.top;
+            var ripple = document.createElement('span');
+            var size = Math.max(rect.width, rect.height) * 2;
+            ripple.style.cssText = 'position:absolute;border-radius:50%;background:rgba(255,255,255,0.15);width:'+size+'px;height:'+size+'px;left:'+(x-size/2)+'px;top:'+(y-size/2)+'px;transform:scale(0);animation:rippleAnim 0.6s ease-out forwards;pointer-events:none;z-index:10;';
+            el.appendChild(ripple);
+            setTimeout(function() { ripple.remove(); }, 700);
+        });
+    });
+
+    var rippleStyle = document.createElement('style');
+    rippleStyle.textContent = '@keyframes rippleAnim{to{transform:scale(1);opacity:0;}}';
+    document.head.appendChild(rippleStyle);
+
+
+    /* =====================================================
+       5. STAT NUMBERS — "scramble" при hover (число мигає)
+       ===================================================== */
+    var CHARS = '0123456789';
+    function scrambleNumber(el, finalVal) {
+        var iters = 0;
+        var maxIters = 12;
+        var original = el.textContent;
+        var timer = setInterval(function() {
+            if (iters >= maxIters) {
+                el.textContent = original;
+                clearInterval(timer);
+                return;
+            }
+            var scrambled = '';
+            for (var i = 0; i < original.length; i++) {
+                var ch = original[i];
+                if (/\d/.test(ch) && iters < maxIters - 3) {
+                    scrambled += CHARS[Math.floor(Math.random()*10)];
+                } else {
+                    scrambled += ch;
+                }
+            }
+            el.textContent = scrambled;
+            iters++;
+        }, 60);
+    }
+
+    document.querySelectorAll('.stat-item').forEach(function(item) {
+        var val = item.querySelector('.stat-item__value');
+        if (!val) return;
+        item.addEventListener('mouseenter', function() {
+            scrambleNumber(val, val.textContent);
+        });
+        // Touch: scramble on tap
+        item.addEventListener('touchstart', function() {
+            scrambleNumber(val, val.textContent);
+        }, { passive: true });
+    });
+
+})();

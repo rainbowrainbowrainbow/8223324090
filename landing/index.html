@@ -8,11 +8,33 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2">
+    <link rel="stylesheet" href="style.css?v=3.0">
     <link rel="icon" href="/images/favicon.ico">
 
 </head>
 <body>
+
+<!-- SCROLL PROGRESS BAR -->
+<div class="scroll-progress" id="scrollProgress"></div>
+
+<!-- STICKY NAVBAR -->
+<nav class="navbar" id="navbar">
+    <div class="navbar__inner">
+        <a href="#hero" class="navbar__logo">Event Genix</a>
+        <button class="navbar__burger" id="navBurger" aria-label="Меню">
+            <span></span><span></span><span></span>
+        </button>
+        <ul class="navbar__links" id="navLinks">
+            <li><a href="#product" class="nav-a">Продукт</a></li>
+            <li><a href="#demo" class="nav-a">Як це працює</a></li>
+            <li><a href="#cases" class="nav-a">Кейси</a></li>
+            <li><a href="#pricing" class="nav-a">Ціни</a></li>
+            <li><a href="#team" class="nav-a">Команда</a></li>
+            <li><a href="#faq" class="nav-a">FAQ</a></li>
+        </ul>
+        <a href="#pricing" class="btn btn--gold navbar__cta">Демо →</a>
+    </div>
+</nav>
 
 <!-- СЕКЦІЯ 1: HERO -->
 <section class="hero" id="hero">
@@ -58,6 +80,33 @@
                 <div class="card__icon">⏰</div>
                 <div class="card__title">Вікно можливостей — зараз</div>
                 <div class="card__text">Хто входить першим — займає ринок. Решта наздоганяє.</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- СЕКЦІЯ 2.5: ЦИФРИ -->
+<section class="section stats-band" id="stats">
+    <div class="container">
+        <div class="stats-row">
+            <div class="stat-item fade-in">
+                <div class="stat-item__value">80+</div>
+                <div class="stat-item__label">хвилин економії на день</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item fade-in">
+                <div class="stat-item__value">24</div>
+                <div class="stat-item__label">модулі в системі</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item fade-in">
+                <div class="stat-item__value">v22+</div>
+                <div class="stat-item__label">версій виходить кожен тиждень</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item fade-in">
+                <div class="stat-item__value">1</div>
+                <div class="stat-item__label">живий парк вже на системі</div>
             </div>
         </div>
     </div>
@@ -140,7 +189,7 @@
                     <li>Сертифікати</li>
                     <li>Telegram-бот</li>
                 </ul>
-                <a href="/demo" class="btn btn--outline">Спробувати</a>
+                <button class="btn btn--outline" data-package="basic">Отримати демо →</button>
             </div>
             <div class="price-card">
                 <div class="price-card__header">
@@ -154,7 +203,7 @@
                     <li>Премії / депремії</li>
                     <li>Аналітика команди</li>
                 </ul>
-                <a href="/demo" class="btn btn--outline">Спробувати</a>
+                <button class="btn btn--outline" data-package="hr">Отримати демо →</button>
             </div>
             <div class="price-card price-card--recommended">
                 <div class="price-card__badge">Рекомендовано</div>
@@ -169,7 +218,7 @@
                     <li>Автопіньята</li>
                     <li>Клешня Art (100/д)</li>
                 </ul>
-                <a href="/demo" class="btn btn--gold">Спробувати</a>
+                <button class="btn btn--gold" data-package="art">Отримати демо →</button>
             </div>
             <div class="price-card">
                 <div class="price-card__header">
@@ -183,7 +232,7 @@
                     <li>Клешня 200/день</li>
                     <li>Пріоритет підтримки</li>
                 </ul>
-                <a href="/demo" class="btn btn--outline">Спробувати</a>
+                <button class="btn btn--outline" data-package="full">Отримати демо →</button>
             </div>
         </div>
         <p class="section__note fade-in">Ціни в гривнях. Підключення — разово, в доларах за курсом.</p>
@@ -315,52 +364,86 @@
         <h2 class="section__title fade-in">Ми не зупиняємось 🚀</h2>
         <p class="section__subtitle fade-in">Нові фічі — кожного тижня. Ось що додали останнім часом.</p>
         <div class="updates-grid fade-in">
+            <div class="update-card update-card--new">
+                <div class="update-card__badge">Нове</div>
+                <div class="update-card__version">v22.16</div>
+                <div class="update-card__title">OmniClaw + Lead Capture</div>
+                <ul class="update-card__list">
+                    <li>Автозахват лідів з Telegram, FB, IG, Viber</li>
+                    <li>Омніканальна комунікація OmniClaw</li>
+                    <li>Universal webhook для TikTok/Turbo</li>
+                    <li>Нотифікації менеджерам про нові ліди</li>
+                    <li>Захист від дублів через external_id</li>
+                </ul>
+            </div>
+            <div class="update-card">
+                <div class="update-card__version">v22.9</div>
+                <div class="update-card__title">Dashboard + Role Panel</div>
+                <ul class="update-card__list">
+                    <li>Персональний дашборд для кожної ролі</li>
+                    <li>Глобальна Role Panel на всіх сторінках</li>
+                    <li>Role Switcher для тестування</li>
+                    <li>KPI-картки з delta vs вчора</li>
+                    <li>Drag & Drop кастомізація</li>
+                </ul>
+            </div>
             <div class="update-card">
                 <div class="update-card__version">v21.9</div>
                 <div class="update-card__title">Chat Mega Upgrade</div>
                 <ul class="update-card__list">
                     <li>Online-статус з пульсуючою крапкою</li>
                     <li>Гігантські emoji-стікери з анімацією</li>
-                    <li>Градієнтні бабли залежно від часу доби</li>
                     <li>Swipe-to-reply на мобільних</li>
-                    <li>Кольорові ролі та ачівки з конфетті</li>
-                </ul>
-            </div>
-            <div class="update-card">
-                <div class="update-card__version">v21.7</div>
-                <div class="update-card__title">Guardian v2 + Emoji Effects</div>
-                <ul class="update-card__list">
-                    <li>AI-модератор з 10 настроями</li>
-                    <li>Журнал безпеки в реальному часі</li>
-                    <li>Emoji-ефекти: 🔥 ❤️ 🎉 ⚡</li>
-                    <li>Задачі з чату одним кліком</li>
-                    <li>AI навчання фільтрів</li>
-                </ul>
-            </div>
-            <div class="update-card">
-                <div class="update-card__version">v21.6</div>
-                <div class="update-card__title">Kleshnya Bot + Guardian</div>
-                <ul class="update-card__list">
-                    <li>Бот Клешня прямо в чаті</li>
-                    <li>DM з AI без @mention</li>
-                    <li>Маскування даних: телефони, картки, IBAN</li>
-                    <li>Щоденні AI-звіти о 21:00</li>
-                    <li>Антисварка з автоблокуванням</li>
+                    <li>Кольорові ролі та ачівки</li>
+                    <li>AI-модератор Guardian v2</li>
                 </ul>
             </div>
             <div class="update-card">
                 <div class="update-card__version">v21.3</div>
-                <div class="update-card__title">Messenger Pro</div>
+                <div class="update-card__title">Командний Месенджер</div>
                 <ul class="update-card__list">
-                    <li>Особисті повідомлення</li>
-                    <li>Emoji-панель Telegram-стилю</li>
-                    <li>Профілі користувачів</li>
-                    <li>Задачі з чату: /task</li>
+                    <li>Корпоративний чат всередині CRM</li>
+                    <li>DM між членами команди</li>
+                    <li>Прив'язка задач до повідомлень</li>
                     <li>Read receipts ✓✓</li>
+                    <li>Клешня прямо в чаті</li>
                 </ul>
             </div>
         </div>
-        <p class="section__note fade-in">Версія v21.9 · Березень 2026 · <a href="/" style="color:var(--gold);text-decoration:underline;">Увійти в систему</a></p>
+        <p class="section__note fade-in">Версія v22.16 · Березень 2026 · <a href="/" style="color:var(--gold);text-decoration:underline;">Увійти в систему</a></p>
+    </div>
+</section>
+
+<!-- FAQ СЕКЦІЯ -->
+<section class="section faq" id="faq">
+    <div class="container">
+        <h2 class="section__title fade-in">Часті запитання</h2>
+        <div class="faq-list fade-in">
+            <div class="faq-item">
+                <button class="faq-q">Скільки часу займає впровадження? <span class="faq-arrow">↓</span></button>
+                <div class="faq-a">Базове підключення — 1 робочий день. Ми налаштовуємо систему під вас: кімнати, програми, команду. Ви отримуєте готову до роботи CRM без зайвих технічних складнощів.</div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q">Що якщо у мене вже є CRM? <span class="faq-arrow">↓</span></button>
+                <div class="faq-a">Event Genix може працювати паралельно або замінити існуючу систему. Ми допоможемо перенести дані. Більшість клієнтів переходять повністю — бо тут все в одному місці + AI.</div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q">Чи потрібні технічні знання? <span class="faq-arrow">↓</span></button>
+                <div class="faq-a">Ні. Інтерфейс зрозумілий навіть для адмінів і аніматорів без досвіду. Є мобільна версія. Клешня відповідає на питання голосом у Telegram — навіть це не треба запам'ятовувати.</div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q">Де зберігаються мої дані? <span class="faq-arrow">↓</span></button>
+                <div class="faq-a">На захищеному хмарному сервері (Railway, EU). Резервне копіювання щодня. Тільки ви маєте доступ — ніяких "третіх осіб". Дані захищені шифруванням.</div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q">Чи є демо перед оплатою? <span class="faq-arrow">↓</span></button>
+                <div class="faq-a">Так. Ми даємо повний доступ до живої системи на 7 днів безкоштовно. Без кредитної картки. Ви самі побачите — чи підходить вам це.</div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q">Що вмінить Клешня — AI-асистент? <span class="faq-arrow">↓</span></button>
+                <div class="faq-a">Клешня бронює, нагадує, будує розклад, генерує афіші, відповідає на питання команди, складає P&L, контролює склад і багато іншого. Все через Telegram або веб-інтерфейс.</div>
+            </div>
+        </div>
     </div>
 </section>
 
@@ -445,6 +528,9 @@
     </div>
 </div>
 
-<script src="script.js?v=2.3"></script>
+<!-- BACK TO TOP -->
+<button class="back-to-top" id="backToTop" title="Вгору">↑</button>
+
+<script src="script.js?v=3.0"></script>
 </body>
 </html>

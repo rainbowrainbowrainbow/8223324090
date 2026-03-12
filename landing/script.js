@@ -779,6 +779,19 @@
         stepObs.observe(el);
     });
 
+    // --- EXPANDABLE CARDS ---
+    document.querySelectorAll('.card--expandable').forEach(function(card) {
+        card.addEventListener('click', function() {
+            var isOpen = this.getAttribute('data-expanded') === 'true';
+            // Close all others
+            document.querySelectorAll('.card--expandable').forEach(function(c) {
+                c.setAttribute('data-expanded', 'false');
+            });
+            // Toggle this one
+            this.setAttribute('data-expanded', isOpen ? 'false' : 'true');
+        });
+    });
+
     // --- CARD ICON GLOW ON HOVER ---
     document.querySelectorAll('.card').forEach(function(card) {
         var icon = card.querySelector('.card__icon');

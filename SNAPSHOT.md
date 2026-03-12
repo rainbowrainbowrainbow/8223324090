@@ -3,17 +3,17 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v24.0.0**. package.json: `24.0.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
+Версія **v24.1.0**. package.json: `24.1.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] v24.0.0 — Role Panel + Role Switcher
-- **package.json**: `"version": "24.0.0"`
+- **Останній коміт**: feat: [claude-code] v24.1.0 — Dashboard v24 QA + Polish
+- **package.json**: `"version": "24.1.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **origin/main**: v22.12.0
+- **origin/main**: v24.0.0
 - **origin/deployed**: v17.4.1
-- **Що нового в v24.0.0**: Role Panel (глобальний FAB + slide-out панель) + Role Switcher (перемикання ролей/акаунтів) + Impersonation API
+- **Що нового в v24.1.0**: QA фікси (API endpoints, z-index, task counter, F5 banner) + Polish (glassmorphism FAB, stagger анімації, dark mode, mobile adaptation)
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -26,7 +26,26 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v24.0.0)
+## Останні зміни (v22.4.0 → v24.1.0)
+
+### v24.1.0 (Claude Code, 12.03.2026)
+- **QA Fixes**
+  - FAB z-index: 1000 → 900 (не перекриває sidebar overlay/модалки)
+  - API: `/api/dashboard/stats` → `/api/dashboard/widgets/quick_stats`, team → `team_online`
+  - Widget data unwrap: правильне парсення `{ success, data }` відповіді
+  - Task counter оновлюється після checkbox click (-1 + "Задач немає" при 0)
+  - Impersonation banner при F5/reload через sessionStorage persist
+  - Test-role note: "Тільки зовнішній вигляд" у панелі
+- **Polish**
+  - FAB: вертикальна капсула (44×120px), glassmorphism, writing-mode vertical, pulse badge
+  - Panel: glassmorphism bg (blur 20px), spring animation (cubic-bezier 0.34, 1.56, 0.64, 1)
+  - Blocks: stagger появи (0.05s delay per block), hover shadows
+  - Checkbox: кастомна checkIn анімація, completing slide-out effect
+  - Role Switcher dropdown: scale+translateY анімація, indigo кольорова схема
+  - Impersonation banner: gradient amber→red, slide-down, fixed top
+- **Dark Mode** — повна підтримка для FAB, Panel, Switcher, Banner
+- **Mobile** — bottom-sheet Panel (80vh), compact FAB (44×44), responsive banner
+- **Versioning** — v24.1.0 на всіх 24 HTML, package.json, changelog
 
 ### v24.0.0 (Claude Code, 12.03.2026)
 - **Role Panel** — глобальна плаваюча панель (FAB) справа на всіх 24 сторінках

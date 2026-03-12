@@ -1,6 +1,6 @@
 /**
  * js/role-panel.js — Global Role Panel FAB + slide-out panel
- * v24.0.0: Self-injecting component, works on ALL pages
+ * v24.1.0: QA fixes + Polish — stagger animations, task counter, impersonation banner, z-index fixes
  *
  * Blocks:
  * 1. Schedule link (all roles)
@@ -67,12 +67,15 @@ const RolePanel = (() => {
         // Don't init on login-only pages or if no token
         if (!localStorage.getItem('pzp_token')) return;
 
-        // Inject FAB
+        // Inject FAB — vertical capsule design
         const fab = document.createElement('button');
         fab.id = 'rolePanelFab';
         fab.className = 'role-panel-fab';
         fab.setAttribute('aria-label', 'Відкрити панель ролі');
-        fab.innerHTML = '👤';
+        fab.innerHTML = `
+            <span class="rp-fab-icon">👤</span>
+            <span class="rp-fab-label">Панель</span>
+        `;
         document.body.appendChild(fab);
 
         // Inject overlay
@@ -114,6 +117,48 @@ const RolePanel = (() => {
             _cacheTime = 0;
             if (_open) _loadAndRender();
         });
+
+        // v24.1.0: Show impersonation banner on F5/reload
+        _checkImpersonationBanner();
+
+        // v24.1.0: Update FAB badge if test role is active
+        _updateFabBadge();
+    }
+
+    function _checkImpersonationBanner() {
+        const imp = sessionStorage.getItem('impersonating');
+        if (!imp) return;
+
+        // Don't duplicate
+        if (document.getElementById('impersonationBanner')) return;
+
+        const banner = document.createElement('div');
+        banner.id = 'impersonationBanner';
+        banner.className = 'impersonation-banner';
+        banner.innerHTML = `
+            <span>👤 Ви переглядаєте як: <b>${_esc(imp)}</b> — дані відповідають цьому користувачу</span>
+            <button class="impersonation-return-btn" id="impReturnBtn">Повернутись</button>
+        `;
+        document.body.prepend(banner);
+        document.body.classList.add('has-impersonation-banner');
+
+        document.getElementById('impReturnBtn').addEventListener('click', () => {
+            if (typeof RoleSwitcher !== 'undefined') {
+                RoleSwitcher.resetImpersonation();
+            }
+        });
+    }
+
+    function _updateFabBadge() {
+        const fab = document.getElementById('rolePanelFab');
+        if (!fab) return;
+        const testRole = sessionStorage.getItem('testRole') || localStorage.getItem('pzp_test_role');
+        const imp = sessionStorage.getItem('impersonating');
+        if (testRole || imp) {
+            fab.classList.add('has-badge');
+        } else {
+            fab.classList.remove('has-badge');
+        }
     }
 
     function toggle() {
@@ -146,12 +191,14 @@ const RolePanel = (() => {
 
         nameEl.textContent = user.name;
         let roleText = ROLE_NAMES[role] || role;
+        let noteHtml = '';
         if (imp) {
             roleText = '👤 Імперсонація: ' + imp;
         } else if (testRole && user.role === 'creator') {
             roleText = '🎭 Тест: ' + (ROLE_NAMES[testRole] || testRole);
+            noteHtml = '<div class="rp-test-note">Тільки зовнішній вигляд. Дані залишаються як у creator.</div>';
         }
-        roleEl.textContent = roleText;
+        roleEl.innerHTML = _esc(roleText) + noteHtml;
 
         const content = document.getElementById('rpContent');
         const now = Date.now();
@@ -176,17 +223,17 @@ const RolePanel = (() => {
             fetch('/api/auth/profile', { headers }).then(r => r.ok ? r.json() : null).catch(() => null),
         ];
 
-        // 2: Stats today (admin+)
+        // 2: Stats today (admin+) — use quick_stats widget endpoint
         if (level >= _level('admin')) {
             fetches.push(
-                fetch('/api/dashboard/stats', { headers }).then(r => r.ok ? r.json() : null).catch(() => null)
+                fetch('/api/dashboard/widgets/quick_stats', { headers }).then(r => r.ok ? r.json() : null).catch(() => null)
             );
         }
 
-        // 3: Current shifts (manager+)
+        // 3: Team online (manager+) — use team_online widget endpoint
         if (level >= _level('manager')) {
             fetches.push(
-                fetch('/api/hr/who-is-now', { headers }).then(r => r.ok ? r.json() : null).catch(() => null)
+                fetch('/api/dashboard/widgets/team_online', { headers }).then(r => r.ok ? r.json() : null).catch(() => null)
             );
         }
 
@@ -201,11 +248,17 @@ const RolePanel = (() => {
         const results = await Promise.allSettled(fetches);
         const get = (i) => results[i] && results[i].status === 'fulfilled' ? results[i].value : null;
 
+        // Extract widget data from { success, data } wrapper
+        const getWidget = (i) => {
+            const r = get(i);
+            return r && r.data ? r.data : r;
+        };
+
         _cache = {
             tasks: get(0),
             profile: get(1),
-            stats: level >= _level('admin') ? get(2) : null,
-            team: level >= _level('manager') ? get(level >= _level('admin') ? 3 : 2) : null,
+            stats: level >= _level('admin') ? getWidget(2) : null,
+            team: level >= _level('manager') ? getWidget(level >= _level('admin') ? 3 : 2) : null,
             overdueTasks: level >= _level('director') ? get(level >= _level('admin') ? 4 : 3) : null,
             leads: level >= _level('director') ? get(level >= _level('admin') ? 5 : 4) : null,
         };
@@ -257,10 +310,41 @@ const RolePanel = (() => {
                     if (resp.ok) {
                         btn.classList.add('done');
                         btn.innerHTML = '✓';
-                        btn.closest('.rp-task-item').style.opacity = '0.5';
+                        const item = btn.closest('.rp-task-item');
+                        item.classList.add('completing');
+                        // Update counter
+                        const titleEl = item.closest('.role-panel-block')?.querySelector('.role-panel-block-title');
+                        if (titleEl) {
+                            const match = titleEl.textContent.match(/(\d+)/);
+                            if (match) {
+                                const newCount = Math.max(0, parseInt(match[1]) - 1);
+                                titleEl.innerHTML = `<span class="block-icon">📝</span> Задачі: ${newCount} невиконано`;
+                                if (newCount === 0) {
+                                    const list = item.closest('.rp-task-list');
+                                    if (list) {
+                                        setTimeout(() => { list.innerHTML = '<div class="rp-empty">✅ Задач немає — відпочивай!</div>'; }, 350);
+                                    }
+                                }
+                            }
+                        }
+                        // Remove item after animation
+                        setTimeout(() => { item.remove(); }, 350);
                         _cache = null; // invalidate cache
                     }
                 } catch { /* silent */ }
+            });
+        });
+
+        // v24.1.0: Stagger animation — blocks appear one by one
+        _animateBlocksIn(container);
+    }
+
+    function _animateBlocksIn(container) {
+        const blocks = container.querySelectorAll('.role-panel-block, .role-panel-schedule-btn');
+        blocks.forEach(b => b.classList.remove('rp-visible'));
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                blocks.forEach(b => b.classList.add('rp-visible'));
             });
         });
     }
@@ -372,9 +456,9 @@ const RolePanel = (() => {
         const stats = data.stats;
         if (!stats) return '';
 
-        const bookings = stats.todayBookings ?? stats.bookingsToday ?? 0;
-        const revenue = stats.todayRevenue ?? stats.revenue ?? 0;
-        const leads = stats.newLeads ?? stats.leadsToday ?? 0;
+        const bookings = stats.bookingsToday ?? stats.todayBookings ?? 0;
+        const revenue = stats.revenueToday ?? stats.todayRevenue ?? stats.revenue ?? 0;
+        const leads = stats.activeTasks ?? stats.newLeads ?? stats.leadsToday ?? 0;
 
         return `
             <div class="role-panel-block">
@@ -392,7 +476,7 @@ const RolePanel = (() => {
                     </div>
                     <div class="rp-stat-card">
                         <div class="rp-stat-value">${leads}</div>
-                        <div class="rp-stat-label">🔥 Лідів</div>
+                        <div class="rp-stat-label">📋 Задач</div>
                     </div>
                 </div>
                 <a href="/dashboard" class="rp-stat-link">Дашборд →</a>
@@ -407,6 +491,8 @@ const RolePanel = (() => {
         let items = [];
         if (Array.isArray(team)) {
             items = team;
+        } else if (team.online && Array.isArray(team.online)) {
+            items = team.online;
         } else if (team.staff && Array.isArray(team.staff)) {
             items = team.staff;
         } else if (team.items && Array.isArray(team.items)) {

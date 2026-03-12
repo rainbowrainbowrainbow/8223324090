@@ -614,52 +614,7 @@
         setTimeout(tick, 1200);
     }
 
-    // --- ROI CALCULATOR ---
-    var adminsEl  = document.getElementById('roiAdmins');
-    var eventsEl  = document.getElementById('roiEvents');
-    var salaryEl  = document.getElementById('roiSalary');
-    var adminsVal = document.getElementById('roiAdminsVal');
-    var eventsVal = document.getElementById('roiEventsVal');
-    var salaryVal = document.getElementById('roiSalaryVal');
-    var hoursEl   = document.getElementById('roiHours');
-    var moneyEl   = document.getElementById('roiMoney');
-    var roiEl     = document.getElementById('roiRoi');
-
-    function fmt(n) { return n.toLocaleString('uk-UA'); }
-
-    function calcRoi() {
-        var admins = +adminsEl.value;
-        var events = +eventsEl.value;
-        var salary = +salaryEl.value;
-
-        adminsVal.textContent = admins;
-        eventsVal.textContent = events;
-        salaryVal.textContent = fmt(salary);
-
-        // 80 min/day per admin → hours/month
-        var workDays = 22;
-        var savedMinPerAdmin = 80;
-        var totalHours = Math.round((admins * savedMinPerAdmin * workDays) / 60);
-
-        // Cost of saved time
-        var hourlyRate = salary / (workDays * 8);
-        var savings = Math.round(hourlyRate * totalHours);
-
-        // ROI: (savings - plan_cost) / plan_cost
-        var planCost = 18000; // Full package
-        var roi = Math.round(((savings - planCost) / planCost) * 100);
-
-        if (hoursEl) hoursEl.textContent = totalHours + ' год';
-        if (moneyEl) moneyEl.textContent = fmt(savings) + ' ₴';
-        if (roiEl) roiEl.textContent = (roi > 0 ? '+' : '') + roi + '%';
-    }
-
-    if (adminsEl && eventsEl && salaryEl) {
-        [adminsEl, eventsEl, salaryEl].forEach(function(el) {
-            el.addEventListener('input', calcRoi);
-        });
-        calcRoi();
-    }
+    // ROI calculator removed 12.03.2026
 
     // --- STICKY BOTTOM CTA ---
     var stickyCta   = document.getElementById('stickyCta');

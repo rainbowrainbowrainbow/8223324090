@@ -1357,3 +1357,64 @@
         if (!this.value) this.value = '+380';
     });
 })();
+
+/* ============================================================
+   LANDING v5.0 — Demystify Accordion + AI Demo
+   ============================================================ */
+
+// --- Demystify Accordion ---
+document.querySelectorAll('.demystify-card').forEach(card => {
+    card.addEventListener('click', () => {
+        const isOpen = card.getAttribute('data-open') === 'true';
+        // close all
+        document.querySelectorAll('.demystify-card').forEach(c => c.setAttribute('data-open', 'false'));
+        // toggle clicked
+        if (!isOpen) card.setAttribute('data-open', 'true');
+    });
+});
+
+// --- AI Demo Typewriter ---
+(function() {
+    const responses = [
+        "Готово! Minecraft квест на суботу 15:00 — підтверджено. ✅\nКлієнту пішло SMS-нагадування.\nАніматор Олексій — призначений.\nЗмінено статус: Підтверджено.",
+        "Виручка за тиждень: 47 200 ₴\nСередній чек: 890 ₴\nЗростання: +12% до минулого тижня 📈\nТоп-послуга: Minecraft квест (34%)\nДні пікового навантаження: Сб, Нд",
+        "Афішу створено! 🎨\nСтиль: Minecraft, розмір A3.\nКолірна палітра: зелений + коричневий.\nЗавантажити PNG?\nАбо одразу надіслати в друк? 🖨️"
+    ];
+
+    const bubbles = document.querySelectorAll('.ai-bubble');
+    const body = document.getElementById('aiDemoBody');
+    const cta = document.getElementById('aiDemoCta');
+    let typing = false;
+
+    bubbles.forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (typing) return;
+            const idx = parseInt(btn.dataset.demo);
+            // activate bubble
+            bubbles.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            // typewriter
+            typing = true;
+            if (cta) cta.style.display = 'none';
+            body.innerHTML = '<span class="ai-demo-cursor"></span>';
+            const text = responses[idx];
+            let i = 0;
+            function typeChar() {
+                if (i < text.length) {
+                    const ch = text[i] === '\n' ? '<br>' : text[i];
+                    body.innerHTML = body.innerHTML.replace('<span class="ai-demo-cursor"></span>', '') + ch + '<span class="ai-demo-cursor"></span>';
+                    i++;
+                    setTimeout(typeChar, 25 + Math.random() * 20);
+                } else {
+                    // done
+                    setTimeout(() => {
+                        body.innerHTML = body.innerHTML.replace('<span class="ai-demo-cursor"></span>', '');
+                        if (cta) cta.style.display = 'block';
+                        typing = false;
+                    }, 500);
+                }
+            }
+            typeChar();
+        });
+    });
+})();

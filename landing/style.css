@@ -1,8 +1,32 @@
 /* ========================================
-   Event Genix Landing — style.css
-   Colors: #0D0D0D (bg), #C9A84C (gold), #FFFFFF (text)
-   Fonts: Space Grotesk (headings), Inter (body)
+   Event Genix Landing — style.css v4.0
+   Colors: Deep Space Dark + Rich Gold + Indigo Accents
    ======================================== */
+
+/* --- DESIGN TOKENS --- */
+:root {
+    --bg:          #07070F;
+    --bg-2:        #0C0C1A;
+    --bg-card:     rgba(14,14,28,0.85);
+    --gold:        #D4A843;
+    --gold-light:  #F0C96A;
+    --gold-dim:    rgba(212,168,67,0.15);
+    --gold-glow:   rgba(212,168,67,0.25);
+    --indigo:      #6366F1;
+    --indigo-dim:  rgba(99,102,241,0.15);
+    --text:        #F2F2FF;
+    --text-2:      rgba(242,242,255,0.60);
+    --text-3:      rgba(242,242,255,0.30);
+    --border:      rgba(212,168,67,0.12);
+    --border-2:    rgba(255,255,255,0.07);
+    --shadow-gold: 0 20px 60px rgba(212,168,67,0.12);
+    --shadow-deep: 0 24px 80px rgba(0,0,0,0.5);
+    --radius-sm:   12px;
+    --radius-md:   20px;
+    --radius-lg:   28px;
+    --ease-spring: cubic-bezier(0.34,1.56,0.64,1);
+    --ease-smooth: cubic-bezier(0.4,0,0.2,1);
+}
 
 /* --- Reset & Base --- */
 *, *::before, *::after {
@@ -17,13 +41,15 @@ html {
 }
 
 body {
-    background: #0D0D0D;
-    color: #FFFFFF;
+    background: var(--bg);
+    color: var(--text);
     font-family: 'Inter', sans-serif;
     font-weight: 400;
     line-height: 1.6;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+    /* Subtle noise texture */
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
 }
 
 .container {
@@ -2230,3 +2256,470 @@ h1, h2, h3, h4 {
     color: rgba(255,255,255,0.8);
 }
 .trust-badge span { font-size: 16px; }
+
+/* ========================================
+   v4.0 VISUAL OVERHAUL: Deep colors, Orbs, Glow, Wave dividers
+   ======================================== */
+
+/* ---- GLOBAL COLOR OVERRIDES ---- */
+.section { background: transparent; }
+.section:nth-child(even) { background: rgba(255,255,255,0.012); }
+
+/* ---- ANIMATED HERO ORBS ---- */
+.hero__orbs {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+.orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0;
+    animation: orbFloat linear infinite;
+}
+.orb--1 {
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(212,168,67,0.22) 0%, transparent 70%);
+    top: -100px; left: -100px;
+    animation-duration: 20s;
+    animation-delay: 0s;
+    opacity: 0.7;
+}
+.orb--2 {
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%);
+    top: 20%; right: -80px;
+    animation-duration: 25s;
+    animation-delay: -8s;
+    opacity: 0.6;
+}
+.orb--3 {
+    width: 350px; height: 350px;
+    background: radial-gradient(circle, rgba(212,168,67,0.12) 0%, transparent 70%);
+    bottom: -50px; left: 30%;
+    animation-duration: 18s;
+    animation-delay: -4s;
+    opacity: 0.5;
+}
+.orb--4 {
+    width: 250px; height: 250px;
+    background: radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%);
+    top: 60%; right: 20%;
+    animation-duration: 22s;
+    animation-delay: -12s;
+    opacity: 0.4;
+}
+@keyframes orbFloat {
+    0%   { transform: translate(0, 0) scale(1); }
+    25%  { transform: translate(30px, -40px) scale(1.05); }
+    50%  { transform: translate(-20px, -80px) scale(0.95); }
+    75%  { transform: translate(40px, -30px) scale(1.03); }
+    100% { transform: translate(0, 0) scale(1); }
+}
+
+/* ---- GLOW BUTTON ---- */
+.btn--gold {
+    background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 50%, var(--gold) 100%);
+    background-size: 200% 100%;
+    color: #0A0A18;
+    border-color: transparent;
+    animation: btnShimmer 4s ease infinite;
+    position: relative;
+    overflow: hidden;
+}
+.btn--gold::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light), var(--gold));
+    opacity: 0;
+    z-index: -1;
+    filter: blur(8px);
+    transition: opacity 0.3s;
+}
+.btn--gold:hover::after { opacity: 0.5; }
+.btn--gold:hover {
+    background-position: 100% 0;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(212,168,67,0.4), 0 0 0 1px rgba(212,168,67,0.3);
+}
+@keyframes btnShimmer {
+    0%   { background-position: 0% 0; }
+    50%  { background-position: 100% 0; }
+    100% { background-position: 0% 0; }
+}
+
+.btn--outline {
+    border-color: rgba(212,168,67,0.4);
+    color: var(--gold);
+    background: transparent;
+    position: relative;
+    overflow: hidden;
+}
+.btn--outline::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, var(--gold-dim), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.btn--outline:hover { border-color: var(--gold); }
+.btn--outline:hover::before { opacity: 1; }
+
+/* ---- GLOW SECTION TITLES ---- */
+.section__title {
+    font-size: 42px;
+    margin-bottom: 16px;
+    color: var(--text);
+    text-shadow: 0 0 60px rgba(212,168,67,0.05);
+}
+.section__title--gold {
+    background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 60%, var(--gold) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    background-size: 200% 100%;
+    animation: goldShine 4s ease infinite;
+    text-shadow: none;
+}
+
+/* ---- CARD GLOW BORDERS ---- */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-md);
+    padding: 32px 28px;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(12px);
+}
+.card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(212,168,67,0.2), transparent 60%, rgba(99,102,241,0.1));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.4s;
+}
+.card:hover::before { opacity: 1; }
+.card:hover {
+    background: rgba(18,18,36,0.95);
+    border-color: rgba(212,168,67,0.2);
+}
+
+/* ---- WAVE SECTION DIVIDERS ---- */
+.wave-divider {
+    position: relative;
+    height: 80px;
+    overflow: hidden;
+    margin: -1px 0;
+    line-height: 0;
+}
+.wave-divider svg {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* ---- QUOTE REDESIGN ---- */
+.quote {
+    font-size: 20px;
+    font-style: italic;
+    color: var(--text-2);
+    border-left: 3px solid var(--gold);
+    padding: 24px 32px;
+    background: var(--bg-card);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    position: relative;
+    backdrop-filter: blur(8px);
+}
+.quote::before {
+    content: '"';
+    position: absolute;
+    top: -10px; left: 20px;
+    font-size: 80px;
+    color: var(--gold);
+    opacity: 0.15;
+    font-family: 'Space Grotesk', sans-serif;
+    line-height: 1;
+}
+
+/* ---- PRICE CARD GLOW ---- */
+.price-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-lg);
+    padding: 36px 28px;
+    backdrop-filter: blur(16px);
+    position: relative;
+    overflow: hidden;
+}
+.price-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+    opacity: 0;
+    transition: opacity 0.4s;
+}
+.price-card:hover::after { opacity: 1; }
+.price-card--recommended {
+    border-color: rgba(212,168,67,0.3);
+    background: rgba(212,168,67,0.04);
+    box-shadow: 0 0 60px rgba(212,168,67,0.07), inset 0 0 40px rgba(212,168,67,0.02);
+}
+.price-card--recommended::after { opacity: 0.7 !important; }
+
+/* ---- PRICING PRICE NUMBER ---- */
+.price-card__price {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 36px;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 16px 0 4px;
+}
+.price-card__price span {
+    font-size: 16px;
+    font-weight: 400;
+    -webkit-text-fill-color: var(--text-3);
+}
+
+/* ---- CASE CARD REDESIGN ---- */
+.case {
+    background: var(--bg-card);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-md);
+    padding: 32px;
+    backdrop-filter: blur(12px);
+    position: relative;
+}
+.case::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 20px; right: 20px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+}
+
+/* ---- UPDATE CARDS REDESIGN ---- */
+.update-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-md);
+    padding: 28px;
+    backdrop-filter: blur(12px);
+}
+.update-card__version {
+    display: inline-block;
+    background: var(--gold-dim);
+    border: 1px solid rgba(212,168,67,0.25);
+    color: var(--gold);
+    font-size: 11px;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+}
+
+/* ---- FACTS REDESIGN ---- */
+.fact {
+    background: var(--bg-card);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-md);
+    padding: 20px 24px;
+    backdrop-filter: blur(8px);
+    transition: transform 0.2s var(--ease-spring), border-color 0.2s;
+}
+.fact:hover {
+    transform: translateY(-3px);
+    border-color: var(--border);
+}
+
+/* ---- GLOW TIMELINE ---- */
+.timeline-block {
+    background: var(--bg-card);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(16px);
+    box-shadow: var(--shadow-deep);
+}
+.timeline-time {
+    color: var(--gold);
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 800;
+    text-shadow: 0 0 20px rgba(212,168,67,0.4);
+}
+.timeline-entry:hover .timeline-time {
+    text-shadow: 0 0 30px rgba(212,168,67,0.7);
+}
+
+/* ---- STEP CARDS GLOW ---- */
+.step {
+    background: var(--bg-card);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-md);
+    backdrop-filter: blur(12px);
+    transition: transform 0.3s var(--ease-spring), border-color 0.3s, box-shadow 0.3s;
+}
+.step:hover {
+    transform: translateY(-6px);
+    border-color: var(--border);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.3), 0 0 0 1px rgba(212,168,67,0.15);
+}
+.step__num {
+    color: var(--gold);
+    opacity: 0.6;
+}
+.step__arrow { color: rgba(212,168,67,0.25); }
+
+/* ---- SOCIAL PROOF SECTION BG ---- */
+.social-proof {
+    position: relative;
+    background: linear-gradient(180deg, transparent 0%, rgba(212,168,67,0.02) 50%, transparent 100%);
+}
+
+/* ---- HERO BADGE UPDATE ---- */
+.hero__badge {
+    background: rgba(212,168,67,0.08);
+    border: 1px solid rgba(212,168,67,0.2);
+    animation: badgeGlow 3s ease infinite;
+}
+@keyframes badgeGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(212,168,67,0.1); }
+    50%       { box-shadow: 0 0 20px 4px rgba(212,168,67,0.08); }
+}
+
+/* ---- NAVBAR GLASSMORPHISM ---- */
+.navbar.scrolled {
+    background: rgba(7,7,15,0.88);
+    border-bottom: 1px solid rgba(212,168,67,0.1);
+    box-shadow: 0 4px 40px rgba(0,0,0,0.4);
+}
+
+/* ---- STATS NUMBERS ---- */
+.stat-item__value { color: var(--gold); }
+.stat-item.counted .stat-item__value { color: var(--gold-light); }
+.stats-band {
+    background: linear-gradient(90deg, transparent, rgba(212,168,67,0.03) 30%, rgba(212,168,67,0.03) 70%, transparent);
+    border-color: rgba(212,168,67,0.08);
+}
+
+/* ---- FAQ GLOW ---- */
+.faq-item.open { box-shadow: 0 8px 32px rgba(0,0,0,0.2), 0 0 0 1px rgba(212,168,67,0.15); }
+.faq-q:hover { color: var(--gold); }
+
+/* ---- TESTIMONIAL CARDS ---- */
+.testi-card {
+    background: var(--bg-card);
+    border-color: var(--border-2);
+    backdrop-filter: blur(12px);
+}
+.testi-card--gold {
+    background: rgba(212,168,67,0.04);
+    box-shadow: inset 0 0 40px rgba(212,168,67,0.03);
+}
+
+/* ---- HERO SECTION FINAL ---- */
+.hero {
+    background: var(--bg);
+}
+.hero__title { color: var(--text); }
+.hero__subtitle { color: var(--text-2); }
+.hero__note { color: var(--text-3); }
+
+/* ---- SCROLL PROGRESS ---- */
+.scroll-progress {
+    background: linear-gradient(90deg, var(--indigo), var(--gold), var(--gold-light));
+    background-size: 200% 100%;
+    animation: progressShimmer 2s linear infinite;
+    height: 2.5px;
+    box-shadow: 0 0 8px rgba(212,168,67,0.5);
+}
+@keyframes progressShimmer {
+    0%   { background-position: 0% 0; }
+    100% { background-position: 200% 0; }
+}
+
+/* ---- CTA SECTION BG ---- */
+.cta {
+    background: linear-gradient(180deg, transparent 0%, rgba(212,168,67,0.04) 50%, transparent 100%);
+}
+.cta__bg {
+    background: radial-gradient(ellipse at center, rgba(212,168,67,0.06) 0%, transparent 70%);
+}
+
+/* ---- FOOTER ---- */
+.footer {
+    border-top: 1px solid rgba(212,168,67,0.08);
+    background: rgba(5,5,12,0.95);
+}
+
+/* ---- BACK TO TOP ---- */
+.back-to-top {
+    background: rgba(212,168,67,0.1);
+    border-color: rgba(212,168,67,0.3);
+    color: var(--gold);
+}
+.back-to-top:hover {
+    background: rgba(212,168,67,0.2);
+    box-shadow: 0 0 20px rgba(212,168,67,0.3);
+    transform: translateY(-3px);
+}
+
+/* ---- STAGGER REVEAL ANIMATION ---- */
+.fade-in {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.6s var(--ease-smooth), transform 0.6s var(--ease-smooth);
+}
+.fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+/* Stagger children */
+.cards--3 .card:nth-child(1).visible,
+.cards--2x2 .card:nth-child(1).visible  { transition-delay: 0.0s; }
+.cards--3 .card:nth-child(2).visible,
+.cards--2x2 .card:nth-child(2).visible  { transition-delay: 0.1s; }
+.cards--3 .card:nth-child(3).visible,
+.cards--2x2 .card:nth-child(3).visible  { transition-delay: 0.2s; }
+.cards--2x2 .card:nth-child(4).visible  { transition-delay: 0.3s; }
+
+/* Case stagger */
+.case:nth-child(1) { transition-delay: 0.0s; }
+.case:nth-child(2) { transition-delay: 0.1s; }
+.case:nth-child(3) { transition-delay: 0.2s; }
+.case:nth-child(4) { transition-delay: 0.3s; }
+
+/* Testi stagger */
+.testi-card:nth-child(1) { transition-delay: 0.0s; }
+.testi-card:nth-child(2) { transition-delay: 0.12s; }
+.testi-card:nth-child(3) { transition-delay: 0.24s; }
+
+/* Step stagger */
+.step:nth-child(1) { transition-delay: 0.0s; }
+.step:nth-child(3) { transition-delay: 0.15s; }
+.step:nth-child(5) { transition-delay: 0.30s; }
+.step:nth-child(7) { transition-delay: 0.45s; }
+
+/* ---- PARALLAX HERO ---- */
+.hero__content {
+    will-change: transform;
+    transition: transform 0.1s linear;
+}

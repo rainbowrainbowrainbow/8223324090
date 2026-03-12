@@ -743,3 +743,107 @@
     }
 
 })();
+
+// =====================
+// v4.0: Mouse Parallax Hero, Enhanced Stagger, Orb interaction
+// =====================
+(function() {
+    'use strict';
+
+    // --- HERO MOUSE PARALLAX ---
+    var heroContent = document.querySelector('.hero__content');
+    var heroOrbs = document.querySelectorAll('.orb');
+    if (heroContent) {
+        document.addEventListener('mousemove', function(e) {
+            var cx = window.innerWidth / 2;
+            var cy = window.innerHeight / 2;
+            var dx = (e.clientX - cx) / cx;
+            var dy = (e.clientY - cy) / cy;
+
+            heroContent.style.transform =
+                'translate(' + (dx * 8) + 'px, ' + (dy * 5) + 'px)';
+
+            heroOrbs.forEach(function(orb, i) {
+                var depth = [0.03, 0.05, 0.02, 0.04][i] || 0.03;
+                orb.style.transform =
+                    'translate(' + (dx * 60 * depth * (i % 2 === 0 ? 1 : -1)) + 'px, ' +
+                    (dy * 40 * depth) + 'px)';
+            });
+        }, { passive: true });
+
+        // Reset on mouse leave
+        document.addEventListener('mouseleave', function() {
+            heroContent.style.transform = '';
+            heroOrbs.forEach(function(orb) { orb.style.transform = ''; });
+        });
+    }
+
+    // --- ENHANCED SCROLL ANIMATIONS ---
+    // Re-observe all fade-in with stagger
+    var staggerObs = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (!entry.isIntersecting) return;
+            var el = entry.target;
+            // Find index among siblings
+            var parent = el.parentNode;
+            var siblings = parent ? Array.from(parent.children).filter(function(c) {
+                return c.classList.contains('fade-in') || c === el;
+            }) : [el];
+            var idx = siblings.indexOf(el);
+            el.style.transitionDelay = (idx * 0.08) + 's';
+            el.classList.add('visible');
+            staggerObs.unobserve(el);
+        });
+    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.fade-in').forEach(function(el) {
+        staggerObs.observe(el);
+    });
+
+    // --- CARD ICON GLOW ON HOVER ---
+    document.querySelectorAll('.card').forEach(function(card) {
+        var icon = card.querySelector('.card__icon');
+        if (!icon) return;
+        card.addEventListener('mouseenter', function() {
+            icon.style.filter = 'drop-shadow(0 0 16px rgba(212,168,67,0.6))';
+            icon.style.transform = 'scale(1.2) rotate(-5deg)';
+            icon.style.transition = 'all 0.3s cubic-bezier(0.34,1.56,0.64,1)';
+        });
+        card.addEventListener('mouseleave', function() {
+            icon.style.filter = '';
+            icon.style.transform = '';
+        });
+    });
+
+    // --- PRICING CARD SHINE EFFECT ---
+    document.querySelectorAll('.price-card').forEach(function(card) {
+        card.addEventListener('mousemove', function(e) {
+            var rect = card.getBoundingClientRect();
+            var x = ((e.clientX - rect.left) / rect.width) * 100;
+            var y = ((e.clientY - rect.top) / rect.height) * 100;
+            card.style.background =
+                'radial-gradient(circle at ' + x + '% ' + y + '%, rgba(212,168,67,0.06) 0%, rgba(14,14,28,0.85) 60%)';
+        });
+        card.addEventListener('mouseleave', function() {
+            card.style.background = '';
+        });
+    });
+
+    // --- STEP NUMBER GLOW ON SCROLL ----
+    var stepObs = new IntersectionObserver(function(entries) {
+        entries.forEach(function(e) {
+            if (e.isIntersecting) {
+                e.target.classList.add('visible');
+                e.target.style.opacity = '1';
+                e.target.style.transform = 'translateY(0)';
+            }
+        });
+    }, { threshold: 0.3 });
+    document.querySelectorAll('.step').forEach(function(s) {
+        s.style.opacity = '0';
+        s.style.transform = 'translateY(20px)';
+        s.style.transition = 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.34,1.56,0.64,1)';
+        stepObs.observe(s);
+    });
+
+})();

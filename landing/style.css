@@ -1988,3 +1988,245 @@ h1, h2, h3, h4 {
     gap: 8px;
 }
 .footer__version { font-size: 12px; color: rgba(255,255,255,0.25); }
+
+/* ========================================
+   v3.3: How It Works, Video Preview, Compare Table, Trust Badges
+   ======================================== */
+
+/* --- HOW IT WORKS --- */
+.steps {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    margin: 48px 0;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.step {
+    flex: 1;
+    min-width: 180px;
+    max-width: 240px;
+    text-align: center;
+    padding: 24px 16px;
+    position: relative;
+}
+.step__num {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    color: rgba(201,168,76,0.5);
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+}
+.step__icon {
+    font-size: 36px;
+    margin-bottom: 16px;
+    display: block;
+    filter: drop-shadow(0 0 12px rgba(201,168,76,0.3));
+}
+.step__title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: #fff;
+}
+.step__text {
+    font-size: 14px;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.6;
+}
+.step__arrow {
+    font-size: 28px;
+    color: rgba(201,168,76,0.3);
+    flex-shrink: 0;
+    align-self: center;
+    padding: 0 4px;
+    margin-top: -20px;
+}
+@media (max-width: 768px) {
+    .step__arrow { display: none; }
+    .steps { gap: 8px; }
+    .step { min-width: 140px; }
+}
+
+/* --- VIDEO PREVIEW --- */
+.video-preview {
+    margin-top: 48px;
+}
+.video-preview__inner {
+    position: relative;
+    border-radius: 20px;
+    overflow: hidden;
+    max-width: 700px;
+    margin: 0 auto;
+    cursor: pointer;
+    border: 1px solid rgba(201,168,76,0.2);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.video-preview__inner:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 28px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(201,168,76,0.3);
+}
+.video-preview__bg {
+    height: 280px;
+    background:
+        linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(13,13,13,0.9) 50%, rgba(201,168,76,0.1) 100%),
+        repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 2px,
+            rgba(255,255,255,0.015) 2px,
+            rgba(255,255,255,0.015) 4px
+        );
+    background-color: #0f0f1a;
+}
+.video-preview__content {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+.video-preview__play {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: rgba(201,168,76,0.9);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    box-shadow: 0 0 0 0 rgba(201,168,76,0.4);
+    animation: playPulse 2.5s ease infinite;
+}
+.video-preview__play:hover {
+    transform: scale(1.1);
+    background: #C9A84C;
+}
+@keyframes playPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(201,168,76,0.5); }
+    70%  { box-shadow: 0 0 0 20px rgba(201,168,76,0); }
+    100% { box-shadow: 0 0 0 0 rgba(201,168,76,0); }
+}
+.play-icon { color: #0D0D0D; font-size: 24px; margin-left: 4px; }
+.video-preview__label {
+    color: #fff;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+}
+.video-preview__sub {
+    color: rgba(255,255,255,0.5);
+    font-size: 13px;
+}
+
+/* --- PRICING TOGGLE --- */
+.pricing-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    margin-top: 32px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 4px;
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+}
+.ptoggle-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255,255,255,0.5);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 8px 20px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.ptoggle-btn--active {
+    background: rgba(201,168,76,0.15);
+    color: #C9A84C;
+}
+
+/* --- COMPARISON TABLE --- */
+.compare-table {
+    margin-top: 24px;
+    overflow-x: auto;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+.ctable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+.ctable th {
+    background: rgba(255,255,255,0.04);
+    padding: 16px 20px;
+    text-align: center;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    color: rgba(255,255,255,0.7);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    white-space: nowrap;
+}
+.ctable th.ctable__feature { text-align: left; color: rgba(255,255,255,0.4); }
+.ctable th.ctable__rec { color: #C9A84C; background: rgba(201,168,76,0.06); }
+.ctable td {
+    padding: 12px 20px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.75);
+}
+.ctable td.ctable__feature { text-align: left; color: rgba(255,255,255,0.55); }
+.ctable td.ctable__rec { background: rgba(201,168,76,0.03); }
+.ctable tr:hover td { background: rgba(255,255,255,0.02); }
+.ctable__price-row td {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: #fff;
+    background: rgba(255,255,255,0.03);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 16px;
+    padding-bottom: 16px;
+}
+.ctable__price-row td.ctable__rec { color: #C9A84C; }
+
+/* --- TRUST BADGES --- */
+.trust-badges {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 40px;
+}
+.trust-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+    transition: all 0.2s;
+}
+.trust-badge:hover {
+    background: rgba(201,168,76,0.06);
+    border-color: rgba(201,168,76,0.2);
+    color: rgba(255,255,255,0.8);
+}
+.trust-badge span { font-size: 16px; }

@@ -990,3 +990,95 @@
     }
 
 })();
+
+// =====================
+// Cross-Device JS Fixes
+// =====================
+(function() {
+    'use strict';
+
+    var isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    var isAndroid = /Android/.test(navigator.userAgent);
+
+    // 1. Disable parallax on touch/mobile devices (causes jank)
+    if (isTouchDevice) {
+        document.removeEventListener('mousemove', function(){}, true);
+        var heroContent = document.querySelector('.hero__content');
+        if (heroContent) {
+            heroContent.style.willChange = 'auto';
+            heroContent.style.transform = '';
+            heroContent.style.transition = 'none';
+        }
+    }
+
+    // 2. iOS: prevent body scroll when modal is open
+    var modal = document.getElementById('demoModal');
+    if (modal) {
+        var scrollY = 0;
+        var observer = new MutationObserver(function() {
+            if (modal.style.display !== 'none' && modal.style.display !== '') {
+                scrollY = window.scrollY;
+                document.body.classList.add('modal-open');
+                document.body.style.top = '-' + scrollY + 'px';
+            } else {
+                document.body.classList.remove('modal-open');
+                document.body.style.top = '';
+                window.scrollTo(0, scrollY);
+            }
+        });
+        observer.observe(modal, { attributes: true, attributeFilter: ['style'] });
+    }
+
+    // 3. iOS: fix 100vh issue dynamically
+    function setVH() {
+        var vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', vh + 'px');
+    }
+    setVH();
+    window.addEventListener('resize', setVH, { passive: true });
+    window.addEventListener('orientationchange', function() {
+        setTimeout(setVH, 200); // wait for rotation to complete
+    }, { passive: true });
+
+    // 4. Android: smooth scroll polyfill check
+    if (!('scrollBehavior' in document.documentElement.style)) {
+        // Fallback: instant jump for browsers without smooth scroll
+        document.querySelectorAll('a[href^="#"]').forEach(function(link) {
+            link.addEventListener('click', function(e) {
+                var target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    e.preventDefault();
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    }
+
+    // 5. Disable heavy orb animation on low-end devices
+    var isLowEnd = navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4;
+    if (isLowEnd || isTouchDevice) {
+        document.querySelectorAll('.orb').forEach(function(orb) {
+            orb.style.animationPlayState = 'paused';
+        });
+    }
+
+    // 6. Fix: prevent zoom on double-tap on buttons (iOS)
+    if (isIOS) {
+        document.querySelectorAll('.btn, button, a').forEach(function(el) {
+            el.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                e.target.click();
+            }, { passive: false });
+        });
+    }
+
+    // 7. Android Chrome: detect bottom navigation bar height
+    if (isAndroid) {
+        var androidNavHeight = window.outerHeight - window.innerHeight;
+        if (androidNavHeight > 0) {
+            document.documentElement.style.setProperty('--android-nav', androidNavHeight + 'px');
+        }
+    }
+
+})();

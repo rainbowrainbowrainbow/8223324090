@@ -3452,3 +3452,223 @@ h1, h2, h3, h4 {
     .hero__cta { flex-direction: column; gap: 12px; width: 100%; }
     .hero__cta .btn { width: 100%; max-width: 320px; }
 }
+
+/* ========================================
+   CROSS-DEVICE COMPATIBILITY FIX v1.0
+   iOS Safari + Android Chrome + notch phones
+   ======================================== */
+
+/* ---- 1. iOS vh fix — use svh with vh fallback ---- */
+.hero {
+    min-height: 100vh;       /* fallback */
+    min-height: 100svh;      /* modern iOS/Android */
+}
+
+/* ---- 2. iOS text-size-adjust (prevent auto-zoom on rotation) ---- */
+html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+/* ---- 3. Safe Area Insets — iPhone notch / Dynamic Island / Android cutout ---- */
+.navbar {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-left: max(24px, env(safe-area-inset-left));
+    padding-right: max(24px, env(safe-area-inset-right));
+}
+.sticky-cta {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+}
+.back-to-top {
+    bottom: max(24px, calc(env(safe-area-inset-bottom) + 16px));
+    right: max(24px, calc(env(safe-area-inset-right) + 8px));
+}
+.footer {
+    padding-bottom: max(32px, calc(env(safe-area-inset-bottom) + 16px));
+}
+
+/* ---- 4. All backdrop-filter — add -webkit- prefix everywhere ---- */
+.navbar.scrolled,
+.hero__badge,
+.card,
+.price-card,
+.case,
+.update-card,
+.fact,
+.testi-card,
+.modal__box,
+.step,
+.crm-preview__badge,
+.magic-calc,
+.crm-preview__bar,
+.magic-calc__live,
+.trust-badge {
+    -webkit-backdrop-filter: blur(12px);
+}
+
+/* ---- 5. iOS input zoom fix — font-size ≥ 16px on all inputs ---- */
+input[type="text"],
+input[type="tel"],
+input[type="email"],
+input[type="number"],
+select,
+textarea {
+    font-size: 16px !important; /* prevents iOS auto-zoom on focus */
+    -webkit-appearance: none;
+    border-radius: 0; /* iOS adds default rounded border */
+}
+/* Keep stepper visually smaller but not trigger zoom */
+.stepper-input { font-size: 16px !important; }
+
+/* ---- 6. Prevent overscroll bounce (iOS rubber band) on body ---- */
+html, body {
+    overscroll-behavior: none;
+}
+/* But keep it for scroll areas */
+.compare-table,
+.tc-viewport {
+    overscroll-behavior-x: contain;
+}
+
+/* ---- 7. Touch action — instant tap without 300ms delay ---- */
+a, button, .btn, .faq-q, .stepper-btn, .back-to-top,
+.compare-toggle-btn, .tc-carousel-btn {
+    touch-action: manipulation;
+    cursor: pointer;
+}
+
+/* ---- 8. iOS smooth scroll for overflow containers ---- */
+.compare-table,
+.tc-viewport,
+.faq-list {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ---- 9. Gradient text fix for older iOS (fallback solid color) ---- */
+@supports not (-webkit-background-clip: text) {
+    .hero__title .grad,
+    .section__title--gold,
+    .price-card__price {
+        color: #D4A843;
+        background: none;
+        -webkit-text-fill-color: unset;
+    }
+}
+
+/* ---- 10. CSS Grid gap fallback for old Android WebView ---- */
+@supports not (gap: 1px) {
+    .cards--3 > * + * { margin-top: 20px; }
+    .pricing-grid--v2 > * + * { margin-top: 16px; }
+    .stats-row { display: flex; flex-wrap: wrap; }
+    .stats-row .stat-item { flex: 1 1 40%; margin: 4px; }
+}
+
+/* ---- 11. aspect-ratio fallback (iOS Safari < 15) ---- */
+@supports not (aspect-ratio: 16/9) {
+    .crm-preview__img {
+        height: 200px;
+        object-fit: cover;
+    }
+}
+
+/* ---- 12. Disable heavy blur on low-end devices ---- */
+@media (max-width: 768px) {
+    .orb {
+        filter: blur(60px); /* reduced from 80px */
+        will-change: auto;  /* don't reserve GPU layer when scrolled out */
+    }
+    /* Disable parallax on mobile — causes jank */
+    .hero__content {
+        will-change: auto !important;
+        transform: none !important;
+        transition: none !important;
+    }
+}
+
+/* ---- 13. Reduced motion — respect OS setting ---- */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+    .orb { animation: none; opacity: 0.3; }
+    .hero__bg { animation: none; }
+    .scroll-progress { animation: none; }
+    .typewriter-cursor { animation: none; opacity: 1; }
+    .live-dot { animation: none; }
+    .hero__badge { animation: none; }
+}
+
+/* ---- 14. Dark mode system — already dark, but ensure images ---- */
+@media (prefers-color-scheme: dark) {
+    /* already dark by default — no changes needed */
+}
+
+/* ---- 15. Fix for Android Chrome bottom nav overlap ---- */
+@media (max-width: 768px) {
+    .sticky-cta {
+        /* Account for Android Chrome nav bar height (~56px) */
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
+}
+
+/* ---- 16. iOS Safari position:fixed flickering fix ---- */
+.navbar,
+.sticky-cta,
+.back-to-top,
+.scroll-progress {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+}
+
+/* ---- 17. Tap highlight removal (Android default blue glow) ---- */
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+/* But keep focus for accessibility */
+a:focus-visible,
+button:focus-visible {
+    outline: 2px solid rgba(212,168,67,0.6);
+    outline-offset: 2px;
+}
+
+/* ---- 18. Image rendering on retina/HDPI screens ---- */
+img {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+}
+/* Override for photos — they should be smooth */
+.crm-preview__img,
+.tc-photo img,
+.testi-avatar img {
+    image-rendering: auto;
+}
+
+/* ---- 19. Modal scroll fix on iOS ---- */
+body.modal-open {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    /* Prevents body scroll behind modal on iOS */
+}
+.modal {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+/* ---- 20. iPhone 12/13/14 Pro notch — landscape ---- */
+@media (max-height: 430px) and (orientation: landscape) {
+    .hero {
+        min-height: auto;
+        padding: 80px 0 40px;
+    }
+    .hero__title { font-size: 26px; }
+    .hero__subtitle { font-size: 14px; margin-bottom: 16px; }
+    .hero__cta .btn { padding: 10px 24px; font-size: 14px; }
+    .navbar { padding-top: 8px; padding-bottom: 8px; }
+}

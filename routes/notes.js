@@ -90,4 +90,118 @@ router.put('/:id/pin', requireRole(...ANY_ROLE), async (req, res) => {
     }
 });
 
+// ============================================================
+// MEETING NOTES WITH AUTO-TASKS (v25.4.0)
+// ============================================================
+
+// POST /api/notes/meeting — create meeting note
+router.post('/meeting', requireRole(...ANY_ROLE), async (req, res) => {
+    try {
+        const { title, summary, content, meetingDate, durationMinutes, participants, channelId, actionItems } = req.body;
+        if (!title || !meetingDate) {
+            return res.status(400).json({ error: 'title та meetingDate обов\'язкові' });
+        }
+        const userId = req.user.id || req.user.userId;
+
+        const meetingResult = await pool.query(
+            `INSERT INTO meeting_notes (title, summary, content, meeting_date, duration_minutes, participants, created_by, channel_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [title, summary || null, content || null, meetingDate, durationMinutes || null,
+             participants || '{}', userId, channelId || null]
+        );
+        const meeting = meetingResult.rows[0];
+
+        // Create action items if provided
+        const items = [];
+        if (Array.isArray(actionItems)) {
+            for (const item of actionItems) {
+                const itemResult = await pool.query(
+                    `INSERT INTO meeting_action_items (meeting_id, description, assigned_to, due_date)
+                     VALUES ($1, $2, $3, $4) RETURNING *`,
+                    [meeting.id, item.description, item.assignedTo || null, item.dueDate || null]
+                );
+                items.push(itemResult.rows[0]);
+            }
+        }
+
+        res.json({ success: true, meeting, actionItems: items });
+    } catch (err) {
+        log.error('Create meeting note error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/notes/meetings — list meetings
+router.get('/meetings', requireRole(...ANY_ROLE), async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT m.*, u.name AS created_by_name,
+                   (SELECT COUNT(*) FROM meeting_action_items WHERE meeting_id = m.id) AS action_items_count,
+                   (SELECT COUNT(*) FROM meeting_action_items WHERE meeting_id = m.id AND status = 'done') AS completed_items_count
+            FROM meeting_notes m
+            LEFT JOIN users u ON u.id = m.created_by
+            ORDER BY m.meeting_date DESC
+            LIMIT 50
+        `);
+        res.json({ success: true, meetings: result.rows });
+    } catch (err) {
+        log.error('Get meetings error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/notes/meeting/:id — meeting details with action items
+router.get('/meeting/:id', requireRole(...ANY_ROLE), async (req, res) => {
+    try {
+        const meeting = await pool.query('SELECT * FROM meeting_notes WHERE id = $1', [req.params.id]);
+        if (meeting.rows.length === 0) return res.status(404).json({ error: 'Зустріч не знайдено' });
+
+        const items = await pool.query(
+            `SELECT ai.*, u.name AS assigned_name
+             FROM meeting_action_items ai
+             LEFT JOIN users u ON u.id = ai.assigned_to
+             WHERE ai.meeting_id = $1 ORDER BY ai.id`,
+            [req.params.id]
+        );
+        res.json({ meeting: meeting.rows[0], actionItems: items.rows });
+    } catch (err) {
+        log.error('Get meeting error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/notes/meeting/:id/create-tasks — create tasks from action items
+router.post('/meeting/:id/create-tasks', requireRole(...ANY_ROLE), async (req, res) => {
+    try {
+        const items = await pool.query(
+            'SELECT * FROM meeting_action_items WHERE meeting_id = $1 AND task_id IS NULL',
+            [req.params.id]
+        );
+        if (items.rows.length === 0) return res.json({ success: true, created: 0 });
+
+        const meeting = await pool.query('SELECT title FROM meeting_notes WHERE id = $1', [req.params.id]);
+        const meetingTitle = meeting.rows[0]?.title || 'Зустріч';
+        let created = 0;
+
+        for (const item of items.rows) {
+            const taskResult = await pool.query(
+                `INSERT INTO tasks (title, description, status, priority, assigned_to, owner_id, category)
+                 VALUES ($1, $2, 'todo', 'normal', $3, $4, 'operational') RETURNING id`,
+                [`[${meetingTitle}] ${item.description}`, `Задача зі зустрічі: ${meetingTitle}`,
+                 item.assigned_to, req.user.id || req.user.userId]
+            );
+            await pool.query(
+                'UPDATE meeting_action_items SET task_id = $1, status = $2 WHERE id = $3',
+                [taskResult.rows[0].id, 'created', item.id]
+            );
+            created++;
+        }
+
+        res.json({ success: true, created });
+    } catch (err) {
+        log.error('Create tasks from meeting error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

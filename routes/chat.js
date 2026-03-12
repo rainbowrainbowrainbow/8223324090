@@ -1512,4 +1512,178 @@ router.get('/push/vapid-key', async (req, res) => {
     res.json({ publicKey: vapidPublicKey });
 });
 
+// ============================================================
+// CHAT POLLS / VOTING (v25.4.0)
+// ============================================================
+
+// POST /api/chat/channels/:id/poll — create poll in channel
+router.post('/channels/:id/poll', async (req, res) => {
+    try {
+        const channelId = parseInt(req.params.id);
+        const userId = req.user.id || req.user.userId;
+        const { question, options, pollType, isAnonymous, expiresInMinutes } = req.body;
+
+        if (!question || !Array.isArray(options) || options.length < 2 || options.length > 10) {
+            return res.status(400).json({ error: 'Потрібно питання та 2-10 варіантів' });
+        }
+
+        const pool = require('../db').pool;
+
+        // Create poll message
+        const msgResult = await pool.query(
+            `INSERT INTO chat_messages (channel_id, user_id, content, type)
+             VALUES ($1, $2, $3, 'poll') RETURNING *`,
+            [channelId, userId, question]
+        );
+        const message = msgResult.rows[0];
+
+        const pollOptions = options.map(o => ({ text: typeof o === 'string' ? o : o.text, votes: 0 }));
+        const expiresAt = expiresInMinutes ? new Date(Date.now() + expiresInMinutes * 60000) : null;
+
+        const pollResult = await pool.query(
+            `INSERT INTO chat_polls (channel_id, message_id, question, options, poll_type, is_anonymous, expires_at, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [channelId, message.id, question, JSON.stringify(pollOptions),
+             pollType || 'single', isAnonymous || false, expiresAt, userId]
+        );
+
+        // Broadcast via WebSocket
+        try {
+            broadcastToChannel(channelId, {
+                type: 'new_message',
+                message: { ...message, poll: pollResult.rows[0] }
+            });
+        } catch (e) { /* ws not ready */ }
+
+        res.json({ success: true, poll: pollResult.rows[0], message });
+    } catch (err) {
+        log.error('Create poll error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/chat/polls/:pollId/vote — vote on a poll
+router.post('/polls/:pollId/vote', async (req, res) => {
+    try {
+        const pollId = parseInt(req.params.pollId);
+        const userId = req.user.id || req.user.userId;
+        const { optionIndex } = req.body;
+
+        const pool = require('../db').pool;
+
+        // Check poll exists and is open
+        const pollResult = await pool.query('SELECT * FROM chat_polls WHERE id = $1', [pollId]);
+        if (pollResult.rows.length === 0) return res.status(404).json({ error: 'Опитування не знайдено' });
+
+        const poll = pollResult.rows[0];
+        if (poll.is_closed) return res.status(400).json({ error: 'Опитування закрито' });
+        if (poll.expires_at && new Date(poll.expires_at) < new Date()) {
+            return res.status(400).json({ error: 'Час опитування вичерпано' });
+        }
+
+        const options = poll.options;
+        if (optionIndex < 0 || optionIndex >= options.length) {
+            return res.status(400).json({ error: 'Невірний варіант' });
+        }
+
+        // For single-choice, remove previous votes
+        if (poll.poll_type === 'single') {
+            await pool.query('DELETE FROM chat_poll_votes WHERE poll_id = $1 AND user_id = $2', [pollId, userId]);
+        }
+
+        await pool.query(
+            `INSERT INTO chat_poll_votes (poll_id, user_id, option_index)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (poll_id, user_id, option_index) DO NOTHING`,
+            [pollId, userId, optionIndex]
+        );
+
+        // Update vote counts in options JSONB
+        const voteCounts = await pool.query(
+            `SELECT option_index, COUNT(*) AS cnt FROM chat_poll_votes WHERE poll_id = $1 GROUP BY option_index`,
+            [pollId]
+        );
+        const updatedOptions = options.map((opt, i) => {
+            const vc = voteCounts.rows.find(r => r.option_index === i);
+            return { ...opt, votes: vc ? parseInt(vc.cnt) : 0 };
+        });
+        await pool.query('UPDATE chat_polls SET options = $1 WHERE id = $2', [JSON.stringify(updatedOptions), pollId]);
+
+        // Broadcast vote update
+        try {
+            broadcastToChannel(poll.channel_id, {
+                type: 'poll_update',
+                pollId,
+                options: updatedOptions
+            });
+        } catch (e) { /* ws not ready */ }
+
+        res.json({ success: true, options: updatedOptions });
+    } catch (err) {
+        log.error('Poll vote error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/chat/polls/:pollId/close — close a poll
+router.post('/polls/:pollId/close', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const result = await pool.query(
+            `UPDATE chat_polls SET is_closed = true WHERE id = $1 AND created_by = $2 RETURNING *`,
+            [req.params.pollId, req.user.id || req.user.userId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Опитування не знайдено' });
+
+        try {
+            broadcastToChannel(result.rows[0].channel_id, {
+                type: 'poll_closed',
+                pollId: parseInt(req.params.pollId)
+            });
+        } catch (e) { /* ok */ }
+
+        res.json({ success: true, poll: result.rows[0] });
+    } catch (err) {
+        log.error('Close poll error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/chat/polls/:pollId/results — poll results with percentages
+router.get('/polls/:pollId/results', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const pollResult = await pool.query('SELECT * FROM chat_polls WHERE id = $1', [req.params.pollId]);
+        if (pollResult.rows.length === 0) return res.status(404).json({ error: 'Опитування не знайдено' });
+
+        const poll = pollResult.rows[0];
+        const totalVotes = await pool.query(
+            'SELECT COUNT(DISTINCT user_id) AS total FROM chat_poll_votes WHERE poll_id = $1',
+            [req.params.pollId]
+        );
+        const total = parseInt(totalVotes.rows[0].total);
+
+        const options = poll.options.map(opt => ({
+            ...opt,
+            percentage: total > 0 ? Math.round((opt.votes / total) * 100) : 0
+        }));
+
+        // Get voters if not anonymous
+        let voters = [];
+        if (!poll.is_anonymous) {
+            const voterResult = await pool.query(
+                `SELECT v.option_index, u.name, u.id AS user_id FROM chat_poll_votes v
+                 JOIN users u ON u.id = v.user_id WHERE v.poll_id = $1`,
+                [req.params.pollId]
+            );
+            voters = voterResult.rows;
+        }
+
+        res.json({ poll: { ...poll, options }, totalVoters: total, voters });
+    } catch (err) {
+        log.error('Poll results error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

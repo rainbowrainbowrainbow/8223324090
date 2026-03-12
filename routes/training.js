@@ -553,4 +553,318 @@ function getISOWeek(date) {
     return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
+// ============================================================
+// HOMEWORK / ASSIGNMENTS SYSTEM (v25.4.0)
+// ============================================================
+
+// POST /api/training/assignments — create assignment (manager+)
+router.post('/assignments', requireMinRole('manager'), async (req, res) => {
+    try {
+        const { title, description, type, resourceUrl, assignedTo, dueDate, points } = req.body;
+        if (!title) return res.status(400).json({ error: 'Назва завдання обов\'язкова' });
+
+        const validTypes = ['homework', 'watch', 'read', 'create', 'practice'];
+        const assignmentType = validTypes.includes(type) ? type : 'homework';
+        const userId = req.user.id || req.user.userId;
+
+        const result = await pool.query(
+            `INSERT INTO training_assignments (title, description, type, resource_url, assigned_to, assigned_by, due_date, points)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [title, description || null, assignmentType, resourceUrl || null,
+             assignedTo || '{}', userId, dueDate || null, points || 10]
+        );
+        res.json({ success: true, assignment: result.rows[0] });
+    } catch (err) {
+        log.error('Create assignment error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/training/assignments — list assignments
+router.get('/assignments', async (req, res) => {
+    try {
+        const { filter } = req.query; // my, all, overdue
+        const userId = req.user.id || req.user.userId;
+        let query, params;
+
+        if (filter === 'overdue') {
+            query = `SELECT a.*, s.status AS my_status, s.submitted_at
+                     FROM training_assignments a
+                     LEFT JOIN training_submissions s ON s.assignment_id = a.id AND s.staff_id = $1
+                     WHERE a.is_active = true AND a.due_date < NOW() AND (s.status IS NULL OR s.status = 'pending')
+                     ORDER BY a.due_date ASC`;
+            params = [userId];
+        } else if (filter === 'my') {
+            query = `SELECT a.*, s.status AS my_status, s.submitted_at, s.score, s.review_comment
+                     FROM training_assignments a
+                     LEFT JOIN training_submissions s ON s.assignment_id = a.id AND s.staff_id = $1
+                     WHERE a.is_active = true AND (a.assigned_to = '{}' OR $1 = ANY(a.assigned_to))
+                     ORDER BY a.created_at DESC`;
+            params = [userId];
+        } else {
+            query = `SELECT a.*, u.name AS assigned_by_name,
+                     (SELECT COUNT(*) FROM training_submissions WHERE assignment_id = a.id AND status = 'submitted') AS pending_reviews
+                     FROM training_assignments a
+                     LEFT JOIN users u ON u.id = a.assigned_by
+                     WHERE a.is_active = true
+                     ORDER BY a.created_at DESC`;
+            params = [];
+        }
+
+        const result = await pool.query(query, params);
+        res.json({ success: true, assignments: result.rows });
+    } catch (err) {
+        log.error('Get assignments error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/training/assignments/:id — assignment details
+router.get('/assignments/:id', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM training_assignments WHERE id = $1', [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Завдання не знайдено' });
+
+        const submissions = await pool.query(
+            `SELECT s.*, u.name AS staff_name FROM training_submissions s
+             LEFT JOIN users u ON u.id = s.staff_id
+             WHERE s.assignment_id = $1 ORDER BY s.submitted_at DESC`,
+            [req.params.id]
+        );
+        res.json({ assignment: result.rows[0], submissions: submissions.rows });
+    } catch (err) {
+        log.error('Get assignment error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/training/assignments/:id/submit — submit assignment
+router.post('/assignments/:id/submit', async (req, res) => {
+    try {
+        const { text } = req.body;
+        const userId = req.user.id || req.user.userId;
+
+        const result = await pool.query(
+            `INSERT INTO training_submissions (assignment_id, staff_id, status, submission_text, submitted_at)
+             VALUES ($1, $2, 'submitted', $3, NOW())
+             ON CONFLICT (assignment_id, staff_id) DO UPDATE
+             SET status = 'submitted', submission_text = $3, submitted_at = NOW()
+             RETURNING *`,
+            [req.params.id, userId, text || '']
+        );
+        res.json({ success: true, submission: result.rows[0] });
+    } catch (err) {
+        log.error('Submit assignment error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/training/assignments/:id/review — review submission (manager+)
+router.post('/assignments/:id/review', requireMinRole('manager'), async (req, res) => {
+    try {
+        const { staffId, status, comment, score } = req.body;
+        if (!staffId || !['approved', 'rejected'].includes(status)) {
+            return res.status(400).json({ error: 'staffId та status (approved/rejected) обов\'язкові' });
+        }
+        const reviewerId = req.user.id || req.user.userId;
+
+        const result = await pool.query(
+            `UPDATE training_submissions SET status = $1, review_comment = $2, score = $3,
+             reviewed_by = $4, reviewed_at = NOW()
+             WHERE assignment_id = $5 AND staff_id = $6 RETURNING *`,
+            [status, comment || null, score || null, reviewerId, req.params.id, staffId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Здачу не знайдено' });
+
+        // Award points for approved submissions
+        if (status === 'approved') {
+            try {
+                const assignmentRes = await pool.query('SELECT points FROM training_assignments WHERE id = $1', [req.params.id]);
+                const pts = assignmentRes.rows[0]?.points || 10;
+                const userRes = await pool.query('SELECT username FROM users WHERE id = $1', [staffId]);
+                if (userRes.rows.length > 0) {
+                    const gamification = require('../services/gamification');
+                    await gamification.awardCoins(userRes.rows[0].username, pts, 'Завдання прийнято', 'homework');
+                }
+            } catch (e) { /* ok */ }
+        }
+
+        res.json({ success: true, submission: result.rows[0] });
+    } catch (err) {
+        log.error('Review assignment error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// DELETE /api/training/assignments/:id — delete assignment (creator only)
+router.delete('/assignments/:id', requireMinRole('manager'), async (req, res) => {
+    try {
+        const result = await pool.query(
+            'DELETE FROM training_assignments WHERE id = $1 RETURNING id',
+            [req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Завдання не знайдено' });
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Delete assignment error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================================
+// COURSES / CURRICULUM BUILDER (v25.4.0)
+// ============================================================
+
+// POST /api/training/courses — create course (manager+)
+router.post('/courses', requireMinRole('manager'), async (req, res) => {
+    try {
+        const { title, description, icon, targetRoles, estimatedHours } = req.body;
+        if (!title) return res.status(400).json({ error: 'Назва курсу обов\'язкова' });
+        const instructorId = req.user.id || req.user.userId;
+
+        const result = await pool.query(
+            `INSERT INTO training_courses (title, description, icon, instructor_id, target_roles, estimated_hours)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [title, description || null, icon || '📚', instructorId,
+             targetRoles || '{}', estimatedHours || 0]
+        );
+        res.json({ success: true, course: result.rows[0] });
+    } catch (err) {
+        log.error('Create course error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/training/courses — list courses
+router.get('/courses', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const result = await pool.query(`
+            SELECT c.*, u.name AS instructor_name,
+                   e.current_lecture, e.completed_at,
+                   (SELECT COUNT(*) FROM training_course_lectures WHERE course_id = c.id) AS total_lectures
+            FROM training_courses c
+            LEFT JOIN users u ON u.id = c.instructor_id
+            LEFT JOIN training_course_enrollment e ON e.course_id = c.id AND e.staff_id = $1
+            WHERE c.is_active = true
+            ORDER BY c.created_at DESC
+        `, [userId]);
+        res.json({ success: true, courses: result.rows });
+    } catch (err) {
+        log.error('Get courses error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/training/courses/:id — course details with lectures
+router.get('/courses/:id', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const course = await pool.query('SELECT * FROM training_courses WHERE id = $1', [req.params.id]);
+        if (course.rows.length === 0) return res.status(404).json({ error: 'Курс не знайдено' });
+
+        const lectures = await pool.query(
+            `SELECT * FROM training_course_lectures WHERE course_id = $1 ORDER BY sort_order ASC`,
+            [req.params.id]
+        );
+        const enrollment = await pool.query(
+            `SELECT * FROM training_course_enrollment WHERE course_id = $1 AND staff_id = $2`,
+            [req.params.id, userId]
+        );
+        res.json({
+            course: course.rows[0],
+            lectures: lectures.rows,
+            enrollment: enrollment.rows[0] || null
+        });
+    } catch (err) {
+        log.error('Get course error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/training/courses/:id/lectures — add lecture to course (manager+)
+router.post('/courses/:id/lectures', requireMinRole('manager'), async (req, res) => {
+    try {
+        const { title, description, articleId, resourceUrls, durationMinutes, scheduledDate } = req.body;
+        if (!title) return res.status(400).json({ error: 'Назва лекції обов\'язкова' });
+
+        // Get next sort_order
+        const orderResult = await pool.query(
+            'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM training_course_lectures WHERE course_id = $1',
+            [req.params.id]
+        );
+        const sortOrder = orderResult.rows[0].next_order;
+
+        const result = await pool.query(
+            `INSERT INTO training_course_lectures (course_id, title, description, sort_order, article_id, resource_urls, duration_minutes, scheduled_date, is_published)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true) RETURNING *`,
+            [req.params.id, title, description || null, sortOrder, articleId || null,
+             JSON.stringify(resourceUrls || []), durationMinutes || 60, scheduledDate || null]
+        );
+
+        // Update lectures_count
+        await pool.query(
+            'UPDATE training_courses SET lectures_count = (SELECT COUNT(*) FROM training_course_lectures WHERE course_id = $1) WHERE id = $1',
+            [req.params.id]
+        );
+
+        res.json({ success: true, lecture: result.rows[0] });
+    } catch (err) {
+        log.error('Add lecture error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/training/courses/:id/enroll — enroll in course
+router.post('/courses/:id/enroll', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const result = await pool.query(
+            `INSERT INTO training_course_enrollment (course_id, staff_id)
+             VALUES ($1, $2)
+             ON CONFLICT (course_id, staff_id) DO NOTHING
+             RETURNING *`,
+            [req.params.id, userId]
+        );
+        res.json({ success: true, enrolled: result.rows.length > 0 });
+    } catch (err) {
+        log.error('Enroll error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/training/courses/:courseId/lectures/:lectureId/complete — mark lecture complete
+router.post('/courses/:courseId/lectures/:lectureId/complete', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const { courseId, lectureId } = req.params;
+
+        // Get lecture sort_order
+        const lecture = await pool.query(
+            'SELECT sort_order FROM training_course_lectures WHERE id = $1 AND course_id = $2',
+            [lectureId, courseId]
+        );
+        if (lecture.rows.length === 0) return res.status(404).json({ error: 'Лекцію не знайдено' });
+
+        const nextLecture = lecture.rows[0].sort_order + 1;
+        const totalLectures = await pool.query(
+            'SELECT COUNT(*) AS cnt FROM training_course_lectures WHERE course_id = $1',
+            [courseId]
+        );
+        const isComplete = nextLecture >= parseInt(totalLectures.rows[0].cnt);
+
+        await pool.query(
+            `UPDATE training_course_enrollment SET current_lecture = $1,
+             completed_at = CASE WHEN $2 THEN NOW() ELSE NULL END
+             WHERE course_id = $3 AND staff_id = $4`,
+            [nextLecture, isComplete, courseId, userId]
+        );
+
+        res.json({ success: true, currentLecture: nextLecture, courseCompleted: isComplete });
+    } catch (err) {
+        log.error('Complete lecture error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

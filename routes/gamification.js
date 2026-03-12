@@ -254,4 +254,105 @@ router.get('/leaderboard', async (req, res) => {
     }
 });
 
+// ============================================================
+// PENALTY POINTS SYSTEM (v25.4.0)
+// ============================================================
+
+const { pool } = require('../db');
+
+// POST /penalty — issue penalty points (manager+)
+router.post('/penalty', requireRole('admin', 'creator', 'director', 'manager'), async (req, res) => {
+    try {
+        const { username, points, reason, category, meetingDate } = req.body;
+        if (!username || !reason) {
+            return res.status(400).json({ error: 'username та reason обов\'язкові' });
+        }
+        const penaltyPoints = Math.max(1, Math.min(parseInt(points) || 1, 100));
+        const validCategories = ['discipline', 'initiative', 'quality', 'attendance', 'safety'];
+        const cat = validCategories.includes(category) ? category : 'discipline';
+
+        const result = await pool.query(
+            `INSERT INTO staff_penalties (staff_username, points, reason, category, issued_by, meeting_date)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [username, penaltyPoints, reason, cat, req.user.username, meetingDate || null]
+        );
+
+        // Deduct coins
+        try {
+            await gamification.awardCoins(username, -penaltyPoints * 5, `Штраф: ${reason}`, 'penalty');
+        } catch (e) { /* wallet may not exist */ }
+
+        log.info(`Penalty ${penaltyPoints} pts to ${username} by ${req.user.username}: ${reason}`);
+        res.json({ success: true, penalty: result.rows[0] });
+    } catch (err) {
+        log.error('Create penalty error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /penalties/:username — penalty history
+router.get('/penalties/:username', async (req, res) => {
+    try {
+        const { username } = req.params;
+        const result = await pool.query(
+            `SELECT * FROM staff_penalties WHERE staff_username = $1 ORDER BY created_at DESC LIMIT 50`,
+            [username]
+        );
+        const totalResult = await pool.query(
+            `SELECT COALESCE(SUM(CASE WHEN reversed = false THEN points ELSE 0 END), 0) AS total_points
+             FROM staff_penalties WHERE staff_username = $1`,
+            [username]
+        );
+        res.json({
+            penalties: result.rows,
+            totalPoints: parseInt(totalResult.rows[0].total_points)
+        });
+    } catch (err) {
+        log.error('Get penalties error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /penalty/:id/reverse — reverse a penalty (director+)
+router.post('/penalty/:id/reverse', requireRole('admin', 'creator', 'director'), async (req, res) => {
+    try {
+        const result = await pool.query(
+            `UPDATE staff_penalties SET reversed = true, reversed_by = $1, reversed_at = NOW()
+             WHERE id = $2 AND reversed = false RETURNING *`,
+            [req.user.username, req.params.id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Штраф не знайдено або вже скасовано' });
+        }
+        // Refund coins
+        const penalty = result.rows[0];
+        try {
+            await gamification.awardCoins(penalty.staff_username, penalty.points * 5, 'Скасування штрафу', 'penalty_reverse');
+        } catch (e) { /* ok */ }
+
+        res.json({ success: true, penalty: result.rows[0] });
+    } catch (err) {
+        log.error('Reverse penalty error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /penalty-stats — aggregate penalty statistics
+router.get('/penalty-stats', requireRole('admin', 'creator', 'director', 'manager'), async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT staff_username, category,
+                   SUM(CASE WHEN reversed = false THEN points ELSE 0 END) AS total_points,
+                   COUNT(*) AS total_count
+            FROM staff_penalties
+            GROUP BY staff_username, category
+            ORDER BY total_points DESC
+        `);
+        res.json({ stats: result.rows });
+    } catch (err) {
+        log.error('Penalty stats error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

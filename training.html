@@ -7,129 +7,548 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=24.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=24.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=24.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=24.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=24.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=24.3.0">
-    <link rel="stylesheet" href="css/base.css?v=24.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=24.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=24.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=24.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=24.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=24.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=24.3.0">
+    <link rel="stylesheet" href="css/base.css?v=25.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        .training-page { padding: 16px; max-width: 1200px; margin: 0 auto; }
-        .training-page h1 { font-size: 22px; font-weight: 900; margin-bottom: 12px; }
+        /* ═══ Training Page — Dark Glassmorphism Theme ═══ */
+        .training-page {
+            padding: 20px 24px;
+            font-family: 'Space Grotesk', 'Inter', sans-serif;
+            min-height: 100vh;
+        }
+
+        /* Page header */
+        .training-header {
+            margin-bottom: 24px;
+        }
+        .training-header h1 {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin: 0 0 4px;
+        }
+        .training-header .subtitle {
+            font-size: 14px;
+            color: var(--gray-500);
+            font-weight: 400;
+        }
 
         /* Stats row */
-        .training-stats { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-        .training-stat {
-            background: #fff; border-radius: 12px; padding: 12px 16px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06); flex: 1; min-width: 120px;
+        .training-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
         }
-        .training-stat .stat-value { font-size: 24px; font-weight: 900; color: var(--primary, #C9A84C); }
-        .training-stat .stat-label { font-size: 12px; color: var(--gray-500, #A0AEC0); font-weight: 600; }
-
-        /* Category filters */
-        .training-filters { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
-        .filter-chip {
-            padding: 6px 14px; border: none; border-radius: 20px;
-            font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
-            background: rgba(0,0,0,0.05); color: var(--gray-600, #718096);
-            transition: all 0.15s;
+        .stat-card {
+            background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: transform 0.2s, box-shadow 0.2s;
         }
-        .filter-chip.active { background: var(--primary, #C9A84C); color: #1a202c; }
-
-        /* Content layout */
-        .training-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
-        @media (max-width: 768px) { .training-layout { grid-template-columns: 1fr; } }
-
-        /* Left panel */
-        .training-sidebar { display: flex; flex-direction: column; gap: 12px; }
-        .training-sidebar .contributors {
-            background: #fff; border-radius: 12px; padding: 16px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .stat-card .stat-icon {
+            width: 44px; height: 44px;
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
         }
-        .contributors h3 { font-size: 14px; font-weight: 800; margin-bottom: 8px; }
-        .contributor-row {
+        .stat-icon--articles { background: rgba(99,102,241,0.12); }
+        .stat-icon--tests { background: rgba(16,185,129,0.12); }
+        .stat-icon--read { background: rgba(245,158,11,0.12); }
+        .stat-icon--passed { background: rgba(236,72,153,0.12); }
+        .stat-card .stat-value { font-size: 24px; font-weight: 800; line-height: 1; }
+        .stat-card .stat-label { font-size: 12px; color: var(--gray-500); font-weight: 500; margin-top: 2px; }
+
+        /* Tab navigation */
+        .training-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 20px;
+            background: rgba(0,0,0,0.04);
+            border-radius: 14px;
+            padding: 4px;
+            overflow-x: auto;
+        }
+        .training-tab {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 11px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            background: transparent;
+            color: var(--gray-500);
+            transition: all 0.2s;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .training-tab:hover { color: var(--gray-700); background: rgba(255,255,255,0.5); }
+        .training-tab.active {
+            background: #fff;
+            color: var(--gray-900);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        /* Role filter pills */
+        .role-filter {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .role-pill {
+            padding: 6px 16px;
+            border: 1.5px solid rgba(0,0,0,0.08);
+            border-radius: 24px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            background: transparent;
+            color: var(--gray-600);
+            transition: all 0.2s;
+        }
+        .role-pill:hover { border-color: var(--primary); color: var(--primary-dark); }
+        .role-pill.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+
+        /* Tab content area */
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* ═══ Tab 1: Materials ═══ */
+        .articles-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        .article-card {
+            background: rgba(255,255,255,0.8);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 16px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        .article-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--primary);
+        }
+        .article-card--read { opacity: 0.7; }
+        .article-card--read::after {
+            content: '✓';
+            position: absolute;
+            top: 12px; right: 12px;
+            background: var(--success);
+            color: #fff;
+            width: 24px; height: 24px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 700;
+        }
+        .article-icon {
+            font-size: 32px;
+            margin-bottom: 12px;
+            display: block;
+        }
+        .article-meta {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .article-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            letter-spacing: 0.3px;
+        }
+        .article-badge--role { background: rgba(99,102,241,0.1); color: #6366F1; }
+        .article-badge--difficulty { background: rgba(245,158,11,0.1); color: #D97706; }
+        .article-badge--has-test { background: rgba(16,185,129,0.1); color: #059669; }
+        .article-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            line-height: 1.3;
+        }
+        .article-summary {
+            font-size: 13px;
+            color: var(--gray-500);
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+        .article-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: var(--gray-400);
+        }
+
+        /* ═══ Tab 2: Tests ═══ */
+        .tests-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        .test-card {
+            background: rgba(255,255,255,0.8);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 16px;
+            padding: 20px;
+            transition: all 0.2s;
+        }
+        .test-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .test-card .test-icon { font-size: 28px; margin-bottom: 8px; }
+        .test-card .test-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+        .test-card .test-desc { font-size: 13px; color: var(--gray-500); margin-bottom: 12px; }
+        .test-card .test-info {
+            display: flex; gap: 12px; font-size: 12px; color: var(--gray-400); margin-bottom: 14px;
+        }
+        .test-card .test-score {
+            font-size: 13px; font-weight: 700; margin-bottom: 12px;
+        }
+        .test-score--passed { color: var(--success); }
+        .test-score--failed { color: var(--danger); }
+        .test-btn {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            background: var(--primary);
+            color: #fff;
+            transition: filter 0.2s;
+        }
+        .test-btn:hover { filter: brightness(0.9); }
+
+        /* ═══ Tab 3: Progress ═══ */
+        .progress-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        @media (max-width: 768px) { .progress-section { grid-template-columns: 1fr; } }
+
+        .progress-card {
+            background: rgba(255,255,255,0.8);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 16px;
+            padding: 20px;
+        }
+        .progress-card h3 {
+            font-size: 16px; font-weight: 700; margin-bottom: 14px;
+        }
+        .progress-bar-container {
+            background: rgba(0,0,0,0.06);
+            border-radius: 8px;
+            height: 12px;
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            border-radius: 8px;
+            background: linear-gradient(90deg, var(--primary), #34D399);
+            transition: width 0.6s ease;
+        }
+        .progress-bar-label {
+            font-size: 13px; color: var(--gray-500); font-weight: 500;
+        }
+
+        .badges-grid {
+            display: flex; flex-wrap: wrap; gap: 10px;
+        }
+        .badge-item {
+            display: flex; align-items: center; gap: 8px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 12px;
+            padding: 8px 14px;
+        }
+        .badge-item .badge-icon { font-size: 22px; }
+        .badge-item .badge-name { font-size: 13px; font-weight: 600; }
+        .badge-item .badge-date { font-size: 11px; color: var(--gray-400); }
+
+        .test-history-list { display: flex; flex-direction: column; gap: 8px; }
+        .test-history-item {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 4px 0; font-size: 13px;
+            padding: 10px 14px;
+            background: rgba(0,0,0,0.02);
+            border-radius: 10px;
+            font-size: 13px;
         }
-        .contributor-row .count { font-weight: 800; color: var(--primary, #C9A84C); }
-        .send-prompt-btn {
-            background: var(--primary, #C9A84C); color: #1a202c; border: none;
-            padding: 12px; border-radius: 10px; font-weight: 800; font-size: 14px;
-            cursor: pointer; width: 100%; font-family: inherit;
-        }
-        .send-prompt-btn:hover { filter: brightness(0.95); }
+        .test-history-score { font-weight: 700; }
 
-        /* Material cards */
-        .materials-list { display: flex; flex-direction: column; gap: 10px; }
-        .material-card {
-            background: #fff; border-radius: 12px; padding: 16px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        /* ═══ Tab 4: Leaderboard ═══ */
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 6px;
         }
-        .material-card .card-header {
-            display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+        .leaderboard-table th {
+            font-size: 12px; font-weight: 600; color: var(--gray-400);
+            text-align: left; padding: 8px 14px;
+            text-transform: uppercase; letter-spacing: 0.5px;
         }
-        .material-card .card-category {
-            font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
-            background: rgba(245,200,66,0.15); color: #b8860b;
+        .leaderboard-table td {
+            padding: 12px 14px;
+            font-size: 14px;
+            background: rgba(255,255,255,0.7);
         }
-        .material-card .card-date { font-size: 11px; color: var(--gray-400, #CBD5E0); }
-        .material-card .card-title { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
-        .material-card .card-content { font-size: 13px; color: var(--gray-600, #718096); line-height: 1.5; }
-        .material-card .card-source {
-            font-size: 11px; color: var(--gray-400, #CBD5E0); margin-top: 8px;
-            border-top: 1px solid var(--gray-100, #F7FAFC); padding-top: 8px;
+        .leaderboard-table tr td:first-child { border-radius: 12px 0 0 12px; }
+        .leaderboard-table tr td:last-child { border-radius: 0 12px 12px 0; }
+        .leaderboard-rank {
+            font-size: 18px; font-weight: 800; width: 40px; text-align: center;
+        }
+        .leaderboard-rank--1 { color: #F59E0B; }
+        .leaderboard-rank--2 { color: #94A3B8; }
+        .leaderboard-rank--3 { color: #D97706; }
+        .leaderboard-name { font-weight: 700; }
+        .leaderboard-dept { font-size: 12px; color: var(--gray-400); }
+        .leaderboard-points { font-weight: 800; color: var(--primary-dark); }
+
+        /* ═══ Read Modal (article viewer) ═══ */
+        .read-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: none;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 40px 20px;
+            overflow-y: auto;
+        }
+        .read-modal-overlay.active { display: flex; }
+        .read-modal {
+            background: #fff;
+            border-radius: 20px;
+            max-width: 700px;
+            width: 100%;
+            padding: 32px;
+            position: relative;
+            animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        .read-modal .modal-close {
+            position: absolute; top: 16px; right: 16px;
+            background: rgba(0,0,0,0.06);
+            border: none; border-radius: 50%;
+            width: 36px; height: 36px;
+            font-size: 18px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .read-modal .modal-close:hover { background: rgba(0,0,0,0.12); }
+        .read-modal .article-view-icon { font-size: 40px; margin-bottom: 12px; }
+        .read-modal .article-view-title { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+        .read-modal .article-view-meta {
+            display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;
+        }
+        .read-modal .article-view-content {
+            font-size: 14px; line-height: 1.8; color: var(--gray-700);
+        }
+        .read-modal .article-view-content h2 {
+            font-size: 17px; font-weight: 700; margin: 20px 0 8px; color: var(--gray-900);
+        }
+        .read-modal .article-view-content ul, .read-modal .article-view-content ol {
+            padding-left: 20px; margin: 8px 0;
+        }
+        .read-modal .article-view-content li { margin-bottom: 4px; }
+        .read-modal .article-view-content strong { color: var(--gray-900); }
+        .read-modal .article-actions {
+            display: flex; gap: 12px; margin-top: 24px; padding-top: 20px;
+            border-top: 1px solid rgba(0,0,0,0.06);
+        }
+        .read-modal .btn-mark-read {
+            flex: 1; padding: 12px;
+            background: var(--primary); color: #fff;
+            border: none; border-radius: 12px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 15px; font-weight: 700;
+            cursor: pointer; transition: filter 0.2s;
+        }
+        .read-modal .btn-mark-read:hover { filter: brightness(0.9); }
+        .read-modal .btn-take-test {
+            padding: 12px 24px;
+            background: rgba(99,102,241,0.1); color: #6366F1;
+            border: none; border-radius: 12px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 15px; font-weight: 700;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .read-modal .btn-take-test:hover { background: rgba(99,102,241,0.2); }
+
+        /* ═══ Quiz Modal ═══ */
+        .quiz-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(6px);
+            z-index: 1100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .quiz-modal-overlay.active { display: flex; }
+        .quiz-modal {
+            background: #fff;
+            border-radius: 24px;
+            max-width: 560px;
+            width: 100%;
+            padding: 32px;
+            position: relative;
+            animation: slideUp 0.3s ease;
+        }
+        .quiz-progress {
+            display: flex; gap: 4px; margin-bottom: 20px;
+        }
+        .quiz-progress .qp-dot {
+            flex: 1; height: 6px; border-radius: 3px;
+            background: rgba(0,0,0,0.08);
+            transition: background 0.3s;
+        }
+        .quiz-progress .qp-dot.done { background: var(--primary); }
+        .quiz-progress .qp-dot.current { background: #6366F1; }
+        .quiz-question-num { font-size: 12px; color: var(--gray-400); font-weight: 600; margin-bottom: 8px; }
+        .quiz-question-text { font-size: 18px; font-weight: 700; margin-bottom: 20px; line-height: 1.4; }
+        .quiz-options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+        .quiz-option {
+            padding: 14px 18px;
+            border: 2px solid rgba(0,0,0,0.08);
+            border-radius: 14px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            background: transparent;
+            text-align: left;
+            transition: all 0.2s;
+        }
+        .quiz-option:hover { border-color: var(--primary); background: rgba(16,185,129,0.04); }
+        .quiz-option.selected { border-color: #6366F1; background: rgba(99,102,241,0.08); font-weight: 600; }
+        .quiz-option.correct { border-color: var(--success); background: rgba(16,185,129,0.1); }
+        .quiz-option.wrong { border-color: var(--danger); background: rgba(239,68,68,0.08); }
+        .quiz-explanation {
+            font-size: 13px; color: var(--gray-600); background: rgba(245,158,11,0.08);
+            border-radius: 10px; padding: 12px; margin-bottom: 16px; display: none;
+        }
+        .quiz-btn-next {
+            width: 100%; padding: 14px;
+            background: var(--primary); color: #fff;
+            border: none; border-radius: 14px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 15px; font-weight: 700;
+            cursor: pointer; transition: filter 0.2s;
+        }
+        .quiz-btn-next:hover { filter: brightness(0.9); }
+        .quiz-btn-next:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Quiz result */
+        .quiz-result { text-align: center; }
+        .quiz-result .result-icon { font-size: 64px; margin-bottom: 12px; }
+        .quiz-result .result-score { font-size: 48px; font-weight: 800; }
+        .quiz-result .result-label { font-size: 16px; color: var(--gray-500); margin-bottom: 20px; }
+        .quiz-result .result-details { font-size: 14px; color: var(--gray-600); margin-bottom: 24px; }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center; padding: 48px 20px; color: var(--gray-400);
+        }
+        .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state .empty-text { font-size: 15px; font-weight: 500; }
+
+        /* ═══ Dark mode ═══ */
+        .dark-mode .training-header h1 { color: #F1F5F9; }
+        .dark-mode .training-header .subtitle { color: #6B7280; }
+        .dark-mode .stat-card {
+            background: rgba(30,30,50,0.8);
+            border-color: rgba(255,255,255,0.06);
+        }
+        .dark-mode .stat-card .stat-value { color: #F1F5F9; }
+        .dark-mode .training-tabs { background: rgba(255,255,255,0.04); }
+        .dark-mode .training-tab { color: #6B7280; }
+        .dark-mode .training-tab:hover { color: #D1D5DB; background: rgba(255,255,255,0.06); }
+        .dark-mode .training-tab.active { background: rgba(255,255,255,0.1); color: #F1F5F9; box-shadow: none; }
+        .dark-mode .role-pill { border-color: rgba(255,255,255,0.1); color: #9CA3AF; }
+        .dark-mode .role-pill:hover { border-color: var(--primary); color: var(--primary); }
+        .dark-mode .role-pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .dark-mode .article-card,
+        .dark-mode .test-card,
+        .dark-mode .progress-card {
+            background: rgba(30,30,50,0.8);
+            border-color: rgba(255,255,255,0.06);
+        }
+        .dark-mode .article-card:hover { border-color: var(--primary); }
+        .dark-mode .article-title { color: #F1F5F9; }
+        .dark-mode .article-summary { color: #6B7280; }
+        .dark-mode .test-card .test-title { color: #F1F5F9; }
+        .dark-mode .progress-card h3 { color: #F1F5F9; }
+        .dark-mode .progress-bar-container { background: rgba(255,255,255,0.06); }
+        .dark-mode .badge-item { background: rgba(255,255,255,0.05); }
+        .dark-mode .badge-item .badge-name { color: #F1F5F9; }
+        .dark-mode .test-history-item { background: rgba(255,255,255,0.04); color: #D1D5DB; }
+        .dark-mode .leaderboard-table td { background: rgba(30,30,50,0.6); color: #D1D5DB; }
+        .dark-mode .leaderboard-table th { color: #6B7280; }
+        .dark-mode .leaderboard-name { color: #F1F5F9; }
+        .dark-mode .read-modal { background: #1E1E3A; color: #D1D5DB; }
+        .dark-mode .read-modal .modal-close { background: rgba(255,255,255,0.08); color: #D1D5DB; }
+        .dark-mode .read-modal .article-view-title { color: #F1F5F9; }
+        .dark-mode .read-modal .article-view-content { color: #9CA3AF; }
+        .dark-mode .read-modal .article-view-content h2 { color: #F1F5F9; }
+        .dark-mode .read-modal .article-actions { border-top-color: rgba(255,255,255,0.08); }
+        .dark-mode .quiz-modal { background: #1E1E3A; color: #D1D5DB; }
+        .dark-mode .quiz-question-text { color: #F1F5F9; }
+        .dark-mode .quiz-option { border-color: rgba(255,255,255,0.1); color: #D1D5DB; }
+        .dark-mode .quiz-option:hover { border-color: var(--primary); background: rgba(16,185,129,0.06); }
+        .dark-mode .quiz-option.selected { border-color: #6366F1; background: rgba(99,102,241,0.12); }
+        .dark-mode .quiz-explanation { background: rgba(245,158,11,0.12); color: #D1D5DB; }
+        .dark-mode .empty-state { color: #4B5563; }
+
+        /* ═══ Responsive ═══ */
+        @media (max-width: 768px) {
+            .training-page { padding: 12px 14px; }
+            .training-header h1 { font-size: 22px; }
+            .training-stats { grid-template-columns: repeat(2, 1fr); }
+            .articles-grid { grid-template-columns: 1fr; }
+            .tests-grid { grid-template-columns: 1fr; }
+            .read-modal { padding: 20px; border-radius: 16px; }
+            .quiz-modal { padding: 20px; }
         }
 
-        /* Pending review section */
-        .pending-section { margin-top: 16px; }
-        .pending-section h2 { font-size: 16px; font-weight: 800; margin-bottom: 8px; }
-        .pending-card {
-            background: #FFFBEB; border-radius: 12px; padding: 16px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 8px;
-            border-left: 3px solid var(--primary, #C9A84C);
+        /* Confetti canvas */
+        #confettiCanvas {
+            position: fixed; inset: 0; z-index: 9999; pointer-events: none;
         }
-        .pending-card .pending-staff { font-size: 14px; font-weight: 800; margin-bottom: 4px; }
-        .pending-card .pending-content { font-size: 13px; margin-bottom: 8px; line-height: 1.5; }
-        .pending-card .pending-actions { display: flex; gap: 8px; }
-        .btn-approve, .btn-reject {
-            padding: 6px 14px; border: none; border-radius: 8px;
-            font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
-        }
-        .btn-approve { background: #48BB78; color: #fff; }
-        .btn-reject { background: #FC8181; color: #fff; }
-
-        .empty-state { text-align: center; padding: 40px; color: var(--gray-400, #CBD5E0); }
-
-        /* Dark mode */
-        .dark-mode .training-page h1 { color: #E2E8F0; }
-        .dark-mode .training-stat,
-        .dark-mode .contributors,
-        .dark-mode .material-card { background: #2A2A4A; border: 1px solid #3D3D5C; box-shadow: none; }
-        .dark-mode .training-stat .stat-value { color: var(--primary, #C9A84C); }
-        .dark-mode .training-stat .stat-label { color: #9CA3AF; }
-        .dark-mode .contributors h3 { color: #E2E8F0; }
-        .dark-mode .contributor-row { color: #E2E8F0; }
-        .dark-mode .material-card .card-title { color: #E2E8F0; }
-        .dark-mode .material-card .card-content { color: #9CA3AF; }
-        .dark-mode .material-card .card-date { color: #6B7280; }
-        .dark-mode .material-card .card-category { background: rgba(201,168,76,0.2); color: #C9A84C; }
-        .dark-mode .material-card .card-source { color: #6B7280; border-top-color: #3D3D5C; }
-        .dark-mode .pending-card { background: #3D3520; border-left-color: #C9A84C; color: #E2E8F0; }
-        .dark-mode .pending-card .pending-content { color: #9CA3AF; }
-        .dark-mode .filter-chip { background: rgba(255,255,255,0.08); color: #9CA3AF; }
-        .dark-mode .filter-chip:hover { background: rgba(255,255,255,0.12); color: #E2E8F0; }
-        .dark-mode .filter-chip.active { background: var(--primary, #C9A84C); color: #1a202c; }
-        .dark-mode .empty-state { color: #6B7280; }
-        .dark-mode .send-prompt-btn { background: var(--primary, #C9A84C); color: #1a202c; }
     </style>
 </head>
 <body>
@@ -147,9 +566,7 @@
                 </div>
                 <button class="sidebar-collapse-btn" id="sidebarCollapseBtn"><span class="collapse-icon">«</span><span class="collapse-text">Згорнути</span></button>
             </div>
-            <nav class="sidebar-links" id="sidebarLinks">
-                <!-- Populated by sidebar.js -->
-            </nav>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
         </aside>
         <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
@@ -157,223 +574,101 @@
         <header class="header">
             <div class="header-left">
                 <button class="sidebar-toggle" id="sidebarToggle">☰</button>
-                <h2>Навчання персоналу</h2>
+                <h2>🎓 Навчання</h2>
             </div>
         </header>
 
         <!-- Main content -->
-        <main class="main-content training-page">
+        <main class="main-content training-page" id="trainingPage">
+            <!-- Header -->
+            <div class="training-header">
+                <h1>База знань</h1>
+                <p class="subtitle">Матеріали, тести та прогрес навчання</p>
+            </div>
+
             <!-- Stats -->
-            <div class="training-stats" id="trainingStats">
-                <div class="training-stat">
-                    <div class="stat-value" id="statTotal">—</div>
-                    <div class="stat-label">Матеріалів</div>
+            <div class="training-stats" id="overviewStats">
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon--articles">📚</div>
+                    <div><div class="stat-value" id="statArticles">—</div><div class="stat-label">Матеріалів</div></div>
                 </div>
-                <div class="training-stat">
-                    <div class="stat-value" id="statWeek">—</div>
-                    <div class="stat-label">Цього тижня</div>
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon--tests">✅</div>
+                    <div><div class="stat-value" id="statTests">—</div><div class="stat-label">Тестів</div></div>
                 </div>
-                <div class="training-stat">
-                    <div class="stat-value" id="statPending">—</div>
-                    <div class="stat-label">Очікує</div>
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon--read">📖</div>
+                    <div><div class="stat-value" id="statRead">—</div><div class="stat-label">Прочитано</div></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon--passed">🏆</div>
+                    <div><div class="stat-value" id="statPassed">—</div><div class="stat-label">Тестів здано</div></div>
                 </div>
             </div>
 
-            <!-- Filters -->
-            <div class="training-filters" id="categoryFilters">
-                <button class="filter-chip active" data-cat="all">Всі</button>
-                <button class="filter-chip" data-cat="Аніматори">Аніматори</button>
-                <button class="filter-chip" data-cat="Адміністрація">Адміністрація</button>
-                <button class="filter-chip" data-cat="Безпека">Безпека</button>
-                <button class="filter-chip" data-cat="Сервіс">Сервіс</button>
-                <button class="filter-chip" data-cat="Продажі">Продажі</button>
-                <button class="filter-chip" data-cat="Загальне">Загальне</button>
+            <!-- Tabs -->
+            <div class="training-tabs" id="trainingTabs">
+                <button class="training-tab active" data-tab="materials">📚 Матеріали</button>
+                <button class="training-tab" data-tab="tests">✅ Тести</button>
+                <button class="training-tab" data-tab="progress">📊 Прогрес</button>
+                <button class="training-tab" data-tab="leaderboard">🏆 Рейтинг</button>
             </div>
 
-            <!-- Layout: sidebar + materials -->
-            <div class="training-layout">
-                <div class="training-sidebar">
-                    <div class="contributors">
-                        <h3>Топ внесок</h3>
-                        <div id="topContributors"></div>
-                    </div>
-                    <button class="send-prompt-btn" id="sendPromptBtn">Відправити запит</button>
+            <!-- Tab: Materials -->
+            <div class="tab-content active" id="tabMaterials">
+                <div class="role-filter" id="roleFilter">
+                    <button class="role-pill active" data-role="all">Всі</button>
+                    <button class="role-pill" data-role="animator">🎭 Аніматори</button>
+                    <button class="role-pill" data-role="admin">📋 Адміністрація</button>
+                    <button class="role-pill" data-role="manager">👥 Менеджери</button>
                 </div>
+                <div class="articles-grid" id="articlesGrid">
+                    <div class="empty-state"><div class="empty-icon">📚</div><div class="empty-text">Завантаження...</div></div>
+                </div>
+            </div>
 
-                <div>
-                    <!-- Pending review -->
-                    <div class="pending-section" id="pendingSection" style="display:none">
-                        <h2>Очікує перегляду</h2>
-                        <div id="pendingList"></div>
-                    </div>
+            <!-- Tab: Tests -->
+            <div class="tab-content" id="tabTests">
+                <div class="tests-grid" id="testsGrid">
+                    <div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">Завантаження...</div></div>
+                </div>
+            </div>
 
-                    <!-- Materials list -->
-                    <div class="materials-list" id="materialsList">
-                        <div class="empty-state">Завантаження...</div>
-                    </div>
+            <!-- Tab: Progress -->
+            <div class="tab-content" id="tabProgress">
+                <div class="progress-section" id="progressSection">
+                    <div class="empty-state"><div class="empty-icon">📊</div><div class="empty-text">Завантаження...</div></div>
+                </div>
+            </div>
+
+            <!-- Tab: Leaderboard -->
+            <div class="tab-content" id="tabLeaderboard">
+                <div id="leaderboardContent">
+                    <div class="empty-state"><div class="empty-icon">🏆</div><div class="empty-text">Завантаження...</div></div>
                 </div>
             </div>
         </main>
     </div>
 
-    <script src="js/config.js?v=24.3.0"></script>
-    <script src="js/api.js?v=24.3.0"></script>
-    <script src="js/auth.js?v=24.3.0"></script>
-    <script src="js/ui.js?v=24.3.0"></script>
-    <script src="js/components/sidebar.js?v=24.3.0"></script>
-    <script>
-    (async function() {
-        // Auth check
-        const token = localStorage.getItem('pzp_token');
-        if (!token) { window.location.href = '/'; return; }
+    <!-- Read Article Modal -->
+    <div class="read-modal-overlay" id="readModalOverlay">
+        <div class="read-modal" id="readModal"></div>
+    </div>
 
-        // Init sidebar
-        if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
+    <!-- Quiz Modal -->
+    <div class="quiz-modal-overlay" id="quizModalOverlay">
+        <div class="quiz-modal" id="quizModal"></div>
+    </div>
 
-        const API = window.API_BASE || '';
-        const headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    <!-- Confetti -->
+    <canvas id="confettiCanvas"></canvas>
 
-        let currentCategory = 'all';
-
-        // Load stats
-        async function loadStats() {
-            try {
-                const res = await fetch(API + '/api/training/stats', { headers });
-                if (!res.ok) return;
-                const data = await res.json();
-                document.getElementById('statTotal').textContent = data.totalMaterials || 0;
-                document.getElementById('statWeek').textContent = data.thisWeekInputs || 0;
-
-                // Top contributors
-                const tc = document.getElementById('topContributors');
-                if (data.topContributors && data.topContributors.length > 0) {
-                    tc.innerHTML = data.topContributors.map(c =>
-                        `<div class="contributor-row"><span>${c.name}</span><span class="count">${c.count}</span></div>`
-                    ).join('');
-                } else {
-                    tc.innerHTML = '<div style="font-size:12px;color:var(--gray-400)">Ще немає даних</div>';
-                }
-            } catch (e) { console.error('Stats error', e); }
-        }
-
-        // Load materials
-        async function loadMaterials() {
-            try {
-                const catParam = currentCategory !== 'all' ? `&category=${encodeURIComponent(currentCategory)}` : '';
-                const res = await fetch(API + `/api/training/materials?limit=50${catParam}`, { headers });
-                if (!res.ok) return;
-                const data = await res.json();
-                const list = document.getElementById('materialsList');
-
-                if (!data.materials || data.materials.length === 0) {
-                    list.innerHTML = '<div class="empty-state">Немає матеріалів</div>';
-                    return;
-                }
-
-                list.innerHTML = data.materials.map(m => {
-                    const date = m.created_at ? new Date(m.created_at).toLocaleDateString('uk-UA') : '';
-                    return `<div class="material-card">
-                        <div class="card-header">
-                            <span class="card-category">${m.category || 'Загальне'}</span>
-                            <span class="card-date">${date}</span>
-                        </div>
-                        <div class="card-title">${escapeHtml(m.title || '')}</div>
-                        <div class="card-content">${escapeHtml(m.content || '')}</div>
-                        ${m.source_staff_name ? `<div class="card-source">Від: ${escapeHtml(m.source_staff_name)}</div>` : ''}
-                    </div>`;
-                }).join('');
-            } catch (e) { console.error('Materials error', e); }
-        }
-
-        // Load pending (for managers+)
-        async function loadPending() {
-            try {
-                const res = await fetch(API + '/api/training/weekly-pending', { headers });
-                if (!res.ok) { document.getElementById('pendingSection').style.display = 'none'; return; }
-                const data = await res.json();
-
-                const pending = (data.inputs || []).filter(i => i.status === 'pending');
-                document.getElementById('statPending').textContent = pending.length;
-
-                const section = document.getElementById('pendingSection');
-                const list = document.getElementById('pendingList');
-
-                if (pending.length === 0) {
-                    section.style.display = 'none';
-                    return;
-                }
-
-                section.style.display = 'block';
-                list.innerHTML = pending.map(p => {
-                    const date = p.created_at ? new Date(p.created_at).toLocaleDateString('uk-UA') : '';
-                    return `<div class="pending-card" data-id="${p.id}">
-                        <div class="pending-staff">${escapeHtml(p.staff_name || p.current_staff_name || 'Невідомий')} <span style="font-weight:400;font-size:11px;color:var(--gray-400)">${date}</span></div>
-                        <div class="pending-content">${escapeHtml(p.content)}</div>
-                        <div class="pending-actions">
-                            <button class="btn-approve" onclick="reviewInput(${p.id}, 'approve')">Підтвердити</button>
-                            <button class="btn-reject" onclick="reviewInput(${p.id}, 'reject')">Відхилити</button>
-                        </div>
-                    </div>`;
-                }).join('');
-            } catch (e) {
-                document.getElementById('pendingSection').style.display = 'none';
-            }
-        }
-
-        // Review input
-        window.reviewInput = async function(id, action) {
-            try {
-                const res = await fetch(API + '/api/training/review', {
-                    method: 'POST', headers,
-                    body: JSON.stringify({ decisions: [{ id, action }] })
-                });
-                if (res.ok) {
-                    // Remove card with animation
-                    const card = document.querySelector(`.pending-card[data-id="${id}"]`);
-                    if (card) { card.style.opacity = '0.3'; setTimeout(() => card.remove(), 300); }
-                    loadStats();
-                    loadMaterials();
-                }
-            } catch (e) { console.error('Review error', e); }
-        };
-
-        // Category filter clicks
-        document.getElementById('categoryFilters').addEventListener('click', (e) => {
-            const chip = e.target.closest('.filter-chip');
-            if (!chip) return;
-            document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-            chip.classList.add('active');
-            currentCategory = chip.dataset.cat;
-            loadMaterials();
-        });
-
-        // Send prompt button
-        document.getElementById('sendPromptBtn').addEventListener('click', async () => {
-            const btn = document.getElementById('sendPromptBtn');
-            btn.textContent = 'Відправляю...';
-            btn.disabled = true;
-            try {
-                const res = await fetch(API + '/api/training/send-weekly-prompt', { method: 'POST', headers });
-                const data = await res.json();
-                btn.textContent = data.success ? `Відправлено (${data.sent})` : 'Помилка';
-            } catch (e) {
-                btn.textContent = 'Помилка';
-            }
-            setTimeout(() => { btn.textContent = 'Відправити запит'; btn.disabled = false; }, 3000);
-        });
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Initial load
-        loadStats();
-        loadMaterials();
-        loadPending();
-    })();
-    </script>
-    <script src="js/role-panel.js?v=24.3.0"></script>
+    <script src="js/config.js?v=25.3.0"></script>
+    <script src="js/api.js?v=25.3.0"></script>
+    <script src="js/auth.js?v=25.3.0"></script>
+    <script src="js/ui.js?v=25.3.0"></script>
+    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <script src="js/training-page.js?v=25.3.0"></script>
+    <script src="js/role-panel.js?v=25.3.0"></script>
 </body>
 </html>

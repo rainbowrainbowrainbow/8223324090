@@ -23,6 +23,7 @@ async function safeQuery(sql) {
     } catch (err) {
         // Ignore errors about missing columns/tables — they'll be created by migrations
         if (err.message.includes('does not exist') || err.message.includes('already exists')) {
+            log.debug(`safeQuery ignored: ${err.message.slice(0, 120)}`);
             return;
         }
         throw err;

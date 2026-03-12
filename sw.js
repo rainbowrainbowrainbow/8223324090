@@ -16,8 +16,8 @@
  *   <script src="js/ws.js"></script>
  */
 
-const CACHE_NAME = 'event-genix-v24';
-const API_CACHE_NAME = 'event-genix-api-v24';
+const CACHE_NAME = 'event-genix-v25';
+const API_CACHE_NAME = 'event-genix-api-v25';
 const CACHE_NAME = 'event-genix-v24';
 const API_CACHE_NAME = 'event-genix-api-v24';
 

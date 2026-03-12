@@ -353,6 +353,48 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
     }
 });
 
+// POST /api/tasks/:id/review — review/score a completed task (manager+)
+router.post('/:id/review', requireRole('admin', 'creator', 'director', 'manager'), async (req, res) => {
+    try {
+        const { score, comment } = req.body;
+        const reviewScore = parseInt(score);
+        if (!Number.isInteger(reviewScore) || reviewScore < 1 || reviewScore > 10) {
+            return res.status(400).json({ error: 'score повинен бути від 1 до 10' });
+        }
+
+        const result = await pool.query(
+            `UPDATE tasks SET review_score = $1, review_comment = $2,
+             reviewed_by = $3, reviewed_at = NOW()
+             WHERE id = $4 AND status = 'done' RETURNING *`,
+            [reviewScore, comment || null, req.user.id || req.user.userId, req.params.id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Задачу не знайдено або вона не завершена' });
+        }
+
+        // Award coins based on score
+        const task = result.rows[0];
+        const coinsReward = reviewScore * 5;
+        try {
+            const assignedTo = task.assigned_to;
+            if (assignedTo) {
+                const userResult = await pool.query('SELECT username FROM users WHERE id = $1', [assignedTo]);
+                if (userResult.rows.length > 0) {
+                    const gamification = require('../services/gamification');
+                    await gamification.awardCoins(userResult.rows[0].username, coinsReward, `Оцінка задачі: ${reviewScore}/10`, 'task_review');
+                }
+            }
+        } catch (e) { /* gamification not ready */ }
+
+        log.info(`Task ${req.params.id} reviewed: ${reviewScore}/10 by ${req.user.username}`);
+        res.json({ success: true, task: result.rows[0] });
+    } catch (err) {
+        log.error('Review task error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // DELETE /api/tasks/:id — admin only
 router.delete('/:id', requireRole('admin'), async (req, res) => {
     try {

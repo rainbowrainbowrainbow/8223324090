@@ -3,17 +3,17 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v24.3.0**. package.json: `24.3.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
+Версія **v25.4.0**. package.json: `25.4.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: fix: [claude-code] v24.3.0 QA — security + reliability fixes
-- **package.json**: `"version": "24.3.0"`
+- **Останній коміт**: feat: [claude-code] v25.4.0 — Meeting Features: Penalties, Reviews, Homework, Polls, Courses, Meeting Notes, Pipeline
+- **package.json**: `"version": "25.4.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
 - **origin/main**: v24.0.0
 - **origin/deployed**: v17.4.1
-- **Що нового в v24.3.0**: Dashboard per-role — DEFAULT_WIDGETS для 24 ролей, 3 нових віджети, drag & drop налаштування, /today endpoint
+- **Що нового в v25.4.0**: 7 нових фіч з зустрічі Сергій+АнЛі: штрафні бали, оцінювання задач, домашні завдання, опитування в чаті, курси/curriculum, meeting notes з автозадачами, sales pipeline stages. 7 нових міграцій (060-066), 25+ нових API endpoints.
 
 ### Тести
 - **296+ тестів** (api.test.js)

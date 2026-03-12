@@ -24,11 +24,19 @@ function validateEnv() {
     // Used in: middleware/auth.js
     // Falls back to crypto.randomBytes(64) which changes on every restart
     if (!process.env.JWT_SECRET) {
-        warnings.push(
-            'JWT_SECRET not set. Auto-generating random secret. ' +
-            'User sessions will be lost on restart. ' +
-            'Set JWT_SECRET to a random string (64+ characters) for stable sessions.'
-        );
+        if (isProduction) {
+            errors.push(
+                'JWT_SECRET is REQUIRED in production. ' +
+                'Set JWT_SECRET to a random string (64+ characters). ' +
+                'Without it, all user sessions are lost on every restart.'
+            );
+        } else {
+            warnings.push(
+                'JWT_SECRET not set. Auto-generating random secret. ' +
+                'User sessions will be lost on restart. ' +
+                'Set JWT_SECRET to a random string (64+ characters) for stable sessions.'
+            );
+        }
     }
 
     // --- Database connectivity ---

@@ -1,6 +1,6 @@
 /**
- * profile-page.js — Profile + Character + Inventory + Achievements + Notes + Room + Quests + Titles
- * v22.5.0
+ * profile-page.js — Profile + Character + Inventory + Achievements + Shop + Leaderboard + Room + Quests + Titles
+ * v25.2.0 — Unified tab system (removed old System A)
  */
 
 // ==========================================
@@ -16,6 +16,10 @@ let isOwnProfile = true;
 let roomData = null;
 let questsData = null;
 let titlesData = null;
+let shopItems = [];
+let leaderboardData = null;
+let achCatFilter = 'all';
+let leaderboardSort = 'xp';
 let activeTab = 'profile';
 
 // ==========================================
@@ -212,11 +216,14 @@ function renderProfile() {
         </div>
 
         <!-- TABS -->
-        <div class="shop-tabs" style="margin:16px 0 0">
-            <button class="shop-tab ${activeTab === 'profile' ? 'active' : ''}" onclick="switchTab('profile')">Профіль</button>
-            <button class="shop-tab ${activeTab === 'room' ? 'active' : ''}" onclick="switchTab('room')">Кімната</button>
-            ${isOwnProfile ? `<button class="shop-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')">Квести</button>` : ''}
-            ${isOwnProfile ? `<button class="shop-tab ${activeTab === 'titles' ? 'active' : ''}" onclick="switchTab('titles')">Титули</button>` : ''}
+        <div class="profile-tabs" style="margin:16px 0 0">
+            <button class="profile-tab ${activeTab === 'profile' ? 'active' : ''}" onclick="switchTab('profile')">👤 Профіль</button>
+            <button class="profile-tab ${activeTab === 'achievements' ? 'active' : ''}" onclick="switchTab('achievements')">🏆 Ачивки</button>
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'inventory' ? 'active' : ''}" onclick="switchTab('inventory')">🎒 Інвентар</button>` : ''}
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'shop' ? 'active' : ''}" onclick="switchTab('shop')">🛒 Магазин</button>` : ''}
+            <button class="profile-tab ${activeTab === 'leaderboard' ? 'active' : ''}" onclick="switchTab('leaderboard')">📊 Рейтинг</button>
+            <button class="profile-tab ${activeTab === 'room' ? 'active' : ''}" onclick="switchTab('room')">🏠 Кімната</button>
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')">✅ Квести</button>` : ''}
         </div>
 
         <div id="tabContent">
@@ -228,29 +235,35 @@ function renderProfile() {
     attachProfileListeners();
 }
 
-function switchTab(tab) {
+async function switchTab(tab) {
     activeTab = tab;
+
+    // Lazy load data for tabs that need it
+    if (tab === 'shop' && shopItems.length === 0) await loadShopItems();
+    if (tab === 'leaderboard' && !leaderboardData) await loadLeaderboard();
+
     const tabContent = document.getElementById('tabContent');
     if (tabContent) {
         tabContent.innerHTML = renderTabContent();
         attachProfileListeners();
     }
     // Update tab buttons
-    document.querySelectorAll('.shop-tab').forEach(btn => {
-        btn.classList.toggle('active', btn.textContent.trim() === {
-            profile: 'Профіль', room: 'Кімната', quests: 'Квести', titles: 'Титули'
-        }[tab]);
+    document.querySelectorAll('.profile-tab').forEach(btn => {
+        const tabName = btn.getAttribute('onclick')?.match(/switchTab\('(\w+)'\)/)?.[1];
+        btn.classList.toggle('active', tabName === tab);
     });
 }
 
 function renderTabContent() {
     switch (activeTab) {
+        case 'achievements': return renderAchievements();
+        case 'inventory': return renderInventory();
+        case 'shop': return renderShopTab();
+        case 'leaderboard': return renderLeaderboardTab();
         case 'room': return renderRoom();
         case 'quests': return renderQuests();
         case 'titles': return renderTitles();
         default: return `
-            ${isOwnProfile ? renderInventory() : ''}
-            ${renderAchievements()}
             ${isOwnProfile ? renderNotes() : ''}
         `;
     }
@@ -288,22 +301,44 @@ function renderInventory() {
 }
 
 // ==========================================
-// ACHIEVEMENTS
+// ACHIEVEMENTS (with category filter)
 // ==========================================
+const ACH_CATEGORIES = [
+    { id: 'all', label: 'Всі' },
+    { id: 'work', label: '🔨 Робота' },
+    { id: 'minigame', label: '🎮 Ігри' },
+    { id: 'quiz', label: '📊 Квізи' },
+    { id: 'social', label: '💬 Соціальні' },
+    { id: 'streaks', label: '🔥 Стріки' },
+    { id: 'special', label: '⭐ Особливі' },
+];
+
+function setAchCat(cat) {
+    achCatFilter = cat;
+    switchTab('achievements');
+}
+
 function renderAchievements() {
     const visible = myAchievements.filter(a => !a.isSecret || a.completed);
-    let cardsHtml = visible.map(a => {
+    const filtered = achCatFilter === 'all' ? visible : visible.filter(a => a.category === achCatFilter);
+
+    const tabsHtml = ACH_CATEGORIES.map(c =>
+        `<button class="profile-tab ${achCatFilter === c.id ? 'active' : ''}" style="font-size:13px;padding:6px 14px"
+                 onclick="setAchCat('${c.id}')">${c.label}</button>`
+    ).join('');
+
+    let cardsHtml = filtered.map(a => {
         const pct = a.target > 1 ? Math.min(100, Math.round((a.progress / a.target) * 100)) : (a.completed ? 100 : 0);
         return `
-        <div class="achievement-card ${a.completed ? 'completed' : ''} ${!a.completed && a.progress === 0 ? 'locked' : ''}">
+        <div class="achievement-card ${a.completed ? 'completed unlocked' : ''} ${!a.completed && a.progress === 0 ? 'locked' : ''}">
             <div class="achievement-icon">${a.icon}</div>
             <div class="achievement-info">
-                <div class="achievement-name">${escapeHtml(a.name)} <span class="rarity-badge ${a.rarity}">${RARITY_LABELS[a.rarity] || a.rarity}</span></div>
-                <div class="achievement-desc">${escapeHtml(a.description)}</div>
+                <h3>${escapeHtml(a.name)} <span class="rarity-badge rarity-${a.rarity}">${RARITY_LABELS[a.rarity] || a.rarity}</span></h3>
+                <p>${escapeHtml(a.description)}</p>
                 <div class="achievement-reward">+${a.rewardCoins} 💰</div>
                 ${a.target > 1 ? `
-                <div class="achievement-progress">
-                    <div class="achievement-progress-fill" style="width:${pct}%"></div>
+                <div class="achievement-progress" style="height:6px;background:var(--gray-200);border-radius:3px;margin-top:6px">
+                    <div class="achievement-progress-fill" style="width:${pct}%;height:100%;border-radius:3px;background:var(--primary);transition:width 0.4s"></div>
                 </div>
                 <div style="font-size:11px;color:var(--gray-400);margin-top:2px">${a.progress}/${a.target}</div>
                 ` : ''}
@@ -311,9 +346,12 @@ function renderAchievements() {
         </div>`;
     }).join('');
 
+    if (!cardsHtml) cardsHtml = '<div class="empty-state"><div class="empty-state-icon">🏆</div><div class="empty-state-text">Немає ачивок в цій категорії</div></div>';
+
     return `
-    <div class="achievements-section">
-        <h3>🏆 Ачивки (${visible.filter(a => a.completed).length}/${visible.length})</h3>
+    <div class="achievements-section" style="margin-top:16px">
+        <h3 style="margin-bottom:12px">🏆 Ачивки (${visible.filter(a => a.completed).length}/${visible.length})</h3>
+        <div class="profile-tabs" style="margin-bottom:14px">${tabsHtml}</div>
         <div class="achievements-grid">${cardsHtml}</div>
     </div>`;
 }
@@ -501,6 +539,130 @@ function renderTitles() {
     }
     html += '</div>';
     return html;
+}
+
+// ==========================================
+// SHOP TAB
+// ==========================================
+async function loadShopItems() {
+    const data = await apiGet('/gamification/shop');
+    shopItems = data || [];
+}
+
+function renderShopTab() {
+    if (!shopItems.length) return '<div class="empty-state"><div class="empty-state-icon">🛒</div><div class="empty-state-text">Магазин порожній</div></div>';
+
+    const ownedCodes = new Set((myInventory || []).map(i => i.code));
+    const coins = walletData?.coins || 0;
+
+    let cardsHtml = shopItems.map(item => {
+        const owned = ownedCodes.has(item.code);
+        const canAfford = coins >= (item.priceCoins || item.price_coins || 0);
+        const price = item.priceCoins || item.price_coins || 0;
+        const emoji = CATEGORY_EMOJIS[item.category] || '📦';
+
+        return `
+        <div class="shop-card ${owned ? 'owned' : ''}" ${item.featured ? 'style="border-color:#fbbf24"' : ''}>
+            <div class="shop-icon">${emoji}</div>
+            <div class="shop-name">${escapeHtml(item.name)}</div>
+            ${item.description ? `<div class="shop-desc">${escapeHtml(item.description)}</div>` : ''}
+            <span class="rarity-badge rarity-${item.rarity}">${RARITY_LABELS[item.rarity] || item.rarity}</span>
+            <div class="shop-price" style="margin-top:8px">${price === 0 ? 'Безкоштовно' : `💰 ${formatCoins(price)}`}</div>
+            ${owned
+                ? '<button class="shop-buy-btn" disabled>✅ У вас є</button>'
+                : `<button class="shop-buy-btn" ${!canAfford ? 'disabled' : ''} onclick="buyItem(${item.id},'${escapeHtml(item.name).replace(/'/g, "\\'")}')">
+                    ${canAfford ? '🛒 Купити' : '🔒 Замало монет'}
+                   </button>`
+            }
+        </div>`;
+    }).join('');
+
+    return `
+    <div style="margin-top:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <h3>🛒 Магазин</h3>
+            <span class="coins-balance">🪙 ${formatCoins(coins)}</span>
+        </div>
+        <div class="shop-grid">${cardsHtml}</div>
+    </div>`;
+}
+
+async function buyItem(itemId, itemName) {
+    if (!confirm(`Купити "${itemName}"?`)) return;
+    const result = await apiPost('/gamification/shop/buy', { itemId });
+    if (result?.success) {
+        if (typeof showNotification === 'function') showNotification(`Придбано: ${itemName}!`, 'success');
+        // Refresh data
+        walletData = await apiGet('/wallet');
+        myInventory = await apiGet('/inventory') || [];
+        await loadShopItems();
+        switchTab('shop');
+    } else {
+        if (typeof showNotification === 'function') showNotification(result?.error || 'Помилка покупки', 'error');
+    }
+}
+
+// ==========================================
+// LEADERBOARD TAB
+// ==========================================
+async function loadLeaderboard() {
+    leaderboardData = await apiGet(`/gamification/leaderboard?sort=${leaderboardSort}`);
+}
+
+function setLeaderboardSort(sort) {
+    leaderboardSort = sort;
+    leaderboardData = null;
+    switchTab('leaderboard');
+}
+
+function renderLeaderboardTab() {
+    if (!leaderboardData) return '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">Завантаження рейтингу...</div></div>';
+
+    const list = Array.isArray(leaderboardData) ? leaderboardData : (leaderboardData.leaderboard || []);
+    if (!list.length) return '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">Рейтинг поки порожній</div></div>';
+
+    const sortTabs = [
+        { id: 'xp', label: 'За XP' },
+        { id: 'coins', label: 'За монети' },
+        { id: 'achievements', label: 'За ачивки' }
+    ];
+
+    const tabsHtml = sortTabs.map(s =>
+        `<button class="profile-tab ${leaderboardSort === s.id ? 'active' : ''}" style="font-size:13px;padding:6px 14px"
+                 onclick="setLeaderboardSort('${s.id}')">${s.label}</button>`
+    ).join('');
+
+    const rankIcons = ['🥇', '🥈', '🥉'];
+    const listHtml = list.map((u, i) => {
+        const isMe = u.id === currentUserId || u.userId === currentUserId;
+        const avatarLetter = (u.displayName || u.username || '?')[0].toUpperCase();
+        const scoreValue = leaderboardSort === 'coins' ? formatCoins(u.coins) :
+                          leaderboardSort === 'achievements' ? (u.achievementsCount || u.achievements || 0) :
+                          formatCoins(u.xp || 0);
+        const scoreLabel = leaderboardSort === 'coins' ? 'монет' :
+                          leaderboardSort === 'achievements' ? 'ачивок' : 'XP';
+
+        return `
+        <div class="leaderboard-item ${isMe ? 'is-me' : ''}">
+            <div class="leaderboard-rank ${i < 3 ? `top-${i + 1}` : ''}">${rankIcons[i] || (i + 1)}</div>
+            <div class="leaderboard-avatar">${avatarLetter}</div>
+            <div class="leaderboard-user">
+                <div class="leaderboard-name">${escapeHtml(u.displayName || u.username)}</div>
+                <div class="leaderboard-title-text">${escapeHtml(u.activeTitle || u.role || '')}</div>
+            </div>
+            <div class="leaderboard-score">
+                <div class="leaderboard-score-value">${scoreValue}</div>
+                <div class="leaderboard-score-label">${scoreLabel}</div>
+            </div>
+        </div>`;
+    }).join('');
+
+    return `
+    <div style="margin-top:16px">
+        <h3 style="margin-bottom:12px">📊 Рейтинг</h3>
+        <div class="profile-tabs" style="margin-bottom:14px">${tabsHtml}</div>
+        <div class="leaderboard-list">${listHtml}</div>
+    </div>`;
 }
 
 // ==========================================

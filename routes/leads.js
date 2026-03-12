@@ -27,10 +27,14 @@ const VIBER_AUTH_TOKEN        = process.env.VIBER_AUTH_TOKEN        || '';
 // GET /api/leads — list all leads with optional filters
 router.get('/', async (req, res) => {
     try {
-        const { status, assigned_to, source, limit: lim, search } = req.query;
+        const { status, assigned_to, source, limit: lim, search, pipeline_stage } = req.query;
         const conditions = [];
         const params = [];
 
+        if (pipeline_stage) {
+            params.push(pipeline_stage);
+            conditions.push(`l.pipeline_stage = $${params.length}`);
+        }
         if (status) {
             params.push(status);
             conditions.push(`l.status = $${params.length}`);
@@ -139,7 +143,7 @@ router.post('/', async (req, res) => {
 // PATCH /api/leads/:id — update lead
 router.patch('/:id', async (req, res) => {
     try {
-        const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, event_date, children_count, child_age, program_id } = req.body;
+        const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, event_date, children_count, child_age, program_id, pipeline_stage, milestone_tags } = req.body;
         const updates = [];
         const params = [];
 
@@ -160,6 +164,8 @@ router.patch('/:id', async (req, res) => {
         if (children_count !== undefined) { params.push(children_count); updates.push(`children_count = $${params.length}`); }
         if (child_age !== undefined) { params.push(child_age); updates.push(`child_age = $${params.length}`); }
         if (program_id !== undefined) { params.push(program_id || null); updates.push(`program_id = $${params.length}`); }
+        if (pipeline_stage !== undefined) { params.push(pipeline_stage); updates.push(`pipeline_stage = $${params.length}`); }
+        if (milestone_tags !== undefined) { params.push(milestone_tags); updates.push(`milestone_tags = $${params.length}`); }
         if (last_contact_at) {
             params.push(last_contact_at);
             updates.push(`last_contact_at = $${params.length}`);
@@ -183,6 +189,28 @@ router.patch('/:id', async (req, res) => {
     } catch (err) {
         log.error('PATCH /leads/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка оновлення' });
+    }
+});
+
+// GET /api/leads/pipeline — pipeline funnel by stages (v25.4.0)
+router.get('/pipeline', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT pipeline_stage, COUNT(*) AS count
+            FROM leads
+            WHERE status NOT IN ('closed', 'lost')
+            GROUP BY pipeline_stage
+            ORDER BY CASE pipeline_stage
+                WHEN 'new' THEN 1 WHEN 'contacted' THEN 2 WHEN 'demo' THEN 3
+                WHEN 'proposal' THEN 4 WHEN 'negotiation' THEN 5 WHEN 'won' THEN 6
+                ELSE 7 END
+        `);
+        const stages = {};
+        for (const r of result.rows) stages[r.pipeline_stage || 'new'] = parseInt(r.count);
+        res.json({ success: true, pipeline: stages });
+    } catch (err) {
+        log.error('GET /leads/pipeline error', err);
+        res.status(500).json({ success: false, error: 'Помилка' });
     }
 });
 

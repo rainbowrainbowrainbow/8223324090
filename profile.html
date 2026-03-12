@@ -6,21 +6,14 @@
     <title>Event Genix | Профіль</title>
     <meta name="description" content="Event Genix — Особистий кабінет з ачивками та геймифікацією">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=24.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=24.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=24.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=24.3.0">
-    <link rel="stylesheet" href="css/controls.css?v=24.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=24.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=24.3.0">
-    <link rel="stylesheet" href="css/base.css?v=24.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=24.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=24.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=24.3.0">
-    <link rel="stylesheet" href="css/controls.css?v=24.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=24.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=24.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=24.3.0">
+    <link rel="stylesheet" href="css/base.css?v=25.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
+    <link rel="stylesheet" href="css/controls.css?v=25.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -828,160 +821,21 @@
     </style>
 </head>
 <body>
-    <div class="profile-page" id="profilePage">
-        <!-- Back button -->
-        <a class="back-btn" href="/" id="backBtn">← Назад</a>
-
-        <!-- Profile Header -->
-        <div class="profile-header" id="profileHeader">
-            <div class="profile-header-content">
-                <div class="profile-avatar" id="profileAvatar">
-                    <span class="avatar-placeholder">👤</span>
-                </div>
-                <div class="profile-info">
-                    <h1 id="profileName">Завантаження...</h1>
-                    <div class="profile-title" id="profileTitle">Новачок</div>
-                    <div class="profile-stats-row">
-                        <div class="profile-stat">
-                            <span class="profile-stat-value" id="statLevel">1</span>
-                            <span class="profile-stat-label">Рівень</span>
-                        </div>
-                        <div class="profile-stat">
-                            <span class="profile-stat-value" id="statCoins">0</span>
-                            <span class="profile-stat-label">Монети</span>
-                        </div>
-                        <div class="profile-stat">
-                            <span class="profile-stat-value" id="statAchievements">0</span>
-                            <span class="profile-stat-label">Ачивки</span>
-                        </div>
-                        <div class="profile-stat">
-                            <span class="profile-stat-value" id="statStreak">0</span>
-                            <span class="profile-stat-label">Стрік</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- XP Progress -->
-            <div class="xp-bar-container" id="xpBarContainer">
-                <div class="xp-bar-label">
-                    <span id="xpLabelCurrent">0 XP</span>
-                    <span id="xpLabelNext">100 XP до наступного рівня</span>
-                </div>
-                <div class="xp-bar">
-                    <div class="xp-bar-fill" id="xpBarFill" style="width: 0%"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tabs -->
-        <div class="profile-tabs" id="profileTabs">
-            <button class="profile-tab active" data-tab="achievements">🏆 Ачивки</button>
-            <button class="profile-tab" data-tab="inventory">🎒 Інвентар</button>
-            <button class="profile-tab" data-tab="shop">🛒 Магазин</button>
-            <button class="profile-tab" data-tab="leaderboard">📊 Рейтинг</button>
-            <button class="profile-tab" data-tab="history">📜 Історія</button>
-            <button class="profile-tab" data-tab="settings">⚙️ Налаштування</button>
-        </div>
-
-        <!-- Sections -->
-
-        <!-- Achievements -->
-        <div class="profile-section active" id="sectionAchievements">
-            <h2 class="section-title">Ачивки</h2>
-            <div class="achievements-grid" id="achievementsGrid">
-                <div class="empty-state">
-                    <div class="empty-state-icon">🏆</div>
-                    <div class="empty-state-text">Завантаження ачивок...</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Inventory -->
-        <div class="profile-section" id="sectionInventory">
-            <h2 class="section-title">Інвентар</h2>
-            <div class="inventory-grid" id="inventoryGrid">
-                <div class="empty-state">
-                    <div class="empty-state-icon">🎒</div>
-                    <div class="empty-state-text">Інвентар порожній. Купіть щось у магазині!</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Shop -->
-        <div class="profile-section" id="sectionShop">
-            <h2 class="section-title">
-                Магазин
-                <span class="coins-balance" id="shopCoinsBalance">🪙 0</span>
-            </h2>
-            <div class="shop-grid" id="shopGrid">
-                <div class="empty-state">
-                    <div class="empty-state-icon">🛒</div>
-                    <div class="empty-state-text">Завантаження магазину...</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Leaderboard -->
-        <div class="profile-section" id="sectionLeaderboard">
-            <h2 class="section-title">Рейтинг</h2>
-            <div class="profile-tabs" id="leaderboardTabs" style="margin-bottom: 16px;">
-                <button class="profile-tab active" data-sort="xp">За XP</button>
-                <button class="profile-tab" data-sort="coins">За монети</button>
-                <button class="profile-tab" data-sort="achievements">За ачивки</button>
-            </div>
-            <div class="leaderboard-list" id="leaderboardList">
-                <div class="empty-state">
-                    <div class="empty-state-icon">📊</div>
-                    <div class="empty-state-text">Завантаження рейтингу...</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Coin History -->
-        <div class="profile-section" id="sectionHistory">
-            <h2 class="section-title">Історія монет</h2>
-            <div class="coin-history-list" id="coinHistoryList">
-                <div class="empty-state">
-                    <div class="empty-state-icon">📜</div>
-                    <div class="empty-state-text">Немає транзакцій</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Settings / Profile Edit -->
-        <div class="profile-section" id="sectionSettings">
-            <h2 class="section-title">Налаштування профілю</h2>
-            <div class="profile-edit-form" id="profileEditForm">
-                <label for="editDisplayName">Відображуване ім'я</label>
-                <input type="text" id="editDisplayName" maxlength="100" placeholder="Ваше ім'я">
-
-                <label for="editBio">Біо</label>
-                <textarea id="editBio" maxlength="500" placeholder="Розкажіть про себе..."></textarea>
-
-                <label>Хобі</label>
-                <div class="hobbies-tags" id="hobbiesTags"></div>
-                <div style="display:flex;gap:8px;margin-bottom:16px;">
-                    <input type="text" id="hobbyInput" placeholder="Додати хобі..." maxlength="30" style="margin-bottom:0;flex:1;">
-                    <button class="save-btn" id="addHobbyBtn" style="padding:10px 16px;">+</button>
-                </div>
-
-                <label>
-                    <input type="checkbox" id="editPublic" checked>
-                    Публічний профіль
-                </label>
-                <br><br>
-
-                <button class="save-btn" id="saveProfileBtn">Зберегти</button>
-            </div>
+    <script>
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+    <div id="mainApp" class="main-app">
+        <div style="text-align:center;padding:60px 20px;color:var(--gray-400)">
+            <div style="font-size:48px;margin-bottom:12px">👤</div>
+            <div style="font-size:15px;font-weight:500">Завантаження профілю...</div>
         </div>
     </div>
 
-    <script src="js/config.js?v=24.3.0"></script>
-    <script src="js/api.js?v=24.3.0"></script>
-    <script src="js/auth.js?v=24.3.0"></script>
-    <script src="js/ui.js?v=24.3.0"></script>
-    <script src="js/profile-page.js?v=24.3.0"></script>
-    <script src="js/role-panel.js?v=24.3.0"></script>
+    <script src="js/config.js?v=25.3.0"></script>
+    <script src="js/api.js?v=25.3.0"></script>
+    <script src="js/auth.js?v=25.3.0"></script>
+    <script src="js/ui.js?v=25.3.0"></script>
+    <script src="js/profile-page.js?v=25.3.0"></script>
+    <script src="js/role-panel.js?v=25.3.0"></script>
 </body>
 </html>

@@ -4,6 +4,20 @@
 
 ---
 
+## v24.4.0 — QA Mega Fix + Adaptive Layout (2026-03-12)
+- **8 сторінок виправлено** — додано відсутній ui.js (customers, chat, dashboard, leads, profile, shop, quiz, room) — confirmModal/showNotification були undefined [claude-code]
+- **Адаптивний layout** — прибрано max-width обмеження (1800/1400/1200px), контент розтягується на повну ширину коли панель закрита [claude-code]
+- **Smart hyperlinks** — в деталі бронювання: клікабельний tel:, Instagram, Telegram, CRM-картка клієнта з hover-actions [claude-code]
+- **Copy-on-hover** — кнопки 📋 на рядках деталі бронювання + "Скопіювати все" [claude-code]
+- **Sidebar gap fix** — прибрано візуальну дірку між навігацією і кнопками дій (flex:1 → margin-top:auto) [claude-code]
+- **22 сторінки очищено** — видалено дубльовані script/CSS теги після merge conflicts [claude-code]
+- **Script order fix** — profile.html, shop.html: page JS тепер завантажується після залежностей [claude-code]
+- **showToast()** — додано alias в ui.js для chat-page.js [claude-code]
+- **Version sync** — `scripts/version-sync.js` — один скрипт для синхронізації версій скрізь [claude-code]
+- **Service Worker** — кеш v12→v24 для інвалідації застарілих версій [claude-code]
+- **Afisha cascade** — DELETE тепер зберігає done таски [claude-code]
+- **295 тестів pass** (api.test.js), 82 certificates, 51 automation [claude-code]
+
 ## v23.4.0 — Lead Capture Integration (2026-03-11)
 - **Telegram Lead Capture** — приватні повідомлення в бот автоматично створюють лід в CRM, автовідповідь юзеру [claude-code]
 - **Universal Webhook** — `POST /api/leads/webhook/universal?source=tiktok|turbo|bnderoga` з Bearer token auth [claude-code]

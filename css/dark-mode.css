@@ -1746,6 +1746,192 @@ body.dark-mode .guardian-log-entry.severity-warning {
     background: rgba(245, 158, 11, 0.06);
 }
 
+body.dark-mode .guardian-stats-summary {
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .guardian-stat-val {
+    color: #a78bfa;
+}
+
+body.dark-mode .guardian-stat-lbl {
+    color: #9CA3AF;
+}
+
+body.dark-mode .guardian-active-mutes {
+    border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .guardian-action-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #E2E8F0;
+}
+
+body.dark-mode .guardian-action-btn:hover {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+body.dark-mode .guardian-action-result {
+    color: #a78bfa;
+}
+
+/* ==========================================
+   GUARDIAN PHASE 3 — Dark Mode
+   ========================================== */
+
+/* Health Indicator */
+body.dark-mode .guardian-health-indicator {
+    background: rgba(16, 185, 129, 0.15);
+}
+body.dark-mode .guardian-health-indicator.health-yellow {
+    background: rgba(245, 158, 11, 0.15);
+}
+body.dark-mode .guardian-health-indicator.health-red {
+    background: rgba(239, 68, 68, 0.15);
+}
+body.dark-mode .guardian-health-score {
+    color: #E2E8F0;
+}
+
+/* Analytics Button */
+body.dark-mode .guardian-watch-analytics-btn:hover {
+    background: rgba(167, 139, 250, 0.15);
+}
+
+/* Analytics Panel */
+body.dark-mode .guardian-analytics-panel {
+    background: #1a1a2e;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+body.dark-mode .guardian-analytics-header {
+    background: #1a1a2e;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    color: #E2E8F0;
+}
+body.dark-mode .guardian-tab {
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #9CA3AF;
+}
+body.dark-mode .guardian-tab:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+body.dark-mode .guardian-tab.active {
+    background: #6366f1;
+    color: white;
+    border-color: #6366f1;
+}
+body.dark-mode .guardian-analytics-close {
+    color: #6B7280;
+}
+body.dark-mode .guardian-analytics-close:hover {
+    color: #E2E8F0;
+}
+
+/* Overview Cards */
+body.dark-mode .guardian-overview-card {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.06);
+}
+body.dark-mode .guardian-overview-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+body.dark-mode .guardian-overview-card .card-value {
+    color: #a78bfa;
+}
+body.dark-mode .guardian-overview-card .card-label {
+    color: #9CA3AF;
+}
+
+/* Health Cards */
+body.dark-mode .guardian-health-card {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.06);
+}
+body.dark-mode .guardian-health-card-name {
+    color: #E2E8F0;
+}
+body.dark-mode .guardian-health-bar {
+    background: rgba(255, 255, 255, 0.08);
+}
+body.dark-mode .guardian-health-chart {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Mood Cards */
+body.dark-mode .guardian-mood-card {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.06);
+}
+body.dark-mode .guardian-mood-card .mood-label {
+    color: #9CA3AF;
+}
+body.dark-mode .guardian-mood-timeline {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Mood Users */
+body.dark-mode .guardian-mood-user-row {
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+body.dark-mode .guardian-mood-user-name {
+    color: #E2E8F0;
+}
+body.dark-mode .guardian-mood-user-bar {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Heatmap */
+body.dark-mode .guardian-heatmap-cell.level-0 {
+    background: rgba(255, 255, 255, 0.04);
+}
+body.dark-mode .guardian-heatmap-label {
+    color: #6B7280;
+}
+body.dark-mode .guardian-heatmap-legend {
+    color: #6B7280;
+}
+
+/* Trust List */
+body.dark-mode .guardian-trust-row {
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+body.dark-mode .guardian-trust-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+body.dark-mode .guardian-trust-name {
+    color: #E2E8F0;
+}
+body.dark-mode .guardian-trust-level {
+    color: #9CA3AF;
+}
+body.dark-mode .guardian-trust-score-bar {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Command Suggestions */
+body.dark-mode .guardian-cmd-suggestions {
+    background: #1e1e32;
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.3);
+}
+body.dark-mode .guardian-cmd-item:hover,
+body.dark-mode .guardian-cmd-item.selected {
+    background: rgba(255, 255, 255, 0.06);
+}
+body.dark-mode .guardian-cmd-name {
+    color: #E2E8F0;
+}
+body.dark-mode .guardian-cmd-desc {
+    color: #6B7280;
+}
+
 /* ==========================================
    v22.3: DARK MODE GAPS FIX — comprehensive pass
    ========================================== */

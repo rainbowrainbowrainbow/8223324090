@@ -82,7 +82,6 @@ CREATE INDEX IF NOT EXISTS idx_user_daily_quests_date ON user_daily_quests(date)
 CREATE INDEX IF NOT EXISTS idx_room_visits_visitor ON room_visits(visitor_user_id);
 CREATE INDEX IF NOT EXISTS idx_quiz_sessions_completed ON quiz_sessions(completed);
 CREATE INDEX IF NOT EXISTS idx_shop_purchases_username ON shop_purchases(username);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_achievements_user_achievement ON user_achievements(user_id, achievement_id);
 
 -- ============================================
 -- 3. ACHIEVEMENTS TABLE (missing from prior migrations)
@@ -114,6 +113,9 @@ DO $$ BEGIN
     ALTER TABLE user_achievements ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;
     ALTER TABLE user_achievements ADD COLUMN IF NOT EXISTS times_completed INTEGER DEFAULT 0;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- Index on user_id + achievement_id (must be after columns are added above)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_achievements_user_achievement ON user_achievements(user_id, achievement_id);
 
 -- ============================================
 -- 4. SEED INITIAL ACHIEVEMENTS

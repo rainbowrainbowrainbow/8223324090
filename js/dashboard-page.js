@@ -66,13 +66,6 @@ const DashboardPage = (() => {
 
             if (data.success) {
                 _config = data.config;
-
-                // First visit — show onboarding
-                if (data.isDefault) {
-                    showOnboarding();
-                    return;
-                }
-
                 renderWidgets();
             }
         } catch (err) {

@@ -1,7 +1,7 @@
 # Парк Закревського Періоду — Booking System
 
 ## Project Overview
-Система бронювання для дитячого розважального парку з таймлайном аніматорів, Telegram сповіщеннями, каталогом програм і адмін-панеллю.
+Event Genix — AI-first CRM для дитячих розважальних центрів. Таймлайн аніматорів, Telegram сповіщення, каталог програм, гейміфікація, дашборд, HR, фінанси, аналітика, Match-3 гра, AI-координатор Клешня.
 
 ## Language
 - Code: English (variables, functions, comments)
@@ -19,7 +19,7 @@
 - **Database**: PostgreSQL 16 + raw `pg` pool (NO Prisma, NO ORM)
 - **Bot**: Custom Telegram Bot API calls (NO grammY)
 - **Frontend**: Vanilla HTML + CSS + JS SPA (NO React, NO Next.js, NO Astro)
-- **CSS**: 11-file modular architecture + Design System v4.0 (base, auth, layout, timeline, panel, modals, controls, features, dark-mode, responsive, pages)
+- **CSS**: 17-file modular architecture + Design System v4.0 (base, auth, layout, timeline, panel, modals, controls, features, dark-mode, responsive, pages, achievements, agents, chat, dashboard, kleshnya-widget, minigame)
 - **Font**: Nunito (Google Fonts)
 - **Testing**: Node.js built-in test runner (`node --test`)
 - **CI/CD**: Manual deploy
@@ -45,33 +45,44 @@ Test user: admin / admin123
 
 ## File Structure
 ```
-server.js          — Entry point (~240 lines, routes + schedulers + graceful shutdown)
-db/                — Pool, initDatabase (30 таблиць), migrate.js, migrations/
-routes/ (18)       — auth, bookings, lines, history, settings, stats, afisha,
+server.js          — Entry point, routes + schedulers + graceful shutdown
+db/                — Pool, initDatabase (40+ таблиць), migrate.js, migrations/ (50)
+routes/ (61)       — auth, bookings, lines, history, settings, stats, afisha,
                      telegram, backup, products, tasks, task-templates, staff,
-                     certificates, recurring, points, kleshnya, procurement
-services/ (13)     — booking, bookingAutomation, bot, certificates, kleshnya,
-                     kleshnya-greeting, recurring, telegram, templates,
-                     taskTemplates, scheduler, backup, websocket
-middleware/ (4)    — auth (JWT), rateLimit, security, requestId
+                     certificates, recurring, points, kleshnya, procurement,
+                     gamification, dashboard, analytics, finance, hr, customers,
+                     leads, sales, agents, chat, center, designs, demo, packages,
+                     search, loyalty, shop, quiz, profile, room, status, warehouse,
+                     workers, training, support, notes, music, print, and more
+services/ (30)     — adminAudit, agentTracker, backup, bookingAutomation, bot,
+                     cache, certificates, chat-bot, chatService, contextCache,
+                     eventBus, gamification, guardian, hr, kleshnya, kleshnya-bridge,
+                     kleshnya-chat, kleshnya-greeting, linkPreview, notificationDigest,
+                     recurring, scheduler, schedulerGuard, summary-agent,
+                     taskTemplates, telegram, templates, training, websocket
+middleware/ (6)    — auth (JWT), rateLimit, security, requestId, apiAudit, apiVersioning
 utils/ (2)         — logger, validateEnv
-index.html         — Main SPA (all modals)
-kleshnya.html      — Kleshnya chat page
-tasks.html         — Standalone task board
-programs.html      — Standalone catalog
-staff.html         — Standalone schedule
-invite.html        — Public invite link
-css/ (11)          — base, auth, layout, timeline, panel, modals, controls,
-                     features, dark-mode, responsive, pages
-js/ (19)           — config, api, auth, app, ui, booking, booking-form,
-                     booking-linked, timeline, settings, settings-afisha,
-                     settings-certificates, settings-dashboard, settings-history,
-                     programs-page, tasks-page, staff-page, offline, ws
+HTML (25 pages)    — index.html (main SPA), dashboard, tasks, programs, staff,
+                     chat, analytics, finance, hr, customers, leads, warehouse,
+                     center, art-director, designs, demo, profile, game, quiz,
+                     room, shop, status, training, checkin, invite
+css/ (17)          — base, auth, layout, timeline, panel, modals, controls,
+                     features, dark-mode, responsive, pages, achievements,
+                     agents, chat, dashboard, kleshnya-widget, minigame
+js/ (44)           — config, api, auth, app, ui, booking, booking-form,
+                     booking-linked, timeline, settings, settings-*, programs-page,
+                     tasks-page, staff-page, offline, ws, dashboard-page,
+                     analytics-page, finance-page, hr-page, customers-page,
+                     leads-page, chat-page, center-page, designs-page, demo-page,
+                     art-director-page, warehouse-page, shop-page, profile-page,
+                     kleshnya-page, kleshnya-widget, agents-panel, command-panel,
+                     sales-panel, search, status-page, idle-hints, logger,
+                     minigame-match3
 images/            — Logo, program icons, favicon set
-tests/ (3+1)       — api.test.js (288), certificates.test.js (82),
-                     automation.test.js (59), helpers.js
-swagger.js         — OpenAPI 3.0 spec (not yet integrated)
+tests/ (3+1)       — api.test.js (296+), certificates.test.js, automation.test.js, helpers.js
+swagger.js         — OpenAPI 3.0 spec
 ```
+Total: ~128 000 lines of code (87k JS + 16.5k HTML + 24.3k CSS)
 
 ## Multi-Agent Development
 

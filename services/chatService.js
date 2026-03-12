@@ -6,6 +6,18 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Chat');
 
+// Channel list cache: Map<userId, { data, expiresAt }>
+const _channelsCache = new Map();
+const CHANNELS_CACHE_TTL = 8000; // 8 seconds
+
+function invalidateChannelsCache(userId) {
+    if (userId) {
+        _channelsCache.delete(userId);
+    } else {
+        _channelsCache.clear();
+    }
+}
+
 // snake_case → camelCase for API responses
 function mapMessageRow(row) {
     return {
@@ -49,6 +61,12 @@ function mapChannelRow(row) {
  * Get all channels the user is a member of, with unread counts.
  */
 async function getChannels(userId) {
+    // Check cache
+    const cached = _channelsCache.get(userId);
+    if (cached && Date.now() < cached.expiresAt) {
+        return cached.data;
+    }
+
     const result = await pool.query(`
         SELECT c.*, m.last_read_seq, m.muted,
             COALESCE((SELECT MAX(seq) FROM chat_messages WHERE channel_id = c.id), 0) - COALESCE(m.last_read_seq, 0) AS unread_count,
@@ -60,8 +78,9 @@ async function getChannels(userId) {
         ORDER BY last_message_at DESC NULLS LAST, c.name
     `, [userId]);
 
-    // For DM channels, resolve the other user's name
+    // For DM channels, resolve the other user's name (batched — no N+1)
     const channels = result.rows.map(mapChannelRow);
+    const dmOtherIds = [];
     for (const ch of channels) {
         const row = result.rows.find(r => r.id === ch.id);
         ch.isDm = row.is_dm || false;
@@ -70,15 +89,33 @@ async function getChannels(userId) {
         if (ch.isDm && ch.dmUserIds) {
             const otherId = ch.dmUserIds.find(id => id !== userId);
             if (otherId) {
-                const uRes = await pool.query('SELECT username, name FROM users WHERE id = $1', [otherId]);
-                if (uRes.rows[0]) {
-                    ch.name = uRes.rows[0].name || uRes.rows[0].username;
-                    ch.dmOtherUserId = otherId;
-                    ch.dmOtherUsername = uRes.rows[0].username;
-                }
+                ch._dmOtherId = otherId;
+                dmOtherIds.push(otherId);
             }
         }
     }
+
+    // Batch-fetch all DM partner users in a single query
+    if (dmOtherIds.length > 0) {
+        const uRes = await pool.query(
+            'SELECT id, username, name FROM users WHERE id = ANY($1)',
+            [dmOtherIds]
+        );
+        const userMap = {};
+        for (const u of uRes.rows) userMap[u.id] = u;
+        for (const ch of channels) {
+            if (ch._dmOtherId && userMap[ch._dmOtherId]) {
+                const u = userMap[ch._dmOtherId];
+                ch.name = u.name || u.username;
+                ch.dmOtherUserId = ch._dmOtherId;
+                ch.dmOtherUsername = u.username;
+            }
+            delete ch._dmOtherId;
+        }
+    }
+
+    // Cache result
+    _channelsCache.set(userId, { data: channels, expiresAt: Date.now() + CHANNELS_CACHE_TTL });
     return channels;
 }
 
@@ -210,6 +247,9 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
             LEFT JOIN users ru ON ru.id = rm.user_id
             WHERE cm.id = $1
         `, [msg.id]);
+
+        // Invalidate channel cache for all members
+        _channelsCache.clear();
 
         return {
             message: mapMessageRow(fullMsg.rows[0]),
@@ -619,7 +659,7 @@ async function removeMember(channelId, userId) {
 async function getUserProfile(userId) {
     const result = await pool.query(`
         SELECT u.id, u.username, u.name, u.role, u.created_at,
-            u.avatar_emoji, u.avatar_color,
+            u.avatar_emoji, u.avatar_color, u.last_seen_at,
             s.department, s.position, s.phone, s.telegram_username
         FROM users u
         LEFT JOIN staff s ON lower(s.name) = lower(u.name) AND s.is_active = true
@@ -638,7 +678,8 @@ async function getUserProfile(userId) {
         position: r.position || null,
         phone: r.phone || null,
         telegram: r.telegram_username || null,
-        joinedAt: r.created_at
+        joinedAt: r.created_at,
+        lastSeenAt: r.last_seen_at || null
     };
 }
 
@@ -855,6 +896,7 @@ module.exports = {
     getChannels,
     getChannelMessages,
     sendMessage,
+    invalidateChannelsCache,
     markAsRead,
     addReaction,
     removeReaction,

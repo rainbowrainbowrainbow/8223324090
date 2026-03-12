@@ -11,7 +11,7 @@ const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
-const { JWT_SECRET, authenticateToken } = require('../middleware/auth');
+const { JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Auth');
@@ -657,6 +657,31 @@ router.put('/password', authenticateToken, async (req, res) => {
         log.error('Password change error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+// v22.18.0: RBAC — return user permissions for frontend enforcement
+router.get('/permissions', authenticateToken, (req, res) => {
+    const role = req.user.role;
+    const level = ROLE_LEVEL[role] ?? -1;
+
+    // Pages the user can access
+    const pages = {};
+    for (const [page, roles] of Object.entries(PAGE_ACCESS)) {
+        pages[page] = roles.includes(role);
+    }
+
+    // Actions the user can perform
+    const actions = {};
+    for (const [action, roles] of Object.entries(ACTION_PERMISSIONS)) {
+        actions[action] = roles.includes(role);
+    }
+
+    res.json({
+        role,
+        level,
+        pages,
+        actions
+    });
 });
 
 module.exports = router;

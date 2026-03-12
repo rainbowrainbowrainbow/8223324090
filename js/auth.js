@@ -111,6 +111,7 @@ const PAGE_ACCESS = {
     '/finance':   ['creator', 'director', 'accountant'],
     '/analytics': _MANAGEMENT_UP,
     '/status':    _MANAGEMENT_UP,
+    '/omni':      _MANAGEMENT_UP,
 };
 
 const ACTION_PERMISSIONS = {

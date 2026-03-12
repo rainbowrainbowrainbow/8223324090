@@ -9,7 +9,11 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
+const { requireRole } = require('../middleware/auth');
 const log = createLogger('Analytics');
+
+// RBAC: Analytics — management only (creator, director, vice_director, senior_manager)
+router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager'));
 
 // ==========================================
 // CACHE (5-minute TTL)

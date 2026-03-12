@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check-in — Event Genix</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" href="/images/favicon-32.png">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Nunito', sans-serif;
+            background: #0D0D0D;
+            color: #F3F4F6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .header {
+            padding: 20px;
+            text-align: center;
+            width: 100%;
+            background: linear-gradient(135deg, #2A2A4A 0%, #1a1a3a 100%);
+        }
+        .header h1 { font-size: 24px; font-weight: 800; }
+        .header .clock { font-size: 48px; font-weight: 700; color: #A78BFA; margin: 8px 0; }
+        .header .date { font-size: 16px; color: #9CA3AF; }
+
+        .camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 20px auto;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 3px solid #A78BFA;
+        }
+        video { width: 100%; display: block; }
+        canvas#overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .status {
+            text-align: center;
+            padding: 16px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .status.loading { color: #FBBF24; }
+        .status.ready { color: #34D399; }
+        .status.recognized { color: #A78BFA; }
+        .status.error { color: #F87171; }
+
+        .result {
+            text-align: center;
+            padding: 24px;
+            animation: fadeIn 0.3s ease;
+        }
+        .result .name { font-size: 32px; font-weight: 800; color: #A78BFA; }
+        .result .time { font-size: 20px; color: #9CA3AF; margin-top: 8px; }
+        .result .badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 16px;
+            margin-top: 12px;
+        }
+        .badge.checkin { background: #065F46; color: #34D399; }
+        .badge.checkout { background: #7C2D12; color: #FB923C; }
+
+        .log {
+            width: 100%;
+            max-width: 640px;
+            padding: 16px;
+        }
+        .log h3 { font-size: 16px; color: #9CA3AF; margin-bottom: 8px; }
+        .log-entry {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            margin-bottom: 6px;
+        }
+        .log-entry .le-name { font-weight: 700; flex: 1; }
+        .log-entry .le-time { color: #A78BFA; font-weight: 600; }
+
+        .controls {
+            padding: 16px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.15s;
+        }
+        .btn:active { transform: scale(0.95); }
+        .btn-primary { background: #A78BFA; color: #fff; }
+        .btn-secondary { background: rgba(255,255,255,0.1); color: #F3F4F6; }
+        .btn-register { background: #34D399; color: #065F46; }
+
+        .register-panel {
+            display: none;
+            width: 100%;
+            max-width: 640px;
+            padding: 16px;
+            text-align: center;
+        }
+        .register-panel select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            border: 2px solid #A78BFA;
+            background: #1a1a3a;
+            color: #F3F4F6;
+            font-family: inherit;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🦖 Event Genix Check-in</h1>
+        <div class="clock" id="clock">--:--</div>
+        <div class="date" id="dateDisplay"></div>
+    </div>
+
+    <div id="statusMsg" class="status loading">Завантаження моделі розпізнавання...</div>
+
+    <div class="camera-container">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="overlay"></canvas>
+    </div>
+
+    <div id="resultArea" class="result" style="display:none;"></div>
+
+    <div class="controls">
+        <button class="btn btn-primary" onclick="toggleMode()">
+            <span id="modeLabel">Режим: Check-in</span>
+        </button>
+        <button class="btn btn-register" onclick="showRegister()">📸 Зареєструвати обличчя</button>
+    </div>
+
+    <div id="registerPanel" class="register-panel">
+        <h3>Реєстрація обличчя співробітника</h3>
+        <select id="staffSelect"><option value="">Оберіть співробітника...</option></select>
+        <button class="btn btn-primary" onclick="registerFace()">📸 Зафіксувати обличчя</button>
+        <button class="btn btn-secondary" onclick="hideRegister()">Скасувати</button>
+    </div>
+
+    <div class="log" id="logArea">
+        <h3>Сьогоднішні відмітки</h3>
+        <div id="logEntries">Завантаження...</div>
+    </div>
+
+    <!-- face-api.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script>
+    (function() {
+        const API_BASE = window.location.origin + '/api';
+        let token = localStorage.getItem('token');
+        let mode = 'checkin'; // 'checkin' or 'checkout'
+        let knownDescriptors = [];
+        let isProcessing = false;
+        let lastRecognizedId = null;
+        let lastRecognizedTime = 0;
+
+        function headers() {
+            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+        }
+
+        // Clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').textContent =
+                now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('dateDisplay').textContent =
+                now.toLocaleDateString('uk-UA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Mode toggle
+        window.toggleMode = function() {
+            mode = mode === 'checkin' ? 'checkout' : 'checkin';
+            document.getElementById('modeLabel').textContent =
+                mode === 'checkin' ? 'Режим: Check-in' : 'Режим: Check-out';
+        };
+
+        // Camera
+        async function startCamera() {
+            try {
+                var stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480, facingMode: 'user' }
+                });
+                document.getElementById('video').srcObject = stream;
+            } catch (err) {
+                setStatus('Помилка камери: ' + err.message, 'error');
+            }
+        }
+
+        function setStatus(msg, cls) {
+            var el = document.getElementById('statusMsg');
+            el.textContent = msg;
+            el.className = 'status ' + (cls || '');
+        }
+
+        // Load face-api models
+        async function loadModels() {
+            var MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/';
+            await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+            await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
+            await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+            setStatus('Модель завантажена. Запуск камери...', 'loading');
+        }
+
+        // Load known face descriptors from server
+        async function loadDescriptors() {
+            try {
+                var resp = await fetch(API_BASE + '/staff/face-descriptors', { headers: headers() });
+                var data = await resp.json();
+                knownDescriptors = data.map(function(d) {
+                    return {
+                        staffId: d.staffId,
+                        name: d.name,
+                        descriptor: new Float32Array(d.descriptor)
+                    };
+                });
+                console.log('[Checkin] Loaded ' + knownDescriptors.length + ' face descriptors');
+            } catch (err) {
+                console.error('[Checkin] Failed to load descriptors', err);
+            }
+        }
+
+        // Recognition loop
+        async function detectLoop() {
+            var video = document.getElementById('video');
+            var canvas = document.getElementById('overlay');
+
+            if (video.readyState < 2) {
+                requestAnimationFrame(detectLoop);
+                return;
+            }
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            if (isProcessing) {
+                requestAnimationFrame(detectLoop);
+                return;
+            }
+
+            isProcessing = true;
+            try {
+                var detections = await faceapi
+                    .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+                    .withFaceLandmarks(true)
+                    .withFaceDescriptors();
+
+                var ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (detections.length > 0 && knownDescriptors.length > 0) {
+                    setStatus('Розпізнавання...', 'ready');
+
+                    for (var i = 0; i < detections.length; i++) {
+                        var det = detections[i];
+                        var box = det.detection.box;
+
+                        // Draw box
+                        ctx.strokeStyle = '#A78BFA';
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+                        // Find match
+                        var bestMatch = null;
+                        var bestDist = 0.6; // threshold
+
+                        for (var j = 0; j < knownDescriptors.length; j++) {
+                            var dist = faceapi.euclideanDistance(det.descriptor, knownDescriptors[j].descriptor);
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                bestMatch = knownDescriptors[j];
+                            }
+                        }
+
+                        if (bestMatch) {
+                            // Draw name
+                            ctx.fillStyle = '#A78BFA';
+                            ctx.font = 'bold 18px Nunito';
+                            ctx.fillText(bestMatch.name, box.x, box.y - 8);
+
+                            // Debounce: don't checkin same person within 30s
+                            var now = Date.now();
+                            if (bestMatch.staffId !== lastRecognizedId || now - lastRecognizedTime > 30000) {
+                                lastRecognizedId = bestMatch.staffId;
+                                lastRecognizedTime = now;
+                                performCheckin(bestMatch.staffId, bestMatch.name);
+                            }
+                        } else {
+                            ctx.fillStyle = '#F87171';
+                            ctx.font = 'bold 16px Nunito';
+                            ctx.fillText('Не впізнано', box.x, box.y - 8);
+                        }
+                    }
+                } else if (knownDescriptors.length === 0) {
+                    setStatus('Немає зареєстрованих облич. Зареєструйте спочатку.', 'loading');
+                } else {
+                    setStatus('Очікування обличчя...', 'ready');
+                }
+            } catch (err) {
+                console.error('Detection error', err);
+            }
+            isProcessing = false;
+
+            setTimeout(function() { requestAnimationFrame(detectLoop); }, 200);
+        }
+
+        // Perform check-in/out
+        async function performCheckin(staffId, name) {
+            try {
+                var endpoint = mode === 'checkin' ? '/staff/checkin' : '/staff/checkout';
+                var resp = await fetch(API_BASE + endpoint, {
+                    method: 'POST',
+                    headers: headers(),
+                    body: JSON.stringify({ staffId: staffId, method: 'face' })
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    var timeStr = new Date().toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+                    var area = document.getElementById('resultArea');
+                    var badgeClass = mode === 'checkin' ? 'checkin' : 'checkout';
+                    var label = mode === 'checkin' ? '✅ Check-in' : '👋 Check-out';
+                    area.innerHTML = '<div class="name">' + name + '</div>'
+                        + '<div class="time">' + timeStr + '</div>'
+                        + '<div class="badge ' + badgeClass + '">' + label + '</div>';
+                    area.style.display = 'block';
+                    setStatus('Розпізнано: ' + name, 'recognized');
+                    loadLog();
+                    setTimeout(function() { area.style.display = 'none'; }, 5000);
+                }
+            } catch (err) {
+                console.error('Checkin error', err);
+            }
+        }
+
+        // Register face
+        window.showRegister = async function() {
+            document.getElementById('registerPanel').style.display = 'block';
+            // Load staff list
+            try {
+                var resp = await fetch(API_BASE + '/staff', { headers: headers() });
+                var staff = await resp.json();
+                var select = document.getElementById('staffSelect');
+                select.innerHTML = '<option value="">Оберіть співробітника...</option>';
+                var arr = Array.isArray(staff) ? staff : (staff.staff || []);
+                arr.forEach(function(s) {
+                    if (s.is_active !== false) {
+                        var opt = document.createElement('option');
+                        opt.value = s.id;
+                        opt.textContent = s.name + ' — ' + (s.position || s.department);
+                        select.appendChild(opt);
+                    }
+                });
+            } catch (err) {
+                console.error('Load staff error', err);
+            }
+        };
+
+        window.hideRegister = function() {
+            document.getElementById('registerPanel').style.display = 'none';
+        };
+
+        window.registerFace = async function() {
+            var staffId = document.getElementById('staffSelect').value;
+            if (!staffId) { alert('Оберіть співробітника'); return; }
+
+            setStatus('Фіксація обличчя... Дивіться в камеру', 'loading');
+            var video = document.getElementById('video');
+
+            try {
+                var detection = await faceapi
+                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
+                    .withFaceLandmarks(true)
+                    .withFaceDescriptor();
+
+                if (!detection) {
+                    setStatus('Обличчя не знайдено. Спробуйте ще раз.', 'error');
+                    return;
+                }
+
+                var descriptor = Array.from(detection.descriptor);
+
+                var resp = await fetch(API_BASE + '/staff/' + staffId + '/face-descriptor', {
+                    method: 'POST',
+                    headers: headers(),
+                    body: JSON.stringify({ descriptor: descriptor })
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    setStatus('Обличчя зареєстровано!', 'recognized');
+                    hideRegister();
+                    await loadDescriptors();
+                } else {
+                    setStatus('Помилка реєстрації: ' + (data.error || ''), 'error');
+                }
+            } catch (err) {
+                setStatus('Помилка: ' + err.message, 'error');
+            }
+        };
+
+        // Load today's log
+        async function loadLog() {
+            try {
+                var resp = await fetch(API_BASE + '/staff/checkins', { headers: headers() });
+                var checkins = await resp.json();
+                var el = document.getElementById('logEntries');
+                if (!checkins.length) {
+                    el.innerHTML = '<div style="color:#6B7280;padding:10px;">Ще ніхто не відмітився</div>';
+                    return;
+                }
+                el.innerHTML = checkins.map(function(c) {
+                    var inTime = c.check_in ? new Date(c.check_in).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }) : '—';
+                    var outTime = c.check_out ? new Date(c.check_out).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }) : '';
+                    return '<div class="log-entry">'
+                        + '<div class="le-name">' + (c.staff_name || 'Staff #' + c.staff_id) + '</div>'
+                        + '<div class="le-time">🟢 ' + inTime + (outTime ? ' → 🔴 ' + outTime : '') + '</div>'
+                        + '</div>';
+                }).join('');
+            } catch (err) {
+                console.error('Load log error', err);
+            }
+        }
+
+        // Init
+        async function init() {
+            if (!token) {
+                // Try auto-login for kiosk mode
+                try {
+                    var resp = await fetch(API_BASE + '/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: 'admin', password: 'admin123' })
+                    });
+                    var data = await resp.json();
+                    if (data.token) { token = data.token; localStorage.setItem('token', token); }
+                } catch(e) {}
+            }
+
+            await loadModels();
+            await startCamera();
+            await loadDescriptors();
+            await loadLog();
+            setStatus('Готово! Поверніться до камери', 'ready');
+            detectLoop();
+        }
+
+        init();
+    })();
+    </script>
+</body>
+</html>

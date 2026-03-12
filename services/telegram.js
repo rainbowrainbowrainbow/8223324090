@@ -267,6 +267,14 @@ async function notifyTelegram(type, booking, extra = {}) {
             log.warn(`Notification skipped: formatBookingNotification returned empty for type="${type}"`);
             return;
         }
+
+        // v22.18: Check digest mode — queue instead of sending instantly
+        try {
+            const { queueNotification } = require('./notificationDigest');
+            const queued = await queueNotification(text, booking.id || extra.bookingId, type);
+            if (queued === 'queued') return; // Will be sent in digest batch
+        } catch { /* digest not available, proceed with instant */ }
+
         const chatId = await getConfiguredChatId();
         if (!chatId) {
             log.warn(`Notification skipped: no chat ID configured (type="${type}")`);

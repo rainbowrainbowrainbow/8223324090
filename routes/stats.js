@@ -540,4 +540,235 @@ router.get('/trends', async (req, res) => {
     }
 });
 
+// ==========================================
+// GET /forecast — Predictive booking load (v22.18)
+// ==========================================
+
+router.get('/forecast', async (req, res) => {
+    try {
+        const days = Math.min(parseInt(req.query.days) || 14, 60);
+        const cacheKey = `forecast:${days}`;
+        const cached = getCached(cacheKey);
+        if (cached) return res.json(cached);
+
+        // Analyze last 12 weeks of booking data by day-of-week and hour
+        const lookback = new Date();
+        lookback.setDate(lookback.getDate() - 84);
+        const lookbackStr = lookback.toISOString().split('T')[0];
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        const dowAvg = await pool.query(`
+            SELECT
+                EXTRACT(ISODOW FROM date::date)::int AS dow,
+                ROUND(AVG(day_count), 1)::float AS avg_bookings,
+                MAX(day_count)::int AS peak_bookings,
+                ROUND(AVG(day_revenue))::int AS avg_revenue
+            FROM (
+                SELECT date, COUNT(*) AS day_count, COALESCE(SUM(price), 0) AS day_revenue
+                FROM bookings
+                WHERE date >= $1 AND date < $2
+                  AND linked_to IS NULL AND status = 'confirmed'
+                GROUP BY date
+            ) daily
+            GROUP BY EXTRACT(ISODOW FROM daily.date::date)
+            ORDER BY dow
+        `, [lookbackStr, todayStr]);
+
+        // Hourly pattern
+        const hourAvg = await pool.query(`
+            SELECT
+                CAST(SUBSTRING(time FROM 1 FOR 2) AS INTEGER) AS hour,
+                ROUND(COUNT(*)::numeric / GREATEST(1, (SELECT COUNT(DISTINCT date) FROM bookings WHERE date >= $1 AND date < $2 AND linked_to IS NULL AND status = 'confirmed')), 2)::float AS avg_per_day
+            FROM bookings
+            WHERE date >= $1 AND date < $2
+              AND linked_to IS NULL AND status = 'confirmed'
+            GROUP BY hour
+            ORDER BY hour
+        `, [lookbackStr, todayStr]);
+
+        // Weekly trend (is load growing or shrinking?)
+        const weeklyTrend = await pool.query(`
+            SELECT
+                EXTRACT(WEEK FROM date::date)::int AS week_num,
+                COUNT(*)::int AS bookings,
+                COALESCE(SUM(price), 0)::int AS revenue
+            FROM bookings
+            WHERE date >= $1 AND date < $2
+              AND linked_to IS NULL AND status = 'confirmed'
+            GROUP BY week_num
+            ORDER BY week_num
+        `, [lookbackStr, todayStr]);
+
+        // Calculate growth trend (simple linear regression slope)
+        const weeks = weeklyTrend.rows;
+        let trendSlope = 0;
+        if (weeks.length >= 3) {
+            const n = weeks.length;
+            const xMean = (n - 1) / 2;
+            const yMean = weeks.reduce((s, w) => s + w.bookings, 0) / n;
+            let num = 0, den = 0;
+            weeks.forEach((w, i) => {
+                num += (i - xMean) * (w.bookings - yMean);
+                den += (i - xMean) ** 2;
+            });
+            if (den > 0) trendSlope = Math.round(num / den * 10) / 10;
+        }
+
+        // Build day-of-week average map
+        const dowMap = {};
+        for (const r of dowAvg.rows) {
+            dowMap[r.dow] = { avg: r.avg_bookings, peak: r.peak_bookings, avgRevenue: r.avg_revenue };
+        }
+
+        // Generate forecast for next N days
+        const forecast = [];
+        for (let i = 0; i < days; i++) {
+            const date = new Date();
+            date.setDate(date.getDate() + i);
+            const dateStr = date.toISOString().split('T')[0];
+            const dow = date.getDay() === 0 ? 7 : date.getDay(); // ISODOW
+            const base = dowMap[dow] || { avg: 0, peak: 0, avgRevenue: 0 };
+
+            // Apply trend adjustment (growth per week * weeks ahead)
+            const weeksAhead = i / 7;
+            const trendAdj = 1 + (trendSlope * weeksAhead / Math.max(1, base.avg || 1));
+            const predicted = Math.round(base.avg * Math.max(0.5, Math.min(1.5, trendAdj)) * 10) / 10;
+
+            forecast.push({
+                date: dateStr,
+                dayName: DAY_NAMES[dow] || '',
+                predicted,
+                peak: base.peak,
+                avgRevenue: base.avgRevenue,
+                confidence: weeks.length >= 8 ? 'high' : weeks.length >= 4 ? 'medium' : 'low'
+            });
+        }
+
+        // Peak hours (sorted by avg bookings)
+        const peakHours = hourAvg.rows
+            .sort((a, b) => b.avg_per_day - a.avg_per_day)
+            .slice(0, 5)
+            .map(r => ({ hour: r.hour, avgPerDay: r.avg_per_day }));
+
+        // Peak days (sorted by avg bookings)
+        const peakDays = dowAvg.rows
+            .sort((a, b) => b.avg_bookings - a.avg_bookings)
+            .slice(0, 3)
+            .map(r => ({ day: r.dow, dayName: DAY_NAMES[r.dow], avg: r.avg_bookings }));
+
+        const data = {
+            forecast,
+            peakHours,
+            peakDays,
+            trendSlope,
+            trendDirection: trendSlope > 0.5 ? 'growing' : trendSlope < -0.5 ? 'declining' : 'stable',
+            dataWeeks: weeks.length,
+            hourlyPattern: hourAvg.rows
+        };
+
+        setCache(cacheKey, data);
+        res.json(data);
+    } catch (err) {
+        log.error('Stats forecast error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// GET /reviews — Event reviews summary (v22.18)
+// ==========================================
+
+router.get('/reviews', async (req, res) => {
+    try {
+        const cacheKey = 'reviews-summary';
+        const cached = getCached(cacheKey);
+        if (cached) return res.json(cached);
+
+        const summary = await pool.query(`
+            SELECT
+                COUNT(*)::int AS total_reviews,
+                ROUND(AVG(rating), 1)::float AS avg_rating,
+                COUNT(CASE WHEN rating >= 4 THEN 1 END)::int AS positive,
+                COUNT(CASE WHEN rating <= 2 THEN 1 END)::int AS negative
+            FROM event_reviews
+        `);
+
+        const recent = await pool.query(`
+            SELECT er.id, er.rating, er.customer_name, er.comment, er.created_at,
+                   b.label, b.program_name, b.date
+            FROM event_reviews er
+            LEFT JOIN bookings b ON b.id = er.booking_id
+            ORDER BY er.created_at DESC
+            LIMIT 20
+        `);
+
+        const byRating = await pool.query(`
+            SELECT rating, COUNT(*)::int AS count
+            FROM event_reviews
+            GROUP BY rating
+            ORDER BY rating
+        `);
+
+        const data = {
+            summary: summary.rows[0] || { total_reviews: 0, avg_rating: 0, positive: 0, negative: 0 },
+            recent: recent.rows,
+            distribution: byRating.rows
+        };
+
+        setCache(cacheKey, data);
+        res.json(data);
+    } catch (err) {
+        if (err.message.includes('does not exist')) {
+            return res.json({ summary: { total_reviews: 0, avg_rating: 0 }, recent: [], distribution: [] });
+        }
+        log.error('Stats reviews error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// GET /pulse — Team pulse summary (v22.18)
+// ==========================================
+
+router.get('/pulse', async (req, res) => {
+    try {
+        const days = Math.min(parseInt(req.query.days) || 30, 90);
+
+        const daily = await pool.query(`
+            SELECT date, ROUND(AVG(score), 1)::float AS avg_score,
+                   COUNT(*)::int AS responses
+            FROM team_pulse
+            WHERE date >= CURRENT_DATE - ($1 || ' days')::interval
+            GROUP BY date
+            ORDER BY date
+        `, [days]);
+
+        const overall = await pool.query(`
+            SELECT ROUND(AVG(score), 1)::float AS avg_score,
+                   COUNT(*)::int AS total_responses
+            FROM team_pulse
+            WHERE date >= CURRENT_DATE - ($1 || ' days')::interval
+        `, [days]);
+
+        const todayPulse = await pool.query(`
+            SELECT ROUND(AVG(score), 1)::float AS avg_score,
+                   COUNT(*)::int AS responses
+            FROM team_pulse
+            WHERE date = CURRENT_DATE
+        `);
+
+        res.json({
+            today: todayPulse.rows[0] || { avg_score: null, responses: 0 },
+            overall: overall.rows[0] || { avg_score: null, total_responses: 0 },
+            daily: daily.rows
+        });
+    } catch (err) {
+        if (err.message.includes('does not exist')) {
+            return res.json({ today: { avg_score: null, responses: 0 }, overall: { avg_score: null, total_responses: 0 }, daily: [] });
+        }
+        log.error('Stats pulse error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

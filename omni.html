@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | OmniClaw</title>
+    <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=23.2.0">
+    <link rel="stylesheet" href="css/layout.css?v=23.2.0">
+    <link rel="stylesheet" href="css/pages.css?v=23.2.0">
+    <link rel="stylesheet" href="css/modals.css?v=23.2.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=23.2.0">
+    <link rel="stylesheet" href="css/responsive.css?v=23.2.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        .main-content { padding: 0 !important; max-width: none !important; }
+
+        /* OmniClaw Layout */
+        .omni-container {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            height: calc(100vh - 56px);
+            overflow: hidden;
+        }
+
+        /* Sidebar — conversation list */
+        .omni-sidebar {
+            border-right: 1px solid var(--border-color, #e2e8f0);
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-primary, #fff);
+            overflow: hidden;
+        }
+
+        .omni-sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color, #e2e8f0);
+        }
+
+        .omni-sidebar-header h2 {
+            margin: 0 0 12px;
+            font-size: 18px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .omni-search {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border-color, #e2e8f0);
+            border-radius: 8px;
+            font-size: 14px;
+            background: var(--bg-secondary, #f7fafc);
+            color: var(--text-primary, #1a202c);
+            outline: none;
+        }
+
+        .omni-search:focus {
+            border-color: var(--accent-color, #F5C842);
+        }
+
+        .omni-channel-filters {
+            display: flex;
+            gap: 4px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .omni-channel-btn {
+            padding: 4px 10px;
+            border: 1px solid var(--border-color, #e2e8f0);
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+            background: transparent;
+            color: var(--text-secondary, #718096);
+            transition: all 0.15s;
+        }
+
+        .omni-channel-btn.active {
+            background: var(--accent-color, #F5C842);
+            color: #000;
+            border-color: var(--accent-color, #F5C842);
+        }
+
+        .omni-conv-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .omni-conv-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color, #e2e8f0);
+            cursor: pointer;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            transition: background 0.1s;
+        }
+
+        .omni-conv-item:hover {
+            background: var(--bg-hover, rgba(0,0,0,0.03));
+        }
+
+        .omni-conv-item.active {
+            background: var(--accent-bg, rgba(245,200,66,0.1));
+        }
+
+        .omni-conv-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            flex-shrink: 0;
+            color: #fff;
+        }
+
+        .omni-conv-avatar.ch-telegram { background: #0088cc; }
+        .omni-conv-avatar.ch-viber { background: #7360f2; }
+        .omni-conv-avatar.ch-sms { background: #48bb78; }
+        .omni-conv-avatar.ch-facebook { background: #1877f2; }
+        .omni-conv-avatar.ch-instagram { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); }
+        .omni-conv-avatar.ch-binotel { background: #ff6b35; }
+
+        .omni-conv-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .omni-conv-name {
+            font-weight: 700;
+            font-size: 14px;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .omni-conv-preview {
+            font-size: 12px;
+            color: var(--text-secondary, #718096);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .omni-conv-meta {
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .omni-conv-time {
+            font-size: 11px;
+            color: var(--text-secondary, #718096);
+        }
+
+        .omni-conv-badge {
+            background: var(--accent-color, #F5C842);
+            color: #000;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 10px;
+            display: inline-block;
+            margin-top: 4px;
+        }
+
+        /* Chat area */
+        .omni-chat {
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-primary, #fff);
+            overflow: hidden;
+        }
+
+        .omni-chat-empty {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary, #718096);
+            font-size: 16px;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .omni-chat-empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .omni-chat-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color, #e2e8f0);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .omni-chat-header-name {
+            font-weight: 700;
+            font-size: 15px;
+        }
+
+        .omni-chat-header-channel {
+            font-size: 12px;
+            color: var(--text-secondary, #718096);
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: var(--bg-secondary, #f7fafc);
+        }
+
+        .omni-chat-header-actions {
+            margin-left: auto;
+            display: flex;
+            gap: 8px;
+        }
+
+        .omni-chat-header-actions button {
+            padding: 6px 12px;
+            border: 1px solid var(--border-color, #e2e8f0);
+            border-radius: 6px;
+            background: transparent;
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text-primary, #1a202c);
+        }
+
+        .omni-chat-header-actions button:hover {
+            background: var(--bg-hover, rgba(0,0,0,0.05));
+        }
+
+        .omni-chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .omni-msg {
+            max-width: 70%;
+            padding: 10px 14px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+
+        .omni-msg.inbound {
+            align-self: flex-start;
+            background: var(--bg-secondary, #f0f0f0);
+            border-bottom-left-radius: 4px;
+        }
+
+        .omni-msg.outbound {
+            align-self: flex-end;
+            background: var(--accent-color, #F5C842);
+            color: #000;
+            border-bottom-right-radius: 4px;
+        }
+
+        .omni-msg.outbound.ai {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff;
+        }
+
+        .omni-msg-time {
+            font-size: 10px;
+            opacity: 0.6;
+            margin-top: 4px;
+        }
+
+        .omni-msg-sender {
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 2px;
+            opacity: 0.7;
+        }
+
+        /* Input area */
+        .omni-chat-input {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-color, #e2e8f0);
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .omni-chat-input textarea {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid var(--border-color, #e2e8f0);
+            border-radius: 12px;
+            resize: none;
+            font-size: 14px;
+            font-family: inherit;
+            max-height: 120px;
+            min-height: 42px;
+            background: var(--bg-secondary, #f7fafc);
+            color: var(--text-primary, #1a202c);
+            outline: none;
+        }
+
+        .omni-chat-input textarea:focus {
+            border-color: var(--accent-color, #F5C842);
+        }
+
+        .omni-send-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            border: none;
+            background: var(--accent-color, #F5C842);
+            color: #000;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .omni-send-btn:hover {
+            opacity: 0.85;
+        }
+
+        .omni-quick-replies {
+            display: flex;
+            gap: 6px;
+            padding: 8px 16px;
+            overflow-x: auto;
+            border-top: 1px solid var(--border-color, #e2e8f0);
+        }
+
+        .omni-quick-btn {
+            padding: 4px 12px;
+            border: 1px solid var(--border-color, #e2e8f0);
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+            background: transparent;
+            color: var(--text-primary, #1a202c);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .omni-quick-btn:hover {
+            background: var(--accent-bg, rgba(245,200,66,0.15));
+        }
+
+        /* Stats bar */
+        .omni-stats {
+            display: flex;
+            gap: 16px;
+            padding: 8px 16px;
+            font-size: 12px;
+            color: var(--text-secondary, #718096);
+            border-bottom: 1px solid var(--border-color, #e2e8f0);
+        }
+
+        .omni-stat b {
+            color: var(--text-primary, #1a202c);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .omni-container {
+                grid-template-columns: 1fr;
+            }
+            .omni-sidebar {
+                display: none;
+            }
+            .omni-sidebar.mobile-show {
+                display: flex;
+                position: absolute;
+                inset: 0;
+                z-index: 100;
+            }
+        }
+
+        /* Dark mode overrides */
+        .dark-mode .omni-sidebar {
+            background: var(--bg-primary, #1a1a2e);
+        }
+        .dark-mode .omni-chat {
+            background: var(--bg-primary, #1a1a2e);
+        }
+        .dark-mode .omni-msg.inbound {
+            background: rgba(255,255,255,0.08);
+        }
+    </style>
+</head>
+<body>
+    <script>
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+    <div id="loginScreen" class="login-screen hidden"></div>
+
+    <div id="mainApp" class="main-app hidden">
+        <!-- Sidebar nav -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-logo">
+                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                <div class="em-logo">
+                    <span class="em-logo-title">Event Genix</span>
+                    <span class="em-logo-sub">AI First CRM</span>
+                </div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks">
+                <!-- Populated by sidebar.js -->
+            </nav>
+        </aside>
+
+        <!-- Main content -->
+        <main class="main-content" id="mainContent">
+            <div class="omni-container">
+                <!-- Conversation sidebar -->
+                <div class="omni-sidebar" id="omniSidebar">
+                    <div class="omni-sidebar-header">
+                        <h2>OmniClaw</h2>
+                        <input type="text" class="omni-search" id="omniSearch" placeholder="Пошук розмов..." maxlength="100" aria-label="Пошук розмов">
+                        <div class="omni-channel-filters" id="omniFilters">
+                            <button class="omni-channel-btn active" data-channel="all">Всі</button>
+                            <button class="omni-channel-btn" data-channel="telegram">TG</button>
+                            <button class="omni-channel-btn" data-channel="viber">Viber</button>
+                            <button class="omni-channel-btn" data-channel="sms">SMS</button>
+                            <button class="omni-channel-btn" data-channel="facebook">FB</button>
+                            <button class="omni-channel-btn" data-channel="instagram">IG</button>
+                            <button class="omni-channel-btn" data-channel="binotel">Tel</button>
+                        </div>
+                    </div>
+                    <div class="omni-stats" id="omniStats">
+                        <!-- Filled by JS -->
+                    </div>
+                    <div class="omni-conv-list" id="omniConvList">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+
+                <!-- Chat area -->
+                <div class="omni-chat" id="omniChat">
+                    <div class="omni-chat-empty" id="omniEmpty">
+                        <div>
+                            <div class="omni-chat-empty-icon">Om</div>
+                            <div>Оберіть розмову або чекайте на нове повідомлення</div>
+                        </div>
+                    </div>
+                    <div class="omni-chat-header" id="omniChatHeader" style="display:none">
+                        <div class="omni-conv-avatar" id="omniChatAvatar"></div>
+                        <div>
+                            <div class="omni-chat-header-name" id="omniChatName"></div>
+                            <div class="omni-chat-header-channel" id="omniChatChannel"></div>
+                        </div>
+                        <div class="omni-chat-header-actions">
+                            <button id="omniToggleAI" title="AI авто-відповіді">AI</button>
+                            <button id="omniCloseConv" title="Закрити розмову">Закрити</button>
+                        </div>
+                    </div>
+                    <div class="omni-chat-messages" id="omniMessages" style="display:none"></div>
+                    <div class="omni-quick-replies" id="omniQuickReplies" style="display:none"></div>
+                    <div class="omni-chat-input" id="omniInputArea" style="display:none">
+                        <textarea id="omniInput" rows="1" placeholder="Написати повідомлення..." maxlength="4000" aria-label="Повідомлення"></textarea>
+                        <button class="omni-send-btn" id="omniSendBtn" title="Відправити">&gt;</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/config.js?v=23.2.0"></script>
+    <script src="js/api.js?v=23.2.0"></script>
+    <script src="js/auth.js?v=23.2.0"></script>
+    <script src="js/components/sidebar.js?v=23.2.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/ws.js?v=23.2.0"></script>
+    <script>
+    /**
+     * OmniClaw Page — omnichannel inbox UI
+     * v23.2.0
+     */
+    (function() {
+        'use strict';
+
+        const API_BASE = (window.APP_CONFIG && APP_CONFIG.API_URL) || '';
+        let conversations = [];
+        let currentConvId = null;
+        let quickReplies = [];
+        let activeChannel = 'all';
+        let searchQuery = '';
+
+        // DOM refs
+        const $ = id => document.getElementById(id);
+        const convList = $('omniConvList');
+        const messages = $('omniMessages');
+        const inputArea = $('omniInputArea');
+        const chatHeader = $('omniChatHeader');
+        const emptyState = $('omniEmpty');
+        const quickRepliesEl = $('omniQuickReplies');
+        const statsEl = $('omniStats');
+        const searchInput = $('omniSearch');
+        const input = $('omniInput');
+
+        // ---- Auth ----
+        function getHeaders() {
+            const token = localStorage.getItem('pzp_token');
+            return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+        }
+
+        async function api(path, opts = {}) {
+            try {
+                const res = await fetch(API_BASE + '/api/omni' + path, {
+                    ...opts,
+                    headers: { ...getHeaders(), ...(opts.headers || {}) }
+                });
+                if (res.status === 401 || res.status === 403) {
+                    localStorage.removeItem('pzp_token');
+                    window.location.href = '/';
+                    return { success: false, error: 'Сесія закінчилась' };
+                }
+                if (!res.ok) {
+                    return { success: false, error: 'Помилка сервера: ' + res.status };
+                }
+                return await res.json();
+            } catch (err) {
+                console.error('API error:', err);
+                return { success: false, error: 'Помилка мережі' };
+            }
+        }
+
+        // ---- Channel icons ----
+        const CHANNEL_ICONS = {
+            telegram: 'TG', viber: 'Vi', sms: 'SM',
+            facebook: 'FB', instagram: 'IG', binotel: 'Bi'
+        };
+
+        const CHANNEL_NAMES = {
+            telegram: 'Telegram', viber: 'Viber', sms: 'SMS',
+            facebook: 'Facebook', instagram: 'Instagram', binotel: 'Binotel'
+        };
+
+        // ---- Load data ----
+        async function loadConversations() {
+            const params = new URLSearchParams({ limit: '100', offset: '0' });
+            if (activeChannel !== 'all') params.set('channel', activeChannel);
+            if (searchQuery) params.set('search', searchQuery);
+            const res = await api('/conversations?' + params);
+            if (res.success) {
+                conversations = (res.data && res.data.conversations) || [];
+                renderConversations();
+            }
+        }
+
+        async function loadMessages(convId) {
+            const res = await api('/conversations/' + convId + '/messages?limit=100');
+            if (res.success) {
+                renderMessages((res.data && res.data.messages) || res.data || []);
+            }
+        }
+
+        async function loadQuickReplies() {
+            const res = await api('/quick-replies');
+            if (res.success) {
+                quickReplies = res.data || [];
+            }
+        }
+
+        async function loadStats() {
+            const res = await api('/stats');
+            if (res.success && res.data) {
+                const d = res.data;
+                const byStatus = d.byStatus || {};
+                statsEl.innerHTML =
+                    '<span class="omni-stat">Всього: <b>' + (d.total || 0) + '</b></span>' +
+                    '<span class="omni-stat">Відкриті: <b>' + (byStatus.open || 0) + '</b></span>' +
+                    '<span class="omni-stat">Очікують: <b>' + (byStatus.pending || 0) + '</b></span>';
+            }
+        }
+
+        // ---- Render ----
+        function renderConversations() {
+            if (!conversations.length) {
+                convList.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-secondary,#718096)">Немає розмов</div>';
+                return;
+            }
+            convList.innerHTML = conversations.map(c => {
+                const isActive = c.id === currentConvId;
+                const initials = (c.customerName || c.externalId || '?').slice(0, 2).toUpperCase();
+                const time = c.lastMessageAt ? formatTime(c.lastMessageAt) : '';
+                const badge = c.unreadCount > 0 ? '<span class="omni-conv-badge">' + c.unreadCount + '</span>' : '';
+                return '<div class="omni-conv-item' + (isActive ? ' active' : '') + '" data-id="' + c.id + '">' +
+                    '<div class="omni-conv-avatar ch-' + c.channel + '">' + initials + '</div>' +
+                    '<div class="omni-conv-info">' +
+                        '<div class="omni-conv-name">' + esc(c.customerName || c.externalId) + '</div>' +
+                        '<div class="omni-conv-preview">' + esc(c.lastMessage || '') + '</div>' +
+                    '</div>' +
+                    '<div class="omni-conv-meta">' +
+                        '<div class="omni-conv-time">' + time + '</div>' +
+                        badge +
+                    '</div>' +
+                '</div>';
+            }).join('');
+        }
+
+        function renderMessages(msgs) {
+            messages.innerHTML = msgs.map(m => {
+                const dir = m.direction;
+                const isAI = m.aiGenerated;
+                const cls = 'omni-msg ' + dir + (isAI ? ' ai' : '');
+                const sender = dir === 'outbound' ? (m.senderName || 'Оператор') : '';
+                const senderHtml = sender ? '<div class="omni-msg-sender">' + esc(sender) + (isAI ? ' (AI)' : '') + '</div>' : '';
+                return '<div class="' + cls + '">' +
+                    senderHtml +
+                    '<div>' + esc(m.content || '') + '</div>' +
+                    '<div class="omni-msg-time">' + formatTime(m.createdAt) + '</div>' +
+                '</div>';
+            }).join('');
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function renderQuickReplies() {
+            quickRepliesEl.innerHTML = quickReplies.map(qr =>
+                '<button class="omni-quick-btn" data-content="' + esc(qr.content) + '">' + esc(qr.title) + '</button>'
+            ).join('');
+        }
+
+        // ---- Actions ----
+        function selectConversation(convId) {
+            currentConvId = convId;
+            const conv = conversations.find(c => c.id === convId);
+            if (!conv) return;
+
+            emptyState.style.display = 'none';
+            chatHeader.style.display = 'flex';
+            messages.style.display = 'flex';
+            inputArea.style.display = 'flex';
+            quickRepliesEl.style.display = 'flex';
+
+            $('omniChatName').textContent = conv.customerName || conv.externalId;
+            $('omniChatChannel').textContent = CHANNEL_NAMES[conv.channel] || conv.channel;
+            $('omniChatAvatar').className = 'omni-conv-avatar ch-' + conv.channel;
+            $('omniChatAvatar').textContent = (conv.customerName || conv.externalId || '?').slice(0, 2).toUpperCase();
+
+            const aiBtn = $('omniToggleAI');
+            const aiEnabled = conv.meta && conv.meta.ai_enabled;
+            aiBtn.style.background = aiEnabled ? '#667eea' : '';
+            aiBtn.style.color = aiEnabled ? '#fff' : '';
+
+            renderConversations();
+            loadMessages(convId);
+            renderQuickReplies();
+        }
+
+        async function sendMessage() {
+            const text = input.value.trim();
+            if (!text || !currentConvId) return;
+            input.value = '';
+
+            const res = await api('/conversations/' + currentConvId + '/send', {
+                method: 'POST',
+                body: JSON.stringify({ text })
+            });
+
+            if (res.success) {
+                loadMessages(currentConvId);
+                loadConversations();
+            }
+        }
+
+        async function closeConversation() {
+            if (!currentConvId) return;
+            await api('/conversations/' + currentConvId, {
+                method: 'PATCH',
+                body: JSON.stringify({ status: 'closed' })
+            });
+            currentConvId = null;
+            emptyState.style.display = '';
+            chatHeader.style.display = 'none';
+            messages.style.display = 'none';
+            inputArea.style.display = 'none';
+            quickRepliesEl.style.display = 'none';
+            loadConversations();
+            loadStats();
+        }
+
+        async function toggleAI() {
+            if (!currentConvId) return;
+            const conv = conversations.find(c => c.id === currentConvId);
+            if (!conv) return;
+            const aiEnabled = conv.meta && conv.meta.ai_enabled;
+            // Toggle AI via PATCH meta
+            await api('/conversations/' + currentConvId, {
+                method: 'PATCH',
+                body: JSON.stringify({ meta: { ai_enabled: !aiEnabled } })
+            });
+            loadConversations();
+        }
+
+        // ---- Helpers ----
+        function esc(s) {
+            if (!s) return '';
+            const el = document.createElement('span');
+            el.textContent = s;
+            return el.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function formatTime(ts) {
+            if (!ts) return '';
+            const d = new Date(ts);
+            const now = new Date();
+            const isToday = d.toDateString() === now.toDateString();
+            if (isToday) {
+                return d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+            }
+            return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) +
+                   ' ' + d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // ---- Events ----
+        convList.addEventListener('click', e => {
+            const item = e.target.closest('.omni-conv-item');
+            if (item) selectConversation(parseInt(item.dataset.id));
+        });
+
+        $('omniSendBtn').addEventListener('click', sendMessage);
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Auto-resize textarea
+        input.addEventListener('input', () => {
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        });
+
+        $('omniCloseConv').addEventListener('click', closeConversation);
+        $('omniToggleAI').addEventListener('click', toggleAI);
+
+        // Channel filters
+        $('omniFilters').addEventListener('click', e => {
+            const btn = e.target.closest('.omni-channel-btn');
+            if (!btn) return;
+            document.querySelectorAll('.omni-channel-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeChannel = btn.dataset.channel;
+            loadConversations();
+        });
+
+        // Search
+        let searchTimeout;
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                searchQuery = searchInput.value.trim();
+                loadConversations();
+            }, 300);
+        });
+
+        // Quick replies
+        quickRepliesEl.addEventListener('click', e => {
+            const btn = e.target.closest('.omni-quick-btn');
+            if (btn) {
+                input.value = btn.dataset.content;
+                input.focus();
+            }
+        });
+
+        // WebSocket for real-time updates
+        function setupWS() {
+            if (typeof window.ws !== 'undefined' && window.ws) {
+                const origOnMessage = window.ws.onmessage;
+                window.ws.onmessage = function(event) {
+                    if (origOnMessage) origOnMessage.call(this, event);
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'omni:message' || data.type === 'omni:conversation') {
+                            loadConversations();
+                            loadStats();
+                            var evtConvId = data.data && (data.data.conversation && data.data.conversation.id || data.data.message && data.data.message.conversationId);
+                        if (currentConvId && evtConvId === currentConvId) {
+                                loadMessages(currentConvId);
+                            }
+                        }
+                    } catch (e) { /* ignore non-JSON */ }
+                };
+            }
+        }
+
+        // ---- Init ----
+        async function init() {
+            await Promise.all([loadConversations(), loadQuickReplies(), loadStats()]);
+            setupWS();
+            // Refresh every 30s
+            setInterval(() => {
+                loadConversations();
+                loadStats();
+            }, 30000);
+        }
+
+        // Auth check (standalone page pattern — same as chat-page.js)
+        document.addEventListener('DOMContentLoaded', function() {
+            var token = localStorage.getItem('pzp_token');
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+            var savedUser = localStorage.getItem('pzp_current_user');
+            if (savedUser) {
+                try {
+                    var parsed = JSON.parse(savedUser);
+                    var userEl = document.getElementById('currentUser');
+                    if (userEl) userEl.textContent = parsed.name || parsed.username || '';
+                } catch (e) { /* ignore */ }
+            }
+            document.getElementById('mainApp').classList.remove('hidden');
+            if (typeof ParkWS !== 'undefined') ParkWS.connect();
+            init();
+        });
+    })();
+    </script>
+</body>
+</html>

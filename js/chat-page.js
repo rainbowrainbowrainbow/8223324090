@@ -321,14 +321,34 @@
         formData.append('file', file);
         if (caption) formData.append('caption', caption);
 
+        // Show progress bar
+        var progressBar = _showUploadProgress();
+
         try {
             var token = localStorage.getItem('pzp_token');
-            var resp = await fetch('/api/chat/channels/' + _currentChannel.id + '/upload', {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + token },
-                body: formData
+            await new Promise(function (resolve, reject) {
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/chat/channels/' + _currentChannel.id + '/upload');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+
+                xhr.upload.onprogress = function (e) {
+                    if (e.lengthComputable && progressBar) {
+                        var pct = Math.round((e.loaded / e.total) * 100);
+                        progressBar.bar.style.width = pct + '%';
+                        progressBar.text.textContent = pct + '%';
+                    }
+                };
+
+                xhr.onload = function () {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve();
+                    } else {
+                        reject(new Error('Upload failed: ' + xhr.status));
+                    }
+                };
+                xhr.onerror = function () { reject(new Error('Upload network error')); };
+                xhr.send(formData);
             });
-            if (!resp.ok) throw new Error('Upload failed: ' + resp.status);
 
             // Clear
             _pendingFile = null;
@@ -339,6 +359,29 @@
         } catch (err) {
             console.error('[Chat] Upload error:', err);
             showNotification('Помилка завантаження файлу', 'error');
+        } finally {
+            _hideUploadProgress(progressBar);
+        }
+    }
+
+    function _showUploadProgress() {
+        var container = document.querySelector('.chat-input-area');
+        if (!container) return null;
+        var wrap = document.createElement('div');
+        wrap.className = 'chat-upload-progress';
+        wrap.innerHTML = '<div class="chat-upload-progress-track"><div class="chat-upload-progress-bar"></div></div><span class="chat-upload-progress-text">0%</span>';
+        container.insertBefore(wrap, container.firstChild);
+        return {
+            el: wrap,
+            bar: wrap.querySelector('.chat-upload-progress-bar'),
+            text: wrap.querySelector('.chat-upload-progress-text')
+        };
+    }
+
+    function _hideUploadProgress(pb) {
+        if (pb && pb.el) {
+            pb.bar.style.width = '100%';
+            setTimeout(function () { pb.el.remove(); }, 500);
         }
     }
 
@@ -771,6 +814,17 @@
 
             var avatarEditBtn = isOwnProfile ? '<button class="chat-profile-avatar-edit" data-edit-avatar="1" title="Змінити аватар">✏️</button>' : '';
 
+            // Last seen / online status
+            var presenceHtml = '';
+            if (!isOwnProfile) {
+                var isOnline = _onlineUsers[String(profile.id)];
+                if (isOnline) {
+                    presenceHtml = '<div class="chat-profile-presence online">онлайн</div>';
+                } else if (profile.lastSeenAt) {
+                    presenceHtml = '<div class="chat-profile-presence">' + _formatLastSeen(profile.lastSeenAt) + '</div>';
+                }
+            }
+
             body.innerHTML =
                 '<div class="chat-profile-card">' +
                     '<div class="chat-profile-avatar-wrap">' +
@@ -779,6 +833,7 @@
                     '</div>' +
                     '<div class="chat-profile-name">' + _esc(profile.displayName) + '</div>' +
                     '<div class="chat-profile-username">@' + _esc(profile.username) + '</div>' +
+                    presenceHtml +
                     '<div class="chat-profile-role-badge">' + roleLabel + '</div>' +
                     '<div class="chat-profile-fields">' + fields + '</div>' +
                     '<div class="chat-profile-actions">' +
@@ -1662,16 +1717,45 @@
         });
     }
 
-    // Reconnect: drain offline queue
+    // Reconnect: drain offline queue + gap-fill missed messages
     window.addEventListener('wsStatusChange', function (e) {
         if (e.detail && e.detail.connected) {
             _playSoundAlways('connect');
             _drainOfflineQueue();
             if (_currentChannel && typeof ParkWS !== 'undefined') {
                 ParkWS.joinChannel(_currentChannel.id);
+                // Gap-fill: load messages missed during disconnection
+                _gapFillMessages();
             }
         }
     });
+
+    async function _gapFillMessages() {
+        if (!_currentChannel) return;
+        var container = document.getElementById('chatMessages');
+        if (!container) return;
+        // Find the last message seq in DOM
+        var allMsgs = container.querySelectorAll('.chat-message[data-seq]');
+        if (allMsgs.length === 0) return;
+        var lastSeq = parseInt(allMsgs[allMsgs.length - 1].dataset.seq, 10);
+        if (!lastSeq || lastSeq <= 0) return;
+
+        try {
+            var missed = await _api('GET', '/channels/' + _currentChannel.id + '/messages/after/' + lastSeq);
+            if (missed && missed.length > 0) {
+                missed.forEach(function (msg) {
+                    // Skip if already rendered
+                    if (container.querySelector('[data-message-id="' + msg.id + '"]')) return;
+                    _appendMessage(msg);
+                });
+                // Mark as read
+                var maxSeq = missed[missed.length - 1].seq;
+                _api('PUT', '/channels/' + _currentChannel.id + '/read', { seq: maxSeq });
+            }
+        } catch (err) {
+            console.error('[Chat] Gap-fill error:', err);
+        }
+    }
 
     // Keyboard shortcut: Escape
     document.addEventListener('keydown', function (e) {
@@ -1842,8 +1926,10 @@
                     : d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
             }
 
+            var dmOnlineDot = isDm && ch.dmOtherUserId ? '<span class="chat-online-dot sidebar-dot" data-user-id="' + ch.dmOtherUserId + '"></span>' : '';
+
             el.innerHTML =
-                '<div class="' + iconClass + ' ' + colorClass + '">' + icon + '</div>' +
+                '<div class="' + iconClass + ' ' + colorClass + '">' + icon + dmOnlineDot + '</div>' +
                 '<div class="chat-channel-info">' +
                     '<div class="chat-channel-name-row">' +
                         '<div class="chat-channel-name">' + _esc(ch.name) + '</div>' +
@@ -2089,6 +2175,7 @@
                 _renderFileAttachment(msg) +
                 '<div class="chat-bubble-content">' + content + '</div>' +
                 _renderLinkPreview(msg) +
+                _renderGuardianActions(msg) +
                 (msg.threadReplyCount > 0 ? '<button class="chat-thread-badge" data-thread-id="' + msg.id + '">' + msg.threadReplyCount + ' відп.</button>' : '') +
                 reactionsHtml +
                 '<div class="chat-msg-actions">' +
@@ -2152,6 +2239,37 @@
                 _showUserProfile(msg.userId);
             });
         }
+
+        // Guardian action button clicks (admin only)
+        el.querySelectorAll('.guardian-action-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var action = btn.dataset.guardianAction;
+                var payload = {
+                    action: action,
+                    channelId: parseInt(btn.dataset.channel) || null,
+                    userId: parseInt(btn.dataset.user) || null,
+                    username: btn.dataset.username || null
+                };
+                btn.disabled = true;
+                btn.textContent = '⏳...';
+                fetch('/api/guardian/action', {
+                    method: 'POST',
+                    headers: Object.assign({ 'Content-Type': 'application/json' }, _headers()),
+                    body: JSON.stringify(payload)
+                }).then(function (r) { return r.json(); })
+                .then(function (data) {
+                    btn.textContent = data.success ? '✅' : '❌';
+                    // Replace all action buttons with response text
+                    var container = btn.closest('.guardian-action-buttons');
+                    if (container && data.message) {
+                        container.innerHTML = '<div class="guardian-action-result">' + _esc(data.message) + '</div>';
+                    }
+                }).catch(function () {
+                    btn.textContent = '❌';
+                    btn.disabled = false;
+                });
+            });
+        });
 
         // Check for ephemeral (self-destruct) messages
         _checkEphemeralMessage(msg, el);
@@ -2285,6 +2403,27 @@
         '</a>';
     }
 
+    /**
+     * Render inline action buttons for Guardian DM alerts.
+     * Only shown for admin users on messages with metadata.actions.
+     */
+    function _renderGuardianActions(msg) {
+        if (!_isAdmin) return '';
+        var meta = msg.metadata;
+        if (!meta || !meta.actions || !Array.isArray(meta.actions) || meta.actions.length === 0) return '';
+
+        var html = '<div class="guardian-action-buttons">';
+        meta.actions.forEach(function (act) {
+            html += '<button class="guardian-action-btn" data-guardian-action="' + _esc(act.action) + '"' +
+                (act.channelId ? ' data-channel="' + act.channelId + '"' : '') +
+                (act.userId ? ' data-user="' + act.userId + '"' : '') +
+                (act.username ? ' data-username="' + _esc(act.username) + '"' : '') +
+                '>' + _esc(act.label) + '</button>';
+        });
+        html += '</div>';
+        return html;
+    }
+
     /** Format bot messages — allow safe HTML tags (<b>, <i>, <br>, <li>, <ul>) */
     function _formatBotContent(text) {
         if (!text) return '';
@@ -2334,6 +2473,26 @@
             input.value = '';
             if (typeof _autoGrow === 'function') _autoGrow(input);
             cmd();
+            return;
+        }
+
+        // Handle /g commands — Guardian command system (Phase 3)
+        if (content.startsWith('/g ') || content === '/g') {
+            var cmdText = content.substring(2).trim();
+            input.value = '';
+            _autoGrow(input);
+            if (_cmdSuggestions) _cmdSuggestions.style.display = 'none';
+            try {
+                var cmdResult = await _api('POST', '/guardian/command', {
+                    channelId: _currentChannel.id,
+                    command: cmdText
+                });
+                if (cmdResult && cmdResult.response) {
+                    _appendSystemMessage(cmdResult.response);
+                }
+            } catch (err) {
+                _appendSystemMessage('🛡️ Помилка виконання команди Guardian');
+            }
             return;
         }
 
@@ -2482,9 +2641,31 @@
         if (!container) return;
         var el = document.createElement('div');
         el.className = 'chat-system-message guardian-system-msg';
-        el.innerHTML = '<div class="chat-system-text">' + text + '</div>';
+        var textDiv = document.createElement('div');
+        textDiv.className = 'chat-system-text';
+        textDiv.textContent = text;
+        el.appendChild(textDiv);
         container.appendChild(el);
         container.scrollTop = container.scrollHeight;
+    }
+
+    // Max messages in DOM before trimming (virtual scroll lite)
+    var MAX_DOM_MESSAGES = 500;
+    var TRIM_BATCH = 100;
+
+    function _trimOldMessages() {
+        var container = document.getElementById('chatMessages');
+        if (!container) return;
+        var msgs = container.querySelectorAll('.chat-message');
+        if (msgs.length > MAX_DOM_MESSAGES) {
+            var toRemove = msgs.length - MAX_DOM_MESSAGES + TRIM_BATCH;
+            for (var i = 0; i < toRemove && i < msgs.length; i++) {
+                // Also remove preceding date dividers
+                var prev = msgs[i].previousElementSibling;
+                if (prev && prev.classList.contains('chat-date-divider')) prev.remove();
+                msgs[i].remove();
+            }
+        }
     }
 
     function _appendMessage(msg) {
@@ -2498,8 +2679,6 @@
         var lastMsg = container.querySelector('.chat-message:last-child');
         var isGrouped = false;
         if (lastMsg && lastMsg.dataset.messageId) {
-            var lastUserId = lastMsg.classList.contains('own') ? _currentUserId : (lastMsg.querySelector('.chat-avatar') || {}).dataset ? null : null;
-            // Simplified: group if same user class
             var newIsOwn = String(msg.userId) === _currentUserId;
             var lastIsOwn = lastMsg.classList.contains('own');
             if (newIsOwn === lastIsOwn && !msg.replyTo) {
@@ -2509,6 +2688,9 @@
 
         container.appendChild(_createMessageEl(msg, isGrouped));
         container.scrollTop = container.scrollHeight;
+
+        // Trim old messages to prevent DOM bloat
+        _trimOldMessages();
 
         // Trigger dino mega effects for sticker messages
         if (msg.contentType === 'sticker') {
@@ -4687,9 +4869,46 @@
     async function _loadGuardianEvents() {
         if (!_isAdmin || !_guardianLogEntries) return;
         try {
-            var actions = await _fetchJson('/api/guardian/actions?limit=20');
+            // Load stats + actions in parallel
+            var [stats, actions, activeMutes] = await Promise.all([
+                _fetchJson('/api/guardian/stats'),
+                _fetchJson('/api/guardian/actions?limit=30'),
+                _fetchJson('/api/guardian/mutes/active')
+            ]);
+
+            _guardianLogEntries.innerHTML = '';
+
+            // Stats summary bar at top
+            if (stats) {
+                var statsEl = document.createElement('div');
+                statsEl.className = 'guardian-stats-summary';
+                var todayMutes = (stats.today && stats.today.mute) || 0;
+                var todayMasks = (stats.today && stats.today.mask) || 0;
+                var todayDeletes = (stats.today && stats.today.delete) || 0;
+                var muteCount = (activeMutes && activeMutes.length) || stats.activeMutes || 0;
+                statsEl.innerHTML =
+                    '<div class="guardian-stats-row">' +
+                        '<div class="guardian-stat"><span class="guardian-stat-val">' + todayMutes + '</span><span class="guardian-stat-lbl">Блокувань</span></div>' +
+                        '<div class="guardian-stat"><span class="guardian-stat-val">' + todayMasks + '</span><span class="guardian-stat-lbl">Замасковано</span></div>' +
+                        '<div class="guardian-stat"><span class="guardian-stat-val">' + todayDeletes + '</span><span class="guardian-stat-lbl">Видалено</span></div>' +
+                        '<div class="guardian-stat"><span class="guardian-stat-val">' + muteCount + '</span><span class="guardian-stat-lbl">Мутів зараз</span></div>' +
+                    '</div>';
+                // Active mutes list
+                if (activeMutes && activeMutes.length > 0) {
+                    var mutesHtml = '<div class="guardian-active-mutes"><b>Активні мути:</b>';
+                    activeMutes.forEach(function (m) {
+                        var until = '';
+                        try { until = new Date(m.mutedUntil).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }); } catch (e) {}
+                        mutesHtml += '<div class="guardian-mute-item">🔇 @' + _esc(m.username) + ' — до ' + until +
+                            ' <button class="guardian-unmute-btn" data-mute-id="' + m.id + '" data-channel="' + m.channelId + '" data-user="' + m.userId + '">Зняти</button></div>';
+                    });
+                    mutesHtml += '</div>';
+                    statsEl.innerHTML += mutesHtml;
+                }
+                _guardianLogEntries.appendChild(statsEl);
+            }
+
             if (actions && actions.length > 0) {
-                _guardianLogEntries.innerHTML = '';
                 actions.forEach(function (a) {
                     var ev = {
                         type: a.actionType,
@@ -4701,7 +4920,386 @@
                     _guardianLogEntries.appendChild(_buildLogEntry(ev));
                 });
             }
+
+            // Delegate unmute button clicks
+            _guardianLogEntries.addEventListener('click', function (e) {
+                var btn = e.target.closest('.guardian-unmute-btn');
+                if (!btn) return;
+                var muteId = btn.dataset.muteId;
+                fetch('/api/guardian/mutes/' + muteId, { method: 'DELETE', headers: _headers() })
+                    .then(function () { _loadGuardianEvents(); })
+                    .catch(function () {});
+            });
         } catch (e) { /* ignore */ }
+    }
+
+    // ==========================================
+    // GUARDIAN PHASE 3 — Analytics Panel, Health, Mood, Commands
+    // ==========================================
+
+    var _analyticsPanel = document.getElementById('guardianAnalyticsPanel');
+    var _analyticsBtn = document.getElementById('guardianAnalyticsBtn');
+    var _analyticsClose = document.getElementById('guardianAnalyticsClose');
+    var _analyticsBody = document.getElementById('guardianAnalyticsBody');
+    var _healthIndicator = document.getElementById('guardianHealthIndicator');
+    var _healthDot = document.getElementById('guardianHealthDot');
+    var _healthScore = document.getElementById('guardianHealthScore');
+    var _cmdSuggestions = document.getElementById('guardianCmdSuggestions');
+    var _cmdList = document.getElementById('guardianCmdList');
+    var _analyticsOpen = false;
+
+    // Guardian commands definition
+    var _guardianCommands = [
+        { cmd: 'help', icon: '❓', desc: 'Показати всі команди', admin: false },
+        { cmd: 'status', icon: '📊', desc: 'Стан Guardian', admin: false },
+        { cmd: 'stats', icon: '📈', desc: 'Статистика за період', admin: false },
+        { cmd: 'mood', icon: '😊', desc: 'Настрій команди', admin: false },
+        { cmd: 'health', icon: '💚', desc: 'Здоров\'я каналу', admin: false },
+        { cmd: 'top', icon: '🏆', desc: 'Топ порушників/помічників', admin: true },
+        { cmd: 'history', icon: '📜', desc: 'Історія користувача', admin: true },
+        { cmd: 'mute', icon: '🔇', desc: 'Замутити користувача', admin: true },
+        { cmd: 'unmute', icon: '🔊', desc: 'Розмутити користувача', admin: true },
+        { cmd: 'trust', icon: '⭐', desc: 'Змінити рівень довіри', admin: true },
+        { cmd: 'report', icon: '📝', desc: 'Згенерувати звіт', admin: true },
+        { cmd: 'rules', icon: '📋', desc: 'Список правил', admin: true },
+        { cmd: 'learn', icon: '🧠', desc: 'Додати слова до фільтру', admin: true },
+        { cmd: 'config', icon: '⚙️', desc: 'Конфігурація Guardian', admin: true }
+    ];
+
+    function _initGuardianPhase3() {
+        // Analytics button — admin only
+        if (_analyticsBtn) {
+            if (_isAdmin) {
+                _analyticsBtn.style.display = '';
+            }
+            _analyticsBtn.addEventListener('click', function () {
+                _analyticsOpen = !_analyticsOpen;
+                if (_analyticsPanel) {
+                    _analyticsPanel.style.display = _analyticsOpen ? 'block' : 'none';
+                }
+                if (_analyticsOpen) {
+                    _loadAnalyticsTab('overview');
+                }
+            });
+        }
+
+        // Analytics close
+        if (_analyticsClose) {
+            _analyticsClose.addEventListener('click', function () {
+                _analyticsOpen = false;
+                if (_analyticsPanel) _analyticsPanel.style.display = 'none';
+            });
+        }
+
+        // Tab switching
+        if (_analyticsBody) {
+            document.querySelectorAll('.guardian-tab').forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    document.querySelectorAll('.guardian-tab').forEach(function (t) { t.classList.remove('active'); });
+                    tab.classList.add('active');
+                    var tabName = tab.dataset.tab;
+                    document.querySelectorAll('.guardian-analytics-tab-content').forEach(function (tc) { tc.classList.remove('active'); });
+                    var target = document.getElementById('guardianTab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+                    if (target) target.classList.add('active');
+                    _loadAnalyticsTab(tabName);
+                });
+            });
+        }
+
+        // Channel health — fetch initial
+        _fetchChannelHealth();
+
+        // Command suggestions — listen for /g in chat input
+        var chatInput = document.getElementById('chatInput');
+        if (chatInput && _cmdSuggestions) {
+            chatInput.addEventListener('input', function () {
+                var val = chatInput.value.trim();
+                if (val.startsWith('/g ') || val === '/g') {
+                    _showCommandSuggestions(val.substring(2).trim());
+                } else if (val.startsWith('/guardian ') || val === '/guardian') {
+                    _showCommandSuggestions(val.substring(9).trim());
+                } else {
+                    _cmdSuggestions.style.display = 'none';
+                }
+            });
+        }
+
+        // Handle WebSocket health updates
+        window.addEventListener('ws:chat', function (e) {
+            if (e.detail && e.detail.eventType === 'guardian:health') {
+                _onHealthUpdate(e.detail.payload);
+            }
+        });
+    }
+
+    // Show command autocomplete suggestions
+    function _showCommandSuggestions(query) {
+        if (!_cmdList) return;
+        var filtered = _guardianCommands.filter(function (c) {
+            if (c.admin && !_isAdmin) return false;
+            if (!query) return true;
+            return c.cmd.startsWith(query.toLowerCase());
+        });
+        if (filtered.length === 0) {
+            _cmdSuggestions.style.display = 'none';
+            return;
+        }
+        _cmdList.innerHTML = filtered.map(function (c) {
+            return '<div class="guardian-cmd-item" data-cmd="' + c.cmd + '">' +
+                '<span class="guardian-cmd-icon">' + c.icon + '</span>' +
+                '<div class="guardian-cmd-text">' +
+                    '<span class="guardian-cmd-name">/g ' + c.cmd + '</span>' +
+                    '<span class="guardian-cmd-desc">' + c.desc + '</span>' +
+                '</div>' +
+                (c.admin ? '<span class="guardian-cmd-badge">admin</span>' : '') +
+            '</div>';
+        }).join('');
+        _cmdSuggestions.style.display = 'block';
+
+        // Click to fill command
+        _cmdList.querySelectorAll('.guardian-cmd-item').forEach(function (item) {
+            item.addEventListener('click', function () {
+                var chatInput = document.getElementById('chatInput');
+                if (chatInput) {
+                    chatInput.value = '/g ' + item.dataset.cmd + ' ';
+                    chatInput.focus();
+                }
+                _cmdSuggestions.style.display = 'none';
+            });
+        });
+    }
+
+    // Fetch and display channel health
+    async function _fetchChannelHealth() {
+        if (!_healthIndicator) return;
+        try {
+            var health = await _fetchJson('/api/guardian/health');
+            if (health && Array.isArray(health) && health.length > 0) {
+                // Find current channel or show average
+                var current = null;
+                if (_currentChannelId) {
+                    current = health.find(function (h) { return h.channelId === _currentChannelId; });
+                }
+                if (!current) {
+                    var avg = Math.round(health.reduce(function (s, h) { return s + h.score; }, 0) / health.length);
+                    current = { score: avg, level: avg >= 80 ? 'green' : avg >= 40 ? 'yellow' : 'red' };
+                }
+                _updateHealthIndicator(current.score, current.level);
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function _updateHealthIndicator(score, level) {
+        if (_healthDot) {
+            _healthDot.textContent = level === 'green' ? '🟢' : level === 'yellow' ? '🟡' : '🔴';
+        }
+        if (_healthScore) {
+            _healthScore.textContent = score;
+        }
+        if (_healthIndicator) {
+            _healthIndicator.className = 'guardian-health-indicator' + (level !== 'green' ? ' health-' + level : '');
+        }
+    }
+
+    function _onHealthUpdate(payload) {
+        if (payload && payload.score !== undefined) {
+            _updateHealthIndicator(payload.score, payload.level);
+        }
+    }
+
+    // Load analytics tab data
+    async function _loadAnalyticsTab(tab) {
+        switch (tab) {
+            case 'overview': return _loadAnalyticsOverview();
+            case 'health': return _loadAnalyticsHealth();
+            case 'mood': return _loadAnalyticsMood();
+            case 'heatmap': return _loadAnalyticsHeatmap();
+            case 'trust': return _loadAnalyticsTrust();
+        }
+    }
+
+    async function _loadAnalyticsOverview() {
+        var grid = document.getElementById('guardianOverviewGrid');
+        if (!grid) return;
+        try {
+            var [stats, overview] = await Promise.all([
+                _fetchJson('/api/guardian/stats'),
+                _fetchJson('/api/guardian/analytics/overview')
+            ]);
+            var data = overview || {};
+            var today = (stats && stats.today) || {};
+            var total = (stats && stats.total) || {};
+            grid.innerHTML =
+                _overviewCard('🛡️', today.mute || 0, 'Блокувань сьогодні', total.mute) +
+                _overviewCard('🔒', today.mask || 0, 'Замасковано сьогодні', total.mask) +
+                _overviewCard('💬', data.totalMessages || 0, 'Повідомлень всього') +
+                _overviewCard('🔇', stats.activeMutes || 0, 'Активних мутів') +
+                _overviewCard('💚', data.healthAvg || 0, 'Здоров\'я середнє') +
+                _overviewCard('😊', data.moodAvg !== undefined ? (data.moodAvg > 0 ? '+' : '') + data.moodAvg.toFixed(2) : '—', 'Настрій середній') +
+                _overviewCard('📊', data.activeChannels || 0, 'Активних каналів') +
+                _overviewCard('⚡', data.totalConflicts || 0, 'Конфліктів');
+        } catch (e) {
+            grid.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Не вдалось завантажити</div>';
+        }
+    }
+
+    function _overviewCard(icon, value, label, total) {
+        var trendHtml = '';
+        if (total !== undefined) {
+            trendHtml = '<div class="card-trend neutral">всього: ' + total + '</div>';
+        }
+        return '<div class="guardian-overview-card">' +
+            '<div class="card-icon">' + icon + '</div>' +
+            '<div class="card-value">' + value + '</div>' +
+            '<div class="card-label">' + label + '</div>' +
+            trendHtml +
+        '</div>';
+    }
+
+    async function _loadAnalyticsHealth() {
+        var container = document.getElementById('guardianHealthChannels');
+        if (!container) return;
+        try {
+            var health = await _fetchJson('/api/guardian/health');
+            if (!health || !Array.isArray(health)) {
+                container.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Немає даних</div>';
+                return;
+            }
+            container.innerHTML = health.map(function (ch) {
+                return '<div class="guardian-health-card">' +
+                    '<div class="guardian-health-card-header">' +
+                        '<span class="guardian-health-card-name">' + _esc(ch.channelName || 'Канал #' + ch.channelId) + '</span>' +
+                        '<span class="guardian-health-badge ' + ch.level + '">' +
+                            (ch.level === 'green' ? '🟢' : ch.level === 'yellow' ? '🟡' : '🔴') + ' ' + ch.score +
+                        '</span>' +
+                    '</div>' +
+                    '<div class="guardian-health-bar"><div class="guardian-health-bar-fill ' + ch.level + '" style="width:' + ch.score + '%"></div></div>' +
+                '</div>';
+            }).join('');
+        } catch (e) {
+            container.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Помилка завантаження</div>';
+        }
+    }
+
+    async function _loadAnalyticsMood() {
+        var summary = document.getElementById('guardianMoodSummary');
+        var users = document.getElementById('guardianMoodUsers');
+        if (!summary) return;
+        try {
+            var channelId = _currentChannelId;
+            var mood = channelId ? await _fetchJson('/api/guardian/mood/channel/' + channelId + '?period=today') : null;
+            if (!mood) {
+                summary.innerHTML = '<div class="guardian-mood-card neutral"><div class="mood-emoji">😐</div><div class="mood-value">—</div><div class="mood-label">Немає даних</div></div>';
+                return;
+            }
+            var dist = mood.distribution || {};
+            summary.innerHTML =
+                '<div class="guardian-mood-card positive"><div class="mood-emoji">😊</div><div class="mood-value">' + (dist.positive || 0) + '</div><div class="mood-label">Позитивних</div></div>' +
+                '<div class="guardian-mood-card neutral"><div class="mood-emoji">😐</div><div class="mood-value">' + (dist.neutral || 0) + '</div><div class="mood-label">Нейтральних</div></div>' +
+                '<div class="guardian-mood-card negative"><div class="mood-emoji">😤</div><div class="mood-value">' + (dist.negative || 0) + '</div><div class="mood-label">Негативних</div></div>';
+
+            // Per-user mood
+            if (users && mood.byUser && mood.byUser.length > 0) {
+                users.innerHTML = mood.byUser.map(function (u) {
+                    var pct = Math.round((u.avgScore + 1) * 50);
+                    var color = u.avgScore > 0.2 ? '#10B981' : u.avgScore < -0.2 ? '#EF4444' : '#6B7280';
+                    return '<div class="guardian-mood-user-row">' +
+                        '<span class="guardian-mood-user-name">' + _esc(u.username) + '</span>' +
+                        '<div class="guardian-mood-user-bar"><div class="guardian-mood-user-bar-fill" style="width:' + pct + '%;background:' + color + '"></div></div>' +
+                        '<span class="guardian-mood-user-score" style="color:' + color + '">' + (u.avgScore > 0 ? '+' : '') + u.avgScore.toFixed(2) + '</span>' +
+                    '</div>';
+                }).join('');
+            }
+        } catch (e) {
+            summary.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Помилка</div>';
+        }
+    }
+
+    async function _loadAnalyticsHeatmap() {
+        var grid = document.getElementById('guardianHeatmapGrid');
+        var legend = document.getElementById('guardianHeatmapLegend');
+        if (!grid) return;
+        try {
+            var channelId = _currentChannelId;
+            if (!channelId) {
+                grid.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Оберіть канал</div>';
+                return;
+            }
+            var data = await _fetchJson('/api/guardian/analytics/heatmap/' + channelId + '?days=7');
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                grid.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Немає даних активності</div>';
+                return;
+            }
+
+            // Build 7x24 grid
+            var days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+            var maxCount = Math.max.apply(null, data.map(function (d) { return d.messageCount || 0; })) || 1;
+            var html = '';
+
+            // Header row (hours)
+            html += '<div class="guardian-heatmap-label"></div>';
+            for (var h = 0; h < 24; h++) {
+                html += '<div class="guardian-heatmap-label">' + (h % 3 === 0 ? h : '') + '</div>';
+            }
+
+            // Data rows
+            for (var d = 0; d < 7; d++) {
+                html += '<div class="guardian-heatmap-label">' + days[d] + '</div>';
+                for (var hr = 0; hr < 24; hr++) {
+                    var cell = data.find(function (item) {
+                        var dt = new Date(item.hourBucket);
+                        return dt.getDay() === (d + 1) % 7 && dt.getHours() === hr;
+                    });
+                    var count = cell ? cell.messageCount : 0;
+                    var level = Math.min(5, Math.ceil((count / maxCount) * 5));
+                    var conflict = cell && cell.conflictCount > 0 ? ' conflict' : '';
+                    html += '<div class="guardian-heatmap-cell level-' + level + conflict + '" title="' + count + ' повідомлень"></div>';
+                }
+            }
+            grid.innerHTML = html;
+
+            // Legend
+            if (legend) {
+                legend.innerHTML = 'Менше ' +
+                    '<div class="guardian-heatmap-legend-cell level-0"></div>' +
+                    '<div class="guardian-heatmap-legend-cell level-1"></div>' +
+                    '<div class="guardian-heatmap-legend-cell level-2"></div>' +
+                    '<div class="guardian-heatmap-legend-cell level-3"></div>' +
+                    '<div class="guardian-heatmap-legend-cell level-4"></div>' +
+                    '<div class="guardian-heatmap-legend-cell level-5"></div>' +
+                    ' Більше';
+            }
+        } catch (e) {
+            grid.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Помилка</div>';
+        }
+    }
+
+    async function _loadAnalyticsTrust() {
+        var list = document.getElementById('guardianTrustList');
+        if (!list) return;
+        try {
+            var data = await _fetchJson('/api/guardian/trust');
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                list.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Немає даних про довіру</div>';
+                return;
+            }
+            list.innerHTML = data.map(function (u) {
+                var initials = (u.username || '?').substring(0, 2).toUpperCase();
+                var barColor = u.level === 'trusted' ? '#10B981' : u.level === 'watched' ? '#F59E0B' : u.level === 'restricted' ? '#EF4444' : '#6B7280';
+                var levelLabel = u.level === 'trusted' ? 'Довірений' : u.level === 'watched' ? 'Під наглядом' : u.level === 'restricted' ? 'Обмежений' : 'Звичайний';
+                return '<div class="guardian-trust-row">' +
+                    '<div class="guardian-trust-avatar ' + u.level + '">' + initials + '</div>' +
+                    '<div class="guardian-trust-info">' +
+                        '<div class="guardian-trust-name">' + _esc(u.username) + '</div>' +
+                        '<div class="guardian-trust-level">' + levelLabel + '</div>' +
+                    '</div>' +
+                    '<div class="guardian-trust-score-bar"><div class="guardian-trust-score-fill" style="width:' + u.trustScore + '%;background:' + barColor + '"></div></div>' +
+                    '<span class="guardian-trust-score-num" style="color:' + barColor + '">' + u.trustScore + '</span>' +
+                '</div>';
+            }).join('');
+        } catch (e) {
+            list.innerHTML = '<div style="padding:20px;color:var(--gray-500)">Помилка</div>';
+        }
     }
 
     // Direct fetch for non-chat APIs (guardian, etc.)
@@ -4716,6 +5314,7 @@
     // Override init — show guardian bar on page load
     setTimeout(function () {
         _initGuardianUI();
+        _initGuardianPhase3();
     }, 500);
 
     // ==========================================
@@ -5197,15 +5796,38 @@
     // ==========================================
     var _onlineUsers = {};
 
+    // Format last seen time as human-readable string
+    function _formatLastSeen(dateStr) {
+        if (!dateStr) return '';
+        var now = new Date();
+        var seen = new Date(dateStr);
+        var diffMs = now - seen;
+        var diffMin = Math.floor(diffMs / 60000);
+        var diffHours = Math.floor(diffMs / 3600000);
+        var diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMin < 1) return 'був щойно';
+        if (diffMin < 60) return 'був ' + diffMin + ' ' + _pluralize(diffMin, 'хвилину', 'хвилини', 'хвилин') + ' тому';
+        if (diffHours < 24) return 'був ' + diffHours + ' ' + _pluralize(diffHours, 'годину', 'години', 'годин') + ' тому';
+        if (diffDays < 7) return 'був ' + diffDays + ' ' + _pluralize(diffDays, 'день', 'дні', 'днів') + ' тому';
+        return 'був ' + seen.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
+    }
+
+    // Fetch online users on init
+    (async function () {
+        try {
+            var resp = await _api('GET', '/online');
+            if (resp && resp.onlineUserIds) {
+                resp.onlineUserIds.forEach(function (id) { _onlineUsers[String(id)] = true; });
+                _updateOnlineDots();
+            }
+        } catch (e) { /* ignore */ }
+    })();
+
     function _updateOnlineDots() {
         document.querySelectorAll('.chat-online-dot').forEach(function (dot) {
             var userId = dot.dataset.userId;
-            if (_onlineUsers[userId]) {
-                dot.classList.add('online');
-                dot.classList.remove('away');
-            } else {
-                dot.classList.remove('online');
-            }
+            dot.classList.toggle('online', !!_onlineUsers[userId]);
         });
     }
 
@@ -5230,6 +5852,13 @@
     async function _initPushNotifications() {
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
         try {
+            // Request notification permission
+            var permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                console.log('[Chat] Notification permission denied');
+                return;
+            }
+
             var reg = await navigator.serviceWorker.ready;
             // Check if already subscribed
             var existing = await reg.pushManager.getSubscription();
@@ -5237,7 +5866,10 @@
 
             // Get VAPID key from server
             var resp = await _api('GET', '/push/vapid-key');
-            if (!resp || !resp.publicKey) return;
+            if (!resp || !resp.publicKey) {
+                console.warn('[Chat] No VAPID public key from server');
+                return;
+            }
 
             var subscription = await reg.pushManager.subscribe({
                 userVisibleOnly: true,
@@ -5339,7 +5971,7 @@
             overlay.innerHTML =
                 '<button class="chat-lightbox-close" aria-label="Закрити">&times;</button>' +
                 (images.length > 1 ? '<button class="chat-lightbox-nav prev" aria-label="Попереднє">&#8249;</button>' : '') +
-                '<img class="chat-lightbox-img" src="' + images[i] + '" alt="Зображення">' +
+                '<img class="chat-lightbox-img" src="' + _esc(images[i]) + '" alt="Зображення">' +
                 (images.length > 1 ? '<button class="chat-lightbox-nav next" aria-label="Наступне">&#8250;</button>' : '') +
                 (images.length > 1 ? '<span class="chat-lightbox-counter">' + (i + 1) + ' / ' + images.length + '</span>' : '');
 

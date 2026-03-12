@@ -15,18 +15,18 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=20.00">
-    <link rel="stylesheet" href="css/auth.css?v=20.00">
-    <link rel="stylesheet" href="css/layout.css?v=20.00">
-    <link rel="stylesheet" href="css/timeline.css?v=20.00">
-    <link rel="stylesheet" href="css/panel.css?v=20.00">
-    <link rel="stylesheet" href="css/modals.css?v=20.00">
-    <link rel="stylesheet" href="css/controls.css?v=20.00">
-    <link rel="stylesheet" href="css/features.css?v=20.00">
-    <link rel="stylesheet" href="css/dark-mode.css?v=20.00">
-    <link rel="stylesheet" href="css/responsive.css?v=20.00">
-    <link rel="stylesheet" href="css/pages.css?v=20.00">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=20.00">
+    <link rel="stylesheet" href="css/base.css?v=23.4.0">
+    <link rel="stylesheet" href="css/auth.css?v=23.4.0">
+    <link rel="stylesheet" href="css/layout.css?v=23.4.0">
+    <link rel="stylesheet" href="css/timeline.css?v=23.4.0">
+    <link rel="stylesheet" href="css/panel.css?v=23.4.0">
+    <link rel="stylesheet" href="css/modals.css?v=23.4.0">
+    <link rel="stylesheet" href="css/controls.css?v=23.4.0">
+    <link rel="stylesheet" href="css/features.css?v=23.4.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=23.4.0">
+    <link rel="stylesheet" href="css/responsive.css?v=23.4.0">
+    <link rel="stylesheet" href="css/pages.css?v=23.4.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=23.4.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -43,9 +43,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Maestro" class="login-gear-icon">
                 <h1>Event Maestro</h1>
-                <p class="tagline">AI First CRM v22.16.0 — Candy Crush Animations</p>
+                <p class="tagline">AI First CRM v23.4.0 — Lead Capture</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v20.2.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v23.4.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -59,6 +59,7 @@
                 <p id="loginError" class="error-message"></p>
             </form>
             <p class="login-footer">MagicGears · Event Maestro · 2026</p>
+            <a href="/landing/" class="login-landing-link" target="_blank">🌐 Наш сайт</a>
         </div>
     </div>
 
@@ -89,6 +90,7 @@
                 <a href="/art-director" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">AR</span> <span class="nav-text">Art Director</span></a>
                 <a href="/demo" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
                 <a href="/status" class="nav-link"><span class="nav-icon nav-icon--status">St</span> <span class="nav-text">Статус</span></a>
+                <a href="/omni" class="nav-link sidebar-admin-only hidden"><span class="nav-icon">Om</span> <span class="nav-text">OmniClaw</span></a>
                 <a href="/kleshnya" class="nav-link nav-link-kleshnya sidebar-admin-only hidden"><span class="nav-icon nav-icon--kleshnya">Кл</span> <span class="nav-text">Клешня</span></a>
                 <div class="sidebar-divider"></div>
                 <span class="sidebar-section-label">Дії</span>
@@ -1154,7 +1156,92 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v23.2.0 — OmniClaw: Омніканальна комунікація v1.0 (Claude Code, 11.03.2026)</h4>
+                    <ul>
+                        <li><b>OmniClaw Hub</b> — єдиний inbox для всіх каналів: Telegram, Viber, SMS, Facebook, Instagram, Binotel</li>
+                        <li><b>Нормалайзер</b> — уніфікований формат повідомлень з 6 каналів</li>
+                        <li><b>AI авто-відповіді</b> — Клешня відповідає клієнтам автоматично (toggle per conversation)</li>
+                        <li><b>Швидкі відповіді</b> — шаблони відповідей для операторів</li>
+                        <li><b>Webhooks</b> — публічні ендпоінти для всіх каналів</li>
+                        <li><b>omni.html</b> — повноцінний UI inbox з real-time WebSocket оновленнями</li>
+                        <li><b>DB</b> — міграція 052: conversations, conversation_messages, quick_replies</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v23.1.0 — Landing Page Event Genix v1.0 (Клешня, 11.03.2026)</h4>
+                    <ul>
+                        <li><b>landing/</b> — публічний лендінг продукту (повний редизайн)</li>
+                        <li><b>9 секцій</b> — Nav, Hero з мокапом, 12 модулів, Story таймлайн, Команда, Ціни, Соціальний доказ, Demo форма, Footer</li>
+                        <li><b>Demo форма</b> — заявка → Telegram сповіщення директору</li>
+                        <li><b>Нові фічі</b> — iOnboard, OmniClaw, Центр цін в описі модулів</li>
+                        <li><b>API</b> — POST /api/landing/demo-request</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v23.0.0 — Major Release: Full Version Sync (Claude Code, 11.03.2026)</h4>
+                    <ul>
+                        <li><b>Version Sync</b> — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG</li>
+                        <li><b>Landing Carousel</b> — команда з каруселлю, Anli Lektor, swipe/dots/arrows [kleshnya]</li>
+                        <li><b>Manager Guide</b> — нова сторінка для менеджерів з продажу [kleshnya]</li>
+                        <li><b>Cache Busting</b> — ?v=23.4.0 на всіх CSS/JS ресурсах (25 файлів)</li>
+                        <li><b>Swagger API</b> — оновлена версія OpenAPI spec до v23.0.0</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.20.0 — Guardian Phase 3: Analytics & Intelligence (Claude Code, 11.03.2026)</h4>
+                    <ul>
+                        <li><b>14 Guardian команд</b> — /g help, status, stats, mood, health, top, history, mute, unmute, trust, report, rules, learn, config</li>
+                        <li><b>Channel Health Score</b> — 🟢🟡🔴 індикатор здоров'я каналу в реальному часі (0-100), автоматичний розрахунок</li>
+                        <li><b>Sentiment Tracking</b> — аналіз настрою кожного повідомлення, настрій команди, per-user mood</li>
+                        <li><b>Guardian Analytics Panel</b> — 5 вкладок: огляд, здоров'я, настрій, heatmap активності, рівні довіри</li>
+                        <li><b>Activity Heatmap</b> — 7×24 тепловий графік активності каналу по днях/годинах</li>
+                        <li><b>Trust Score System</b> — рівні довіри користувачів (trusted/normal/watched/restricted), автоматичне оновлення</li>
+                        <li><b>Auto-Escalation</b> — 5-рівнева ескалація: попередження → мут 1хв → 10хв → 30хв+Telegram → бан на день</li>
+                        <li><b>Weekly Reports</b> — щопонеділковий звіт директору: тренди, порушники, рекомендації</li>
+                        <li><b>Command Autocomplete</b> — підказки при введенні /g в чаті з описом та admin-бейджем</li>
+                        <li><b>29 API ендпоінтів</b> — health, mood, trust, analytics, escalation, weekly-reports, command</li>
+                        <li><b>8 нових DB таблиць</b> — channel_health, health_history, mood_tracking, commands_log, weekly_reports, trust_scores, escalation_config, activity_heatmap</li>
+                        <li><b>Dark mode</b> — повна підтримка для всіх нових компонентів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.19.0 — Guardian Contour System Phase 2 (Claude Code, 11.03.2026)</h4>
+                    <ul>
+                        <li><b>Telegram алерти</b> — критичні події Guardian дублюються директору в Telegram (конфлікти, sensitive data, 5+ блокувань/год, спам)</li>
+                        <li><b>Inline кнопки</b> — дії прямо з Guardian DM: мютити обох, попередження, спостерігаю</li>
+                        <li><b>Security Panel</b> — статистика Guardian (замічено/замасковано/замютовано), активні мути з unmute кнопками</li>
+                        <li><b>Conflict detector</b> — вікно збільшено до 15 повідомлень, reply chain awareness</li>
+                        <li><b>Sensitive patterns</b> — нові патерни: паролі, JWT, API ключі, адреси, дати народження</li>
+                        <li><b>Daily report</b> — покращений формат: активність, учасники, аномалії</li>
+                        <li><b>Repeat offender</b> — 3+ порушення/тиждень → Telegram алерт</li>
+                        <li><b>Spam detection</b> — 10+ повідомлень за 30 сек → Telegram алерт</li>
+                        <li><b>Dark mode</b> — підтримка для всіх нових Guardian компонентів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.18.1 — Test Deploy (Claude Code, 11.03.2026)</h4>
+                    <ul>
+                        <li><b>Тестовий деплой</b> — перевірка версійного пайплайну +0.0.1</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.18.0 — Docs & Architecture Update (11.03.2026)</h4>
+                    <ul>
+                        <li><b>Документація</b> — повне оновлення PROJECT_PASSPORT.md, SNAPSHOT.md, CLAUDE.md, CHANGELOG.md</li>
+                        <li><b>Архітектура</b> — актуальні метрики: 128k рядків коду, 61 route, 30 services, 25 сторінок</li>
+                        <li><b>Version sync</b> — синхронізація ?v= тегів на всіх сторінках</li>
+                    </ul>
+                </div>
                                 <div class="changelog-section">
+                    <h4>v22.17.0 — Match-3 UI Polish (Клешня, 10.03.2026)</h4>
+                    <ul>
+                        <li><b>Контраст</b> — покращений контраст та читабельність Match-3 інтерфейсу</li>
+                        <li><b>Стиль</b> — оновлений mystical vibe дизайн ігрового поля</li>
+                        <li><b>Іконки</b> — виправлені v3/final candy style іконки</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v22.16.0 — Candy Crush іконки + анімації (Клешня, 10.03.2026)</h4>
                     <ul>
                         <li><b>Нові іконки</b> — 13 Candy Crush стиль іконок (sticker, no border) для Match-3</li>
@@ -1164,22 +1251,806 @@
                         <li><b>Selected glow</b> — покращена gold shimmer анімація вибраної клітинки</li>
                     </ul>
                 </div>
-                                <div class="changelog-section">
-                    <h4>v20.2.0 — Bugfix Release (Клешня, 02.03.2026)</h4>
+                <div class="changelog-section">
+                    <h4>v22.15.0 — (пропущена версія)</h4>
+                    <ul>
+                        <li>Номер версії пропущено в нумерації</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.14.0 — (пропущена версія)</h4>
+                    <ul>
+                        <li>Номер версії пропущено в нумерації</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.13.0 — Bugfix Release (Клешня, 02.03.2026)</h4>
                     <ul>
                         <li><b>Фікс</b> — інтерполяція змінних в повідомленнях скасування бронювань ({booking_number}, {label}, {time})</li>
                         <li><b>Фікс</b> — захист від NaN в timeToMinutes/minutesToTime (усуває дублювання в 00:00)</li>
                         <li><b>Фікс</b> — сумісність з iPhone 11 Safari: canvas null guard, dynamic viewport height</li>
                     </ul>
                 </div>
-<div class="changelog-section">
-                    <h4>v22.16.0 — Candy Crush Animations (Claude Code, 26.02.2026)</h4>
+                <div class="changelog-section">
+                    <h4>v22.12.0 — Match-3 Custom Art Assets (Клешня, 10.03.2026)</h4>
+                    <ul>
+                        <li><b>Custom art</b> — унікальні арт-ассети для Match-3 гри</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.11.0 — Mystic Edition (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Карти Таро 🔮</b> — перед кожною грою обирай 1 з 3 випадкових карт-модифікаторів (16 унікальних карт)</li>
+                        <li><b>Розмір поля</b> — 7×7 (компакт), 9×9 (класика), 11×11 (епік) через карти Таро</li>
+                        <li><b>5 унікальних босів</b> — ❄️ Крижаний Король, 🔥 Лавовий Звір, 👁️ Тіньовий Лорд, ⏰ Пожирач Часу, 🐉 Дракон Хаосу</li>
+                        <li><b>Рандомні події</b> — ☄️ метеорит, 🌊 крижана хвиля, 🌈 веселковий дощ, 💣 дощ бомб, 🤑 x3 очки та інші</li>
+                        <li><b>Модифікатори</b> — 🌋 Вулкан, 👻 Привиди, 🪐 Гравітація вбік, 💎 Скарби, 💰 Золота лихоманка</li>
+                        <li><b>Modern UI</b> — glassmorphism дизайн, анімований орб, кінематографічний game-over з score ring</li>
+                        <li><b>Епічні анімації</b> — deal-анімація карт, метеорний удар VFX, HP бар босів, event banners</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.10.0 — Dark Mode Polish (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Confirm Dialog</b> — dark mode для фону, тексту, кнопок та icon-варіантів (danger/success/warning)</li>
+                        <li><b>Timeline</b> — hover ефекти, age-reco секція, duration badges у dark mode</li>
+                        <li><b>Автоматизація</b> — dark mode для btn-auto-time, automation info/status тексту</li>
+                        <li><b>Статуси</b> — CSS-змінні --status-confirmed/preliminary/cancelled для dark mode</li>
+                        <li><b>Форми</b> — login placeholder, telegram badge, btn-undo/btn-danger hover</li>
+                        <li><b>Standalone</b> — quiz/room.html toast нотифікації, warehouse кнопка</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.9.0 — Match-3 Epic Edition (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Поле 9×9</b> — більше поле (було 8×8), 7 типів фігурок замість 6 (+🤡 Клоун)</li>
+                        <li><b>Хрест ✦</b> — новий спецблок (6+ в ряд): знищує весь рядок + стовпець одночасно</li>
+                        <li><b>Крижані клітинки ❄️</b> — випадково з'являються на полі, потрібно вдарити двічі щоб зламати</li>
+                        <li><b>Комбо-система</b> — 6 рівнів з унікальними ефектами: screen shake, flash, частинки, різні кольори</li>
+                        <li><b>Частинки</b> — кожен вибух спецблоку створює кольорові частинки (12-24 шт)</li>
+                        <li><b>Screen shake</b> — тремтіння екрану при комбо x1.5+, інтенсивність зростає</li>
+                        <li><b>Спалахи</b> — фіолетовий, синій або веселковий flash при комбо x2.0+</li>
+                        <li><b>MEGA комбо</b> — при x3.0 — вибуховий ефект з 30 частинками + веселковий flash</li>
+                        <li><b>Час</b> — 75 секунд замість 60 (більше поле = більше часу)</li>
+                        <li><b>Game Over</b> — оновлені пороги зірок (80/200/400), показ макс комбо</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.8.0 — Styled Dialogs (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Кастомні діалоги</b> — замінено ВСІ нативні confirm()/alert() на стилізовані модалки (19 файлів)</li>
+                        <li><b>Дизайн модалки</b> — кольорова смужка зверху (danger/success/warning), круглий іконовий блок, градієнтні кнопки, backdrop blur</li>
+                        <li><b>Анімації</b> — пружинний scale + fade in/out, hover з підйомом, active з натиском</li>
+                        <li><b>Dark mode</b> — повна підтримка темної теми для confirm-діалогів</li>
+                        <li><b>Fallback</b> — confirmModal() доступний на standalone сторінках через config.js</li>
+                        <li><b>Покупка</b> — стилізоване підтвердження + конфетті + toast замість ugly alert</li>
+                        <li><b>Chat</b> — всі alert() замінені на toast-нотифікації (файли, мікрофон, помилки)</li>
+                        <li><b>Cooldown reset</b> — скидання кулдаунів міні-гри для адмінів</li>
+                        <li><b>Kleshnya bridge fix</b> — LLM чат працює коли є ANTHROPIC_API_KEY, bridge тільки для медіа</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.7.0 — Match-3 Special Pieces (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Спецкуби</b> — 3 типи: Бомба 💣 (4 в ряд), Блискавка ⚡ (5+), Зірка 🌟 (L/T форма)</li>
+                        <li><b>Ланцюгові реакції</b> — спецкуби активують інші спецкуби при вибуху</li>
+                        <li><b>Combo</b> — візуальний popup x1.5, x2.0, x3.0 при каскадах</li>
+                        <li><b>Scoring fix</b> — реальний рахунок тепер росте без ліміту, монети окремо (макс 50)</li>
+                        <li><b>Game Over</b> — зірки рейтингу + повний рахунок + монети</li>
+                        <li><b>Квести</b> — міні-гра тепер зараховується в щоденні квести</li>
+                        <li><b>Дашборд</b> — виправлено розмитість (зменшено blur, збільшено непрозорість)</li>
+                        <li><b>Профіль</b> — вкладка перейменована, аватар відображається навіть без гейміфікації</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.6.0 — Stability & Version Bump (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Версія</b> — оновлення cache busters та версійних тегів</li>
+                        <li><b>Перевірка</b> — аудит усіх кнопок, хендлерів та маршрутів після великого мержу</li>
+                        <li><b>Стабільність</b> — підтверджена цілісність 217 файлів після мержу Messenger + Guardian + Dashboard + Gamification</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.5.0 — Gamification v2 (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Кімната</b> — візуальний Pixel Art Grid 8x6, шпалери, підлога, меблі, відвідувачі</li>
+                        <li><b>Ефекти аватарки</b> — 6 CSS-анімацій: іскри, полум'я, крига, веселка, блискавка, тінь</li>
+                        <li><b>Щоденні квести</b> — 3 з 8 щодня + мета-квест, прогрес-бари, нагороди</li>
+                        <li><b>Титули</b> — 12 рангів (Новачок → Чемпіон) з умовами розблокування</li>
+                        <li><b>Daily Login</b> — 7-денний цикл з наростаючою нагородою + бонус предмет</li>
+                        <li><b>Монети</b> — ресет + 500 стартових, нові предмети (23 шт: ефекти, шпалери, підлога, меблі)</li>
+                        <li><b>Mini Avatar</b> — голова персонажа з шапкою/рамкою/ефектом для чату</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.4.0 — Achievements System MVP (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Ігрова валюта</b> — 1000 стартових монет кожному, заробіток за задачі/ачивки/міні-гру</li>
+                        <li><b>17 ачивок</b> — робочі, соціальні, рідкісні, секретні, сезонні з прогресом</li>
+                        <li><b>Магазин</b> — фони, зброя, одяг, рамки + реальні купони (кава/піца)</li>
+                        <li><b>Інвентар</b> — візуальний RPG-стиль з equipped slots (6x3 сітка)</li>
+                        <li><b>Персонаж</b> — CSS-layers аватар з 5 шарами одягання</li>
+                        <li><b>Міні-гра "3 в ряд"</b> — 8x8, combo, 60 сек, до 50 монет/гру, антифарм</li>
+                        <li><b>Нотатки</b> — sticky notes в профілі з кольорами та pin</li>
+                        <li><b>Dark Mode</b> — виправлено HR, Фінанси, Навчання</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.3.0 — Game Profile (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Таб "Гра" в профілі</b> — клік на нікнейм відкриває досягнення, магазин, інвентар, лідерборд</li>
+                        <li><b>XP прогрес-бар</b> — рівень, титул, монети прямо в шапці профілю</li>
+                        <li><b>Магазин</b> — купуй предмети за монети з профілю</li>
+                        <li><b>Інвентар</b> — екіпуй/знімай предмети одним кліком</li>
+                        <li><b>Дашборд dark mode</b> — значно покращено контраст та видимість віджетів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.2.0 — Gamification MVP (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Gamification</b> — система досягнень, XP, рівні, монети, стріки, інвентар, магазин</li>
+                        <li><b>Achievement Catalog</b> — каталог досягнень з іконками та нагородами</li>
+                        <li><b>Leaderboard</b> — таблиця лідерів по XP та рівнях</li>
+                        <li><b>Shop</b> — магазин предметів за монети з інвентарем</li>
+                        <li><b>Dashboard fix</b> — покращено dark mode контраст віджетів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.1.0 — Messenger UX (Claude Code, 09.03.2026)</h4>
+                    <ul>
+                        <li><b>Пошук емодзі</b> — реальна фільтрація по ключових словах (укр/eng) замість показу всіх</li>
+                        <li><b>Lightbox</b> — повноекранний перегляд зображень з галереєю ←→ та навігацією клавішами</li>
+                        <li><b>Unread separator</b> — роздільник "Нові повідомлення" при переключенні каналів</li>
+                        <li><b>Scroll badge</b> — кнопка ↓ показує кількість нових повідомлень при скролі вгору</li>
+                        <li><b>Reaction popup</b> — hover на реакції показує список хто поставив (замість title)</li>
+                        <li><b>Drag overlay</b> — візуальне "Перетягніть файл сюди" з анімацією при drag&drop</li>
+                        <li><b>ARIA</b> — keyboard navigation в каналах, focus-visible, Escape закриває панелі</li>
+                        <li><b>Touch/Mobile</b> — safe-area-inset, 44px touch targets, збільшені кнопки</li>
+                        <li><b>Dashboard fix</b> — виправлені SQL запити віджетів (price, label, staff_schedule)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v22.0.0 — Dashboard + Roles + Navigation (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Dashboard</b> — нова персоналізована HOME-сторінка з віджетами (задачі, бронювання, графік, команда, погода, курси)</li>
+                        <li><b>25 ролей</b> — розширення з 10 до 25 ролей (бухгалтер, арт-директор, маркетолог, IT, HR, шеф-кухар, кондитер, рецепція, бариста, клінінг, технік та ін.)</li>
+                        <li><b>Навігація</b> — дашборд як головна, мердж /leads→/customers, /designs→/art, перейменування Персонал→Команда</li>
+                        <li><b>Тест-панель</b> — creator може переключати ролі для тестування інтерфейсів</li>
+                        <li><b>Onboarding</b> — вибір віджетів при першому вході на дашборд</li>
+                        <li><b>Widget API</b> — /api/dashboard/* ендпоінти, кеш для погоди/курсів</li>
+                        <li><b>Role DB</b> — нова таблиця role_definitions з 25 ролями, departments, parent_role</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.15.0 — Unified Navigation (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Sidebar NAV_ITEMS</b> — розширено з 9 до 18 пунктів навігації (додано Чат, Програми, Дизайни, Кадри, Фінанси, Аналітика, Ліди, Демо, Статус)</li>
+                        <li><b>Sidebar.init()</b> — динамічна навігація на всіх 15 standalone-сторінках (було тільки на training.html)</li>
+                        <li><b>Role-based sidebar</b> — автоматичне приховування пунктів за роллю на всіх сторінках</li>
+                        <li><b>Hardcoded nav</b> — замінено ручну HTML-навігацію на JS-інжекцію через sidebar.js</li>
+                        <li><b>Toast notification</b> — уніфікована система сповіщень на всіх 12 page-JS файлах (було #notification → тепер #toastContainer)</li>
+                        <li><b>Fallback toast</b> — config.js надає showNotification() для сторінок без ui.js</li>
+                        <li><b>PAGE_ACCESS</b> — додано /chat та /leads до матриці доступу</li>
+                        <li><b>Leads</b> — додано sidebar і правильну структуру сторінки</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.14.0 — Polish + A11y + Tablet (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Версії</b> — синхронізовано ?v= теги на всіх 13 standalone-сторінках</li>
+                        <li><b>iOS zoom</b> — font-size 16px на всіх input/select/textarea (запобігає автозум)</li>
+                        <li><b>Touch targets</b> — мінімум 44px для кнопок та інтерактивних елементів (WCAG 2.1)</li>
+                        <li><b>Tablet</b> — новий breakpoint 769-1023px: вужчий sidebar (200px), адаптивні колонки</li>
+                        <li><b>Dark mode</b> — автоматична ініціалізація на всіх standalone-сторінках через config.js</li>
+                        <li><b>Accessibility</b> — 111 aria-label додано, контраст --gray-400 підвищено до WCAG AA (4.5:1)</li>
+                        <li><b>Offline UI</b> — toast "Ви офлайн" при втраті зв'язку, "Синхронізовано" при відновленні</li>
+                        <li><b>WebSocket</b> — toast "Перепідключення..." при розриві, "Синхронізовано" при реконнекті</li>
+                        <li><b>Kleshnya CSS</b> — видалено orphaned responsive стилі для kleshnya widget</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.13.0 — Role Dashboard + Hierarchy (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Клешня</b> — видалено кнопку "Клешня" з навігації всіх 13 сторінок</li>
+                        <li><b>Ієрархія ролей</b> — візуалізація 10 ролей по 4 рівнях (Керівництво → Управління → Операційний → Польовий)</li>
+                        <li><b>Role-based інтерфейс</b> — різні інформаційні панелі залежно від ролі (KPI/Команда/Фінанси vs Задачі/Стрік/Поради)</li>
+                        <li><b>Дашборд задач</b> — завжди відкритий блок внизу з активними задачами, статусами, пріоритетами</li>
+                        <li><b>Фільтр по всіх ролях</b> — dropdown з іконками для кожної з 10 ролей</li>
+                        <li><b>Дайджест</b> — виправлено відображення помилки (тепер показує конкретну причину)</li>
+                        <li><b>Журнал безпеки</b> — виправлено перекриття заголовка при скролі</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.12.0 — Dark Mode Fix + Night Settings (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Кнопка Тема</b> — виправлено ручне перемикання темної теми (checkbox і іконка тепер синхронізуються при завантаженні)</li>
+                        <li><b>Налаштування ночі</b> — ⚙️ панель з вибором годин початку/кінця авто-ночі</li>
+                        <li><b>Авто нічна тема</b> — checkbox для вмикання/вимикання автоматичного режиму</li>
+                        <li><b>Скинути до авто</b> — кнопка для повернення до автоматичного режиму після ручного перемикання</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.11.0 — Messenger Mega Pack (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Markdown</b> — **жирний**, *курсив*, ~~закреслено~~, `код`, ```блок коду```, > цитати</li>
+                        <li><b>Read receipts</b> — галочки ✓ прочитано / ✓✓ доставлено</li>
+                        <li><b>Файли</b> — drag & drop або 📎 для завантаження файлів, зображень, документів</li>
+                        <li><b>Пересилання</b> — контекстне меню → переслати в інший канал</li>
+                        <li><b>Закладки</b> — зберігай повідомлення в особисту бібліотеку 🔖</li>
+                        <li><b>Розширений пошук</b> — глобальний пошук по всіх каналах з фільтрами</li>
+                        <li><b>Треди</b> — відповіді у гілках (власна інфраструктура)</li>
+                        <li><b>Шаблони</b> — /шаблон для швидких відповідей з slash-popup</li>
+                        <li><b>Голосові повідомлення</b> — запис 🎙 з аудіо-хвилею та таймером</li>
+                        <li><b>GIF панель</b> — пошук та відправка GIF через Tenor API</li>
+                        <li><b>Стікери</b> — 🦕 набір Dino-стікерів з превʼю</li>
+                        <li><b>Автопереклад</b> — 🌐 переклад повідомлень в один клік</li>
+                        <li><b>Відкладені повідомлення</b> — ⏰ запланувати відправку на потім</li>
+                        <li><b>Самознищення</b> — /зникне 5 — повідомлення зникає через N хвилин з countdown-бейджем</li>
+                        <li><b>Push-сповіщення</b> — PWA push з dino-іконками для офлайн-користувачів</li>
+                        <li><b>Статистика чату</b> — 📊 коефіцієнт премії, рейтинг команди, прогрес-бари</li>
+                        <li><b>Link preview fix</b> — виправлено імпорт db/pool у linkPreview та routes/chat</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.10.0 — Guardian Bugfix (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Мут-повідомлення</b> — виправлено текст "15 хв" на реальну тривалість "1 хв"</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.9.0 — Chat Mega Upgrade (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Бан-фікс</b> — апеляція тепер знімає бан а не викидає з системи</li>
+                        <li><b>Online-статус</b> — зелена пульсуюча крапка на аватарках</li>
+                        <li><b>Гігантські стікери</b> — emoji-only повідомлення 80px з bounce-анімацією</li>
+                        <li><b>Градієнтні бабли</b> — власні повідомлення змінюють колір залежно від часу доби</li>
+                        <li><b>Хвиля друку</b> — аудіо-хвиля замість крапок + міні-аватар того хто пише</li>
+                        <li><b>Swipe-to-reply</b> — на мобільних свайп вправо = відповісти</li>
+                        <li><b>Кольорові ролі</b> — адмін=червоний, аніматор=фіолет, касир=синій градієнти</li>
+                        <li><b>Ачівки</b> — конфетті + toast при досягненнях (click щоб забрати)</li>
+                        <li><b>Link preview</b> — автоматичні карточки з посилань</li>
+                        <li><b>Pinned bar</b> — закріплене повідомлення зверху каналу</li>
+                        <li><b>Mood gradient</b> — фон чату міняється від настрою Guardian</li>
+                        <li><b>Dino-аватарки</b> — парк-маскоти 🦕🦖🦎🐊🦴🌴🌋🥚 що моргають</li>
+                        <li><b>Авто нічний режим</b> — 22:00-07:00 синхронізація з dark mode</li>
+                        <li><b>Reaction combo</b> — 3+ пульсує, 5+ HOT badge</li>
+                        <li><b>Easter eggs</b> — /rain 🦕, /party 🪩, /snow ❄️, /confetti 🎊</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.8.0 — Complex Emoji Effects v2 (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Вогонь v2</b> — 4-шарова система: полум'я + вуглинки + теплове марево + дим</li>
+                        <li><b>Вибух 💥</b> — ударна хвиля + радіальні уламки з гравітацією</li>
+                        <li><b>Торнадо 🌪️</b> — хаотичне кружляння з летючим сміттям</li>
+                        <li><b>Сніг ❄️</b> — падаючі сніжинки з мерехтінням</li>
+                        <li><b>Череп 💀</b> — темний вихор з душами-привидами</li>
+                        <li><b>Веселка 🌈</b> — hue-rotate через весь спектр кольорів</li>
+                        <li><b>Діамант 💎</b> — кристалічне мерехтіння з facet-спалахами</li>
+                        <li><b>Покращені</b> — серця з trail, конфетті з гравітацією, блискавка з flash</li>
+                    </ul>
+                    <button type="button" class="btn-demo-effects" id="btnDemoEffects" style="margin:12px 0 8px;padding:10px 20px;background:linear-gradient(135deg,#ff6b35,#f7c948,#4ecdc4,#6c5ce7);color:#fff;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:15px;letter-spacing:0.5px;box-shadow:0 4px 15px rgba(108,92,231,0.3);transition:all 0.3s ease">
+                        Спробувати ефекти на цій сторінці
+                    </button>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.7.1 — Mute Appeal UI Redesign (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Апеляція виправлена</b> — кнопка тепер працює коректно (виправлено позиціювання та порівняння ID)</li>
+                        <li><b>Новий дизайн блокування</b> — glassmorphism картка з SVG кільцевим таймером зворотного відліку</li>
+                        <li><b>Анімації</b> — пульсуючий glow, плаваючий щит, плавна анімація зникнення</li>
+                        <li><b>Кнопка апеляції</b> — градієнтна кнопка з hover/loading ефектами</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.7.0 — Guardian v2 + Emoji Effects (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Guardian v2</b> — тихий режим: більше ніяких публічних повідомлень, лише 👀 спостерігає зверху</li>
+                        <li><b>Mood System</b> — 10 настроїв Guardian що змінюються від активності (😊😤🧐😴🫡🛡️☕🎯👀🤨)</li>
+                        <li><b>DM Директору</b> — при інцидентах Guardian пише директору в особисті</li>
+                        <li><b>Журнал безпеки</b> — панель логів в реальному часі для адмінів (кнопка 🛡️ зверху)</li>
+                        <li><b>Апеляція</b> — замість таймера тепер кнопка "Подати апеляцію" знімає бан миттєво</li>
+                        <li><b>Розширений фільтр</b> — 100+ слів з фазі-матчингом (лет-спік, спецсимволи, пробіли)</li>
+                        <li><b>AI навчання</b> — LLM автоматично знаходить і додає нові матюки до фільтра</li>
+                        <li><b>Видалення</b> — токсичні повідомлення тепер видаляються, а не просто блокуються</li>
+                        <li><b>Фон чату</b> — індивідуальний для кожного каналу</li>
+                        <li><b>Аватарки</b> — emoji-аватар + колір фону для профілю</li>
+                        <li><b>Задачі з чату</b> — ПКМ → "Створити задачу" з повідомлення</li>
+                        <li><b>Emoji-ефекти</b> — 🔥 палає, ❤️ літає, 🎉 конфетті, ⚡ блискавка при реакціях</li>
+                        <li><b>Маскування v2</b> — покращена підтримка карток (13-20 цифр, 5 груп)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.6.0 — Kleshnya Bot + Guardian (Claude Code, 08.03.2026)</h4>
+                    <ul>
+                        <li><b>Kleshnya в чаті</b> — бот OpenClaw відповідає на повідомлення в командному месенджері</li>
+                        <li><b>DM з ботом</b> — пиши напряму OpenClaw без @mention, він відповість на все</li>
+                        <li><b>@openclaw в каналах</b> — згадай бота в будь-якому каналі і отримай відповідь</li>
+                        <li><b>BOT badge</b> — повідомлення бота з зеленим градієнтом, аватаром 🦀 і бейджем BOT</li>
+                        <li><b>Guardian 🛡️</b> — AI-охоронець чату: модерація, маскування даних, щоденні звіти</li>
+                        <li><b>Маскування</b> — телефони, картки, IBAN, email, паспорти автоматично маскуються зірочками</li>
+                        <li><b>Антисварка</b> — Guardian блокує на 15 хв за нецензурну лексику та агресію</li>
+                        <li><b>Звіти</b> — щоденний AI-звіт о 21:00 з головним за день у кожному каналі</li>
+                        <li><b>Анімації Guardian</b> — shield-pulse, typing-dots, slide-in для повідомлень охоронця</li>
+                        <li><b>HTML fix</b> — повідомлення ботів тепер правильно рендерять &lt;b&gt;, &lt;i&gt; теги</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.5.0 — Elegant Chat (Claude Code, 07.03.2026)</h4>
+                    <ul>
+                        <li><b>Елегантний дизайн</b> — легші бабли, м'якіші тіні, більше повітря між повідомленнями</li>
+                        <li><b>Анімації</b> — slide-in повідомлень зліва/справа, pop для кнопок, пружинний hover</li>
+                        <li><b>Input поле</b> — тонша рамка, фокус-glow кільце, чистий білий фон</li>
+                        <li><b>Send кнопка</b> — emerald glow тінь, масштабування при наведенні</li>
+                        <li><b>Dark mode</b> — фіолетовий glow для інпуту, покращені тіні елементів</li>
+                        <li><b>CRM нотифікації</b> — toast-повідомлення коли прийшов чат не з chat сторінки</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.4.0 — CRM Integration (Claude Code, 07.03.2026)</h4>
+                    <ul>
+                        <li><b>DM виправлено</b> — особисті повідомлення тепер працюють (баг SQL параметрів)</li>
+                        <li><b>Read receipts</b> — галочки ✓ відправлено / ✓✓ прочитано</li>
+                        <li><b>CRM інтеграція</b> — авто-повідомлення в #бронювання при створенні бронювання</li>
+                        <li><b>/task @username</b> — призначення задач з чату конкретному користувачу</li>
+                        <li><b>Пошук повідомлень</b> — серверний пошук по всіх каналах через API</li>
+                        <li><b>Дедуплікація</b> — client_message_id запобігає подвійним повідомленням</li>
+                        <li><b>Dark mode</b> — фіолетові бабли у Telegram стилі</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.3.0 — Messenger Pro (Claude Code, 07.03.2026)</h4>
+                    <ul>
+                        <li><b>Emoji-панель</b> — повноцінний Telegram-style вибір емоджі з категоріями, пошуком та частими</li>
+                        <li><b>Особисті повідомлення</b> — DM між користувачами, окремі приватні розмови</li>
+                        <li><b>Профіль</b> — перегляд профілю користувача (клік на аватар/ім'я), роль, відділ, телефон</li>
+                        <li><b>Додавання учасників</b> — додавання нових учасників в канали через модальне вікно</li>
+                        <li><b>Задачі в чаті</b> — створення задач прямо з чату командою /task або /задача</li>
+                        <li><b>Кнопки</b> — виразні стани active/inactive з заливкою кольором</li>
+                        <li><b>Mute стан</b> — кнопка mute зберігає стан при перемиканні каналів</li>
+                        <li><b>Kleshnya</b> — навігація до Клешні інтегрована в профілі та задачах</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.2.0 — Full Messenger (Claude Code, 07.03.2026)</h4>
+                    <ul>
+                        <li><b>Нові канали</b> — створення власних каналів через модальне вікно</li>
+                        <li><b>Редагування</b> — редагування своїх повідомлень (ПКМ → Редагувати)</li>
+                        <li><b>Видалення</b> — видалення своїх повідомлень з підтвердженням</li>
+                        <li><b>Закріплення</b> — pin повідомлень з панеллю перегляду</li>
+                        <li><b>Mute</b> — вимкнення сповіщень для конкретного каналу</li>
+                        <li><b>Контекстне меню</b> — повноцінне меню ПКМ на повідомленнях (reply, edit, pin, react, delete)</li>
+                        <li><b>Панель учасників</b> — список учасників каналу з аватарками</li>
+                        <li><b>WS Events</b> — реалтайм оновлення при edit/delete іншими юзерами</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.1.0 — Messenger UI Polish (Claude Code, 07.03.2026)</h4>
+                    <ul>
+                        <li><b>Дизайн</b> — повний редизайн чату: SVG-іконки замість emoji, чистий мінімалістичний стиль</li>
+                        <li><b>Пошук</b> — пошук повідомлень по каналу з підсвіткою знайдених</li>
+                        <li><b>Учасники</b> — бічна панель з учасниками каналу</li>
+                        <li><b>Кольори</b> — кольорові аватарки та юзернейми (8 кольорів)</li>
+                        <li><b>Групування</b> — послідовні повідомлення від одного юзера групуються</li>
+                        <li><b>URL-лінки</b> — автоматичне перетворення URL у клікабельні лінки</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v21.0.0 — Team Messenger (Claude Code, 07.03.2026)</h4>
+                    <ul>
+                        <li><b>Месенджер</b> — вбудований командний чат з каналами (#команда, #бронювання, #каса, #технічний)</li>
+                        <li><b>Реалтайм</b> — миттєві повідомлення через WebSocket, typing indicator</li>
+                        <li><b>@Mentions</b> — згадки колег з автокомплітом та звуковими сповіщеннями</li>
+                        <li><b>Реакції</b> — emoji-реакції на повідомлення (👍❤️😂🔥👀✅)</li>
+                        <li><b>Reply</b> — відповіді на конкретні повідомлення з preview</li>
+                        <li><b>Offline</b> — черга повідомлень при відсутності з'єднання</li>
+                        <li><b>Unread Badge</b> — лічильник непрочитаних у навігації на всіх сторінках</li>
+                        <li><b>Звуки</b> — 6 звукових нотифікацій (нове повідомлення, відправлено, mention)</li>
+                        <li><b>Dark Mode</b> — повна підтримка темної теми з фіолетовими бабблами</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v23.4.0 — Lead Capture Integration (Claude Code, 11.03.2026)</h4>
+                    <ul>
+                        <li><b>Telegram Lead Capture</b> — нові звернення в бот = автоматичний лід в CRM</li>
+                        <li><b>Webhook API</b> — Universal, Facebook, Instagram, Viber ендпоінти</li>
+                        <li><b>Оновлені джерела</b> — TG, FB, IG, Viber, TikTok, Turbo, BnD в UI</li>
+                        <li><b>Нотифікації</b> — менеджери отримують Telegram-сповіщення при новому ліді</li>
+                        <li><b>DB Migration 053</b> — external_id, raw_payload, source_channel</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v23.3.0 — OmniClaw Security Hardening (Claude Code, 11.03.2026)</h4>
+                    <ul>
+                        <li><b>Webhook Auth</b> — HMAC-SHA256 для Viber, X-Hub-Signature-256 для Meta, X-Webhook-Secret для SMS/Binotel</li>
+                        <li><b>API Security</b> — FB/IG токени з URL в Authorization header, Graph API v21.0</li>
+                        <li><b>Pool Safety</b> — pool.connect() в try-catch (5 місць), запобігає unhandled rejection</li>
+                        <li><b>Input Validation</b> — truncate names/phones, whitelist status/channel, parseId на route params</li>
+                        <li><b>HTTP Checks</b> — перевірка status code в усіх 4 API адаптерах (FB, IG, SMS, Viber)</li>
+                        <li><b>Normalizer</b> — safeCoords, safeString, isValidUrl, E.164 phone cap (15 digits)</li>
+                        <li><b>Timing-Safe</b> — crypto.timingSafeEqual для всіх signature перевірок</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.12.1 — Version API & Fresh DB Fix (Claude Code, 07.03.2026)</h4>
+                    <ul>
+                        <li><b>Version API</b> — GET /api/version — публічний ендпоінт з версією системи</li>
+                        <li><b>Health</b> — /api/health тепер включає поле version</li>
+                        <li><b>Fresh DB</b> — фікс міграції 005 для розгортання на чистій БД</li>
+                        <li><b>Тести</b> — 5 нових тестів на version endpoint</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.12.0 — Swagger & Developer Experience (Claude Code, 07.03.2026)</h4>
+                    <ul>
+                        <li><b>Swagger</b> — оновлено OpenAPI spec v16.2→v20.12 (+12 endpoints: leads, customers, workers, finance, health)</li>
+                        <li><b>Auth</b> — глобальна JWT авторизація в Swagger UI (bearerAuth)</li>
+                        <li><b>Logger</b> — FrontendLogger з рівнями (debug/info/warn/error) через localStorage</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.11.0 — Form Validation & Accessibility (Claude Code, 07.03.2026)</h4>
+                    <ul>
+                        <li><b>Валідація</b> — real-time перевірка полів бронювання (aria-invalid, red border)</li>
+                        <li><b>Незбережені зміни</b> — попередження при виході зі сторінки з незбереженими даними</li>
+                        <li><b>Клавіатура</b> — Arrow keys для навігації між бронюваннями на таймлайні</li>
+                        <li><b>A11y</b> — aria-required, aria-label, focus-visible на booking blocks</li>
+                        <li><b>Login</b> — autocomplete атрибути для username/password</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.10.0 — UX Polish & Observability (Claude Code, 07.03.2026)</h4>
+                    <ul>
+                        <li><b>WS Status</b> — індикатор з'єднання (зелений/червоний dot) у шапці</li>
+                        <li><b>Offline Badge</b> — лічильник pending мутацій при відсутності мережі</li>
+                        <li><b>Toast Stack</b> — до 3 сповіщень одночасно замість одного</li>
+                        <li><b>CSV Експорт</b> — кнопка «📥 CSV» в модалці історії змін</li>
+                        <li><b>Console Cleanup</b> — видалено 26 console.log з frontend (ws, offline, timeline)</li>
+                        <li><b>Login Fix</b> — кнопки ☰ і 💡 більше не видно на екрані входу</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.27 — Security Hardening (Claude Code, 05.03.2026)</h4>
+                    <ul>
+                        <li><b>Telegram</b> — токен бота тепер тільки через змінну середовища (не в коді)</li>
+                        <li><b>Proxy</b> — rate limiter тепер бачить реальний IP клієнта за Railway proxy</li>
+                        <li><b>JWT</b> — сервер не запуститься в production без JWT_SECRET</li>
+                        <li><b>Debug</b> — видалено debug-login endpoint (витік даних користувачів)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.26 — Performance + Compatibility (Claude Code, 05.03.2026)</h4>
+                    <ul>
+                        <li><b>Gzip</b> — стиснення всіх відповідей сервера (швидше завантаження)</li>
+                        <li><b>Safari/Firefox</b> — виправлено експорт таймлайну + blur-ефекти</li>
+                        <li><b>Minimap</b> — не перемальовується без змін (менше навантаження)</li>
+                        <li><b>Пошук програм</b> — плавніший з debounce, іконки кешуються</li>
+                        <li><b>4 нових індекси БД</b> — швидші запити по програмах, історії, задачах</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.25 — Price Sync (Claude Code, 04.03.2026)</h4>
+                    <ul>
+                        <li><b>Ціни</b> — централізовані ціни з Центру тепер синхронізуються з каталогом програм (products)</li>
+                        <li><b>Ціни</b> — діалог підтвердження при зміні ціни замість автозбереження</li>
+                        <li><b>Ціни</b> — можливість обрати дату введення ціни в дію (зараз або інший день)</li>
+                        <li><b>Ціни</b> — прив'язка price_rules до програм (🔗) — натисніть «Прив'язати» в таблиці</li>
+                        <li><b>Міграція 028</b> — product_id і effective_from в price_rules, авто-прив'язка animation_60/120</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.24 — Sidebar Cleanup + CSP Fix (Claude Code, 04.03.2026)</h4>
+                    <ul>
+                        <li><b>Sidebar</b> — видалено зайву вкладку «Статус» з усіх сторінок</li>
+                        <li><b>Sidebar</b> — видалено дубль «Аналітика» (тепер тільки через Центр)</li>
+                        <li><b>Центр</b> — видалено tab «Статус», залишено Огляд/Фінанси/Аналітика</li>
+                        <li><b>Центр</b> — iframe Аналітики та Фінансів тепер працюють (embed mode)</li>
+                        <li><b>CSP</b> — дозволено iframe з того ж домену (X-Frame-Options SAMEORIGIN)</li>
+                        <li><b>CSP</b> — connect-src: додано Railway.app API + Google Sheets</li>
+                        <li><b>CSP</b> — frame-src 'self' для коректної роботи iframe</li>
+                        <li><b>Embed</b> — programs.html, designs.html тепер коректно працюють в iframe (Art Director)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.23 — Leads Dark Mode Fix (Claude Code, 04.03.2026)</h4>
+                    <ul>
+                        <li><b>Ліди</b> — виправлено dark mode: селектори, фон, текст, select dropdown</li>
+                        <li><b>Ліди</b> — захист від mis-click: підтвердження закриття модалки з незбереженими даними</li>
+                        <li><b>Telegram</b> — повністю вимкнено нотифікації при скасуванні (notifyTelegram + publishEvent + rule)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.22 — Bugfix: 500s + Telegram (Claude Code, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Fix</b> — /center/clients: loyalty_tier → loyalty_tier_id (колонка не існувала)</li>
+                        <li><b>Fix</b> — /center/briefing: timestamp vs text cast для deadline (500 error)</li>
+                        <li><b>Fix</b> — /events/overview: result замість status в rule_execution_log</li>
+                        <li><b>Fix</b> — Telegram: прибрано дублюючу нотифікацію при скасуванні (notifyTelegram + rule engine)</li>
+                        <li><b>Fix</b> — Telegram: додано fallback TELEGRAM_THREAD_ID з env</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.21 — 91% Test Coverage (Claude Code, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Тести</b> — +22 нових файли: afisha, products, points, telegram, backup, task-templates, employees, sales, contractors, center, support, art-director, svitlana, workers, kleshnya, designs, demo, status, print, music, event-queue, scripts</li>
+                        <li><b>Покриття</b> — 797 тестів загалом, 0 fail, 91% маршрутів покрито</li>
+                        <li><b>Helpers</b> — додано publicRequest() для тестів без авторизації</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.20 — Full Test Suite (Claude Code, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Тести</b> — +9 нових файлів: analytics, loyalty, procurement, HR, users, board, search, packages, training</li>
+                        <li><b>Покриття</b> — 75 нових тестів, загальне: 176 API тестів (~56% ендпоінтів)</li>
+                        <li><b>HR</b> — зміни, clock-in/out, шаблони, звіти</li>
+                        <li><b>Loyalty</b> — тієри, знижки, пропозиції, валідація кодів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.19 — Test Coverage Expansion (Claude Code, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Тести</b> — 6 нових тестових файлів: leads, customers, finance, staff, tasks, warehouse</li>
+                        <li><b>Покриття</b> — 101 новий API тест, загальне покриття ~13% → ~39%</li>
+                        <li><b>Finance</b> — тести категорій, транзакцій, дашборду, бюджету, звітів</li>
+                        <li><b>Warehouse</b> — тести CRUD, use/restock, історія, soft delete</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.18 — Leads UI Polish (Claude Code, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Ліди</b> — повний редизайн сторінки /leads: layout, хедер, кнопки, фільтри</li>
+                        <li><b>UI</b> — standalone page стилі, hover-ефекти, focus-кільця, backdrop-blur на модалці</li>
+                        <li><b>Responsive</b> — мобільна адаптація тулбару і фільтрів</li>
+                        <li><b>Dark mode</b> — повна підтримка темної теми для всіх елементів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.17 — Тестовий деплой (Claude Code, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Деплой</b> — тестовий деплой для перевірки працездатності системи</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.16 — Task visibility by role (Claude Code, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Безпека</b> — задачі фільтруються по ролі: creator/director бачать все, manager — свій відділ, інші — тільки свої</li>
+                        <li><b>Конфіг</b> — гнучка система ролей config/roles.js (легко додати нові ролі)</li>
+                        <li><b>API</b> — новий endpoint GET /api/tasks/permissions для перевірки прав</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.15 — Staff Extension (Claude Code, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>HR</b> — нові поля: Telegram username, тип контракту (fulltime/parttime/contract), навички</li>
+                        <li><b>БД</b> — staff: contract_type VARCHAR(20), skills TEXT[]</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.14 — Banquet Booking (Claude Code, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Бронювання</b> — банкетні поля: меню, кількість гостей, кількість столів</li>
+                        <li><b>Таймлайн</b> — банкетні блоки з жовтим стилем (amber gradient)</li>
+                        <li><b>Форма</b> — автоматичне відображення банкетних полів при виборі категорії "банкет"</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.13 — Leads Page (Claude Code, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Ліди</b> — повноцінна сторінка /leads з фільтрами, пошуком, статистикою воронки</li>
+                        <li><b>API</b> — розширено: instagram, source, lost_reason, booking_id + GET /api/leads/stats</li>
+                        <li><b>Конверсія</b> — кнопка "Конвертувати в бронювання" з pre-fill даних</li>
+                        <li><b>Навігація</b> — додано "Ліди" в sidebar</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.12 — Supabase Customers (Claude Code, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Міграція</b> — customers переведено на Supabase з fallback на Railway DB</li>
+                        <li><b>API</b> — POST /api/customers/migrate-to-supabase для міграції даних</li>
+                        <li><b>Бронювання</b> — створення клієнтів через Supabase при доступності</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.11 — Timeline: клік на афішу більше не відкриває модал (Клешня, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>UX</b> — клік на рядок/клітинку афіші в таймлайні більше не відкриває попап (переноситься в Налаштування)</li>
+                        <li><b>Фікс</b> — чекбокс "ДАНІ КЛІЄНТА" не відображався на Mac Safari/Chrome</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.10 — Mac Safari чекбокс fix (Клешня, 03.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — чекбокс "ДАНІ КЛІЄНТА" не відображався на Mac Safari/Chrome (cross-platform fix)</li>
+                        <li><b>UX</b> — явний розмір, accent-color, uppercase стиль — однаково на всіх платформах</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.9 — Stability & Security (Клешня, 02.03.2026)</h4>
+                    <ul>
+                        <li><b>Стабільність</b> — null guard для getElementById в таймлайні (5 місць), усуває рідкісні крашi</li>
+                        <li><b>Безпека</b> — прибрано X-Powered-By заголовок (не розкриває стек)</li>
+                        <li><b>Аудит</b> — перевірка синтаксису всіх JS/routes/services — чисто ✅</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.8 — Dark Mode Fix (Клешня, 02.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — в темній темі кнопка "Тема" мала чорний текст — тепер білий</li>
+                        <li><b>Фікс</b> — активний стан toggle-mini в dark mode: текст/емодзі білі (!important)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.7 — Room 100% + iOS Touch (Клешня, 02.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — будь-яке бронювання в кімнаті = 100% заповненість на весь день</li>
+                        <li><b>Фікс</b> — iOS/Chrome: touch-action manipulation на кнопках сертифіката</li>
+                        <li><b>Фікс</b> — глобальний фікс 300ms tap delay для всіх кнопок на iOS</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.6 — Room Style Fix (Клешня, 02.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — snake_case/camelCase для program_code при визначенні оренди кімнати</li>
+                        <li><b>Фікс</b> — стиль кнопки кімнати (сірий фон, не зелений при активному стані)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.5 — UI Bugfix (Клешня, 02.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — кнопка "Кімнати": стиль активного стану виправлено (без зеленого заповнення)</li>
+                        <li><b>Фікс</b> — оренда кімнати = 100% заповненість на весь день</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.4 — Bugfix Release (Клешня, 02.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — повідомлення скасування бронювань: змінні {booking_number}, {label}, {time} тепер коректно заповнюються</li>
+                        <li><b>Фікс</b> — дублювання бронювань в 00:00 при drag-and-drop (NaN guard)</li>
+                        <li><b>Фікс</b> — сумісність з iPhone 11 Safari: кнопка сертифіката, viewport height</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.3 — Event Feed + Dark Mode Polish (Claude Code, 27.02.2026)</h4>
+                    <ul>
+                        <li><b>📜 Стрічка подій</b> — повна історія з 25+ типами дій, деталями бронювань/афіш/сертифікатів</li>
+                        <li><b>🌙 Dark Mode</b> — глобальний фікс контрасту (gray-400/500 токени), кнопки Тема/Кімнати, бейджі tasks.html</li>
+                        <li><b>⚙️ Цілі</b> — виправлено кнопку налаштувань (розгортає секцію автоматично)</li>
+                        <li><b>🎨 Center Page</b> — dark mode для кнопок цін, event timeline, hot leads</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.2 — UI Cleanup + Dark Mode Fix (Claude Code, 27.02.2026)</h4>
+                    <ul>
+                        <li><b>🗑️ Quick Stats</b> — видалено зайву панель статистики (дублювала дашборд)</li>
+                        <li><b>🌙 Dark Mode</b> — виправлено кнопку "Кімнати" (білий фон → glass), контраст "10:00-20:00"</li>
+                        <li><b>📨 Скасування</b> — виправлено {booking_number} в Telegram повідомленні при відміні бронювання</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.1 — FAB Fix + Idle Hints (Claude Code, 27.02.2026)</h4>
+                    <ul>
+                        <li><b>🔘 FAB кнопки</b> — виправлено накладання: 44px, вертикальний стек з 8px проміжком</li>
+                        <li><b>💬 Idle Hints</b> — хмаринки-підказки біля ☰ кнопки при бездіяльності (3-5 хв)</li>
+                        <li><b>🎬 Перший запуск</b> — підказка з'являється через 5 сек на таймлайні</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.9.0 — Rebranding: Event Maestro → Event Genix (Claude Code, 27.02.2026)</h4>
+                    <ul>
+                        <li><b>🔤 Event Genix</b> — повний ребрендинг: Event Maestro → Event Genix у 35+ файлах</li>
+                        <li><b>🔠 Абревіатура</b> — EM → GX у sidebar навігації</li>
+                        <li><b>✏️ Space Grotesk</b> — новий шрифт для заголовків (Brand Guide v0.1)</li>
+                        <li><b>📝 Inter</b> — основний шрифт замість Nunito</li>
+                        <li><b>🎨 Палітра</b> — оновлений gold accent #C9A84C, dark background #0D0D0D</li>
+                        <li><b>📦 Конфіги</b> — package.json, manifest.json, sw.js оновлені</li>
+                        <li><b>🧪 Тести</b> — оновлено перевірку назви сайту в api.test.js</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.8.0 — Navigation Cleanup + UX (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>📋 Командна панель</b> — редизайн: slide-in з правого краю + FAB-кнопка завжди видима</li>
+                        <li><b>🎨 Арт-сторінка</b> — перейменовано з "Art Director", додано вкладки "Програми" та "Дизайни" (read-only iframe)</li>
+                        <li><b>🖼️ Дизайни</b> — виправлено відображення зображень (onerror fallback) + завантаження через API endpoint</li>
+                        <li><b>🎭 Афіша</b> — переміщення між лінійками через контекстне меню (PATCH /api/afisha/:id/line)</li>
+                        <li><b>🧭 Навігація</b> — прибрано дублікати Event Genix логотипу з хедерів усіх сторінок</li>
+                        <li><b>📊 Центр</b> — видалено посилання на Клешню, Analytics/Finance/Status вже як iframe-вкладки</li>
+                        <li><b>🔧 Sidebar</b> — фінальний набір: Таймлайн, Центр, Задачі, Арт, Клієнти, Персонал, Склад, Навчання, Event Genix, Налаштування</li>
+                        <li><b>🚪 Status</b> — додано кнопку "Назад до Центру" + лого як посилання на головну</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.7.1 — Bugfix Patch (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>🔴 leads.program_id</b> — тип INT→VARCHAR(50), JOIN з products більше не падає</li>
+                        <li><b>🔴 await getConfiguredChatId()</b> — Telegram алерти гарячих лідів тепер працюють</li>
+                        <li><b>🛡️ XSS-захист</b> — escapeHtml() в звітах, лідах, конверсії менеджерів</li>
+                        <li><b>🔧 training.js</b> — транзакція для INSERT+UPDATE запобігає дублям</li>
+                        <li><b>🔧 leads.js</b> — фікс дублікату last_contact_at + валідація assigned_to</li>
+                        <li><b>🔧 page-statuses</b> — помилка DB більше не ховається за success:true</li>
+                        <li><b>🔧 command-panel</b> — revenue undefined перехоплюється коректно</li>
+                        <li><b>📄 HTML</b> — 7 незакритих &lt;/div&gt; в changelog + ?v= на 4 сторінках</li>
+                        <li><b>🗄️ telegram_id</b> — BIGINT→VARCHAR(20) в training таблицях</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.7.0 — Sales Features (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>🔥 Гарячі ліди</b> — трекінг запитів, авто-задачі через 24 год, Telegram алерти, UI в Центрі</li>
+                        <li><b>📊 Конверсія менеджерів</b> — таблиця ефективності з прогрес-барами в Центрі</li>
+                        <li><b>💡 Рекомендації по віку</b> — підказки програм за віком дитини в формі бронювання</li>
+                        <li><b>📋 Скрипти продажів</b> — швидкий доступ до фраз (заперечення, закриття, апсейл) з кнопкою "Копіювати"</li>
+                        <li><b>⏰ Auto follow-up</b> — автоматична задача підтвердження за 2 дні до свята</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.6.0 — Status Badges + Menu Refactor (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>Статус-бейджики</b> — кольорові індикатори стану кожної сторінки в sidebar</li>
+                        <li><b>5 статусів</b> — build (🔴), test (🟠), upd (🟡), live (🔵), ready (🟢)</li>
+                        <li><b>Рефакторинг меню</b> — видалено дублюючі посилання з dropdown таймлайну</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.5.0 — Sales Techniques (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>Скрипт дзвінка</b> — згортаюча панель з 7-кроковим скриптом продажу в формі бронювання</li>
+                        <li><b>Апсейл</b> — каталог додатків (торт, фото, декор) з чекбоксами при бронюванні</li>
+                        <li><b>Вільні дати</b> — лічильник вільних вихідних в місяці</li>
+                        <li><b>Ціна за дитину</b> — розбивка вартості при вказаній кількості дітей</li>
+                        <li><b>Відгуки по програмах</b> — API останніх відгуків для соціального доказу</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.4.0 — Staff Trainer (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>Навчання через Telegram</b> — щопонеділка Клешня просить персонал поділитись лайфхаком</li>
+                        <li><b>Зведення щоп'ятниці</b> — Сергій отримує відповіді з кнопками Approve/Reject</li>
+                        <li><b>training.html</b> — сторінка з матеріалами, фільтрами по категоріях, топ-внеском</li>
+                        <li><b>Авто-категоризація</b> — відповіді розподіляються по темах за ключовими словами</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.3.0 — Navigation + Sidebar + Center Tabs (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>Unified Sidebar</b> — js/components/sidebar.js — єдиний компонент навігації для всіх сторінок</li>
+                        <li><b>Center Tabs</b> — Центр поглинає Фінанси, Аналітику, Статус як вкладки</li>
+                        <li><b>Art rename</b> — /art-director → /art, 301 redirect для зворотної сумісності</li>
+                        <li><b>Program Price Rules</b> — таблиця program_price_rules для динамічного ціноутворення</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.2.0 — Floating Command Panel (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>KPI Dashboard</b> — плаваюча панель з бронюваннями, персоналом, задачами, виручкою</li>
+                        <li><b>Quick Notes</b> — CRUD нотатки для швидких записів</li>
+                        <li><b>Draggable</b> — перетягування, згортання, позиція зберігається в localStorage</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.1.0 — Role System (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>10 ролей</b> — creator, director, vice_director, senior_manager, manager, admin, senior_instructor, instructor, animator, waiter</li>
+                        <li><b>Access Matrix</b> — PAGE_ACCESS + ACTION_PERMISSIONS для кожної ролі</li>
+                        <li><b>User Management API</b> — CRUD користувачів, зміна ролей, деактивація</li>
+                        <li><b>Legacy Mapping</b> — старі ролі (admin/user/manager) автоматично маппляться на нові</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.0.1 — Backup Fix + Test Deploy (Claude Code, 26.02.2026)</h4>
+                    <ul>
+                        <li><b>Backup Restore Fix</b> — SAVEPOINT для serial sequence fix (PostgreSQL transaction abort)</li>
+                        <li><b>291 тест</b> — 0 fail</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v20.0.0 — Milestone Release (Claude Code, 26.02.2026)</h4>
                     <ul>
                         <li><b>Room Load Panel</b> — навантаження кімнат на таймлайні (15 кімнат)</li>
                         <li><b>8 оптимізацій бекенду</b> — N+1 fix, CSP, retry queue, LRU cache, timeouts</li>
                         <li><b>291 тест</b> — 0 fail, повна сумісність</li>
                     </ul>
-                </div>
+
                 <div class="changelog-section">
                     <h4>v19.17.0 — Monitoring (Claude Code, 26.02.2026)</h4>
                     <ul>
@@ -3091,23 +3962,23 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=20.00"></script>
-    <script src="js/api.js?v=20.00"></script>
-    <script src="js/ui.js?v=20.00"></script>
-    <script src="js/auth.js?v=20.00"></script>
-    <script src="js/timeline.js?v=20.00"></script>
-    <script src="js/booking.js?v=20.00"></script>
-    <script src="js/settings.js?v=20.00"></script>
-    <script src="js/booking-form.js?v=20.00"></script>
-    <script src="js/booking-linked.js?v=20.00"></script>
-    <script src="js/settings-dashboard.js?v=20.00"></script>
-    <script src="js/settings-history.js?v=20.00"></script>
-    <script src="js/settings-afisha.js?v=20.00"></script>
-    <script src="js/settings-certificates.js?v=20.00"></script>
-    <script src="js/offline.js?v=20.00"></script>
-    <script src="js/search.js?v=20.00"></script>
-    <script src="js/ws.js?v=20.00"></script>
-    <script src="js/app.js?v=20.00"></script>
-    <script src="js/kleshnya-widget.js?v=20.00"></script>
+    <script src="js/config.js?v=23.4.0"></script>
+    <script src="js/api.js?v=23.4.0"></script>
+    <script src="js/ui.js?v=23.4.0"></script>
+    <script src="js/auth.js?v=23.4.0"></script>
+    <script src="js/timeline.js?v=23.4.0"></script>
+    <script src="js/booking.js?v=23.4.0"></script>
+    <script src="js/settings.js?v=23.4.0"></script>
+    <script src="js/booking-form.js?v=23.4.0"></script>
+    <script src="js/booking-linked.js?v=23.4.0"></script>
+    <script src="js/settings-dashboard.js?v=23.4.0"></script>
+    <script src="js/settings-history.js?v=23.4.0"></script>
+    <script src="js/settings-afisha.js?v=23.4.0"></script>
+    <script src="js/settings-certificates.js?v=23.4.0"></script>
+    <script src="js/offline.js?v=23.4.0"></script>
+    <script src="js/search.js?v=23.4.0"></script>
+    <script src="js/ws.js?v=23.4.0"></script>
+    <script src="js/app.js?v=23.4.0"></script>
+    <script src="js/kleshnya-widget.js?v=23.4.0"></script>
 </body>
 </html>

@@ -3,15 +3,17 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v23.5.0**. package.json: `23.5.0`. Бранч `main` (merged from claude/update-snapshot-version-OJyXi).
+Версія **v23.5.0**. package.json: `23.5.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] Lead Capture Integration v23.4.0
-- **package.json**: `"version": "23.4.0"`
-- **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **Що нового**: Lead Capture Integration — auto TG leads, webhooks FB/IG/Viber/Universal, lead notifications
+- **Останній коміт**: fix: [claude-code] reorder changelog — v23.4 and v23.3 moved to correct position
+- **package.json**: `"version": "23.5.0"`
+- **Бранч**: `claude/update-snapshot-version-OJyXi` (містить merge з origin/main)
+- **origin/main**: v22.12.0 — стара, НЕ містить OmniClaw/LeadCapture/Guardian Phase 2-3
+- **origin/deployed**: v17.4.1 — продакшн, дуже стара
+- **Що нового в v23.5.0**: Version Recovery — змержено все з main (CEO slide) + claude гілки (v23.0–v23.4)
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -24,7 +26,15 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v23.4.0)
+## Останні зміни (v22.4.0 → v23.5.0)
+
+### v23.5.0 (Claude Code, 12.03.2026)
+- **Version Recovery & Merge**
+  - Змержено claude/update-snapshot-version-OJyXi (v23.0–v23.4) з origin/main (landing CEO slide)
+  - Конфлікти landing/ — збережено версію з main (Сергій Шарлай CEO & Засновник)
+  - Changelog reorder — v23.4 і v23.3 переміщені на правильне місце
+  - Version sync ?v=23.5.0 на всіх 27 HTML файлах + swagger.js
+  - **Статус**: claude гілка готова до PR в main
 
 ### v23.4.0 (Claude Code, 11.03.2026)
 - **Lead Capture Integration**
@@ -151,6 +161,14 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - **v23.2.0: OmniClaw — омніканальна комунікація v1.0, 6 каналів, AI авто-відповіді**
 - **v23.3.0: OmniClaw Security Hardening — webhook auth, pool safety, input validation, HTTP checks**
 - **v23.4.0: Lead Capture Integration — auto TG leads, webhooks FB/IG/Viber/Universal, lead notifications**
+- **v23.5.0: Version Recovery & Merge — змержено claude гілку з main, CEO slide, changelog fix**
+
+## Стан гілок (12.03.2026)
+| Гілка | Версія | Файлів | Статус |
+|-------|--------|--------|--------|
+| `claude/update-snapshot-version-OJyXi` | **v23.5.0** | 408 | Актуальна, чекає PR |
+| `origin/main` | v22.12.0 | 399 | Стара, без OmniClaw/LeadCapture |
+| `origin/deployed` | v17.4.1 | 197 | Продакшн, дуже стара |
 
 ## Аудит deployed vs main (11.03.2026)
 - **Результат**: ВСІ фічі з deployed (v17.4.1) інтегровані в main (v23.0.0)
@@ -176,7 +194,7 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 | Frontend JS | 44 модулі |
 | HTML сторінки | 26 |
 | CSS файли | 17 |
-| DB міграції | 52 (001–052) |
+| DB міграції | 53 (001–053) |
 | DB таблиці | 48+ (core) + міграції |
 | Залежності | 15 npm packages |
 | JS код | ~90 000 рядків |
@@ -203,4 +221,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-11, v23.4.0 + Lead Capture Integration, сесія claude-code*
+*Оновлено: 2026-03-12, v23.5.0 + Version Recovery & Merge, сесія claude-code*

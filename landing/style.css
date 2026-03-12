@@ -2560,24 +2560,77 @@ h1, h2, h3, h4 {
     text-shadow: 0 0 30px rgba(212,168,67,0.7);
 }
 
-/* ---- STEP CARDS GLOW ---- */
+/* ---- STEP CARDS GLOW + SCROLL ANIMATIONS ---- */
 .step {
     background: var(--bg-card);
     border: 1px solid var(--border-2);
     border-radius: var(--radius-md);
     backdrop-filter: blur(12px);
     transition: transform 0.3s var(--ease-spring), border-color 0.3s, box-shadow 0.3s;
+    /* Scroll reveal: start hidden */
+    opacity: 0;
+    transform: translateY(40px);
 }
+.step.step--visible {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 0.6s ease-out, transform 0.6s cubic-bezier(0.34,1.56,0.64,1), border-color 0.3s, box-shadow 0.3s;
+}
+.step:nth-child(1).step--visible  { transition-delay: 0s; }
+.step:nth-child(3).step--visible  { transition-delay: 0.15s; }
+.step:nth-child(5).step--visible  { transition-delay: 0.3s; }
+.step:nth-child(7).step--visible  { transition-delay: 0.45s; }
+
+/* Arrows also animate in */
+.step__arrow {
+    color: rgba(212,168,67,0.25);
+    opacity: 0;
+    transform: translateX(-10px);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.step__arrow.step--visible {
+    opacity: 1;
+    transform: translateX(0);
+    animation: arrowPulse 2s ease-in-out infinite;
+}
+@keyframes arrowPulse {
+    0%, 100% { transform: translateX(0); opacity: 1; }
+    50% { transform: translateX(6px); opacity: 0.6; }
+}
+
+/* Step icon bounce on appear */
+.step.step--visible .step__icon {
+    animation: stepIconBounce 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards;
+}
+@keyframes stepIconBounce {
+    0% { transform: scale(0.3) rotate(-10deg); opacity: 0; }
+    60% { transform: scale(1.15) rotate(5deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+/* Step num counter animation */
+.step.step--visible .step__num {
+    animation: stepNumFade 0.4s ease-out forwards;
+}
+@keyframes stepNumFade {
+    0% { opacity: 0; transform: translateY(-10px); }
+    100% { opacity: 0.6; transform: translateY(0); }
+}
+
 .step:hover {
     transform: translateY(-6px);
     border-color: var(--border);
     box-shadow: 0 16px 48px rgba(0,0,0,0.3), 0 0 0 1px rgba(212,168,67,0.15);
 }
+.step:hover .step__icon {
+    transform: scale(1.15);
+    filter: drop-shadow(0 0 16px rgba(201,168,76,0.5));
+    transition: transform 0.3s ease, filter 0.3s ease;
+}
 .step__num {
     color: var(--gold);
     opacity: 0.6;
 }
-.step__arrow { color: rgba(212,168,67,0.25); }
 
 /* ---- SOCIAL PROOF SECTION BG ---- */
 .social-proof {

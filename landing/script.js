@@ -763,6 +763,19 @@
         staggerObs.observe(el);
     });
 
+    // --- STEP SCROLL REVEAL ---
+    var stepObs = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (!entry.isIntersecting) return;
+            entry.target.classList.add('step--visible');
+            stepObs.unobserve(entry.target);
+        });
+    }, { threshold: 0.2, rootMargin: '0px 0px -60px 0px' });
+
+    document.querySelectorAll('.step, .step__arrow').forEach(function(el) {
+        stepObs.observe(el);
+    });
+
     // --- CARD ICON GLOW ON HOVER ---
     document.querySelectorAll('.card').forEach(function(card) {
         var icon = card.querySelector('.card__icon');

@@ -779,6 +779,18 @@
         stepObs.observe(el);
     });
 
+    // --- PROCESS STEPS ACCORDION ---
+    document.querySelectorAll('.process-step').forEach(function(step) {
+        step.addEventListener('click', function() {
+            var isOpen = this.getAttribute('data-open') === 'true';
+            // Close all
+            document.querySelectorAll('.process-step').forEach(function(s) {
+                s.setAttribute('data-open', 'false');
+            });
+            this.setAttribute('data-open', isOpen ? 'false' : 'true');
+        });
+    });
+
     // --- EXPANDABLE CARDS ---
     document.querySelectorAll('.card--expandable').forEach(function(card) {
         card.addEventListener('click', function() {

@@ -3871,6 +3871,150 @@ body.modal-open {
     .demystify-icon { width: 52px; height: 52px; font-size: 1.7em; }
 }
 
+/* --- PROCESS TRACK (How it works redesign) --- */
+.process-track { max-width: 760px; margin: 0 auto; }
+
+.process-step {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    overflow: hidden;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    cursor: pointer;
+}
+.process-step[data-open="true"] {
+    border-color: rgba(201,168,76,0.35);
+    box-shadow: 0 8px 32px rgba(201,168,76,0.08);
+}
+.process-step__header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 24px;
+    user-select: none;
+}
+.process-step__num {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--gold, #C9A84C);
+    opacity: 0.5;
+    letter-spacing: 2px;
+    min-width: 24px;
+}
+.process-step__icon { font-size: 28px; flex-shrink: 0; }
+.process-step__info { flex: 1; }
+.process-step__title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0 0 4px;
+}
+.process-step__sub {
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+    margin: 0;
+}
+.process-step__toggle {
+    font-size: 18px;
+    color: var(--gold, #C9A84C);
+    opacity: 0.5;
+    transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.2s;
+    flex-shrink: 0;
+}
+.process-step[data-open="true"] .process-step__toggle {
+    transform: rotate(180deg);
+    opacity: 1;
+}
+.process-step__body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.5s cubic-bezier(0.4,0,0.2,1), padding 0.3s;
+    padding: 0 24px;
+    border-top: 0px solid rgba(201,168,76,0.1);
+}
+.process-step__body p { color: rgba(255,255,255,0.65); font-size: 14px; line-height: 1.7; margin: 0 0 12px; }
+.process-step__body p:last-child { margin-bottom: 0; }
+.process-step[data-open="true"] .process-step__body {
+    max-height: 800px;
+    padding: 0 24px 24px;
+    border-top: 1px solid rgba(201,168,76,0.1);
+}
+.process-note {
+    background: rgba(255,255,255,0.04);
+    border-left: 3px solid rgba(255,255,255,0.15);
+    padding: 10px 14px;
+    border-radius: 0 8px 8px 0;
+    font-size: 13px !important;
+    color: rgba(255,255,255,0.5) !important;
+    margin-top: 12px !important;
+}
+.process-note--gold {
+    border-left-color: rgba(201,168,76,0.5) !important;
+    color: rgba(201,168,76,0.8) !important;
+    background: rgba(201,168,76,0.05) !important;
+}
+.process-step__cta-hint {
+    font-size: 13px;
+    color: var(--gold, #C9A84C);
+    margin-top: 12px;
+    font-weight: 600;
+}
+.process-connector {
+    text-align: center;
+    color: rgba(201,168,76,0.3);
+    font-size: 22px;
+    padding: 6px 0;
+    animation: arrowPulse 2s ease-in-out infinite;
+}
+
+/* Integration phases */
+.integration-phases { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.integration-phase {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+.integration-phase__label {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--gold, #C9A84C);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    min-width: 68px;
+    padding-top: 3px;
+    flex-shrink: 0;
+}
+.integration-phase__content { flex: 1; }
+.integration-phase__content strong {
+    display: block;
+    font-size: 13px;
+    color: #fff;
+    margin-bottom: 6px;
+}
+.integration-phase__content ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.integration-phase__content ul li {
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+}
+
+@media (max-width: 768px) {
+    .process-step__header { padding: 16px; gap: 12px; }
+    .process-step__title { font-size: 16px; }
+    .process-step__icon { font-size: 24px; }
+    .integration-phase { flex-direction: column; gap: 6px; }
+    .integration-phase__label { min-width: auto; }
+}
+
 /* --- EXPANDABLE CARDS WITH CASES --- */
 .card--expandable { cursor: pointer; transition: all 0.3s ease; }
 .card__expand-btn {

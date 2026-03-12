@@ -9,7 +9,10 @@ const log = createLogger('DB');
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+    max: parseInt(process.env.PG_POOL_MAX) || 20,
+    idleTimeoutMillis: parseInt(process.env.PG_IDLE_TIMEOUT) || 30000,
+    connectionTimeoutMillis: parseInt(process.env.PG_CONNECT_TIMEOUT) || 5000
 });
 
 pool.on('error', (err) => {

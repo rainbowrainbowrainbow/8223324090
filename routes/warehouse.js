@@ -84,8 +84,11 @@ router.get('/', async (req, res) => {
         }
 
         const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+        const limit = Math.min(parseInt(req.query.limit) || 200, 1000);
+        const offset = parseInt(req.query.offset) || 0;
+        params.push(limit, offset);
         const result = await pool.query(
-            `SELECT * FROM warehouse_stock ${where} ORDER BY category, name`,
+            `SELECT * FROM warehouse_stock ${where} ORDER BY category, name LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
             params
         );
 

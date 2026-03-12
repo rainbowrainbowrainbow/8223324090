@@ -136,6 +136,16 @@ describe('Pre-test cleanup', () => {
                 }
             }
         }
+        // Delete stale auto_complete tasks from prior test runs (markers: TRIGGER-, ACTION-, INTERP-, E2E-, CALCDATE-)
+        const tasks = await authRequest('GET', '/api/tasks?type=auto_complete');
+        if (tasks.status === 200 && Array.isArray(tasks.data)) {
+            const testPrefixes = ['TRIGGER-', 'ACTION-', 'INTERP-', 'E2E-', 'CALCDATE-', 'DEBUG-'];
+            for (const t of tasks.data) {
+                if (t.title && testPrefixes.some(p => t.title.includes(p))) {
+                    await deleteTask(t.id);
+                }
+            }
+        }
     });
 });
 

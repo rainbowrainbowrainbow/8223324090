@@ -329,19 +329,27 @@ router.post('/shifts/bulk', async (req, res) => {
             stype = tpl.rows[0].shift_type;
         }
 
-        let count = 0;
+        // Batch insert all shifts in one query
+        const values = [];
+        const placeholders = [];
+        let paramIdx = 1;
         for (const sid of staff_ids) {
             for (const d of dates) {
-                await pool.query(
-                    `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, created_by)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)
-                     ON CONFLICT (staff_id, shift_date) DO UPDATE SET
-                        planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
-                        break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type, updated_at = NOW()`,
-                    [sid, d, start, end, brk, stype, req.user?.username]
-                );
-                count++;
+                placeholders.push(`($${paramIdx}, $${paramIdx+1}, $${paramIdx+2}, $${paramIdx+3}, $${paramIdx+4}, $${paramIdx+5}, $${paramIdx+6})`);
+                values.push(sid, d, start, end, brk, stype, req.user?.username);
+                paramIdx += 7;
             }
+        }
+        const count = placeholders.length;
+        if (count > 0) {
+            await pool.query(
+                `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, created_by)
+                 VALUES ${placeholders.join(', ')}
+                 ON CONFLICT (staff_id, shift_date) DO UPDATE SET
+                    planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
+                    break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type, updated_at = NOW()`,
+                values
+            );
         }
         await auditLog('shift_bulk', null, req.user?.username, { staff_ids, dates, count }, req.ip);
         res.json({ success: true, count });
@@ -377,19 +385,27 @@ router.post('/shifts/copy-week', async (req, res) => {
             [srcDates[0], srcDates[6]]
         );
 
-        let count = 0;
+        // Batch insert copied shifts in one query
+        const copyValues = [];
+        const copyPlaceholders = [];
+        let cpIdx = 1;
         for (const row of source.rows) {
             const dayIndex = srcDates.indexOf(row.shift_date instanceof Date ? row.shift_date.toISOString().split('T')[0] : row.shift_date);
             if (dayIndex === -1) continue;
+            copyPlaceholders.push(`($${cpIdx}, $${cpIdx+1}, $${cpIdx+2}, $${cpIdx+3}, $${cpIdx+4}, $${cpIdx+5}, $${cpIdx+6}, $${cpIdx+7})`);
+            copyValues.push(row.staff_id, tgtDates[dayIndex], row.planned_start, row.planned_end, row.break_minutes, row.shift_type, row.notes, req.user?.username);
+            cpIdx += 8;
+        }
+        const count = copyPlaceholders.length;
+        if (count > 0) {
             await pool.query(
                 `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, notes, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 VALUES ${copyPlaceholders.join(', ')}
                  ON CONFLICT (staff_id, shift_date) DO UPDATE SET
                     planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
                     break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type, updated_at = NOW()`,
-                [row.staff_id, tgtDates[dayIndex], row.planned_start, row.planned_end, row.break_minutes, row.shift_type, row.notes, req.user?.username]
+                copyValues
             );
-            count++;
         }
         await auditLog('shift_copy_week', null, req.user?.username, { source_week, target_week, count }, req.ip);
         res.json({ success: true, count });

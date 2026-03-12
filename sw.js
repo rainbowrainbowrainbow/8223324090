@@ -18,8 +18,6 @@
 
 const CACHE_NAME = 'event-genix-v25';
 const API_CACHE_NAME = 'event-genix-api-v25';
-const CACHE_NAME = 'event-genix-v24';
-const API_CACHE_NAME = 'event-genix-api-v24';
 
 // App Shell — static assets to pre-cache on install
 const APP_SHELL = [

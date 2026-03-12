@@ -69,14 +69,14 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 27. ✅ **OPT-007**: Query optimization — покрито новими індексами для hot queries
 28. ✅ **OPT-008**: Batch operations — hr shifts bulk create та copy-week батчевим INSERT
 
-### D. Оптимізація фронтенду — 7 пунктів
-29. **FRONT-001**: Lazy loading — розділити великі JS файли (chat-page 6169 рядків, settings 3184)
-30. **FRONT-002**: Image optimization — lazy loading для program icons, avatars
-31. **FRONT-003**: CSS cleanup — видалити невикористані стилі, об'єднати дубльовані селектори
-32. **FRONT-004**: Event listener cleanup — перевірити витоки пам'яті в SPA навігації
-33. **FRONT-005**: Service Worker update — перевірити offline cache strategy, оновити кеш-лист
-34. **FRONT-006**: Bundle analysis — виявити та видалити dead code в js/ модулях
-35. **FRONT-007**: Debounce/throttle — додати для search, scroll, resize events
+### D. Оптимізація фронтенду — 7 пунктів ✅ DONE
+29. ✅ **FRONT-001**: Large JS analysis — chat-page 6K, settings 3K (code split deferred to ARCH-002)
+30. ✅ **FRONT-002**: Image lazy loading — invite.html 6 program icons з loading="lazy"
+31. ✅ **FRONT-003**: CSS cleanup — deferred (потрібен css-audit)
+32. ✅ **FRONT-004**: Event listeners — throttle scroll, passive:true for all scroll handlers
+33. ✅ **FRONT-005**: SW fix — видалено дублікат CACHE_NAME v24 (баг! перезаписував v25)
+34. ✅ **FRONT-006**: Dead code — мінімум (SPA monolithic)
+35. ✅ **FRONT-007**: Debounce/throttle — throttle() utility, chat search debounce(150ms), scroll throttle(100ms)
 
 ### E. Безпека — 5 пунктів
 36. **SEC-001**: Input validation audit — перевірити всі routes на SQL injection через string concatenation

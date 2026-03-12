@@ -15,11 +15,12 @@
 - **origin/deployed**: v17.4.1
 - **Що нового**: Landing page fixes (sticky CTA, ROI calculator removed, nav link fix, pricing fixes, AI demo block removed, how-it-works real plan)
 
-### Тести (перевірено 12.03.2026)
-- **api.test.js**: 295/296 pass (1 flaky — rate limit 429 на customers export)
-- **certificates.test.js**: 82/82 pass
-- **automation.test.js**: 23/51 pass, 28 fail (JSONB parsing bug в bookingAutomation.js)
-- **Root cause automation fails**: `trigger_condition` і `actions` з PostgreSQL приходять як string замість parsed object — потрібен JSON.parse()
+### Тести (перевірено 12.03.2026, Phase 1 complete)
+- **api.test.js**: **296/296 pass** (fixed: export rate limiter respects RATE_LIMIT_MAX)
+- **certificates.test.js**: **82/82 pass**
+- **automation.test.js**: **52/52 pass** (fixed: task type filter, pre-test cleanup, JSONB safety)
+- **ВСЬОГО: 430/430 pass, 0 fail**
+- Root causes fixed: (1) `auto_complete` not in valid type filter in tasks.js, (2) stale test data between runs, (3) export rate limiter ignored RATE_LIMIT_MAX env
 - Запуск: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=postgres RATE_LIMIT_MAX=5000 node --test tests/api.test.js`
 
 ### Сервер

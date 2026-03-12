@@ -415,3 +415,88 @@
         });
     }
 })();
+
+// =====================
+// v3.0 ADDITIONS: Navbar + Scroll Progress + FAQ + Back To Top
+// =====================
+(function() {
+    'use strict';
+
+    // --- SCROLL PROGRESS BAR ---
+    var progressBar = document.getElementById('scrollProgress');
+    function updateProgress() {
+        if (!progressBar) return;
+        var doc = document.documentElement;
+        var scrollTop = window.scrollY || doc.scrollTop;
+        var scrollHeight = doc.scrollHeight - doc.clientHeight;
+        var pct = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
+        progressBar.style.width = pct + '%';
+    }
+    window.addEventListener('scroll', updateProgress, { passive: true });
+
+    // --- STICKY NAVBAR ---
+    var navbar = document.getElementById('navbar');
+    var backBtn = document.getElementById('backToTop');
+    function onScroll() {
+        var y = window.scrollY;
+        if (navbar) navbar.classList.toggle('scrolled', y > 60);
+        if (backBtn) backBtn.classList.toggle('visible', y > 400);
+        updateProgress();
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+
+    // --- NAVBAR BURGER MOBILE ---
+    var burger = document.getElementById('navBurger');
+    var navLinks = document.getElementById('navLinks');
+    if (burger && navLinks) {
+        burger.addEventListener('click', function() {
+            var open = navLinks.classList.toggle('open');
+            burger.setAttribute('aria-expanded', open);
+        });
+        // Close on link click
+        navLinks.querySelectorAll('.nav-a').forEach(function(a) {
+            a.addEventListener('click', function() {
+                navLinks.classList.remove('open');
+            });
+        });
+    }
+
+    // --- BACK TO TOP ---
+    if (backBtn) {
+        backBtn.addEventListener('click', function() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
+
+    // --- FAQ ACCORDION ---
+    document.querySelectorAll('.faq-item').forEach(function(item) {
+        var btn = item.querySelector('.faq-q');
+        if (!btn) return;
+        btn.addEventListener('click', function() {
+            var isOpen = item.classList.contains('open');
+            // Close all
+            document.querySelectorAll('.faq-item.open').forEach(function(i) {
+                i.classList.remove('open');
+            });
+            // Toggle clicked
+            if (!isOpen) item.classList.add('open');
+        });
+    });
+
+    // --- ACTIVE NAV LINK ON SCROLL ---
+    var sections = document.querySelectorAll('section[id]');
+    var navAs = document.querySelectorAll('.nav-a');
+    var sectionObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+                var id = entry.target.getAttribute('id');
+                navAs.forEach(function(a) {
+                    var href = a.getAttribute('href');
+                    a.classList.toggle('active', href === '#' + id);
+                });
+            }
+        });
+    }, { threshold: 0.4 });
+    sections.forEach(function(s) { sectionObserver.observe(s); });
+
+})();

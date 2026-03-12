@@ -3882,9 +3882,16 @@ describe('Customers — Excel Export (v17.0)', () => {
     it('GET /api/customers/export-xlsx — returns XLSX', async () => {
         const token = await getToken();
         const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
-        const res = await fetch(`${BASE_URL}/api/customers/export-xlsx`, {
+        // Retry once if rate-limited (429) from previous export test
+        let res = await fetch(`${BASE_URL}/api/customers/export-xlsx`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (res.status === 429) {
+            await new Promise(r => setTimeout(r, 3000));
+            res = await fetch(`${BASE_URL}/api/customers/export-xlsx`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+        }
         assert.equal(res.status, 200);
         assert.ok(res.headers.get('content-type').includes('spreadsheetml'));
     });

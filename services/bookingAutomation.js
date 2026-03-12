@@ -279,8 +279,14 @@ async function processBookingAutomation(booking) {
             if (rule.trigger_type === 'booking_create' && event !== 'create') continue;
             if (rule.trigger_type === 'booking_confirm' && event !== 'confirm') continue;
 
-            if (matchesCondition(rule.trigger_condition, booking)) {
-                const actions = Array.isArray(rule.actions) ? rule.actions : [];
+            // Parse JSONB fields that may come as strings from PostgreSQL
+            const condition = typeof rule.trigger_condition === 'string'
+                ? JSON.parse(rule.trigger_condition) : rule.trigger_condition;
+            const parsedActions = typeof rule.actions === 'string'
+                ? JSON.parse(rule.actions) : rule.actions;
+
+            if (matchesCondition(condition, booking)) {
+                const actions = Array.isArray(parsedActions) ? parsedActions : [];
                 for (const action of actions) {
                     try {
                         await executeAction(action, booking, rule);

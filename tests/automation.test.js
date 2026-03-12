@@ -105,6 +105,41 @@ async function deleteBooking(id) {
 }
 
 // ==========================================
+// 0. CLEANUP STALE DATA FROM PREVIOUS RUNS
+// ==========================================
+
+describe('Pre-test cleanup', () => {
+    it('removes stale test bookings, tasks and rules from prior runs', async () => {
+        // Delete stale bookings on far-future test dates with test line IDs
+        const bookings = await authRequest('GET', `/api/bookings/2099-07-15`);
+        if (bookings.status === 200 && Array.isArray(bookings.data)) {
+            for (const b of bookings.data) {
+                if (b.lineId && b.lineId.startsWith(AUTO_LINE_PREFIX)) {
+                    await deleteBooking(b.id);
+                }
+            }
+        }
+        const bookings2 = await authRequest('GET', `/api/bookings/2099-09-11`);
+        if (bookings2.status === 200 && Array.isArray(bookings2.data)) {
+            for (const b of bookings2.data) {
+                if (b.lineId && b.lineId.startsWith(AUTO_LINE_PREFIX)) {
+                    await deleteBooking(b.id);
+                }
+            }
+        }
+        // Delete stale test automation rules
+        const rules = await authRequest('GET', '/api/automation-rules');
+        if (rules.status === 200 && Array.isArray(rules.data)) {
+            for (const r of rules.data) {
+                if (r.name && r.name.startsWith('Test ')) {
+                    await deleteRule(r.id);
+                }
+            }
+        }
+    });
+});
+
+// ==========================================
 // 1. AUTOMATION RULES CRUD
 // ==========================================
 

@@ -127,9 +127,10 @@ setInterval(() => {
 }, 300000);
 
 // v19.14: Export endpoints: 5 requests per 15 minutes per IP
+// v25.5: Respect RATE_LIMIT_MAX env for test environments
 const exportLimiter = createWriteRateLimiter('export', {
     windowMs: 900000,
-    max: 5,
+    max: RATE_LIMIT_MAX > 120 ? RATE_LIMIT_MAX : 5,
     methods: ['GET']
 });
 

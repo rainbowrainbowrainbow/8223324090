@@ -500,3 +500,73 @@
     sections.forEach(function(s) { sectionObserver.observe(s); });
 
 })();
+
+// =====================
+// v3.1: Counter Animation, 3D Card Tilt
+// =====================
+(function() {
+    'use strict';
+
+    // --- COUNTER ANIMATION for stats ---
+    function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
+    function animateCounter(el, target, suffix, duration) {
+        var start = performance.now();
+        var isFloat = target % 1 !== 0;
+        function step(now) {
+            var elapsed = now - start;
+            var progress = Math.min(elapsed / duration, 1);
+            var eased = easeOutQuart(progress);
+            var current = Math.round(eased * target);
+            el.textContent = current + suffix;
+            if (progress < 1) requestAnimationFrame(step);
+            else el.textContent = target + suffix;
+        }
+        requestAnimationFrame(step);
+    }
+
+    var statsObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (!entry.isIntersecting) return;
+            var item = entry.target;
+            if (item.dataset.counted) return;
+            item.dataset.counted = '1';
+            item.classList.add('counted');
+
+            var valEl = item.querySelector('.stat-item__value');
+            if (!valEl) return;
+            var raw = valEl.textContent.trim();
+            var suffix = raw.replace(/[\d.]/g, '');
+            var num = parseFloat(raw.replace(/[^\d.]/g, ''));
+            if (!isNaN(num)) {
+                valEl.textContent = '0' + suffix;
+                animateCounter(valEl, num, suffix, 1800);
+            }
+            statsObserver.unobserve(item);
+        });
+    }, { threshold: 0.5 });
+
+    document.querySelectorAll('.stat-item').forEach(function(el) {
+        statsObserver.observe(el);
+    });
+
+    // --- 3D CARD TILT on hover ---
+    function addTilt(selector, intensity) {
+        document.querySelectorAll(selector).forEach(function(card) {
+            card.addEventListener('mousemove', function(e) {
+                var rect = card.getBoundingClientRect();
+                var cx = rect.left + rect.width / 2;
+                var cy = rect.top + rect.height / 2;
+                var rx = ((e.clientY - cy) / rect.height) * intensity;
+                var ry = -((e.clientX - cx) / rect.width) * intensity;
+                card.style.transform = 'perspective(800px) rotateX(' + rx + 'deg) rotateY(' + ry + 'deg) translateY(-4px)';
+            });
+            card.addEventListener('mouseleave', function() {
+                card.style.transform = '';
+            });
+        });
+    }
+    addTilt('.card', 8);
+    addTilt('.testi-card', 5);
+    addTilt('.update-card', 4);
+
+})();

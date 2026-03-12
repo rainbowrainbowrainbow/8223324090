@@ -147,8 +147,30 @@ h1, h2, h3, h4 {
 .hero__bg {
     position: absolute;
     inset: 0;
-    background: radial-gradient(ellipse at center, rgba(201, 168, 76, 0.08) 0%, transparent 70%);
+    background:
+        radial-gradient(ellipse 80% 60% at 50% 40%, rgba(201,168,76,0.10) 0%, transparent 65%),
+        radial-gradient(ellipse 40% 40% at 20% 80%, rgba(99,102,241,0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 50% at 80% 20%, rgba(201,168,76,0.05) 0%, transparent 60%);
     z-index: 0;
+    animation: heroBgShift 12s ease-in-out infinite alternate;
+}
+@keyframes heroBgShift {
+    0%   { opacity: 0.7; transform: scale(1); }
+    50%  { opacity: 1;   transform: scale(1.05); }
+    100% { opacity: 0.8; transform: scale(1.02); }
+}
+
+/* Hero floating grid */
+.hero__grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(201,168,76,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(201,168,76,0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+    z-index: 0;
+    mask-image: radial-gradient(ellipse at center, black 20%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 20%, transparent 80%);
 }
 
 .hero__content {
@@ -174,6 +196,20 @@ h1, h2, h3, h4 {
     font-weight: 800;
     line-height: 1.1;
     margin-bottom: 24px;
+}
+/* Gradient span inside title */
+.hero__title .grad {
+    background: linear-gradient(135deg, #C9A84C 0%, #f0d070 50%, #C9A84C 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: goldShine 3s ease infinite;
+}
+@keyframes goldShine {
+    0%   { background-position: 0% 0; }
+    50%  { background-position: 100% 0; }
+    100% { background-position: 0% 0; }
 }
 
 .hero__subtitle {
@@ -1576,4 +1612,178 @@ h1, h2, h3, h4 {
 .nav-a.active {
     color: #C9A84C;
     background: rgba(201,168,76,0.08);
+}
+
+/* ========================================
+   v3.1 ADDITIONS: Testimonials, Card Tilt, Counter, Typewriter
+   ======================================== */
+
+/* --- TESTIMONIALS --- */
+.testi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+}
+@media (max-width: 900px) { .testi-grid { grid-template-columns: 1fr; } }
+@media (min-width: 600px) and (max-width: 900px) { .testi-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.testi-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s;
+    cursor: default;
+}
+.testi-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+    border-color: rgba(201,168,76,0.25);
+}
+.testi-card--gold {
+    background: rgba(201,168,76,0.06);
+    border-color: rgba(201,168,76,0.25);
+}
+.testi-card--gold:hover {
+    border-color: rgba(201,168,76,0.5);
+    box-shadow: 0 16px 48px rgba(201,168,76,0.1);
+}
+.testi-stars {
+    color: #C9A84C;
+    font-size: 18px;
+    letter-spacing: 2px;
+}
+.testi-text {
+    font-size: 16px;
+    line-height: 1.65;
+    color: rgba(255,255,255,0.85);
+    font-style: italic;
+    flex: 1;
+}
+.testi-author {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+}
+.testi-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(201,168,76,0.3), rgba(201,168,76,0.1));
+    border: 1px solid rgba(201,168,76,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    color: #C9A84C;
+    flex-shrink: 0;
+}
+.testi-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: #fff;
+}
+.testi-role {
+    font-size: 12px;
+    color: rgba(255,255,255,0.45);
+    margin-top: 2px;
+}
+
+/* --- CARD HOVER 3D TILT --- */
+.card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s;
+    transform-style: preserve-3d;
+    will-change: transform;
+}
+.card:hover {
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(201,168,76,0.15);
+}
+
+/* --- COUNTER NUMBERS --- */
+.stat-item__value {
+    transition: color 0.3s ease;
+}
+.stat-item.counted .stat-item__value {
+    color: #e8c96a;
+}
+
+/* --- HERO BADGE (NEW) --- */
+.hero__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(201,168,76,0.12);
+    border: 1px solid rgba(201,168,76,0.3);
+    border-radius: 999px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.8);
+    margin-bottom: 28px;
+    backdrop-filter: blur(8px);
+}
+.hero__badge-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 8px #4ade80;
+    animation: livePulse 1.8s ease infinite;
+    flex-shrink: 0;
+}
+@keyframes livePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.85); }
+}
+
+/* --- CASE CARD HOVER --- */
+.case {
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.case:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+}
+
+/* --- UPDATE CARD HOVER --- */
+.update-card {
+    transition: transform 0.25s ease, border-color 0.25s, box-shadow 0.25s;
+}
+.update-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(201,168,76,0.3);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+}
+
+/* --- PRICE CARD HOVER --- */
+.price-card {
+    transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s;
+}
+.price-card:hover {
+    transform: translateY(-8px) scale(1.01);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.3);
+}
+.price-card--recommended:hover {
+    box-shadow: 0 24px 60px rgba(201,168,76,0.2);
+}
+
+/* --- TYPEWRITER CURSOR --- */
+.typewriter-cursor {
+    display: inline-block;
+    width: 3px;
+    height: 1em;
+    background: #C9A84C;
+    margin-left: 4px;
+    vertical-align: middle;
+    animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
 }

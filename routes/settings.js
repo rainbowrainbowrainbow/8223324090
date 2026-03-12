@@ -8,6 +8,7 @@ const { createLogger } = require('../utils/logger');
 const { logAdminAction } = require('../services/adminAudit');
 const { settingsCache } = require('../services/cache');
 
+const { requireRole, requireMinRole } = require('../middleware/auth');
 const log = createLogger('Settings');
 
 // Stats
@@ -45,7 +46,7 @@ router.get('/settings/:key', async (req, res) => {
     }
 });
 
-router.post('/settings', async (req, res) => {
+router.post('/settings', requireRole('creator', 'director'), async (req, res) => {
     try {
         const { key, value } = req.body;
         if (!key || !validateSettingKey(key)) {
@@ -158,7 +159,7 @@ router.get('/automation-rules', async (req, res) => {
     }
 });
 
-router.post('/automation-rules', async (req, res) => {
+router.post('/automation-rules', requireRole('creator', 'director'), async (req, res) => {
     try {
         const { name, trigger_type, trigger_condition, actions, days_before } = req.body;
         if (!name || !trigger_condition || !actions) {
@@ -176,7 +177,7 @@ router.post('/automation-rules', async (req, res) => {
     }
 });
 
-router.put('/automation-rules/:id', async (req, res) => {
+router.put('/automation-rules/:id', requireRole('creator', 'director'), async (req, res) => {
     try {
         const { id } = req.params;
         const { name, trigger_type, trigger_condition, actions, days_before, is_active } = req.body;
@@ -191,7 +192,7 @@ router.put('/automation-rules/:id', async (req, res) => {
     }
 });
 
-router.delete('/automation-rules/:id', async (req, res) => {
+router.delete('/automation-rules/:id', requireRole('creator', 'director'), async (req, res) => {
     try {
         await pool.query('DELETE FROM automation_rules WHERE id = $1', [req.params.id]);
         res.json({ success: true });
@@ -201,11 +202,8 @@ router.delete('/automation-rules/:id', async (req, res) => {
     }
 });
 
-// v17.9.0: System status — admin-only comprehensive health dashboard
-router.get('/system-status', async (req, res) => {
-    if (!req.user || req.user.role !== 'admin') {
-        return res.status(403).json({ error: 'Admin only' });
-    }
+// v17.9.0: System status — management-only comprehensive health dashboard
+router.get('/system-status', requireRole('creator', 'director', 'vice_director', 'senior_manager'), async (req, res) => {
     try {
         const startMs = Date.now();
 

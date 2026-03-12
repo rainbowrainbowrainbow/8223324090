@@ -32,6 +32,12 @@ async function login(username, password) {
         AppState.currentUser = data.user;
         localStorage.setItem('pzp_token', data.token);
         localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+        // v24.3.0: Dashboard is the landing page for all roles
+        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+        if (currentPath !== '/dashboard') {
+            window.location.href = '/dashboard';
+            return { success: true };
+        }
         showMainApp();
         // v22.5: Check daily login reward
         checkDailyLogin();
@@ -111,6 +117,7 @@ const PAGE_ACCESS = {
     '/finance':   ['creator', 'director', 'accountant'],
     '/analytics': _MANAGEMENT_UP,
     '/status':    _MANAGEMENT_UP,
+    '/omni':      _MANAGEMENT_UP,
 };
 
 const ACTION_PERMISSIONS = {
@@ -1144,4 +1151,334 @@ function initProfileHandler() {
 document.addEventListener('DOMContentLoaded', () => {
     // Delay slightly to let page-specific JS set username first
     setTimeout(initProfileHandler, 100);
+});
+
+// ==========================================
+// v24.0.0: ROLE SWITCHER — creator-only debug tool
+// ==========================================
+
+const RoleSwitcher = (() => {
+    let _usersList = null;
+    let _rendered = false;
+
+    function isCreator() {
+        return AppState.currentUser && AppState.currentUser.role === 'creator';
+    }
+
+    function getTestRole() {
+        return sessionStorage.getItem('testRole') || localStorage.getItem('pzp_test_role') || null;
+    }
+
+    function getImpersonating() {
+        return sessionStorage.getItem('impersonating') || null;
+    }
+
+    function init() {
+        if (_rendered) return;
+        if (!isCreator()) return;
+        _rendered = true;
+
+        // Inject switcher into header user-panel
+        const userPanel = document.querySelector('.user-panel');
+        if (!userPanel) return;
+
+        const switcher = document.createElement('div');
+        switcher.id = 'roleSwitcher';
+        switcher.className = 'role-switcher';
+        switcher.innerHTML = `
+            <button type="button" class="role-switcher-btn" id="roleSwitcherBtn" title="Role Switcher">
+                <span class="role-switcher-icon">🎭</span>
+                <span class="role-switcher-label">Тест</span>
+            </button>
+            <div class="role-switcher-dropdown hidden" id="roleSwitcherDropdown">
+                <div class="role-switcher-section">
+                    <div class="role-switcher-title">Тест як роль</div>
+                    <div class="role-switcher-roles" id="roleSwitcherRoles"></div>
+                </div>
+                <div class="role-switcher-divider"></div>
+                <div class="role-switcher-section">
+                    <div class="role-switcher-title">Тест як юзер</div>
+                    <div class="role-switcher-users" id="roleSwitcherUsers">
+                        <div class="role-switcher-loading">Завантаження...</div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        userPanel.insertBefore(switcher, userPanel.firstChild);
+
+        // Render roles list
+        _renderRoles();
+
+        // Toggle dropdown
+        document.getElementById('roleSwitcherBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const dd = document.getElementById('roleSwitcherDropdown');
+            dd.classList.toggle('hidden');
+            if (!dd.classList.contains('hidden') && !_usersList) {
+                _loadUsers();
+            }
+        });
+
+        // Close on outside click
+        document.addEventListener('click', (e) => {
+            const dd = document.getElementById('roleSwitcherDropdown');
+            if (dd && !dd.contains(e.target) && e.target.id !== 'roleSwitcherBtn') {
+                dd.classList.add('hidden');
+            }
+        });
+
+        // Show active badge if test role/impersonation is active
+        _updateBadge();
+    }
+
+    function _renderRoles() {
+        const container = document.getElementById('roleSwitcherRoles');
+        if (!container) return;
+
+        const currentTestRole = getTestRole();
+        const realRole = AppState.currentUser.role;
+        const roles = [
+            'creator', 'director', 'vice_director', 'senior_manager', 'manager',
+            'admin', 'animator', 'reception', 'accountant', 'art_director',
+            'hr', 'instructor', 'head_chef', 'barista', 'cleaning'
+        ];
+
+        container.innerHTML = roles.map(r => {
+            const name = ROLE_NAMES[r] || r;
+            const isActive = currentTestRole === r || (!currentTestRole && r === realRole);
+            const isCurrent = r === realRole;
+            return `<button class="role-switcher-role-btn${isActive ? ' active' : ''}" data-role="${r}">
+                ${name}${isCurrent ? ' (реальна)' : ''}${isActive && !isCurrent ? ' ✓' : ''}
+            </button>`;
+        }).join('');
+
+        // Add reset button if test role is active
+        if (currentTestRole) {
+            container.innerHTML += `<button class="role-switcher-role-btn reset" data-role="__reset__">Скинути до ${ROLE_NAMES[realRole]}</button>`;
+        }
+
+        container.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-role]');
+            if (!btn) return;
+            const role = btn.dataset.role;
+            if (role === '__reset__') {
+                _resetRole();
+            } else if (role === realRole) {
+                _resetRole();
+            } else {
+                _switchRole(role);
+            }
+        });
+    }
+
+    function _switchRole(role) {
+        // Save test role
+        sessionStorage.setItem('testRole', role);
+        localStorage.setItem('pzp_test_role', role);
+
+        // Clear impersonation if switching role
+        _clearImpersonation();
+
+        // Update in-memory user role reference for all UI components
+        _applyRoleSwitch(role);
+
+        // Dispatch event for role-panel
+        window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role, mode: 'role' } }));
+
+        // Close dropdown
+        document.getElementById('roleSwitcherDropdown').classList.add('hidden');
+
+        // Re-render
+        _renderRoles();
+        _updateBadge();
+
+        if (typeof showNotification === 'function') {
+            showNotification(`Тест як: ${ROLE_NAMES[role] || role}`, 'success');
+        }
+    }
+
+    function _resetRole() {
+        sessionStorage.removeItem('testRole');
+        localStorage.removeItem('pzp_test_role');
+        _clearImpersonation();
+
+        _applyRoleSwitch(AppState.currentUser.role);
+
+        window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role: AppState.currentUser.role, mode: 'reset' } }));
+
+        document.getElementById('roleSwitcherDropdown').classList.add('hidden');
+        _renderRoles();
+        _updateBadge();
+
+        if (typeof showNotification === 'function') {
+            showNotification('Роль скинуто', 'success');
+        }
+    }
+
+    function _applyRoleSwitch(role) {
+        // Re-render sidebar with new role
+        if (typeof Sidebar !== 'undefined') Sidebar.render();
+
+        // Apply visibility rules
+        document.querySelectorAll('[data-page-access]').forEach(el => {
+            const page = el.dataset.pageAccess;
+            const allowed = PAGE_ACCESS[page];
+            if (allowed) {
+                el.classList.toggle('hidden', !allowed.includes(role));
+            }
+        });
+
+        document.querySelectorAll('.sidebar-admin-only').forEach(el => {
+            el.classList.toggle('hidden', !['creator', 'director'].includes(role));
+        });
+        document.querySelectorAll('.sidebar-no-viewer').forEach(el => {
+            const viewerRoles = ['waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista', 'reception', 'animator', 'pastry_chef', 'cook', 'instructor'];
+            el.classList.toggle('hidden', viewerRoles.includes(role));
+        });
+    }
+
+    async function _loadUsers() {
+        const container = document.getElementById('roleSwitcherUsers');
+        if (!container) return;
+        try {
+            const resp = await fetch('/api/auth/users-list', { headers: getAuthHeaders(false) });
+            if (!resp.ok) throw new Error('Failed');
+            _usersList = await resp.json();
+            _renderUsers();
+        } catch {
+            container.innerHTML = '<div class="role-switcher-error">Не вдалося завантажити</div>';
+        }
+    }
+
+    function _renderUsers() {
+        const container = document.getElementById('roleSwitcherUsers');
+        if (!container || !_usersList) return;
+
+        const imp = getImpersonating();
+        container.innerHTML = _usersList
+            .filter(u => u.username !== AppState.currentUser.username)
+            .map(u => {
+                const roleName = ROLE_NAMES[u.role] || u.role;
+                const isActive = imp === u.username;
+                return `<button class="role-switcher-user-btn${isActive ? ' active' : ''}" data-user-id="${u.id}" data-username="${u.username}">
+                    <span class="role-switcher-user-name">${u.name}</span>
+                    <span class="role-switcher-user-role">${roleName}</span>
+                    ${isActive ? '<span class="role-switcher-check">✓</span>' : ''}
+                </button>`;
+            }).join('');
+
+        if (imp) {
+            container.innerHTML += `<button class="role-switcher-user-btn reset" data-user-id="__reset__">Повернутись як ${AppState.currentUser.name}</button>`;
+        }
+
+        container.addEventListener('click', async (e) => {
+            const btn = e.target.closest('[data-user-id]');
+            if (!btn) return;
+            if (btn.dataset.userId === '__reset__') {
+                _resetImpersonation();
+            } else {
+                await _impersonate(parseInt(btn.dataset.userId), btn.dataset.username);
+            }
+        });
+    }
+
+    async function _impersonate(userId, username) {
+        try {
+            const resp = await fetch('/api/auth/impersonate', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ userId })
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.error || 'Failed');
+            }
+            const data = await resp.json();
+
+            // Save real token
+            sessionStorage.setItem('realToken', localStorage.getItem('pzp_token'));
+            sessionStorage.setItem('realUser', JSON.stringify(AppState.currentUser));
+            sessionStorage.setItem('impersonating', username);
+
+            // Clear test role when impersonating
+            sessionStorage.removeItem('testRole');
+            localStorage.removeItem('pzp_test_role');
+
+            // Set impersonated token
+            localStorage.setItem('pzp_token', data.token);
+            localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+
+            if (typeof showNotification === 'function') {
+                showNotification(`Імперсонація: ${data.user.name} (${ROLE_NAMES[data.user.role] || data.user.role})`, 'success');
+            }
+
+            // Reload page to fully apply
+            window.location.reload();
+        } catch (err) {
+            if (typeof showNotification === 'function') {
+                showNotification('Помилка: ' + err.message, 'error');
+            }
+        }
+    }
+
+    function _resetImpersonation() {
+        const realToken = sessionStorage.getItem('realToken');
+        const realUser = sessionStorage.getItem('realUser');
+        if (realToken) {
+            localStorage.setItem('pzp_token', realToken);
+        }
+        if (realUser) {
+            localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, realUser);
+        }
+        _clearImpersonation();
+
+        if (typeof showNotification === 'function') {
+            showNotification('Повернуто реальний акаунт', 'success');
+        }
+        window.location.reload();
+    }
+
+    function _clearImpersonation() {
+        sessionStorage.removeItem('impersonating');
+        sessionStorage.removeItem('realToken');
+        sessionStorage.removeItem('realUser');
+    }
+
+    function _updateBadge() {
+        const btn = document.getElementById('roleSwitcherBtn');
+        if (!btn) return;
+
+        const testRole = getTestRole();
+        const imp = getImpersonating();
+
+        // Remove existing badge
+        const existing = document.getElementById('roleSwitcherBadge');
+        if (existing) existing.remove();
+
+        if (imp) {
+            const badge = document.createElement('span');
+            badge.id = 'roleSwitcherBadge';
+            badge.className = 'role-switcher-badge imp';
+            badge.innerHTML = `👤 ${imp} <button class="role-switcher-badge-close" onclick="event.stopPropagation(); RoleSwitcher.resetImpersonation();">&times;</button>`;
+            btn.parentElement.appendChild(badge);
+        } else if (testRole) {
+            const badge = document.createElement('span');
+            badge.id = 'roleSwitcherBadge';
+            badge.className = 'role-switcher-badge role';
+            badge.innerHTML = `🎭 ${ROLE_NAMES[testRole] || testRole} <button class="role-switcher-badge-close" onclick="event.stopPropagation(); RoleSwitcher.reset();">&times;</button>`;
+            btn.parentElement.appendChild(badge);
+        }
+    }
+
+    return {
+        init,
+        reset: _resetRole,
+        resetImpersonation: _resetImpersonation
+    };
+})();
+
+// Auto-init Role Switcher after auth
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => RoleSwitcher.init(), 200);
 });

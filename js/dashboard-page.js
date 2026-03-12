@@ -1,22 +1,25 @@
 /**
- * js/dashboard-page.js — Dashboard page logic (v22.0.0)
- * Widget-based personalized dashboard
+ * js/dashboard-page.js — Dashboard page logic (v24.3.0)
+ * Widget-based personalized dashboard with customization
  */
 
 const DashboardPage = (() => {
-    // Widget definitions
+    // Widget definitions — all available widgets
     const WIDGET_DEFS = {
         quick_stats:    { icon: '📊', title: 'Швидка статистика', minRole: 'admin' },
         tasks:          { icon: '📋', title: 'Мої задачі', minRole: null },
         bookings_today: { icon: '📅', title: 'Бронювання сьогодні', minRole: 'admin' },
         my_schedule:    { icon: '🕐', title: 'Мій графік', minRole: null },
         team_online:    { icon: '👥', title: 'Команда онлайн', minRole: 'manager' },
+        alerts:         { icon: '🔔', title: 'Сповіщення', minRole: null },
+        leads_new:      { icon: '🔥', title: 'Нові ліди', minRole: 'manager' },
+        finance_today:  { icon: '💰', title: 'Фінанси сьогодні', minRole: 'senior_manager' },
         weather:        { icon: '🌤', title: 'Погода', minRole: null },
         currency:       { icon: '💱', title: 'Курси валют', minRole: 'manager' },
         announcements:  { icon: '📢', title: 'Оголошення', minRole: null },
     };
 
-    let _config = null;
+    let _config = { widgets: [], layout: {}, theme: 'default' };
     let _widgetData = {};
 
     async function init() {
@@ -62,17 +65,11 @@ const DashboardPage = (() => {
             const resp = await fetch('/api/dashboard/config', {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
             });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
             const data = await resp.json();
 
             if (data.success) {
                 _config = data.config;
-
-                // First visit — show onboarding
-                if (data.isDefault) {
-                    showOnboarding();
-                    return;
-                }
-
                 renderWidgets();
             }
         } catch (err) {
@@ -151,6 +148,7 @@ const DashboardPage = (() => {
             const resp = await fetch(`/api/dashboard/widgets/${type}`, {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
             });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
             const result = await resp.json();
 
             if (result.success) {
@@ -159,7 +157,8 @@ const DashboardPage = (() => {
             } else {
                 container.innerHTML = '<div class="widget-empty">Помилка завантаження</div>';
             }
-        } catch {
+        } catch (err) {
+            console.error(`Widget ${type} load error:`, err);
             container.innerHTML = '<div class="widget-empty">Помилка з\'єднання</div>';
         }
     }
@@ -189,6 +188,15 @@ const DashboardPage = (() => {
                 break;
             case 'announcements':
                 renderAnnouncements(data, container);
+                break;
+            case 'alerts':
+                renderAlerts(data, container);
+                break;
+            case 'leads_new':
+                renderLeadsNew(data, container);
+                break;
+            case 'finance_today':
+                renderFinanceToday(data, container);
                 break;
             default:
                 container.innerHTML = '<div class="widget-empty">Невідомий віджет</div>';
@@ -362,6 +370,68 @@ const DashboardPage = (() => {
         container.innerHTML = items;
     }
 
+    function renderAlerts(data, container) {
+        if (!data.alerts || data.alerts.length === 0) {
+            container.innerHTML = '<div class="widget-empty">Все в порядку</div>';
+            return;
+        }
+        const items = data.alerts.map(a => {
+            const typeCls = a.type === 'warning' ? 'alert-warning' : 'alert-info';
+            return `<div class="alert-item ${typeCls}">
+                <span class="alert-icon">${a.icon || '🔔'}</span>
+                <span class="alert-text">${escapeHtml(a.title)}</span>
+            </div>`;
+        }).join('');
+        container.innerHTML = items;
+    }
+
+    function renderLeadsNew(data, container) {
+        if (!data.leads || data.leads.length === 0) {
+            container.innerHTML = '<div class="widget-empty">Немає нових лідів</div>';
+            return;
+        }
+        const sourceColors = { telegram: '#0088cc', facebook: '#1877F2', instagram: '#E4405F', viber: '#7360F2', website: '#38A169', phone: '#DD6B20' };
+        const items = data.leads.slice(0, 6).map(l => {
+            const color = sourceColors[l.source] || '#718096';
+            const date = new Date(l.created_at).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+            return `<div class="widget-lead-item">
+                <div class="lead-source-dot" style="background:${color}" title="${escapeHtml(l.source || '')}"></div>
+                <div class="lead-info">
+                    <div class="lead-name">${escapeHtml(l.name || 'Без імені')}</div>
+                    <div class="lead-meta">${escapeHtml(l.phone || '')} · ${date}</div>
+                </div>
+            </div>`;
+        }).join('');
+        container.innerHTML = `<div class="widget-lead-list">${items}</div>`;
+    }
+
+    function renderFinanceToday(data, container) {
+        const fmt = (v) => {
+            if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+            return Math.round(v) + '';
+        };
+        container.innerHTML = `
+            <div class="finance-today-grid">
+                <div class="finance-stat revenue">
+                    <div class="finance-stat-value">${fmt(data.revenue || 0)} ₴</div>
+                    <div class="finance-stat-label">Виручка</div>
+                </div>
+                <div class="finance-stat expenses">
+                    <div class="finance-stat-value">${fmt(data.expenses || 0)} ₴</div>
+                    <div class="finance-stat-label">Витрати</div>
+                </div>
+                <div class="finance-stat profit">
+                    <div class="finance-stat-value ${(data.profit || 0) >= 0 ? 'positive' : 'negative'}">${(data.profit || 0) >= 0 ? '+' : ''}${fmt(data.profit || 0)} ₴</div>
+                    <div class="finance-stat-label">Прибуток</div>
+                </div>
+                <div class="finance-stat bookings">
+                    <div class="finance-stat-value">${data.bookings || 0}</div>
+                    <div class="finance-stat-label">Бронювань</div>
+                </div>
+            </div>
+        `;
+    }
+
     // Onboarding wizard
     function showOnboarding() {
         const overlay = document.createElement('div');
@@ -425,76 +495,263 @@ const DashboardPage = (() => {
         renderWidgets();
     }
 
-    // Settings modal
+    // Settings modal with drag & drop reordering
     function openSettings() {
-        const role = getUserRole();
         const availableWidgets = Object.entries(WIDGET_DEFS)
             .filter(([, def]) => !def.minRole || (typeof hasMinRole === 'function' && hasMinRole(def.minRole)));
 
         const activeWidgets = _config ? (_config.widgets || []) : [];
 
-        const widgetOptions = availableWidgets.map(([key, def]) => {
+        // Sort: active first (in order), then inactive
+        const sortedWidgets = [
+            ...activeWidgets.filter(k => availableWidgets.some(([wk]) => wk === k)).map(k => [k, WIDGET_DEFS[k]]),
+            ...availableWidgets.filter(([k]) => !activeWidgets.includes(k)),
+        ];
+
+        const widgetItems = sortedWidgets.map(([key, def]) => {
             const isActive = activeWidgets.includes(key);
-            return `<div class="onboarding-widget-option ${isActive ? 'selected' : ''}" data-widget="${key}" onclick="DashboardPage.toggleOnboardingWidget(this)">
-                <div class="onboarding-widget-icon">${def.icon}</div>
-                <div class="onboarding-widget-label">${def.title}</div>
+            return `<div class="settings-widget-item ${isActive ? 'active' : ''}" data-widget="${key}" draggable="true">
+                <span class="settings-drag-handle">⠿</span>
+                <span class="settings-widget-icon">${def.icon}</span>
+                <span class="settings-widget-name">${def.title}</span>
+                <label class="settings-toggle">
+                    <input type="checkbox" ${isActive ? 'checked' : ''} onchange="DashboardPage.toggleSettingsWidget(this)">
+                    <span class="settings-toggle-slider"></span>
+                </label>
             </div>`;
         }).join('');
 
+        // Remove previous settings modal if open
+        const prev = document.getElementById('settingsOverlay');
+        if (prev) prev.remove();
+
         const overlay = document.createElement('div');
         overlay.className = 'onboarding-overlay';
-        overlay.id = 'onboardingOverlay';
+        overlay.id = 'settingsOverlay';
         overlay.innerHTML = `
-            <div class="onboarding-modal">
-                <h2>Налаштування дашборду</h2>
-                <p>Оберіть активні віджети</p>
-                <div class="onboarding-widgets">${widgetOptions}</div>
-                <button class="dashboard-btn primary" onclick="DashboardPage.saveOnboarding()" style="width:100%">Зберегти</button>
-                <button class="dashboard-btn" onclick="document.getElementById('onboardingOverlay').remove()" style="width:100%;margin-top:8px">Скасувати</button>
+            <div class="settings-modal">
+                <div class="settings-modal-header">
+                    <h2>Налаштування дашборду</h2>
+                    <p>Увімкніть віджети та перетягніть для зміни порядку</p>
+                </div>
+                <div class="settings-widget-list" id="settingsWidgetList">${widgetItems}</div>
+                <div class="settings-modal-footer">
+                    <button class="dashboard-btn" onclick="document.getElementById('settingsOverlay').remove()">Скасувати</button>
+                    <button class="dashboard-btn primary" onclick="DashboardPage.saveSettings()">Зберегти</button>
+                </div>
             </div>
         `;
 
         document.body.appendChild(overlay);
+        _initDragAndDrop();
+    }
+
+    function toggleSettingsWidget(checkbox) {
+        const item = checkbox.closest('.settings-widget-item');
+        if (checkbox.checked) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
+    }
+
+    function _initDragAndDrop() {
+        const list = document.getElementById('settingsWidgetList');
+        if (!list) return;
+
+        let dragEl = null;
+
+        list.addEventListener('dragstart', (e) => {
+            dragEl = e.target.closest('.settings-widget-item');
+            if (!dragEl) return;
+            dragEl.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        list.addEventListener('dragend', () => {
+            if (dragEl) dragEl.classList.remove('dragging');
+            dragEl = null;
+            list.querySelectorAll('.settings-widget-item').forEach(el => el.classList.remove('drag-over'));
+        });
+
+        list.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const target = e.target.closest('.settings-widget-item');
+            if (!target || target === dragEl) return;
+
+            list.querySelectorAll('.settings-widget-item').forEach(el => el.classList.remove('drag-over'));
+            target.classList.add('drag-over');
+
+            const rect = target.getBoundingClientRect();
+            const midY = rect.top + rect.height / 2;
+            if (e.clientY < midY) {
+                list.insertBefore(dragEl, target);
+            } else {
+                list.insertBefore(dragEl, target.nextSibling);
+            }
+        });
+
+        list.addEventListener('drop', (e) => {
+            e.preventDefault();
+        });
+    }
+
+    async function saveSettings() {
+        const list = document.getElementById('settingsWidgetList');
+        if (!list) return;
+
+        const selected = [];
+        list.querySelectorAll('.settings-widget-item').forEach(el => {
+            const cb = el.querySelector('input[type="checkbox"]');
+            if (cb && cb.checked) {
+                selected.push(el.dataset.widget);
+            }
+        });
+
+        if (selected.length === 0) {
+            selected.push('tasks', 'weather');
+        }
+
+        if (!_config) _config = { widgets: [], layout: {}, theme: 'default' };
+        _config.widgets = selected;
+
+        try {
+            await fetch('/api/dashboard/config', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
+                },
+                body: JSON.stringify({ widgets: selected, layout: {}, theme: 'default' })
+            });
+        } catch (err) {
+            console.error('Save settings error:', err);
+        }
+
+        const overlay = document.getElementById('settingsOverlay');
+        if (overlay) overlay.remove();
+
+        renderWidgets();
     }
 
     // Test panel for creator
     function initTestPanel() {
         if (!AppState.currentUser || AppState.currentUser.role !== 'creator') return;
 
-        // FAB button
-        const fab = document.createElement('button');
-        fab.className = 'test-panel-fab';
-        fab.innerHTML = '🧪';
-        fab.title = 'Тест-панель';
-        fab.onclick = () => {
-            const panel = document.getElementById('testPanel');
-            if (panel) panel.classList.toggle('open');
-        };
-        document.body.appendChild(fab);
+        // v24.0.0: Dev Tools section on dashboard (replaces old FAB test panel)
+        const grid = document.getElementById('dashboardGrid');
+        if (!grid) return;
 
-        // Panel
-        const panel = document.createElement('div');
-        panel.className = 'test-panel';
-        panel.id = 'testPanel';
+        const devTools = document.createElement('div');
+        devTools.className = 'widget-card widget-devtools';
+        devTools.dataset.widget = 'devtools';
 
         const roleOptions = Object.entries(ROLE_NAMES).map(([key, name]) =>
             `<option value="${key}">${name} (${key})</option>`
         ).join('');
 
-        const currentTestRole = localStorage.getItem('pzp_test_role');
-        panel.innerHTML = `
-            <h4>Тест-панель ролей</h4>
-            <select id="testRoleSelect">${roleOptions}</select>
-            <div class="test-panel-actions">
-                <button class="btn-switch" onclick="DashboardPage.switchTestRole()">Переключити</button>
-                <button class="btn-reset" onclick="DashboardPage.resetTestRole()">Скинути</button>
+        const currentTestRole = localStorage.getItem('pzp_test_role') || sessionStorage.getItem('testRole');
+        const imp = sessionStorage.getItem('impersonating');
+        let statusHtml = '';
+        if (imp) {
+            statusHtml = `<div class="devtools-badge imp">👤 Імперсонація: ${imp} <button class="devtools-badge-close" id="devtoolsResetImp">&times;</button></div>`;
+        } else if (currentTestRole) {
+            statusHtml = `<div class="devtools-badge role">🎭 Тест: ${ROLE_NAMES[currentTestRole] || currentTestRole} <button class="devtools-badge-close" id="devtoolsResetRole">&times;</button></div>`;
+        }
+
+        devTools.innerHTML = `
+            <div class="widget-header">
+                <div class="widget-title">
+                    <span class="widget-title-icon">🎭</span>
+                    Dev Tools (тільки для Creator)
+                </div>
+            </div>
+            <div class="widget-body" id="widget-devtools">
+                <div class="devtools-grid">
+                    <div class="devtools-section">
+                        <label class="devtools-label">Симулювати роль:</label>
+                        <div class="devtools-row">
+                            <select id="testRoleSelect" class="devtools-select">${roleOptions}</select>
+                            <button class="devtools-btn" onclick="DashboardPage.switchTestRole()">▶</button>
+                            <button class="devtools-btn secondary" onclick="DashboardPage.resetTestRole()">✕</button>
+                        </div>
+                    </div>
+                    <div class="devtools-section">
+                        <label class="devtools-label">Симулювати юзера:</label>
+                        <div class="devtools-row">
+                            <select id="testUserSelect" class="devtools-select">
+                                <option value="">Завантаження...</option>
+                            </select>
+                            <button class="devtools-btn" onclick="DashboardPage.switchTestUser()">▶</button>
+                        </div>
+                    </div>
+                    ${statusHtml ? `<div class="devtools-section">${statusHtml}</div>` : ''}
+                </div>
             </div>
         `;
-        document.body.appendChild(panel);
+
+        // Insert as first child
+        grid.insertBefore(devTools, grid.firstChild);
 
         if (currentTestRole) {
             document.getElementById('testRoleSelect').value = currentTestRole;
-            showTestModeBadge(currentTestRole);
+        }
+
+        // Load users for impersonation dropdown
+        _loadUsersForDevtools();
+
+        // Reset handlers
+        const resetRoleBtn = document.getElementById('devtoolsResetRole');
+        if (resetRoleBtn) resetRoleBtn.onclick = () => DashboardPage.resetTestRole();
+
+        const resetImpBtn = document.getElementById('devtoolsResetImp');
+        if (resetImpBtn) resetImpBtn.onclick = () => {
+            if (typeof RoleSwitcher !== 'undefined') RoleSwitcher.resetImpersonation();
+        };
+    }
+
+    async function _loadUsersForDevtools() {
+        const select = document.getElementById('testUserSelect');
+        if (!select) return;
+        try {
+            const resp = await fetch('/api/auth/users-list', {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+            });
+            if (!resp.ok) throw new Error();
+            const users = await resp.json();
+            select.innerHTML = '<option value="">— Обрати юзера —</option>' +
+                users.filter(u => u.username !== AppState.currentUser.username)
+                    .map(u => `<option value="${u.id}">${u.name} (${ROLE_NAMES[u.role] || u.role})</option>`)
+                    .join('');
+        } catch {
+            select.innerHTML = '<option value="">Помилка</option>';
+        }
+    }
+
+    async function switchTestUser() {
+        const select = document.getElementById('testUserSelect');
+        if (!select || !select.value) return;
+        const userId = parseInt(select.value);
+        if (typeof RoleSwitcher !== 'undefined') {
+            // Use RoleSwitcher impersonation
+            try {
+                const resp = await fetch('/api/auth/impersonate', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId })
+                });
+                if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || 'Failed');
+                const data = await resp.json();
+                sessionStorage.setItem('realToken', localStorage.getItem('pzp_token'));
+                sessionStorage.setItem('realUser', JSON.stringify(AppState.currentUser));
+                sessionStorage.setItem('impersonating', data.user.username);
+                localStorage.setItem('pzp_token', data.token);
+                localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+                window.location.reload();
+            } catch (err) {
+                if (typeof showNotification === 'function') showNotification('Помилка: ' + err.message, 'error');
+            }
         }
     }
 
@@ -563,8 +820,11 @@ const DashboardPage = (() => {
         toggleOnboardingWidget,
         saveOnboarding,
         openSettings,
+        toggleSettingsWidget,
+        saveSettings,
         switchTestRole,
         resetTestRole,
+        switchTestUser,
     };
 })();
 

@@ -9,6 +9,10 @@ const router = express.Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
+const { requireRole } = require('../middleware/auth');
+
+// RBAC: HR module — management + HR only
+router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'));
 
 const log = createLogger('HR');
 

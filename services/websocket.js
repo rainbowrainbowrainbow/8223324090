@@ -27,6 +27,12 @@ let _wss = null;
 // Connected clients: Map<userId, Set<WebSocket>>
 const _clients = new Map();
 
+// Presence tracking: Map<userId, { username, connectedAt }>
+const _onlineUsers = new Map();
+
+// Last seen: Map<userId, Date>
+const _lastSeen = new Map();
+
 // Max connections per user (multiple tabs/devices)
 const MAX_CONNECTIONS_PER_USER = 5;
 
@@ -262,6 +268,15 @@ function _addClient(ws) {
     }
 
     userConnections.add(ws);
+
+    // Track presence — broadcast online status if first connection
+    if (userConnections.size === 1) {
+        _onlineUsers.set(userId, { username: ws._pzp.username, connectedAt: new Date() });
+        broadcast('user:online', {
+            userId: userId,
+            username: ws._pzp.username
+        });
+    }
 }
 
 /**
@@ -276,6 +291,23 @@ function _removeClient(ws) {
         userConnections.delete(ws);
         if (userConnections.size === 0) {
             _clients.delete(userId);
+            _onlineUsers.delete(userId);
+            _lastSeen.set(userId, new Date());
+
+            // Update last_seen in DB (fire-and-forget)
+            try {
+                const { pool } = require('../db');
+                pool.query(
+                    'UPDATE users SET last_seen_at = NOW() WHERE id = $1',
+                    [userId]
+                ).catch(() => {});
+            } catch (e) { /* ignore */ }
+
+            broadcast('user:offline', {
+                userId: userId,
+                username: ws._pzp.username,
+                lastSeen: new Date().toISOString()
+            });
         }
     }
 }
@@ -517,6 +549,20 @@ function getWSS() {
 // EXPORTS
 // ==========================================
 
+/**
+ * Get list of currently online user IDs.
+ */
+function getOnlineUserIds() {
+    return Array.from(_onlineUsers.keys());
+}
+
+/**
+ * Get last seen time for a user.
+ */
+function getLastSeen(userId) {
+    return _lastSeen.get(String(userId)) || null;
+}
+
 module.exports = {
     initWebSocket,
     broadcast,
@@ -524,5 +570,7 @@ module.exports = {
     sendToUser,
     sendToUsername,
     getConnectedClientsCount,
-    getWSS
+    getWSS,
+    getOnlineUserIds,
+    getLastSeen
 };

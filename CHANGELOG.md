@@ -1,6 +1,84 @@
-# CHANGELOG — Park Booking System
+# CHANGELOG — Event Genix CRM
 
 > Журнал змін. Останні версії зверху, детально. Старі — коротко внизу.
+
+---
+
+## v23.4.0 — Lead Capture Integration (2026-03-11)
+- **Telegram Lead Capture** — приватні повідомлення в бот автоматично створюють лід в CRM, автовідповідь юзеру [claude-code]
+- **Universal Webhook** — `POST /api/leads/webhook/universal?source=tiktok|turbo|bnderoga` з Bearer token auth [claude-code]
+- **Facebook Lead Ads** — webhook + Graph API v21.0 для отримання даних лідів [claude-code]
+- **Instagram DM** — webhook для нових DM повідомлень → автоматичний лід [claude-code]
+- **Viber Business** — webhook з HMAC-SHA256 signature verification [claude-code]
+- **Lead Notifier** — `services/leadNotifier.js` — Telegram сповіщення менеджерам при новому ліді [claude-code]
+- **UI оновлення** — 12 джерел у sourceFilter (TG, FB, IG, Viber, TikTok, Turbo, BnD, Google, Рек, Повтор, Ручний, Інше) [claude-code]
+- **Source badges** — кольорові бейджі для кожного джерела (customers + leads pages) [claude-code]
+- **DB Migration 053** — `external_id`, `raw_payload`, `source_channel` + unique index для дедуплікації [claude-code]
+- **JWT bypass** — webhook paths відкриті без автентифікації [claude-code]
+
+## v23.3.0 — OmniClaw Security Hardening (2026-03-11)
+- **Webhook Signature Verification** — Viber HMAC-SHA256 (X-Viber-Content-Signature), Meta X-Hub-Signature-256 з timingSafeEqual, SMS/Binotel X-Webhook-Secret header [claude-code]
+- **API Token Security** — FB/IG access_token перенесено з URL query string в Authorization: Bearer header [claude-code]
+- **Graph API Update** — v18.0 → v21.0, конфігурується через FB_API_VERSION / IG_API_VERSION env [claude-code]
+- **Pool Safety** — pool.connect() обгорнуто в try-catch у 5 функціях omni-hub.js (запобігає unhandled rejection при вичерпаному пулі) [claude-code]
+- **Input Validation** — senderName/phone truncate до DB limits (255/50), getConversations whitelist status/channel, assignedTo type+length check, parseId на всіх route :id params [claude-code]
+- **HTTP Status Checks** — перевірка statusCode в fbRequest, igRequest, turboSmsRequest, viberRequest (розрізняє 429/401/500) [claude-code]
+- **Normalizer Hardening** — safeCoords() перевіряє Number.isFinite, safeString() з maxLen, isValidUrl() protocol check, JSON.stringify cap для unknown channels [claude-code]
+- **Phone Validation** — normalizePhone() E.164 cap (15 digits max), reject < 7 digits [claude-code]
+- **getUserProfile Security** — fields array sanitized з regex whitelist /^[a-z_]+$/i + encodeURIComponent [claude-code]
+- **Нові env vars** — META_APP_SECRET, SMS_WEBHOOK_SECRET, BINOTEL_WEBHOOK_SECRET (всі опціональні, graceful skip) [claude-code]
+
+## v23.0.0 — Major Release: Full Version Sync (2026-03-11)
+- **Version Sync** — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG [claude-code]
+- **Landing Carousel** — команда з каруселлю, Anli Lektor, swipe/dots/arrows [kleshnya]
+- **Manager Guide** — нова сторінка landing/manager-guide.html для менеджерів з продажу [kleshnya]
+- **Cache Busting** — ?v=23.0.0 на всіх CSS/JS ресурсах (25 HTML файлів)
+- **Swagger API** — версія OpenAPI spec оновлена з 20.12.0 до 23.0.0
+- **Dashboard fix** — версія в login subtitle оновлена (було v22.18.1)
+- **game.html fix** — нормалізований ?v= тег (було 22.20.0.1)
+
+## v22.20.0 — Guardian Phase 3: Analytics & Intelligence (2026-03-11)
+- **14 Guardian chat commands** — /g help, status, stats, mood, health, top, history, mute, unmute, trust, report, rules, learn, config [claude-code]
+- **Channel Health Score** — real-time 0-100, 🟢🟡🔴 indicator, auto-calculation, history [claude-code]
+- **Sentiment Tracking** — keyword-based mood analysis per message, per-user summaries [claude-code]
+- **Guardian Analytics Panel** — 5 tabs: overview, health, mood, heatmap, trust [claude-code]
+- **Activity Heatmap** — 7×24 hourly grid [claude-code]
+- **Trust Score System** — 0-100, 4 levels (trusted/normal/watched/restricted) [claude-code]
+- **Auto-Escalation** — 5-level: warn → mute 1m → 10m → 30m+TG → ban 1 day [claude-code]
+- **Weekly Reports** — Monday digest with trends + Telegram delivery [claude-code]
+- **29 API endpoints + 8 DB tables** — migration 051 [claude-code]
+
+## v22.19.0 — Guardian Contour System Phase 2 (2026-03-11)
+- **Telegram алерти** — критичні події Guardian → директору в Telegram [claude-code]
+- **Inline action buttons** — дії з Guardian DM (мютити обох, попередження, спостерігаю) [claude-code]
+- **Security Panel UI** — статистика, активні мути, unmute кнопки [claude-code]
+- **Conflict detector** — вікно 15 повідомлень + reply chain awareness [claude-code]
+- **Sensitive patterns** — паролі, JWT, API ключі, адреси, дати народження [claude-code]
+- **Repeat offender tracking** + **Spam detection** [claude-code]
+
+## v22.18.0 — CRM Tech Debt + Features (2026-03-10)
+- Issues #18–#26: технічний борг та нові фічі
+- Version bump та синхронізація
+
+## v22.12.0–v22.17.0 — Match-3 Candy Crush Edition (2026-03-09–10)
+- **v22.17.0** — UI polish: contrast, style, mystical vibe [kleshnya]
+- **v22.16.0** — Candy Crush icons + idle/combo/special animations [kleshnya]
+- **v22.15.0** — Icon fix: replace v4 icons with consistent v3/final candy style [kleshnya]
+- **v22.12.0** — Match-3 custom art assets [kleshnya]
+
+## v22.10.0–v22.11.0 — Dark Mode Polish + Mystic Edition (2026-03-09)
+- **v22.11.0** — Match-3 Mystic Edition: tarot cards, bosses, events, modern UI [claude-code]
+- **v22.10.0** — Dark Mode Polish: 92 нових overrides + JS color fixes [claude-code]
+- Security Hardening — input validation, race conditions, error disclosure [claude-code]
+- Gamification Hardening — DB integrity, bug fixes, tests [claude-code]
+
+## v22.4.0–v22.9.0 — Gamification V2 + Match-3 Epic (2026-03-09)
+- **v22.9.0** — Match-3 Epic Edition: 9x9 grid, frozen tiles, cross special, combo system [claude-code]
+- **v22.8.0** — Redesigned confirm dialogs, replaced native confirm()/alert() [claude-code]
+- **v22.7.0** — Match-3 upgrade: special pieces, scoring fix, dashboard & profile fixes [claude-code]
+- **v22.6.0** — Stability audit + version bump [claude-code]
+- **v22.5.0** — Custom confirm modals, purchase effects, cooldown reset, chat fix [claude-code]
+- **v22.4.0** — Gamification V2: Quiz, Streaks, Room page, Match-3 improvements [claude-code]
 
 ---
 

@@ -1,6 +1,32 @@
 -- Migration 012: Art Director v1 — brand memory, content pipeline, approval workflow
 -- v18.2.0
 
+-- Ensure designs + collections exist (created by initDatabase, needed here for FK)
+CREATE TABLE IF NOT EXISTS design_collections (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    color VARCHAR(20) DEFAULT '#6366F1',
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS designs (
+    id SERIAL PRIMARY KEY,
+    filename VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    file_size INTEGER NOT NULL,
+    width INTEGER,
+    height INTEGER,
+    title VARCHAR(200),
+    description TEXT,
+    is_pinned BOOLEAN DEFAULT FALSE,
+    collection_id INTEGER REFERENCES design_collections(id) ON DELETE SET NULL,
+    publish_date VARCHAR(20),
+    created_by VARCHAR(50),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Brand guidelines (стилі, правила, фото-банк)
 CREATE TABLE IF NOT EXISTS brand_guidelines (
     id SERIAL PRIMARY KEY,

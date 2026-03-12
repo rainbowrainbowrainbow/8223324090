@@ -12,10 +12,17 @@
  *   DELETE /api/leads/:id       — delete lead
  */
 const router = require('express').Router();
+const crypto = require('crypto');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { notifyNewLead } = require('../services/leadNotifier');
 
 const log = createLogger('Leads');
+
+const UNIVERSAL_WEBHOOK_TOKEN = process.env.UNIVERSAL_WEBHOOK_TOKEN || '';
+const FB_VERIFY_TOKEN         = process.env.FB_VERIFY_TOKEN         || '';
+const FB_PAGE_ACCESS_TOKEN    = process.env.FB_PAGE_ACCESS_TOKEN    || '';
+const VIBER_AUTH_TOKEN        = process.env.VIBER_AUTH_TOKEN        || '';
 
 // GET /api/leads — list all leads with optional filters
 router.get('/', async (req, res) => {
@@ -191,6 +198,249 @@ router.delete('/:id', async (req, res) => {
         log.error('DELETE /leads/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка видалення' });
     }
+});
+
+// ============================================================
+// v23.4.0: Lead Capture Webhooks
+// ============================================================
+
+/** Helper: create lead from webhook data, dedup by phone or external_id */
+async function createLeadFromWebhook({ client_name, phone, telegram_id, instagram,
+                                       notes, source_channel, external_id, raw_payload }) {
+    // Dedup by phone
+    if (phone) {
+        const dup = await pool.query(
+            `SELECT id FROM leads WHERE phone = $1 AND status NOT IN ('booked','closed','lost') LIMIT 1`,
+            [phone]
+        );
+        if (dup.rows.length > 0) {
+            await pool.query(
+                `UPDATE leads
+                   SET notes = COALESCE(notes,'') || E'\n[' || $1 || '] ' || COALESCE($2,''),
+                       last_contact_at = NOW()
+                 WHERE id = $3`,
+                [source_channel, notes, dup.rows[0].id]
+            );
+            return null;
+        }
+    }
+
+    const result = await pool.query(
+        `INSERT INTO leads
+           (client_name, phone, telegram_id, instagram,
+            source, source_channel, external_id, notes, raw_payload, status)
+         VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8,'new')
+         ON CONFLICT (source_channel, external_id)
+           WHERE external_id IS NOT NULL DO NOTHING
+         RETURNING *`,
+        [
+            client_name || null,
+            phone       || null,
+            telegram_id || null,
+            instagram   || null,
+            source_channel,
+            external_id || null,
+            notes       || null,
+            raw_payload ? JSON.stringify(raw_payload) : null,
+        ]
+    );
+    return result.rows[0] || null;
+}
+
+// POST /api/leads/webhook/universal?source=tiktok
+// Auth: Authorization: Bearer UNIVERSAL_WEBHOOK_TOKEN
+// Body: { name, phone, message?, instagram?, external_id? }
+router.post('/webhook/universal', async (req, res) => {
+    try {
+        const auth = req.headers['authorization'] || '';
+        if (!UNIVERSAL_WEBHOOK_TOKEN || auth !== `Bearer ${UNIVERSAL_WEBHOOK_TOKEN}`) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const source_channel = (req.query.source || 'universal').toLowerCase().slice(0, 50);
+        const { name, phone, message, instagram, external_id } = req.body;
+
+        if (!name && !phone) {
+            return res.status(400).json({ error: "Потрібно 'name' або 'phone'" });
+        }
+
+        const lead = await createLeadFromWebhook({
+            client_name:    name,
+            phone,
+            instagram,
+            notes:          message,
+            source_channel,
+            external_id:    external_id || (phone ? `${source_channel}_${phone}` : null),
+            raw_payload:    req.body,
+        });
+
+        if (lead) {
+            notifyNewLead(lead).catch(() => {});
+            log.info(`New lead via universal [${source_channel}]: ${name || phone}`);
+        }
+        res.json({ success: true, created: !!lead });
+    } catch (err) {
+        log.error('Universal webhook error', err);
+        res.status(500).json({ error: 'Internal error' });
+    }
+});
+
+// GET /api/leads/webhook/facebook — Meta verification
+router.get('/webhook/facebook', (req, res) => {
+    if (req.query['hub.mode'] === 'subscribe' &&
+        req.query['hub.verify_token'] === FB_VERIFY_TOKEN) {
+        log.info('Facebook webhook verified');
+        return res.status(200).send(req.query['hub.challenge']);
+    }
+    res.sendStatus(403);
+});
+
+// POST /api/leads/webhook/facebook — Facebook Lead Ads
+router.post('/webhook/facebook', async (req, res) => {
+    res.sendStatus(200); // Meta expects fast response
+    try {
+        if (req.body.object !== 'page') return;
+
+        for (const entry of (req.body.entry || [])) {
+            for (const change of (entry.changes || [])) {
+                if (change.field !== 'leadgen') continue;
+                const leadgenId = change.value?.leadgen_id;
+                if (!leadgenId || !FB_PAGE_ACCESS_TOKEN) continue;
+
+                // Fetch lead data via Graph API
+                const https = require('https');
+                const fbData = await new Promise((resolve, reject) => {
+                    const url = `https://graph.facebook.com/v21.0/${leadgenId}`;
+                    const options = {
+                        headers: { 'Authorization': `Bearer ${FB_PAGE_ACCESS_TOKEN}` }
+                    };
+                    https.get(url, options, (resp) => {
+                        let data = '';
+                        resp.on('data', c => data += c);
+                        resp.on('end', () => { try { resolve(JSON.parse(data)); } catch(e) { reject(e); } });
+                    }).on('error', reject);
+                });
+
+                const fields = Object.fromEntries(
+                    (fbData.field_data || []).map(f => [f.name, f.values?.[0] || ''])
+                );
+
+                const lead = await createLeadFromWebhook({
+                    client_name:    fields.full_name || fields.first_name || null,
+                    phone:          fields.phone_number || null,
+                    instagram:      fields.instagram || null,
+                    notes:          `Facebook Lead Ad | ${fbData.ad_name || leadgenId}`,
+                    source_channel: 'facebook',
+                    external_id:    `fb_${leadgenId}`,
+                    raw_payload:    fbData,
+                });
+
+                if (lead) {
+                    notifyNewLead(lead).catch(() => {});
+                    log.info(`New FB lead: ${lead.client_name}`);
+                }
+            }
+        }
+    } catch (err) {
+        log.error('Facebook webhook processing error', err);
+    }
+});
+
+// GET /api/leads/webhook/instagram — Meta verification (same token as FB)
+router.get('/webhook/instagram', (req, res) => {
+    if (req.query['hub.mode'] === 'subscribe' &&
+        req.query['hub.verify_token'] === FB_VERIFY_TOKEN) {
+        log.info('Instagram webhook verified');
+        return res.status(200).send(req.query['hub.challenge']);
+    }
+    res.sendStatus(403);
+});
+
+// POST /api/leads/webhook/instagram — Instagram DM / Lead Ads
+router.post('/webhook/instagram', async (req, res) => {
+    res.sendStatus(200);
+    try {
+        for (const entry of (req.body.entry || [])) {
+            for (const messaging of (entry.messaging || [])) {
+                const senderId = messaging.sender?.id;
+                const text     = messaging.message?.text;
+                if (!senderId || !text) continue;
+
+                const lead = await createLeadFromWebhook({
+                    client_name:    `IG_${senderId}`,
+                    notes:          text.slice(0, 500),
+                    source_channel: 'instagram',
+                    external_id:    `ig_${senderId}`,
+                    raw_payload:    messaging,
+                });
+
+                if (lead) {
+                    notifyNewLead(lead).catch(() => {});
+                    log.info(`New IG lead: ig_${senderId}`);
+                }
+            }
+        }
+    } catch (err) {
+        log.error('Instagram webhook error', err);
+    }
+});
+
+// POST /api/leads/webhook/viber — Viber Business Messages
+router.post('/webhook/viber', async (req, res) => {
+    try {
+        // Signature verification
+        if (VIBER_AUTH_TOKEN) {
+            const sig = req.headers['x-viber-content-signature'] || '';
+            const bodyStr = JSON.stringify(req.body);
+            const expected = crypto
+                .createHmac('sha256', VIBER_AUTH_TOKEN)
+                .update(bodyStr)
+                .digest('hex');
+            const sigBuf = Buffer.from(sig, 'hex');
+            const expBuf = Buffer.from(expected, 'hex');
+            if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+                return res.status(401).json({ error: 'Invalid signature' });
+            }
+        }
+
+        res.sendStatus(200);
+
+        const { event, sender, message } = req.body;
+        if (!['message', 'conversation_started'].includes(event)) return;
+
+        const lead = await createLeadFromWebhook({
+            client_name:    sender?.name || `Viber_${sender?.id}`,
+            notes:          message?.text?.slice(0, 500) || 'Нове звернення через Viber',
+            source_channel: 'viber',
+            external_id:    `viber_${sender?.id}`,
+            raw_payload:    req.body,
+        });
+
+        if (lead) {
+            notifyNewLead(lead).catch(() => {});
+            log.info(`New Viber lead: ${sender?.name}`);
+        }
+    } catch (err) {
+        log.error('Viber webhook error', err);
+    }
+});
+
+// GET /api/leads/webhook/status — webhook configuration status
+router.get('/webhook/status', (req, res) => {
+    res.json({
+        success: true,
+        webhooks: {
+            telegram:  { configured: true, note: 'Built into /api/telegram/webhook (private chats)' },
+            facebook:  { configured: !!FB_PAGE_ACCESS_TOKEN, endpoint: '/api/leads/webhook/facebook'  },
+            instagram: { configured: !!FB_PAGE_ACCESS_TOKEN, endpoint: '/api/leads/webhook/instagram' },
+            viber:     { configured: !!VIBER_AUTH_TOKEN,     endpoint: '/api/leads/webhook/viber'     },
+            universal: {
+                configured: !!UNIVERSAL_WEBHOOK_TOKEN,
+                endpoint:   '/api/leads/webhook/universal?source=<name>',
+                sources:    ['tiktok', 'turbo', 'bnderoga', 'custom'],
+            }
+        }
+    });
 });
 
 module.exports = router;

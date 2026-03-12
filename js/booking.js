@@ -1191,17 +1191,20 @@ async function showBookingDetails(bookingId) {
                 </div>
             </div>
         </div>
-        <div class="booking-detail-row">
+        <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.date)}">
             <span class="label">Дата:</span>
             <span class="value">${escapeHtml(booking.date)}</span>
+            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
-        <div class="booking-detail-row">
+        <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.time)} - ${escapeHtml(endTime)}">
             <span class="label">Час:</span>
             <span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span>
+            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
-        <div class="booking-detail-row">
+        <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(line ? line.name : '-')}">
             <span class="label">Аніматор:</span>
             <span class="value">${escapeHtml(line ? line.name : '-')}</span>
+            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
         <div class="booking-detail-row">
             <span class="label">Ведучих:</span>
@@ -1209,19 +1212,23 @@ async function showBookingDetails(bookingId) {
         </div>
         ${booking.costume ? `<div class="booking-detail-row"><span class="label">Костюм:</span><span class="value">${escapeHtml(booking.costume)}</span></div>` : ''}
         ${booking.pinataFiller ? `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">${escapeHtml(booking.pinataFiller)}</span></div>` : ''}
-        <div class="booking-detail-row">
+        <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(formatPrice(booking.price))}">
             <span class="label">Ціна:</span>
             <span class="value">${escapeHtml(formatPrice(booking.price))}</span>
+            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
         ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">Дітей:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
         <div class="booking-detail-row">
             <span class="label">Статус:</span>
             <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
         </div>
-        ${booking.notes ? `<div class="booking-detail-row"><span class="label">Примітки:</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
+        ${booking.notes ? `<div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.notes)}"><span class="label">Примітки:</span><span class="value">${escapeHtml(booking.notes)}</span><button type="button" class="detail-copy-btn" title="Скопіювати">📋</button></div>` : ''}
         ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">🎪 ${escapeHtml(booking.groupName)}</span></div>` : ''}
         <div id="bookingCustomerBlock"></div>
         ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">Оновлено:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
+        <div class="booking-detail-row booking-detail-row--summary" data-copy="${escapeHtml(booking.date)} ${escapeHtml(booking.time)}-${escapeHtml(endTime)} ${escapeHtml(booking.programName)} ${escapeHtml(booking.room)} ${escapeHtml(line ? line.name : '')} ${escapeHtml(formatPrice(booking.price))}">
+            <button type="button" class="detail-copy-summary-btn" title="Скопіювати всю інформацію">📋 Скопіювати все</button>
+        </div>
         ${descriptionHtml}
         ${!isViewer() ? `<div class="status-toggle-section">
             <button class="btn-status-toggle" onclick="changeBookingStatus('${escapeHtml(booking.id)}', '${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}')">
@@ -1233,28 +1240,95 @@ async function showBookingDetails(bookingId) {
 
     document.getElementById('bookingModal').classList.remove('hidden');
 
-    // v15.1: CRM — async load customer info
+    // v24.3.1: Copy buttons on detail rows
+    document.querySelectorAll('.detail-copy-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const text = this.closest('[data-copy]')?.dataset.copy;
+            if (text) {
+                navigator.clipboard.writeText(text);
+                this.textContent = '✓';
+                setTimeout(() => this.textContent = '📋', 800);
+            }
+        });
+    });
+    const summaryBtn = document.querySelector('.detail-copy-summary-btn');
+    if (summaryBtn) {
+        summaryBtn.addEventListener('click', function() {
+            const text = this.closest('[data-copy]')?.dataset.copy;
+            if (text) {
+                navigator.clipboard.writeText(text);
+                this.textContent = '✓ Скопійовано';
+                setTimeout(() => this.textContent = '📋 Скопіювати все', 800);
+            }
+        });
+    }
+
+    // v24.3.1: CRM — smart hyperlinks + contextual actions
     if (booking.customerId) {
         apiGetCustomer(booking.customerId).then(customer => {
             const block = document.getElementById('bookingCustomerBlock');
             if (!block || !customer) return;
-            const lines = [];
-            lines.push(escapeHtml(customer.name));
-            if (customer.phone) lines.push(escapeHtml(customer.phone));
-            if (customer.instagram) lines.push('@' + escapeHtml(customer.instagram));
+            const rows = [];
+            // Name — clickable link to CRM card
+            rows.push(`<div class="customer-row customer-row--name">
+                <span class="customer-row-icon">👤</span>
+                <a href="/customers#id=${escapeHtml(String(booking.customerId))}" class="customer-link customer-link--crm" title="Відкрити картку клієнта">${escapeHtml(customer.name)}</a>
+                <span class="customer-row-actions">
+                    <button type="button" class="customer-action-btn" title="Скопіювати ім'я" onclick="navigator.clipboard.writeText('${escapeHtml(customer.name)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
+                </span>
+            </div>`);
+            // Phone — tel: link + copy + TG
+            if (customer.phone) {
+                const cleanPhone = customer.phone.replace(/[^+\d]/g, '');
+                rows.push(`<div class="customer-row customer-row--phone">
+                    <span class="customer-row-icon">📞</span>
+                    <a href="tel:${escapeHtml(cleanPhone)}" class="customer-link" title="Зателефонувати">${escapeHtml(customer.phone)}</a>
+                    <span class="customer-row-actions">
+                        <button type="button" class="customer-action-btn" title="Скопіювати" onclick="navigator.clipboard.writeText('${escapeHtml(customer.phone)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
+                        <a href="https://t.me/${escapeHtml(cleanPhone)}" target="_blank" rel="noopener" class="customer-action-btn" title="Написати в Telegram">💬</a>
+                    </span>
+                </div>`);
+            }
+            // Instagram — link to profile + copy
+            if (customer.instagram) {
+                const igName = customer.instagram.replace(/^@/, '');
+                rows.push(`<div class="customer-row customer-row--ig">
+                    <span class="customer-row-icon">📸</span>
+                    <a href="https://instagram.com/${escapeHtml(igName)}" target="_blank" rel="noopener" class="customer-link" title="Відкрити Instagram">@${escapeHtml(igName)}</a>
+                    <span class="customer-row-actions">
+                        <button type="button" class="customer-action-btn" title="Скопіювати" onclick="navigator.clipboard.writeText('@${escapeHtml(igName)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',800)">📋</button>
+                    </span>
+                </div>`);
+            }
+            // Child — birthday + age
             if (customer.childName) {
-                let childLine = escapeHtml(customer.childName);
+                let childText = escapeHtml(customer.childName);
                 if (customer.childBirthday) {
                     const bd = new Date(customer.childBirthday);
-                    childLine += ` (${bd.toLocaleDateString('uk-UA')})`;
+                    const age = Math.floor((new Date() - bd) / (365.25 * 24 * 60 * 60 * 1000));
+                    childText += ` <span class="customer-age">${age} р. (${bd.toLocaleDateString('uk-UA')})</span>`;
                 }
-                lines.push('Дитина: ' + childLine);
+                rows.push(`<div class="customer-row customer-row--child">
+                    <span class="customer-row-icon">🎂</span>
+                    <span>${childText}</span>
+                </div>`);
             }
-            if (customer.totalBookings) lines.push(`${customer.totalBookings} візит${customer.totalBookings === 1 ? '' : customer.totalBookings < 5 ? 'и' : 'ів'} · ${formatPrice(customer.totalSpent)}`);
+            // Visit stats
+            if (customer.totalBookings) {
+                const visits = customer.totalBookings;
+                const suffix = visits === 1 ? '' : visits < 5 ? 'и' : 'ів';
+                rows.push(`<div class="customer-row customer-row--stats">
+                    <span class="customer-row-icon">📊</span>
+                    <span>${visits} візит${suffix} · ${formatPrice(customer.totalSpent)}</span>
+                </div>`);
+            }
             block.innerHTML = `
-                <div class="booking-customer-info">
-                    <div class="customer-header">Клієнт</div>
-                    <div class="customer-detail">${lines.join('<br>')}</div>
+                <div class="booking-customer-info booking-customer-info--smart">
+                    <div class="customer-header">
+                        <span>Клієнт</span>
+                        <a href="/customers#id=${escapeHtml(String(booking.customerId))}" class="customer-crm-link" title="Відкрити повну картку">Картка →</a>
+                    </div>
+                    ${rows.join('')}
                 </div>`;
         });
     }

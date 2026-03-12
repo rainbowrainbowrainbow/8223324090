@@ -11,9 +11,10 @@ const {
 } = require('../services/telegram');
 const { ensureDefaultLines } = require('../services/booking');
 const { buildAndSendDigest, sendTomorrowReminder } = require('../services/scheduler');
-const { handleBotCommand, handleCertUse } = require('../services/bot');
+const { handleBotCommand, handleCertUse, resolveActorName } = require('../services/bot');
 const { handleContractorCallback } = require('../services/bookingAutomation');
 const { createLogger } = require('../utils/logger');
+const { notifyNewLead } = require('../services/leadNotifier');
 
 const log = createLogger('TelegramRoute');
 
@@ -334,17 +335,12 @@ router.post('/webhook', async (req, res) => {
                 if (!taskId) { await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' }); return res.sendStatus(200); }
                 const { updateTaskStatus } = require('../services/kleshnya');
                 try {
-                    // Determine actor from callback sender
-                    const cbFromUsername = update.callback_query.from?.username || null;
-                    const cbFromChatId = update.callback_query.from?.id || null;
-                    let actor = 'telegram';
-                    if (cbFromUsername) {
-                        const userRes = await pool.query(
-                            'SELECT username FROM users WHERE telegram_username = $1 OR telegram_chat_id = $2 LIMIT 1',
-                            [cbFromUsername, cbFromChatId]
-                        );
-                        if (userRes.rows.length > 0) actor = userRes.rows[0].username;
-                    }
+                    const cbFrom = update.callback_query.from;
+                    const actor = await resolveActorName(
+                        cbFrom?.username || null,
+                        cbFrom?.id || null,
+                        cbFrom?.first_name || null
+                    );
                     await updateTaskStatus(taskId, 'done', actor);
                     await telegramRequest('answerCallbackQuery', {
                         callback_query_id: id,
@@ -474,6 +470,123 @@ router.post('/webhook', async (req, res) => {
                     log.error('training callback error', err);
                     await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Помилка', show_alert: true });
                 }
+
+            // v22.18: Review rating callback
+            } else if (data.startsWith('review:')) {
+                const parts = data.split(':');
+                const bookingId = safeParseInt(parts[1]);
+                const rating = safeParseInt(parts[2]);
+                if (!bookingId || !rating || rating < 1 || rating > 5) {
+                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' });
+                    return res.sendStatus(200);
+                }
+                try {
+                    const fromName = update.callback_query.from?.first_name || '';
+                    await pool.query(
+                        `INSERT INTO event_reviews (booking_id, customer_name, telegram_chat_id, rating)
+                         VALUES ($1, $2, $3, $4)
+                         ON CONFLICT DO NOTHING`,
+                        [bookingId, fromName, update.callback_query.from?.id, rating]
+                    );
+                    const stars = '⭐'.repeat(rating);
+                    await telegramRequest('answerCallbackQuery', {
+                        callback_query_id: id,
+                        text: `Дякуємо за оцінку! ${stars}`
+                    });
+                    await telegramRequest('editMessageText', {
+                        chat_id: chatId,
+                        message_id: message.message_id,
+                        text: message.text + `\n\n✅ <b>Оцінено: ${stars}</b>\nДякуємо за відгук!`,
+                        parse_mode: 'HTML'
+                    });
+                } catch (err) {
+                    log.error('review callback error', err);
+                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Помилка', show_alert: true });
+                }
+
+            // v22.18: Team pulse callback (anonymous)
+            } else if (data.startsWith('pulse:')) {
+                const score = safeParseInt(data.split(':')[1]);
+                if (!score || score < 1 || score > 5) {
+                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' });
+                    return res.sendStatus(200);
+                }
+                try {
+                    await pool.query(
+                        'INSERT INTO team_pulse (date, score) VALUES (CURRENT_DATE, $1)',
+                        [score]
+                    );
+                    const moods = ['', '😫', '😕', '😐', '🙂', '🤩'];
+                    await telegramRequest('answerCallbackQuery', {
+                        callback_query_id: id,
+                        text: `Записано! ${moods[score]} Дякуємо!`
+                    });
+                } catch (err) {
+                    log.error('pulse callback error', err);
+                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Помилка', show_alert: true });
+                }
+
+            // v22.18: Auto-order approve/reject
+            } else if (data.startsWith('order_approve:') || data.startsWith('order_reject:')) {
+                const parts = data.split(':');
+                const action = parts[0];
+                const requestId = safeParseInt(parts[1]);
+                if (!requestId) {
+                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' });
+                    return res.sendStatus(200);
+                }
+                try {
+                    const isApprove = action === 'order_approve';
+                    const newStatus = isApprove ? 'approved' : 'rejected';
+                    const actorName = update.callback_query.from?.first_name || 'manager';
+
+                    await pool.query(
+                        'UPDATE auto_order_requests SET status = $1, approved_by = $2, updated_at = NOW() WHERE id = $3 AND status = $4',
+                        [newStatus, actorName, requestId, 'pending']
+                    );
+
+                    if (isApprove) {
+                        // Send order to contractor if configured
+                        const orderInfo = await pool.query(`
+                            SELECT aor.*, ws.name AS stock_name, ws.unit, c.telegram_chat_id, c.name AS contractor_name
+                            FROM auto_order_requests aor
+                            JOIN warehouse_stock ws ON ws.id = aor.stock_id
+                            LEFT JOIN contractors c ON c.id = aor.contractor_id
+                            WHERE aor.id = $1
+                        `, [requestId]);
+
+                        if (orderInfo.rows.length > 0) {
+                            const order = orderInfo.rows[0];
+                            if (order.telegram_chat_id) {
+                                const orderText = `📦 <b>Нове замовлення</b>\n\n`
+                                    + `${order.stock_name}: ${order.quantity} ${order.unit}\n`
+                                    + `Від: Event Genix Park\n`
+                                    + `Затверджено: ${actorName}`;
+                                await sendTelegramMessage(order.telegram_chat_id, orderText).catch(() => {});
+                            }
+                            await pool.query(
+                                "UPDATE auto_order_requests SET status = 'ordered' WHERE id = $1",
+                                [requestId]
+                            );
+                        }
+
+                        await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: '✅ Замовлення підтверджено та відправлено!' });
+                    } else {
+                        await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: '❌ Замовлення відхилено' });
+                    }
+
+                    const emoji = isApprove ? '✅' : '❌';
+                    const label = isApprove ? 'Підтверджено та замовлено' : 'Відхилено';
+                    await telegramRequest('editMessageText', {
+                        chat_id: chatId,
+                        message_id: message.message_id,
+                        text: message.text + `\n\n${emoji} <b>${label}</b> (${actorName})`,
+                        parse_mode: 'HTML'
+                    });
+                } catch (err) {
+                    log.error('order callback error', err);
+                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Помилка', show_alert: true });
+                }
             }
         }
 
@@ -488,6 +601,9 @@ router.post('/webhook', async (req, res) => {
                         await sendTelegramMessage(update.message.chat.id,
                             '✅ <b>Дякую!</b> Твою відповідь збережено. Сергій розгляне її на цьому тижні.',
                             { parse_mode: 'HTML' });
+                    } else {
+                        // v23.4.0: Lead capture — if not a training response, capture as lead
+                        handleLeadCapture(update).catch(e => log.error('Lead capture failed', e));
                     }
                 }
             } catch (err) {
@@ -501,5 +617,78 @@ router.post('/webhook', async (req, res) => {
         res.sendStatus(200);
     }
 });
+
+/**
+ * v23.4.0: Capture new lead from Telegram private chat
+ * Fires for private messages that are NOT commands and NOT training responses
+ */
+async function handleLeadCapture(update) {
+    const msg = update.message;
+    if (!msg || msg.chat?.type !== 'private') return;
+    if (msg.text?.startsWith('/')) return;
+
+    const user = msg.from;
+    const telegramId = user?.id;
+    if (!telegramId) return;
+
+    const text = msg.text || msg.caption || '';
+
+    try {
+        // If open lead already exists for this telegram_id — append message, don't duplicate
+        const existing = await pool.query(
+            `SELECT id FROM leads
+             WHERE telegram_id = $1
+               AND status NOT IN ('booked', 'closed', 'lost')
+             LIMIT 1`,
+            [telegramId]
+        );
+
+        if (existing.rows.length > 0) {
+            if (text) {
+                await pool.query(
+                    `UPDATE leads
+                       SET notes = COALESCE(notes,'') || E'\n[TG] ' || $1,
+                           last_contact_at = NOW()
+                     WHERE id = $2`,
+                    [text.slice(0, 500), existing.rows[0].id]
+                );
+            }
+            return;
+        }
+
+        const externalId  = `tg_${telegramId}`;
+        const clientName  = [user.first_name, user.last_name].filter(Boolean).join(' ')
+                            || `TG_${telegramId}`;
+
+        const result = await pool.query(
+            `INSERT INTO leads
+               (client_name, telegram_id, source, source_channel, external_id, notes, raw_payload, status)
+             VALUES ($1, $2, 'telegram', 'telegram', $3, $4, $5, 'new')
+             ON CONFLICT (source_channel, external_id)
+               WHERE external_id IS NOT NULL DO NOTHING
+             RETURNING *`,
+            [
+                clientName,
+                telegramId,
+                externalId,
+                text.slice(0, 1000) || null,
+                JSON.stringify({ from: user, message_id: msg.message_id, text }),
+            ]
+        );
+
+        if (result.rows.length > 0) {
+            log.info(`New TG lead: ${clientName} (tg_id: ${telegramId})`);
+            notifyNewLead(result.rows[0]).catch(() => {});
+
+            await sendTelegramMessage(
+                msg.chat.id,
+                '👋 Дякуємо за звернення!\nНаш менеджер зв\'яжеться з вами найближчим часом.\n\n🎉 <b>Парк Закревського Періоду</b>',
+                { parse_mode: 'HTML' }
+            );
+        }
+    } catch (err) {
+        log.error('handleLeadCapture error', err);
+    }
+}
 
 module.exports = router;

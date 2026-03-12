@@ -1342,6 +1342,108 @@ async function checkExpiredChatMessages() {
     }
 }
 
+// v22.18: Auto-review requests after completed events
+async function checkAutoReviewRequests() {
+    try {
+        // Find bookings that ended 2+ hours ago, haven't had review requests sent
+        const hoursDelay = 2;
+        const result = await pool.query(`
+            SELECT b.id, b.label, b.phone, b.date, b.time, b.duration,
+                   b.program_name, b.customer_telegram_id
+            FROM bookings b
+            LEFT JOIN review_requests_sent rrs ON rrs.booking_id = b.id
+            WHERE b.status = 'confirmed'
+              AND b.date <= CURRENT_DATE
+              AND rrs.booking_id IS NULL
+              AND b.phone IS NOT NULL
+              AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time + (b.duration || ' minutes')::interval) < NOW() - ($1 || ' hours')::interval
+            ORDER BY b.date DESC, b.time DESC
+            LIMIT 10
+        `, [hoursDelay]);
+
+        for (const booking of result.rows) {
+            const tgChatId = booking.customer_telegram_id;
+            if (!tgChatId) continue;
+
+            const text = `🌟 <b>Як пройшло свято?</b>\n\n`
+                + `Програма: ${booking.program_name || booking.label}\n`
+                + `Дата: ${booking.date}\n\n`
+                + `Оцініть від 1 до 5:\n`
+                + `⭐ — Погано\n⭐⭐ — Так собі\n⭐⭐⭐ — Нормально\n⭐⭐⭐⭐ — Добре\n⭐⭐⭐⭐⭐ — Чудово!\n\n`
+                + `Натисніть кнопку нижче:`;
+
+            const keyboard = {
+                inline_keyboard: [[
+                    { text: '1⭐', callback_data: `review:${booking.id}:1` },
+                    { text: '2⭐', callback_data: `review:${booking.id}:2` },
+                    { text: '3⭐', callback_data: `review:${booking.id}:3` },
+                    { text: '4⭐', callback_data: `review:${booking.id}:4` },
+                    { text: '5⭐', callback_data: `review:${booking.id}:5` }
+                ]]
+            };
+
+            try {
+                await sendTelegramMessage(tgChatId, text, {
+                    reply_markup: JSON.stringify(keyboard)
+                });
+                await pool.query(
+                    'INSERT INTO review_requests_sent (booking_id) VALUES ($1) ON CONFLICT DO NOTHING',
+                    [booking.id]
+                );
+                log.info(`Review request sent for booking #${booking.id}`);
+            } catch (err) {
+                log.warn(`Failed to send review request for booking #${booking.id}: ${err.message}`);
+            }
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('checkAutoReviewRequests error', err);
+        }
+    }
+}
+
+// v22.18: Check team pulse reminder (daily at configured time)
+async function checkTeamPulseReminder() {
+    try {
+        const now = getKyivTimeStr();
+        const pulseTime = '18:00'; // Could be configurable via settings
+
+        if (now !== pulseTime) return;
+
+        const todayKey = `pulse_sent_${getKyivDateStr()}`;
+        const sent = await getLastSent(todayKey);
+        if (sent) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        const text = `🫀 <b>Пульс команди</b>\n\n`
+            + `Як ти сьогодні? Оціни свій настрій:\n\n`
+            + `Натисни кнопку нижче (анонімно):`;
+
+        const keyboard = {
+            inline_keyboard: [[
+                { text: '1 😫', callback_data: 'pulse:1' },
+                { text: '2 😕', callback_data: 'pulse:2' },
+                { text: '3 😐', callback_data: 'pulse:3' },
+                { text: '4 🙂', callback_data: 'pulse:4' },
+                { text: '5 🤩', callback_data: 'pulse:5' }
+            ]]
+        };
+
+        await sendTelegramMessage(chatId, text, {
+            reply_markup: JSON.stringify(keyboard)
+        });
+
+        await setLastSent(todayKey, now);
+        log.info('Team pulse reminder sent');
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('checkTeamPulseReminder error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
@@ -1353,5 +1455,76 @@ module.exports = {
     checkTaskOverdue, checkCustomerRetention, checkAutoReport,
     checkHotLeads,
     checkScheduledChatMessages,
-    checkExpiredChatMessages
+    checkExpiredChatMessages,
+    checkAutoReviewRequests,
+    checkTeamPulseReminder,
+    checkAutoOrdering
 };
+
+// v22.18: Auto-ordering — check stock levels and create order requests
+async function checkAutoOrdering() {
+    try {
+        const result = await pool.query(`
+            SELECT aor.id AS rule_id, aor.stock_id, aor.contractor_id, aor.reorder_quantity,
+                   ws.name AS stock_name, ws.quantity, ws.min_quantity, ws.unit,
+                   c.name AS contractor_name, c.telegram_chat_id AS contractor_tg
+            FROM auto_order_rules aor
+            JOIN warehouse_stock ws ON ws.id = aor.stock_id
+            LEFT JOIN contractors c ON c.id = aor.contractor_id
+            WHERE aor.is_active = true
+              AND ws.is_active = true
+              AND ws.quantity <= ws.min_quantity
+              AND NOT EXISTS (
+                  SELECT 1 FROM auto_order_requests req
+                  WHERE req.stock_id = aor.stock_id
+                    AND req.status IN ('pending', 'approved')
+                    AND req.created_at > NOW() - INTERVAL '24 hours'
+              )
+        `);
+
+        if (result.rows.length === 0) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        for (const item of result.rows) {
+            const reqResult = await pool.query(
+                `INSERT INTO auto_order_requests (stock_id, contractor_id, quantity, current_stock, min_stock)
+                 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                [item.stock_id, item.contractor_id, item.reorder_quantity, item.quantity, item.min_quantity]
+            );
+            const requestId = reqResult.rows[0].id;
+
+            const text = `🛒 <b>Автозамовлення #${requestId}</b>\n\n`
+                + `📦 <b>${item.stock_name}</b>\n`
+                + `📊 Залишок: ${item.quantity} ${item.unit} (мін: ${item.min_quantity})\n`
+                + `📝 Замовити: ${item.reorder_quantity} ${item.unit}\n`
+                + (item.contractor_name ? `🏢 Підрядник: ${item.contractor_name}\n` : '')
+                + `\nПідтвердити замовлення?`;
+
+            const keyboard = {
+                inline_keyboard: [[
+                    { text: '✅ Підтвердити', callback_data: `order_approve:${requestId}` },
+                    { text: '❌ Відхилити', callback_data: `order_reject:${requestId}` }
+                ]]
+            };
+
+            const msgResult = await sendTelegramMessage(chatId, text, {
+                reply_markup: JSON.stringify(keyboard)
+            });
+
+            if (msgResult && msgResult.ok) {
+                await pool.query(
+                    'UPDATE auto_order_requests SET telegram_message_id = $1 WHERE id = $2',
+                    [msgResult.result.message_id, requestId]
+                );
+            }
+
+            log.info(`Auto-order request #${requestId} created for ${item.stock_name} (${item.quantity}/${item.min_quantity})`);
+        }
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('checkAutoOrdering error', err);
+        }
+    }
+}

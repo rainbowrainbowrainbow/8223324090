@@ -1,32 +1,132 @@
 /**
- * js/components/sidebar.js — Unified sidebar navigation (v22.0.0)
+ * js/components/sidebar.js — Unified sidebar navigation (v24.2.0)
  * Single source of truth for sidebar on ALL pages.
- * Determines active page from window.location.pathname.
- * Applies role-based visibility using PAGE_ACCESS from auth.js.
- * v22.0.0: Dashboard as HOME, merged pages (leads→customers, designs→art)
+ * v24.2.0: Logical blocks, SIDEBAR_ACCESS matrix, section/divider support, smooth render
  */
 
 const Sidebar = (() => {
-    // v22.0.0: NAV_ITEMS — dashboard as HOME, merged pages
+    // ═══ NAV_ITEMS — 4 logical blocks ═══
     const NAV_ITEMS = [
-        { href: '/dashboard', icon: 'Д',  label: 'Дашборд' },
-        { href: '/',          icon: 'Т',  label: 'Таймлайн' },
-        { href: '/center',    icon: 'Ц',  label: 'Центр' },
-        { href: '/tasks',     icon: 'З',  label: 'Задачі' },
-        { href: '/chat',      icon: 'Чт', label: 'Чат' },
-        { href: '/customers', icon: 'К',  label: 'Клієнти' },
-        { href: '/programs',  icon: 'П',  label: 'Програми' },
-        { href: '/staff',     icon: 'Ш',  label: 'Команда' },
-        { href: '/art',       icon: 'А',  label: 'Арт' },
-        { href: '/warehouse', icon: 'С',  label: 'Склад' },
-        { href: '/training',  icon: 'Н',  label: 'Навчання' },
-        { href: '/hr',        icon: 'HR', label: 'Кадри' },
-        { href: '/finance',   icon: 'Ф',  label: 'Фінанси' },
-        { href: '/analytics', icon: 'Ан', label: 'Аналітика' },
-        { href: '/demo',      icon: 'De', label: 'Демо' },
-        { href: '/status',    icon: 'Ст', label: 'Статус' },
-        { href: '/settings',  icon: '⚙',  label: 'Налаштування' },
+        // BLOCK 1: Daily (all roles)
+        { type: 'section', label: 'Щоденне' },
+        { href: '/dashboard', icon: '🏠', label: 'Дашборд',          access: 'all' },
+        { href: '/',          icon: '📅', label: 'Таймлайн івентів',  access: 'timeline' },
+        { href: '/tasks',     icon: '✅', label: 'Задачі',            access: 'all' },
+        { href: '/chat',      icon: '💬', label: 'Чат',               access: 'all' },
+        { href: '/warehouse', icon: '📦', label: 'Склад',             access: 'all' },
+        { href: '/training',  icon: '🎓', label: 'Навчання',          access: 'all' },
+
+        // BLOCK 2: Management
+        { type: 'divider' },
+        { type: 'section', label: 'Управління' },
+        { href: '/customers', icon: '👥', label: 'Клієнти',    access: 'management' },
+        { href: '/leads',     icon: '🔥', label: 'Ліди',       access: 'leads' },
+        { href: '/staff',     icon: '📋', label: 'Команда',    access: 'staff' },
+        { href: '/hr',        icon: '🤝', label: 'Кадри',      access: 'hr' },
+        { href: '/finance',   icon: '💰', label: 'Фінанси',    access: 'finance' },
+        { href: '/analytics', icon: '📊', label: 'Аналітика',  access: 'analytics' },
+
+        // BLOCK 3: Product / Creative
+        { type: 'divider' },
+        { type: 'section', label: 'Продукт' },
+        { href: '/programs',  icon: '🎪', label: 'Програми',    access: 'programs' },
+        { href: '/center',    icon: '💲', label: 'Центр цін',   access: 'center' },
+        { href: '/art',       icon: '🎨', label: 'Арт',         access: 'art' },
+
+        // BLOCK 4: System
+        { type: 'divider' },
+        { type: 'section', label: 'Система' },
+        { href: '/kleshnya',  icon: '🦞', label: 'Клешня',        access: 'all' },
+        { href: '/status',    icon: '🔦', label: 'Статус',        access: 'all' },
+        { href: '/demo',      icon: '🎬', label: 'Demo',          access: 'demo' },
+        { href: '#settings',  icon: '⚙️', label: 'Налаштування', access: 'settings', action: 'showSettings' },
     ];
+
+    // ═══ SIDEBAR_ACCESS matrix — role → visible pages ═══
+    const ALL = true;
+
+    const SIDEBAR_ACCESS = {
+        all: ALL,
+
+        timeline: [
+            'creator', 'director', 'vice_director',
+            'senior_manager', 'manager',
+            'admin',
+            'senior_instructor', 'instructor',
+            'hr',
+            'accountant', 'it_specialist'
+        ],
+
+        management: [
+            'creator', 'director', 'vice_director',
+            'senior_manager', 'manager',
+            'admin',
+            'marketer'
+        ],
+
+        leads: [
+            'creator', 'director', 'vice_director',
+            'senior_manager', 'manager',
+            'marketer'
+        ],
+
+        staff: [
+            'creator', 'director', 'vice_director',
+            'senior_manager', 'manager',
+            'admin',
+            'hr',
+            'senior_instructor', 'instructor',
+            'it_specialist'
+        ],
+
+        hr: [
+            'creator', 'director', 'vice_director',
+            'senior_manager',
+            'hr'
+        ],
+
+        finance: [
+            'creator', 'director', 'vice_director',
+            'accountant',
+            'senior_manager'
+        ],
+
+        analytics: [
+            'creator', 'director', 'vice_director',
+            'senior_manager', 'manager',
+            'accountant', 'marketer',
+            'it_specialist'
+        ],
+
+        programs: [
+            'creator', 'director', 'vice_director',
+            'senior_manager', 'manager',
+            'admin',
+            'senior_instructor', 'instructor',
+            'art_director'
+        ],
+
+        center: [
+            'creator', 'director', 'vice_director',
+            'senior_manager', 'manager',
+            'admin',
+            'accountant'
+        ],
+
+        art: [
+            'creator', 'director', 'vice_director',
+            'senior_manager',
+            'art_director', 'marketer'
+        ],
+
+        demo: [
+            'creator', 'director', 'vice_director'
+        ],
+
+        settings: [
+            'creator', 'director'
+        ],
+    };
 
     // v20.6.0: Status badge config
     const STATUS_CONFIG = {
@@ -38,6 +138,13 @@ const Sidebar = (() => {
     };
 
     let _pageStatuses = {};
+
+    function hasAccess(item, role) {
+        const access = SIDEBAR_ACCESS[item.access];
+        if (access === true) return true;
+        if (!access) return false;
+        return access.includes(role);
+    }
 
     // Fetch page statuses from API (fire-and-forget, updates badges after load)
     async function fetchStatuses() {
@@ -61,8 +168,7 @@ const Sidebar = (() => {
         document.querySelectorAll('.nav-link[data-page-access]').forEach(link => {
             const path = link.getAttribute('data-page-access');
             const status = _pageStatuses[path];
-            // Remove existing badge
-            const old = link.querySelector('.nav-status-badge');
+            const old = link.querySelector('.nav-status-badge, .nav-status-pill');
             if (old) old.remove();
 
             if (!status || status === 'ready') return;
@@ -89,27 +195,88 @@ const Sidebar = (() => {
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
         const role = typeof getUserRole === 'function' ? getUserRole() : null;
 
-        // Build page access map (from auth.js or fallback)
-        const pageAccess = (typeof PAGE_ACCESS !== 'undefined') ? PAGE_ACCESS : {};
+        // Filter items by role access, then clean up empty sections
+        const filtered = _filterItems(NAV_ITEMS, role);
 
         let html = '';
-        for (const item of NAV_ITEMS) {
-            // Role-based visibility
-            const allowed = pageAccess[item.href];
-            if (allowed && role && !allowed.includes(role)) continue;
+        for (const item of filtered) {
+            if (item.type === 'divider') {
+                html += '<div class="sidebar-divider"></div>';
+                continue;
+            }
+            if (item.type === 'section') {
+                html += `<span class="sidebar-section-label">${item.label}</span>`;
+                continue;
+            }
 
             const isActive = currentPath === item.href ||
-                (item.href !== '/' && currentPath.startsWith(item.href));
+                (item.href !== '/' && item.href !== '#settings' && currentPath.startsWith(item.href));
 
-            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}">
+            const actionAttr = item.action
+                ? ` data-action="${item.action}" onclick="event.preventDefault(); if(typeof ${item.action}==='function') ${item.action}();"`
+                : '';
+
+            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${actionAttr}>
                 <span class="nav-icon">${item.icon}</span>
                 <span class="nav-text">${item.label}</span>
             </a>`;
         }
 
         container.innerHTML = html;
+
+        // Smooth render — prevent "jump" on page transitions
+        container.classList.add('rendered');
+
         // Fetch and apply status badges
         fetchStatuses();
+    }
+
+    /**
+     * Filter items by role, then remove empty sections (section header + divider with no links after them).
+     */
+    function _filterItems(items, role) {
+        // Step 1: Mark nav items as visible/hidden
+        const tagged = items.map(item => {
+            if (item.type) return { ...item, _visible: true };
+            return { ...item, _visible: !role || hasAccess(item, role) };
+        });
+
+        // Step 2: Remove hidden nav items
+        const withVisible = tagged.filter(item => item._visible);
+
+        // Step 3: Clean up empty sections
+        // A section label is empty if there are no nav items before the next divider/section/end
+        const result = [];
+        for (let i = 0; i < withVisible.length; i++) {
+            const item = withVisible[i];
+
+            if (item.type === 'section') {
+                // Look ahead: is there at least one nav item before next divider/section/end?
+                let hasLinks = false;
+                for (let j = i + 1; j < withVisible.length; j++) {
+                    if (withVisible[j].type === 'divider' || withVisible[j].type === 'section') break;
+                    if (!withVisible[j].type) { hasLinks = true; break; }
+                }
+                if (!hasLinks) continue; // skip empty section
+            }
+
+            if (item.type === 'divider') {
+                // Look ahead: is there a section with links after this divider?
+                let hasContent = false;
+                for (let j = i + 1; j < withVisible.length; j++) {
+                    if (!withVisible[j].type) { hasContent = true; break; }
+                    if (withVisible[j].type === 'divider') break;
+                }
+                if (!hasContent) continue; // skip orphan divider
+            }
+
+            result.push(item);
+        }
+
+        // Remove leading dividers
+        while (result.length && result[0].type === 'divider') result.shift();
+
+        return result;
     }
 
     // Initialize sidebar toggle, overlay, collapse
@@ -158,5 +325,11 @@ const Sidebar = (() => {
         initToggle();
     }
 
-    return { init, render, initToggle, checkPageAccess, NAV_ITEMS };
+    // Listen for role switch events — re-render sidebar with new role
+    window.addEventListener('roleSwitched', () => {
+        const container = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
+        if (container) render('#' + container.id);
+    });
+
+    return { init, render, initToggle, checkPageAccess, NAV_ITEMS, SIDEBAR_ACCESS, hasAccess };
 })();

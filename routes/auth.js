@@ -11,7 +11,7 @@ const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
-const { JWT_SECRET, authenticateToken } = require('../middleware/auth');
+const { JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Auth');
@@ -655,6 +655,91 @@ router.put('/password', authenticateToken, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         log.error('Password change error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// v22.18.0: RBAC — return user permissions for frontend enforcement
+router.get('/permissions', authenticateToken, (req, res) => {
+    const role = req.user.role;
+    const level = ROLE_LEVEL[role] ?? -1;
+
+    // Pages the user can access
+    const pages = {};
+    for (const [page, roles] of Object.entries(PAGE_ACCESS)) {
+        pages[page] = roles.includes(role);
+    }
+
+    // Actions the user can perform
+    const actions = {};
+    for (const [action, roles] of Object.entries(ACTION_PERMISSIONS)) {
+        actions[action] = roles.includes(role);
+    }
+
+    res.json({
+        role,
+        level,
+        pages,
+        actions
+    });
+});
+
+// v24.0.0: Impersonation — creator can get a temporary JWT for any user
+router.post('/impersonate', authenticateToken, async (req, res) => {
+    try {
+        if (process.env.DISABLE_IMPERSONATION === 'true') {
+            return res.status(403).json({ error: 'Impersonation disabled' });
+        }
+        if (req.user.role !== 'creator') {
+            return res.status(403).json({ error: 'Only creator can impersonate' });
+        }
+        const { userId } = req.body;
+        if (!userId) return res.status(400).json({ error: 'userId required' });
+
+        const result = await pool.query(
+            'SELECT id, username, role, name, is_active FROM users WHERE id = $1',
+            [parseInt(userId)]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        const target = result.rows[0];
+        if (!target.is_active) return res.status(400).json({ error: 'User is deactivated' });
+
+        const token = jwt.sign(
+            { id: target.id, username: target.username, role: target.role, name: target.name, imp: true, impBy: req.user.username },
+            JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+
+        // Audit log
+        try {
+            await pool.query(
+                `INSERT INTO admin_audit_log (admin_username, action, target_type, target_id, details)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [req.user.username, 'impersonation', 'user', target.id,
+                 JSON.stringify({ targetUsername: target.username, targetRole: target.role })]
+            );
+        } catch (e) { log.warn('Audit log failed for impersonation', e.message); }
+
+        log.info(`Impersonation: ${req.user.username} → ${target.username} (${target.role})`);
+        res.json({ token, user: { id: target.id, username: target.username, role: target.role, name: target.name } });
+    } catch (err) {
+        log.error('Impersonate error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// v24.0.0: Users list for impersonation dropdown — creator only
+router.get('/users-list', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'creator') {
+            return res.status(403).json({ error: 'Only creator can list users' });
+        }
+        const result = await pool.query(
+            'SELECT id, username, name, role FROM users WHERE is_active = true ORDER BY name'
+        );
+        res.json(result.rows);
+    } catch (err) {
+        log.error('Users list error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

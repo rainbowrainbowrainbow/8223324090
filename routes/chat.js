@@ -13,17 +13,71 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('ChatAPI');
 
+// Chat message rate limiter: max 1 msg per 500ms per user, 60 msgs/min per channel
+const _chatRateLimits = new Map(); // userId → { lastSent, channelCounts: Map<channelId, {count, resetAt}> }
+
+function _checkChatRateLimit(userId, channelId) {
+    const now = Date.now();
+    if (!_chatRateLimits.has(userId)) {
+        _chatRateLimits.set(userId, { lastSent: 0, channelCounts: new Map() });
+    }
+    const userLimit = _chatRateLimits.get(userId);
+
+    // Per-user throttle: 500ms between messages
+    if (now - userLimit.lastSent < 500) {
+        return 'Зачекайте перед наступним повідомленням';
+    }
+
+    // Per-channel limit: 60 messages per minute
+    let chLimit = userLimit.channelCounts.get(channelId);
+    if (!chLimit || now > chLimit.resetAt) {
+        chLimit = { count: 0, resetAt: now + 60000 };
+        userLimit.channelCounts.set(channelId, chLimit);
+    }
+    if (chLimit.count >= 60) {
+        return 'Ліміт повідомлень у каналі (60/хв). Зачекайте.';
+    }
+
+    userLimit.lastSent = now;
+    chLimit.count++;
+    return null;
+}
+
+// Cleanup rate limit maps every 5 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [userId, data] of _chatRateLimits) {
+        if (now - data.lastSent > 120000) {
+            _chatRateLimits.delete(userId);
+        }
+    }
+}, 300000);
+
+// Auto-generate VAPID keys if not set
+let _vapidReady = false;
+try {
+    const webpush = require('web-push');
+    if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+        const vapidKeys = webpush.generateVAPIDKeys();
+        process.env.VAPID_PUBLIC_KEY = vapidKeys.publicKey;
+        process.env.VAPID_PRIVATE_KEY = vapidKeys.privateKey;
+        log.info('VAPID keys auto-generated (set VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY env vars for persistence)');
+    }
+    webpush.setVapidDetails(
+        'mailto:' + (process.env.VAPID_EMAIL || 'admin@eventgenix.com'),
+        process.env.VAPID_PUBLIC_KEY,
+        process.env.VAPID_PRIVATE_KEY
+    );
+    _vapidReady = true;
+} catch (err) {
+    log.warn('web-push init failed:', err.message);
+}
+
 // Push notification helper (fire-and-forget)
 async function sendPushToChannel(channelId, senderUserId, title, body) {
+    if (!_vapidReady) return;
     try {
         const webpush = require('web-push');
-        if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
-
-        webpush.setVapidDetails(
-            'mailto:' + (process.env.VAPID_EMAIL || 'admin@eventgenix.com'),
-            process.env.VAPID_PUBLIC_KEY,
-            process.env.VAPID_PRIVATE_KEY
-        );
 
         const pool = require('../db').pool;
         // Get push subscriptions for channel members (excluding sender)
@@ -129,6 +183,12 @@ router.post('/channels/:id/messages', async (req, res) => {
         }
         if (content.length > 4000) {
             return res.status(400).json({ error: 'Message too long (max 4000 chars)' });
+        }
+
+        // Rate limiting
+        const rateLimitMsg = _checkChatRateLimit(userId, channelId);
+        if (rateLimitMsg) {
+            return res.status(429).json({ error: rateLimitMsg });
         }
 
         if (!await chat.isMember(channelId, userId)) {
@@ -1328,6 +1388,81 @@ router.get('/stats/leaderboard', async (req, res) => {
         res.json(leaderboard);
     } catch (err) {
         log.error('Error getting chat leaderboard', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// PRESENCE & LAST SEEN
+// ==========================================
+
+// GET /api/chat/channels/:id/messages/after/:seq — gap-fill after reconnect
+router.get('/channels/:id/messages/after/:seq', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const channelId = parseInt(req.params.id, 10);
+        const afterSeq = parseInt(req.params.seq, 10);
+        if (isNaN(channelId) || isNaN(afterSeq)) return res.status(400).json({ error: 'Invalid params' });
+
+        if (!await chat.isMember(channelId, userId)) {
+            return res.status(403).json({ error: 'Not a member' });
+        }
+
+        const result = await require('../db').pool.query(`
+            SELECT cm.*, u.username, u.name AS display_name,
+                rm.content AS reply_content, ru.username AS reply_username
+            FROM chat_messages cm
+            JOIN users u ON u.id = cm.user_id
+            LEFT JOIN chat_messages rm ON rm.id = cm.reply_to
+            LEFT JOIN users ru ON ru.id = rm.user_id
+            WHERE cm.channel_id = $1 AND cm.seq > $2
+            ORDER BY cm.seq ASC
+            LIMIT 200
+        `, [channelId, afterSeq]);
+
+        const messages = result.rows.map(row => chat.mapMessageRow(row));
+        res.json(messages);
+    } catch (err) {
+        log.error('Error fetching gap-fill messages', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/chat/online — list online user IDs
+router.get('/online', async (req, res) => {
+    try {
+        const { getOnlineUserIds } = require('../services/websocket');
+        res.json({ onlineUserIds: getOnlineUserIds() });
+    } catch (err) {
+        res.json({ onlineUserIds: [] });
+    }
+});
+
+// GET /api/chat/users/:id/last-seen — get last seen time
+router.get('/users/:id/last-seen', async (req, res) => {
+    try {
+        const targetId = parseInt(req.params.id, 10);
+        if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
+
+        const { getOnlineUserIds, getLastSeen } = require('../services/websocket');
+        const onlineIds = getOnlineUserIds();
+
+        if (onlineIds.includes(String(targetId))) {
+            return res.json({ online: true, lastSeen: null });
+        }
+
+        // Check in-memory first, then DB
+        const inMemory = getLastSeen(String(targetId));
+        if (inMemory) {
+            return res.json({ online: false, lastSeen: inMemory.toISOString() });
+        }
+
+        const pool = require('../db').pool;
+        const result = await pool.query('SELECT last_seen_at FROM users WHERE id = $1', [targetId]);
+        const lastSeen = result.rows[0]?.last_seen_at || null;
+        res.json({ online: false, lastSeen: lastSeen });
+    } catch (err) {
+        log.error('Error getting last seen', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

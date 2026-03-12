@@ -7,12 +7,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=22.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=22.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=22.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=22.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=22.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=22.3.0">
+    <link rel="stylesheet" href="css/base.css?v=24.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=24.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=24.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=24.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=24.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=24.3.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=24.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -218,6 +219,15 @@
             background: rgba(16,185,129,0.1);
             color: #059669;
         }
+        .badge-source-telegram  { background: rgba(0,136,204,0.12);  color: #0088CC; }
+        .badge-source-facebook  { background: rgba(24,119,242,0.12); color: #1877F2; }
+        .badge-source-instagram { background: rgba(193,53,132,0.12); color: #C13584; }
+        .badge-source-viber     { background: rgba(115,82,143,0.12); color: #73528F; }
+        .badge-source-tiktok    { background: rgba(0,0,0,0.1);       color: #333;    }
+        .badge-source-turbo     { background: rgba(255,149,0,0.12);  color: #E86F00; }
+        .badge-source-bnderoga  { background: rgba(255,200,0,0.12);  color: #B8860B; }
+        .badge-source-google    { background: rgba(66,133,244,0.12); color: #4285F4; }
+        .badge-source-manual    { background: rgba(100,100,100,0.1); color: #666;    }
 
         .badge-visits {
             background: rgba(59,130,246,0.1);
@@ -555,10 +565,17 @@
                     <input type="text" id="searchInput" class="crm-search" aria-label="Пошук по імені, телефону, Instagram..." placeholder="Пошук по імені, телефону, Instagram...">
                     <select id="sourceFilter" class="crm-filter-select">
                         <option value="">Всі джерела</option>
-                        <option value="instagram">Instagram</option>
-                        <option value="google">Google</option>
-                        <option value="recommendation">Рекомендація</option>
-                        <option value="repeat">Повторний</option>
+                        <option value="telegram">🔵 Telegram</option>
+                        <option value="facebook">🔷 Facebook</option>
+                        <option value="instagram">🟣 Instagram</option>
+                        <option value="viber">🟢 Viber</option>
+                        <option value="tiktok">⚫ TikTok</option>
+                        <option value="turbo">🟠 Turbo</option>
+                        <option value="bnderoga">🟡 BnD</option>
+                        <option value="google">🔍 Google</option>
+                        <option value="recommendation">🤝 Рекомендація</option>
+                        <option value="repeat">🔄 Повторний</option>
+                        <option value="manual">✏️ Ручний</option>
                         <option value="other">Інше</option>
                     </select>
                     <select id="sortFilter" class="crm-filter-select">
@@ -693,11 +710,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=22.3.0"></script>
-    <script src="js/api.js?v=22.3.0"></script>
-    <script src="js/auth.js?v=22.3.0"></script>
-    <script src="js/components/sidebar.js?v=22.3.0"></script>
+    <script src="js/config.js?v=24.3.0"></script>
+    <script src="js/api.js?v=24.3.0"></script>
+    <script src="js/auth.js?v=24.3.0"></script>
+    <script src="js/ui.js?v=24.3.0"></script>
+    <script src="js/components/sidebar.js?v=24.3.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/customers-page.js?v=22.3.0"></script>
+    <script src="js/customers-page.js?v=24.3.0"></script>
+    <script src="js/role-panel.js?v=24.3.0"></script>
 </body>
 </html>

@@ -10,6 +10,7 @@ const { broadcast } = require('../services/websocket');
 const { publish: publishEvent } = require('../services/eventBus');
 const { createLogger } = require('../utils/logger');
 
+const { requireAction } = require('../middleware/auth');
 const log = createLogger('Bookings');
 
 // Resolve animator line name for notifications
@@ -46,8 +47,8 @@ router.get('/:date', async (req, res) => {
     }
 });
 
-// Create booking
-router.post('/', async (req, res) => {
+// Create booking — requires create_booking action permission
+router.post('/', requireAction('create_booking'), async (req, res) => {
     const client = await pool.connect();
     try {
         const b = req.body;
@@ -199,7 +200,7 @@ router.post('/', async (req, res) => {
 });
 
 // Create booking with linked bookings in one transaction
-router.post('/full', async (req, res) => {
+router.post('/full', requireAction('create_booking'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { main, linked } = req.body;
@@ -337,8 +338,8 @@ router.post('/full', async (req, res) => {
     }
 });
 
-// Soft delete or permanent delete
-router.delete('/:id', async (req, res) => {
+// Soft delete or permanent delete — requires delete_booking permission
+router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { id } = req.params;
@@ -415,8 +416,8 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// Update booking
-router.put('/:id', async (req, res) => {
+// Update booking — requires edit_booking action permission
+router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { id } = req.params;

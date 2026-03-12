@@ -354,6 +354,7 @@
                 package: formPackageDisplay.value
             };
 
+            let saved = false;
             try {
                 const resp = await fetch('/api/leads/landing', {
                     method: 'POST',
@@ -364,11 +365,16 @@
                         package: data.package
                     })
                 });
-                if (!resp.ok) throw new Error('API error');
-            } catch {
-                // Fallback
+                if (resp.ok) {
+                    const result = await resp.json();
+                    saved = result.success;
+                }
+            } catch (e) {
+                console.warn('Lead save failed:', e);
             }
 
+            // Show success regardless (UX) but log if failed
+            if (!saved) console.warn('Lead not saved to CRM');
             form.style.display = 'none';
             successEl.style.display = '';
         });

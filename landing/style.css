@@ -2723,3 +2723,102 @@ h1, h2, h3, h4 {
     will-change: transform;
     transition: transform 0.1s linear;
 }
+
+/* ========================================
+   v4.1: New Pricing Cards Layout
+   ======================================== */
+
+/* Pricing grid — 3+4 layout */
+.pricing-grid--v2 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+@media (max-width: 1024px) { .pricing-grid--v2 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px)  { .pricing-grid--v2 { grid-template-columns: 1fr; } }
+
+/* Full-width last card */
+.price-card--full { grid-column: 1 / -1; }
+@media (max-width: 600px) { .price-card--full { grid-column: 1; } }
+
+/* OLD price strikethrough */
+.price-card__old-price {
+    font-size: 18px;
+    color: var(--text-3);
+    text-decoration: line-through;
+    font-family: 'Space Grotesk', sans-serif;
+    margin-top: 8px;
+}
+
+/* Starter tag */
+.price-card__tag {
+    display: inline-block;
+    background: var(--indigo-dim);
+    border: 1px solid rgba(99,102,241,0.25);
+    color: #A5B4FC;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 999px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+}
+
+/* Sound card accent */
+.price-card--sound {
+    border-color: rgba(99,102,241,0.2);
+}
+.price-card--sound:hover {
+    border-color: rgba(99,102,241,0.4);
+    box-shadow: 0 16px 48px rgba(99,102,241,0.1);
+}
+
+/* Kleshnya card accent */
+.price-card--kleshnya {
+    border-color: rgba(212,168,67,0.15);
+}
+.price-card--kleshnya:hover {
+    border-color: rgba(212,168,67,0.35);
+    box-shadow: 0 16px 48px rgba(212,168,67,0.08);
+}
+
+/* Feature sub-text */
+.feat-sub {
+    display: block;
+    font-size: 11px;
+    color: var(--text-3);
+    margin-top: 2px;
+    font-style: italic;
+}
+
+/* Full card horizontal layout */
+.price-card--full .price-card__features {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 4px 24px;
+}
+
+/* Price card name */
+.price-card__name {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+/* Price features */
+.price-card__features {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 20px 0 24px;
+    font-size: 14px;
+    color: var(--text-2);
+}
+
+/* Comparison table scroll fix */
+.compare-table { overflow-x: auto; }
+.ctable th, .ctable td { min-width: 80px; }

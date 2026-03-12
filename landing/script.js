@@ -644,7 +644,7 @@
         var savings = Math.round(hourlyRate * totalHours);
 
         // ROI: (savings - plan_cost) / plan_cost
-        var planCost = 2000;
+        var planCost = 18000; // Full package
         var roi = Math.round(((savings - planCost) / planCost) * 100);
 
         if (hoursEl) hoursEl.textContent = totalHours + ' год';

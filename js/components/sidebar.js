@@ -13,6 +13,7 @@ const Sidebar = (() => {
         { href: '/',          icon: '📅', label: 'Таймлайн івентів',  access: 'timeline' },
         { href: '/tasks',     icon: '✅', label: 'Задачі',            access: 'all' },
         { href: '/chat',      icon: '💬', label: 'Чат',               access: 'all' },
+        { href: '/staff',     icon: '🗓️', label: 'Графік',            access: 'schedule_daily' },
         { href: '/warehouse', icon: '📦', label: 'Склад',             access: 'all' },
         { href: '/training',  icon: '🎓', label: 'Навчання',          access: 'all' },
 
@@ -38,6 +39,7 @@ const Sidebar = (() => {
         { type: 'section', label: 'Система' },
         { href: '/kleshnya',  icon: '🦞', label: 'Клешня',        access: 'all' },
         { href: '/status',    icon: '🔦', label: 'Статус',        access: 'all' },
+        { href: '/game',      icon: '🎮', label: 'Гра',           access: 'all' },
         { href: '/demo',      icon: '🎬', label: 'Demo',          access: 'demo' },
         { href: '#settings',  icon: '⚙️', label: 'Налаштування', access: 'settings', action: 'showSettings' },
     ];
@@ -125,6 +127,15 @@ const Sidebar = (() => {
 
         settings: [
             'creator', 'director'
+        ],
+
+        // Графік в щоденному — хто бачить розклад персоналу щодня
+        schedule_daily: [
+            'creator', 'director', 'vice_director',
+            'senior_manager', 'manager',
+            'admin',
+            'senior_instructor', 'instructor',
+            'hr', 'it_specialist'
         ],
     };
 

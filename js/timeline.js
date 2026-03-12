@@ -247,14 +247,22 @@ async function renderTimeline() {
     const savedScrollLeft = timelineScroll ? timelineScroll.scrollLeft : 0;
 
     const container = document.getElementById('timelineLines');
-    // v7.9.3: Fetch lines, bookings, and afisha in parallel
-    const [lines, bookings, afishaEvents] = await Promise.all([
-        getLinesForDate(selectedDate),
-        getBookingsForDate(selectedDate),
-        apiGetAfishaByDate(formatDate(selectedDate)).catch(() => [])
-    ]);
+    // v25.4.1: Robust data fetch — each source fetches independently to prevent one failure from blocking all
+    let lines = [], bookings = [], afishaEvents = [];
+    try {
+        const results = await Promise.all([
+            getLinesForDate(selectedDate).catch(e => { console.error('[Timeline] getLinesForDate error:', e); return []; }),
+            getBookingsForDate(selectedDate).catch(e => { console.error('[Timeline] getBookingsForDate error:', e); return []; }),
+            apiGetAfishaByDate(formatDate(selectedDate)).catch(() => [])
+        ]);
+        lines = results[0] || [];
+        bookings = results[1] || [];
+        afishaEvents = results[2] || [];
+    } catch (err) {
+        console.error('[Timeline] Critical fetch error:', err);
+    }
 
-    _debugRender(`DATA gen=${thisGen} lines=${lines.length} bookings=${bookings.length} afisha=${(afishaEvents||[]).length} stale=${thisGen !== _renderGen}`);
+    _debugRender(`DATA gen=${thisGen} lines=${lines.length} bookings=${bookings.length} afisha=${afishaEvents.length} stale=${thisGen !== _renderGen}`);
 
     // v7.0: If a newer render started while we were loading data, abort this stale render
     if (thisGen !== _renderGen) {
@@ -268,11 +276,8 @@ async function renderTimeline() {
         const retryDateStr = formatDate(selectedDate);
         setTimeout(() => {
             AppState._linesRetryScheduled = false;
-            // Invalidate cache so retry fetches fresh data
             delete AppState.cachedLines[retryDateStr];
-            // Only retry if still on the same date
             if (formatDate(AppState.selectedDate) === retryDateStr) {
-                // Retrying render — lines were empty
                 renderTimeline();
             }
         }, 2000);
@@ -282,10 +287,10 @@ async function renderTimeline() {
 
     // v5.11: Pass line IDs so Quick Stats only counts bookings on existing lines
     const lineIds = lines.map(l => l.id);
-    updateQuickStats(bookings, lineIds);
+    try { updateQuickStats(bookings, lineIds); } catch (e) { console.error('[Timeline] updateQuickStats error:', e); }
 
     // v19.11: Update room load panel if open
-    updateRoomLoadPanel(bookings, selectedDate);
+    try { updateRoomLoadPanel(bookings, selectedDate); } catch (e) { console.error('[Timeline] updateRoomLoadPanel error:', e); }
 
     const historyBtn = document.getElementById('historyBtn');
     if (historyBtn) {
@@ -298,7 +303,6 @@ async function renderTimeline() {
 
     const dayOfWeek = selectedDate.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    // [FIX] Показуємо день тижня + дату — зручно на мобільному (вертикальний режим)
     const dd = String(selectedDate.getDate()).padStart(2, '0');
     const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
     const _dowEl = document.getElementById('dayOfWeekLabel'); if (_dowEl) _dowEl.textContent = `${DAYS[dayOfWeek]}, ${dd}.${mm}`;
@@ -316,10 +320,13 @@ async function renderTimeline() {
     });
 
     // v7.9.3: Render afisha line at the top (only unassigned events)
-    const hasAssigned = allAfisha.some(ev => ev.line_id);
-    renderAfishaLine(container, unassignedAfisha, start, selectedDate, hasAssigned);
+    try {
+        const hasAssigned = allAfisha.some(ev => ev.line_id);
+        renderAfishaLine(container, unassignedAfisha, start, selectedDate, hasAssigned);
+    } catch (e) { console.error('[Timeline] renderAfishaLine error:', e); }
 
     lines.forEach(line => {
+        try {
         const lineEl = document.createElement('div');
         lineEl.className = 'timeline-line';
 
@@ -350,6 +357,7 @@ async function renderTimeline() {
         container.appendChild(lineEl);
 
         lineEl.querySelector('.line-header').addEventListener('click', () => editLineModal(line.id));
+        } catch (e) { console.error('[Timeline] Error rendering line:', line?.id, e); }
     });
 
     _debugRender(`RENDERED gen=${thisGen} blocks=${container.querySelectorAll('.booking-block').length}`);

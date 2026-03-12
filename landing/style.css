@@ -2916,3 +2916,112 @@ h1, h2, h3, h4 {
         grid-template-columns: 1fr;
     }
 }
+
+/* ========================================
+   v4.2: CRM Preview Frame
+   ======================================== */
+
+.crm-preview {
+    margin-top: 48px;
+    perspective: 1200px;
+}
+
+.crm-preview__frame {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(212,168,67,0.2);
+    box-shadow:
+        0 0 0 1px rgba(212,168,67,0.08),
+        0 32px 80px rgba(0,0,0,0.5),
+        0 0 80px rgba(212,168,67,0.07);
+    transform: rotateX(3deg);
+    transform-origin: bottom center;
+    transition: transform 0.4s var(--ease-smooth), box-shadow 0.4s;
+    background: #0a0a18;
+    max-width: 860px;
+    margin: 0 auto;
+}
+
+.crm-preview__frame:hover {
+    transform: rotateX(0deg) scale(1.01);
+    box-shadow:
+        0 0 0 1px rgba(212,168,67,0.2),
+        0 40px 100px rgba(0,0,0,0.5),
+        0 0 120px rgba(212,168,67,0.12);
+}
+
+/* Browser chrome bar */
+.crm-preview__bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: rgba(18,18,36,0.95);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.crm-preview__dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.crm-preview__dot--red    { background: #FF5F57; }
+.crm-preview__dot--yellow { background: #FEBC2E; }
+.crm-preview__dot--green  { background: #28C840; }
+
+.crm-preview__url {
+    margin-left: 12px;
+    font-size: 12px;
+    color: var(--text-3);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 3px 12px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    flex: 1;
+    max-width: 340px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.crm-preview__img {
+    width: 100%;
+    display: block;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+    object-position: top center;
+}
+
+/* Live badge overlay */
+.crm-preview__badge {
+    position: absolute;
+    bottom: 14px;
+    right: 14px;
+    background: rgba(7,7,15,0.88);
+    border: 1px solid rgba(212,168,67,0.3);
+    color: var(--gold);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 999px;
+    backdrop-filter: blur(8px);
+    letter-spacing: 0.3px;
+}
+
+/* Glow behind frame */
+.crm-preview::before {
+    content: '';
+    position: absolute;
+    inset: -20px;
+    background: radial-gradient(ellipse at 50% 100%, rgba(212,168,67,0.08) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: -1;
+}
+
+@media (max-width: 768px) {
+    .crm-preview__frame { transform: none; border-radius: 8px; }
+    .crm-preview__url { max-width: 160px; }
+}

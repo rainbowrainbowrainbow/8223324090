@@ -3391,7 +3391,10 @@ h1, h2, h3, h4 {
     /* ---- STICKY CTA BAR ---- */
     .sticky-cta { padding: 10px 16px; }
     .sticky-cta__text { font-size: 13px; }
-    .sticky-cta .btn { padding: 10px 20px; font-size: 14px; white-space: nowrap; }
+    .sticky-cta__inner { flex-wrap: nowrap; gap: 10px; }
+    .sticky-cta__actions { gap: 8px; flex-shrink: 0; }
+    .sticky-cta .btn { padding: 10px 20px; font-size: 14px; white-space: nowrap; max-width: calc(100vw - 140px); }
+    .sticky-cta__close { width: 36px; height: 36px; min-width: 36px; font-size: 16px; }
 
     /* ---- QUOTE BLOCK ---- */
     .quote { font-size: 15px; padding: 16px 20px; }
@@ -3402,7 +3405,7 @@ h1, h2, h3, h4 {
     .modal__title { font-size: 22px; }
 
     /* ---- BACK TO TOP ---- */
-    .back-to-top { width: 44px; height: 44px; font-size: 18px; bottom: 80px; right: 16px; }
+    .back-to-top { width: 40px; height: 40px; font-size: 16px; bottom: 80px; right: 12px; }
 
     /* ---- SCROLL PROGRESS ---- */
     .scroll-progress { height: 2px; }

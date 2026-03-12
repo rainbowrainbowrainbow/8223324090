@@ -622,12 +622,19 @@
     var stickyDismissed = false;
     var heroSection = document.getElementById('hero');
 
+    var backToTop = document.querySelector('.back-to-top');
     if (stickyCta) {
         window.addEventListener('scroll', function() {
             if (stickyDismissed) return;
             // Show after 40% of page scrolled
             var scrollPct = window.scrollY / (document.body.scrollHeight - window.innerHeight);
-            stickyCta.classList.toggle('visible', scrollPct > 0.4);
+            var show = scrollPct > 0.4;
+            stickyCta.classList.toggle('visible', show);
+            // Push back-to-top above sticky bar when visible
+            if (backToTop) {
+                var stickyH = stickyCta.offsetHeight || 60;
+                backToTop.style.bottom = show ? (stickyH + 16) + 'px' : '';
+            }
         }, { passive: true });
     }
     if (stickyClose) {

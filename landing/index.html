@@ -9,9 +9,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css?v=4.2">
-    <meta property="og:title" content="Event Genix — AI-система для дитячих розважальних центрів">
-    <meta property="og:description" content="Автоматизуйте бронювання, команду, фінанси. Клешня — AI-дворецький що не спить поки ви відпочиваєте.">
+    <meta property="og:title" content="Event Genix — Бізнес, що керує собою.">
+    <meta property="og:description" content="AI-система для дитячих розважальних центрів. Автоматизуйте бронювання, команду, фінанси. 90+ хв економії на день.">
     <meta property="og:type" content="website">
+    <meta property="og:image" content="https://8223324090-production.up.railway.app/landing/images/crm-login.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://8223324090-production.up.railway.app/landing/images/crm-login.jpg">
     <meta name="theme-color" content="#C9A84C">
     <link rel="icon" href="/images/favicon.ico">
 
@@ -110,8 +115,8 @@
 
         <!-- РЯДОК ЦИФР -->
         <div class="stats-row">
-            <div class="stat-item fade-in" id="statMinutes">
-                <div class="stat-item__value" id="statMinutesVal">80</div>
+            <div class="stat-item fade-in">
+                <div class="stat-item__value">90+</div>
                 <div class="stat-item__label">хвилин економії на день</div>
             </div>
             <div class="stat-divider"></div>
@@ -121,12 +126,12 @@
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item fade-in">
-                <div class="stat-item__value">v22+</div>
-                <div class="stat-item__label">версій виходить кожен тиждень</div>
+                <div class="stat-item__value">v24.3</div>
+                <div class="stat-item__label">актуальна версія</div>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item fade-in">
-                <div class="stat-item__value" id="statHoursVal">26</div>
+                <div class="stat-item__value">33+</div>
                 <div class="stat-item__label">годин на місяць вільного часу</div>
             </div>
         </div>
@@ -567,8 +572,8 @@
 <!-- СЕКЦІЯ 7: НАША КОМАНДА -->
 <section class="section team" id="team">
     <div class="container">
-        <h2 class="section__title section__title--gold fade-in">Наша команда</h2>
-        <p class="section__subtitle fade-in">Люди які створюють магію кожного дня</p>
+        <h2 class="section__title section__title--gold fade-in">Команда Event Genix</h2>
+        <p class="section__subtitle fade-in">Перша команда що живе в системі щодня — і знає кожен її нюанс</p>
         <!-- TEAM CAROUSEL v2 -->
         <div class="tc-wrap fade-in">
             <button class="tc-btn tc-btn--prev" type="button">&#8592;</button>
@@ -626,52 +631,49 @@
         <p class="section__subtitle fade-in">Нові фічі — кожного тижня. Ось що додали останнім часом.</p>
         <div class="updates-grid fade-in">
             <div class="update-card update-card--new">
-                <div class="update-card__badge">Нове</div>
-                <div class="update-card__version">v22.16</div>
-                <div class="update-card__title">OmniClaw + Lead Capture</div>
+                <div class="update-card__badge">🔥 Нове</div>
+                <div class="update-card__version">v24.3</div>
+                <div class="update-card__title">Dashboard Per-Role</div>
                 <ul class="update-card__list">
-                    <li>Автозахват лідів з Telegram, FB, IG, Viber</li>
-                    <li>Омніканальна комунікація OmniClaw</li>
-                    <li>Universal webhook для TikTok/Turbo</li>
-                    <li>Нотифікації менеджерам про нові ліди</li>
-                    <li>Захист від дублів через external_id</li>
+                    <li>Персональний дашборд для кожної з 24 ролей</li>
+                    <li>Drag & Drop кастомізація віджетів</li>
+                    <li>KPI-картки з delta % до вчора</li>
+                    <li>Швидкі дії прямо з дашборду</li>
+                    <li>Role Switcher для тестування</li>
                 </ul>
             </div>
             <div class="update-card">
-                <div class="update-card__version">v22.9</div>
-                <div class="update-card__title">Dashboard + Role Panel</div>
+                <div class="update-card__version">v24.2</div>
+                <div class="update-card__title">Sidebar Rebuild</div>
                 <ul class="update-card__list">
-                    <li>Персональний дашборд для кожної ролі</li>
-                    <li>Глобальна Role Panel на всіх сторінках</li>
-                    <li>Role Switcher для тестування</li>
-                    <li>KPI-картки з delta vs вчора</li>
-                    <li>Drag & Drop кастомізація</li>
+                    <li>Єдине джерело sidebar.js для всіх сторінок</li>
+                    <li>4 логічні блоки: Щоденне / Управління / Продукт / Система</li>
+                    <li>Матриця доступу SIDEBAR_ACCESS по ролях</li>
+                    <li>Плавна анімація відкриття/закриття</li>
+                </ul>
+            </div>
+            <div class="update-card">
+                <div class="update-card__version">v23.0</div>
+                <div class="update-card__title">OmniClaw + Lead Capture</div>
+                <ul class="update-card__list">
+                    <li>Автозахват лідів з Telegram, FB, IG, Viber</li>
+                    <li>Universal webhook для TikTok/Turbo</li>
+                    <li>Захист від дублів через external_id</li>
+                    <li>Нотифікації менеджерам про нові ліди</li>
                 </ul>
             </div>
             <div class="update-card">
                 <div class="update-card__version">v21.9</div>
-                <div class="update-card__title">Chat Mega Upgrade</div>
+                <div class="update-card__title">Чат Mega Upgrade</div>
                 <ul class="update-card__list">
                     <li>Online-статус з пульсуючою крапкою</li>
-                    <li>Гігантські emoji-стікери з анімацією</li>
                     <li>Swipe-to-reply на мобільних</li>
                     <li>Кольорові ролі та ачівки</li>
-                    <li>AI-модератор Guardian v2</li>
-                </ul>
-            </div>
-            <div class="update-card">
-                <div class="update-card__version">v21.3</div>
-                <div class="update-card__title">Командний Месенджер</div>
-                <ul class="update-card__list">
-                    <li>Корпоративний чат всередині CRM</li>
-                    <li>DM між членами команди</li>
-                    <li>Прив'язка задач до повідомлень</li>
-                    <li>Read receipts ✓✓</li>
                     <li>Клешня прямо в чаті</li>
                 </ul>
             </div>
         </div>
-        <p class="section__note fade-in">Версія v22.16 · Березень 2026 · <a href="/" style="color:var(--gold);text-decoration:underline;">Увійти в систему</a></p>
+        <p class="section__note fade-in">Версія v24.3 · Березень 2026 · <a href="/" style="color:var(--gold);text-decoration:underline;">Увійти в систему →</a></p>
     </div>
 </section>
 
@@ -704,6 +706,14 @@
                 <button class="faq-q">Що вмінить Клешня — AI-асистент? <span class="faq-arrow">↓</span></button>
                 <div class="faq-a">Клешня бронює, нагадує, будує розклад, генерує афіші, відповідає на питання команди, складає P&L, контролює склад і багато іншого. Все через Telegram або веб-інтерфейс.</div>
             </div>
+            <div class="faq-item">
+                <button class="faq-q">Скільки коштує і чи є приховані платежі? <span class="faq-arrow">↓</span></button>
+                <div class="faq-a">Ціни фіксовані — від 2 000 ₴/міс за Базовий до 18 000 ₴/міс за повний пакет. Без прихованих комісій. Підключення — разово в доларах за курсом НБУ. Розхід на AI поки 0 ₴ — включено в тариф.</div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q">Що якщо я захочу скасувати підписку? <span class="faq-arrow">↓</span></button>
+                <div class="faq-a">Скасувати можна будь-коли. Ваші дані залишаються вашими — ми надамо повний експорт (CSV, JSON) всієї бази перед виходом. Без штрафів і утримання.</div>
+            </div>
         </div>
     </div>
 </section>
@@ -715,10 +725,10 @@
         <h2 class="section__title section__title--large fade-in">Готові автоматизувати свій парк?</h2>
         <p class="section__subtitle fade-in">Дамо демо доступ. Покажемо на живій системі.<br>Без тиску. Без ультиматумів.</p>
         <div class="cta__buttons fade-in">
-            <a href="#pricing" class="btn btn--gold">Отримати демо доступ</a>
-            <a href="https://t.me/ArdDirector" class="btn btn--outline" target="_blank" rel="noopener">Написати в Telegram</a>
+            <a href="/" class="btn btn--gold" target="_blank" rel="noopener">→ Відкрити живу систему</a>
+            <a href="https://t.me/EventHelper_One_Bot" class="btn btn--outline" target="_blank" rel="noopener">Написати боту в Telegram</a>
         </div>
-        <p class="section__note">Або напишіть напряму: @ArdDirector</p>
+        <p class="section__note">Або особисто: <a href="https://t.me/ArdDirector" target="_blank" style="color:var(--gold)">@ArdDirector</a> · Відповідаємо протягом години</p>
     </div>
 </section>
 

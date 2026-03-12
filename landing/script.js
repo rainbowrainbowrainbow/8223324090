@@ -585,6 +585,8 @@
         'Звіт за тиждень — за 10 секунд.',
         'Клешня відповідає навіть о 3 ночі.',
         'Склад контролюється без Excel.',
+        '90+ хвилин на день повертаються вам.',
+        'Один AI замість трьох адміністраторів.',
     ];
     var twEl = document.getElementById('typewriterText');
     if (twEl) {
@@ -665,11 +667,12 @@
     var stickyDismissed = false;
     var heroSection = document.getElementById('hero');
 
-    if (stickyCta && heroSection) {
+    if (stickyCta) {
         window.addEventListener('scroll', function() {
             if (stickyDismissed) return;
-            var heroBottom = heroSection.getBoundingClientRect().bottom;
-            stickyCta.classList.toggle('visible', heroBottom < 0);
+            // Show after 40% of page scrolled
+            var scrollPct = window.scrollY / (document.body.scrollHeight - window.innerHeight);
+            stickyCta.classList.toggle('visible', scrollPct > 0.4);
         }, { passive: true });
     }
     if (stickyClose) {
@@ -1332,4 +1335,25 @@
         }, { passive: true });
     });
 
+})();
+
+// =====================
+// Phone mask for modal form
+// =====================
+(function() {
+    var phone = document.getElementById('formPhone');
+    if (!phone) return;
+    phone.addEventListener('input', function() {
+        var v = this.value.replace(/\D/g,'');
+        if (v.startsWith('380')) {
+            this.value = '+' + v.slice(0,12);
+        } else if (v.startsWith('0')) {
+            this.value = '+38' + v.slice(0,10);
+        } else if (v.length > 0) {
+            this.value = '+' + v.slice(0,12);
+        }
+    });
+    phone.addEventListener('focus', function() {
+        if (!this.value) this.value = '+380';
+    });
 })();

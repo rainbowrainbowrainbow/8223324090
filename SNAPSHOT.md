@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v23.4.0**. package.json: `23.4.0`. Бранч `claude/update-snapshot-version-OJyXi`.
+Версія **v23.5.0**. package.json: `23.5.0`. Бранч `main` (merged from claude/update-snapshot-version-OJyXi).
 
 ## Актуальний стан
 

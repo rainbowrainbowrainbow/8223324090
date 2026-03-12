@@ -3,17 +3,17 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v25.4.1**. package.json: `25.4.1`. Бранч `claude/update-snapshot-version-OJyXi` (ребейзнуто на main).
+Версія **v25.5.0**. package.json: `25.5.0`. Бранч `claude/update-snapshot-version-OJyXi`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] v25.4.1 — Timeline Fix + Robust Rendering
-- **package.json**: `"version": "25.4.1"`
+- **Останній коміт**: fix: [claude-code] v25.5.0 — Bug Fixes: Telegram, Bookings, Gamification API
+- **package.json**: `"version": "25.5.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
 - **origin/main**: v25.4.1 (з landing fixes від Клешні)
 - **origin/deployed**: v17.4.1
-- **Що нового**: Landing page fixes (sticky CTA, ROI calculator removed, nav link fix, pricing fixes, AI demo block removed, how-it-works real plan)
+- **Що нового в v25.5.0**: Фаза 1 баг-фіксів завершена — telegram bot fallthrough fix, booking past date validation для /full, gamification API unified format, export test retry
 
 ### Тести (перевірено 12.03.2026, Phase 2 complete)
 - **api.test.js**: **296/296 pass**
@@ -35,15 +35,15 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 > Мета: дійти стабільної, тестованої, оптимізованої версії v26.0 для деплою на production.
 > Паралельно Клешня редагує лендінг — НЕ чіпати landing/, landing.html, landing.js.
 
-### A. Баг-фікси (критичні) — 8 пунктів
-1. **FIX-001**: bookingAutomation.js — JSON.parse() для trigger_condition/actions з JSONB (28 тестів)
-2. **FIX-002**: api.test.js — додати delay або окремий rate limiter для export тестів (1 flaky)
-3. **FIX-003**: BUG-001 — Лєо бот: зайвий текст при decline/other (services/bot.js)
-4. **FIX-004**: CRM-VAL-001 — бекенд валідація: заборона бронювання на минулу дату
-5. **FIX-005**: SNAPSHOT.md розсинхрон — версія в snapshot не збігалась з package.json
-6. **FIX-006**: console.log cleanup — 15 залишків в js/ (api.js, timeline.js, chat-page.js, ws.js, offline.js)
-7. **FIX-007**: Gamification API — обернути відповіді в { success, data } (inconsistent format)
-8. **FIX-008**: package-lock.json — npm audit fix (вже зроблено в сесії)
+### A. Баг-фікси (критичні) — 8 пунктів ✅ DONE (v25.5.0)
+1. ✅ **FIX-001**: bookingAutomation.js — не баг, defensive typeof check працює коректно (pg парсить JSONB автоматично)
+2. ✅ **FIX-002**: api.test.js — додано retry при 429 для customers CSV export тесту
+3. ✅ **FIX-003**: Telegram bot — додано `return res.sendStatus(200)` в no_anim callback (fallthrough fix)
+4. ✅ **FIX-004**: POST /bookings/full — додано валідацію минулої дати (раніше тільки POST /bookings)
+5. ✅ **FIX-005**: SNAPSHOT.md розсинхрон — виправлено в попередній сесії
+6. ✅ **FIX-006**: console.log — не баг, всі console.log в js/ всередині _debug() функцій (навмисні)
+7. ✅ **FIX-007**: Gamification API — 13 endpoints обернуто в { success, data }, фронтенд оновлено
+8. ✅ **FIX-008**: package-lock.json — npm audit fix (зроблено)
 
 ### B. Тестове покриття — 12 пунктів ✅ DONE (119 тестів у routes.test.js)
 9. ✅ **TEST-001**: Тести для routes/dashboard.js (9 тестів: widgets, today, config, roles)
@@ -309,7 +309,7 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 ## Стан гілок (12.03.2026)
 | Гілка | Версія | Файлів | Статус |
 |-------|--------|--------|--------|
-| `claude/update-snapshot-version-OJyXi` | **v25.4.1** | 410+ | Ребейзнуто на main, план v26.0 |
+| `claude/update-snapshot-version-OJyXi` | **v25.5.0** | 410+ | Фаза 1 (баг-фікси) завершена |
 | `origin/main` | v25.4.1 | 410+ | Актуальна, з landing fixes |
 | `origin/deployed` | v17.4.1 | 197 | Продакшн, дуже стара |
 
@@ -323,8 +323,8 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 - Людські файли (сертифікатні фони) — вже в images/certificate/
 
 ## Незроблені баги
-- **BUG-001** — Лєо бот: зайвий текст при decline/other — НЕ ЗРОБЛЕНО
-- **CRM-VAL-001** — Минула дата в бронюванні — НЕ ЗРОБЛЕНО (бекенд валідація)
+- **BUG-001** — Лєо бот: зайвий текст при decline/other — ✅ ВИПРАВЛЕНО v25.5.0 (return res.sendStatus в no_anim)
+- **CRM-VAL-001** — Минула дата в бронюванні — ✅ ВИПРАВЛЕНО v25.5.0 (валідація в POST /bookings та /bookings/full)
 - **VERSION-SYNC** — ВИПРАВЛЕНО в v23.0.0 (всі файли синхронізовані)
 
 ## Архітектура (актуальна)
@@ -353,7 +353,7 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 - **Dashboard dark mode**: Фон сторінки `#0D0D0D`, картки мають бути `#2A2A4A+` щоб були видимі
 - **Версіонування 5 кроків**: package.json → all HTML `?v=` tags (25 файлів) → tagline → changelog button → changelog entry
 - **Два профілі**: `profile.html` (standalone, повний) та модалка в `auth.js` (вбудована, з game tab)
-- **Gamification API**: Повертає масиви/об'єкти напряму, БЕЗ `{ success: true, data: [...] }` обгортки
+- **Gamification API**: ✅ ВИПРАВЛЕНО v25.5.0 — тепер всі 13 endpoints повертають `{ success: true, data: [...] }`
 - **Toast замість Notification**: `#toastContainer` + `showNotification()` створює toast елементи
 - **_debug() у ws.js/offline.js**: Показує тільки при `localStorage.pzp_debug = 'true'`
 - **Multi-agent**: Завжди git fetch + перевіряй чи хтось не змінив файли. Коміти з тегом `[claude-code]`
@@ -366,4 +366,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-12, v25.4.1 + План v26.0 (50 пунктів) + тести перевірені, сесія claude-code*
+*Оновлено: 2026-03-12, v25.5.0 — Фаза 1 (баг-фікси) завершена, всі тести pass, сесія claude-code*

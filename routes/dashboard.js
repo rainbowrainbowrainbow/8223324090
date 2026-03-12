@@ -1,6 +1,6 @@
 /**
- * routes/dashboard.js — Dashboard API (v22.0.0)
- * User dashboard config, widget data, weather/currency cache
+ * routes/dashboard.js — Dashboard API (v24.3.0)
+ * User dashboard config, widget data, /today aggregate, weather/currency cache
  */
 const express = require('express');
 const router = express.Router();
@@ -141,6 +141,58 @@ router.get('/widgets/:type', async (req, res) => {
                 break;
             }
 
+            case 'alerts': {
+                // System alerts: overdue tasks, unconfirmed bookings, low stock
+                const { getKyivDateStr } = require('../services/booking');
+                const alertToday = getKyivDateStr();
+                const [overdue, unconfirmed] = await Promise.all([
+                    pool.query(`
+                        SELECT COUNT(*) as count FROM tasks
+                        WHERE deadline < NOW() AND status NOT IN ('done', 'cancelled')
+                    `),
+                    pool.query(`
+                        SELECT COUNT(*) as count FROM bookings
+                        WHERE date = $1 AND status = 'preliminary'
+                    `, [alertToday]),
+                ]);
+                const alerts = [];
+                const overdueCount = parseInt(overdue.rows[0].count);
+                const unconfirmedCount = parseInt(unconfirmed.rows[0].count);
+                if (overdueCount > 0) alerts.push({ type: 'warning', title: `${overdueCount} протерм. задач`, icon: '⚠️' });
+                if (unconfirmedCount > 0) alerts.push({ type: 'info', title: `${unconfirmedCount} непідтв. бронювань`, icon: '📋' });
+                data = { alerts };
+                break;
+            }
+
+            case 'leads_new': {
+                const result = await pool.query(`
+                    SELECT id, name, phone, source, status, created_at
+                    FROM leads
+                    WHERE status = 'new'
+                    ORDER BY created_at DESC
+                    LIMIT 8
+                `);
+                data = { leads: result.rows, total: result.rows.length };
+                break;
+            }
+
+            case 'finance_today': {
+                const { getKyivDateStr } = require('../services/booking');
+                const finToday = getKyivDateStr();
+                const [revenue, expenses, bookingCount] = await Promise.all([
+                    pool.query("SELECT COALESCE(SUM(price), 0) as total FROM bookings WHERE date = $1 AND status = 'confirmed'", [finToday]),
+                    pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM finance_transactions WHERE date = $1 AND type = 'expense'", [finToday]).catch(() => ({ rows: [{ total: 0 }] })),
+                    pool.query("SELECT COUNT(*) as count FROM bookings WHERE date = $1 AND status != 'cancelled'", [finToday]),
+                ]);
+                data = {
+                    revenue: parseFloat(revenue.rows[0].total),
+                    expenses: parseFloat(expenses.rows[0].total),
+                    bookings: parseInt(bookingCount.rows[0].count),
+                    profit: parseFloat(revenue.rows[0].total) - parseFloat(expenses.rows[0].total),
+                };
+                break;
+            }
+
             case 'announcements': {
                 const result = await pool.query(`
                     SELECT id, title, text_content as content, priority, created_at, created_by as author_name
@@ -184,6 +236,37 @@ router.get('/roles', async (req, res) => {
     } catch (err) {
         log.error('Failed to get roles', err);
         res.status(500).json({ error: 'Failed to load roles' });
+    }
+});
+
+// GET /api/dashboard/today — aggregate "today" data for quick overview
+router.get('/today', async (req, res) => {
+    try {
+        const { getKyivDateStr } = require('../services/booking');
+        const today = getKyivDateStr();
+
+        const [bookings, tasks, revenue, teamOnline, newLeads] = await Promise.all([
+            pool.query("SELECT COUNT(*) as count FROM bookings WHERE date = $1 AND status != 'cancelled'", [today]),
+            pool.query("SELECT COUNT(*) as count FROM tasks WHERE (assigned_to = $1 OR created_by = $1) AND status NOT IN ('done', 'cancelled')", [req.user.id]),
+            pool.query("SELECT COALESCE(SUM(price), 0) as total FROM bookings WHERE date = $1 AND status = 'confirmed'", [today]),
+            pool.query("SELECT COUNT(*) as count FROM users u LEFT JOIN employee_profiles ep ON ep.user_id = u.id WHERE u.is_active = true AND ep.last_activity_at > NOW() - INTERVAL '5 minutes'"),
+            pool.query("SELECT COUNT(*) as count FROM leads WHERE status = 'new'").catch(() => ({ rows: [{ count: 0 }] })),
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                date: today,
+                bookingsToday: parseInt(bookings.rows[0].count),
+                myActiveTasks: parseInt(tasks.rows[0].count),
+                revenueToday: parseFloat(revenue.rows[0].total),
+                teamOnline: parseInt(teamOnline.rows[0].count),
+                newLeads: parseInt(newLeads.rows[0].count),
+            }
+        });
+    } catch (err) {
+        log.error('Dashboard /today error', err);
+        res.status(500).json({ error: 'Failed to load today data' });
     }
 });
 

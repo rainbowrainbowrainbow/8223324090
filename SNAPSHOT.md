@@ -3,17 +3,17 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v24.2.0**. package.json: `24.2.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
+Версія **v24.3.0**. package.json: `24.3.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] v24.2.0 — Sidebar Rebuild
-- **package.json**: `"version": "24.2.0"`
+- **Останній коміт**: feat: [claude-code] v24.3.0 — Dashboard Per-Role + Customization
+- **package.json**: `"version": "24.3.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
 - **origin/main**: v24.0.0
 - **origin/deployed**: v17.4.1
-- **Що нового в v24.2.0**: Sidebar rebuild — єдине джерело sidebar.js, логічні блоки, SIDEBAR_ACCESS матриця, smooth render
+- **Що нового в v24.3.0**: Dashboard per-role — DEFAULT_WIDGETS для 24 ролей, 3 нових віджети, drag & drop налаштування, /today endpoint
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -26,7 +26,16 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v22.4.0 → v24.2.0)
+## Останні зміни (v22.4.0 → v24.3.0)
+
+### v24.3.0 (Claude Code, 12.03.2026)
+- **Dashboard Per-Role** — DEFAULT_WIDGETS розширено для всіх 24 ролей (executive → field)
+- **Нові віджети** — alerts (сповіщення), leads_new (нові ліди), finance_today (фінанси дня)
+- **GET /api/dashboard/today** — агрегований endpoint: бронювання, задачі, виручка, команда, ліди
+- **Drag & Drop налаштування** — settings modal з перетягуванням віджетів + toggle switches
+- **Landing page** — дашборд = головна сторінка після логіну (redirect з index.html)
+- **Dark mode** — повна підтримка для нових віджетів та settings modal
+- **WIDGET_DEFS** — 11 типів віджетів (було 8)
 
 ### v24.2.0 (Claude Code, 12.03.2026)
 - **Sidebar Rebuild** — єдине джерело sidebar.js для всіх 24 сторінок (видалено hardcoded nav з index.html)

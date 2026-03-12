@@ -58,14 +58,41 @@ const ROLE_DEPARTMENTS = {
     maintenance: 'operations', waiter: 'service',
 };
 
-// v22.0.0: Default dashboard widgets per role
+// v24.3.0: Default dashboard widgets per role (all 24 roles)
 const DEFAULT_WIDGETS = {
-    creator:        ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'weather', 'currency', 'announcements'],
-    director:       ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'weather', 'currency'],
-    vice_director:  ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'weather'],
-    senior_manager: ['quick_stats', 'tasks', 'bookings_today', 'weather'],
-    manager:        ['tasks', 'bookings_today', 'my_schedule', 'weather'],
-    admin:          ['tasks', 'bookings_today', 'my_schedule', 'weather'],
+    // Executive — full overview
+    creator:        ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'weather', 'currency', 'announcements'],
+    director:       ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'weather', 'currency', 'announcements'],
+    vice_director:  ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'finance_today', 'weather', 'announcements'],
+    // Management
+    senior_manager: ['quick_stats', 'tasks', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements'],
+    manager:        ['tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements'],
+    // Specialists
+    accountant:     ['finance_today', 'tasks', 'quick_stats', 'currency', 'weather'],
+    art_director:   ['tasks', 'my_schedule', 'bookings_today', 'weather', 'announcements'],
+    marketer:       ['leads_new', 'tasks', 'quick_stats', 'weather', 'announcements'],
+    it_specialist:  ['tasks', 'alerts', 'team_online', 'weather'],
+    hr:             ['tasks', 'team_online', 'my_schedule', 'announcements', 'weather'],
+    // Operations
+    admin:          ['tasks', 'bookings_today', 'my_schedule', 'weather', 'announcements'],
+    // Programs
+    senior_instructor: ['my_schedule', 'tasks', 'bookings_today', 'weather', 'announcements'],
+    instructor:     ['my_schedule', 'tasks', 'bookings_today', 'weather'],
+    // Kitchen
+    head_chef:      ['tasks', 'my_schedule', 'bookings_today', 'weather'],
+    cook:           ['my_schedule', 'tasks', 'weather'],
+    head_pastry:    ['tasks', 'my_schedule', 'bookings_today', 'weather'],
+    pastry_chef:    ['my_schedule', 'tasks', 'weather'],
+    // Field
+    animator:       ['my_schedule', 'tasks', 'bookings_today', 'weather'],
+    reception:      ['bookings_today', 'tasks', 'my_schedule', 'weather'],
+    barista:        ['my_schedule', 'tasks', 'weather'],
+    wardrobe:       ['my_schedule', 'tasks', 'weather'],
+    cleaning:       ['my_schedule', 'tasks', 'weather'],
+    maintenance:    ['my_schedule', 'tasks', 'alerts', 'weather'],
+    dishwasher:     ['my_schedule', 'tasks', 'weather'],
+    waiter:         ['my_schedule', 'tasks', 'weather'],
+    // Fallback
     _default:       ['tasks', 'my_schedule', 'weather', 'announcements'],
 };
 

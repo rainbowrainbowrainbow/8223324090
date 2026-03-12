@@ -32,6 +32,12 @@ async function login(username, password) {
         AppState.currentUser = data.user;
         localStorage.setItem('pzp_token', data.token);
         localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+        // v24.3.0: Dashboard is the landing page for all roles
+        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+        if (currentPath !== '/dashboard') {
+            window.location.href = '/dashboard';
+            return { success: true };
+        }
         showMainApp();
         // v22.5: Check daily login reward
         checkDailyLogin();

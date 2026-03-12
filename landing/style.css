@@ -3025,3 +3025,202 @@ h1, h2, h3, h4 {
     .crm-preview__frame { transform: none; border-radius: 8px; }
     .crm-preview__url { max-width: 160px; }
 }
+
+/* ========================================
+   v4.3: Magic Calculator
+   ======================================== */
+
+/* Stats band update */
+.stats-row { margin-bottom: 32px; }
+
+/* Main calculator card */
+.magic-calc {
+    background: var(--bg-card);
+    border: 1px solid rgba(212,168,67,0.15);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    backdrop-filter: blur(16px);
+    box-shadow: 0 8px 48px rgba(0,0,0,0.3), inset 0 0 60px rgba(212,168,67,0.015);
+}
+
+.magic-calc__header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 20px 28px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    background: rgba(212,168,67,0.03);
+}
+.magic-calc__title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+}
+.magic-calc__sub { font-size: 13px; color: var(--text-3); }
+
+.magic-calc__body {
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+/* Stepper */
+.magic-calc__input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+.magic-calc__label {
+    font-size: 14px;
+    color: var(--text-2);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.magic-calc__stepper {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    border: 1px solid rgba(212,168,67,0.3);
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.03);
+}
+.stepper-btn {
+    background: transparent;
+    border: none;
+    color: var(--gold);
+    font-size: 20px;
+    font-weight: 700;
+    width: 44px;
+    height: 44px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    line-height: 1;
+}
+.stepper-btn:hover { background: rgba(212,168,67,0.1); }
+.stepper-input {
+    background: transparent;
+    border: none;
+    border-left: 1px solid rgba(212,168,67,0.2);
+    border-right: 1px solid rgba(212,168,67,0.2);
+    color: var(--gold);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    width: 80px;
+    text-align: center;
+    height: 44px;
+    outline: none;
+    -moz-appearance: textfield;
+}
+.stepper-input::-webkit-outer-spin-button,
+.stepper-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+/* Results row */
+.magic-calc__results {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+@media (max-width: 768px) { .magic-calc__results { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 400px) { .magic-calc__results { grid-template-columns: 1fr 1fr; } }
+
+.magic-result {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 16px 12px;
+    text-align: center;
+    transition: border-color 0.2s, transform 0.2s;
+}
+.magic-result:hover { border-color: rgba(255,255,255,0.12); transform: translateY(-2px); }
+.magic-result--gold {
+    background: rgba(212,168,67,0.05);
+    border-color: rgba(212,168,67,0.2);
+}
+.magic-result__icon { font-size: 22px; margin-bottom: 6px; }
+.magic-result__val {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--gold);
+    line-height: 1;
+    margin-bottom: 4px;
+    transition: color 0.3s;
+}
+.magic-result--gold .magic-result__val { color: var(--gold-light); }
+.magic-result__label { font-size: 11px; color: var(--text-3); line-height: 1.3; }
+
+/* Role bars */
+.magic-calc__roles { }
+.magic-calc__roles-title {
+    font-size: 13px;
+    color: var(--text-3);
+    font-weight: 600;
+    display: block;
+    margin-bottom: 12px;
+}
+.role-bars { display: flex; flex-direction: column; gap: 8px; }
+.role-bar {
+    display: grid;
+    grid-template-columns: 140px 1fr 80px;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+}
+.role-bar__name { color: var(--text-2); white-space: nowrap; }
+.role-bar__track {
+    background: rgba(255,255,255,0.06);
+    border-radius: 999px;
+    height: 6px;
+    overflow: hidden;
+}
+.role-bar__fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+    width: 0;
+}
+.role-bar__val { color: var(--gold); font-weight: 700; text-align: right; font-size: 12px; }
+@media (max-width: 600px) {
+    .role-bar { grid-template-columns: 110px 1fr 70px; font-size: 12px; }
+}
+
+/* Live counter */
+.magic-calc__live {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 14px 20px;
+    background: rgba(99,102,241,0.05);
+    border: 1px solid rgba(99,102,241,0.12);
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-3);
+}
+.live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    flex-shrink: 0;
+    animation: livePulse 1.5s ease infinite;
+}
+@keyframes livePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+    50%       { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+}
+.live-counter {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--gold);
+    padding: 0 4px;
+}

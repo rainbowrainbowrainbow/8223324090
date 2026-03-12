@@ -847,3 +847,146 @@
     });
 
 })();
+
+// =====================
+// v4.3: Magic Calculator — Interactive Staff Savings
+// =====================
+(function() {
+    'use strict';
+
+    // Per-role savings (minutes/day) — with "magic" randomness
+    var ROLES = [
+        { name: 'Адміністратор', icon: '💼', base: 35 },
+        { name: 'Менеджер',      icon: '📋', base: 28 },
+        { name: 'Аніматор',      icon: '🎭', base: 18 },
+        { name: 'Касир',         icon: '💳', base: 22 },
+        { name: 'Арт-директор',  icon: '🎨', base: 45 },
+        { name: 'Директор',      icon: '👑', base: 55 },
+    ];
+
+    // Seeded per-staff "magic" multiplier — looks random but is deterministic by staff count
+    function magicMultiplier(staff) {
+        // subtle variation: 0.85 – 1.30 based on staff modulo
+        var seed = (staff * 37 + 13) % 100;
+        return 0.85 + (seed / 100) * 0.45;
+    }
+
+    function calcMinutesPerDay(staff) {
+        var mult = magicMultiplier(staff);
+        // Base per-person savings (blended role mix): ~84 min avg
+        var perPerson = 84 * mult;
+        // Synergy bonus for larger teams (network effect)
+        var synergy = staff > 10 ? Math.log(staff) * 8 : 0;
+        return Math.round(perPerson * staff + synergy);
+    }
+
+    function animateNumber(el, from, to, suffix, duration) {
+        suffix = suffix || '';
+        duration = duration || 700;
+        var start = null;
+        var fromNum = typeof from === 'number' ? from : parseFloat(String(from).replace(/[^\d.]/g, '')) || 0;
+        var toNum = typeof to === 'number' ? to : parseFloat(String(to)) || 0;
+        function step(ts) {
+            if (!start) start = ts;
+            var p = Math.min((ts - start) / duration, 1);
+            p = 1 - Math.pow(1 - p, 3); // ease-out-cubic
+            var val = fromNum + (toNum - fromNum) * p;
+            // Format
+            var display;
+            if (toNum >= 1000) {
+                display = Math.round(val).toLocaleString('uk');
+            } else if (toNum < 10) {
+                display = val.toFixed(1);
+            } else {
+                display = Math.round(val).toString();
+            }
+            el.textContent = display + suffix;
+            if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
+    function renderRoleBars(staff, totalMin) {
+        var bars = document.getElementById('roleBars');
+        if (!bars) return;
+        bars.innerHTML = '';
+        var totalRoleBase = ROLES.reduce(function(s, r) { return s + r.base; }, 0);
+        ROLES.forEach(function(role) {
+            var pct = Math.round((role.base / totalRoleBase) * 100);
+            var min = Math.round((role.base / totalRoleBase) * totalMin / Math.max(staff, 1));
+            var div = document.createElement('div');
+            div.className = 'role-bar';
+            div.innerHTML =
+                '<span class="role-bar__name">' + role.icon + ' ' + role.name + '</span>' +
+                '<div class="role-bar__track"><div class="role-bar__fill" style="width:0%" data-pct="' + pct + '"></div></div>' +
+                '<span class="role-bar__val">~' + min + ' хв/день</span>';
+            bars.appendChild(div);
+        });
+        // Animate bars
+        setTimeout(function() {
+            bars.querySelectorAll('.role-bar__fill').forEach(function(fill) {
+                fill.style.transition = 'width 0.8s cubic-bezier(0.34,1.56,0.64,1)';
+                fill.style.width = fill.dataset.pct + '%';
+            });
+        }, 50);
+    }
+
+    function updateCalc(staff) {
+        staff = Math.max(1, Math.min(200, parseInt(staff) || 1));
+        var minDay = calcMinutesPerDay(staff);
+        var hoursMonth = Math.round((minDay / 60) * 22);
+        var salaries = (hoursMonth / 160).toFixed(1); // 160 hours per month
+        var eventsBoost = Math.min(Math.round(15 + staff * 1.2 + Math.sin(staff) * 5), 80);
+
+        var prevMin = parseInt((document.getElementById('calcMinDay').textContent || '0').replace(/[\s,]/g, '')) || 0;
+        var prevHours = parseInt((document.getElementById('calcHoursMonth').textContent || '0').replace(/[\s,]/g, '')) || 0;
+
+        animateNumber(document.getElementById('calcMinDay'), prevMin, minDay, '');
+        animateNumber(document.getElementById('calcHoursMonth'), prevHours, hoursMonth, '');
+        animateNumber(document.getElementById('calcSalary'), parseFloat(document.getElementById('calcSalary').textContent) || 0, parseFloat(salaries), '');
+        document.getElementById('calcEvents').textContent = '+' + eventsBoost + '%';
+
+        // Update header stats
+        var mainMin = Math.round(minDay / Math.max(staff, 1));
+        animateNumber(document.getElementById('statMinutesVal'), parseInt(document.getElementById('statMinutesVal').textContent) || 80, mainMin, '+');
+        animateNumber(document.getElementById('statHoursVal'), parseInt(document.getElementById('statHoursVal').textContent) || 26, Math.round(hoursMonth), '');
+
+        renderRoleBars(staff, minDay);
+    }
+
+    // Stepper buttons
+    var staffInput = document.getElementById('staffCount');
+    var minusBtn = document.getElementById('staffMinus');
+    var plusBtn = document.getElementById('staffPlus');
+
+    if (staffInput) {
+        minusBtn.addEventListener('click', function() {
+            var v = parseInt(staffInput.value) || 1;
+            staffInput.value = Math.max(1, v - 1);
+            updateCalc(staffInput.value);
+        });
+        plusBtn.addEventListener('click', function() {
+            var v = parseInt(staffInput.value) || 1;
+            staffInput.value = Math.min(200, v + 1);
+            updateCalc(staffInput.value);
+        });
+        staffInput.addEventListener('input', function() {
+            updateCalc(this.value);
+        });
+        // Initial render
+        updateCalc(20);
+    }
+
+    // LIVE COUNTER — ticks while page is open (simulates savings for "parks in Ukraine")
+    var liveEl = document.getElementById('liveCounter');
+    if (liveEl) {
+        var liveBase = Math.floor(Date.now() / 60000) * 7; // deterministic per minute
+        var liveStart = liveBase;
+        setInterval(function() {
+            liveStart += Math.floor(Math.random() * 3 + 1);
+            liveEl.textContent = liveStart.toLocaleString('uk');
+        }, 1800);
+        liveEl.textContent = liveStart.toLocaleString('uk');
+    }
+
+})();

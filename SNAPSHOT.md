@@ -15,13 +15,14 @@
 - **origin/deployed**: v17.4.1
 - **Що нового**: Landing page fixes (sticky CTA, ROI calculator removed, nav link fix, pricing fixes, AI demo block removed, how-it-works real plan)
 
-### Тести (перевірено 12.03.2026, Phase 1 complete)
-- **api.test.js**: **296/296 pass** (fixed: export rate limiter respects RATE_LIMIT_MAX)
+### Тести (перевірено 12.03.2026, Phase 2 complete)
+- **api.test.js**: **296/296 pass**
 - **certificates.test.js**: **82/82 pass**
-- **automation.test.js**: **52/52 pass** (fixed: task type filter, pre-test cleanup, JSONB safety)
-- **ВСЬОГО: 430/430 pass, 0 fail**
-- Root causes fixed: (1) `auto_complete` not in valid type filter in tasks.js, (2) stale test data between runs, (3) export rate limiter ignored RATE_LIMIT_MAX env
-- Запуск: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=postgres RATE_LIMIT_MAX=5000 node --test tests/api.test.js`
+- **automation.test.js**: **52/52 pass**
+- **routes.test.js**: **119/119 pass** ← NEW Phase 2 (12 route modules)
+- **ВСЬОГО: 549/549 pass, 0 fail**
+- Phase 2 coverage: dashboard, gamification, guardian, hr, chat, leads, sales, recurring, training, finance, center, warehouse
+- Запуск: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=postgres RATE_LIMIT_MAX=5000 node --test tests/routes.test.js`
 
 ### Сервер
 ```bash
@@ -44,19 +45,19 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 7. **FIX-007**: Gamification API — обернути відповіді в { success, data } (inconsistent format)
 8. **FIX-008**: package-lock.json — npm audit fix (вже зроблено в сесії)
 
-### B. Тестове покриття — 12 пунктів
-9. **TEST-001**: Тести для routes/dashboard.js (widgets, today, stats)
-10. **TEST-002**: Тести для routes/gamification.js (points, streaks, leaderboard)
-11. **TEST-003**: Тести для routes/guardian.js (health, mood, trust, escalation)
-12. **TEST-004**: Тести для routes/hr.js (employees, contractors, schedule)
-13. **TEST-005**: Тести для routes/chat.js (channels, messages, DM)
-14. **TEST-006**: Тести для routes/leads.js (CRUD, webhooks, conversion)
-15. **TEST-007**: Тести для routes/sales.js (pipeline, stages, deals)
-16. **TEST-008**: Тести для routes/recurring.js (recurring bookings CRUD)
-17. **TEST-009**: Тести для routes/training.js (courses, curriculum, homework)
-18. **TEST-010**: Тести для routes/finance.js (transactions, budget, reports)
-19. **TEST-011**: Тести для routes/center.js (rooms, pricing, settings)
-20. **TEST-012**: Тести для routes/warehouse.js (products, stock, procurement)
+### B. Тестове покриття — 12 пунктів ✅ DONE (119 тестів у routes.test.js)
+9. ✅ **TEST-001**: Тести для routes/dashboard.js (9 тестів: widgets, today, config, roles)
+10. ✅ **TEST-002**: Тести для routes/gamification.js (10 тестів: profile, achievements, shop, leaderboard, penalties)
+11. ✅ **TEST-003**: Тести для routes/guardian.js (16 тестів: stats, mood, rules CRUD, health, trust, analytics, escalation)
+12. ✅ **TEST-004**: Тести для routes/hr.js (10 тестів: staff, shifts, templates, clock, reports)
+13. ✅ **TEST-005**: Тести для routes/chat.js (5 тестів: channels, messages, create)
+14. ✅ **TEST-006**: Тести для routes/leads.js (9 тестів: CRUD, hot, pipeline, stats, webhooks)
+15. ✅ **TEST-007**: Тести для routes/sales.js (5 тестів: call-script, upsells, free-slots, price-calc)
+16. ✅ **TEST-008**: Тести для routes/recurring.js (8 тестів: template CRUD, pause, series, skips)
+17. ✅ **TEST-009**: Тести для routes/training.js (12 тестів: courses, assignments, KB, progress, leaderboard)
+18. ✅ **TEST-010**: Тести для routes/finance.js (12 тестів: categories CRUD, transactions CRUD, dashboard, budget, reports)
+19. ✅ **TEST-011**: Тести для routes/center.js (14 тестів: overview, workers, prices CRUD, goals, heatmap, reconciliation)
+20. ✅ **TEST-012**: Тести для routes/warehouse.js (10 тестів: stock CRUD, use, restock, history)
 
 ### C. Оптимізація бекенду — 8 пунктів
 21. **OPT-001**: DB indexes — додати індекси для частих запитів (bookings.date, tasks.due_date, leads.status)

@@ -3,28 +3,110 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v25.4.0**. package.json: `25.4.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
+Версія **v25.4.1**. package.json: `25.4.1`. Бранч `claude/update-snapshot-version-OJyXi` (ребейзнуто на main).
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] v25.4.0 — Meeting Features: Penalties, Reviews, Homework, Polls, Courses, Meeting Notes, Pipeline
-- **package.json**: `"version": "25.4.0"`
+- **Останній коміт**: feat: [claude-code] v25.4.1 — Timeline Fix + Robust Rendering
+- **package.json**: `"version": "25.4.1"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **origin/main**: v24.0.0
+- **origin/main**: v25.4.1 (з landing fixes від Клешні)
 - **origin/deployed**: v17.4.1
-- **Що нового в v25.4.0**: 7 нових фіч з зустрічі Сергій+АнЛі: штрафні бали, оцінювання задач, домашні завдання, опитування в чаті, курси/curriculum, meeting notes з автозадачами, sales pipeline stages. 7 нових міграцій (060-066), 25+ нових API endpoints.
+- **Що нового**: Landing page fixes (sticky CTA, ROI calculator removed, nav link fix, pricing fixes, AI demo block removed, how-it-works real plan)
 
-### Тести
-- **296+ тестів** (api.test.js)
-- Запуск: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MAX=5000 node --test tests/api.test.js`
-- automation.test.js — 28 тестів ЗАВЖДИ фейляться (pre-existing, НЕ наші)
+### Тести (перевірено 12.03.2026)
+- **api.test.js**: 295/296 pass (1 flaky — rate limit 429 на customers export)
+- **certificates.test.js**: 82/82 pass
+- **automation.test.js**: 23/51 pass, 28 fail (JSONB parsing bug в bookingAutomation.js)
+- **Root cause automation fails**: `trigger_condition` і `actions` з PostgreSQL приходять як string замість parsed object — потрібен JSON.parse()
+- Запуск: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=postgres RATE_LIMIT_MAX=5000 node --test tests/api.test.js`
 
 ### Сервер
 ```bash
-PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MAX=5000 node server.js
+PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=postgres RATE_LIMIT_MAX=5000 node server.js
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
+
+## ПЛАН v26.0 — Стабільна Версія (50 пунктів)
+
+> Мета: дійти стабільної, тестованої, оптимізованої версії v26.0 для деплою на production.
+> Паралельно Клешня редагує лендінг — НЕ чіпати landing/, landing.html, landing.js.
+
+### A. Баг-фікси (критичні) — 8 пунктів
+1. **FIX-001**: bookingAutomation.js — JSON.parse() для trigger_condition/actions з JSONB (28 тестів)
+2. **FIX-002**: api.test.js — додати delay або окремий rate limiter для export тестів (1 flaky)
+3. **FIX-003**: BUG-001 — Лєо бот: зайвий текст при decline/other (services/bot.js)
+4. **FIX-004**: CRM-VAL-001 — бекенд валідація: заборона бронювання на минулу дату
+5. **FIX-005**: SNAPSHOT.md розсинхрон — версія в snapshot не збігалась з package.json
+6. **FIX-006**: console.log cleanup — 15 залишків в js/ (api.js, timeline.js, chat-page.js, ws.js, offline.js)
+7. **FIX-007**: Gamification API — обернути відповіді в { success, data } (inconsistent format)
+8. **FIX-008**: package-lock.json — npm audit fix (вже зроблено в сесії)
+
+### B. Тестове покриття — 12 пунктів
+9. **TEST-001**: Тести для routes/dashboard.js (widgets, today, stats)
+10. **TEST-002**: Тести для routes/gamification.js (points, streaks, leaderboard)
+11. **TEST-003**: Тести для routes/guardian.js (health, mood, trust, escalation)
+12. **TEST-004**: Тести для routes/hr.js (employees, contractors, schedule)
+13. **TEST-005**: Тести для routes/chat.js (channels, messages, DM)
+14. **TEST-006**: Тести для routes/leads.js (CRUD, webhooks, conversion)
+15. **TEST-007**: Тести для routes/sales.js (pipeline, stages, deals)
+16. **TEST-008**: Тести для routes/recurring.js (recurring bookings CRUD)
+17. **TEST-009**: Тести для routes/training.js (courses, curriculum, homework)
+18. **TEST-010**: Тести для routes/finance.js (transactions, budget, reports)
+19. **TEST-011**: Тести для routes/center.js (rooms, pricing, settings)
+20. **TEST-012**: Тести для routes/warehouse.js (products, stock, procurement)
+
+### C. Оптимізація бекенду — 8 пунктів
+21. **OPT-001**: DB indexes — додати індекси для частих запитів (bookings.date, tasks.due_date, leads.status)
+22. **OPT-002**: Пагінація — додати LIMIT/OFFSET для всіх list endpoints що повертають >100 записів
+23. **OPT-003**: N+1 queries — оптимізувати JOIN'и в bookings, tasks, staff routes
+24. **OPT-004**: Connection pool tuning — перевірити pool.max, idle timeout, statement timeout
+25. **OPT-005**: Response compression — додати gzip middleware для JSON відповідей >1KB
+26. **OPT-006**: Cache headers — додати ETag/Last-Modified для static endpoints (programs, rooms, settings)
+27. **OPT-007**: Query optimization — EXPLAIN ANALYZE для повільних запитів (dashboard/today, stats)
+28. **OPT-008**: Batch operations — batch INSERT/UPDATE для масових операцій (import, bulk status change)
+
+### D. Оптимізація фронтенду — 7 пунктів
+29. **FRONT-001**: Lazy loading — розділити великі JS файли (chat-page 6169 рядків, settings 3184)
+30. **FRONT-002**: Image optimization — lazy loading для program icons, avatars
+31. **FRONT-003**: CSS cleanup — видалити невикористані стилі, об'єднати дубльовані селектори
+32. **FRONT-004**: Event listener cleanup — перевірити витоки пам'яті в SPA навігації
+33. **FRONT-005**: Service Worker update — перевірити offline cache strategy, оновити кеш-лист
+34. **FRONT-006**: Bundle analysis — виявити та видалити dead code в js/ модулях
+35. **FRONT-007**: Debounce/throttle — додати для search, scroll, resize events
+
+### E. Безпека — 5 пунктів
+36. **SEC-001**: Input validation audit — перевірити всі routes на SQL injection через string concatenation
+37. **SEC-002**: Rate limiting per-endpoint — окремі ліміти для auth, export, webhook endpoints
+38. **SEC-003**: CORS audit — перевірити та обмежити allowed origins
+39. **SEC-004**: JWT refresh — додати token rotation, скоротити expiry
+40. **SEC-005**: Dependency audit — npm audit, оновити вразливі пакети
+
+### F. Архітектура та рефакторинг — 5 пунктів
+41. **ARCH-001**: Розбити guardian.js (3288 рядків) на модулі: core, analytics, escalation, commands
+42. **ARCH-002**: Розбити chat-page.js (6169 рядків) на: chat-core, chat-ui, chat-ws, chat-guardian
+43. **ARCH-003**: Уніфікувати API response format — всі endpoints мають { success, data/error }
+44. **ARCH-004**: Error handling middleware — централізована обробка помилок замість try-catch в кожному route
+45. **ARCH-005**: Логування — structured JSON logs, log levels, request correlation IDs
+
+### G. DevOps та документація — 5 пунктів
+46. **DEV-001**: Health check endpoint — розширити /api/health: DB latency, queue size, memory, uptime
+47. **DEV-002**: Swagger sync — оновити swagger.js для всіх нових endpoints (v23-v25)
+48. **DEV-003**: Migration audit — перевірити що всі 66 міграцій ідемпотентні та мають rollback
+49. **DEV-004**: ENV validation — розширити validateEnv для всіх нових env vars (OmniClaw, Lead Capture)
+50. **DEV-005**: Version bump v26.0 — package.json, всі HTML ?v= tags, changelog, tagline
+
+### Пріоритети реалізації
+| Фаза | Пункти | Що | Версія |
+|------|--------|----|--------|
+| 1 | 1-8 | Баг-фікси | v25.5.0 |
+| 2 | 9-20 | Тести | v25.6.0 |
+| 3 | 21-28 | Backend оптимізація | v25.7.0 |
+| 4 | 29-35 | Frontend оптимізація | v25.8.0 |
+| 5 | 36-40 | Безпека | v25.9.0 |
+| 6 | 41-45 | Архітектура | v25.10.0 |
+| 7 | 46-50 | DevOps + Release | v26.0.0 |
 
 ## Останні зміни (v22.4.0 → v24.3.0)
 
@@ -225,8 +307,8 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ## Стан гілок (12.03.2026)
 | Гілка | Версія | Файлів | Статус |
 |-------|--------|--------|--------|
-| `claude/update-snapshot-version-OJyXi` | **v23.5.0** | 408 | Актуальна, чекає PR |
-| `origin/main` | v22.12.0 | 399 | Стара, без OmniClaw/LeadCapture |
+| `claude/update-snapshot-version-OJyXi` | **v25.4.1** | 410+ | Ребейзнуто на main, план v26.0 |
+| `origin/main` | v25.4.1 | 410+ | Актуальна, з landing fixes |
 | `origin/deployed` | v17.4.1 | 197 | Продакшн, дуже стара |
 
 ## Аудит deployed vs main (11.03.2026)
@@ -247,20 +329,22 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 
 | Метрика | Значення |
 |---------|----------|
-| Routes | 62 файлів |
-| Services | 35 файлів |
+| Routes | 63 файлів |
+| Services | 37 файлів |
 | Middleware | 6 файлів |
 | Frontend JS | 44 модулі |
 | HTML сторінки | 26 |
 | CSS файли | 17 |
-| DB міграції | 53 (001–053) |
-| DB таблиці | 48+ (core) + міграції |
+| DB міграції | 66 (001–066) |
+| DB таблиці | 55+ (core) + міграції |
 | Залежності | 15 npm packages |
-| JS код | ~90 000 рядків |
+| JS бекенд | ~41 000 рядків |
+| JS фронтенд | ~37 500 рядків |
 | HTML код | ~17 000 рядків |
 | CSS код | ~25 000 рядків |
 | **Всього коду** | **~132 000 рядків** |
-| Тести | 296+ |
+| Тести | 296 + 82 + 51 = 429 |
+| Тест coverage | api: 99.7%, certs: 100%, auto: 45% |
 
 ## Відомі проблеми / пастки
 - **Dark mode gray inversion**: gray-800 = #F3F4F6 = БІЛИЙ в dark mode! Використовуй rgba(255,255,255,0.08)
@@ -280,4 +364,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-12, v24.3.0 + Dashboard Per-Role + QA fixes, сесія claude-code*
+*Оновлено: 2026-03-12, v25.4.1 + План v26.0 (50 пунктів) + тести перевірені, сесія claude-code*

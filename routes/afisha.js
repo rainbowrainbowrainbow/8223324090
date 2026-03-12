@@ -527,9 +527,9 @@ router.delete('/:id', async (req, res) => {
         const { id } = req.params;
         // v8.1: Fetch before delete for history logging
         const original = await pool.query('SELECT * FROM afisha WHERE id = $1', [id]);
-        // Cascade — delete all linked tasks
+        // Cascade — delete non-done tasks (done tasks survive for history)
         const deleted = await pool.query(
-            `DELETE FROM tasks WHERE afisha_id = $1 RETURNING id`, [id]
+            `DELETE FROM tasks WHERE afisha_id = $1 AND status != 'done' RETURNING id`, [id]
         );
         if (deleted.rows.length > 0) {
             log.info(`Cascade-deleted ${deleted.rows.length} tasks for afisha #${id}`);

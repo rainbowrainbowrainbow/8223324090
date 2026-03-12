@@ -289,8 +289,7 @@ async function renderTimeline() {
     const { start } = getTimeRange(selectedDate);
 
     const lineIds = lines.map(l => l.id);
-    try { updateQuickStats(bookings, lineIds); } catch (e) { console.error('[Timeline] updateQuickStats error:', e); }
-    try { updateRoomLoadPanel(bookings, selectedDate); } catch (e) { console.error('[Timeline] updateRoomLoadPanel error:', e); }
+    if (typeof updateRoomLoadPanel === 'function') { try { updateRoomLoadPanel(bookings, selectedDate); } catch (e) {} }
 
     const historyBtn = document.getElementById('historyBtn');
     if (historyBtn) {

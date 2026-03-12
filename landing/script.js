@@ -268,10 +268,47 @@
     const formPackageDisplay = document.getElementById('formPackageDisplay');
     const successEl = document.getElementById('modalSuccess');
 
+    // Package pricing map
+    var PKG_PRICES = {
+        basic:    { label: 'Базовий пакет',            price: 2000,  base: true },
+        hr:       { label: '+ HR Модуль',              price: 3000,  base: false },
+        art:      { label: '+ Art Director',           price: 8000,  base: false },
+        designer: { label: '+ Дизайнер',               price: 4000,  base: false },
+        sound:    { label: '+ Звуковий брендинг',      price: 2000,  base: false },
+        kleshnya: { label: '+ Клешня Агент',           price: 2000,  base: false },
+        full:     { label: 'Повний пакет (все)',       price: 21000, base: true  }
+    };
+
     function openModal(pkg) {
         if (pkg) {
             formPackage.value = pkg;
-            formPackageDisplay.value = pkg;
+            var info = PKG_PRICES[pkg];
+            if (info) {
+                var label, displayHtml;
+                if (info.base) {
+                    label = info.label + ' — ' + info.price.toLocaleString('uk-UA') + ' ₴/міс';
+                    displayHtml = label;
+                } else {
+                    var basePrice = PKG_PRICES['basic'].price;
+                    var total = basePrice + info.price;
+                    label = info.label + ' — +' + info.price.toLocaleString('uk-UA') + ' ₴/міс';
+                    displayHtml = label + ' (Base ' + basePrice.toLocaleString('uk-UA') + ' + ' + info.price.toLocaleString('uk-UA') + ' = ' + total.toLocaleString('uk-UA') + ' ₴/міс)';
+                }
+                formPackageDisplay.value = label;
+                // Show pricing hint in modal
+                var hint = document.getElementById('modalPriceHint');
+                if (hint) {
+                    if (!info.base) {
+                        hint.textContent = '💡 Базовий 2 000 ₴ + ' + info.label.replace('+ ','') + ' ' + info.price.toLocaleString('uk-UA') + ' ₴ = ' + (2000 + info.price).toLocaleString('uk-UA') + ' ₴/міс';
+                        hint.style.display = '';
+                    } else {
+                        hint.textContent = '';
+                        hint.style.display = 'none';
+                    }
+                }
+            } else {
+                formPackageDisplay.value = pkg;
+            }
         }
         overlay.classList.add('active');
         document.body.style.overflow = 'hidden';

@@ -461,7 +461,7 @@ const DashboardPage = (() => {
             return `<div class="widget-lead-item">
                 <div class="lead-source-dot" style="background:${color}" title="${escapeHtml(l.source || '')}"></div>
                 <div class="lead-info">
-                    <div class="lead-name">${escapeHtml(l.name || 'Без імені')}</div>
+                    <div class="lead-name">${escapeHtml(l.client_name || l.name || 'Без імені')}</div>
                     <div class="lead-meta">${escapeHtml(l.phone || '')} · ${date}</div>
                 </div>
             </div>`;

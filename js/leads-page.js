@@ -26,7 +26,8 @@ const SOURCE_MAP = {
     phone:          '📞 Телефон',
     'walk-in':      '🚶 Прийшли',
     manual:         '✏️ Ручний',
-    universal:      '🌐 Universal'
+    universal:      '🌐 Universal',
+    landing:        '🌐 Лендінг'
 };
 
 let currentFilter = '';
@@ -97,6 +98,7 @@ async function loadLeads() {
         params.set('limit', '200');
 
         const res = await apiFetch(`/api/leads?${params}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         leadsData = data.leads || [];
         renderStats();

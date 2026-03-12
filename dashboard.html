@@ -119,6 +119,7 @@
     <script src="js/auth.js?v=25.5.0"></script>
     <script src="js/components/sidebar.js?v=25.5.1"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/ws.js?v=25.5.0"></script>
     <script src="js/dashboard-page.js?v=25.5.0"></script>
     <script src="js/ui.js?v=25.5.0"></script>
     <script>
@@ -152,6 +153,7 @@
                 document.getElementById('loginScreen').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
                 document.getElementById('currentUser').textContent = user.name;
+                if (typeof ParkWS !== 'undefined') ParkWS.connect();
                 DashboardPage.init();
                 return;
             }

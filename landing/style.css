@@ -3834,34 +3834,67 @@ body.modal-open {
 .quote--demystify { border-left-color: var(--gold, #C9A84C); font-size: 1.1em; }
 
 /* --- DEMYSTIFY ACCORDION --- */
-.demystify-grid { display: flex; flex-direction: column; gap: 12px; max-width: 720px; margin: 0 auto; }
+.demystify-grid {
+    display: flex; flex-direction: column; gap: 16px;
+    max-width: 900px; margin: 0 auto;
+}
 .demystify-card {
-    background: rgba(255,255,255,0.04);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(255,255,255,0.03);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px;
+    border-radius: 16px;
     cursor: pointer;
-    transition: border-color 0.3s, background 0.3s;
+    transition: border-color 0.3s, background 0.3s, box-shadow 0.3s, transform 0.2s;
     overflow: hidden;
 }
-.demystify-card:hover { border-color: rgba(201,168,76,0.3); }
-.demystify-card[data-open="true"] { border-color: rgba(201,168,76,0.4); background: rgba(255,255,255,0.06); }
+.demystify-card:hover {
+    border-color: rgba(201,168,76,0.35);
+    background: rgba(255,255,255,0.05);
+    box-shadow: 0 4px 24px rgba(201,168,76,0.08);
+    transform: translateY(-2px);
+}
+.demystify-card[data-open="true"] {
+    border-color: rgba(201,168,76,0.5);
+    background: rgba(201,168,76,0.06);
+    box-shadow: 0 8px 32px rgba(201,168,76,0.12);
+}
 .demystify-q {
-    display: flex; align-items: center; padding: 20px; font-weight: 600;
-    font-size: 1.05em; color: #E8E8E8; user-select: none;
+    display: flex; align-items: center; padding: 24px 28px; font-weight: 600;
+    font-size: 1.1em; color: #E8E8E8; user-select: none;
+    gap: 16px;
 }
-.demystify-icon { font-size: 1.5em; margin-right: 12px; flex-shrink: 0; }
+.demystify-icon {
+    font-size: 1.6em; flex-shrink: 0;
+    width: 48px; height: 48px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(201,168,76,0.1);
+    border-radius: 12px;
+    border: 1px solid rgba(201,168,76,0.15);
+}
 .demystify-arrow {
-    margin-left: auto; color: var(--gold, #C9A84C); font-size: 1.3em;
+    margin-left: auto; color: var(--gold, #C9A84C); font-size: 1.4em;
     transition: transform 0.3s; flex-shrink: 0; font-weight: 300;
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(201,168,76,0.08);
 }
-.demystify-card[data-open="true"] .demystify-arrow { transform: rotate(45deg); }
+.demystify-card[data-open="true"] .demystify-arrow { transform: rotate(45deg); background: rgba(201,168,76,0.2); }
 .demystify-a {
     max-height: 0; overflow: hidden; transition: max-height 0.4s ease, padding 0.3s;
-    padding: 0 20px; color: #aaa; line-height: 1.6; font-size: 0.95em;
+    padding: 0 28px; color: rgba(255,255,255,0.7); line-height: 1.7; font-size: 1em;
 }
-.demystify-card[data-open="true"] .demystify-a { max-height: 200px; padding: 0 20px 20px; }
+.demystify-card[data-open="true"] .demystify-a { max-height: 250px; padding: 0 28px 24px; }
+
+/* Desktop: wider cards with more breathing room */
+@media (min-width: 1024px) {
+    .demystify-grid { max-width: 960px; gap: 20px; }
+    .demystify-q { padding: 28px 32px; font-size: 1.15em; }
+    .demystify-a { padding: 0 32px; font-size: 1.05em; }
+    .demystify-card[data-open="true"] .demystify-a { padding: 0 32px 28px; }
+    .demystify-icon { width: 52px; height: 52px; font-size: 1.7em; }
+}
 
 /* --- TRANSFORMATION BLOCK --- */
 .transform-block {
@@ -3945,6 +3978,10 @@ body.modal-open {
     .ai-demo-bubbles { flex-direction: column; align-items: center; }
     .ai-bubble { width: 100%; text-align: center; }
     .qr-block { flex-direction: column; text-align: center; }
-    .demystify-q { font-size: 0.95em; padding: 16px; }
-    .demystify-a { font-size: 0.9em; }
+    .demystify-grid { gap: 10px; }
+    .demystify-q { font-size: 0.95em; padding: 16px; gap: 10px; }
+    .demystify-a { font-size: 0.9em; padding: 0 16px; }
+    .demystify-card[data-open="true"] .demystify-a { padding: 0 16px 16px; }
+    .demystify-icon { width: 40px; height: 40px; font-size: 1.3em; border-radius: 10px; }
+    .demystify-arrow { width: 32px; height: 32px; font-size: 1.2em; }
 }

@@ -8,7 +8,7 @@
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] v24.3.0 — Dashboard Per-Role + Customization
+- **Останній коміт**: fix: [claude-code] v24.3.0 QA — security + reliability fixes
 - **package.json**: `"version": "24.3.0"`
 - **Бранч**: `claude/update-snapshot-version-OJyXi`
 - **origin/main**: v24.0.0
@@ -280,4 +280,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-12, v23.5.0 + Version Recovery & Merge, сесія claude-code*
+*Оновлено: 2026-03-12, v24.3.0 + Dashboard Per-Role + QA fixes, сесія claude-code*

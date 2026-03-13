@@ -298,8 +298,15 @@ app.get('/status', (req, res) => {
 app.get('/training', (req, res) => {
     res.sendFile(path.join(__dirname, 'training.html'));
 });
-// v22.0.0: leads merged into customers page
-app.get('/leads', (req, res) => res.redirect(301, '/customers?tab=leads'));
+// v25.5.0: standalone leads page (no-cache to override old cached 301)
+app.get('/leads', (req, res) => {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.sendFile(path.join(__dirname, 'leads.html'));
+});
+// v28.5.1: Manager AI Copilot page
+app.get('/copilot', (req, res) => {
+    res.sendFile(path.join(__dirname, 'copilot.html'));
+});
 // v20.13: Team messenger
 app.get('/chat', (req, res) => {
     res.sendFile(path.join(__dirname, 'chat.html'));

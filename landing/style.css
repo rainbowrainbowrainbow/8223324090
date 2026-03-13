@@ -4187,3 +4187,21 @@ body.modal-open {
     .demystify-icon { width: 40px; height: 40px; font-size: 1.3em; border-radius: 10px; }
     .demystify-arrow { width: 32px; height: 32px; font-size: 1.2em; }
 }
+
+/* =====================
+   FIX: Pricing badge overflow — badge needs space above card
+   ===================== */
+.pricing-grid,
+.pricing-grid--v2 {
+    overflow: visible;
+    padding-top: 16px; /* room for top-positioned badge */
+}
+
+.price-card--recommended {
+    margin-top: 0; /* already handled by padding-top above */
+}
+
+.price-card__badge {
+    white-space: nowrap;
+    z-index: 2;
+}

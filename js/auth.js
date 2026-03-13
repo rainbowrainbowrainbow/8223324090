@@ -118,6 +118,7 @@ const PAGE_ACCESS = {
     '/analytics': _MANAGEMENT_UP,
     '/status':    _MANAGEMENT_UP,
     '/omni':      _MANAGEMENT_UP,
+    '/copilot':   [..._MANAGEMENT_UP, 'manager'],
 };
 
 const ACTION_PERMISSIONS = {

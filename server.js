@@ -298,8 +298,10 @@ app.get('/status', (req, res) => {
 app.get('/training', (req, res) => {
     res.sendFile(path.join(__dirname, 'training.html'));
 });
-// v22.0.0: leads merged into customers page
-app.get('/leads', (req, res) => res.redirect(301, '/customers?tab=leads'));
+// v22.0.0: leads page
+app.get('/leads', (req, res) => {
+    res.sendFile(path.join(__dirname, 'leads.html'));
+});
 // v20.13: Team messenger
 app.get('/chat', (req, res) => {
     res.sendFile(path.join(__dirname, 'chat.html'));

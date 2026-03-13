@@ -54,16 +54,21 @@ const CopilotPage = (() => {
                 });
             });
 
-            // Load initial data
-            await loadAllData();
-            console.log('[Copilot] data loaded, switching to coach');
-
-            // Render default module
+            // Render default module IMMEDIATELY (don't wait for data)
             switchModule('coach');
+            console.log('[Copilot] coach rendered, loading data in background...');
+
+            // Load data in background (non-blocking) with timeout
+            loadAllData().then(() => {
+                console.log('[Copilot] background data loaded');
+            }).catch(e => {
+                console.warn('[Copilot] background data load failed:', e);
+            });
         } catch (err) {
             console.error('[Copilot] init error:', err);
-            // Show app anyway so user sees something
-            document.getElementById('copilotApp')?.classList.remove('hidden');
+            // Show something useful on error
+            const content = document.getElementById('copilotContent');
+            if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(255,255,255,0.5);"><p>Помилка ініціалізації. Спробуйте оновити сторінку.</p></div>';
         }
     }
 
@@ -79,11 +84,15 @@ const CopilotPage = (() => {
 
     async function loadAllData() {
         const files = ['objections', 'call-scripts', 'message-templates', 'battle-cards', 'sales-academy', 'sales-methodology', 'buyer-profiles'];
-        await Promise.all(files.map(async f => {
+        const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
+        await Promise.allSettled(files.map(async f => {
             try {
-                const r = await fetch(`/api/copilot/data/${f}`, { headers: authHeaders() });
+                const r = await Promise.race([
+                    fetch(`/api/copilot/data/${f}`, { headers: authHeaders() }),
+                    timeout(8000)
+                ]);
                 if (r.ok) dataCache[f] = await r.json();
-            } catch (e) { /* non-blocking */ }
+            } catch (e) { console.warn(`[Copilot] data/${f} failed:`, e.message); }
         }));
     }
 

@@ -386,12 +386,15 @@
     </style>
 </head>
 <body>
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <!-- Sidebar -->
     <aside class="sidebar-nav" id="sidebarNav">
         <div class="sidebar-logo">
             <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
             <div class="em-logo"><span class="em-title">Event Genix</span></div>
-            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn"><span class="collapse-icon">«</span><span class="collapse-text">Згорнути</span></button>
         </div>
         <nav class="sidebar-links" id="sidebarLinks">
             <!-- Populated by sidebar.js -->
@@ -507,11 +510,17 @@
         </div>
     </div>
 
+    <!-- Toast container -->
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
     <script src="js/config.js?v=28.5.1"></script>
     <script src="js/api.js?v=28.5.1"></script>
     <script src="js/auth.js?v=28.5.1"></script>
     <script src="js/components/sidebar.js?v=28.5.1"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script>
+    localStorage.removeItem('pzp_sidebar_collapsed');
+    if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");
+    </script>
     <script src="js/leads-page.js?v=28.5.1"></script>
     <script src="js/ui.js?v=28.5.1"></script>
     <script src="js/role-panel.js?v=28.5.1"></script>

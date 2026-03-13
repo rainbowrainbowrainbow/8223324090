@@ -158,6 +158,27 @@ const DashboardPage = (() => {
         const role = getUserRole();
         const roleName = ROLE_NAMES[role] || role;
         greetingEl.textContent = `${greeting}, ${AppState.currentUser.name}! (${roleName})`;
+
+        // Show current system version
+        _loadVersion();
+    }
+
+    async function _loadVersion() {
+        try {
+            const token = localStorage.getItem('pzp_token');
+            const resp = await fetch('/api/version', {
+                headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.version) {
+                const badge = document.getElementById('dashboardVersion');
+                if (badge) {
+                    badge.textContent = 'v' + data.version;
+                    badge.style.display = '';
+                }
+            }
+        } catch { /* silent */ }
     }
 
     function renderWidgets() {

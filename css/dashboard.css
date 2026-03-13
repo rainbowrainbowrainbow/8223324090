@@ -34,6 +34,21 @@
     align-items: center;
 }
 
+.dashboard-version-badge {
+    padding: 4px 10px;
+    background: rgba(99, 102, 241, 0.1);
+    color: #6366F1;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+}
+
+.dark-mode .dashboard-version-badge {
+    background: rgba(99, 102, 241, 0.2);
+    color: #A5B4FC;
+}
+
 .dashboard-btn {
     padding: 8px 14px;
     border: none;

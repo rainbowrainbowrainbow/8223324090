@@ -337,6 +337,11 @@ app.get('/omni', (req, res) => {
     res.sendFile(path.join(__dirname, 'omni.html'));
 });
 
+// v27.0.0: Manager AI Copilot
+app.get('/manager', (req, res) => {
+    res.sendFile(path.join(__dirname, 'manager.html'));
+});
+
 // SPA fallback (must be last)
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));

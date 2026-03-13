@@ -298,8 +298,9 @@ app.get('/status', (req, res) => {
 app.get('/training', (req, res) => {
     res.sendFile(path.join(__dirname, 'training.html'));
 });
-// v22.0.0: leads page
+// v22.0.0: leads page (Cache-Control overrides old 301 cached in browsers)
 app.get('/leads', (req, res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.sendFile(path.join(__dirname, 'leads.html'));
 });
 // v20.13: Team messenger

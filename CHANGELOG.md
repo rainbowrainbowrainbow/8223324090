@@ -36,6 +36,55 @@
 - **Leads Real-time** — WebSocket broadcast for all lead sources (FB, IG, Viber), dashboard widget fixes [claude-code]
 - **549/549 тестів pass** (api: 296, certs: 82, auto: 52, routes: 119) [claude-code]
 
+## v25.4.1 — Timeline Fix + Robust Rendering (2026-03-12)
+- **Timeline Fix** — виправлено критичний баг: виклик неіснуючої функції updateQuickStats() вбивав весь рендер таймлайну — лінії аніматорів не відображались [claude-code]
+- **Robust Rendering** — кожне джерело даних (lines, bookings, afisha) тепер ізольоване — падіння одного не блокує інші [claude-code]
+- **Debug Logging** — console.log на кожному етапі renderTimeline для швидкої діагностики [claude-code]
+- **Error Boundary** — зовнішний try-catch показує видиме повідомлення при критичній помилці замість порожнього таймлайну [claude-code]
+
+## v25.4.0 — Штрафи, Оцінки, Завдання, Опитування, Курси (2026-03-12)
+- **Штрафні бали** — система штрафів для персоналу з категоріями (дисципліна, якість, відвідуваність) та можливістю скасування [claude-code]
+- **Оцінювання задач** — менеджер може оцінити завершену задачу від 1 до 10, з нарахуванням coins за оцінку [claude-code]
+- **Домашні завдання** — система завдань у тренінгах: створення, здача, перевірка з 5 типами (homework, watch, read, create, practice) [claude-code]
+- **Quick Poll в чаті** — опитування прямо в чаті з реальним часом через WebSocket, single/multiple/quiz режими [claude-code]
+- **Curriculum Builder** — курси з лекціями, записи, прогрес-трекер, ресурси до кожної лекції [claude-code]
+- **Meeting Notes** — нотатки зустрічей з action items та автоматичним створенням задач [claude-code]
+- **Sales Pipeline** — стадії воронки продажів для лідів (new → contacted → demo → proposal → negotiation → won) [claude-code]
+
+## v25.3.0 — Security Hardening + UX Polish (2026-03-12)
+- **JWT_SECRET обов'язковий** — в production сервер не стартує без JWT_SECRET (раніше генерувався рандомний) [claude-code]
+- **CORS hardening** — перевірка порту в origin, блокування port-spoofing на localhost [claude-code]
+- **Rate limiters** — нові лімітери для change-password, impersonate, shop/buy [claude-code]
+- **Global error handler** — window.onerror + unhandledrejection → червоний банер з повідомленням [claude-code]
+- **Offline індикатор** — жовтий банер "Ви офлайн" при втраті з'єднання, автозникає при reconnect [claude-code]
+- **Focus-visible** — глобальний :focus-visible стиль для keyboard navigation (WCAG 2.1) [claude-code]
+- **Tab transitions** — fadeIn анімація при перемиканні табів замість різкого стрибка [claude-code]
+- **Skeleton loading** — CSS .skeleton компоненти з shimmer анімацією [claude-code]
+- **Empty states** — CSS .empty-state компонент для порожніх списків [claude-code]
+- **API wrapper** — apiCall() — єдина обгортка для fetch з auth/error handling [claude-code]
+- **npm scripts** — додано dev, test:unit, db:migrate, version:sync, health [claude-code]
+- **safeQuery логування** — ігноровані DB помилки тепер логуються в debug [claude-code]
+
+## v25.2.0 — Profile Page Unification + Achievements (2026-03-12)
+- **Єдина система рендерингу** — видалено стару System A (статичний HTML), залишено тільки #mainApp + profile-page.js [claude-code]
+- **7 вкладок профілю** — Профіль, Ачивки, Інвентар, Магазин, Рейтинг, Кімната, Квести [claude-code]
+- **Ачивки з фільтром** — категорії: Робота, Ігри, Квізи, Соціальні, Стріки, Особливі [claude-code]
+- **Магазин** — lazy-load товарів, купівля за монети, відображення owned/can-afford стану [claude-code]
+- **Лідерборд** — сортування за XP, монетами, ачивками з ранговими іконками [claude-code]
+- **Інвентар** — відображення предметів з рарністю (common→legendary) [claude-code]
+- **Очищення HTML** — видалено дубльовані CSS link теги в profile.html [claude-code]
+
+## v25.0.0 — Training Knowledge Base + Quiz System (2026-03-12)
+- **Повний редизайн сторінки Навчання** — glassmorphism картки, Space Grotesk шрифт, dark mode [claude-code]
+- **4 вкладки** — Матеріали, Тести, Прогрес, Рейтинг [claude-code]
+- **База знань** — 10 статей для 3 ролей (аніматори, адміни, менеджери) з модалкою читання [claude-code]
+- **Система тестів** — квіз по одному питанню, прогрес-бар, пояснення відповідей [claude-code]
+- **Бейджі** — 6 нагород: Перший крок, Книжковий черв'як, Всезнайко, Першій тест, Тест-страйк, Ідеальний результат [claude-code]
+- **Лідерборд** — топ-10 співробітників за очками (прочитання × 10 + бали + тести × 20) [claude-code]
+- **Конфеті** — анімація при успішному проходженні тесту [claude-code]
+- **5 нових таблиць** — knowledge_base, progress, tests, test_results, badges [claude-code]
+- **8 нових API endpoints** — CRUD бази знань, тести, прогрес, лідерборд [claude-code]
+
 ## v24.4.0 — QA Mega Fix + Adaptive Layout (2026-03-12)
 - **8 сторінок виправлено** — додано відсутній ui.js (customers, chat, dashboard, leads, profile, shop, quiz, room) — confirmModal/showNotification були undefined [claude-code]
 - **Адаптивний layout** — прибрано max-width обмеження (1800/1400/1200px), контент розтягується на повну ширину коли панель закрита [claude-code]
@@ -49,6 +98,50 @@
 - **Service Worker** — кеш v12→v24 для інвалідації застарілих версій [claude-code]
 - **Afisha cascade** — DELETE тепер зберігає done таски [claude-code]
 - **295 тестів pass** (api.test.js), 82 certificates, 51 automation [claude-code]
+
+## v24.3.0 — Dashboard Per-Role + Customization (2026-03-12)
+- **24 ролі** — DEFAULT_WIDGETS розширено для всіх ролей (executive, management, specialists, kitchen, field) [claude-code]
+- **Нові віджети** — Сповіщення (alerts), Нові ліди (leads_new), Фінанси сьогодні (finance_today) [claude-code]
+- **/api/dashboard/today** — агрегований endpoint для швидкого огляду дня [claude-code]
+- **Drag & Drop** — налаштування порядку віджетів перетягуванням + toggle переключачі [claude-code]
+- **Landing page** — дашборд тепер головна сторінка після логіну для всіх ролей [claude-code]
+- **Dark mode** — повна підтримка для нових віджетів та модалки налаштувань [claude-code]
+
+## v24.2.0 — Sidebar Rebuild (2026-03-12)
+- **Єдине джерело** — sidebar тепер тільки через sidebar.js на всіх сторінках (включаючи таймлайн) [claude-code]
+- **Логічні блоки** — 4 блоки: Щоденне, Управління, Продукт, Система з розділювачами [claude-code]
+- **Матриця ролей** — SIDEBAR_ACCESS — кожна вкладка тільки для потрібних ролей [claude-code]
+- **Порожні секції** — автоматичне приховування блоків без доступних пунктів [claude-code]
+- **Таймлайн івентів** — перейменовано з "Таймлайн", emoji іконки замість літер [claude-code]
+- **Smooth render** — виправлено стрибання вкладок при переходах між сторінками [claude-code]
+- **roleSwitched** — sidebar автоматично перебудовується при зміні тест-ролі [claude-code]
+
+## v24.1.0 — QA + Polish (2026-03-12)
+- **BUG FIX** — FAB z-index виправлено (900), не перекриває sidebar overlay та модалки [claude-code]
+- **BUG FIX** — API endpoints: stats тепер через /api/dashboard/widgets/quick_stats, team через team_online [claude-code]
+- **BUG FIX** — Task counter оновлюється при виконанні задачі через checkbox [claude-code]
+- **BUG FIX** — Impersonation banner з'являється після F5 (sessionStorage persist) [claude-code]
+- **BUG FIX** — Test-role note: "Тільки зовнішній вигляд" при тесті ролі [claude-code]
+- **POLISH** — FAB: вертикальна капсула з glassmorphism, writing-mode vertical, pulse badge [claude-code]
+- **POLISH** — Panel: glassmorphism фон, stagger анімація блоків (0.05s кожен) [claude-code]
+- **POLISH** — Checkbox: кастомна анімація checkIn, completing slide-out [claude-code]
+- **POLISH** — Role Switcher dropdown: scale+translateY анімація появи, indigo стиль [claude-code]
+- **POLISH** — Dark mode: повна підтримка для всіх нових компонентів [claude-code]
+- **POLISH** — Mobile: bottom-sheet panel, compact FAB, responsive banner [claude-code]
+
+## v24.0.0 — Role Panel + Role Switcher (2026-03-12)
+- **Role Panel** — глобальна плаваюча панель справа: графік, задачі, зміна, статистика, команда, алерти [claude-code]
+- **Role Switcher** — миттєве перемикання ролей + імперсонація для тестування (creator-only) [claude-code]
+- **POST /api/auth/impersonate** — новий endpoint для тимчасового JWT від імені юзера [claude-code]
+- **Dashboard Dev Tools** — секція на дашборді з dropdown ролей та юзерів (creator-only) [claude-code]
+- **24 сторінки** — role-panel.js + role-panel.css підключено до всіх HTML-файлів [claude-code]
+
+## v23.5.0 — Version Recovery & Merge (2026-03-12)
+- **Відновлення** — змержено гілку claude/update-snapshot-version-OJyXi в main [kleshnya]
+- **OmniClaw** — омніканальна комунікація (Telegram + Viber + FB + IG + Universal) [claude-code]
+- **Lead Capture** — автоматичний захват лідів з усіх каналів (v23.4.0) [claude-code]
+- **Security Hardening** — OmniClaw безпека та валідація (v23.3.0) [claude-code]
+- **Landing** — Сергій Шарлай CEO & Засновник в командному каруселі [kleshnya]
 
 ## v23.4.0 — Lead Capture Integration (2026-03-11)
 - **Telegram Lead Capture** — приватні повідомлення в бот автоматично створюють лід в CRM, автовідповідь юзеру [claude-code]
@@ -73,6 +166,22 @@
 - **Phone Validation** — normalizePhone() E.164 cap (15 digits max), reject < 7 digits [claude-code]
 - **getUserProfile Security** — fields array sanitized з regex whitelist /^[a-z_]+$/i + encodeURIComponent [claude-code]
 - **Нові env vars** — META_APP_SECRET, SMS_WEBHOOK_SECRET, BINOTEL_WEBHOOK_SECRET (всі опціональні, graceful skip) [claude-code]
+
+## v23.2.0 — OmniClaw: Омніканальна комунікація v1.0 (2026-03-11)
+- **OmniClaw Hub** — єдиний inbox для всіх каналів: Telegram, Viber, SMS, Facebook, Instagram, Binotel [claude-code]
+- **Нормалайзер** — уніфікований формат повідомлень з 6 каналів [claude-code]
+- **AI авто-відповіді** — Клешня відповідає клієнтам автоматично (toggle per conversation) [claude-code]
+- **Швидкі відповіді** — шаблони відповідей для операторів [claude-code]
+- **Webhooks** — публічні ендпоінти для всіх каналів [claude-code]
+- **omni.html** — повноцінний UI inbox з real-time WebSocket оновленнями [claude-code]
+- **DB** — міграція 052: conversations, conversation_messages, quick_replies [claude-code]
+
+## v23.1.0 — Landing Page Event Genix v1.0 (2026-03-11)
+- **landing/** — публічний лендінг продукту (повний редизайн) [kleshnya]
+- **9 секцій** — Nav, Hero з мокапом, 12 модулів, Story таймлайн, Команда, Ціни, Соціальний доказ, Demo форма, Footer [kleshnya]
+- **Demo форма** — заявка → Telegram сповіщення директору [kleshnya]
+- **Нові фічі** — iOnboard, OmniClaw, Центр цін в описі модулів [kleshnya]
+- **API** — POST /api/landing/demo-request [kleshnya]
 
 ## v23.0.0 — Major Release: Full Version Sync (2026-03-11)
 - **Version Sync** — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG [claude-code]

@@ -30,6 +30,9 @@ function cacheControl(req, res, next) {
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.set('Pragma', 'no-cache');
         res.set('Expires', '0');
+    } else if (p.startsWith('/landing/') && (p.endsWith('.js') || p.endsWith('.css'))) {
+        // Landing scripts change often — short cache with revalidation
+        res.set('Cache-Control', 'public, max-age=300, must-revalidate');
     } else if (p.endsWith('.js') || p.endsWith('.css')) {
         // v19.16: JS/CSS have ?v= cache busters — cache for 7 days
         res.set('Cache-Control', 'public, max-age=604800, immutable');

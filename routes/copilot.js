@@ -22,7 +22,7 @@
  */
 
 const router = require('express').Router();
-const rateLimit = require('express-rate-limit');
+const { createWriteRateLimiter } = require('../middleware/rateLimit');
 const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
@@ -44,13 +44,10 @@ const log = createLogger('Copilot');
 const MANAGER_ROLES = ['creator', 'director', 'senior_manager', 'manager'];
 
 // Rate limit: 15 req/min per user on AI endpoints
-const rateLimitAI = rateLimit({
+const rateLimitAI = createWriteRateLimiter('copilot-ai', {
     windowMs: 60 * 1000,
     max: 15,
-    keyGenerator: (req) => String(req.user?.id || req.ip),
-    message: { error: 'Забагато запитів. Зачекайте хвилину.' },
-    standardHeaders: false,
-    legacyHeaders: false
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 });
 
 // All routes require manager+ role

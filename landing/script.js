@@ -349,8 +349,8 @@
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = {
-                name: form.name.value.trim(),
-                phone: form.phone.value.trim(),
+                name: (form.elements['name'] || document.getElementById('formName')).value.trim(),
+                phone: (form.elements['phone'] || document.getElementById('formPhone')).value.trim(),
                 package: formPackageDisplay.value
             };
 

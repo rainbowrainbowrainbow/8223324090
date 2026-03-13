@@ -4,6 +4,11 @@
 
 ---
 
+## v28.1.0 — Manager Tab Fix (2026-03-13)
+- **Sidebar init** — на сторінці Менеджера тепер відображається sidebar навігація (раніше `Sidebar.init()` не викликався — sidebar був порожній) [claude-code]
+- **Role Panel** — додано `role-panel.js` + `role-panel.css` на сторінку Менеджера [claude-code]
+- **Cache bust** — manager.html оновлено `?v=27.0.0` → `?v=28.0.0` [claude-code]
+
 ## v28.0.0 — Rock Sound Engine + Chat UX + Контур-2 (2026-03-13)
 - **Rock Sound Engine** — `js/sound-engine.js` (333 рядки): Web Audio API синтезатор, рок-тема, 3 теми вибору (Rock/Classic/Subtle) [kleshnya]
 - **Chat звуки** — грають навіть коли таб активний, якщо повідомлення не в поточному каналі [kleshnya]

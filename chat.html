@@ -141,6 +141,35 @@
                             <button class="chat-header-action-btn" id="chatInfoBtn" title="Учасники каналу">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                             </button>
+                            <!-- Sound settings toggle v28.0.0 -->
+                            <div class="chat-sound-wrapper" style="position:relative">
+                                <button class="chat-header-action-btn chat-sound-toggle" id="soundToggleBtn" title="Звукові сповіщення">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                                </button>
+                                <div class="sound-settings-panel hidden" id="soundSettingsPanel">
+                                    <div class="sound-settings-title">🎸 Звуки чату</div>
+                                    <div class="sound-setting-row">
+                                        <span>Увімкнено</span>
+                                        <label class="sound-toggle-switch">
+                                            <input type="checkbox" id="soundEnabled">
+                                            <span class="sound-toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="sound-setting-row">
+                                        <span>Гучність</span>
+                                        <input type="range" id="soundVolume" min="0" max="100" value="40" class="sound-volume-slider">
+                                    </div>
+                                    <div class="sound-setting-row">
+                                        <span>Тема</span>
+                                        <select id="soundTheme" class="sound-theme-select">
+                                            <option value="rock">🎸 Rock</option>
+                                            <option value="classic">🔔 Classic</option>
+                                            <option value="subtle">🤫 Subtle</option>
+                                        </select>
+                                    </div>
+                                    <button id="soundTestBtn" class="sound-test-btn">▶ Тест</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -526,9 +555,74 @@
     <script src="js/components/sidebar.js?v=25.3.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/ws.js?v=25.3.0"></script>
-    <script src="js/chat-page.js?v=25.3.0"></script>
+    <script src="js/sound-engine.js?v=28.0.0"></script>
+    <script src="js/chat-page.js?v=28.0.0"></script>
     <script src="js/ui.js?v=25.3.0"></script>
     <script src="js/agents-panel.js?v=25.3.0"></script>
     <script src="js/role-panel.js?v=25.3.0"></script>
+    <script>
+    // Sound Settings Panel — v28.0.0
+    (function () {
+        'use strict';
+        function initSoundPanel() {
+            var toggleBtn = document.getElementById('soundToggleBtn');
+            var panel = document.getElementById('soundSettingsPanel');
+            var enabledChk = document.getElementById('soundEnabled');
+            var volumeSlider = document.getElementById('soundVolume');
+            var themeSelect = document.getElementById('soundTheme');
+            var testBtn = document.getElementById('soundTestBtn');
+            if (!toggleBtn || !panel || typeof SoundEngine === 'undefined') return;
+
+            // Load current settings into UI
+            enabledChk.checked = SoundEngine.enabled;
+            volumeSlider.value = Math.round(SoundEngine.volume * 100);
+            themeSelect.value = SoundEngine.theme;
+
+            // Toggle panel visibility
+            toggleBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                SoundEngine.unlock(); // Unlock AudioContext on user gesture
+                panel.classList.toggle('hidden');
+            });
+
+            // Close panel on outside click
+            document.addEventListener('click', function (e) {
+                if (!panel.contains(e.target) && e.target !== toggleBtn) {
+                    panel.classList.add('hidden');
+                }
+            });
+
+            // Enabled toggle
+            enabledChk.addEventListener('change', function () {
+                SoundEngine.enabled = enabledChk.checked;
+                SoundEngine.saveSettings();
+            });
+
+            // Volume slider
+            volumeSlider.addEventListener('input', function () {
+                SoundEngine.volume = parseInt(volumeSlider.value, 10) / 100;
+                SoundEngine.saveSettings();
+            });
+
+            // Theme select
+            themeSelect.addEventListener('change', function () {
+                SoundEngine.theme = themeSelect.value;
+                SoundEngine.saveSettings();
+            });
+
+            // Test button
+            testBtn.addEventListener('click', function () {
+                SoundEngine.unlock();
+                SoundEngine.play('message-new');
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initSoundPanel);
+        } else {
+            initSoundPanel();
+        }
+    })();
+    </script>
 </body>
 </html>

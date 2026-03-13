@@ -44,9 +44,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v25.4.1 — Timeline Fix + Robust Rendering</p>
+                <p class="tagline">AI First CRM v28.0.0 — Rock Sound Engine + Chat UX</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v25.4.1</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v28.0.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1142,6 +1142,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v28.0.0 — Рок-звуки + Chat UX + Контур-2 (Клешня, 13.03.2026)</h4>
+                    <ul>
+                        <li><b>Sound Engine</b> — Web Audio API синтезатор, рок-тема, 3 теми вибору (Rock/Classic/Subtle)</li>
+                        <li><b>Chat звуки</b> — грають навіть коли таб активний, якщо повідомлення не в поточному каналі</li>
+                        <li><b>Sound Settings</b> — toggle, гучність, вибір теми прямо в хедері чату</li>
+                        <li><b>Контур-2</b> — Guardian перевірено: TELEGRAM_BOT_TOKEN ✅ SET, Guardian підключений до chat route ✅</li>
+                        <li><b>Bug Fix</b> — виправлено <code>_playSound</code> (раніше ігнорував повідомлення коли таб активний)</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v25.4.1 — Timeline Fix + Robust Rendering (Claude Code, 12.03.2026)</h4>
                     <ul>

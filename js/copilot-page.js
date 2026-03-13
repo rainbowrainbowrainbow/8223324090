@@ -3,7 +3,9 @@
  * v27.0.0 | 2026-03-13 | Клешня 🦞
  */
 
-const CopilotPage = (() => {
+// NOTE: Do NOT use `const CopilotPage =` — it shadows window.CopilotPage
+// and breaks all inline onclick handlers (selectObjection, runCoach, etc.)
+(() => {
     'use strict';
 
     const MANAGER_ROLES = ['creator', 'director', 'senior_manager', 'manager'];
@@ -239,6 +241,7 @@ const CopilotPage = (() => {
     let lastCoachData = null;
 
     window.CopilotPage = {
+        init, switchModule,
         toggleLive, onCoachInput, runCoach, clearCoach, sendFeedback,
         toggleAccordion, selectObjection, runObjectionAI,
         selectScript, navigateStep, runScriptAction,
@@ -246,6 +249,7 @@ const CopilotPage = (() => {
         runDebrief, saveDebrief,
         runAcademyQA,
         loadTracker, markFollowupDone, addManualInteraction,
+        showAddInteractionForm, loadTrackerAlerts,
         runMeetingPrep,
         loadPipeline,
         runMessageWriter, copyMessage, resendWriter,
@@ -1613,5 +1617,5 @@ const CopilotPage = (() => {
         setTimeout(init, 300); // Wait for auth.js to init
     }
 
-    return { init, switchModule };
+    // init + switchModule are also available via window.CopilotPage
 })();

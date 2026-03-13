@@ -44,9 +44,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v28.1.0 — Manager AI Copilot</p>
+                <p class="tagline">AI First CRM v28.2.0 — Guardian Етап 1</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v28.1.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v28.2.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1142,6 +1142,15 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v28.2.0 — Guardian Етап 1: Whitelist + Edit + Toggle + Stop (Клешня, 13.03.2026)</h4>
+                    <ul>
+                        <li><b>Whitelist</b> — слова-виключення для зменшення false positives (статичний + динамічний через БД)</li>
+                        <li><b>Edit замість Delete</b> — матюки цензуруються (****), не видаляються; видалення лише для CRITICAL</li>
+                        <li><b>Toggle per-channel</b> — Guardian вмикається/вимикається для кожного каналу окремо</li>
+                        <li><b>Emergency Stop</b> — миттєве вимкнення Guardian директором через API</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v28.1.0 — Manager AI Copilot: 11 модулів (Клешня, 13.03.2026)</h4>
                     <ul>

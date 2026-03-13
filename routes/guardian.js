@@ -7,7 +7,13 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { generateDailyReport, runDailyReports, ensureGuardianMemberships, getMood, getGuardianState, clearMuteCache, alertDirector } = require('../services/guardian');
+const {
+    generateDailyReport, runDailyReports, ensureGuardianMemberships,
+    getMood, getGuardianState, clearMuteCache, alertDirector,
+    setEmergencyStop, getEmergencyStop,
+    getChannelSettings, invalidateChannelSettingsCache,
+    alertDirectorTelegram
+} = require('../services/guardian');
 
 const log = createLogger('GuardianRoute');
 
@@ -1032,6 +1038,210 @@ router.post('/command', async (req, res) => {
     } catch (err) {
         log.error('POST /command error', err);
         res.status(500).json({ error: 'Failed to execute command' });
+    }
+});
+
+// ==========================================
+// ETAP 1: PER-CHANNEL TOGGLE
+// ==========================================
+
+/**
+ * POST /api/guardian/toggle
+ * Enable/disable Guardian per channel.
+ * Body: { channelId, guardianEnabled, contour2Enabled }
+ * Auth: creator/director only
+ */
+router.post('/toggle', async (req, res) => {
+    try {
+        const { channelId, guardianEnabled, contour2Enabled } = req.body;
+        if (!channelId) {
+            return res.status(400).json({ error: 'channelId is required' });
+        }
+
+        const updates = [];
+        const params = [];
+        let paramIdx = 1;
+
+        if (guardianEnabled !== undefined) {
+            updates.push(`guardian_enabled = $${paramIdx++}`);
+            params.push(!!guardianEnabled);
+        }
+        if (contour2Enabled !== undefined) {
+            updates.push(`contour2_enabled = $${paramIdx++}`);
+            params.push(!!contour2Enabled);
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'Nothing to update' });
+        }
+
+        params.push(channelId);
+        await pool.query(
+            `UPDATE chat_channels SET ${updates.join(', ')} WHERE id = $${paramIdx}`,
+            params
+        );
+
+        // Invalidate cache
+        invalidateChannelSettingsCache(channelId);
+
+        // Return updated settings
+        const settings = await getChannelSettings(channelId);
+
+        log.info(`Guardian toggle: channel ${channelId} → guardian=${settings.guardian_enabled}, contour2=${settings.contour2_enabled}`);
+
+        res.json({
+            success: true,
+            channelId,
+            guardianEnabled: settings.guardian_enabled,
+            contour2Enabled: settings.contour2_enabled
+        });
+    } catch (err) {
+        log.error('POST /toggle error', err);
+        res.status(500).json({ error: 'Failed to toggle guardian' });
+    }
+});
+
+/**
+ * GET /api/guardian/toggle/:channelId
+ * Get current toggle state for a channel.
+ */
+router.get('/toggle/:channelId', async (req, res) => {
+    try {
+        const { channelId } = req.params;
+        const settings = await getChannelSettings(parseInt(channelId));
+        res.json({
+            channelId: parseInt(channelId),
+            guardianEnabled: settings.guardian_enabled,
+            contour2Enabled: settings.contour2_enabled
+        });
+    } catch (err) {
+        log.error('GET /toggle/:channelId error', err);
+        res.status(500).json({ error: 'Failed to get guardian settings' });
+    }
+});
+
+// ==========================================
+// ETAP 1: EMERGENCY STOP
+// ==========================================
+
+/**
+ * POST /api/guardian/emergency-stop
+ * Activate or deactivate Guardian Emergency Stop.
+ * Body: { stop: true/false }
+ * Auth: creator only
+ */
+router.post('/emergency-stop', async (req, res) => {
+    try {
+        const { stop } = req.body;
+        if (stop === undefined) {
+            return res.status(400).json({ error: 'stop (true/false) is required' });
+        }
+
+        setEmergencyStop(stop);
+
+        const username = req.user?.username || req.body.username || 'unknown';
+        const timestamp = new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' });
+
+        if (stop) {
+            // Alert director via Telegram
+            alertDirectorTelegram(
+                `🛑 <b>Guardian EMERGENCY STOP активовано</b>\n` +
+                `Ким: ${username}\n` +
+                `Час: ${timestamp}\n` +
+                `Усі перевірки зупинено.`,
+                'emergency-stop'
+            );
+            log.warn(`Guardian Emergency Stop ACTIVATED by ${username}`);
+        } else {
+            alertDirectorTelegram(
+                `✅ <b>Guardian EMERGENCY STOP знято</b>\n` +
+                `Ким: ${username}\n` +
+                `Час: ${timestamp}\n` +
+                `Перевірки відновлено.`,
+                'emergency-stop-off'
+            );
+            log.info(`Guardian Emergency Stop DEACTIVATED by ${username}`);
+        }
+
+        res.json({ success: true, emergencyStop: getEmergencyStop() });
+    } catch (err) {
+        log.error('POST /emergency-stop error', err);
+        res.status(500).json({ error: 'Failed to set emergency stop' });
+    }
+});
+
+/**
+ * GET /api/guardian/emergency-stop
+ * Get current Emergency Stop state.
+ */
+router.get('/emergency-stop', async (req, res) => {
+    res.json({ emergencyStop: getEmergencyStop() });
+});
+
+// ==========================================
+// ETAP 1: WHITELIST MANAGEMENT
+// ==========================================
+
+/**
+ * GET /api/guardian/whitelist
+ * List all whitelist phrases.
+ */
+router.get('/whitelist', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT gw.*, u.username AS added_by_username FROM guardian_whitelist gw LEFT JOIN users u ON u.id = gw.added_by ORDER BY gw.created_at DESC'
+        );
+        res.json(result.rows);
+    } catch (err) {
+        log.error('GET /whitelist error', err);
+        res.status(500).json({ error: 'Failed to fetch whitelist' });
+    }
+});
+
+/**
+ * POST /api/guardian/whitelist
+ * Add a phrase to the whitelist.
+ * Body: { phrase }
+ */
+router.post('/whitelist', async (req, res) => {
+    try {
+        const { phrase } = req.body;
+        if (!phrase || !phrase.trim()) {
+            return res.status(400).json({ error: 'phrase is required' });
+        }
+        const userId = req.user?.id || null;
+        const result = await pool.query(
+            'INSERT INTO guardian_whitelist (phrase, added_by) VALUES ($1, $2) ON CONFLICT (phrase) DO NOTHING RETURNING *',
+            [phrase.trim().toLowerCase(), userId]
+        );
+
+        // Reload whitelist in service
+        const { loadDynamicWhitelist } = require('../services/guardian');
+        await loadDynamicWhitelist();
+
+        res.json({ success: true, phrase: phrase.trim().toLowerCase(), inserted: result.rowCount > 0 });
+    } catch (err) {
+        log.error('POST /whitelist error', err);
+        res.status(500).json({ error: 'Failed to add whitelist phrase' });
+    }
+});
+
+/**
+ * DELETE /api/guardian/whitelist/:id
+ * Remove a phrase from the whitelist.
+ */
+router.delete('/whitelist/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM guardian_whitelist WHERE id = $1', [parseInt(id)]);
+
+        const { loadDynamicWhitelist } = require('../services/guardian');
+        await loadDynamicWhitelist();
+
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /whitelist/:id error', err);
+        res.status(500).json({ error: 'Failed to delete whitelist phrase' });
     }
 });
 

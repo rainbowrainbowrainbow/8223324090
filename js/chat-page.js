@@ -4262,6 +4262,28 @@
 
     function _onEditMessage(payload) {
         if (!_currentChannel || payload.channelId !== _currentChannel.id) return;
+
+        // Guardian censor edit: payload has messageId + content + editedByGuardian
+        if (payload.editedByGuardian) {
+            var msgEl = document.querySelector('[data-message-id="' + payload.messageId + '"]');
+            if (!msgEl) return;
+            var contentEl = msgEl.querySelector('.chat-bubble-content');
+            if (contentEl) contentEl.innerHTML = _formatContent(payload.content);
+            // Add guardian-edited indicator if not already present
+            if (!msgEl.querySelector('.chat-bubble-guardian-edited')) {
+                var timeEl = msgEl.querySelector('.chat-bubble-time');
+                if (timeEl) {
+                    var badge = document.createElement('span');
+                    badge.className = 'chat-bubble-guardian-edited';
+                    badge.title = 'Відредаговано Guardian';
+                    badge.textContent = '✏️ відредаговано';
+                    timeEl.insertAdjacentElement('beforebegin', badge);
+                }
+            }
+            return;
+        }
+
+        // Regular user edit: payload has message.id + message.content
         var msgEl = document.querySelector('[data-message-id="' + payload.message.id + '"]');
         if (!msgEl) return;
         var contentEl = msgEl.querySelector('.chat-bubble-content');

@@ -22,6 +22,30 @@ const log = createLogger('Guardian');
 const GUARDIAN_USERNAME = 'guardian';
 const MUTE_DURATION_MS = 1 * 60 * 1000; // 1 minute
 
+// ==========================================
+// EMERGENCY STOP — миттєве вимкнення Guardian
+// ==========================================
+let GUARDIAN_EMERGENCY_STOP = false;
+
+// ==========================================
+// WHITELIST — слова/фрази що НІКОЛИ не є матюком
+// ==========================================
+const TOXIC_WHITELIST = [
+    'небо', 'небос', 'хибне', 'хибн', 'облибок', 'необхідно', 'необхідність',
+    'підходить', 'відходить', 'виходить', 'доходить', 'підход', 'відход',
+    'підхід', 'обхід', 'виход', 'доход', 'похід', 'нахил', 'нахил',
+    'захід', 'прихід', 'прийде', 'приходить',
+    // Можна розширювати через адмін-панель (guardian_whitelist table)
+];
+
+// Dynamic whitelist loaded from DB
+let _dynamicWhitelist = [];
+let _whitelistLoaded = false;
+
+// Per-channel settings cache
+const _channelSettingsCache = {}; // { channelId: { guardian_enabled, contour2_enabled, ts } }
+const CACHE_TTL_MS = 60 * 1000; // 1 хвилина
+
 // Telegram alerts for critical events (Contour 2)
 const BOSS_TELEGRAM_ID = process.env.BOSS_TELEGRAM_ID || '674972415';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -676,6 +700,80 @@ async function loadDynamicToxicWords() {
     }
 }
 
+/**
+ * Load dynamic whitelist phrases from DB.
+ * Merged with static TOXIC_WHITELIST for isWhitelisted checks.
+ */
+async function loadDynamicWhitelist() {
+    try {
+        const result = await pool.query('SELECT phrase FROM guardian_whitelist');
+        _dynamicWhitelist = result.rows.map(r => r.phrase.toLowerCase());
+        _whitelistLoaded = true;
+        log.info(`Loaded ${_dynamicWhitelist.length} whitelist phrases`);
+    } catch (err) {
+        // Table might not exist yet (migration pending)
+        _dynamicWhitelist = [];
+    }
+}
+
+/**
+ * Extract the full word around a match position in content.
+ */
+function extractWordAround(content, matchIndex, matchLength) {
+    const lower = content.toLowerCase();
+    let start = matchIndex;
+    let end = matchIndex + matchLength;
+    // Expand left to word boundary
+    while (start > 0 && /[а-яґєіїёa-z]/i.test(lower[start - 1])) start--;
+    // Expand right to word boundary
+    while (end < lower.length && /[а-яґєіїёa-z]/i.test(lower[end])) end++;
+    return lower.slice(start, end);
+}
+
+/**
+ * Check if a match at given position is whitelisted.
+ * Returns true → skip this match (not toxic).
+ */
+function isWhitelisted(content, matchIndex, matchLength) {
+    const word = extractWordAround(content, matchIndex, matchLength);
+    const allWhitelist = [...TOXIC_WHITELIST, ..._dynamicWhitelist];
+    return allWhitelist.some(w => word.includes(w.toLowerCase()));
+}
+
+/**
+ * Get channel settings (guardian_enabled, contour2_enabled) with TTL cache.
+ */
+async function getChannelSettings(channelId) {
+    const cached = _channelSettingsCache[channelId];
+    if (cached && (Date.now() - cached.ts) < CACHE_TTL_MS) {
+        return cached;
+    }
+    try {
+        const result = await pool.query(
+            'SELECT guardian_enabled, contour2_enabled FROM chat_channels WHERE id = $1',
+            [channelId]
+        );
+        const row = result.rows[0] || {};
+        const settings = {
+            guardian_enabled: row.guardian_enabled !== false, // default true
+            contour2_enabled: row.contour2_enabled !== false, // default true
+            ts: Date.now()
+        };
+        _channelSettingsCache[channelId] = settings;
+        return settings;
+    } catch (err) {
+        // Column might not exist yet — default to enabled
+        return { guardian_enabled: true, contour2_enabled: true, ts: Date.now() };
+    }
+}
+
+/**
+ * Invalidate channel settings cache entry.
+ */
+function invalidateChannelSettingsCache(channelId) {
+    delete _channelSettingsCache[channelId];
+}
+
 // Letter substitution map for fuzzy matching (leet-speak, similar chars)
 const CHAR_SUBSTITUTIONS = {
     'а': '[аaа@]', 'б': '[бb6]', 'в': '[вvb]', 'г': '[гgґ]',
@@ -802,18 +900,31 @@ function quickToxicityCheck(content) {
     // 1. Direct match on all keywords — check ALL normalized forms
     const allKeywords = [...TOXIC_KEYWORDS_BASE, ..._dynamicToxicWords];
     const variants = [lower, normalized, collapsed, destarred, deNumberedClean, uncensored];
-    const directMatch = allKeywords.filter(word =>
-        variants.some(v => v.includes(word))
-    );
+    const directMatch = allKeywords.filter(word => {
+        for (const v of variants) {
+            const idx = v.indexOf(word);
+            if (idx === -1) continue;
+            // Whitelist check: if the surrounding word is in whitelist — skip
+            if (isWhitelisted(v, idx, word.length)) continue;
+            return true;
+        }
+        return false;
+    });
     if (directMatch.length > 0) return directMatch;
 
     // 2. Fuzzy regex match (catches leet-speak, substitutions)
     const fuzzyMatch = [];
     for (const { word, regex } of _fuzzyRegexes) {
-        if (variants.some(v => regex.test(v))) {
-            fuzzyMatch.push(word);
-            if (fuzzyMatch.length >= 3) break;
+        for (const v of variants) {
+            const match = regex.exec(v);
+            if (match) {
+                // Whitelist check on the matched position
+                if (isWhitelisted(v, match.index, match[0].length)) continue;
+                fuzzyMatch.push(word);
+                break;
+            }
         }
+        if (fuzzyMatch.length >= 3) break;
     }
     if (fuzzyMatch.length > 0) return fuzzyMatch;
 
@@ -894,6 +1005,7 @@ async function llmProfanityCheck(content) {
 
 /**
  * Delete toxic message from DB and notify via WebSocket.
+ * Used only for CRITICAL severity (threats, doxing, etc.)
  */
 async function deleteToxicMessage(messageId, channelId, username, reason) {
     try {
@@ -922,6 +1034,61 @@ async function deleteToxicMessage(messageId, channelId, username, reason) {
         log.info(`Deleted toxic message ${messageId} by ${username}: ${reason}`);
     } catch (err) {
         log.error('Failed to delete toxic message', err);
+    }
+}
+
+/**
+ * Replace all toxic words in text with ****.
+ */
+function censorContent(text) {
+    let result = text;
+    const allToxic = [...TOXIC_KEYWORDS_BASE, ..._dynamicToxicWords];
+    for (const word of allToxic) {
+        try {
+            const regex = buildFuzzyRegex(word);
+            result = result.replace(new RegExp(regex.source, 'gi'), '****');
+        } catch (_) {
+            // Skip bad regex
+        }
+    }
+    return result;
+}
+
+/**
+ * Censor toxic message: edit content (replace toxic words with ****) instead of deleting.
+ * Used for mild profanity — preserves conversation context.
+ * Delete (deleteToxicMessage) is reserved for CRITICAL severity only.
+ */
+async function censorToxicMessage(messageId, channelId, content, username, reason) {
+    try {
+        const censored = censorContent(content);
+
+        await pool.query(
+            'UPDATE chat_messages SET content = $1, edited_by_guardian = true, guardian_edit_reason = $2 WHERE id = $3',
+            [censored, reason, messageId]
+        );
+
+        // Broadcast chat:edit so frontend updates in place
+        broadcastToChannel(channelId, 'chat:edit', {
+            channelId,
+            messageId,
+            content: censored,
+            editedByGuardian: true
+        });
+
+        await logAction('censor', channelId, null, messageId, { reason, username });
+
+        broadcastGuardianEvent({
+            type: 'censor',
+            channelId,
+            username,
+            details: `Повідомлення відцензуровано: ${reason}`,
+            severity: 'warning'
+        });
+
+        log.info(`Censored message ${messageId} by ${username}: ${reason}`);
+    } catch (err) {
+        log.error('Failed to censor toxic message', err);
     }
 }
 
@@ -1070,6 +1237,9 @@ async function aiConflictCheck(messages) {
  * This only handles: conflict detection + batch learning.
  */
 async function analyzeConflict(channelId, userId, username, content, messageId) {
+    // Emergency Stop guard
+    if (GUARDIAN_EMERGENCY_STOP) return;
+
     // Track recent messages for conflict context
     if (!_recentMessages[channelId]) _recentMessages[channelId] = [];
     _recentMessages[channelId].push({ username, content, userId, messageId, ts: Date.now() });
@@ -1496,6 +1666,15 @@ async function sendGuardianMessage(channelId, content) {
 async function preCheckMessage({ channelId, userId, username, content }) {
     if (!content) return { blocked: false };
 
+    // Emergency Stop — якщо активовано, нічого не перевіряємо
+    if (GUARDIAN_EMERGENCY_STOP) return { blocked: false };
+
+    // Per-channel toggle — якщо Guardian вимкнений для цього каналу, пропускаємо
+    try {
+        const channelSettings = await getChannelSettings(channelId);
+        if (!channelSettings.guardian_enabled) return { blocked: false };
+    } catch (_) { /* default: enabled */ }
+
     // 0. Track spam (fire-and-forget)
     trackSpam(userId, username, channelId);
 
@@ -1564,12 +1743,23 @@ async function preCheckMessage({ channelId, userId, username, content }) {
 async function processMessage(message) {
     if (!message || !message.content) return;
 
+    // Emergency Stop — якщо активовано, не обробляємо
+    if (GUARDIAN_EMERGENCY_STOP) return;
+
     // Don't process bot messages
     if (message.isBot || message.username === GUARDIAN_USERNAME || message.username === 'openclaw') {
         return;
     }
 
     const { channelId, userId, content, username, id: messageId } = message;
+
+    // Per-channel Contour-2 toggle
+    try {
+        const channelSettings = await getChannelSettings(channelId);
+        if (!channelSettings.guardian_enabled) return;
+        // contour2_enabled controls processMessage (AI analysis)
+        if (!channelSettings.contour2_enabled) return;
+    } catch (_) { /* default: enabled */ }
 
     // 1. Track conversation for daily reports
     _trackConversation(channelId, username, content);
@@ -1879,6 +2069,8 @@ startMoodCycle();
 
 // Load dynamic toxic words from DB
 loadDynamicToxicWords().catch(() => {});
+// Load dynamic whitelist from DB
+loadDynamicWhitelist().catch(() => {});
 
 // ==========================================
 // GUARDIAN CHAT COMMANDS (/g or /guardian)
@@ -3284,5 +3476,16 @@ module.exports = {
     // Trust Score
     updateTrustScore,
     getTrustScore,
-    getTrustLevel
+    getTrustLevel,
+    // Etap 1: Whitelist + Censor + Toggle + Emergency Stop
+    loadDynamicWhitelist,
+    censorToxicMessage,
+    censorContent,
+    getChannelSettings,
+    invalidateChannelSettingsCache,
+    setEmergencyStop: (val) => {
+        GUARDIAN_EMERGENCY_STOP = !!val;
+        log.info(`Guardian Emergency Stop: ${GUARDIAN_EMERGENCY_STOP}`);
+    },
+    getEmergencyStop: () => GUARDIAN_EMERGENCY_STOP
 };

@@ -21,7 +21,7 @@ const Sidebar = (() => {
         { type: 'divider' },
         { type: 'section', label: 'Управління' },
         { href: '/customers', icon: '👥', label: 'Клієнти',    access: 'management' },
-        { href: '/leads',     icon: '🔥', label: 'Ліди',       access: 'leads' },
+        { href: '/sales-funnel', icon: '🔥', label: 'Ліди',     access: 'leads' },
         { href: '/copilot',   icon: '🤖', label: 'Менеджер',   access: 'copilot' },
         { href: '/staff',     icon: '📋', label: 'Команда',    access: 'staff' },
         { href: '/hr',        icon: '🤝', label: 'Кадри',      access: 'hr' },

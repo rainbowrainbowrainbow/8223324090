@@ -1369,7 +1369,7 @@ const CopilotPage = (() => {
             <div class="deal-card-meta">${escHtml(lead.manager_name || '—')}</div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
                 <span class="deal-days-badge ${daysCls}">${days}д</span>
-                <a href="/leads" style="font-size:11px;color:var(--text-muted);text-decoration:none;">→ Відкрити</a>
+                <a href="/sales-funnel" style="font-size:11px;color:var(--text-muted);text-decoration:none;">→ Відкрити</a>
             </div>
         </div>`;
     }

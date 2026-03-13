@@ -298,12 +298,13 @@ app.get('/status', (req, res) => {
 app.get('/training', (req, res) => {
     res.sendFile(path.join(__dirname, 'training.html'));
 });
-// v22.0.0: leads page (Cache-Control + Pragma bust old 301 cached in browsers)
+// v29.2.0: leads page — /sales-funnel is canonical, /leads redirects (bust cached 301)
+app.get('/sales-funnel', (req, res) => {
+    res.sendFile(path.join(__dirname, 'leads.html'));
+});
 app.get('/leads', (req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.set('Pragma', 'no-cache');
-    res.set('Expires', '0');
-    res.sendFile(path.join(__dirname, 'leads.html'));
+    res.redirect(302, '/sales-funnel');
 });
 // v20.13: Team messenger
 app.get('/chat', (req, res) => {

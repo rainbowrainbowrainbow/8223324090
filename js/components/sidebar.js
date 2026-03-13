@@ -21,7 +21,7 @@ const Sidebar = (() => {
         { type: 'divider' },
         { type: 'section', label: 'Управління' },
         { href: '/customers', icon: '👥', label: 'Клієнти',    access: 'management' },
-        { href: '/leads?v=1',  icon: '🔥', label: 'Ліди',       access: 'leads' },
+        { href: '/leads',     icon: '🔥', label: 'Ліди',       access: 'leads' },
         { href: '/copilot',   icon: '🤖', label: 'Менеджер',   access: 'copilot' },
         { href: '/staff',     icon: '📋', label: 'Команда',    access: 'staff' },
         { href: '/hr',        icon: '🤝', label: 'Кадри',      access: 'hr' },
@@ -226,15 +226,14 @@ const Sidebar = (() => {
                 continue;
             }
 
-            const hrefPath = item.href.split('?')[0]; // strip query for matching
-            const isActive = currentPath === hrefPath ||
-                (hrefPath !== '/' && hrefPath !== '#settings' && currentPath.startsWith(hrefPath));
+            const isActive = currentPath === item.href ||
+                (item.href !== '/' && item.href !== '#settings' && currentPath.startsWith(item.href));
 
             const actionAttr = item.action
                 ? ` data-action="${item.action}" onclick="event.preventDefault(); if(typeof ${item.action}==='function') ${item.action}();"`
                 : '';
 
-            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${hrefPath}"${actionAttr}>
+            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${actionAttr}>
                 <span class="nav-icon">${item.icon}</span>
                 <span class="nav-text">${item.label}</span>
             </a>`;

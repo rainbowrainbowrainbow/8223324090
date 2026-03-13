@@ -16,10 +16,8 @@
  *   <script src="js/ws.js"></script>
  */
 
-const CACHE_NAME = 'event-genix-v25';
-const API_CACHE_NAME = 'event-genix-api-v25';
-const CACHE_NAME = 'event-genix-v24';
-const API_CACHE_NAME = 'event-genix-api-v24';
+const CACHE_NAME = 'event-genix-v26';
+const API_CACHE_NAME = 'event-genix-api-v26';
 
 // App Shell — static assets to pre-cache on install
 const APP_SHELL = [
@@ -144,6 +142,12 @@ self.addEventListener('fetch', (event) => {
         if (NEVER_CACHE_PATHS.some((p) => url.pathname.startsWith(p))) {
             return; // Let browser handle normally (network only)
         }
+        event.respondWith(networkFirstWithCache(event.request));
+        return;
+    }
+
+    // --- Page navigations — network-first (never serve stale redirects from cache) ---
+    if (event.request.mode === 'navigate') {
         event.respondWith(networkFirstWithCache(event.request));
         return;
     }

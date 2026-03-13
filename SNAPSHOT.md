@@ -5,24 +5,48 @@
 ## Де ми
 Версія **v25.5.0**. package.json: `25.5.0`. Бранч `claude/update-snapshot-version-OJyXi`.
 
+## ВАЖЛИВО для нового чату
+
+### Лендінг — ОКРЕМО, НЕ ЧІПАТИ
+- **Лендінг** (`landing/`, `landing.html`, `landing.js`) — редагує **Клешня (Сергій)**, НЕ Claude Code
+- Лендінг живе окремо від CRM SPA — це маркетинговий сайт
+- Якщо бачиш конфлікти в landing файлах — завжди бери версію з `origin/main`
+- Клешня комітить напряму в `main` з тегом `[kleshnya]`
+
+### Версії сайту
+- **CRM SPA** (index.html + 25 підсторінок): v25.5.0 — всі `?v=25.5.0` синхронізовані
+- **Лендінг** (landing.html): v25.4 — керує Клешня
+- **API/Backend**: v25.5.0 (package.json)
+- **Deployed (production)**: v17.4.1 — дуже стара, чекає на деплой v26.0
+
+### Поточний PR-статус
+- Бранч `claude/update-snapshot-version-OJyXi` — **16 комітів ahead of main**
+- Ще НЕ змержено в main — потрібен PR + approve від Сергія
+- Останні коміти: leads page real-time fixes, WebSocket broadcast for lead sources
+
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: fix: [claude-code] v25.5.0 — Bug Fixes: Telegram, Bookings, Gamification API
+- **Останній коміт**: feat: [claude-code] add WebSocket broadcast for ALL lead sources (FB, IG, Viber)
 - **package.json**: `"version": "25.5.0"`
-- **Бранч**: `claude/update-snapshot-version-OJyXi`
+- **Бранч**: `claude/update-snapshot-version-OJyXi` (16 commits ahead of main)
 - **origin/main**: v25.4.1 (з landing fixes від Клешні)
 - **origin/deployed**: v17.4.1
-- **Що нового в v25.5.0**: Фаза 1 баг-фіксів завершена — telegram bot fallthrough fix, booking past date validation для /full, gamification API unified format, export test retry
+- **Що зроблено в цьому бранчі**:
+  - Фаза 1: баг-фікси (telegram fallthrough, booking past date, gamification API)
+  - Фаза 2: 119 тестів для 12 route модулів
+  - Фаза 3: backend оптимізація (indexes, pool, N+1, batch)
+  - Фаза 4: frontend оптимізація (SW fix, throttle, debounce)
+  - Leads page: real-time WebSocket notifications, dashboard widget fixes
 
-### Тести (перевірено 12.03.2026, Phase 2 complete)
+### Тести (перевірено 13.03.2026)
 - **api.test.js**: **296/296 pass**
 - **certificates.test.js**: **82/82 pass**
 - **automation.test.js**: **52/52 pass**
-- **routes.test.js**: **119/119 pass** ← NEW Phase 2 (12 route modules)
+- **routes.test.js**: **119/119 pass** (Phase 2: 12 route modules)
 - **ВСЬОГО: 549/549 pass, 0 fail**
 - Phase 2 coverage: dashboard, gamification, guardian, hr, chat, leads, sales, recurring, training, finance, center, warehouse
-- Запуск: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=postgres RATE_LIMIT_MAX=5000 node --test tests/routes.test.js`
+- Запуск всіх: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=postgres RATE_LIMIT_MAX=5000 node --test tests/*.test.js`
 
 ### Сервер
 ```bash
@@ -34,6 +58,12 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 
 > Мета: дійти стабільної, тестованої, оптимізованої версії v26.0 для деплою на production.
 > Паралельно Клешня редагує лендінг — НЕ чіпати landing/, landing.html, landing.js.
+
+### Що далі (наступна сесія)
+- **Фаза 5**: SEC-001..SEC-005 — безпека (SQL injection audit, rate limits, CORS, JWT refresh, npm audit)
+- **Фаза 6**: ARCH-001..ARCH-005 — рефакторинг (guardian.js split, chat-page split, API format, error middleware, structured logs)
+- **Фаза 7**: DEV-001..DEV-005 — DevOps + Release v26.0
+- **PR**: бранч готовий до PR в main (16 комітів), потрібен review від Сергія
 
 ### A. Баг-фікси (критичні) — 8 пунктів ✅ DONE (v25.5.0)
 1. ✅ **FIX-001**: bookingAutomation.js — не баг, defensive typeof check працює коректно (pg парсить JSONB автоматично)
@@ -306,11 +336,11 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 - **v23.4.0: Lead Capture Integration — auto TG leads, webhooks FB/IG/Viber/Universal, lead notifications**
 - **v23.5.0: Version Recovery & Merge — змержено claude гілку з main, CEO slide, changelog fix**
 
-## Стан гілок (12.03.2026)
+## Стан гілок (13.03.2026)
 | Гілка | Версія | Файлів | Статус |
 |-------|--------|--------|--------|
-| `claude/update-snapshot-version-OJyXi` | **v25.5.0** | 410+ | Фаза 1 (баг-фікси) завершена |
-| `origin/main` | v25.4.1 | 410+ | Актуальна, з landing fixes |
+| `claude/update-snapshot-version-OJyXi` | **v25.5.0** | 410+ | Фази 1-4 завершені, leads fixes, 16 commits ahead |
+| `origin/main` | v25.4.1 | 410+ | Актуальна, з landing fixes від Клешні |
 | `origin/deployed` | v17.4.1 | 197 | Продакшн, дуже стара |
 
 ## Аудит deployed vs main (11.03.2026)
@@ -366,4 +396,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-12, v25.5.0 — Фаза 1 (баг-фікси) завершена, всі тести pass, сесія claude-code*
+*Оновлено: 2026-03-13, v25.5.0 — Фази 1-4 завершені (баг-фікси, тести, backend/frontend оптимізація), leads real-time fixes, 549/549 тестів pass, сесія claude-code*

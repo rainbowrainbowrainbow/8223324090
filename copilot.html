@@ -9,21 +9,24 @@
     <link rel="stylesheet" href="css/base.css?v=28.5.1">
     <link rel="stylesheet" href="css/layout.css?v=28.5.1">
     <link rel="stylesheet" href="css/dark-mode.css?v=28.5.1">
+    <link rel="stylesheet" href="css/responsive.css?v=28.5.1">
+    <link rel="stylesheet" href="css/role-panel.css?v=28.5.1">
     <link rel="stylesheet" href="css/copilot.css?v=28.5.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
 <body class="dark-mode">
-<div id="sidebarOverlay" class="sidebar-overlay"></div>
+<div id="sidebarOverlay" class="sidebar-overlay hidden"></div>
 <div class="app-wrapper">
     <!-- CRM sidebar -->
-    <nav id="sidebarNav" class="sidebar">
-        <div class="sidebar-header">
-            <button id="sidebarToggle" class="sidebar-toggle">☰</button>
-            <span class="sidebar-logo">EG</span>
+    <aside class="sidebar-nav" id="sidebarNav">
+        <div class="sidebar-logo">
+            <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+            <div class="em-logo"><span class="em-logo-title">Event Genix</span></div>
+            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn"><span class="collapse-icon">«</span><span class="collapse-text">Згорнути</span></button>
         </div>
-        <ul id="sidebarLinks" class="sidebar-links"></ul>
-    </nav>
+        <nav class="sidebar-links" id="sidebarLinks"></nav>
+    </aside>
 
     <main class="main-content" style="padding:0; overflow:hidden;">
         <!-- Access denied overlay (shown if no access) -->

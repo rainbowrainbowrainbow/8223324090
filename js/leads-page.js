@@ -34,29 +34,30 @@ let leadsData = [];
 let usersData = [];
 let modalInitialState = '';
 
-// Auth helpers (same pattern as other standalone pages)
-function getToken() { return localStorage.getItem('pzp_token'); }
-function getHeaders(json = true) {
-    const h = {};
-    if (json) h['Content-Type'] = 'application/json';
-    const t = getToken();
-    if (t) h['Authorization'] = `Bearer ${t}`;
-    return h;
-}
-
-async function apiFetch(url, opts = {}) {
-    opts.headers = { ...getHeaders(!!opts.body), ...opts.headers };
-    const res = await fetch(url, opts);
-    if (res.status === 401 || res.status === 403) {
-        window.location.href = '/';
-        throw new Error('Unauthorized');
-    }
-    return res;
-}
-
-// Init
+// Init — same auth pattern as dashboard-page.js
 document.addEventListener('DOMContentLoaded', async () => {
-    if (!getToken()) { window.location.href = '/'; return; }
+    const token = localStorage.getItem('pzp_token');
+    if (!token) {
+        window.location.href = '/';
+        return;
+    }
+
+    // Restore user from localStorage immediately
+    const savedUser = localStorage.getItem('pzp_current_user');
+    if (savedUser) {
+        try {
+            const user = JSON.parse(savedUser);
+            if (typeof AppState !== 'undefined') AppState.currentUser = user;
+        } catch {}
+    }
+
+    // Verify session with server
+    const verified = await apiVerifyToken();
+    if (!verified) {
+        window.location.href = '/';
+        return;
+    }
+    if (typeof AppState !== 'undefined') AppState.currentUser = verified;
 
     // Dark mode — use pzp_dark_mode key (consistent with config.js)
     const saved = localStorage.getItem('pzp_dark_mode');
@@ -71,11 +72,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadUsers() {
     try {
-        const res = await apiFetch('/api/users');
-        if (res.ok) {
-            const data = await res.json();
-            usersData = Array.isArray(data) ? data : (data.users || []);
-        }
+        const data = await apiCall('GET', '/users', null, { fallback: [] });
+        usersData = Array.isArray(data) ? data : (data.users || []);
     } catch (e) { console.warn('Failed to load users', e); }
 
     const sel = document.getElementById('leadAssignedTo');
@@ -96,8 +94,7 @@ async function loadLeads() {
         if (search) params.set('search', search);
         params.set('limit', '200');
 
-        const res = await apiFetch(`/api/leads?${params}`);
-        const data = await res.json();
+        const data = await apiCall('GET', `/leads?${params}`, null, { fallback: { leads: [] } });
         leadsData = data.leads || [];
         renderStats();
         renderTable();
@@ -260,13 +257,12 @@ async function saveLead() {
     };
 
     try {
-        let res;
+        let data;
         if (editId) {
-            res = await apiFetch(`/api/leads/${editId}`, { method: 'PATCH', body: JSON.stringify(body) });
+            data = await apiCall('PATCH', `/leads/${editId}`, body);
         } else {
-            res = await apiFetch('/api/leads', { method: 'POST', body: JSON.stringify(body) });
+            data = await apiCall('POST', '/leads', body);
         }
-        const data = await res.json();
         if (!data.success) { showNotification(data.error || 'Помилка', 'error'); return; }
         closeModal(true);
         await loadLeads();
@@ -279,7 +275,7 @@ async function saveLead() {
 async function deleteLead(id) {
     if (!await confirmModal('Видалити лід?', { type: 'danger', okText: 'Видалити' })) return;
     try {
-        await apiFetch(`/api/leads/${id}`, { method: 'DELETE' });
+        await apiCall('DELETE', `/leads/${id}`);
         await loadLeads();
     } catch (err) {
         console.error('Delete lead error', err);

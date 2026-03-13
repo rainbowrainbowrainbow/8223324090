@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Genix — Sales Deck</title>
+    <link rel="icon" type="image/png" href="/images/favicon-32.png" sizes="32x32">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #0F172A; color: #E2E8F0; min-height: 100vh; }
+        .deck { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+        .deck-header { text-align: center; margin-bottom: 48px; }
+        .deck-header h1 { font-family: 'Space Grotesk', sans-serif; font-size: 42px; font-weight: 800; background: linear-gradient(135deg, #10B981, #3B82F6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; }
+        .deck-header p { font-size: 18px; color: #94A3B8; }
+        .slide { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 32px; margin-bottom: 24px; }
+        .slide h2 { font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; color: #F1F5F9; margin-bottom: 16px; }
+        .slide p, .slide li { font-size: 16px; line-height: 1.7; color: #CBD5E1; }
+        .slide ul { list-style: none; padding: 0; }
+        .slide li { padding: 8px 0; padding-left: 24px; position: relative; }
+        .slide li::before { content: '✦'; position: absolute; left: 0; color: #10B981; }
+        .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 20px; }
+        .price-item { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); border-radius: 12px; padding: 20px; text-align: center; }
+        .price-item .price-name { font-weight: 700; font-size: 14px; margin-bottom: 8px; color: #10B981; }
+        .price-item .price-value { font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 800; color: #F1F5F9; }
+        .price-item .price-unit { font-size: 13px; color: #64748B; }
+        .cta { text-align: center; margin-top: 40px; }
+        .cta a { display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #10B981, #059669); color: #fff; text-decoration: none; border-radius: 12px; font-size: 18px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; transition: transform .15s; }
+        .cta a:hover { transform: translateY(-2px); }
+        .footer { text-align: center; margin-top: 48px; color: #475569; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="deck">
+        <div class="deck-header">
+            <h1>Event Genix</h1>
+            <p>AI-First CRM для дитячих розважальних центрів</p>
+        </div>
+
+        <div class="slide">
+            <h2>Проблема</h2>
+            <ul>
+                <li>Ручне планування = помилки, накладки, забуті деталі</li>
+                <li>Менеджери тонуть в таблицях і чатах</li>
+                <li>Немає єдиної системи від ліда до закриття угоди</li>
+                <li>Втрати клієнтів через повільну відповідь</li>
+            </ul>
+        </div>
+
+        <div class="slide">
+            <h2>Рішення — Event Genix</h2>
+            <ul>
+                <li>Воронка продажів від ліда до закритої угоди</li>
+                <li>Таймлайн аніматорів з drag-and-drop</li>
+                <li>AI-координатор "Клешня" — автоматизація 24/7</li>
+                <li>Telegram сповіщення команді в реальному часі</li>
+                <li>Каталог програм, гейміфікація, дашборд, аналітика</li>
+                <li>HR, фінанси, управління складом</li>
+            </ul>
+        </div>
+
+        <div class="slide">
+            <h2>Як працює воронка</h2>
+            <ul>
+                <li>Автоматичний захват лідів з FB, IG, Telegram, форм</li>
+                <li>Категоризація: якісний / спам / співпраця / інфо</li>
+                <li>Pipeline: Новий → Контакт → Інфо → Угода → Завдаток → Проведено → Закрито</li>
+                <li>Автоматичне створення задач після завдатку</li>
+                <li>Карта клієнта з усіма деталями події</li>
+            </ul>
+        </div>
+
+        <div class="slide">
+            <h2>Ціни</h2>
+            <div class="pricing-grid">
+                <div class="price-item">
+                    <div class="price-name">Базовий</div>
+                    <div class="price-value">3 000 ₴</div>
+                    <div class="price-unit">на місяць</div>
+                </div>
+                <div class="price-item">
+                    <div class="price-name">+ CRM Продажі</div>
+                    <div class="price-value">+3 000 ₴</div>
+                    <div class="price-unit">на місяць</div>
+                </div>
+                <div class="price-item">
+                    <div class="price-name">+ AI Copilot</div>
+                    <div class="price-value">+8 000 ₴</div>
+                    <div class="price-unit">на місяць</div>
+                </div>
+                <div class="price-item">
+                    <div class="price-name">Повний пакет</div>
+                    <div class="price-value">22 000 ₴</div>
+                    <div class="price-unit">на місяць</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="cta">
+            <a href="https://t.me/eventgenix">Зв'язатись з нами</a>
+        </div>
+
+        <div class="footer">
+            Event Genix &copy; 2026 — Парк Закревського Періоду
+        </div>
+    </div>
+</body>
+</html>

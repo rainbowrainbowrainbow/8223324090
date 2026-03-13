@@ -107,9 +107,14 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
 });
 
 // v20.13: Version endpoint — returns package.json version
+// v29.1.0: Added testMode flag
 router.get('/version', (req, res) => {
     const pkg = require('../package.json');
-    res.json({ version: pkg.version, name: pkg.name || 'park-booking' });
+    res.json({
+        version: pkg.version,
+        name: 'Event Genix',
+        testMode: process.env.TEST_MODE === 'true'
+    });
 });
 
 // Health check — v19.17: deep health check with DB pool, memory, uptime

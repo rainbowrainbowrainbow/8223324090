@@ -2,14 +2,22 @@
  * routes/leads.js — Leads (hot prospects) API
  * v20.7.0: Lead tracking, follow-up alerts
  * v20.9.13: Full CRUD with booking_id, instagram, source, lost_reason
+ * v29.1.0: Sales funnel — lead types, pipeline stages, customer cards,
+ *          mailing list, deposit auto-distribute, lost clients
  *
  * Endpoints:
- *   GET    /api/leads           — list leads (with filters)
- *   GET    /api/leads/hot       — leads needing attention (24h+ without response)
- *   GET    /api/leads/stats     — funnel stats
- *   POST   /api/leads           — create lead
- *   PATCH  /api/leads/:id       — update lead status/fields
- *   DELETE /api/leads/:id       — delete lead
+ *   GET    /api/leads                    — list leads (with filters)
+ *   GET    /api/leads/hot                — leads needing attention
+ *   GET    /api/leads/stats              — funnel stats by status + type
+ *   GET    /api/leads/pipeline           — pipeline funnel by stages
+ *   POST   /api/leads                    — create lead
+ *   PATCH  /api/leads/:id                — update lead
+ *   DELETE /api/leads/:id                — delete lead
+ *   GET    /api/leads/:id/card           — get customer card
+ *   POST   /api/leads/:id/card           — save customer card
+ *   GET    /api/leads/mailing            — mailing list
+ *   POST   /api/leads/mailing            — add to mailing
+ *   DELETE /api/leads/mailing/:id        — remove from mailing
  */
 const router = require('express').Router();
 const crypto = require('crypto');
@@ -58,7 +66,7 @@ router.post('/landing', async (req, res) => {
 // GET /api/leads — list all leads with optional filters
 router.get('/', async (req, res) => {
     try {
-        const { status, assigned_to, source, limit: lim, search, pipeline_stage } = req.query;
+        const { status, assigned_to, source, limit: lim, search, pipeline_stage, lead_type } = req.query;
         const conditions = [];
         const params = [];
 
@@ -81,6 +89,10 @@ router.get('/', async (req, res) => {
         if (source) {
             params.push(source);
             conditions.push(`l.source = $${params.length}`);
+        }
+        if (lead_type) {
+            params.push(lead_type);
+            conditions.push(`l.lead_type = $${params.length}`);
         }
         if (search) {
             const pattern = `%${search}%`;
@@ -130,18 +142,32 @@ router.get('/hot', async (req, res) => {
     }
 });
 
-// GET /api/leads/stats — funnel statistics
+// GET /api/leads/stats — funnel statistics (by status + type + pipeline)
 router.get('/stats', async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT status, COUNT(*) AS count
-            FROM leads
-            GROUP BY status
-        `);
+        const { period } = req.query; // today, week, month, all
+        let dateFilter = '';
+        if (period === 'today') dateFilter = "AND created_at >= CURRENT_DATE";
+        else if (period === 'week') dateFilter = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
+        else if (period === 'month') dateFilter = "AND created_at >= CURRENT_DATE - INTERVAL '30 days'";
+
+        const [byStatus, byType, byStage] = await Promise.all([
+            pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE 1=1 ${dateFilter} GROUP BY status`),
+            pool.query(`SELECT lead_type, COUNT(*) AS count FROM leads WHERE 1=1 ${dateFilter} GROUP BY lead_type`),
+            pool.query(`SELECT pipeline_stage, COUNT(*) AS count FROM leads WHERE 1=1 ${dateFilter} GROUP BY pipeline_stage`),
+        ]);
+
         const stats = {};
-        for (const r of result.rows) stats[r.status] = parseInt(r.count);
+        for (const r of byStatus.rows) stats[r.status] = parseInt(r.count);
         const total = Object.values(stats).reduce((s, v) => s + v, 0);
-        res.json({ success: true, stats, total });
+
+        const typeStats = {};
+        for (const r of byType.rows) typeStats[r.lead_type || 'quality'] = parseInt(r.count);
+
+        const stageStats = {};
+        for (const r of byStage.rows) stageStats[r.pipeline_stage || 'new'] = parseInt(r.count);
+
+        res.json({ success: true, stats, typeStats, stageStats, total });
     } catch (err) {
         log.error('GET /leads/stats error', err);
         res.status(500).json({ success: false, error: 'Помилка' });
@@ -174,7 +200,7 @@ router.post('/', async (req, res) => {
 // PATCH /api/leads/:id — update lead
 router.patch('/:id', async (req, res) => {
     try {
-        const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, event_date, children_count, child_age, program_id, pipeline_stage, milestone_tags } = req.body;
+        const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, event_date, children_count, child_age, program_id, pipeline_stage, milestone_tags, lead_type, quality_category } = req.body;
         const updates = [];
         const params = [];
 
@@ -197,6 +223,8 @@ router.patch('/:id', async (req, res) => {
         if (program_id !== undefined) { params.push(program_id || null); updates.push(`program_id = $${params.length}`); }
         if (pipeline_stage !== undefined) { params.push(pipeline_stage); updates.push(`pipeline_stage = $${params.length}`); }
         if (milestone_tags !== undefined) { params.push(milestone_tags); updates.push(`milestone_tags = $${params.length}`); }
+        if (lead_type !== undefined) { params.push(lead_type); updates.push(`lead_type = $${params.length}`); }
+        if (quality_category !== undefined) { params.push(quality_category || null); updates.push(`quality_category = $${params.length}`); }
         if (last_contact_at) {
             params.push(last_contact_at);
             updates.push(`last_contact_at = $${params.length}`);
@@ -216,31 +244,125 @@ router.patch('/:id', async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, error: 'Лід не знайдено' });
         }
-        res.json({ success: true, lead: result.rows[0] });
+
+        const updatedLead = result.rows[0];
+
+        // v29.1: Pipeline stage hooks (fire-and-forget)
+        if (pipeline_stage === 'deposit_received') {
+            onDepositReceived(updatedLead, req.user).catch(e =>
+                log.error('onDepositReceived error (non-blocking)', e)
+            );
+        }
+        // v29.1: Auto-add to mailing on informational/lost
+        if (lead_type === 'informational' || pipeline_stage === 'lost') {
+            addToMailingIfNeeded(updatedLead).catch(e =>
+                log.error('addToMailing error (non-blocking)', e)
+            );
+        }
+        // v29.1: Log pipeline stage changes
+        if (pipeline_stage !== undefined) {
+            logStageChange(updatedLead.id, pipeline_stage, req.user?.id).catch(() => {});
+        }
+
+        res.json({ success: true, lead: updatedLead });
     } catch (err) {
         log.error('PATCH /leads/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка оновлення' });
     }
 });
 
-// GET /api/leads/pipeline — pipeline funnel by stages (v25.4.0)
+// GET /api/leads/pipeline — pipeline funnel by stages (v29.1.0)
+// Stages: new → contacted → info_sent → deal → deposit_received → waiting → completed → closed / lost
 router.get('/pipeline', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT pipeline_stage, COUNT(*) AS count
+            SELECT pipeline_stage, lead_type, COUNT(*) AS count
             FROM leads
-            WHERE status NOT IN ('closed', 'lost')
-            GROUP BY pipeline_stage
-            ORDER BY CASE pipeline_stage
-                WHEN 'new' THEN 1 WHEN 'contacted' THEN 2 WHEN 'demo' THEN 3
-                WHEN 'proposal' THEN 4 WHEN 'negotiation' THEN 5 WHEN 'won' THEN 6
-                ELSE 7 END
+            GROUP BY pipeline_stage, lead_type
         `);
+
         const stages = {};
-        for (const r of result.rows) stages[r.pipeline_stage || 'new'] = parseInt(r.count);
-        res.json({ success: true, pipeline: stages });
+        const stageOrder = ['new', 'contacted', 'info_sent', 'deal', 'deposit_received', 'waiting', 'completed', 'closed', 'lost'];
+        for (const s of stageOrder) stages[s] = 0;
+        for (const r of result.rows) {
+            const key = r.pipeline_stage || 'new';
+            stages[key] = (stages[key] || 0) + parseInt(r.count);
+        }
+
+        // Also return leads per stage for kanban
+        const leadsResult = await pool.query(`
+            SELECT l.id, l.client_name, l.phone, l.lead_type, l.quality_category,
+                   l.pipeline_stage, l.event_date, l.created_at, l.source_channel,
+                   EXTRACT(EPOCH FROM (NOW() - COALESCE(l.last_contact_at, l.created_at))) / 3600 AS hours_idle
+            FROM leads l
+            WHERE l.lead_type NOT IN ('spam')
+            ORDER BY l.created_at DESC
+            LIMIT 300
+        `);
+
+        res.json({ success: true, pipeline: stages, leads: leadsResult.rows });
     } catch (err) {
         log.error('GET /leads/pipeline error', err);
+        res.status(500).json({ success: false, error: 'Помилка' });
+    }
+});
+
+// ============================================================
+// v29.1.0: Mailing List (MUST be before /:id routes)
+// ============================================================
+
+// GET /api/leads/mailing — get mailing list
+router.get('/mailing', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT m.*, l.client_name AS lead_name
+            FROM mailing_list m
+            LEFT JOIN leads l ON m.lead_id = l.id
+            ORDER BY m.created_at DESC LIMIT 500
+        `);
+        res.json({ success: true, list: result.rows });
+    } catch (err) {
+        log.error('GET /leads/mailing error', err);
+        res.status(500).json({ success: false, error: 'Помилка' });
+    }
+});
+
+// POST /api/leads/mailing — add contact to mailing list
+router.post('/mailing', async (req, res) => {
+    try {
+        const { name, phone, email, source_channel, contact_value, lead_id, notes } = req.body;
+        if (!name && !phone) {
+            return res.status(400).json({ success: false, error: "Ім'я або телефон обов'язкові" });
+        }
+        const result = await pool.query(`
+            INSERT INTO mailing_list (name, phone, email, source_channel, contact_value, lead_id, notes)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (phone) WHERE phone IS NOT NULL DO UPDATE SET
+                name = COALESCE(EXCLUDED.name, mailing_list.name),
+                email = COALESCE(EXCLUDED.email, mailing_list.email),
+                source_channel = COALESCE(EXCLUDED.source_channel, mailing_list.source_channel),
+                notes = COALESCE(EXCLUDED.notes, mailing_list.notes)
+            RETURNING *
+        `, [name || null, phone || null, email || null, source_channel || null,
+            contact_value || null, lead_id || null, notes || null]);
+
+        res.json({ success: true, entry: result.rows[0] });
+    } catch (err) {
+        log.error('POST /leads/mailing error', err);
+        res.status(500).json({ success: false, error: 'Помилка додавання до розсилки' });
+    }
+});
+
+// DELETE /api/leads/mailing/:id — remove from mailing list
+router.delete('/mailing/:id', async (req, res) => {
+    try {
+        const result = await pool.query('DELETE FROM mailing_list WHERE id = $1 RETURNING id', [req.params.id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Запис не знайдено' });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /leads/mailing/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка' });
     }
 });
@@ -266,6 +388,8 @@ router.delete('/:id', async (req, res) => {
 /** Helper: create lead from webhook data, dedup by phone or external_id */
 async function createLeadFromWebhook({ client_name, phone, telegram_id, instagram,
                                        notes, source_channel, external_id, raw_payload }) {
+    const isTestMode = process.env.TEST_MODE === 'true';
+    if (isTestMode && client_name) client_name = `[TEST] ${client_name}`;
     // Dedup by phone
     if (phone) {
         const dup = await pool.query(
@@ -501,5 +625,163 @@ router.get('/webhook/status', (req, res) => {
         }
     });
 });
+
+// ============================================================
+// v29.1.0: Customer Cards
+// ============================================================
+
+// GET /api/leads/:id/card — get customer card for lead
+router.get('/:id/card', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM customer_cards WHERE lead_id = $1 LIMIT 1',
+            [req.params.id]
+        );
+        res.json({ success: true, card: result.rows[0] || null });
+    } catch (err) {
+        log.error('GET /leads/:id/card error', err);
+        res.status(500).json({ success: false, error: 'Помилка' });
+    }
+});
+
+// POST /api/leads/:id/card — create/update customer card
+router.post('/:id/card', async (req, res) => {
+    try {
+        const leadId = parseInt(req.params.id);
+        const { event_type, event_date, guest_count, children_count, budget_approx, how_found, email, channel, notes } = req.body;
+
+        // Check lead exists
+        const lead = await pool.query('SELECT id FROM leads WHERE id = $1', [leadId]);
+        if (lead.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Лід не знайдено' });
+        }
+
+        // Upsert
+        const existing = await pool.query('SELECT id FROM customer_cards WHERE lead_id = $1', [leadId]);
+        let result;
+        if (existing.rows.length > 0) {
+            result = await pool.query(`
+                UPDATE customer_cards SET
+                    event_type = $2, event_date = $3, guest_count = $4, children_count = $5,
+                    budget_approx = $6, how_found = $7, email = $8, channel = $9, notes = $10,
+                    updated_at = NOW()
+                WHERE lead_id = $1 RETURNING *
+            `, [leadId, event_type || null, event_date || null, guest_count || null,
+                children_count || null, budget_approx || null, how_found || null,
+                email || null, channel || null, notes || null]);
+        } else {
+            result = await pool.query(`
+                INSERT INTO customer_cards (lead_id, event_type, event_date, guest_count, children_count, budget_approx, how_found, email, channel, notes)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *
+            `, [leadId, event_type || null, event_date || null, guest_count || null,
+                children_count || null, budget_approx || null, how_found || null,
+                email || null, channel || null, notes || null]);
+        }
+
+        log.info(`Customer card saved for lead ${leadId}`);
+        res.json({ success: true, card: result.rows[0] });
+    } catch (err) {
+        log.error('POST /leads/:id/card error', err);
+        res.status(500).json({ success: false, error: 'Помилка збереження картки' });
+    }
+});
+
+// ============================================================
+// v29.1.0: Deposit auto-distribute (fire-and-forget)
+// ============================================================
+
+function subtractDays(dateStr, days) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() - days);
+    return d.toISOString().split('T')[0];
+}
+
+async function onDepositReceived(lead, user) {
+    const isTestMode = process.env.TEST_MODE === 'true';
+    const prefix = isTestMode ? '[TEST] ' : '';
+    const tasks = [];
+
+    // 1. Art department (poster)
+    tasks.push({
+        title: `${prefix}Афіша: ${lead.quality_category || 'подія'} — ${lead.client_name}`,
+        description: `Дата події: ${lead.event_date || 'не вказана'}. Клієнт: ${lead.phone || 'тел не вказано'}`,
+        category: 'art',
+        due_date: subtractDays(lead.event_date, 3),
+        priority: 'high'
+    });
+
+    // 2. Kitchen (menu)
+    tasks.push({
+        title: `${prefix}Меню: ${lead.quality_category || 'подія'} ${lead.event_date || ''}`,
+        description: `Клієнт: ${lead.client_name}`,
+        category: 'kitchen',
+        due_date: subtractDays(lead.event_date, 2),
+        priority: 'medium'
+    });
+
+    // 3. Admin (staffing)
+    tasks.push({
+        title: `${prefix}Персонал: ${lead.event_date || 'дата TBD'} — скільки людей потрібно`,
+        description: `Клієнт: ${lead.client_name}, тип: ${lead.quality_category || 'не вказано'}`,
+        category: 'admin',
+        due_date: subtractDays(lead.event_date, 3),
+        priority: 'high'
+    });
+
+    for (const task of tasks) {
+        try {
+            await pool.query(`
+                INSERT INTO tasks (title, description, category, date, priority, status, created_by)
+                VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+            `, [task.title, task.description, task.category || null,
+                task.due_date || null, task.priority || 'medium',
+                user?.id || null]);
+        } catch (e) {
+            log.error(`Failed to create task: ${task.title}`, e);
+        }
+    }
+
+    // Telegram notification to director (if available)
+    try {
+        const { sendTelegramMessage } = require('../services/telegram');
+        const chatId = process.env.BOSS_TELEGRAM_ID || process.env.TELEGRAM_DEFAULT_CHAT_ID;
+        if (chatId && typeof sendTelegramMessage === 'function') {
+            await sendTelegramMessage(chatId,
+                `💰 ${prefix}Завдаток отримано!\n` +
+                `Клієнт: ${lead.client_name}\n` +
+                `Подія: ${lead.quality_category || 'не вказано'} ${lead.event_date || ''}\n` +
+                `📋 Створено ${tasks.length} задач(і)`
+            );
+        }
+    } catch (e) { /* non-blocking */ }
+
+    log.info(`Deposit received for lead ${lead.id}: ${tasks.length} tasks created`);
+}
+
+// Log pipeline stage change to lead_interactions
+async function logStageChange(leadId, newStage, userId) {
+    try {
+        await pool.query(`
+            INSERT INTO lead_interactions (lead_id, type, notes, created_by, created_at)
+            VALUES ($1, 'stage_change', $2, $3, NOW())
+        `, [leadId, `Pipeline → ${newStage}`, userId || null]);
+    } catch (e) {
+        // lead_interactions may not exist yet, non-blocking
+    }
+}
+
+// Auto-add to mailing list
+async function addToMailingIfNeeded(lead) {
+    if (!lead.phone && !lead.client_name) return;
+    try {
+        await pool.query(`
+            INSERT INTO mailing_list (name, phone, source_channel, lead_id, notes)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT ON CONSTRAINT idx_mailing_phone DO NOTHING
+        `, [lead.client_name, lead.phone, lead.source_channel || 'unknown', lead.id,
+            lead.lead_type === 'informational' ? 'Інформаційний запит' : 'Втрачений клієнт']);
+    } catch (e) { /* dedup */ }
+}
 
 module.exports = router;

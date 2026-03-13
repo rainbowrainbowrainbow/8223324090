@@ -15,19 +15,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=25.4.1">
-    <link rel="stylesheet" href="css/auth.css?v=25.4.1">
-    <link rel="stylesheet" href="css/layout.css?v=25.4.1">
-    <link rel="stylesheet" href="css/timeline.css?v=25.4.1">
-    <link rel="stylesheet" href="css/panel.css?v=25.4.1">
-    <link rel="stylesheet" href="css/modals.css?v=25.4.1">
-    <link rel="stylesheet" href="css/controls.css?v=25.4.1">
-    <link rel="stylesheet" href="css/features.css?v=25.4.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.4.1">
-    <link rel="stylesheet" href="css/responsive.css?v=25.4.1">
-    <link rel="stylesheet" href="css/pages.css?v=25.4.1">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=25.4.1">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.4.1">
+    <link rel="stylesheet" href="css/base.css?v=29.1.0">
+    <link rel="stylesheet" href="css/auth.css?v=29.1.0">
+    <link rel="stylesheet" href="css/layout.css?v=29.1.0">
+    <link rel="stylesheet" href="css/timeline.css?v=29.1.0">
+    <link rel="stylesheet" href="css/panel.css?v=29.1.0">
+    <link rel="stylesheet" href="css/modals.css?v=29.1.0">
+    <link rel="stylesheet" href="css/controls.css?v=29.1.0">
+    <link rel="stylesheet" href="css/features.css?v=29.1.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=29.1.0">
+    <link rel="stylesheet" href="css/responsive.css?v=29.1.0">
+    <link rel="stylesheet" href="css/pages.css?v=29.1.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=29.1.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=29.1.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -44,9 +44,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v28.2.0 — Guardian Етап 1</p>
+                <p class="tagline">AI First CRM v29.1.0 — Воронка продажів</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v28.2.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v29.1.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1143,6 +1143,21 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v29.1.0 — Воронка продажів (Клешня, 13.03.2026)</h4>
+                    <ul>
+                        <li><b>Ліди</b> — типи: якісний/спам/співпраця/інформаційний/неякісний</li>
+                        <li><b>Карта клієнта</b> — поля при якісному ліді (опційно)</li>
+                        <li><b>Pipeline</b> — статуси воронки з кольоровою сигналізацією часу</li>
+                        <li><b>Kanban</b> — перетягування лідів між стадіями воронки</li>
+                        <li><b>Авторозподіл</b> — задачі після завдатку: Арт/Кухня/Адміни</li>
+                        <li><b>Втрачені клієнти</b> — окрема категорія + авто-пропозиція до розсилки</li>
+                        <li><b>Список розсилки</b> — зберігання контактів з каналом звернення</li>
+                        <li><b>Тестовий режим</b> — TEST_MODE env var + UI badge</li>
+                        <li><b>Checkbox MVP</b> — тип оплати (банк/готівка) для підготовки до ПРРО</li>
+                        <li><b>Sales Deck</b> — онлайн-презентація для менеджерів (/sales-deck.html)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v28.2.0 — Guardian Етап 1: Whitelist + Edit + Toggle + Stop (Клешня, 13.03.2026)</h4>
                     <ul>
                         <li><b>Whitelist</b> — слова-виключення для зменшення false positives (статичний + динамічний через БД)</li>
@@ -1366,7 +1381,7 @@
                         <li><b>Version Sync</b> — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG</li>
                         <li><b>Landing Carousel</b> — команда з каруселлю, Anli Lektor, swipe/dots/arrows [kleshnya]</li>
                         <li><b>Manager Guide</b> — нова сторінка для менеджерів з продажу [kleshnya]</li>
-                        <li><b>Cache Busting</b> — ?v=25.4.1 на всіх CSS/JS ресурсах (25 файлів)</li>
+                        <li><b>Cache Busting</b> — ?v=29.1.0 на всіх CSS/JS ресурсах (25 файлів)</li>
                         <li><b>Swagger API</b> — оновлена версія OpenAPI spec до v23.0.0</li>
                     </ul>
                 </div>
@@ -4122,26 +4137,26 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=25.4.1"></script>
-    <script src="js/api.js?v=25.4.1"></script>
-    <script src="js/ui.js?v=25.4.1"></script>
-    <script src="js/auth.js?v=25.4.1"></script>
-    <script src="js/timeline.js?v=25.4.1"></script>
-    <script src="js/booking.js?v=25.4.1"></script>
-    <script src="js/settings.js?v=25.4.1"></script>
-    <script src="js/booking-form.js?v=25.4.1"></script>
-    <script src="js/booking-linked.js?v=25.4.1"></script>
-    <script src="js/settings-dashboard.js?v=25.4.1"></script>
-    <script src="js/settings-history.js?v=25.4.1"></script>
-    <script src="js/settings-afisha.js?v=25.4.1"></script>
-    <script src="js/settings-certificates.js?v=25.4.1"></script>
-    <script src="js/offline.js?v=25.4.1"></script>
-    <script src="js/search.js?v=25.4.1"></script>
-    <script src="js/ws.js?v=25.4.1"></script>
-    <script src="js/app.js?v=25.4.1"></script>
-    <script src="js/kleshnya-widget.js?v=25.4.1"></script>
-    <script src="js/components/sidebar.js?v=25.4.1"></script>
+    <script src="js/config.js?v=29.1.0"></script>
+    <script src="js/api.js?v=29.1.0"></script>
+    <script src="js/ui.js?v=29.1.0"></script>
+    <script src="js/auth.js?v=29.1.0"></script>
+    <script src="js/timeline.js?v=29.1.0"></script>
+    <script src="js/booking.js?v=29.1.0"></script>
+    <script src="js/settings.js?v=29.1.0"></script>
+    <script src="js/booking-form.js?v=29.1.0"></script>
+    <script src="js/booking-linked.js?v=29.1.0"></script>
+    <script src="js/settings-dashboard.js?v=29.1.0"></script>
+    <script src="js/settings-history.js?v=29.1.0"></script>
+    <script src="js/settings-afisha.js?v=29.1.0"></script>
+    <script src="js/settings-certificates.js?v=29.1.0"></script>
+    <script src="js/offline.js?v=29.1.0"></script>
+    <script src="js/search.js?v=29.1.0"></script>
+    <script src="js/ws.js?v=29.1.0"></script>
+    <script src="js/app.js?v=29.1.0"></script>
+    <script src="js/kleshnya-widget.js?v=29.1.0"></script>
+    <script src="js/components/sidebar.js?v=29.1.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=25.4.1"></script>
+    <script src="js/role-panel.js?v=29.1.0"></script>
 </body>
 </html>

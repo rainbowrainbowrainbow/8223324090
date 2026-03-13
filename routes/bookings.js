@@ -667,4 +667,43 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     }
 });
 
+// v29.1.0: Checkbox MVP — update payment method
+router.patch('/:id/payment', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { payment_method, fiscal_required } = req.body;
+
+        const updates = ['updated_at = NOW()'];
+        const params = [];
+
+        if (payment_method !== undefined) {
+            params.push(payment_method);
+            updates.push(`payment_method = $${params.length}`);
+        }
+        if (fiscal_required !== undefined) {
+            params.push(fiscal_required);
+            updates.push(`fiscal_required = $${params.length}`);
+        }
+
+        if (params.length === 0) {
+            return res.status(400).json({ error: 'No fields to update' });
+        }
+
+        params.push(id);
+        const result = await pool.query(
+            `UPDATE bookings SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING id, payment_method, fiscal_required`,
+            params
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Booking not found' });
+        }
+
+        res.json({ success: true, booking: result.rows[0] });
+    } catch (err) {
+        log.error('PATCH /bookings/:id/payment error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

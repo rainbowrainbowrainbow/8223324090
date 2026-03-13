@@ -3,6 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script>
+    // v29.2.0: Trampoline — catch cached 301 from /leads→/customers?tab=leads
+    if (location.search.includes('tab=leads') || document.referrer.includes('/leads')) {
+        location.replace('/sales-funnel');
+    }
+    </script>
     <title>Event Genix | Клієнти</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">

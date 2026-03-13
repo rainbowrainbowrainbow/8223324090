@@ -17,10 +17,20 @@ const CopilotPage = (() => {
     // ─── Init ───────────────────────────────────────────────────────────────
 
     async function init() {
-        // Wait for auth
-        await waitForAuth();
+        // Auth: verify token like dashboard-page.js
+        const token = localStorage.getItem('pzp_token');
+        if (!token) { window.location.href = '/'; return; }
 
-        const user = AppState?.currentUser;
+        const savedUser = localStorage.getItem('pzp_current_user');
+        if (savedUser) {
+            try { AppState.currentUser = JSON.parse(savedUser); } catch {}
+        }
+
+        const verified = await apiVerifyToken();
+        if (!verified) { window.location.href = '/'; return; }
+        AppState.currentUser = verified;
+
+        const user = AppState.currentUser;
         if (!user || !MANAGER_ROLES.includes(user.role)) {
             document.getElementById('accessDenied')?.classList.remove('hidden');
             document.getElementById('copilotApp')?.classList.add('hidden');

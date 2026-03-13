@@ -4,6 +4,38 @@
 
 ---
 
+## v28.0.0 — Rock Sound Engine + Chat UX (2026-03-13)
+- **Rock Sound Engine** — `js/sound-engine.js` (333 рядки): аудіо-движок для UI звуків [kleshnya]
+- **Chat UX** — оновлені стилі `css/chat.css` (+117 рядків), покращений `chat.html` (+96 рядків) [kleshnya]
+- **Контур-2 check** — перевірка Guardian системи [kleshnya]
+- **Landing cache fix** — JS кеш 5min revalidate замість 7 days immutable (`middleware/security.js`) [kleshnya]
+- **Objections data** — `data/objections.json` з заперечення для Manager Copilot [kleshnya]
+- **DB Migration 067** — `manager_copilot.sql` (Kleshnya version) [kleshnya]
+
+## v27.0.0 — Manager AI Copilot (2026-03-13)
+- **AI Live Coach** — підказки під час дзвінків з вибором сценарію та тону (debounce 800ms live mode) [claude-code]
+- **Обробник заперечень** — 8 готових + AI-генеровані відповіді на кастомні заперечення [claude-code]
+- **Скрипти дзвінків** — 5 інтерактивних покрокових скриптів з розгалуженнями [claude-code]
+- **Шаблони повідомлень** — 7 персоналізованих шаблонів зі змінними [claude-code]
+- **Дебрифінг дзвінка** — AI аналіз 1-10 з рекомендаціями покращення [claude-code]
+- **Sales Academy** — SPIN/Challenger/MEDDIC методології, ринкові дані, профілі покупців [claude-code]
+- **Battle Cards** — 6 карток порівняння з конкурентами [claude-code]
+- **Meeting Prep** — AI-згенеровані бріфи з killer questions [claude-code]
+- **Deal Pipeline** — Kanban з drag-and-drop [claude-code]
+- **Моніторинг взаємодій** — повна історія з follow-up алертами [claude-code]
+- **AI Writer** — генерація персоналізованих повідомлень [claude-code]
+- **Нові файли**: `manager.html`, `css/manager.css`, `js/manager-page.js`, `routes/manager.js` [claude-code]
+- **7 JSON data files**: objections, scripts, templates, battle-cards, sales-academy, sales-methodology, buyer-profiles [claude-code]
+- **DB Migration 068** — `manager_copilot.sql` (3 таблиці + 4 нові колонки в leads) [claude-code]
+
+## v25.5.0 — Stabilization Sprint (2026-03-13)
+- **Фаза 1 — Bug Fixes** — telegram fallthrough fix, booking past date validation, gamification API format `{success, data}`, flaky test retry [claude-code]
+- **Фаза 2 — Route Tests** — 119 нових тестів для 12 route модулів (dashboard, gamification, guardian, hr, chat, leads, sales, recurring, training, finance, center, warehouse) [claude-code]
+- **Фаза 3 — Backend Optimization** — 5 DB indexes, warehouse pagination, N+1 batch fix, pool tuning [claude-code]
+- **Фаза 4 — Frontend Optimization** — SW cache fix (v12→v24), scroll throttle, passive listeners, chat debounce [claude-code]
+- **Leads Real-time** — WebSocket broadcast for all lead sources (FB, IG, Viber), dashboard widget fixes [claude-code]
+- **549/549 тестів pass** (api: 296, certs: 82, auto: 52, routes: 119) [claude-code]
+
 ## v24.4.0 — QA Mega Fix + Adaptive Layout (2026-03-12)
 - **8 сторінок виправлено** — додано відсутній ui.js (customers, chat, dashboard, leads, profile, shop, quiz, room) — confirmModal/showNotification були undefined [claude-code]
 - **Адаптивний layout** — прибрано max-width обмеження (1800/1400/1200px), контент розтягується на повну ширину коли панель закрита [claude-code]

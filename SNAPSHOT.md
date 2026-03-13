@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v25.5.0**. package.json: `25.5.0`. Бранч `claude/update-snapshot-version-OJyXi`.
+Версія **v28.0.0**. package.json: `28.0.0`. Бранч `claude/review-snapshots-versions-dbkKt`.
 
 ## ВАЖЛИВО для нового чату
 
@@ -14,30 +14,26 @@
 - Клешня комітить напряму в `main` з тегом `[kleshnya]`
 
 ### Версії сайту
-- **CRM SPA** (index.html + 25 підсторінок): v25.5.0 — всі `?v=25.5.0` синхронізовані
-- **Лендінг** (landing.html): v25.4 — керує Клешня
-- **API/Backend**: v25.5.0 (package.json)
-- **Deployed (production)**: v17.4.1 — дуже стара, чекає на деплой v26.0
+- **CRM SPA** (index.html + 25+ підсторінок): v28.0.0
+- **Лендінг** (landing/): керує Клешня
+- **API/Backend**: v28.0.0 (package.json)
+- **Deployed (production)**: стара, чекає на деплой
 
 ### Поточний PR-статус
-- Бранч `claude/update-snapshot-version-OJyXi` — **16 комітів ahead of main**
-- Ще НЕ змержено в main — потрібен PR + approve від Сергія
-- Останні коміти: leads page real-time fixes, WebSocket broadcast for lead sources
+- Бранч `claude/review-snapshots-versions-dbkKt` — merged з main (v28.0.0 від Клешні)
+- Включає: Manager Copilot v27, Rock Sound Engine v28, version badge на dashboard
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] add WebSocket broadcast for ALL lead sources (FB, IG, Viber)
-- **package.json**: `"version": "25.5.0"`
-- **Бранч**: `claude/update-snapshot-version-OJyXi` (16 commits ahead of main)
-- **origin/main**: v25.4.1 (з landing fixes від Клешні)
-- **origin/deployed**: v17.4.1
-- **Що зроблено в цьому бранчі**:
-  - Фаза 1: баг-фікси (telegram fallthrough, booking past date, gamification API)
-  - Фаза 2: 119 тестів для 12 route модулів
-  - Фаза 3: backend оптимізація (indexes, pool, N+1, batch)
-  - Фаза 4: frontend оптимізація (SW fix, throttle, debounce)
-  - Leads page: real-time WebSocket notifications, dashboard widget fixes
+- **package.json**: `"version": "28.0.0"`
+- **Бранч**: `claude/review-snapshots-versions-dbkKt`
+- **origin/main**: v28.0.0 (Kleshnya: Rock Sound Engine + Chat UX)
+- **Що зроблено**:
+  - v25.5.0: Stabilization Sprint — баг-фікси, 119 тестів, backend/frontend оптимізація, leads real-time
+  - v27.0.0: Manager AI Copilot — 11 модулів для менеджерів з продажу
+  - v28.0.0: Rock Sound Engine + Chat UX (Клешня), merged в наш бранч
+  - Поточна сесія: Manager route fix, version badge на dashboard, CHANGELOG/SNAPSHOT sync
 
 ### Тести (перевірено 13.03.2026)
 - **api.test.js**: **296/296 pass**
@@ -335,13 +331,16 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 - **v23.3.0: OmniClaw Security Hardening — webhook auth, pool safety, input validation, HTTP checks**
 - **v23.4.0: Lead Capture Integration — auto TG leads, webhooks FB/IG/Viber/Universal, lead notifications**
 - **v23.5.0: Version Recovery & Merge — змержено claude гілку з main, CEO slide, changelog fix**
+- **v24.0–v24.4: Role Panel, QA Mega Fix, Sidebar Rebuild, Dashboard Per-Role**
+- **v25.5.0: Stabilization Sprint — баг-фікси, 119 тестів, backend/frontend оптимізація, leads real-time**
+- **v27.0.0: Manager AI Copilot — 11 модулів для відділу продажів**
+- **v28.0.0: Rock Sound Engine + Chat UX (Клешня)**
 
 ## Стан гілок (13.03.2026)
-| Гілка | Версія | Файлів | Статус |
-|-------|--------|--------|--------|
-| `claude/update-snapshot-version-OJyXi` | **v25.5.0** | 410+ | Фази 1-4 завершені, leads fixes, 16 commits ahead |
-| `origin/main` | v25.4.1 | 410+ | Актуальна, з landing fixes від Клешні |
-| `origin/deployed` | v17.4.1 | 197 | Продакшн, дуже стара |
+| Гілка | Версія | Статус |
+|-------|--------|--------|
+| `claude/review-snapshots-versions-dbkKt` | **v28.0.0** | Manager route + version badge + merge main |
+| `origin/main` | v28.0.0 | Kleshnya: Rock Sound Engine + landing fixes |
 
 ## Аудит deployed vs main (11.03.2026)
 - **Результат**: ВСІ фічі з deployed (v17.4.1) інтегровані в main (v23.0.0)
@@ -396,4 +395,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql PGPASSWORD=po
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-13, v25.5.0 — Фази 1-4 завершені (баг-фікси, тести, backend/frontend оптимізація), leads real-time fixes, 549/549 тестів pass, сесія claude-code*
+*Оновлено: 2026-03-13, v28.0.0 — Manager AI Copilot v27, Rock Sound Engine v28 (Kleshnya), Manager route fix, version badge, CHANGELOG/SNAPSHOT sync, сесія claude-code*

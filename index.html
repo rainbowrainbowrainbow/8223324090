@@ -1153,6 +1153,36 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v27.0.0 — Manager AI Copilot (Claude Code, 13.03.2026)</h4>
+                    <ul>
+                        <li><b>AI Live Coach</b> — підказки під час дзвінків з вибором сценарію та тону (debounce 800ms live mode)</li>
+                        <li><b>Обробник заперечень</b> — 8 готових + AI-генеровані відповіді на кастомні заперечення</li>
+                        <li><b>Скрипти дзвінків</b> — 5 інтерактивних покрокових скриптів з розгалуженнями</li>
+                        <li><b>Шаблони повідомлень</b> — 7 персоналізованих шаблонів зі змінними</li>
+                        <li><b>Дебрифінг дзвінка</b> — AI аналіз 1-10 з рекомендаціями покращення</li>
+                        <li><b>Sales Academy</b> — SPIN/Challenger/MEDDIC методології, ринкові дані, профілі покупців</li>
+                        <li><b>Battle Cards</b> — 6 карток порівняння з конкурентами</li>
+                        <li><b>Meeting Prep</b> — AI-згенеровані бріфи з killer questions</li>
+                        <li><b>Deal Pipeline</b> — Kanban з drag-and-drop</li>
+                        <li><b>Моніторинг взаємодій</b> — повна історія з follow-up алертами</li>
+                        <li><b>AI Writer</b> — генерація персоналізованих повідомлень</li>
+                        <li><b>Нові файли</b> — <code>manager.html</code>, <code>css/manager.css</code>, <code>js/manager-page.js</code>, <code>routes/manager.js</code></li>
+                        <li><b>7 JSON data files</b> — objections, scripts, templates, battle-cards, sales-academy, sales-methodology, buyer-profiles</li>
+                        <li><b>DB Migration 068</b> — <code>manager_copilot.sql</code> (3 таблиці + 4 нові колонки в leads)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v25.5.0 — Stabilization Sprint (Claude Code, 13.03.2026)</h4>
+                    <ul>
+                        <li><b>Bug Fixes</b> — telegram fallthrough fix, booking past date validation, gamification API format</li>
+                        <li><b>Route Tests</b> — 119 нових тестів для 12 route модулів</li>
+                        <li><b>Backend Optimization</b> — 5 DB indexes, warehouse pagination, N+1 batch fix, pool tuning</li>
+                        <li><b>Frontend Optimization</b> — SW cache fix, scroll throttle, passive listeners, chat debounce</li>
+                        <li><b>Leads Real-time</b> — WebSocket broadcast для всіх джерел лідів (FB, IG, Viber)</li>
+                        <li><b>549/549 тестів pass</b></li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v25.4.1 — Timeline Fix + Robust Rendering (Claude Code, 12.03.2026)</h4>
                     <ul>
                         <li><b>Timeline Fix</b> — виправлено критичний баг: виклик неіснуючої функції updateQuickStats() вбивав весь рендер таймлайну — лінії аніматорів не відображались</li>

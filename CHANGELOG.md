@@ -4,10 +4,13 @@
 
 ---
 
-## v28.0.0 — Rock Sound Engine + Chat UX (2026-03-13)
-- **Rock Sound Engine** — `js/sound-engine.js` (333 рядки): аудіо-движок для UI звуків [kleshnya]
+## v28.0.0 — Rock Sound Engine + Chat UX + Контур-2 (2026-03-13)
+- **Rock Sound Engine** — `js/sound-engine.js` (333 рядки): Web Audio API синтезатор, рок-тема, 3 теми вибору (Rock/Classic/Subtle) [kleshnya]
+- **Chat звуки** — грають навіть коли таб активний, якщо повідомлення не в поточному каналі [kleshnya]
+- **Sound Settings** — toggle, гучність, вибір теми прямо в хедері чату [kleshnya]
 - **Chat UX** — оновлені стилі `css/chat.css` (+117 рядків), покращений `chat.html` (+96 рядків) [kleshnya]
-- **Контур-2 check** — перевірка Guardian системи [kleshnya]
+- **Контур-2 check** — Guardian перевірено: TELEGRAM_BOT_TOKEN ✅ SET, Guardian підключений до chat route ✅ [kleshnya]
+- **Bug Fix** — виправлено `_playSound` (раніше ігнорував повідомлення коли таб активний) [kleshnya]
 - **Landing cache fix** — JS кеш 5min revalidate замість 7 days immutable (`middleware/security.js`) [kleshnya]
 - **Objections data** — `data/objections.json` з заперечення для Manager Copilot [kleshnya]
 - **DB Migration 067** — `manager_copilot.sql` (Kleshnya version) [kleshnya]

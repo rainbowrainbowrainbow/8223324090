@@ -26,11 +26,19 @@
 }
 
 /* ─── Layout ─────────────────────────────────────── */
+
+/* Remove main-content padding when copilot layout is inside */
+.main-content:has(.copilot-layout) {
+    padding: 0;
+}
+
 .copilot-layout {
     display: flex;
-    height: 100vh;
+    height: calc(100vh - 56px);
     overflow: hidden;
     background: #0d0d0d;
+    position: relative;
+    z-index: 1;
 }
 
 .copilot-sidebar {

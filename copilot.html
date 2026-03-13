@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | 🤖 Менеджер AI Copilot</title>
+    <meta name="description" content="Event Genix — Manager AI Copilot для продажників">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=27.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=27.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=27.0.0">
+    <link rel="stylesheet" href="css/copilot.css?v=27.0.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="dark-mode">
+<div id="sidebarOverlay" class="sidebar-overlay"></div>
+<div class="app-wrapper">
+    <!-- CRM sidebar -->
+    <nav id="sidebarNav" class="sidebar">
+        <div class="sidebar-header">
+            <button id="sidebarToggle" class="sidebar-toggle">☰</button>
+            <span class="sidebar-logo">EG</span>
+        </div>
+        <ul id="sidebarLinks" class="sidebar-links"></ul>
+    </nav>
+
+    <main class="main-content" style="padding:0; overflow:hidden;">
+        <!-- Access denied overlay (shown if no access) -->
+        <div id="accessDenied" class="hidden" style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;color:rgba(255,255,255,0.5);">
+            <span style="font-size:48px;">🔒</span>
+            <h2 style="color:#fff;margin:0;">Доступ обмежено</h2>
+            <p>Ця сторінка доступна тільки для менеджерів та директорів.</p>
+            <a href="/dashboard" style="color:#C9A84C;text-decoration:none;">← Повернутись на дашборд</a>
+        </div>
+
+        <!-- Main Copilot Layout -->
+        <div id="copilotApp" class="copilot-layout hidden">
+            <!-- Module Sidebar -->
+            <aside class="copilot-sidebar">
+                <div class="copilot-sidebar-header">
+                    <h3>🤖 Copilot</h3>
+                    <p>AI-арсенал менеджера</p>
+                </div>
+                <nav id="copilotNav">
+                    <a class="copilot-nav-item active" data-module="coach">
+                        <span class="nav-icon">🎯</span>
+                        <span>Live Coach</span>
+                    </a>
+                    <a class="copilot-nav-item" data-module="objections">
+                        <span class="nav-icon">🛡️</span>
+                        <span>Заперечення</span>
+                    </a>
+                    <a class="copilot-nav-item" data-module="scripts">
+                        <span class="nav-icon">📝</span>
+                        <span>Скрипти</span>
+                    </a>
+                    <a class="copilot-nav-item" data-module="templates">
+                        <span class="nav-icon">💬</span>
+                        <span>Шаблони</span>
+                    </a>
+                    <a class="copilot-nav-item" data-module="debrief">
+                        <span class="nav-icon">📊</span>
+                        <span>Дебрифінг</span>
+                    </a>
+                    <a class="copilot-nav-item" data-module="academy">
+                        <span class="nav-icon">📚</span>
+                        <span>Academy</span>
+                    </a>
+                    <a class="copilot-nav-item" data-module="tracker">
+                        <span class="nav-icon">📡</span>
+                        <span>Tracker</span>
+                    </a>
+                    <a class="copilot-nav-item" data-module="battle-cards">
+                        <span class="nav-icon">🃏</span>
+                        <span>Battle Cards</span>
+                    </a>
+                    <a class="copilot-nav-item" data-module="meeting-prep">
+                        <span class="nav-icon">🔮</span>
+                        <span>Meeting Prep</span>
+                    </a>
+                    <a class="copilot-nav-item" data-module="pipeline">
+                        <span class="nav-icon">📈</span>
+                        <span>Pipeline</span>
+                    </a>
+                    <a class="copilot-nav-item" data-module="writer">
+                        <span class="nav-icon">✍️</span>
+                        <span>Message Writer</span>
+                    </a>
+                </nav>
+            </aside>
+
+            <!-- Module Content -->
+            <div class="copilot-main" id="copilotContent">
+                <!-- Modules render here via JS -->
+                <div id="loadingSpinner" style="display:flex;align-items:center;justify-content:center;height:200px;gap:12px;color:rgba(255,255,255,0.4);">
+                    <div class="spinner spinner-light"></div>
+                    <span>Завантаження...</span>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Copied notification -->
+<div id="copiedFlash" class="copied-flash hidden">📋 Скопійовано!</div>
+
+<script src="js/config.js?v=27.0.0"></script>
+<script src="js/api.js?v=27.0.0"></script>
+<script src="js/auth.js?v=27.0.0"></script>
+<script src="js/components/sidebar.js?v=27.0.0"></script>
+<script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+<script src="js/copilot-page.js?v=27.0.0"></script>
+<script src="js/ui.js?v=27.0.0"></script>
+<script src="js/role-panel.js?v=27.0.0"></script>
+</body>
+</html>

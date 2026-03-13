@@ -44,9 +44,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v28.0.0 — Rock Sound Engine + Chat UX</p>
+                <p class="tagline">AI First CRM v28.1.0 — Manager AI Copilot</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v28.0.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v28.1.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1142,6 +1142,24 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v28.1.0 — Manager AI Copilot: 11 модулів (Клешня, 13.03.2026)</h4>
+                    <ul>
+                        <li><b>Manager Tab</b> — прихована вкладка для менеджерів і директорів (/copilot)</li>
+                        <li><b>AI Live Coach</b> — live підказки під час розмови з клієнтом (debounce 800ms, 3 варіанти)</li>
+                        <li><b>Обробник заперечень</b> — 8 типових + AI на кастомні, пошук по ключових словах</li>
+                        <li><b>Скрипти дзвінків</b> — 5 сценаріїв з покроковим розгалуженням та прогрес-баром</li>
+                        <li><b>Шаблони повідомлень</b> — 7 персоналізованих текстів з {{змінними}}</li>
+                        <li><b>Дебрифінг</b> — AI оцінка якості переговорів 1-10 + good/improve/nextStep</li>
+                        <li><b>Sales Academy</b> — SPIN, Challenger, MEDDIC, Value-Based, SNAP + Q&A чат</li>
+                        <li><b>Interaction Tracker</b> — стрічка взаємодій, алерти по лідах без контакту</li>
+                        <li><b>Battle Cards</b> — 6 карток vs конкурентів (Excel, Yclients, DIY бот...)</li>
+                        <li><b>Meeting Prep</b> — AI бриф перед дзвінком: killer questions, заперечення, потенціал</li>
+                        <li><b>Deal Pipeline</b> — Kanban воронка з drag-and-drop, 5 стадій</li>
+                        <li><b>AI Message Writer</b> — живий персоналізований текст повідомлення, не шаблон</li>
+                        <li><b>БД</b> — таблиці call_debriefs, manager_feedback, lead_interactions (міграція 067)</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v28.0.0 — Рок-звуки + Chat UX + Контур-2 (Клешня, 13.03.2026)</h4>
                     <ul>

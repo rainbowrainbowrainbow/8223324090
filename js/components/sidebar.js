@@ -22,6 +22,7 @@ const Sidebar = (() => {
         { type: 'section', label: 'Управління' },
         { href: '/customers', icon: '👥', label: 'Клієнти',    access: 'management' },
         { href: '/leads',     icon: '🔥', label: 'Ліди',       access: 'leads' },
+        { href: '/copilot',   icon: '🤖', label: 'Менеджер',   access: 'copilot' },
         { href: '/staff',     icon: '📋', label: 'Команда',    access: 'staff' },
         { href: '/hr',        icon: '🤝', label: 'Кадри',      access: 'hr' },
         { href: '/finance',   icon: '💰', label: 'Фінанси',    access: 'finance' },
@@ -70,6 +71,11 @@ const Sidebar = (() => {
             'creator', 'director', 'vice_director',
             'senior_manager', 'manager',
             'marketer'
+        ],
+
+        copilot: [
+            'creator', 'director',
+            'senior_manager', 'manager'
         ],
 
         staff: [

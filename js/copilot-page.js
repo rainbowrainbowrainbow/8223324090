@@ -60,7 +60,9 @@ const CopilotPage = (() => {
 
             // Load data in background (non-blocking) with timeout
             loadAllData().then(() => {
-                console.log('[Copilot] background data loaded');
+                console.log('[Copilot] background data loaded, re-rendering current module');
+                // Re-render current module now that data is available
+                renderModule(currentModule);
             }).catch(e => {
                 console.warn('[Copilot] background data load failed:', e);
             });
@@ -121,10 +123,30 @@ const CopilotPage = (() => {
         renderModule(module);
     }
 
+    // Modules that need pre-loaded data files to render content
+    const DATA_DEPENDENT = {
+        'objections': 'objections',
+        'scripts': 'call-scripts',
+        'templates': 'message-templates',
+        'battle-cards': 'battle-cards',
+        'academy': 'sales-academy',
+    };
+
     function renderModule(module) {
         const content = document.getElementById('copilotContent');
         if (!content) return;
         content.innerHTML = '';
+
+        // If module needs data that hasn't loaded yet, show loading indicator
+        const neededFile = DATA_DEPENDENT[module];
+        if (neededFile && !dataCache[neededFile]) {
+            content.innerHTML = `
+                <div class="copilot-card" style="text-align:center;padding:60px 20px;">
+                    <div class="spinner spinner-light" style="margin:0 auto 16px;"></div>
+                    <p style="color:rgba(255,255,255,0.5);margin:0;">Завантаження даних модуля...</p>
+                </div>`;
+            return;
+        }
 
         const renderers = {
             'coach':        renderCoach,

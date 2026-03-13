@@ -40,12 +40,10 @@ const CopilotPage = (() => {
 
             if (!user || !MANAGER_ROLES.includes(user.role)) {
                 document.getElementById('accessDenied')?.classList.remove('hidden');
-                document.getElementById('copilotApp')?.classList.add('hidden');
+                const app = document.getElementById('copilotApp');
+                if (app) app.style.display = 'none';
                 return;
             }
-
-            document.getElementById('copilotApp')?.classList.remove('hidden');
-            document.getElementById('accessDenied')?.classList.add('hidden');
 
             // Bind nav
             document.querySelectorAll('.copilot-nav-item').forEach(item => {

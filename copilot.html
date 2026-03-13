@@ -31,7 +31,6 @@
                 <span class="em-logo-title">Event Genix</span>
                 <span class="em-logo-sub">AI First CRM</span>
             </div>
-            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn"><span class="collapse-icon">«</span><span class="collapse-text">Згорнути</span></button>
         </div>
         <nav class="sidebar-links" id="sidebarLinks"></nav>
     </aside>
@@ -63,7 +62,7 @@
         </div>
 
         <!-- Main Copilot Layout -->
-        <div id="copilotApp" class="copilot-layout hidden">
+        <div id="copilotApp" class="copilot-layout">
             <!-- Module Sidebar -->
             <aside class="copilot-sidebar">
                 <div class="copilot-sidebar-header">
@@ -143,7 +142,11 @@
 <script src="js/api.js?v=28.5.1"></script>
 <script src="js/auth.js?v=28.5.1"></script>
 <script src="js/components/sidebar.js?v=28.5.1"></script>
-<script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+<script>
+// Force sidebar expanded on copilot page (no collapse)
+localStorage.removeItem('pzp_sidebar_collapsed');
+if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");
+</script>
 <script src="js/copilot-page.js?v=28.5.1"></script>
 <script src="js/ui.js?v=28.5.1"></script>
 <script src="js/role-panel.js?v=28.5.1"></script>

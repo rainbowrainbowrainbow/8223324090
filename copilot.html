@@ -15,20 +15,45 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
-<body class="dark-mode">
+<body>
+    <script>
+    // Dark mode flash prevention — runs synchronously before any content renders
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+
 <div id="sidebarOverlay" class="sidebar-overlay hidden"></div>
 <div class="app-wrapper">
-    <!-- CRM sidebar -->
+    <!-- CRM sidebar (same structure as dashboard.html) -->
     <aside class="sidebar-nav" id="sidebarNav">
         <div class="sidebar-logo">
             <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-            <div class="em-logo"><span class="em-logo-title">Event Genix</span></div>
+            <div class="em-logo">
+                <span class="em-logo-title">Event Genix</span>
+                <span class="em-logo-sub">AI First CRM</span>
+            </div>
             <button class="sidebar-collapse-btn" id="sidebarCollapseBtn"><span class="collapse-icon">«</span><span class="collapse-text">Згорнути</span></button>
         </div>
         <nav class="sidebar-links" id="sidebarLinks"></nav>
     </aside>
 
-    <main class="main-content" style="padding:0; overflow:hidden;">
+    <header class="header">
+        <div class="header-content">
+            <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+            <div class="logo">
+                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+            </div>
+            <nav class="header-nav">
+                <a href="/dashboard" class="nav-link"><span class="nav-icon">🏠</span> <span class="nav-text">Дашборд</span></a>
+                <a href="/copilot" class="nav-link active"><span class="nav-icon">🤖</span> <span class="nav-text">Менеджер</span></a>
+            </nav>
+            <div class="user-panel">
+                <span id="currentUser" class="user-name"></span>
+                <button id="logoutBtn" class="btn-logout" onclick="if(typeof logout==='function')logout();else{localStorage.clear();location.href='/';}">Вийти</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
         <!-- Access denied overlay (shown if no access) -->
         <div id="accessDenied" class="hidden" style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;color:rgba(255,255,255,0.5);">
             <span style="font-size:48px;">🔒</span>
@@ -104,6 +129,12 @@
         </div>
     </main>
 </div>
+
+<!-- Sidebar overlay -->
+<div id="sidebarOverlay" class="sidebar-overlay hidden"></div>
+
+<!-- Toast container -->
+<div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
 <!-- Copied notification -->
 <div id="copiedFlash" class="copied-flash hidden">📋 Скопійовано!</div>

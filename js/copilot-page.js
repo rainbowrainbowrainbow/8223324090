@@ -17,43 +17,56 @@ const CopilotPage = (() => {
     // ─── Init ───────────────────────────────────────────────────────────────
 
     async function init() {
-        // Auth: verify token like dashboard-page.js
-        const token = localStorage.getItem('pzp_token');
-        if (!token) { window.location.href = '/'; return; }
+        try {
+            // Auth: verify token like dashboard-page.js
+            const token = localStorage.getItem('pzp_token');
+            if (!token) { window.location.href = '/'; return; }
 
-        const savedUser = localStorage.getItem('pzp_current_user');
-        if (savedUser) {
-            try { AppState.currentUser = JSON.parse(savedUser); } catch {}
-        }
+            const savedUser = localStorage.getItem('pzp_current_user');
+            if (savedUser) {
+                try { AppState.currentUser = JSON.parse(savedUser); } catch {}
+            }
 
-        const verified = await apiVerifyToken();
-        if (!verified) { window.location.href = '/'; return; }
-        AppState.currentUser = verified;
+            const verified = await apiVerifyToken();
+            if (!verified) { window.location.href = '/'; return; }
+            AppState.currentUser = verified;
 
-        const user = AppState.currentUser;
-        if (!user || !MANAGER_ROLES.includes(user.role)) {
-            document.getElementById('accessDenied')?.classList.remove('hidden');
-            document.getElementById('copilotApp')?.classList.add('hidden');
-            return;
-        }
+            // Set username in header
+            const userEl = document.getElementById('currentUser');
+            if (userEl) userEl.textContent = verified.name;
 
-        document.getElementById('copilotApp')?.classList.remove('hidden');
-        document.getElementById('accessDenied')?.classList.add('hidden');
+            const user = AppState.currentUser;
+            console.log('[Copilot] init: user role =', user?.role);
 
-        // Bind nav
-        document.querySelectorAll('.copilot-nav-item').forEach(item => {
-            item.addEventListener('click', e => {
-                e.preventDefault();
-                const mod = item.dataset.module;
-                if (mod) switchModule(mod);
+            if (!user || !MANAGER_ROLES.includes(user.role)) {
+                document.getElementById('accessDenied')?.classList.remove('hidden');
+                document.getElementById('copilotApp')?.classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('copilotApp')?.classList.remove('hidden');
+            document.getElementById('accessDenied')?.classList.add('hidden');
+
+            // Bind nav
+            document.querySelectorAll('.copilot-nav-item').forEach(item => {
+                item.addEventListener('click', e => {
+                    e.preventDefault();
+                    const mod = item.dataset.module;
+                    if (mod) switchModule(mod);
+                });
             });
-        });
 
-        // Load initial data
-        await loadAllData();
+            // Load initial data
+            await loadAllData();
+            console.log('[Copilot] data loaded, switching to coach');
 
-        // Render default module
-        switchModule('coach');
+            // Render default module
+            switchModule('coach');
+        } catch (err) {
+            console.error('[Copilot] init error:', err);
+            // Show app anyway so user sees something
+            document.getElementById('copilotApp')?.classList.remove('hidden');
+        }
     }
 
     function waitForAuth() {

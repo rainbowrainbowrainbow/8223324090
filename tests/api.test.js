@@ -3341,9 +3341,16 @@ describe('CRM Phase 2 — CSV Export (v15.1)', () => {
     it('GET /api/customers/export — returns CSV', async () => {
         const token = await getToken();
         // Use native fetch directly because helper parses as JSON
-        const res = await fetch('http://localhost:3000/api/customers/export', {
+        let res = await fetch('http://localhost:3000/api/customers/export', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
+        // Retry once if rate-limited (429)
+        if (res.status === 429) {
+            await new Promise(r => setTimeout(r, 3000));
+            res = await fetch('http://localhost:3000/api/customers/export', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+        }
         assert.equal(res.status, 200);
         const contentType = res.headers.get('content-type') || '';
         assert.ok(contentType.includes('text/csv'), `Expected text/csv, got ${contentType}`);
@@ -3882,9 +3889,16 @@ describe('Customers — Excel Export (v17.0)', () => {
     it('GET /api/customers/export-xlsx — returns XLSX', async () => {
         const token = await getToken();
         const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
-        const res = await fetch(`${BASE_URL}/api/customers/export-xlsx`, {
+        // Retry once if rate-limited (429) from previous export test
+        let res = await fetch(`${BASE_URL}/api/customers/export-xlsx`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (res.status === 429) {
+            await new Promise(r => setTimeout(r, 3000));
+            res = await fetch(`${BASE_URL}/api/customers/export-xlsx`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+        }
         assert.equal(res.status, 200);
         assert.ok(res.headers.get('content-type').includes('spreadsheetml'));
     });

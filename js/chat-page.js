@@ -235,13 +235,13 @@
     // Channel search
     var _searchInput = document.getElementById('chatSearchInput');
     if (_searchInput) {
-        _searchInput.addEventListener('input', function () {
-            var q = this.value.toLowerCase().trim();
+        _searchInput.addEventListener('input', debounce(function () {
+            var q = _searchInput.value.toLowerCase().trim();
             document.querySelectorAll('.chat-channel-item').forEach(function (el) {
                 var name = (el.querySelector('.chat-channel-name') || {}).textContent || '';
                 el.style.display = name.toLowerCase().includes(q) ? '' : 'none';
             });
-        });
+        }, 150));
     }
 
     // Input handlers
@@ -679,7 +679,7 @@
         _dmOverlay.addEventListener('click', function (e) { if (e.target === _dmOverlay) _dmOverlay.style.display = 'none'; });
     }
     if (_dmSearch) {
-        _dmSearch.addEventListener('input', function () { _renderDmUserList(this.value.trim()); });
+        _dmSearch.addEventListener('input', debounce(function () { _renderDmUserList(_dmSearch.value.trim()); }, 150));
     }
 
     function _renderDmUserList(query) {
@@ -752,7 +752,7 @@
         _addMemberOverlay.addEventListener('click', function (e) { if (e.target === _addMemberOverlay) _addMemberOverlay.style.display = 'none'; });
     }
     if (_addMemberSearch) {
-        _addMemberSearch.addEventListener('input', function () { _renderAddMemberList(this.value.trim()); });
+        _addMemberSearch.addEventListener('input', debounce(function () { _renderAddMemberList(_addMemberSearch.value.trim()); }, 150));
     }
 
     function _openAddMemberModal() {
@@ -1729,17 +1729,17 @@
 
     // Infinite scroll + scroll-to-bottom visibility
     if (_messagesEl) {
-        _messagesEl.addEventListener('scroll', function () {
+        _messagesEl.addEventListener('scroll', throttle(function () {
             // Infinite scroll up
-            if (this.scrollTop < 100 && !_loadingMore && _currentChannel && _oldestSeq > 1) {
+            if (_messagesEl.scrollTop < 100 && !_loadingMore && _currentChannel && _oldestSeq > 1) {
                 _loadOlderMessages();
             }
             // Show/hide scroll-to-bottom button
-            var distFromBottom = this.scrollHeight - this.scrollTop - this.clientHeight;
+            var distFromBottom = _messagesEl.scrollHeight - _messagesEl.scrollTop - _messagesEl.clientHeight;
             if (_scrollBottomBtn) {
                 _scrollBottomBtn.classList.toggle('visible', distFromBottom > 200);
             }
-        });
+        }, 100), { passive: true });
     }
 
     // Reconnect: drain offline queue + gap-fill missed messages
@@ -4631,7 +4631,6 @@
 
     if (_digestBtn) {
         _digestBtn.addEventListener('click', function () {
-            console.log('[Guardian] Digest button clicked, panel:', !!_digestPanel);
             _digestOpen = !_digestOpen;
             _digestBtn.classList.toggle('active', _digestOpen);
             if (_digestPanel) _digestPanel.style.display = _digestOpen ? 'block' : 'none';
@@ -4703,7 +4702,6 @@
 
         try {
             var channelParam = _currentChannel ? '&channelId=' + _currentChannel.id : '';
-            console.log('[Guardian] Loading digest for', dateStr, channelParam ? 'channel ' + _currentChannel.id : 'all channels');
             var resp = await fetch('/api/guardian/reports?limit=10' + channelParam, { headers: _headers() });
             if (!resp.ok) {
                 console.error('[Guardian] Digest fetch failed:', resp.status, resp.statusText);
@@ -4713,7 +4711,6 @@
                 return;
             }
             var reports = await resp.json();
-            console.log('[Guardian] Reports received:', reports ? reports.length : 'null');
             if (!reports || reports.length === 0) {
                 _digestContent.innerHTML = '<div class="guardian-digest-empty">📭 Дайджест ще не згенеровано.<br><small>Guardian створює звіт щовечора о 23:00</small><br>' +
                     '<button class="guardian-digest-generate-btn" onclick="void(0)">🔄 Згенерувати зараз</button></div>';
@@ -4775,7 +4772,6 @@
     var _isAdmin = false;
 
     function _initGuardianUI() {
-        console.log('[Guardian] Initializing guardian UI');
         // Check if user is admin
         try {
             var token = localStorage.getItem('pzp_token');
@@ -5881,7 +5877,6 @@
             // Request notification permission
             var permission = await Notification.requestPermission();
             if (permission !== 'granted') {
-                console.log('[Chat] Notification permission denied');
                 return;
             }
 
@@ -5908,7 +5903,6 @@
                 endpoint: sub.endpoint,
                 keys: sub.keys
             });
-            console.log('[Chat] Push subscription saved');
         } catch (err) {
             console.warn('[Chat] Push notifications not available:', err.message);
         }
@@ -6069,7 +6063,7 @@
         });
     }
     if (_messagesEl) {
-        _messagesEl.addEventListener('scroll', function () {
+        _messagesEl.addEventListener('scroll', throttle(function () {
             var distFromBottom = _messagesEl.scrollHeight - _messagesEl.scrollTop - _messagesEl.clientHeight;
             if (distFromBottom < 50) {
                 _unreadWhileScrolled = 0;
@@ -6078,7 +6072,7 @@
                 var divider = document.querySelector('.chat-unread-divider');
                 if (divider) divider.remove();
             }
-        });
+        }, 100), { passive: true });
     }
 
     // ==========================================

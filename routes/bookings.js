@@ -210,6 +210,12 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (!validateDate(main.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(main.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
 
+        // [FIX] Заборона бронювання в минулому
+        const bookingDateTime = new Date(`${main.date}T${main.time}:00`);
+        if (bookingDateTime < new Date()) {
+            return res.status(400).json({ success: false, error: 'Неможливо створити бронювання в минулому. Оберіть майбутню дату та час.' });
+        }
+
         await client.query('BEGIN');
 
         const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0);
@@ -557,9 +563,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
             if (secondChanged && linkedResult.rows.length > 0) {
                 // Delete old linked bookings — secondAnimator changed or was cleared
-                for (const linked of linkedResult.rows) {
-                    await client.query('DELETE FROM bookings WHERE id = $1', [linked.id]);
-                }
+                const linkedIds = linkedResult.rows.map(r => r.id);
+                await client.query('DELETE FROM bookings WHERE linked_to = $1', [id]);
                 // Create new linked booking if secondAnimator is set
                 if (newSecond) {
                     const lineRes = await client.query(
@@ -582,13 +587,11 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                     }
                 }
             } else if (!secondChanged) {
-                // No change in secondAnimator — cascade basic fields to existing linked
-                for (const linked of linkedResult.rows) {
-                    await client.query(
-                        `UPDATE bookings SET date=$1, time=$2, duration=$3, status=$4, room=$5, updated_at=NOW() WHERE id=$6`,
-                        [b.date, b.time, b.duration, newStatus, b.room, linked.id]
-                    );
-                }
+                // No change in secondAnimator — cascade basic fields to all linked
+                await client.query(
+                    `UPDATE bookings SET date=$1, time=$2, duration=$3, status=$4, room=$5, updated_at=NOW() WHERE linked_to=$6`,
+                    [b.date, b.time, b.duration, newStatus, b.room, id]
+                );
             } else if (secondChanged && newSecond && linkedResult.rows.length === 0) {
                 // Was missing linked booking (old bug) — create it now
                 const lineRes = await client.query(

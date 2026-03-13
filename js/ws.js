@@ -308,6 +308,13 @@ var ParkWS = (function () {
                 }));
                 break;
 
+            // Lead events
+            case 'lead:new':
+                window.dispatchEvent(new CustomEvent('ws:lead', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
+                break;
+
             default:
                 _debug('[WS] Unknown event:', message.type);
                 break;

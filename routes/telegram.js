@@ -423,6 +423,7 @@ router.post('/webhook', async (req, res) => {
                     text: message.text + '\n\n❌ <b>Відхилено</b>',
                     parse_mode: 'HTML'
                 });
+                return res.sendStatus(200);
             // v20.4.0: Training approve/reject callbacks
             } else if (data.startsWith('training_approve_') || data.startsWith('training_reject_')) {
                 try {

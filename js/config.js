@@ -12,6 +12,14 @@ function debounce(fn, ms) {
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
+function throttle(fn, ms) {
+    let last = 0;
+    return (...args) => {
+        const now = Date.now();
+        if (now - last >= ms) { last = now; fn(...args); }
+    };
+}
+
 // ==========================================
 // ПРОГРАМИ (з тривалістю в назві)
 // ==========================================

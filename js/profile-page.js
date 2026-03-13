@@ -545,8 +545,8 @@ function renderTitles() {
 // SHOP TAB
 // ==========================================
 async function loadShopItems() {
-    const data = await apiGet('/gamification/shop');
-    shopItems = data || [];
+    const res = await apiGet('/gamification/shop');
+    shopItems = (res && res.data) || res || [];
 }
 
 function renderShopTab() {
@@ -606,7 +606,8 @@ async function buyItem(itemId, itemName) {
 // LEADERBOARD TAB
 // ==========================================
 async function loadLeaderboard() {
-    leaderboardData = await apiGet(`/gamification/leaderboard?sort=${leaderboardSort}`);
+    const lbRes = await apiGet(`/gamification/leaderboard?sort=${leaderboardSort}`);
+    leaderboardData = (lbRes && lbRes.data) || lbRes;
 }
 
 function setLeaderboardSort(sort) {

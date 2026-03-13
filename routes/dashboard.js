@@ -163,7 +163,7 @@ router.get('/widgets/:type', async (req, res) => {
 
             case 'leads_new': {
                 const result = await pool.query(`
-                    SELECT id, name, phone, source, status, created_at
+                    SELECT id, client_name AS name, phone, source, status, created_at
                     FROM leads
                     WHERE status = 'new'
                     ORDER BY created_at DESC

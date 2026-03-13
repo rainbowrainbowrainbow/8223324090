@@ -69,7 +69,7 @@ router.get('/', async (req, res) => {
             conditions.push(`afisha_id = $${idx++}`);
             params.push(parseInt(afisha_id));
         }
-        if (type && ['recurring', 'afisha', 'manual', 'template'].includes(type)) {
+        if (type && ['recurring', 'afisha', 'manual', 'template', 'auto_complete'].includes(type)) {
             conditions.push(`type = $${idx++}`);
             params.push(type);
         }

@@ -58,6 +58,70 @@ const DashboardPage = (() => {
 
         // Render greeting
         renderGreeting();
+
+        // Listen for real-time new leads via WebSocket
+        _initLeadSound();
+        window.addEventListener('ws:lead', _onLeadEvent);
+    }
+
+    // Sound notification for new leads (borrowed from chat system)
+    let _leadSound = null;
+    function _initLeadSound() {
+        try {
+            _leadSound = new Audio('sounds/message-new.mp3');
+            _leadSound.volume = 0.5;
+            _leadSound.load();
+        } catch (e) { /* ignore */ }
+    }
+
+    function _playLeadSound() {
+        try {
+            if (_leadSound) {
+                var s = _leadSound.cloneNode();
+                s.volume = 0.5;
+                s.play().catch(function () {});
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function _onLeadEvent(e) {
+        var detail = e.detail;
+        if (!detail || detail.eventType !== 'lead:new') return;
+        var lead = detail.payload && detail.payload.lead;
+        if (!lead) return;
+
+        // Play notification sound
+        _playLeadSound();
+
+        // Show toast notification
+        if (typeof showNotification === 'function') {
+            showNotification('Новий лід: ' + (lead.client_name || lead.phone || 'Невідомий'));
+        }
+
+        // Live-update the leads_new widget if visible
+        var container = document.getElementById('widget-leads_new');
+        if (container) {
+            // Prepend new lead to the widget
+            var sourceColors = { telegram: '#0088cc', facebook: '#1877F2', instagram: '#E4405F', viber: '#7360F2', website: '#38A169', phone: '#DD6B20', landing: '#D69E2E' };
+            var color = sourceColors[lead.source] || '#718096';
+            var date = new Date(lead.created_at || Date.now()).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+            var itemHtml = '<div class="widget-lead-item" style="animation:fadeIn .3s">' +
+                '<div class="lead-source-dot" style="background:' + color + '" title="' + escapeHtml(lead.source || '') + '"></div>' +
+                '<div class="lead-info">' +
+                '<div class="lead-name">' + escapeHtml(lead.client_name || lead.name || 'Без імені') + '</div>' +
+                '<div class="lead-meta">' + escapeHtml(lead.phone || '') + ' · ' + date + '</div>' +
+                '</div></div>';
+
+            var list = container.querySelector('.widget-lead-list');
+            if (list) {
+                list.insertAdjacentHTML('afterbegin', itemHtml);
+                // Keep max 6 items
+                while (list.children.length > 6) list.removeChild(list.lastChild);
+            } else {
+                // Widget was empty — create list
+                container.innerHTML = '<div class="widget-lead-list">' + itemHtml + '</div>';
+            }
+        }
     }
 
     async function loadConfig() {
@@ -390,7 +454,7 @@ const DashboardPage = (() => {
             container.innerHTML = '<div class="widget-empty">Немає нових лідів</div>';
             return;
         }
-        const sourceColors = { telegram: '#0088cc', facebook: '#1877F2', instagram: '#E4405F', viber: '#7360F2', website: '#38A169', phone: '#DD6B20' };
+        const sourceColors = { telegram: '#0088cc', facebook: '#1877F2', instagram: '#E4405F', viber: '#7360F2', website: '#38A169', phone: '#DD6B20', landing: '#D69E2E' };
         const items = data.leads.slice(0, 6).map(l => {
             const color = sourceColors[l.source] || '#718096';
             const date = new Date(l.created_at).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });

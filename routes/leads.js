@@ -16,6 +16,7 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
+const { broadcast } = require('../services/websocket');
 
 const log = createLogger('Leads');
 
@@ -47,6 +48,9 @@ router.post('/landing', async (req, res) => {
                 await notifyNewLead(lead);
             }
         } catch (e) { /* non-blocking */ }
+
+        // Broadcast to dashboard via WebSocket
+        try { broadcast('lead:new', { lead }); } catch (e) { /* non-blocking */ }
 
         res.json({ success: true, lead: { id: lead.id } });
     } catch (err) {
@@ -164,6 +168,10 @@ router.post('/', async (req, res) => {
             children_count || null, child_age || null, notes || null, assigned_to || null]);
 
         log.info(`Lead created: ${client_name} by ${req.user.username}`);
+
+        // Broadcast to dashboard via WebSocket
+        try { broadcast('lead:new', { lead: result.rows[0] }); } catch (e) { /* non-blocking */ }
+
         res.json({ success: true, lead: result.rows[0] });
     } catch (err) {
         log.error('POST /leads error', err);
@@ -335,6 +343,7 @@ router.post('/webhook/universal', async (req, res) => {
 
         if (lead) {
             notifyNewLead(lead).catch(() => {});
+            try { broadcast('lead:new', { lead }); } catch (e) { /* ok */ }
             log.info(`New lead via universal [${source_channel}]: ${name || phone}`);
         }
         res.json({ success: true, created: !!lead });
@@ -396,6 +405,7 @@ router.post('/webhook/facebook', async (req, res) => {
 
                 if (lead) {
                     notifyNewLead(lead).catch(() => {});
+                    try { broadcast('lead:new', { lead }); } catch (e) { /* ok */ }
                     log.info(`New FB lead: ${lead.client_name}`);
                 }
             }
@@ -435,6 +445,7 @@ router.post('/webhook/instagram', async (req, res) => {
 
                 if (lead) {
                     notifyNewLead(lead).catch(() => {});
+                    try { broadcast('lead:new', { lead }); } catch (e) { /* ok */ }
                     log.info(`New IG lead: ig_${senderId}`);
                 }
             }
@@ -477,6 +488,7 @@ router.post('/webhook/viber', async (req, res) => {
 
         if (lead) {
             notifyNewLead(lead).catch(() => {});
+            try { broadcast('lead:new', { lead }); } catch (e) { /* ok */ }
             log.info(`New Viber lead: ${sender?.name}`);
         }
     } catch (err) {

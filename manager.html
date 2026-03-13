@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Менеджер AI Copilot</title>
+    <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=27.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=27.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=27.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=27.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=27.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=27.0.0">
+    <link rel="stylesheet" href="css/manager.css?v=27.0.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Login overlay -->
+    <div id="loginOverlay" class="login-overlay hidden">
+        <div class="login-card">
+            <h2>Event Genix</h2>
+            <p>Увійдіть для доступу до Manager Copilot</p>
+            <form id="loginForm">
+                <input type="text" id="loginUsername" placeholder="Логін" required>
+                <input type="password" id="loginPassword" placeholder="Пароль" required>
+                <button type="submit" class="btn-primary">Увійти</button>
+            </form>
+            <div id="loginError" class="login-error hidden"></div>
+        </div>
+    </div>
+
+    <!-- Main app -->
+    <div id="mainApp" style="display:none">
+        <!-- Top bar -->
+        <header class="top-bar">
+            <div class="top-bar-left">
+                <button id="sidebarToggle" class="sidebar-toggle">☰</button>
+                <a href="/" class="logo-link">Event Genix</a>
+            </div>
+            <div class="top-bar-right">
+                <span id="currentUser" class="current-user"></span>
+                <button id="logoutBtn" class="btn-logout" title="Вийти">🚪</button>
+            </div>
+        </header>
+
+        <!-- Sidebar -->
+        <div id="sidebarOverlay" class="sidebar-overlay"></div>
+        <nav id="sidebarNav" class="sidebar-nav">
+            <div class="sidebar-links" id="sidebarLinks"></div>
+        </nav>
+
+        <!-- Manager container -->
+        <div class="mgr-container">
+            <!-- Manager sidebar (module navigation) -->
+            <div class="mgr-sidebar" id="mgrSidebar">
+                <div class="mgr-sidebar-item active" data-module="coach">
+                    <span class="mgr-nav-icon">🎯</span> AI Coach
+                </div>
+                <div class="mgr-sidebar-item" data-module="objections">
+                    <span class="mgr-nav-icon">🛡️</span> Заперечення
+                </div>
+                <div class="mgr-sidebar-item" data-module="scripts">
+                    <span class="mgr-nav-icon">📝</span> Скрипти
+                </div>
+                <div class="mgr-sidebar-item" data-module="templates">
+                    <span class="mgr-nav-icon">💬</span> Шаблони
+                </div>
+                <div class="mgr-sidebar-item" data-module="debrief">
+                    <span class="mgr-nav-icon">📊</span> Дебрифінг
+                </div>
+                <div class="mgr-sidebar-divider"></div>
+                <div class="mgr-sidebar-item" data-module="academy">
+                    <span class="mgr-nav-icon">📚</span> Academy
+                </div>
+                <div class="mgr-sidebar-item" data-module="battlecards">
+                    <span class="mgr-nav-icon">🃏</span> Battle Cards
+                </div>
+                <div class="mgr-sidebar-item" data-module="meetingprep">
+                    <span class="mgr-nav-icon">🔮</span> Meeting Prep
+                </div>
+                <div class="mgr-sidebar-divider"></div>
+                <div class="mgr-sidebar-item" data-module="interactions">
+                    <span class="mgr-nav-icon">📡</span> Моніторинг
+                </div>
+                <div class="mgr-sidebar-item" data-module="pipeline">
+                    <span class="mgr-nav-icon">📊</span> Pipeline
+                </div>
+                <div class="mgr-sidebar-item" data-module="writer">
+                    <span class="mgr-nav-icon">✍️</span> AI Writer
+                </div>
+            </div>
+
+            <!-- Content area -->
+            <div class="mgr-content" id="mgrContent">
+
+                <!-- MODULE 1: AI Coach -->
+                <div class="mgr-panel active" id="panel-coach">
+                    <div class="mgr-panel-header">
+                        <h2 class="mgr-panel-title">🎯 AI Live Coach</h2>
+                        <div class="mgr-live-toggle" id="liveToggle">
+                            <span class="mgr-live-dot" id="liveDot"></span>
+                            <span class="mgr-live-label">LIVE</span>
+                        </div>
+                    </div>
+
+                    <div class="mgr-form-group" style="margin-bottom:12px">
+                        <label class="mgr-label">Що сказав клієнт:</label>
+                        <textarea class="mgr-textarea" id="coachInput" placeholder="Вставте або наберіть фразу клієнта" rows="3"></textarea>
+                    </div>
+
+                    <div class="mgr-form-row">
+                        <div class="mgr-form-group" style="min-width:180px">
+                            <label class="mgr-label">Сценарій:</label>
+                            <select class="mgr-select" id="coachScenario">
+                                <option value="first-call">Перший дзвінок</option>
+                                <option value="landing-lead">По заявці з лендінгу</option>
+                                <option value="after-demo">Після презентації</option>
+                                <option value="price-negotiation">Торг / ціна</option>
+                                <option value="objection">Заперечення</option>
+                                <option value="closing">Закриття угоди</option>
+                                <option value="follow-up">Follow-up</option>
+                                <option value="reactivation">Реактивація</option>
+                            </select>
+                        </div>
+                        <div class="mgr-form-group" style="min-width:160px">
+                            <label class="mgr-label">Тон:</label>
+                            <select class="mgr-select" id="coachTone">
+                                <option value="confident">Впевнений</option>
+                                <option value="empathetic">М'який і емпатичний</option>
+                                <option value="business">Діловий і короткий</option>
+                                <option value="playful">Трохи гумору</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:flex-end">
+                            <button class="mgr-btn mgr-btn-primary" id="coachBtn">🎯 Підказати →</button>
+                            <button class="mgr-btn mgr-btn-secondary" id="coachClearBtn">🔄 Очистити</button>
+                        </div>
+                    </div>
+
+                    <div id="coachResult"></div>
+                </div>
+
+                <!-- MODULE 2: Objections -->
+                <div class="mgr-panel" id="panel-objections">
+                    <div class="mgr-panel-header">
+                        <h2 class="mgr-panel-title">🛡️ Обробник заперечень</h2>
+                    </div>
+                    <div class="mgr-search">
+                        <span class="mgr-search-icon">🔍</span>
+                        <input type="text" id="objectionSearch" placeholder="Пошук заперечення...">
+                    </div>
+                    <div id="objectionsGrid" class="mgr-cards-grid"></div>
+                    <div id="objectionAI" style="margin-top:16px">
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Або введіть своє заперечення:</label>
+                            <div class="mgr-form-row">
+                                <textarea class="mgr-textarea" id="customObjection" placeholder="Клієнт каже..." rows="2" style="flex:1"></textarea>
+                                <button class="mgr-btn mgr-btn-primary" id="objectionAIBtn">🤖 AI відповідь</button>
+                            </div>
+                        </div>
+                        <div id="objectionAIResult"></div>
+                    </div>
+                </div>
+
+                <!-- MODULE 3: Call Scripts -->
+                <div class="mgr-panel" id="panel-scripts">
+                    <div class="mgr-panel-header">
+                        <h2 class="mgr-panel-title">📝 Скрипти дзвінків</h2>
+                    </div>
+                    <div class="mgr-tabs" id="scriptTabs"></div>
+                    <div class="mgr-progress-bar" id="scriptProgress"></div>
+                    <div id="scriptContent"></div>
+                    <div style="margin-top:12px">
+                        <button class="mgr-btn mgr-btn-secondary" id="scriptResetBtn">🔄 Почати заново</button>
+                    </div>
+                </div>
+
+                <!-- MODULE 4: Message Templates -->
+                <div class="mgr-panel" id="panel-templates">
+                    <div class="mgr-panel-header">
+                        <h2 class="mgr-panel-title">💬 Шаблони повідомлень</h2>
+                    </div>
+                    <div class="mgr-tabs" id="templateTabs"></div>
+                    <div id="templateForm"></div>
+                    <div id="templatePreview"></div>
+                </div>
+
+                <!-- MODULE 5: Debrief -->
+                <div class="mgr-panel" id="panel-debrief">
+                    <div class="mgr-panel-header">
+                        <h2 class="mgr-panel-title">📊 Дебрифінг дзвінка</h2>
+                    </div>
+                    <div class="mgr-form-row">
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Клієнт:</label>
+                            <input class="mgr-input" id="debriefClient" placeholder="Ім'я / компанія">
+                        </div>
+                        <div class="mgr-form-group" style="max-width:120px">
+                            <label class="mgr-label">Тривалість:</label>
+                            <input class="mgr-input" id="debriefDuration" type="number" placeholder="хв">
+                        </div>
+                    </div>
+                    <div class="mgr-form-group" style="margin-bottom:12px">
+                        <label class="mgr-label">Результат:</label>
+                        <div class="mgr-radio-group" id="debriefResult">
+                            <div class="mgr-radio-option" data-value="hot">🔥 Гарячий — демо</div>
+                            <div class="mgr-radio-option" data-value="interested">✅ Зацікавлений</div>
+                            <div class="mgr-radio-option" data-value="callback">📅 Передзвонити</div>
+                            <div class="mgr-radio-option" data-value="rejected">❌ Відмовив</div>
+                        </div>
+                    </div>
+                    <div class="mgr-form-group" style="margin-bottom:12px">
+                        <label class="mgr-label">Що обговорювали:</label>
+                        <textarea class="mgr-textarea" id="debriefNotes" placeholder="Основні теми, заперечення, реакція" rows="4"></textarea>
+                    </div>
+                    <div class="mgr-form-group" style="margin-bottom:12px">
+                        <label class="mgr-label">Головне заперечення:</label>
+                        <div class="mgr-radio-group" id="debriefObjection">
+                            <div class="mgr-radio-option" data-value="price">Ціна</div>
+                            <div class="mgr-radio-option" data-value="not_needed">Не потрібно</div>
+                            <div class="mgr-radio-option" data-value="has_solution">Є рішення</div>
+                            <div class="mgr-radio-option" data-value="thinking">Думає</div>
+                            <div class="mgr-radio-option" data-value="none">Немає</div>
+                        </div>
+                    </div>
+                    <div class="mgr-form-row">
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Що спрацювало:</label>
+                            <textarea class="mgr-textarea" id="debriefWorked" rows="2"></textarea>
+                        </div>
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Що зробив би інакше:</label>
+                            <textarea class="mgr-textarea" id="debriefImprove" rows="2"></textarea>
+                        </div>
+                    </div>
+                    <div style="margin-top:12px;display:flex;gap:8px">
+                        <button class="mgr-btn mgr-btn-primary" id="debriefAnalyzeBtn">🤖 Аналізувати →</button>
+                        <button class="mgr-btn mgr-btn-secondary" id="debriefSaveBtn" style="display:none">📝 Зберегти в CRM</button>
+                    </div>
+                    <div id="debriefResult"></div>
+                </div>
+
+                <!-- MODULE 6: Sales Academy -->
+                <div class="mgr-panel" id="panel-academy">
+                    <div class="mgr-panel-header">
+                        <h2 class="mgr-panel-title">📚 Sales Academy</h2>
+                    </div>
+                    <div class="mgr-tabs" id="academyTabs">
+                        <div class="mgr-tab active" data-section="methodology">🧠 Методології</div>
+                        <div class="mgr-tab" data-section="market">🛒 Ринок</div>
+                        <div class="mgr-tab" data-section="cases">💼 Кейси</div>
+                        <div class="mgr-tab" data-section="closing">🎯 Техніки</div>
+                        <div class="mgr-tab" data-section="psychology">🧩 Психологія</div>
+                        <div class="mgr-tab" data-section="profiles">👤 Профілі</div>
+                        <div class="mgr-tab" data-section="qa">❓ Q&A з AI</div>
+                    </div>
+                    <div id="academyContent"></div>
+                </div>
+
+                <!-- MODULE 7: Interactions -->
+                <div class="mgr-panel" id="panel-interactions">
+                    <div class="mgr-panel-header">
+                        <h2 class="mgr-panel-title">📡 Моніторинг взаємодій</h2>
+                    </div>
+                    <div class="mgr-form-row" style="margin-bottom:16px">
+                        <select class="mgr-select" id="interactionsTypeFilter">
+                            <option value="">Всі типи</option>
+                            <option value="call">📞 Дзвінки</option>
+                            <option value="message_sent">📧 Повідомлення</option>
+                            <option value="status_change">✅ Статуси</option>
+                            <option value="debrief">📊 Дебрифінги</option>
+                            <option value="note">📝 Нотатки</option>
+                        </select>
+                        <select class="mgr-select" id="interactionsDaysFilter">
+                            <option value="7">Цей тиждень</option>
+                            <option value="30">Цей місяць</option>
+                            <option value="90">3 місяці</option>
+                        </select>
+                        <div class="mgr-search" style="flex:1;margin:0">
+                            <span class="mgr-search-icon">🔍</span>
+                            <input type="text" id="interactionsSearch" placeholder="Пошук по клієнту...">
+                        </div>
+                    </div>
+                    <div id="interactionsFeed"></div>
+                </div>
+
+                <!-- MODULE 8: Battle Cards -->
+                <div class="mgr-panel" id="panel-battlecards">
+                    <div class="mgr-panel-header">
+                        <h2 class="mgr-panel-title">🃏 Конкурентні Battle Cards</h2>
+                    </div>
+                    <div class="mgr-search">
+                        <span class="mgr-search-icon">🔍</span>
+                        <input type="text" id="battleSearch" placeholder="Пошук конкурента...">
+                    </div>
+                    <div id="battleCardsGrid" class="mgr-cards-grid"></div>
+                </div>
+
+                <!-- MODULE 9: Meeting Prep -->
+                <div class="mgr-panel" id="panel-meetingprep">
+                    <div class="mgr-panel-header">
+                        <h2 class="mgr-panel-title">🔮 Meeting Prep</h2>
+                    </div>
+                    <div class="mgr-form-row">
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Компанія / ім'я:</label>
+                            <input class="mgr-input" id="prepClient" placeholder="Назва">
+                        </div>
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Джерело:</label>
+                            <select class="mgr-select" id="prepSource" style="width:100%">
+                                <option value="landing">Лендінг</option>
+                                <option value="referral">Рекомендація</option>
+                                <option value="cold">Холодний</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mgr-form-row">
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Розмір (кімнати/філії):</label>
+                            <input class="mgr-input" id="prepSize" placeholder="напр. 5 кімнат">
+                        </div>
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Пакет:</label>
+                            <select class="mgr-select" id="prepPackage" style="width:100%">
+                                <option value="unknown">Невідомо</option>
+                                <option value="basic">Базовий</option>
+                                <option value="full">Повний</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mgr-form-group" style="margin-bottom:12px">
+                        <label class="mgr-label">Що знаємо:</label>
+                        <textarea class="mgr-textarea" id="prepInfo" placeholder="1-2 речення про клієнта" rows="2"></textarea>
+                    </div>
+                    <div class="mgr-form-row">
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Тип дзвінка:</label>
+                            <select class="mgr-select" id="prepCallType" style="width:100%">
+                                <option value="first">Перший</option>
+                                <option value="demo">Демо</option>
+                                <option value="closing">Закриття</option>
+                                <option value="follow-up">Follow-up</option>
+                            </select>
+                        </div>
+                        <button class="mgr-btn mgr-btn-primary" id="prepBtn" style="align-self:flex-end">🔮 Підготувати бриф →</button>
+                    </div>
+                    <div id="prepResult"></div>
+                </div>
+
+                <!-- MODULE 10: Pipeline -->
+                <div class="mgr-panel" id="panel-pipeline">
+                    <div class="mgr-panel-header">
+                        <h2 class="mgr-panel-title">📊 Deal Pipeline</h2>
+                    </div>
+                    <div class="mgr-pipeline-metrics" id="pipelineMetrics"></div>
+                    <div class="mgr-kanban" id="pipelineKanban"></div>
+                </div>
+
+                <!-- MODULE 11: AI Writer -->
+                <div class="mgr-panel" id="panel-writer">
+                    <div class="mgr-panel-header">
+                        <h2 class="mgr-panel-title">✍️ AI Message Writer</h2>
+                    </div>
+                    <div class="mgr-form-row">
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Клієнт:</label>
+                            <input class="mgr-input" id="writerClient" placeholder="Ім'я">
+                        </div>
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Тип:</label>
+                            <select class="mgr-select" id="writerType" style="width:100%">
+                                <option value="after-call">Після дзвінка</option>
+                                <option value="follow-up">Follow-up</option>
+                                <option value="after-demo">Після демо</option>
+                                <option value="reminder">Нагадування</option>
+                                <option value="reactivation">Реактивація</option>
+                                <option value="closing">Закриття</option>
+                                <option value="after-rejection">Після відмови</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mgr-form-row">
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Обговорювали:</label>
+                            <textarea class="mgr-textarea" id="writerDiscussed" rows="2" placeholder="Основні теми"></textarea>
+                        </div>
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Зацікавило:</label>
+                            <input class="mgr-input" id="writerInterested" placeholder="Що найбільше зацікавило">
+                        </div>
+                    </div>
+                    <div class="mgr-form-row">
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Хвилює:</label>
+                            <input class="mgr-input" id="writerConcerns" placeholder="Побоювання клієнта">
+                        </div>
+                        <div class="mgr-form-group">
+                            <label class="mgr-label">Тон:</label>
+                            <select class="mgr-select" id="writerTone" style="width:100%">
+                                <option value="friendly">Дружній</option>
+                                <option value="business">Діловий</option>
+                                <option value="light">Легкий</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="margin-top:12px">
+                        <button class="mgr-btn mgr-btn-primary" id="writerBtn">✍️ Написати →</button>
+                    </div>
+                    <div id="writerResult"></div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="js/config.js?v=27.0.0"></script>
+    <script src="js/api.js?v=27.0.0"></script>
+    <script src="js/auth.js?v=27.0.0"></script>
+    <script src="js/components/sidebar.js?v=27.0.0"></script>
+    <script src="js/manager-page.js?v=27.0.0"></script>
+    <script>document.addEventListener('DOMContentLoaded', initManagerPage);</script>
+</body>
+</html>

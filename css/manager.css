@@ -1,0 +1,1052 @@
+/**
+ * css/manager.css — Manager AI Copilot styles
+ * v27.0.0: Dark glassmorphism, gold accents
+ */
+
+/* ==========================================
+   LAYOUT
+   ========================================== */
+.mgr-container {
+    display: flex;
+    min-height: calc(100vh - 60px);
+    margin-left: 220px;
+    transition: margin-left 0.3s ease;
+}
+
+.mgr-sidebar {
+    width: 200px;
+    min-width: 200px;
+    background: rgba(20, 20, 30, 0.95);
+    border-right: 1px solid rgba(201, 168, 76, 0.15);
+    padding: 16px 0;
+    position: sticky;
+    top: 60px;
+    height: calc(100vh - 60px);
+    overflow-y: auto;
+    backdrop-filter: blur(20px);
+}
+
+.mgr-sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+    text-decoration: none;
+}
+
+.mgr-sidebar-item:hover {
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(201, 168, 76, 0.08);
+}
+
+.mgr-sidebar-item.active {
+    color: #C9A84C;
+    background: rgba(201, 168, 76, 0.12);
+    border-left-color: #C9A84C;
+    box-shadow: inset 0 0 20px rgba(201, 168, 76, 0.05);
+}
+
+.mgr-sidebar-item .mgr-nav-icon {
+    font-size: 16px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.mgr-sidebar-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 8px 16px;
+}
+
+.mgr-content {
+    flex: 1;
+    padding: 24px;
+    min-width: 0;
+    background: var(--bg-primary, #0f0f1a);
+}
+
+/* ==========================================
+   MODULE PANELS
+   ========================================== */
+.mgr-panel {
+    display: none;
+}
+
+.mgr-panel.active {
+    display: block;
+    animation: mgrFadeIn 0.25s ease-out;
+}
+
+@keyframes mgrFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.mgr-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.mgr-panel-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: #fff;
+}
+
+/* ==========================================
+   AI RESPONSE BLOCKS
+   ========================================== */
+.mgr-ai-block {
+    background: rgba(201, 168, 76, 0.06);
+    border: 1px solid rgba(201, 168, 76, 0.2);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 16px;
+    animation: mgrFadeInUp 0.3s ease-out;
+}
+
+@keyframes mgrFadeInUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.mgr-suggestion {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mgr-suggestion:hover {
+    background: rgba(201, 168, 76, 0.08);
+    border-color: rgba(201, 168, 76, 0.25);
+}
+
+.mgr-suggestion-type {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #C9A84C;
+    margin-bottom: 6px;
+}
+
+.mgr-suggestion-text {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.85);
+    line-height: 1.5;
+}
+
+.mgr-suggestion-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #C9A84C;
+    background: rgba(201, 168, 76, 0.1);
+    border: 1px solid rgba(201, 168, 76, 0.2);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.mgr-suggestion-copy:hover {
+    background: rgba(201, 168, 76, 0.2);
+}
+
+.mgr-tactic {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(34, 197, 94, 0.08);
+    border-radius: 8px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.mgr-avoid {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(239, 68, 68, 0.08);
+    border-radius: 8px;
+    margin-top: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.mgr-next-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(59, 130, 246, 0.08);
+    border-radius: 8px;
+    margin-top: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* ==========================================
+   FORMS
+   ========================================== */
+.mgr-textarea {
+    width: 100%;
+    min-height: 80px;
+    max-height: 200px;
+    padding: 12px;
+    font-family: inherit;
+    font-size: 14px;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    resize: vertical;
+    transition: border-color 0.2s;
+}
+
+.mgr-textarea:focus {
+    outline: none;
+    border-color: rgba(201, 168, 76, 0.5);
+}
+
+.mgr-textarea::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.mgr-input {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    transition: border-color 0.2s;
+}
+
+.mgr-input:focus {
+    outline: none;
+    border-color: rgba(201, 168, 76, 0.5);
+}
+
+.mgr-select {
+    padding: 8px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.mgr-select option {
+    background: #1a1a2e;
+    color: #fff;
+}
+
+.mgr-form-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.mgr-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 150px;
+}
+
+.mgr-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ==========================================
+   BUTTONS
+   ========================================== */
+.mgr-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.mgr-btn-primary {
+    background: linear-gradient(135deg, #C9A84C, #B8943F);
+    color: #000;
+}
+
+.mgr-btn-primary:hover {
+    background: linear-gradient(135deg, #D4B55A, #C9A84C);
+    transform: translateY(-1px);
+}
+
+.mgr-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.mgr-btn-secondary {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.mgr-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.mgr-btn-small {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.mgr-btn-feedback {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.mgr-btn-feedback:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.mgr-btn-feedback.selected {
+    border-color: #C9A84C;
+    color: #C9A84C;
+}
+
+.mgr-feedback-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+/* ==========================================
+   LIVE INDICATOR
+   ========================================== */
+.mgr-live-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.mgr-live-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    transition: background 0.3s;
+}
+
+.mgr-live-dot.active {
+    background: #22c55e;
+    animation: mgrPulse 2s ease-in-out infinite;
+}
+
+@keyframes mgrPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+}
+
+.mgr-live-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+}
+
+.mgr-live-dot.active + .mgr-live-label {
+    color: #22c55e;
+}
+
+/* ==========================================
+   CARDS (objections, battle cards, scripts)
+   ========================================== */
+.mgr-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.mgr-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mgr-card:hover {
+    background: rgba(201, 168, 76, 0.08);
+    border-color: rgba(201, 168, 76, 0.2);
+    transform: translateY(-2px);
+}
+
+.mgr-card.expanded {
+    background: rgba(201, 168, 76, 0.06);
+    border-color: rgba(201, 168, 76, 0.25);
+    grid-column: 1 / -1;
+}
+
+.mgr-card-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+.mgr-card-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.mgr-card-desc {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.mgr-card-detail {
+    display: none;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mgr-card.expanded .mgr-card-detail {
+    display: block;
+    animation: mgrFadeIn 0.2s ease-out;
+}
+
+/* ==========================================
+   SEARCH
+   ========================================== */
+.mgr-search {
+    position: relative;
+    margin-bottom: 16px;
+}
+
+.mgr-search input {
+    width: 100%;
+    padding: 10px 12px 10px 36px;
+    font-family: inherit;
+    font-size: 14px;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+.mgr-search input:focus {
+    outline: none;
+    border-color: rgba(201, 168, 76, 0.4);
+}
+
+.mgr-search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+    opacity: 0.4;
+}
+
+/* ==========================================
+   SCRIPT STEPS (accordion)
+   ========================================== */
+.mgr-script-step {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+.mgr-script-step-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.mgr-script-step-header:hover {
+    background: rgba(201, 168, 76, 0.06);
+}
+
+.mgr-script-step.active .mgr-script-step-header {
+    background: rgba(201, 168, 76, 0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mgr-step-number {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(201, 168, 76, 0.15);
+    color: #C9A84C;
+    font-size: 13px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.mgr-step-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    flex: 1;
+}
+
+.mgr-step-duration {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    font-weight: 600;
+}
+
+.mgr-script-step-body {
+    display: none;
+    padding: 14px;
+}
+
+.mgr-script-step.active .mgr-script-step-body {
+    display: block;
+    animation: mgrFadeIn 0.2s ease-out;
+}
+
+.mgr-step-text {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.8);
+    line-height: 1.6;
+    padding: 12px;
+    background: rgba(201, 168, 76, 0.06);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    border-left: 3px solid #C9A84C;
+}
+
+.mgr-step-branches {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mgr-branch-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+}
+
+.mgr-branch-btn:hover {
+    background: rgba(201, 168, 76, 0.1);
+    border-color: rgba(201, 168, 76, 0.2);
+    color: #fff;
+}
+
+.mgr-progress-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+}
+
+.mgr-progress-step {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    transition: background 0.3s;
+}
+
+.mgr-progress-step.done {
+    background: #C9A84C;
+}
+
+.mgr-progress-step.current {
+    background: rgba(201, 168, 76, 0.5);
+}
+
+/* ==========================================
+   TEMPLATE PREVIEW
+   ========================================== */
+.mgr-template-preview {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 16px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.8);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-top: 12px;
+}
+
+/* ==========================================
+   INTERACTION FEED
+   ========================================== */
+.mgr-feed-item {
+    display: flex;
+    gap: 12px;
+    padding: 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background 0.15s;
+}
+
+.mgr-feed-item:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.mgr-feed-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 5px;
+}
+
+.mgr-feed-dot.call { background: #ef4444; }
+.mgr-feed-dot.message { background: #3b82f6; }
+.mgr-feed-dot.status { background: #22c55e; }
+.mgr-feed-dot.note { background: #eab308; }
+.mgr-feed-dot.debrief { background: #a855f7; }
+
+.mgr-feed-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.mgr-feed-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.mgr-feed-time {
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.mgr-feed-client {
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.mgr-feed-type {
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.5);
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+}
+
+.mgr-feed-summary {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    line-height: 1.5;
+}
+
+.mgr-feed-meta {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.3);
+}
+
+/* ==========================================
+   PIPELINE KANBAN
+   ========================================== */
+.mgr-kanban {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 12px;
+}
+
+.mgr-kanban-column {
+    min-width: 250px;
+    flex: 1;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.mgr-kanban-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mgr-kanban-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.mgr-kanban-count {
+    font-size: 11px;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(201, 168, 76, 0.15);
+    color: #C9A84C;
+}
+
+.mgr-kanban-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 8px;
+    cursor: grab;
+    transition: all 0.2s;
+}
+
+.mgr-kanban-card:hover {
+    background: rgba(201, 168, 76, 0.06);
+    border-color: rgba(201, 168, 76, 0.2);
+}
+
+.mgr-kanban-card.dragging {
+    opacity: 0.5;
+}
+
+.mgr-kanban-card.stale-warning {
+    border-left: 3px solid #eab308;
+}
+
+.mgr-kanban-card.stale-danger {
+    border-left: 3px solid #ef4444;
+}
+
+.mgr-kanban-card-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.mgr-kanban-card-meta {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.mgr-kanban-card-value {
+    font-size: 13px;
+    font-weight: 700;
+    color: #C9A84C;
+    margin-top: 6px;
+}
+
+/* ==========================================
+   RADIO GROUP
+   ========================================== */
+.mgr-radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.mgr-radio-option {
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.mgr-radio-option:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.mgr-radio-option.selected {
+    background: rgba(201, 168, 76, 0.15);
+    border-color: rgba(201, 168, 76, 0.3);
+    color: #C9A84C;
+}
+
+/* ==========================================
+   TABS (inside panels)
+   ========================================== */
+.mgr-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.mgr-tab {
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.mgr-tab:hover { color: rgba(255, 255, 255, 0.8); }
+.mgr-tab.active {
+    background: rgba(201, 168, 76, 0.12);
+    color: #C9A84C;
+    border-color: rgba(201, 168, 76, 0.2);
+}
+
+/* ==========================================
+   LOADING SPINNER
+   ========================================== */
+.mgr-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 20px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
+}
+
+.mgr-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(201, 168, 76, 0.2);
+    border-top-color: #C9A84C;
+    border-radius: 50%;
+    animation: mgrSpin 0.7s linear infinite;
+}
+
+@keyframes mgrSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* ==========================================
+   SCORE BAR
+   ========================================== */
+.mgr-score-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.mgr-score-track {
+    flex: 1;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.mgr-score-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+.mgr-score-label {
+    font-size: 16px;
+    font-weight: 800;
+    color: #C9A84C;
+    min-width: 40px;
+}
+
+/* ==========================================
+   DATE SEPARATOR
+   ========================================== */
+.mgr-date-sep {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.3);
+    text-transform: uppercase;
+}
+
+.mgr-date-sep::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* ==========================================
+   PIPELINE METRICS
+   ========================================== */
+.mgr-pipeline-metrics {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+}
+
+.mgr-metric {
+    text-align: center;
+    flex: 1;
+    min-width: 100px;
+}
+
+.mgr-metric-value {
+    font-size: 20px;
+    font-weight: 800;
+    color: #C9A84C;
+}
+
+.mgr-metric-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+
+/* ==========================================
+   EMPTY STATE
+   ========================================== */
+.mgr-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 14px;
+}
+
+.mgr-empty-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+/* ==========================================
+   MOBILE (< 768px)
+   ========================================== */
+@media (max-width: 768px) {
+    .mgr-container {
+        flex-direction: column;
+        margin-left: 0;
+    }
+
+    .mgr-sidebar {
+        width: 100%;
+        min-width: 100%;
+        height: auto;
+        position: relative;
+        top: 0;
+        display: flex;
+        overflow-x: auto;
+        padding: 8px;
+        gap: 4px;
+        border-right: none;
+        border-bottom: 1px solid rgba(201, 168, 76, 0.15);
+    }
+
+    .mgr-sidebar-item {
+        padding: 8px 12px;
+        border-left: none;
+        border-bottom: 2px solid transparent;
+        white-space: nowrap;
+        font-size: 12px;
+    }
+
+    .mgr-sidebar-item.active {
+        border-left-color: transparent;
+        border-bottom-color: #C9A84C;
+    }
+
+    .mgr-sidebar-divider {
+        display: none;
+    }
+
+    .mgr-content {
+        padding: 16px;
+    }
+
+    .mgr-kanban {
+        flex-direction: column;
+    }
+
+    .mgr-kanban-column {
+        min-width: 100%;
+    }
+
+    .mgr-cards-grid {
+        grid-template-columns: 1fr;
+    }
+}

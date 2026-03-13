@@ -52,6 +52,14 @@ router.post('/landing', async (req, res) => {
         // Broadcast to dashboard via WebSocket
         try { broadcast('lead:new', { lead }); } catch (e) { /* non-blocking */ }
 
+        // v27.0.0: Log interaction for Manager Copilot tracking
+        try {
+            const { logInteraction } = require('./manager');
+            if (typeof logInteraction === 'function') {
+                await logInteraction(lead.id, null, 'landing_submission', `Заявка з лендінгу: ${name || 'Невідомий'}`, { package: pkg, source: 'landing' });
+            }
+        } catch { /* non-blocking — manager module may not exist yet */ }
+
         res.json({ success: true, lead: { id: lead.id } });
     } catch (err) {
         log.error('POST /leads/landing error', err);
@@ -205,6 +213,12 @@ router.patch('/:id', async (req, res) => {
         if (program_id !== undefined) { params.push(program_id || null); updates.push(`program_id = $${params.length}`); }
         if (pipeline_stage !== undefined) { params.push(pipeline_stage); updates.push(`pipeline_stage = $${params.length}`); }
         if (milestone_tags !== undefined) { params.push(milestone_tags); updates.push(`milestone_tags = $${params.length}`); }
+        // v27.0.0: Manager Copilot fields
+        const { potential_value, company_name, city, rooms_count } = req.body;
+        if (potential_value !== undefined) { params.push(potential_value); updates.push(`potential_value = $${params.length}`); }
+        if (company_name !== undefined) { params.push(company_name); updates.push(`company_name = $${params.length}`); }
+        if (city !== undefined) { params.push(city); updates.push(`city = $${params.length}`); }
+        if (rooms_count !== undefined) { params.push(rooms_count); updates.push(`rooms_count = $${params.length}`); }
         if (last_contact_at) {
             params.push(last_contact_at);
             updates.push(`last_contact_at = $${params.length}`);
@@ -224,6 +238,18 @@ router.patch('/:id', async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, error: 'Лід не знайдено' });
         }
+
+        // v27.0.0: Log status change interaction
+        if (status || pipeline_stage) {
+            try {
+                const { logInteraction } = require('./manager');
+                if (typeof logInteraction === 'function') {
+                    const summary = status ? `Статус → ${status}` : `Pipeline → ${pipeline_stage}`;
+                    await logInteraction(parseInt(req.params.id), req.user?.id, 'status_change', summary, { status, pipeline_stage });
+                }
+            } catch { /* non-blocking */ }
+        }
+
         res.json({ success: true, lead: result.rows[0] });
     } catch (err) {
         log.error('PATCH /leads/:id error', err);

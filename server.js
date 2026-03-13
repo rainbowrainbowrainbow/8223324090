@@ -165,6 +165,7 @@ app.use('/api/agents', require('./routes/agents'));
 app.use('/api/summary', require('./routes/summary'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/gamification', require('./routes/gamification'));
+app.use('/api/manager', require('./routes/manager'));
 
 // v22.4.0: Achievements system
 app.use('/api/wallet', require('./routes/wallet'));

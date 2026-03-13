@@ -26,6 +26,7 @@ const Sidebar = (() => {
         { href: '/hr',        icon: '🤝', label: 'Кадри',      access: 'hr' },
         { href: '/finance',   icon: '💰', label: 'Фінанси',    access: 'finance' },
         { href: '/analytics', icon: '📊', label: 'Аналітика',  access: 'analytics' },
+        { href: '/manager',   icon: '👔', label: 'Менеджер',   access: 'manager_copilot' },
 
         // BLOCK 3: Product / Creative
         { type: 'divider' },
@@ -119,6 +120,11 @@ const Sidebar = (() => {
             'creator', 'director', 'vice_director',
             'senior_manager',
             'art_director', 'marketer'
+        ],
+
+        manager_copilot: [
+            'creator', 'director', 'vice_director',
+            'senior_manager', 'manager'
         ],
 
         demo: [

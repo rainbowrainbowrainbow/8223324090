@@ -201,7 +201,8 @@ router.post('/channels/:id/messages', async (req, res) => {
             channelId,
             userId,
             username,
-            content: content.trim()
+            content: content.trim(),
+            role: req.user.role
         });
         if (preCheck.blocked) {
             return res.status(403).json({ error: preCheck.message || '🛡️ Повідомлення заблоковано.' });

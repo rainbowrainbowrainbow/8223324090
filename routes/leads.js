@@ -26,7 +26,8 @@ const FB_PAGE_ACCESS_TOKEN    = process.env.FB_PAGE_ACCESS_TOKEN    || '';
 const VIBER_AUTH_TOKEN        = process.env.VIBER_AUTH_TOKEN        || '';
 
 // POST /api/leads/landing — public endpoint for landing page form (no auth required)
-router.post('/landing', async (req, res) => {
+const { landingRateLimiter } = require('../middleware/rateLimit');
+router.post('/landing', landingRateLimiter, async (req, res) => {
     try {
         const { name, phone, package: pkg } = req.body;
         if (!name && !phone) {

@@ -947,3 +947,15 @@
         min-height: 48px;
     }
 }
+
+/* v28.5: iOS safe-area-inset for notched devices (iPhone X+) */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+    .kleshnya-widget,
+    .role-panel-fab,
+    .improvement-fab {
+        bottom: calc(12px + env(safe-area-inset-bottom));
+    }
+    .sidebar-nav {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+}

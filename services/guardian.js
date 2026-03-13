@@ -747,7 +747,7 @@ function detectRussianLanguage(content) {
     return null;
 }
 
-function quickToxicityCheck(content) {
+function quickToxicityCheck(content, opts = {}) {
     const lower = content.toLowerCase();
     // Normalize: remove ALL non-letter chars (catches "г а в н о", "х*й", "п*зда", "х-у-й")
     const normalized = lower.replace(/[^а-яґєіїёa-z]/g, '');
@@ -774,22 +774,34 @@ function quickToxicityCheck(content) {
     const contentNoSpaces = content.replace(/\s/g, '');
     const digitCount = (contentNoSpaces.match(/[\d*]/g) || []).length;
     const pureDigits = (contentNoSpaces.match(/\d/g) || []).length;
-    // Card numbers: 4-4-4-4 or 16 digits or masked with *
+
+    // v28.5: Whitelist — privileged roles can share phone numbers
+    const PHONE_PRIVILEGED_ROLES = ['admin', 'manager', 'senior_manager', 'vice_director', 'director', 'creator'];
+    const isPhonePrivileged = opts.role && PHONE_PRIVILEGED_ROLES.includes(opts.role);
+
+    // v28.5: Whitelist prefixes — any role can share if prefixed with service context
+    const PHONE_WHITELIST_PREFIXES = ['клієнт:', 'телефон клієнта:', 'підрядник:', 'звʼяжіться:', 'контакт:'];
+    const lowerContent = lower;
+    const hasWhitelistPrefix = PHONE_WHITELIST_PREFIXES.some(prefix => lowerContent.includes(prefix));
+
+    // Card numbers: 4-4-4-4 or 16 digits or masked with * (always blocked, no whitelist)
     if (/\d{4}[\s\-*]*\d{4}[\s\-*]*\d{4}[\s\-*]*\d{4}/.test(content) ||
         /\d{4}[\s\-]*\*{4}[\s\-]*\*{4}[\s\-]*\*{4}/.test(content) ||
         /\d{13,19}/.test(contentNoSpaces)) {
         return ['💳 номер картки'];
     }
-    // Phone numbers
-    const phonePatterns = [
-        /(?:\+?38)?0\d{9}/,
-        /\+?\d[\d\s\-]{8,}\d/,
-        /\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/,
-        /\+\*{3}\s?\*{4}\s?\*{4}/
-    ];
-    if (phonePatterns.some(p => p.test(content) || p.test(contentNoSpaces))) {
-        if (pureDigits >= 7) {
-            return ['📱 телефонний номер'];
+    // Phone numbers — skip for privileged roles or whitelisted context
+    if (!isPhonePrivileged && !hasWhitelistPrefix) {
+        const phonePatterns = [
+            /(?:\+?38)?0\d{9}/,
+            /\+?\d[\d\s\-]{8,}\d/,
+            /\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/,
+            /\+\*{3}\s?\*{4}\s?\*{4}/
+        ];
+        if (phonePatterns.some(p => p.test(content) || p.test(contentNoSpaces))) {
+            if (pureDigits >= 7) {
+                return ['📱 телефонний номер'];
+            }
         }
     }
 
@@ -1493,7 +1505,7 @@ async function sendGuardianMessage(channelId, content) {
  *
  * Returns: { blocked: bool, reason?, message? }
  */
-async function preCheckMessage({ channelId, userId, username, content }) {
+async function preCheckMessage({ channelId, userId, username, content, role }) {
     if (!content) return { blocked: false };
 
     // 0. Track spam (fire-and-forget)
@@ -1524,7 +1536,7 @@ async function preCheckMessage({ channelId, userId, username, content }) {
     });
 
     // 2. Quick keyword check — blocks BEFORE message is saved
-    const toxicWords = quickToxicityCheck(content);
+    const toxicWords = quickToxicityCheck(content, { role });
     if (toxicWords) {
         const isRussian = toxicWords.some(w => w.includes('російська'));
         const reason = isRussian

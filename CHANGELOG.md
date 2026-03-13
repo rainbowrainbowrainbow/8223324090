@@ -4,6 +4,14 @@
 
 ---
 
+## v28.5.0 — Performance & Security Sprint (2026-03-13)
+- **[CR-1] defer scripts** — 20 `<script>` тегів на index.html тепер з `defer` атрибутом, не блокують HTML parsing (FCP +1-3с на мобільному) [claude-code]
+- **[CR-2] Landing rate limit** — `POST /api/leads/landing` обмежено до 5 заявок/15хв з одного IP (захист від spam-ботів) [claude-code]
+- **[CR-3] Guardian phone whitelist** — привілейовані ролі (manager+) можуть ділитися телефонами в чаті; будь-хто може з префіксом "клієнт:", "підрядник:" тощо [claude-code]
+- **[H-11] iOS safe-area** — `viewport-fit=cover` + `env(safe-area-inset-bottom)` для FAB, sidebar на iPhone X+ [claude-code]
+- **[H-7] Landing fonts async** — Google Fonts завантажуються асинхронно (`media=print` → `onload='all'`), `script.js defer` [claude-code]
+- **Cache bust** — index.html scripts оновлено `?v=25.4.1` → `?v=28.5.0` [claude-code]
+
 ## v28.1.0 — Manager Tab Fix (2026-03-13)
 - **Sidebar init** — на сторінці Менеджера тепер відображається sidebar навігація (раніше `Sidebar.init()` не викликався — sidebar був порожній) [claude-code]
 - **Role Panel** — додано `role-panel.js` + `role-panel.css` на сторінку Менеджера [claude-code]

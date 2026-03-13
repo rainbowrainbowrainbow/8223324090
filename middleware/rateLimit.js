@@ -148,6 +148,13 @@ const shopBuyLimiter = createWriteRateLimiter('shop-buy', {
     methods: ['POST']
 });
 
+// v28.5: Landing form limiter — 5 submissions per 15 min per IP
+const landingRateLimiter = createWriteRateLimiter('landing-form', {
+    windowMs: 900000,
+    max: RATE_LIMIT_MAX > 120 ? RATE_LIMIT_MAX : 5,
+    methods: ['POST']
+});
+
 module.exports = {
     rateLimiter,
     loginRateLimiter,
@@ -158,5 +165,6 @@ module.exports = {
     createWriteRateLimiter,
     exportLimiter,
     sensitiveActionLimiter,
-    shopBuyLimiter
+    shopBuyLimiter,
+    landingRateLimiter
 };

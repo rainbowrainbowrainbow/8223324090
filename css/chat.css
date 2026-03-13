@@ -7373,3 +7373,120 @@ body.dark-mode .guardian-digest-generate-btn {
         font-size: 22px;
     }
 }
+
+/* ─── Sound Settings Panel — v28.0.0 ───────────────────────────────────── */
+.chat-sound-wrapper {
+    position: relative;
+    display: inline-flex;
+}
+
+.sound-settings-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 220px;
+    background: var(--bg-secondary, #1e1e2e);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 10px;
+    padding: 12px;
+    z-index: 1000;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sound-settings-panel.hidden {
+    display: none;
+}
+
+.sound-settings-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary, #fff);
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-color, #333);
+}
+
+.sound-setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary, #aaa);
+}
+
+.sound-volume-slider {
+    width: 90px;
+    accent-color: var(--accent, #7c5cbf);
+    cursor: pointer;
+}
+
+.sound-theme-select {
+    background: var(--bg-tertiary, #2a2a3e);
+    border: 1px solid var(--border-color, #444);
+    border-radius: 6px;
+    color: var(--text-primary, #fff);
+    font-size: 12px;
+    padding: 2px 6px;
+    cursor: pointer;
+}
+
+.sound-test-btn {
+    background: var(--accent, #7c5cbf);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 12px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+    align-self: flex-end;
+}
+
+.sound-test-btn:hover {
+    background: var(--accent-hover, #9470d8);
+}
+
+/* Toggle switch */
+.sound-toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 18px;
+}
+
+.sound-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.sound-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background-color: var(--border-color, #555);
+    border-radius: 18px;
+    transition: background-color 0.2s;
+}
+
+.sound-toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    left: 3px;
+    top: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+
+.sound-toggle-switch input:checked + .sound-toggle-slider {
+    background-color: var(--accent, #7c5cbf);
+}
+
+.sound-toggle-switch input:checked + .sound-toggle-slider::before {
+    transform: translateX(16px);
+}

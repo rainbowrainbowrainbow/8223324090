@@ -54,24 +54,44 @@
         return idx % 6;
     }
 
-    // Sound preloading — all available sounds
+    // Sound preloading — legacy MP3 fallback (used if SoundEngine unavailable)
     var _sounds = {};
     function _preloadSounds() {
+        // SoundEngine handles synthesis — MP3 fallback for legacy
+        if (typeof SoundEngine !== 'undefined') {
+            SoundEngine.init();
+            return;
+        }
         ['message-new', 'message-sent', 'mention', 'connect', 'error', 'task-new'].forEach(function (name) {
             try {
                 _sounds[name] = new Audio('sounds/' + name + '.mp3');
                 _sounds[name].volume = 0.5;
-                // Preload into memory
                 _sounds[name].load();
             } catch (e) { /* ignore */ }
         });
     }
 
-    function _playSound(name) {
-        if (!_soundsEnabled || document.hasFocus()) return;
+    // _shouldPlayNotification: true if sound should play for given channelId
+    // FIX v28: plays when tab active but message is in a DIFFERENT channel
+    function _shouldPlayNotification(channelId) {
+        if (!document.hasFocus()) return true;           // tab not focused — always play
+        if (!_currentChannel) return true;               // no active channel — play
+        return String(channelId) !== String(_currentChannel.id); // different channel — play
+    }
+
+    // _playSound: for incoming messages — respects channel focus logic
+    function _playSound(name, channelId) {
+        if (!_soundsEnabled) return;
+        // Use SoundEngine if available, fallback to MP3
+        if (typeof SoundEngine !== 'undefined') {
+            if (channelId !== undefined && !_shouldPlayNotification(channelId)) return;
+            SoundEngine.play(name, channelId);
+            return;
+        }
+        // Legacy MP3 path — original behaviour (only when tab not focused)
+        if (document.hasFocus()) return;
         try {
             if (_sounds[name]) {
-                // Clone audio for overlapping sounds
                 var s = _sounds[name].cloneNode();
                 s.volume = _sounds[name].volume;
                 s.play().catch(function () {});
@@ -79,8 +99,13 @@
         } catch (e) { /* ignore */ }
     }
 
+    // _playSoundAlways: for own actions — always plays regardless of focus/channel
     function _playSoundAlways(name) {
         if (!_soundsEnabled) return;
+        if (typeof SoundEngine !== 'undefined') {
+            SoundEngine.play(name);
+            return;
+        }
         try {
             if (_sounds[name]) {
                 var s = _sounds[name].cloneNode();
@@ -3768,7 +3793,8 @@
             }
         }
 
-        _playSound('message-new');
+        // FIX v28: pass channelId so sound plays for messages in OTHER channels even when tab is focused
+        _playSound('message-new', msg.channelId);
     }
 
     function _onTyping(payload) {

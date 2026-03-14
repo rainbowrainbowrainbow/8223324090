@@ -270,13 +270,13 @@
 
     // Package pricing map
     var PKG_PRICES = {
-        basic:    { label: 'Базовий пакет',            price: 2000,  base: true },
+        basic:    { label: 'Базовий пакет',            price: 3000,  base: true },
         hr:       { label: '+ HR Модуль',              price: 3000,  base: false },
         art:      { label: '+ Art Director',           price: 8000,  base: false },
         designer: { label: '+ Дизайнер',               price: 4000,  base: false },
         sound:    { label: '+ Звуковий брендинг',      price: 2000,  base: false },
         kleshnya: { label: '+ Клешня Агент',           price: 2000,  base: false },
-        full:     { label: 'Повний пакет (все)',       price: 21000, base: true  }
+        full:     { label: 'Повний пакет (все)',       price: 22000, base: true  }
     };
 
     function openModal(pkg) {
@@ -299,7 +299,7 @@
                 var hint = document.getElementById('modalPriceHint');
                 if (hint) {
                     if (!info.base) {
-                        hint.textContent = '💡 Базовий 2 000 ₴ + ' + info.label.replace('+ ','') + ' ' + info.price.toLocaleString('uk-UA') + ' ₴ = ' + (2000 + info.price).toLocaleString('uk-UA') + ' ₴/міс';
+                        hint.textContent = '💡 Базовий 3 000 ₴ + ' + info.label.replace('+ ','') + ' ' + info.price.toLocaleString('uk-UA') + ' ₴ = ' + (3000 + info.price).toLocaleString('uk-UA') + ' ₴/міс';
                         hint.style.display = '';
                     } else {
                         hint.textContent = '';

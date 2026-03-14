@@ -130,16 +130,7 @@ BEGIN
     END IF;
 END $$;
 
--- Add category_type to shop_items for real bonuses
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'shop_items' AND column_name = 'category_type'
-    ) THEN
-        ALTER TABLE shop_items ADD COLUMN category_type VARCHAR(20) DEFAULT 'digital';
-    END IF;
-END $$;
+-- Note: shop_items.category column already exists from migration 040
 
 -- Seed: Level thresholds (ensure they exist)
 INSERT INTO level_thresholds (level, xp_required, title) VALUES
@@ -181,7 +172,7 @@ DO $$
 BEGIN
     -- Check if icon column exists in shop_items
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shop_items' AND column_name = 'icon') THEN
-        INSERT INTO shop_items (name, description, icon, price_coins, type, category_type, is_active) VALUES
+        INSERT INTO shop_items (name, description, icon, price_coins, type, category, is_active) VALUES
             ('Додатковий вихідний', 'Один додатковий вихідний день на твій вибір', '🏖️', 5000, 'real', 'real', true),
             ('Обід за рахунок парку', 'Безкоштовний обід у кафе парку', '🍕', 1500, 'real', 'real', true),
             ('Сертифікат ATB 200₴', 'Подарунковий сертифікат на 200 гривень', '🎁', 3000, 'real', 'real', true),
@@ -190,7 +181,7 @@ BEGIN
             ('Безкоштовний напій', 'Один напій у кафе парку безкоштовно', '☕', 300, 'coupon', 'coupon', true)
         ON CONFLICT DO NOTHING;
     ELSE
-        INSERT INTO shop_items (name, description, price_coins, type, category_type, is_active) VALUES
+        INSERT INTO shop_items (name, description, price_coins, type, category, is_active) VALUES
             ('Додатковий вихідний', 'Один додатковий вихідний день на твій вибір', 5000, 'real', 'real', true),
             ('Обід за рахунок парку', 'Безкоштовний обід у кафе парку', 1500, 'real', 'real', true),
             ('Сертифікат ATB 200₴', 'Подарунковий сертифікат на 200 гривень', 3000, 'real', 'real', true),

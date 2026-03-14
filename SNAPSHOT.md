@@ -3,17 +3,15 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v25.4.0**. package.json: `25.4.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
+Версія **v30.3.0**. package.json: `30.3.0`. Бранч `claude/continue-project-work-EAhTA`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] v25.4.0 — Meeting Features: Penalties, Reviews, Homework, Polls, Courses, Meeting Notes, Pipeline
-- **package.json**: `"version": "25.4.0"`
-- **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **origin/main**: v24.0.0
-- **origin/deployed**: v17.4.1
-- **Що нового в v25.4.0**: 7 нових фіч з зустрічі Сергій+АнЛі: штрафні бали, оцінювання задач, домашні завдання, опитування в чаті, курси/curriculum, meeting notes з автозадачами, sales pipeline stages. 7 нових міграцій (060-066), 25+ нових API endpoints.
+- **Останній коміт**: feat: [claude-code] 6 booking features — search, redo, templates, recurring UI, bulk ops, PDF export
+- **package.json**: `"version": "30.3.0"`
+- **Бранч**: `claude/continue-project-work-EAhTA`
+- **Що нового в v30.3.0**: Пошук по таймлайну (Ctrl+F), Redo + Ctrl+Z/Shift+Z, шаблони бронювань (DB + API + UI), повторювані бронювання (recurring UI), bulk-операції (Shift+Click), PDF експорт таймлайну. 1 нова міграція (075), 1 новий route (booking-templates).
 
 ### Тести
 - **296+ тестів** (api.test.js)

@@ -546,34 +546,15 @@ body.dark-mode .btn-reset-auto {
    TIMELINE SEARCH (v30.3)
    ========================================== */
 
-.btn-search-timeline {
-    padding: 6px 10px;
-    border: 1px solid var(--gray-200);
-    background: var(--gray-50);
-    border-radius: var(--radius-sm);
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all var(--speed-fast) var(--ease-smooth);
-    font-family: inherit;
-    min-height: 36px;
-}
-
-.btn-search-timeline:hover {
-    background: var(--primary-50, #ECFDF5);
-    border-color: var(--primary);
-    color: var(--primary-dark);
-}
-
 .timeline-search-wrap {
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 3px 6px;
-    border: 2px solid var(--primary);
+    padding: 4px 10px;
+    border: 1px solid var(--primary);
     border-radius: var(--radius-sm);
     background: var(--white);
-    min-height: 36px;
+    min-height: 44px;
 }
 
 .timeline-search-wrap.hidden {
@@ -602,11 +583,16 @@ body.dark-mode .btn-reset-auto {
     border: none;
     background: transparent;
     cursor: pointer;
-    padding: 2px 5px;
-    font-size: 10px;
+    padding: 4px 8px;
+    font-size: 12px;
     color: var(--gray-500);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     line-height: 1;
+    min-width: 28px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .timeline-search-nav:hover {
@@ -618,11 +604,16 @@ body.dark-mode .btn-reset-auto {
     border: none;
     background: transparent;
     cursor: pointer;
-    padding: 2px 5px;
-    font-size: 13px;
+    padding: 4px 8px;
+    font-size: 14px;
     color: var(--gray-400);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     line-height: 1;
+    min-width: 28px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .timeline-search-close:hover {
@@ -658,15 +649,6 @@ body.dark-mode .btn-reset-auto {
     color: var(--gray-100);
 }
 
-[data-theme="dark"] .btn-search-timeline {
-    background: var(--gray-700);
-    border-color: var(--gray-600);
-    color: var(--gray-200);
-}
-
-[data-theme="dark"] .btn-search-timeline:hover {
-    background: var(--gray-600);
-}
 
 /* ==========================================
    BOOKING TEMPLATES (v30.3)
@@ -731,22 +713,6 @@ body.dark-mode .btn-reset-auto {
    RECURRING BOOKINGS UI (v30.3)
    ========================================== */
 
-.btn-recurring-booking {
-    padding: 8px 14px;
-    border: 1px solid var(--gray-200);
-    background: var(--gray-50);
-    border-radius: var(--radius-sm);
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    font-family: inherit;
-}
-
-.btn-recurring-booking:hover {
-    background: #EDE9FE;
-    border-color: #8B5CF6;
-    color: #6D28D9;
-}
 
 .recurring-form .form-section {
     margin-bottom: 12px;

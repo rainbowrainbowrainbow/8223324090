@@ -4,6 +4,15 @@
 
 ---
 
+## v30.3.0 — Пошук, Шаблони, Повтори (2026-03-14)
+- **Пошук по таймлайну** — Ctrl+F відкриває search bar, підсвітка знайдених блоків, навігація ▲▼ по результатах, авто-скрол, dimming непотрібних блоків [claude-code]
+- **Redo + Hotkeys** — Ctrl+Z скасувати, Ctrl+Shift+Z / Ctrl+Y повторити, повний redo стек (до 10 дій) [claude-code]
+- **Шаблони бронювань** — DB таблиця `booking_templates`, CRUD API `/api/booking-templates`, dropdown + кнопка 💾 у формі бронювання, лічильник використань, сортування по popular+favorites [claude-code]
+- **Повторювані бронювання UI** — модалка з вибором патерну (щотижня, через тиждень, будні, вихідні, щомісяця), дні тижня, дата завершення. Кнопка 🔄 в деталях бронювання [claude-code]
+- **Bulk-операції** — Shift+Click для multi-select блоків на таймлайні, floating action bar (видалити, підтвердити, зробити попередніми) [claude-code]
+- **PDF експорт** — кнопка "Друк PDF" з print stylesheet (ховає UI, зберігає кольори блоків) [claude-code]
+- **Міграція 075** — `booking_templates` таблиця з індексами на favorite та usage_count [claude-code]
+
 ## v24.4.0 — QA Mega Fix + Adaptive Layout (2026-03-12)
 - **8 сторінок виправлено** — додано відсутній ui.js (customers, chat, dashboard, leads, profile, shop, quiz, room) — confirmModal/showNotification були undefined [claude-code]
 - **Адаптивний layout** — прибрано max-width обмеження (1800/1400/1200px), контент розтягується на повну ширину коли панель закрита [claude-code]

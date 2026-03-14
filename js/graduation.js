@@ -5,7 +5,6 @@
 (function () {
     'use strict';
 
-    const API = window.API_BASE || '/api';
     let services = [];
     let packages = [];
     let quotes = [];
@@ -17,11 +16,13 @@
     // Parse JWT for role
     function getUserRole() {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('pzp_token');
             if (!token) return 'manager';
-            const payload = JSON.parse(atob(token.split('.')[1]));
+            const parts = token.split('.');
+            if (parts.length < 2) return 'manager';
+            const payload = JSON.parse(atob(parts[1]));
             return payload.role || 'manager';
-        } catch { return 'manager'; }
+        } catch (e) { console.warn('[Graduation] getUserRole error:', e); return 'manager'; }
     }
 
     function isDirector() {
@@ -144,51 +145,13 @@
         return { totalPerChild, totalAll, totalCost, profit, margin, kickback, totalDuration, kids, discount };
     }
 
-    // === API CALLS ===
+    // === API CALLS (use global apiCall from api.js) ===
 
-    async function apiGet(path) {
-        const token = localStorage.getItem('token');
-        const resp = await fetch(API + path, {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (!resp.ok) throw new Error(`API error ${resp.status}`);
-        return resp.json();
-    }
-
-    async function apiPost(path, body) {
-        const token = localStorage.getItem('token');
-        const resp = await fetch(API + path, {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.error || `API error ${resp.status}`);
-        }
-        return resp.json();
-    }
-
-    async function apiPut(path, body) {
-        const token = localStorage.getItem('token');
-        const resp = await fetch(API + path, {
-            method: 'PUT',
-            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        if (!resp.ok) throw new Error(`API error ${resp.status}`);
-        return resp.json();
-    }
-
-    async function apiPatch(path, body) {
-        const token = localStorage.getItem('token');
-        const resp = await fetch(API + path, {
-            method: 'PATCH',
-            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        if (!resp.ok) throw new Error(`API error ${resp.status}`);
-        return resp.json();
+    async function gradApi(method, path, body) {
+        const result = await apiCall(method, path, body, { fallback: null });
+        if (result === null || result === undefined) throw new Error('API error');
+        if (result.success === false) throw new Error(result.error || 'API error');
+        return result;
     }
 
     // === DATA LOADING ===
@@ -196,9 +159,9 @@
     async function loadAll() {
         try {
             [services, packages, settings] = await Promise.all([
-                apiGet('/graduation/services'),
-                apiGet('/graduation/packages'),
-                apiGet('/graduation/settings')
+                gradApi('GET','/graduation/services'),
+                gradApi('GET','/graduation/packages'),
+                gradApi('GET','/graduation/settings')
             ]);
             renderCurrentTab();
         } catch (err) {
@@ -209,7 +172,7 @@
 
     async function loadQuotes() {
         try {
-            quotes = await apiGet('/graduation/quotes');
+            quotes = await gradApi('GET','/graduation/quotes');
         } catch (err) {
             console.error('Failed to load quotes:', err);
             quotes = [];
@@ -557,7 +520,7 @@
 
     async function selectPackage(slug) {
         try {
-            const pkg = await apiGet(`/graduation/packages/${slug}`);
+            const pkg = await gradApi('GET',`/graduation/packages/${slug}`);
             selectedServiceIds.clear();
             for (const svc of pkg.services) {
                 selectedServiceIds.add(svc.id);
@@ -582,7 +545,7 @@
             .map(s => ({ serviceId: s.id, name: s.name, price: getEffectivePrice(s) }));
 
         try {
-            const quote = await apiPost('/graduation/quotes', {
+            const quote = await gradApi('POST','/graduation/quotes', {
                 kidsCount: getKidsCount(),
                 discountPercent: getDiscount() * 100,
                 selectedServices: selectedSvcs,
@@ -600,7 +563,7 @@
 
     async function loadQuote(id) {
         try {
-            const quote = await apiGet(`/graduation/quotes/${id}`);
+            const quote = await gradApi('GET',`/graduation/quotes/${id}`);
             const svcList = quote.selectedServices || [];
 
             selectedServiceIds.clear();
@@ -642,7 +605,7 @@
             .map(s => ({ serviceId: s.id, name: s.name, price: getEffectivePrice(s) }));
 
         try {
-            const quote = await apiPost('/graduation/quotes', {
+            const quote = await gradApi('POST','/graduation/quotes', {
                 kidsCount: getKidsCount(),
                 discountPercent: getDiscount() * 100,
                 selectedServices: selectedSvcs,
@@ -660,8 +623,8 @@
     }
 
     function viewProposal(id) {
-        const token = localStorage.getItem('token');
-        window.open(`${API}/graduation/quotes/${id}/proposal?token=${token}`, '_blank');
+        const token = localStorage.getItem('pzp_token');
+        window.open(`${API_BASE}/graduation/quotes/${id}/proposal?token=${token}`, '_blank');
     }
 
     function showInfo(id) {
@@ -715,12 +678,12 @@
         if (isNaN(val) || val < 0) return;
 
         try {
-            await apiPut(`/graduation/services/${id}`, {
+            await gradApi('PUT',`/graduation/services/${id}`, {
                 pricePerChild: val,
                 priceType: 'fixed' // Override to fixed when manually set
             });
             // Reload services
-            services = await apiGet('/graduation/services');
+            services = await gradApi('GET','/graduation/services');
             recalc();
             showNotification('Ціну оновлено', 'success');
             document.getElementById('gradInfoModal').style.display = 'none';
@@ -735,7 +698,7 @@
         if (isNaN(value)) return;
 
         try {
-            settings = await apiPut('/graduation/settings', {
+            settings = await gradApi('PUT','/graduation/settings', {
                 settings: { [key]: value }
             });
             recalc();
@@ -748,8 +711,8 @@
     async function resetPrices() {
         if (!confirm('Скинути всі ціни до стандартних?')) return;
         try {
-            services = await apiGet('/graduation/services');
-            settings = await apiGet('/graduation/settings');
+            services = await gradApi('GET','/graduation/services');
+            settings = await gradApi('GET','/graduation/settings');
             recalc();
             renderCurrentTab();
             showNotification('Ціни скинуто', 'success');

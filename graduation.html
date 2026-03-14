@@ -80,12 +80,11 @@
     <script src="js/auth.js?v=30.0.0"></script>
     <script src="js/components/sidebar.js?v=30.0.0"></script>
     <script src="js/graduation.js?v=30.0.0"></script>
-    <script src="js/role-panel.js?v=30.0.0"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Embedded mode: hide sidebar/header when loaded inside iframe
             const isEmbedded = new URLSearchParams(location.search).get('embedded') === '1';
             if (isEmbedded) {
+                // Hide sidebar, header, and don't load role-panel (parent page already has it)
                 const sidebar = document.querySelector('.sidebar-nav');
                 const header = document.querySelector('.header');
                 if (sidebar) sidebar.style.display = 'none';
@@ -94,6 +93,10 @@
                 if (main) main.style.marginLeft = '0';
             } else {
                 if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
+                // Load role-panel only in standalone mode
+                const s = document.createElement('script');
+                s.src = 'js/role-panel.js?v=30.0.0';
+                document.body.appendChild(s);
             }
             if (typeof GradPage !== 'undefined') GradPage.init();
         });

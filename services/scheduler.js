@@ -1088,6 +1088,8 @@ async function checkUpcomingBookings() {
 
 // v30.6: Debt notification — weekly reminder about unpaid bookings
 let debtSentThisWeek = null;
+let pushRemindersSentToday = null;
+let certExpirySentToday = null;
 
 async function checkDebtNotifications() {
     try {
@@ -1675,7 +1677,9 @@ module.exports = {
     checkExpiredChatMessages,
     checkAutoReviewRequests,
     checkTeamPulseReminder,
-    checkAutoOrdering
+    checkAutoOrdering,
+    checkBookingPushReminders,
+    checkCertExpiryReminders
 };
 
 // v22.18: Auto-ordering — check stock levels and create order requests
@@ -1742,6 +1746,120 @@ async function checkAutoOrdering() {
     } catch (err) {
         if (!err.message.includes('does not exist')) {
             log.error('checkAutoOrdering error', err);
+        }
+    }
+}
+
+// v30.7: Push reminders — notify animators 30 min before their booking (#9)
+async function checkBookingPushReminders() {
+    try {
+        const kyiv = getKyivDate();
+        const todayStr = getKyivDateStr();
+        const nowTime = getKyivTimeStr();
+
+        if (pushRemindersSentToday === todayStr + '_' + nowTime) return;
+
+        // Check every minute, find bookings starting in ~30 minutes
+        const nowMinutes = kyiv.getHours() * 60 + kyiv.getMinutes();
+        const targetMinutes = nowMinutes + 30;
+        const targetTime = `${String(Math.floor(targetMinutes / 60)).padStart(2, '0')}:${String(targetMinutes % 60).padStart(2, '0')}`;
+
+        const result = await pool.query(`
+            SELECT b.id, b.id AS booking_number, b.time AS time_start, b.program_name,
+                   b.hosts, b.second_animator
+            FROM bookings b
+            WHERE b.date = $1
+              AND b.status IN ('confirmed', 'pending')
+              AND b.time = $2
+              AND b.hosts IS NOT NULL AND b.hosts != ''
+        `, [todayStr, targetTime]);
+
+        if (result.rows.length === 0) return;
+
+        pushRemindersSentToday = todayStr + '_' + nowTime;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        for (const booking of result.rows) {
+            const hostIds = [booking.hosts];
+            if (booking.second_animator && /^\d+$/.test(booking.second_animator)) {
+                hostIds.push(parseInt(booking.second_animator));
+            }
+            const validIds = hostIds.filter(Boolean);
+            if (validIds.length === 0) continue;
+
+            const staff = await pool.query(
+                'SELECT id, name, telegram_id FROM staff WHERE id = ANY($1)', [validIds]
+            );
+
+            for (const s of staff.rows) {
+                const text = `⏰ <b>Через 30 хв у тебе бронювання!</b>\n\n`
+                    + `📋 ${booking.booking_number}\n`
+                    + `🎭 ${booking.program_name || 'Програма не вказана'}\n`
+                    + `🕐 ${booking.time_start}\n`;
+
+                const targetChat = s.telegram_id || chatId;
+                await sendTelegramMessage(targetChat, text);
+            }
+        }
+        log.info(`Push reminders sent for ${result.rows.length} upcoming bookings`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkBookingPushReminders error', err);
+        }
+    }
+}
+
+// v30.7: Certificate expiry reminders — notify about expiring certifications
+async function checkCertExpiryReminders() {
+    try {
+        const todayStr = getKyivDateStr();
+        const nowTime = getKyivTimeStr();
+
+        if (nowTime !== '09:15') return;
+        if (certExpirySentToday === todayStr) return;
+        const dbLast = await getLastSent('cert_expiry_reminder');
+        if (dbLast === todayStr) { certExpirySentToday = todayStr; return; }
+
+        certExpirySentToday = todayStr;
+        await setLastSent('cert_expiry_reminder', todayStr);
+
+        // Find certs expiring in next 14 days
+        const result = await pool.query(`
+            SELECT sc.id, sc.name AS cert_name, sc.expires_at, sc.status,
+                   s.name AS staff_name, s.id AS staff_id
+            FROM staff_certifications sc
+            JOIN staff s ON s.id = sc.staff_id
+            WHERE sc.expires_at IS NOT NULL
+              AND sc.status = 'active'
+              AND sc.expires_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '14 days'
+            ORDER BY sc.expires_at ASC
+        `);
+
+        if (result.rows.length === 0) return;
+
+        // Mark expired ones
+        await pool.query(`
+            UPDATE staff_certifications SET status = 'expired'
+            WHERE expires_at < CURRENT_DATE AND status = 'active'
+        `);
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        let text = `📜 <b>Сертифікати: термін спливає</b>\n\n`;
+        for (const cert of result.rows) {
+            const daysLeft = Math.ceil((new Date(cert.expires_at) - new Date(todayStr)) / 86400000);
+            const urgency = daysLeft <= 3 ? '🔴' : daysLeft <= 7 ? '🟡' : '🟢';
+            text += `${urgency} <b>${cert.staff_name}</b> — ${cert.cert_name} (${daysLeft} дн.)\n`;
+        }
+
+        await sendTelegramMessage(chatId, text);
+        log.info(`Cert expiry reminders: ${result.rows.length} certs expiring soon`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkCertExpiryReminders error', err);
         }
     }
 }

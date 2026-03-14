@@ -7,19 +7,19 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=30.7.0">
+    <link rel="stylesheet" href="css/layout.css?v=30.7.0">
+    <link rel="stylesheet" href="css/pages.css?v=30.7.0">
+    <link rel="stylesheet" href="css/modals.css?v=30.7.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=30.7.0">
+    <link rel="stylesheet" href="css/responsive.css?v=30.7.0">
+    <link rel="stylesheet" href="css/base.css?v=30.7.0">
+    <link rel="stylesheet" href="css/layout.css?v=30.7.0">
+    <link rel="stylesheet" href="css/pages.css?v=30.7.0">
+    <link rel="stylesheet" href="css/modals.css?v=30.7.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=30.7.0">
+    <link rel="stylesheet" href="css/responsive.css?v=30.7.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=30.7.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -653,6 +653,18 @@
             color: var(--gray-600);
         }
         .btn-export:hover { background: var(--gray-50); color: var(--primary); }
+        .btn-add {
+            padding: 8px 20px;
+            border: none;
+            background: var(--primary);
+            color: #fff;
+            font-family: inherit;
+            font-size: var(--font-xs);
+            font-weight: 700;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        .btn-add:hover { opacity: 0.9; }
 
         /* ==========================================
            DARK MODE
@@ -943,6 +955,11 @@
                 <button class="hr-tab" data-tab="team">Команда</button>
                 <button class="hr-tab" data-tab="reports">Звіти</button>
                 <button class="hr-tab" data-tab="ai-team">AI Команда</button>
+                <button class="hr-tab" data-tab="leaves">Відпустки</button>
+                <button class="hr-tab" data-tab="salary">Зарплата</button>
+                <button class="hr-tab" data-tab="ratings">Рейтинг</button>
+                <button class="hr-tab" data-tab="onboarding">Онбординг</button>
+                <button class="hr-tab" data-tab="costumes">Костюмерна</button>
             </div>
 
             <!-- TAB 1: TODAY -->
@@ -1023,6 +1040,56 @@
                     </p>
                 </div>
                 <div id="aiTeamList"></div>
+            </div>
+
+            <!-- TAB 6: LEAVES -->
+            <div id="tab-leaves" class="hr-tab-content">
+                <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
+                    <select id="leaveStatusFilter" class="hr-team-select" style="min-width:140px;">
+                        <option value="">Всі статуси</option>
+                        <option value="pending" selected>Очікують</option>
+                        <option value="approved">Затверджені</option>
+                        <option value="rejected">Відхилені</option>
+                    </select>
+                    <button id="btnNewLeave" class="btn-add" style="margin-left:auto;">+ Нова заявка</button>
+                </div>
+                <div id="leavesList"></div>
+            </div>
+
+            <!-- TAB 7: SALARY -->
+            <div id="tab-salary" class="hr-tab-content">
+                <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
+                    <select id="salaryMonth" class="hr-team-select" style="min-width:160px;"></select>
+                    <button id="btnAddAdjustment" class="btn-add">+ Бонус/Штраф</button>
+                </div>
+                <div id="salaryTotals" style="margin-bottom:16px;"></div>
+                <div class="hr-report-table-wrap">
+                    <table class="hr-report-table">
+                        <thead id="salaryHead"></thead>
+                        <tbody id="salaryBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 8: RATINGS -->
+            <div id="tab-ratings" class="hr-tab-content">
+                <div id="ratingsBoard"></div>
+            </div>
+
+            <!-- TAB 9: ONBOARDING -->
+            <div id="tab-onboarding" class="hr-tab-content">
+                <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">
+                    <button id="btnStartOnboarding" class="btn-add">+ Запустити онбординг</button>
+                </div>
+                <div id="onboardingList"></div>
+            </div>
+
+            <!-- TAB 10: COSTUMES -->
+            <div id="tab-costumes" class="hr-tab-content">
+                <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">
+                    <button id="btnAddCostume" class="btn-add">+ Додати костюм</button>
+                </div>
+                <div id="costumesList"></div>
             </div>
         </main>
     </div>
@@ -1169,12 +1236,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <script src="js/config.js?v=30.7.0"></script>
+    <script src="js/api.js?v=30.7.0"></script>
+    <script src="js/auth.js?v=30.7.0"></script>
+    <script src="js/components/sidebar.js?v=30.7.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=25.3.0"></script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/hr-page.js?v=30.7.0"></script>
+    <script src="js/role-panel.js?v=30.7.0"></script>
 </body>
 </html>

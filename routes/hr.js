@@ -1,5 +1,5 @@
 /**
- * routes/hr.js — HR module API (v15.0)
+ * routes/hr.js — HR module API (v30.7)
  *
  * Endpoints: staff HR data, shifts, clock-in/out, time records, reports, templates
  */
@@ -855,6 +855,661 @@ router.get('/report/export', async (req, res) => {
         res.send('\uFEFF' + header + rows);
     } catch (err) {
         log.error('GET /hr/report/export error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// ==========================================
+// LEAVE REQUESTS (#2)
+// ==========================================
+
+// GET /api/hr/leave-requests
+router.get('/leave-requests', async (req, res) => {
+    try {
+        const { status, staff_id } = req.query;
+        let sql = `SELECT lr.*, s.name AS staff_name, s.department,
+                    u.username AS reviewer_name
+                   FROM leave_requests lr
+                   JOIN staff s ON s.id = lr.staff_id
+                   LEFT JOIN users u ON u.id = lr.reviewed_by`;
+        const params = [];
+        const conds = [];
+        if (status) { params.push(status); conds.push(`lr.status = $${params.length}`); }
+        if (staff_id) { params.push(parseInt(staff_id)); conds.push(`lr.staff_id = $${params.length}`); }
+        if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
+        sql += ' ORDER BY lr.created_at DESC';
+        const result = await pool.query(sql, params);
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/leave-requests error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/hr/leave-requests — submit new request
+router.post('/leave-requests', async (req, res) => {
+    try {
+        const { staff_id, type, date_from, date_to, reason } = req.body;
+        if (!staff_id || !type || !date_from || !date_to) {
+            return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, type, date_from, date_to' });
+        }
+        const days = Math.ceil((new Date(date_to) - new Date(date_from)) / 86400000) + 1;
+        const result = await pool.query(
+            `INSERT INTO leave_requests (staff_id, type, date_from, date_to, days, reason)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [staff_id, type, date_from, date_to, days, reason]
+        );
+        await auditLog('leave_request_create', staff_id, req.user?.username, { type, date_from, date_to }, req.ip);
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('POST /hr/leave-requests error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// PUT /api/hr/leave-requests/:id/review — approve/reject
+router.put('/leave-requests/:id/review', async (req, res) => {
+    try {
+        const { status, comment } = req.body;
+        if (!['approved', 'rejected'].includes(status)) {
+            return res.status(400).json({ success: false, error: 'Статус: approved або rejected' });
+        }
+        const result = await pool.query(
+            `UPDATE leave_requests SET status = $1, reviewed_by = $2, reviewed_at = NOW(), review_comment = $3
+             WHERE id = $4 RETURNING *`,
+            [status, req.user?.id, comment, req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+
+        const lr = result.rows[0];
+        // If approved, mark days as vacation/sick/day_off in time records
+        if (status === 'approved') {
+            const d = new Date(lr.date_from);
+            const end = new Date(lr.date_to);
+            while (d <= end) {
+                const dateStr = d.toISOString().split('T')[0];
+                await pool.query(
+                    `INSERT INTO hr_time_records (staff_id, record_date, status, notes)
+                     VALUES ($1, $2, $3, $4)
+                     ON CONFLICT (staff_id, record_date) DO UPDATE SET status = $3, notes = $4`,
+                    [lr.staff_id, dateStr, lr.type === 'vacation' ? 'vacation' : lr.type === 'sick' ? 'sick' : 'day_off', `Заявка #${lr.id}`]
+                );
+                d.setDate(d.getDate() + 1);
+            }
+        }
+        await auditLog('leave_request_review', lr.staff_id, req.user?.username, { status, comment }, req.ip);
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('PUT /hr/leave-requests/:id/review error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// DELETE /api/hr/leave-requests/:id — cancel
+router.delete('/leave-requests/:id', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `UPDATE leave_requests SET status = 'cancelled' WHERE id = $1 AND status = 'pending' RETURNING *`,
+            [req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено або вже оброблено' });
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /hr/leave-requests/:id error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// ==========================================
+// STAFF RATINGS (#3)
+// ==========================================
+
+// GET /api/hr/ratings — staff leaderboard
+router.get('/ratings', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT s.id, s.name, s.department, s.role_type, s.color, s.photo_url,
+                   COALESCE(s.avg_rating, 0) AS avg_rating,
+                   COALESCE(s.total_ratings, 0) AS total_ratings,
+                   COUNT(DISTINCT b.id) AS total_events,
+                   COUNT(DISTINCT b.id) FILTER (WHERE b.date::date >= CURRENT_DATE - INTERVAL '30 days') AS events_30d
+            FROM staff s
+            LEFT JOIN bookings b ON (b.hosts = s.id OR b.second_animator = s.id::text)
+                AND b.status IN ('completed', 'confirmed')
+            WHERE s.is_active = true AND s.role_type IN ('animator', 'host')
+            GROUP BY s.id
+            ORDER BY COALESCE(s.avg_rating, 0) DESC, COUNT(DISTINCT b.id) DESC
+        `);
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/ratings error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/hr/ratings/:staffId — add rating
+router.post('/ratings/:staffId', async (req, res) => {
+    try {
+        const { score, comment } = req.body;
+        if (!score || score < 1 || score > 5) {
+            return res.status(400).json({ success: false, error: 'Оцінка від 1 до 5' });
+        }
+        const staffId = parseInt(req.params.staffId);
+        // Update staff avg_rating
+        const staff = await pool.query('SELECT avg_rating, total_ratings FROM staff WHERE id = $1', [staffId]);
+        if (staff.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+
+        const oldAvg = parseFloat(staff.rows[0].avg_rating) || 0;
+        const oldCount = parseInt(staff.rows[0].total_ratings) || 0;
+        const newCount = oldCount + 1;
+        const newAvg = ((oldAvg * oldCount) + score) / newCount;
+
+        await pool.query(
+            'UPDATE staff SET avg_rating = $1, total_ratings = $2 WHERE id = $3',
+            [Math.round(newAvg * 100) / 100, newCount, staffId]
+        );
+        await auditLog('rating_add', staffId, req.user?.username, { score, comment }, req.ip);
+        res.json({ success: true, avg_rating: Math.round(newAvg * 100) / 100, total_ratings: newCount });
+    } catch (err) {
+        log.error('POST /hr/ratings/:staffId error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// ==========================================
+// AUTO-ASSIGNMENT (#4)
+// ==========================================
+
+// POST /api/hr/auto-assign — find best animator for a booking
+router.post('/auto-assign', async (req, res) => {
+    try {
+        const { date, time_start, time_end, required_skills, exclude_ids } = req.body;
+        if (!date || !time_start) {
+            return res.status(400).json({ success: false, error: 'Потрібні date та time_start' });
+        }
+
+        // 1. Find available animators (have shift, not on leave)
+        const available = await pool.query(`
+            SELECT s.id, s.name, s.skills, s.avg_rating, s.total_events, s.color
+            FROM staff s
+            JOIN hr_shifts hs ON hs.staff_id = s.id AND hs.shift_date = $1
+            WHERE s.is_active = true
+              AND s.role_type IN ('animator', 'host')
+              AND NOT EXISTS (
+                SELECT 1 FROM leave_requests lr
+                WHERE lr.staff_id = s.id AND lr.status = 'approved'
+                  AND $1::date BETWEEN lr.date_from AND lr.date_to
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM hr_time_records tr
+                WHERE tr.staff_id = s.id AND tr.record_date = $1
+                  AND tr.status IN ('sick', 'vacation', 'day_off')
+              )
+            ORDER BY s.avg_rating DESC, s.total_events ASC
+        `, [date]);
+
+        let candidates = available.rows;
+
+        // 2. Exclude already assigned
+        if (exclude_ids && exclude_ids.length) {
+            candidates = candidates.filter(c => !exclude_ids.includes(c.id));
+        }
+
+        // 3. Filter by skills
+        if (required_skills && required_skills.length) {
+            candidates = candidates.filter(c => {
+                const skills = c.skills || [];
+                return required_skills.some(s => skills.includes(s));
+            });
+        }
+
+        // 4. Check booking conflicts — find busy animators by id
+        const booked = await pool.query(`
+            SELECT DISTINCT hosts AS staff_id FROM bookings
+            WHERE date = $1 AND status IN ('confirmed', 'pending')
+              AND time < $2 AND hosts IS NOT NULL
+            UNION
+            SELECT DISTINCT second_animator::int AS staff_id FROM bookings
+            WHERE date = $1 AND status IN ('confirmed', 'pending')
+              AND time < $2 AND second_animator IS NOT NULL AND second_animator != ''
+              AND second_animator ~ '^[0-9]+$'
+        `, [date, time_end || '23:59']);
+
+        const busyIds = booked.rows.map(r => r.staff_id);
+        candidates = candidates.filter(c => !busyIds.includes(c.id));
+
+        // 5. Score and rank
+        const scored = candidates.map(c => ({
+            ...c,
+            score: (parseFloat(c.avg_rating) || 0) * 20 + Math.min(parseInt(c.total_events) || 0, 50)
+        }));
+        scored.sort((a, b) => b.score - a.score);
+
+        res.json({ success: true, data: scored.slice(0, 5), total_available: scored.length });
+    } catch (err) {
+        log.error('POST /hr/auto-assign error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// ==========================================
+// ONBOARDING (#5)
+// ==========================================
+
+// GET /api/hr/onboarding/templates
+router.get('/onboarding/templates', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM onboarding_templates ORDER BY name');
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/onboarding/templates error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/hr/onboarding/templates
+router.post('/onboarding/templates', async (req, res) => {
+    try {
+        const { name, department, items } = req.body;
+        if (!name || !items) return res.status(400).json({ success: false, error: 'Потрібні name та items' });
+        const result = await pool.query(
+            'INSERT INTO onboarding_templates (name, department, items) VALUES ($1, $2, $3) RETURNING *',
+            [name, department, JSON.stringify(items)]
+        );
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('POST /hr/onboarding/templates error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/hr/onboarding/start — start onboarding for staff
+router.post('/onboarding/start', async (req, res) => {
+    try {
+        const { staff_id, template_id } = req.body;
+        if (!staff_id || !template_id) return res.status(400).json({ success: false, error: 'Потрібні staff_id та template_id' });
+
+        const tpl = await pool.query('SELECT * FROM onboarding_templates WHERE id = $1', [template_id]);
+        if (tpl.rows.length === 0) return res.status(404).json({ success: false, error: 'Шаблон не знайдено' });
+
+        const items = (tpl.rows[0].items || []).map((it, i) => ({ ...it, id: i + 1, done: false, done_at: null }));
+        const result = await pool.query(
+            `INSERT INTO onboarding_progress (staff_id, template_id, items, total_items)
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [staff_id, template_id, JSON.stringify(items), items.length]
+        );
+        await auditLog('onboarding_start', staff_id, req.user?.username, { template_id }, req.ip);
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('POST /hr/onboarding/start error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// GET /api/hr/onboarding — list all progress
+router.get('/onboarding', async (req, res) => {
+    try {
+        const { staff_id, status } = req.query;
+        let sql = `SELECT op.*, s.name AS staff_name, s.department, ot.name AS template_name
+                   FROM onboarding_progress op
+                   JOIN staff s ON s.id = op.staff_id
+                   LEFT JOIN onboarding_templates ot ON ot.id = op.template_id`;
+        const params = [];
+        const conds = [];
+        if (staff_id) { params.push(parseInt(staff_id)); conds.push(`op.staff_id = $${params.length}`); }
+        if (status) { params.push(status); conds.push(`op.status = $${params.length}`); }
+        if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
+        sql += ' ORDER BY op.started_at DESC';
+        const result = await pool.query(sql, params);
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/onboarding error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// PUT /api/hr/onboarding/:id/check — toggle item completion
+router.put('/onboarding/:id/check', async (req, res) => {
+    try {
+        const { item_id, done } = req.body;
+        const prog = await pool.query('SELECT * FROM onboarding_progress WHERE id = $1', [req.params.id]);
+        if (prog.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+
+        const items = prog.rows[0].items || [];
+        const item = items.find(i => i.id === item_id);
+        if (!item) return res.status(404).json({ success: false, error: 'Пункт не знайдено' });
+
+        item.done = done;
+        item.done_at = done ? new Date().toISOString() : null;
+        const completedItems = items.filter(i => i.done).length;
+        const isComplete = completedItems === items.length;
+
+        const result = await pool.query(
+            `UPDATE onboarding_progress SET items = $1, completed_items = $2,
+             status = $3, completed_at = $4 WHERE id = $5 RETURNING *`,
+            [JSON.stringify(items), completedItems, isComplete ? 'completed' : 'in_progress',
+             isComplete ? new Date().toISOString() : null, req.params.id]
+        );
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('PUT /hr/onboarding/:id/check error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// ==========================================
+// CERTIFICATIONS (#6)
+// ==========================================
+
+// GET /api/hr/certifications
+router.get('/certifications', async (req, res) => {
+    try {
+        const { staff_id, status } = req.query;
+        let sql = `SELECT sc.*, s.name AS staff_name, s.department
+                   FROM staff_certifications sc
+                   JOIN staff s ON s.id = sc.staff_id`;
+        const params = [];
+        const conds = [];
+        if (staff_id) { params.push(parseInt(staff_id)); conds.push(`sc.staff_id = $${params.length}`); }
+        if (status) { params.push(status); conds.push(`sc.status = $${params.length}`); }
+        if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
+        sql += ' ORDER BY sc.expires_at ASC NULLS LAST';
+        const result = await pool.query(sql, params);
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/certifications error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/hr/certifications
+router.post('/certifications', async (req, res) => {
+    try {
+        const { staff_id, name, category, issued_at, expires_at, training_id, notes } = req.body;
+        if (!staff_id || !name) return res.status(400).json({ success: false, error: 'Потрібні staff_id та name' });
+        const result = await pool.query(
+            `INSERT INTO staff_certifications (staff_id, name, category, issued_at, expires_at, training_id, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [staff_id, name, category || 'general', issued_at, expires_at, training_id, notes]
+        );
+        await auditLog('certification_add', staff_id, req.user?.username, { name, category }, req.ip);
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('POST /hr/certifications error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// DELETE /api/hr/certifications/:id
+router.delete('/certifications/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM staff_certifications WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /hr/certifications/:id error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// ==========================================
+// SALARY REPORT (#7)
+// ==========================================
+
+// GET /api/hr/salary — full salary calculation
+router.get('/salary', async (req, res) => {
+    try {
+        const month = req.query.month || (() => {
+            const now = nowKyiv();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        })();
+        const dateFrom = `${month}-01`;
+        const d = new Date(dateFrom);
+        d.setMonth(d.getMonth() + 1);
+        d.setDate(0);
+        const dateTo = d.toISOString().split('T')[0];
+
+        // Get staff with hours
+        const staffList = await pool.query(
+            'SELECT id, name, role_type, hourly_rate, department FROM staff WHERE is_active = true ORDER BY name'
+        );
+
+        const records = await pool.query(
+            `SELECT staff_id, SUM(total_worked_minutes) AS total_minutes,
+                    SUM(overtime_minutes) AS overtime_minutes,
+                    COUNT(*) FILTER (WHERE status IN ('present', 'late', 'early_leave', 'auto_closed')) AS days_worked
+             FROM hr_time_records
+             WHERE record_date >= $1 AND record_date <= $2
+             GROUP BY staff_id`,
+            [dateFrom, dateTo]
+        );
+        const recordMap = {};
+        for (const r of records.rows) recordMap[r.staff_id] = r;
+
+        // Get adjustments
+        const adjustments = await pool.query(
+            `SELECT staff_id, type, SUM(amount) AS total
+             FROM salary_adjustments WHERE month = $1 GROUP BY staff_id, type`,
+            [month]
+        );
+        const adjMap = {};
+        for (const a of adjustments.rows) {
+            if (!adjMap[a.staff_id]) adjMap[a.staff_id] = { bonus: 0, deduction: 0, penalty: 0, tip: 0 };
+            adjMap[a.staff_id][a.type] = parseInt(a.total);
+        }
+
+        const data = staffList.rows.map(st => {
+            const rec = recordMap[st.id] || { total_minutes: 0, overtime_minutes: 0, days_worked: 0 };
+            const adj = adjMap[st.id] || { bonus: 0, deduction: 0, penalty: 0, tip: 0 };
+            const rate = parseFloat(st.hourly_rate) || 0;
+            const hours = Math.round((parseInt(rec.total_minutes) || 0) / 60 * 10) / 10;
+            const overtimeHours = Math.round((parseInt(rec.overtime_minutes) || 0) / 60 * 10) / 10;
+            const baseSalary = Math.round(hours * rate);
+            const overtimePay = Math.round(overtimeHours * rate * 1.5);
+            const totalBonuses = adj.bonus + adj.tip;
+            const totalDeductions = adj.deduction + adj.penalty;
+            const totalSalary = baseSalary + overtimePay + totalBonuses - totalDeductions;
+
+            return {
+                staff_id: st.id,
+                staff_name: st.name,
+                role_type: st.role_type,
+                department: st.department,
+                hourly_rate: rate,
+                days_worked: parseInt(rec.days_worked) || 0,
+                hours_worked: hours,
+                overtime_hours: overtimeHours,
+                base_salary: baseSalary,
+                overtime_pay: overtimePay,
+                bonuses: adj.bonus,
+                tips: adj.tip,
+                deductions: adj.deduction,
+                penalties: adj.penalty,
+                total_salary: totalSalary
+            };
+        });
+
+        const totals = data.reduce((acc, d) => ({
+            total_base: acc.total_base + d.base_salary,
+            total_overtime: acc.total_overtime + d.overtime_pay,
+            total_bonuses: acc.total_bonuses + d.bonuses + d.tips,
+            total_deductions: acc.total_deductions + d.deductions + d.penalties,
+            total_salary: acc.total_salary + d.total_salary
+        }), { total_base: 0, total_overtime: 0, total_bonuses: 0, total_deductions: 0, total_salary: 0 });
+
+        res.json({ success: true, data, totals, month });
+    } catch (err) {
+        log.error('GET /hr/salary error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/hr/salary/adjustment — add bonus/deduction
+router.post('/salary/adjustment', async (req, res) => {
+    try {
+        const { staff_id, month, type, amount, reason } = req.body;
+        if (!staff_id || !month || !type || !amount) {
+            return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, month, type, amount' });
+        }
+        const result = await pool.query(
+            `INSERT INTO salary_adjustments (staff_id, month, type, amount, reason, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [staff_id, month, type, amount, reason, req.user?.username]
+        );
+        await auditLog('salary_adjustment', staff_id, req.user?.username, { type, amount, reason }, req.ip);
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('POST /hr/salary/adjustment error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// GET /api/hr/salary/adjustments — list adjustments
+router.get('/salary/adjustments', async (req, res) => {
+    try {
+        const { staff_id, month } = req.query;
+        let sql = `SELECT sa.*, s.name AS staff_name FROM salary_adjustments sa
+                   JOIN staff s ON s.id = sa.staff_id`;
+        const params = [];
+        const conds = [];
+        if (staff_id) { params.push(parseInt(staff_id)); conds.push(`sa.staff_id = $${params.length}`); }
+        if (month) { params.push(month); conds.push(`sa.month = $${params.length}`); }
+        if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
+        sql += ' ORDER BY sa.created_at DESC';
+        const result = await pool.query(sql, params);
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/salary/adjustments error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// ==========================================
+// COSTUMES (#8)
+// ==========================================
+
+// GET /api/hr/costumes
+router.get('/costumes', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT c.*, s.name AS assigned_name
+            FROM costumes c
+            LEFT JOIN staff s ON s.id = c.assigned_to
+            ORDER BY c.name
+        `);
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/costumes error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/hr/costumes
+router.post('/costumes', async (req, res) => {
+    try {
+        const { name, category, size, condition, assigned_to, notes } = req.body;
+        if (!name) return res.status(400).json({ success: false, error: 'Потрібна назва' });
+        const result = await pool.query(
+            `INSERT INTO costumes (name, category, size, condition, assigned_to, assigned_at, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [name, category, size, condition || 'good', assigned_to, assigned_to ? new Date().toISOString() : null, notes]
+        );
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('POST /hr/costumes error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// PUT /api/hr/costumes/:id
+router.put('/costumes/:id', async (req, res) => {
+    try {
+        const { name, category, size, condition, assigned_to, notes } = req.body;
+        const assignedVal = assigned_to !== undefined ? (assigned_to || null) : undefined;
+        let sql, params;
+        if (assignedVal !== undefined) {
+            sql = `UPDATE costumes SET
+                name = COALESCE($1, name), category = COALESCE($2, category),
+                size = COALESCE($3, size), condition = COALESCE($4, condition),
+                assigned_to = $5, assigned_at = CASE WHEN $5::int IS NOT NULL THEN NOW() ELSE assigned_at END,
+                notes = COALESCE($6, notes)
+             WHERE id = $7 RETURNING *`;
+            params = [name, category, size, condition, assignedVal, notes, req.params.id];
+        } else {
+            sql = `UPDATE costumes SET
+                name = COALESCE($1, name), category = COALESCE($2, category),
+                size = COALESCE($3, size), condition = COALESCE($4, condition),
+                notes = COALESCE($5, notes)
+             WHERE id = $6 RETURNING *`;
+            params = [name, category, size, condition, notes, req.params.id];
+        }
+        const result = await pool.query(sql, params
+        );
+        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('PUT /hr/costumes/:id error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// DELETE /api/hr/costumes/:id
+router.delete('/costumes/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM costumes WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /hr/costumes/:id error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// ==========================================
+// AVAILABILITY (#10)
+// ==========================================
+
+// GET /api/hr/availability — real-time staff status
+router.get('/availability', async (req, res) => {
+    try {
+        const today = todayKyiv();
+        const result = await pool.query(`
+            SELECT s.id, s.name, s.role_type, s.color, s.photo_url,
+                   COALESCE(s.availability_status, 'offline') AS availability_status,
+                   s.availability_updated_at, s.current_booking_id,
+                   hs.planned_start, hs.planned_end,
+                   tr.clock_in, tr.clock_out, tr.status AS time_status
+            FROM staff s
+            LEFT JOIN hr_shifts hs ON hs.staff_id = s.id AND hs.shift_date = $1
+            LEFT JOIN hr_time_records tr ON tr.staff_id = s.id AND tr.record_date = $1
+            WHERE s.is_active = true
+            ORDER BY
+                CASE COALESCE(s.availability_status, 'offline')
+                    WHEN 'busy' THEN 1 WHEN 'online' THEN 2 WHEN 'break' THEN 3 ELSE 4
+                END,
+                s.name
+        `, [today]);
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/availability error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// PUT /api/hr/availability/:staffId — update status
+router.put('/availability/:staffId', async (req, res) => {
+    try {
+        const { status, booking_id } = req.body;
+        const validStatuses = ['online', 'busy', 'break', 'offline'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ success: false, error: 'Невалідний статус' });
+        }
+        await pool.query(
+            `UPDATE staff SET availability_status = $1, availability_updated_at = NOW(),
+             current_booking_id = $2 WHERE id = $3`,
+            [status, booking_id || null, req.params.staffId]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        log.error('PUT /hr/availability/:staffId error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });

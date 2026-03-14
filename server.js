@@ -17,7 +17,7 @@ const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
@@ -481,6 +481,9 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoReviewRequests', checkAutoReviewRequests, { dedup: 'hourly' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkTeamPulseReminder', checkTeamPulseReminder, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoOrdering', checkAutoOrdering, { dedup: 'hourly' }), 60000));
+        // v30.7: HR push reminders (every minute) + cert expiry (daily)
+        schedulerIntervals.push(setInterval(guardScheduler('checkBookingPushReminders', checkBookingPushReminders), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkCertExpiryReminders', checkCertExpiryReminders, { dedup: 'daily' }), 60000));
         // v20.4.0: Training prompts (Mon 09:00 Kyiv) + summary (Fri 17:00 Kyiv)
         async function checkTrainingPrompts() {
             const { getKyivTimeStr, getKyivDate } = require('./services/booking');

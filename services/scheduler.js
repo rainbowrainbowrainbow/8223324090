@@ -1086,6 +1086,64 @@ async function checkUpcomingBookings() {
     }
 }
 
+// v30.6: Debt notification — weekly reminder about unpaid bookings
+let debtSentThisWeek = null;
+
+async function checkDebtNotifications() {
+    try {
+        const todayStr = getKyivDateStr();
+        const weekId = todayStr.substring(0, 7) + '-W' + Math.ceil(new Date().getDate() / 7);
+        if (debtSentThisWeek === weekId) return;
+
+        // Only send on Mondays at 09:00
+        const now = new Date();
+        if (now.getDay() !== 1) return;
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '09:00') return;
+
+        const dbLast = await getLastSent('debt_notifications');
+        if (dbLast === weekId) { debtSentThisWeek = weekId; return; }
+
+        debtSentThisWeek = weekId;
+        await setLastSent('debt_notifications', weekId);
+
+        const result = await pool.query(`
+            SELECT b.id, b.date, b.label, b.program_name, b.price, b.paid_amount,
+                   c.name AS customer_name, c.phone AS customer_phone,
+                   (COALESCE(b.price, 0) - COALESCE(b.paid_amount, 0)) AS debt
+            FROM bookings b
+            LEFT JOIN customers c ON b.customer_id = c.id
+            WHERE b.status = 'confirmed' AND b.linked_to IS NULL AND b.price > 0
+              AND (b.payment_status IS NULL OR b.payment_status != 'paid')
+              AND COALESCE(b.paid_amount, 0) < COALESCE(b.price, 0)
+              AND b.date::date <= CURRENT_DATE
+            ORDER BY debt DESC LIMIT 20
+        `);
+
+        if (result.rows.length === 0) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        const totalDebt = result.rows.reduce((s, r) => s + r.debt, 0);
+        let text = `💸 <b>БОРГИ: ${result.rows.length} неоплачених</b>\n`;
+        text += `💰 Загалом: ${totalDebt.toLocaleString('uk-UA')} ₴\n\n`;
+        for (const b of result.rows.slice(0, 10)) {
+            text += `• ${b.label || b.program_name || b.id} — ${b.debt.toLocaleString('uk-UA')} ₴`;
+            if (b.customer_name) text += ` (${b.customer_name})`;
+            text += `\n`;
+        }
+        if (result.rows.length > 10) text += `\n...та ще ${result.rows.length - 10}`;
+
+        await sendTelegramMessage(chatId, text, { silent: true });
+        log.info(`Debt notification sent: ${result.rows.length} debts, ${totalDebt} UAH`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('DebtNotifications error', err);
+        }
+    }
+}
+
 // v19.1: Event Queue processor — retry failed events + move to DLQ
 async function checkEventQueue() {
     try {
@@ -1511,7 +1569,7 @@ async function checkAutoReviewRequests() {
             FROM bookings b
             LEFT JOIN review_requests_sent rrs ON rrs.booking_id = b.id
             WHERE b.status = 'confirmed'
-              AND b.date <= CURRENT_DATE
+              AND b.date::date <= CURRENT_DATE
               AND rrs.booking_id IS NULL
               AND b.phone IS NOT NULL
               AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time + (b.duration || ' minutes')::interval) < NOW() - ($1 || ' hours')::interval
@@ -1609,7 +1667,7 @@ module.exports = {
     checkRecurringBookings, checkCertificateExpiry,
     checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset,
     checkStreakUpdates, checkBirthdayGreetings,
-    checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings,
+    checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkDebtNotifications,
     checkEventQueue, checkSLABreach, checkScheduledAnnouncements,
     checkTaskOverdue, checkCustomerRetention, checkAutoReport,
     checkHotLeads,

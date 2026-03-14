@@ -34,7 +34,6 @@ const Sidebar = (() => {
         { href: '/programs',  icon: '🎪', label: 'Програми',    access: 'programs' },
         { href: '/center',    icon: '💲', label: 'Центр цін',   access: 'center' },
         { href: '/art',       icon: '🎨', label: 'Арт',         access: 'art' },
-        { href: '/graduation', icon: '🎓', label: 'Випускний',  access: 'graduation' },
 
         // BLOCK 4: System
         { type: 'divider' },
@@ -126,11 +125,6 @@ const Sidebar = (() => {
             'creator', 'director', 'vice_director',
             'senior_manager',
             'art_director', 'marketer'
-        ],
-
-        graduation: [
-            'creator', 'director', 'vice_director',
-            'senior_manager', 'manager'
         ],
 
         demo: [

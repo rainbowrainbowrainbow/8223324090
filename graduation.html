@@ -83,7 +83,18 @@
     <script src="js/role-panel.js?v=30.0.0"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
+            // Embedded mode: hide sidebar/header when loaded inside iframe
+            const isEmbedded = new URLSearchParams(location.search).get('embedded') === '1';
+            if (isEmbedded) {
+                const sidebar = document.querySelector('.sidebar-nav');
+                const header = document.querySelector('.header');
+                if (sidebar) sidebar.style.display = 'none';
+                if (header) header.style.display = 'none';
+                const main = document.getElementById('main-content');
+                if (main) main.style.marginLeft = '0';
+            } else {
+                if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
+            }
             if (typeof GradPage !== 'undefined') GradPage.init();
         });
     </script>

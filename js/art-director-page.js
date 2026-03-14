@@ -155,6 +155,11 @@ function setupTabs() {
             document.getElementById(`tab-${tabName}`).classList.add('active');
             activeTab = tabName;
 
+            // Persist tab in URL for refresh
+            const url = new URL(window.location);
+            url.searchParams.set('tab', tabName);
+            history.replaceState(null, '', url);
+
             // Lazy-load tab data
             if (tabName === 'pipeline') loadPipeline();
             if (tabName === 'templates') loadTemplates();

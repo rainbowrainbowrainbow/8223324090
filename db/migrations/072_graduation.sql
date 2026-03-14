@@ -125,7 +125,30 @@ INSERT INTO graduation_services (sort_order, name, description, duration_min, pr
 (23, 'Неонова паперова дискотека', 'Яскраве диско-шоу з паперовою пушкою та неоновим світлом! Веселощі, рух і танці в атмосфері абсолютного неонового божевілля! Спеціальні ультрафіолетові лампи та флуоресцентний папір!', 30, 2900, 450, 'fixed', 500, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 0, 'standard', 'neon', NULL),
 (24, 'Неонові мильні бульбашки', 'Феєричне мильне шоу у неонових відтінках! Під ультрафіолетовим світлом бульбашки переливаються яскравими кольорами — магія та краса в кожній бульбашці!', 30, 2700, 430, 'fixed', 750, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 120, 0, 0, 'standard', 'neon', NULL),
 (25, 'Неоновий аквагрим', 'Ваша яскрава індивідуальність засяє під неоновим світлом! Спеціальні фарби створюють унікальні малюнки, які світяться під ультрафіолетом — кожна дитина стає зіркою неонової вечірки!', 30, 0, 160, 'fixed', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'standard', 'neon', NULL)
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) DO UPDATE SET
+    price_park = EXCLUDED.price_park,
+    price_per_child = EXCLUDED.price_per_child,
+    price_type = EXCLUDED.price_type,
+    cost_host = EXCLUDED.cost_host,
+    cost_costume = EXCLUDED.cost_costume,
+    cost_balloons_per_kid = EXCLUDED.cost_balloons_per_kid,
+    cost_aquagrim_per_kid = EXCLUDED.cost_aquagrim_per_kid,
+    cost_print_per_kid = EXCLUDED.cost_print_per_kid,
+    cost_design_per_kid = EXCLUDED.cost_design_per_kid,
+    cost_delivery = EXCLUDED.cost_delivery,
+    cost_ice = EXCLUDED.cost_ice,
+    cost_other = EXCLUDED.cost_other,
+    cost_box = EXCLUDED.cost_box,
+    cost_markers = EXCLUDED.cost_markers,
+    cost_solution = EXCLUDED.cost_solution,
+    cost_cleaning = EXCLUDED.cost_cleaning,
+    cost_drinks_per_kid = EXCLUDED.cost_drinks_per_kid,
+    cost_type = EXCLUDED.cost_type,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    duration_min = EXCLUDED.duration_min,
+    entry_rule = EXCLUDED.entry_rule,
+    updated_at = NOW();
 
 -- Seed: 7 пакетів
 INSERT INTO graduation_packages (name, slug, sort_order) VALUES

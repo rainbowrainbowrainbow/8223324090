@@ -69,6 +69,8 @@
     }
 
     function getKidsCount() {
+        const pkgEl = document.getElementById('gradPkgKids');
+        if (currentTab === 'packages' && pkgEl) return Math.max(1, parseInt(pkgEl.value) || 15);
         const el = document.getElementById('gradKidsCount');
         return el ? Math.max(1, parseInt(el.value) || 15) : 15;
     }
@@ -366,27 +368,55 @@
     }
 
     function renderPackages(container) {
-        let html = '<div class="grad-packages-grid">';
+        const kids = getKidsCount();
+        let html = `
+        <div class="grad-packages-kids-row">
+            <label>Кількість дітей:</label>
+            <div class="grad-stepper">
+                <button class="grad-stepper-btn" onclick="GradPage.adjustPkgKids(-1)">−</button>
+                <input type="number" id="gradPkgKids" value="${kids}" min="1" max="99"
+                    onchange="GradPage.recalcPackages()" style="font-size:16px">
+                <button class="grad-stepper-btn" onclick="GradPage.adjustPkgKids(1)">+</button>
+            </div>
+        </div>
+        <div class="grad-packages-grid">`;
+
         for (const pkg of packages) {
-            // Calculate live price from package services
-            let totalPrice = 0;
-            const svcNames = [];
+            let totalPerChild = 0;
+            const rows = [];
             for (const item of pkg.services) {
                 const svc = services.find(s => s.id === item.serviceId);
                 if (svc) {
-                    totalPrice += item.overridePrice || getEffectivePrice(svc);
-                    svcNames.push(svc.name);
+                    const price = item.overridePrice || getEffectivePrice(svc);
+                    totalPerChild += price;
+                    rows.push({ name: svc.name, price });
                 }
             }
+            const totalAll = totalPerChild * kids;
 
             html += `
-            <div class="grad-package-card" onclick="GradPage.selectPackage('${pkg.slug}')">
+            <div class="grad-package-card">
                 <div class="grad-package-name">${pkg.name}</div>
-                <div class="grad-package-price">${formatPrice(totalPrice)}<span>/дит</span></div>
-                <div class="grad-package-services">
-                    ${svcNames.map(n => `<span class="grad-package-tag">${n}</span>`).join('')}
-                </div>
-                <button class="grad-btn grad-btn-sm">Обрати</button>
+                <table class="grad-package-table">
+                    <tbody>
+                        ${rows.map(r => `
+                        <tr>
+                            <td class="grad-pkg-svc-name">${r.name}</td>
+                            <td class="grad-pkg-svc-price">${formatPrice(r.price)}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                    <tfoot>
+                        <tr class="grad-pkg-total-row">
+                            <td>Вартість 1 дитина</td>
+                            <td>${formatPrice(totalPerChild)}</td>
+                        </tr>
+                        <tr class="grad-pkg-total-all-row">
+                            <td>Всього (${kids} дітей)</td>
+                            <td>${formatPrice(totalAll)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+                <button class="grad-btn grad-btn-sm grad-pkg-select-btn" onclick="GradPage.selectPackage('${pkg.slug}')">Обрати пакет</button>
             </div>`;
         }
         html += '</div>';
@@ -504,6 +534,17 @@
         const val = Math.max(1, Math.min(99, (parseInt(el.value) || 15) + delta));
         el.value = val;
         recalc();
+    }
+
+    function adjustPkgKids(delta) {
+        const el = document.getElementById('gradPkgKids');
+        if (!el) return;
+        el.value = Math.max(1, Math.min(99, (parseInt(el.value) || 15) + delta));
+        recalcPackages();
+    }
+
+    function recalcPackages() {
+        if (currentTab === 'packages') renderCurrentTab();
     }
 
     function updateCoeff() {
@@ -784,6 +825,8 @@
         toggleService,
         recalc,
         adjustKids,
+        adjustPkgKids,
+        recalcPackages,
         updateCoeff,
         updateMarkup,
         selectPackage,

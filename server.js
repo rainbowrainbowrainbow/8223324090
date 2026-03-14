@@ -162,6 +162,7 @@ app.use('/api/landing', require('./routes/landing'));
 app.use('/api/scripts', require('./routes/scripts'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/guardian', require('./routes/guardian'));
+app.use('/api/graduation', require('./routes/graduation'));
 app.use('/api/agents', require('./routes/agents'));
 app.use('/api/summary', require('./routes/summary'));
 app.use('/api/dashboard', require('./routes/dashboard'));
@@ -285,6 +286,10 @@ app.get('/art', (req, res) => {
 });
 app.get('/art-director', (req, res) => res.redirect(301, '/art'));
 app.get('/art-director.html', (req, res) => res.redirect(301, '/art'));
+// v30.0.0: Graduation Event Builder
+app.get('/graduation', (req, res) => {
+    res.sendFile(path.join(__dirname, 'graduation.html'));
+});
 app.get('/checkin', (req, res) => {
     res.sendFile(path.join(__dirname, 'checkin.html'));
 });

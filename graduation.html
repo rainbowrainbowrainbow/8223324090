@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Випускний</title>
+    <meta name="description" content="Event Genix — Конструктор випускного">
+    <meta property="og:title" content="Event Genix — Випускний">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=30.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=30.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=30.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=30.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=30.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=30.0.0">
+    <link rel="stylesheet" href="css/graduation.css?v=30.0.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=30.0.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="loginOverlay" class="login-overlay" style="display:none">
+        <div class="login-redirect">Перенаправлення на логін...</div>
+    </div>
+
+    <div class="app-container">
+        <aside class="sidebar-nav">
+            <div class="sidebar-logo">
+                <a href="/" class="logo-link">
+                    <img src="images/logo-small.png" alt="Event Genix" class="sidebar-logo-img"
+                         onerror="this.style.display='none'">
+                    <span class="sidebar-logo-text">Event Genix</span>
+                </a>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+        </aside>
+
+        <header class="header">
+            <button class="hamburger" id="hamburgerBtn" aria-label="Меню">
+                <span></span><span></span><span></span>
+            </button>
+            <div class="header-logo">Event Genix</div>
+            <nav class="header-nav">
+                <a href="/" class="header-nav-link">Таймлайн</a>
+                <a href="/art" class="header-nav-link">Арт</a>
+                <a href="/graduation" class="header-nav-link active">Випускний</a>
+            </nav>
+            <div class="user-panel">
+                <span id="userName" class="user-name"></span>
+                <button id="logoutBtn" class="logout-btn" title="Вийти">Вийти</button>
+            </div>
+        </header>
+
+        <main id="main-content">
+            <div class="grad-page">
+                <h1>Конструктор випускного</h1>
+
+                <div class="grad-tabs">
+                    <button class="grad-tab active" data-tab="constructor">Конструктор</button>
+                    <button class="grad-tab" data-tab="packages">Пакети</button>
+                    <button class="grad-tab" data-tab="quotes">Кошики</button>
+                    <button class="grad-tab" data-tab="settings">Налаштування</button>
+                </div>
+
+                <div id="gradContent"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Info modal -->
+    <div class="grad-modal" id="gradInfoModal" onclick="if(event.target===this)this.style.display='none'">
+        <div class="grad-modal-content"></div>
+    </div>
+
+    <!-- Notification -->
+    <div id="notification" class="notification" style="display:none"></div>
+
+    <script src="js/config.js?v=30.0.0"></script>
+    <script src="js/api.js?v=30.0.0"></script>
+    <script src="js/auth.js?v=30.0.0"></script>
+    <script src="js/components/sidebar.js?v=30.0.0"></script>
+    <script src="js/graduation.js?v=30.0.0"></script>
+    <script src="js/role-panel.js?v=30.0.0"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
+            if (typeof GradPage !== 'undefined') GradPage.init();
+        });
+    </script>
+</body>
+</html>

@@ -703,6 +703,623 @@ async function onBookingCreate(username) {
     }
 }
 
+// ============================================================
+// MONTHLY LEADERBOARD (v30.8.0)
+// ============================================================
+
+async function getMonthlyLeaderboard(year, month, category = 'overall', limit = 20) {
+    const { rows } = await pool.query(
+        `SELECT ml.*, upe.display_name, upe.avatar_url, upe.level, upe.title
+         FROM monthly_leaderboard ml
+         LEFT JOIN user_profiles_ext upe ON ml.username = upe.username
+         WHERE ml.year = $1 AND ml.month = $2 AND ml.category = $3
+         ORDER BY ml.rank ASC NULLS LAST, ml.score DESC
+         LIMIT $4`,
+        [year, month, category, Math.min(limit, 50)]
+    );
+    return rows;
+}
+
+async function recalculateMonthlyLeaderboard(year, month) {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = month === 12
+        ? `${year + 1}-01-01`
+        : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+
+    const categories = {
+        bookings: `SELECT created_by as username, COUNT(*) as score FROM bookings
+                   WHERE created_at >= $1 AND created_at < $2 GROUP BY created_by`,
+        tasks: `SELECT assignee as username, COUNT(*) as score FROM tasks
+                WHERE status = 'done' AND updated_at >= $1 AND updated_at < $2 GROUP BY assignee`,
+        xp: `SELECT username, SUM(amount) as score FROM coin_transactions
+             WHERE type = 'earn' AND created_at >= $1 AND created_at < $2
+             GROUP BY username`,
+        coins: `SELECT username, SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as score
+                FROM coin_transactions
+                WHERE created_at >= $1 AND created_at < $2
+                GROUP BY username`
+    };
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        for (const [cat, query] of Object.entries(categories)) {
+            const { rows } = await client.query(query, [startDate, endDate]);
+
+            // Delete old entries for this category/period
+            await client.query(
+                'DELETE FROM monthly_leaderboard WHERE year = $1 AND month = $2 AND category = $3',
+                [year, month, cat]
+            );
+
+            // Insert ranked entries
+            const sorted = rows.filter(r => parseInt(r.score) > 0).sort((a, b) => parseInt(b.score) - parseInt(a.score));
+            for (let i = 0; i < sorted.length; i++) {
+                await client.query(
+                    `INSERT INTO monthly_leaderboard (username, year, month, category, score, rank)
+                     VALUES ($1, $2, $3, $4, $5, $6)
+                     ON CONFLICT (username, year, month, category)
+                     DO UPDATE SET score = $5, rank = $6`,
+                    [sorted[i].username, year, month, cat, parseInt(sorted[i].score), i + 1]
+                );
+            }
+        }
+
+        // Calculate overall (weighted sum)
+        await client.query(
+            'DELETE FROM monthly_leaderboard WHERE year = $1 AND month = $2 AND category = $3',
+            [year, month, 'overall']
+        );
+
+        const { rows: allScores } = await client.query(
+            `SELECT username,
+                    SUM(CASE WHEN category = 'bookings' THEN score * 3
+                             WHEN category = 'tasks' THEN score * 2
+                             WHEN category = 'xp' THEN score
+                             WHEN category = 'coins' THEN score
+                             ELSE 0 END) as total
+             FROM monthly_leaderboard
+             WHERE year = $1 AND month = $2 AND category != 'overall'
+             GROUP BY username
+             ORDER BY total DESC`,
+            [year, month]
+        );
+
+        for (let i = 0; i < allScores.length; i++) {
+            await client.query(
+                `INSERT INTO monthly_leaderboard (username, year, month, category, score, rank)
+                 VALUES ($1, $2, $3, 'overall', $4, $5)
+                 ON CONFLICT (username, year, month, category)
+                 DO UPDATE SET score = $4, rank = $5`,
+                [allScores[i].username, year, month, parseInt(allScores[i].total), i + 1]
+            );
+        }
+
+        await client.query('COMMIT');
+        log.info(`Recalculated monthly leaderboard for ${year}-${month}`);
+        return allScores.length;
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Recalculate leaderboard error', err);
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+// ============================================================
+// SEASONAL QUESTS (v30.8.0)
+// ============================================================
+
+async function getSeasonalQuests(username) {
+    const today = new Date().toISOString().split('T')[0];
+    const { rows } = await pool.query(
+        `SELECT sq.*,
+            usq.progress, usq.completed, usq.claimed,
+            usq.completed_at, usq.claimed_at
+         FROM seasonal_quests sq
+         LEFT JOIN user_seasonal_quests usq ON sq.id = usq.quest_id AND usq.username = $1
+         WHERE sq.is_active = true AND sq.start_date <= $2 AND sq.end_date >= $2
+         ORDER BY sq.reward_coins DESC`,
+        [username, today]
+    );
+    return rows;
+}
+
+async function checkSeasonalProgress(username) {
+    const today = new Date().toISOString().split('T')[0];
+    const { rows: quests } = await pool.query(
+        `SELECT sq.* FROM seasonal_quests sq
+         WHERE sq.is_active = true AND sq.start_date <= $1 AND sq.end_date >= $1`,
+        [today]
+    );
+
+    const updated = [];
+
+    for (const quest of quests) {
+        let progress = 0;
+
+        switch (quest.quest_type) {
+            case 'booking_count': {
+                const { rows } = await pool.query(
+                    `SELECT COUNT(*) FROM bookings
+                     WHERE created_by = $1 AND created_at >= $2 AND created_at <= $3`,
+                    [username, quest.start_date, quest.end_date]
+                );
+                progress = parseInt(rows[0].count);
+                break;
+            }
+            case 'task_count': {
+                const { rows } = await pool.query(
+                    `SELECT COUNT(*) FROM tasks
+                     WHERE assignee = $1 AND status = 'done'
+                     AND updated_at >= $2 AND updated_at <= $3`,
+                    [username, quest.start_date, quest.end_date]
+                );
+                progress = parseInt(rows[0].count);
+                break;
+            }
+            case 'streak': {
+                const { rows } = await pool.query(
+                    'SELECT longest_streak FROM user_streaks WHERE username = $1',
+                    [username]
+                );
+                progress = rows[0]?.longest_streak || 0;
+                break;
+            }
+            case 'login_days': {
+                const { rows } = await pool.query(
+                    `SELECT COUNT(DISTINCT DATE(created_at)) as days
+                     FROM coin_transactions
+                     WHERE username = $1 AND source_type = 'daily_login'
+                     AND created_at >= $2 AND created_at <= $3`,
+                    [username, quest.start_date, quest.end_date]
+                );
+                progress = parseInt(rows[0].days);
+                break;
+            }
+        }
+
+        const completed = progress >= quest.target_value;
+
+        await pool.query(
+            `INSERT INTO user_seasonal_quests (username, quest_id, progress, completed, completed_at)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (username, quest_id)
+             DO UPDATE SET progress = $3, completed = $4,
+                completed_at = CASE WHEN $4 AND user_seasonal_quests.completed_at IS NULL THEN NOW() ELSE user_seasonal_quests.completed_at END`,
+            [username, quest.id, Math.min(progress, quest.target_value), completed, completed ? new Date() : null]
+        );
+
+        updated.push({ questId: quest.id, progress, completed, target: quest.target_value });
+    }
+
+    return updated;
+}
+
+async function claimSeasonalReward(username, questId) {
+    const { rows } = await pool.query(
+        `SELECT sq.*, usq.completed, usq.claimed
+         FROM seasonal_quests sq
+         JOIN user_seasonal_quests usq ON sq.id = usq.quest_id
+         WHERE sq.id = $1 AND usq.username = $2`,
+        [questId, username]
+    );
+
+    if (rows.length === 0) return { success: false, error: 'Квест не знайдено' };
+    if (!rows[0].completed) return { success: false, error: 'Квест ще не виконано' };
+    if (rows[0].claimed) return { success: false, error: 'Нагорода вже отримана' };
+
+    const quest = rows[0];
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        await client.query(
+            `UPDATE user_seasonal_quests SET claimed = true, claimed_at = NOW()
+             WHERE username = $1 AND quest_id = $2`,
+            [username, questId]
+        );
+
+        if (quest.reward_coins > 0) {
+            await ensureCurrency(username);
+            await client.query(
+                `UPDATE game_currency SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW()
+                 WHERE username = $2`,
+                [quest.reward_coins, username]
+            );
+            await client.query(
+                `INSERT INTO coin_transactions (username, amount, type, reason, source_type, source_id)
+                 VALUES ($1, $2, 'earn', $3, 'seasonal_quest', $4)`,
+                [username, quest.reward_coins, `Сезонний квест: ${quest.title}`, quest.id]
+            );
+        }
+
+        if (quest.reward_xp > 0) {
+            await client.query(
+                `UPDATE user_profiles_ext SET xp = xp + $1, updated_at = NOW() WHERE username = $2`,
+                [quest.reward_xp, username]
+            );
+        }
+
+        await client.query('COMMIT');
+        log.info(`${username} claimed seasonal quest: ${quest.title}`);
+        return { success: true, coins: quest.reward_coins, xp: quest.reward_xp, title: quest.reward_title };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Claim seasonal reward error', err);
+        return { success: false, error: 'Помилка при отриманні нагороди' };
+    } finally {
+        client.release();
+    }
+}
+
+// ============================================================
+// TEAMS & CHALLENGES (v30.8.0)
+// ============================================================
+
+async function getTeams() {
+    const { rows: teams } = await pool.query(
+        `SELECT t.*, COUNT(tm.id) as member_count
+         FROM teams t
+         LEFT JOIN team_members tm ON t.id = tm.team_id
+         WHERE t.is_active = true
+         GROUP BY t.id
+         ORDER BY member_count DESC`
+    );
+
+    for (const team of teams) {
+        const { rows: members } = await pool.query(
+            `SELECT tm.username, upe.display_name, upe.avatar_url, upe.level, upe.title
+             FROM team_members tm
+             LEFT JOIN user_profiles_ext upe ON tm.username = upe.username
+             WHERE tm.team_id = $1
+             ORDER BY tm.joined_at`,
+            [team.id]
+        );
+        team.members = members;
+    }
+
+    return teams;
+}
+
+async function getUserTeam(username) {
+    const { rows } = await pool.query(
+        `SELECT t.*, tm.joined_at
+         FROM team_members tm
+         JOIN teams t ON tm.team_id = t.id
+         WHERE tm.username = $1`,
+        [username]
+    );
+    return rows[0] || null;
+}
+
+async function joinTeam(username, teamId) {
+    // Check if already in a team
+    const existing = await getUserTeam(username);
+    if (existing) {
+        return { success: false, error: 'Ви вже в команді. Спершу вийдіть з поточної' };
+    }
+
+    const { rows: team } = await pool.query(
+        'SELECT * FROM teams WHERE id = $1 AND is_active = true',
+        [teamId]
+    );
+    if (team.length === 0) return { success: false, error: 'Команду не знайдено' };
+
+    await pool.query(
+        'INSERT INTO team_members (team_id, username) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [teamId, username]
+    );
+
+    log.info(`${username} joined team: ${team[0].name}`);
+    return { success: true, team: team[0].name };
+}
+
+async function leaveTeam(username) {
+    const result = await pool.query(
+        'DELETE FROM team_members WHERE username = $1 RETURNING *',
+        [username]
+    );
+    if (result.rows.length === 0) return { success: false, error: 'Ви не в команді' };
+    return { success: true };
+}
+
+async function getTeamChallenges(username) {
+    const today = new Date().toISOString().split('T')[0];
+    const userTeam = await getUserTeam(username);
+
+    const { rows: challenges } = await pool.query(
+        `SELECT tc.*
+         FROM team_challenges tc
+         WHERE tc.is_active = true AND tc.start_date <= $1 AND tc.end_date >= $1
+         ORDER BY tc.end_date`,
+        [today]
+    );
+
+    for (const ch of challenges) {
+        const { rows: progress } = await pool.query(
+            `SELECT tcp.*, t.name as team_name, t.icon as team_icon, t.color as team_color
+             FROM team_challenge_progress tcp
+             JOIN teams t ON tcp.team_id = t.id
+             WHERE tcp.challenge_id = $1
+             ORDER BY tcp.score DESC`,
+            [ch.id]
+        );
+        ch.teams = progress;
+        ch.userTeamId = userTeam?.id || null;
+    }
+
+    return challenges;
+}
+
+async function recalculateTeamChallenges() {
+    const today = new Date().toISOString().split('T')[0];
+
+    const { rows: challenges } = await pool.query(
+        `SELECT * FROM team_challenges WHERE is_active = true AND start_date <= $1 AND end_date >= $1`,
+        [today]
+    );
+
+    const { rows: teams } = await pool.query('SELECT id FROM teams WHERE is_active = true');
+
+    for (const ch of challenges) {
+        for (const team of teams) {
+            const { rows: members } = await pool.query(
+                'SELECT username FROM team_members WHERE team_id = $1',
+                [team.id]
+            );
+            if (members.length === 0) continue;
+
+            const usernames = members.map(m => m.username);
+            let score = 0;
+
+            switch (ch.challenge_type) {
+                case 'bookings': {
+                    const { rows } = await pool.query(
+                        `SELECT COUNT(*) FROM bookings
+                         WHERE created_by = ANY($1) AND created_at >= $2 AND created_at <= $3`,
+                        [usernames, ch.start_date, ch.end_date]
+                    );
+                    score = parseInt(rows[0].count);
+                    break;
+                }
+                case 'tasks': {
+                    const { rows } = await pool.query(
+                        `SELECT COUNT(*) FROM tasks
+                         WHERE assignee = ANY($1) AND status = 'done'
+                         AND updated_at >= $2 AND updated_at <= $3`,
+                        [usernames, ch.start_date, ch.end_date]
+                    );
+                    score = parseInt(rows[0].count);
+                    break;
+                }
+                case 'xp': {
+                    const { rows } = await pool.query(
+                        `SELECT COALESCE(SUM(xp), 0) as total
+                         FROM user_profiles_ext WHERE username = ANY($1)`,
+                        [usernames]
+                    );
+                    score = parseInt(rows[0].total);
+                    break;
+                }
+            }
+
+            const completed = score >= ch.target_value;
+            await pool.query(
+                `INSERT INTO team_challenge_progress (challenge_id, team_id, score, completed, completed_at)
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (challenge_id, team_id)
+                 DO UPDATE SET score = $3, completed = $4,
+                    completed_at = CASE WHEN $4 AND team_challenge_progress.completed_at IS NULL THEN NOW() ELSE team_challenge_progress.completed_at END`,
+                [ch.id, team.id, score, completed, completed ? new Date() : null]
+            );
+        }
+    }
+
+    log.info('Recalculated team challenges');
+}
+
+// ============================================================
+// REFERRAL SYSTEM (v30.8.0)
+// ============================================================
+
+function generateReferralCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = 'EG-';
+    for (let i = 0; i < 5; i++) {
+        code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return code;
+}
+
+async function getReferralCode(username) {
+    await ensureProfile(username);
+
+    const { rows } = await pool.query(
+        'SELECT referral_code FROM user_profiles_ext WHERE username = $1',
+        [username]
+    );
+
+    if (rows[0]?.referral_code) return rows[0].referral_code;
+
+    // Generate unique code
+    let code;
+    let attempts = 0;
+    while (attempts < 10) {
+        code = generateReferralCode();
+        try {
+            await pool.query(
+                'UPDATE user_profiles_ext SET referral_code = $1 WHERE username = $2',
+                [code, username]
+            );
+            return code;
+        } catch (e) {
+            attempts++;
+        }
+    }
+    throw new Error('Failed to generate unique referral code');
+}
+
+async function applyReferralCode(newUsername, code) {
+    // Find referrer
+    const { rows } = await pool.query(
+        'SELECT username FROM user_profiles_ext WHERE referral_code = $1',
+        [code.toUpperCase()]
+    );
+    if (rows.length === 0) return { success: false, error: 'Невірний реферальний код' };
+
+    const referrer = rows[0].username;
+    if (referrer === newUsername) return { success: false, error: 'Не можна використовувати власний код' };
+
+    // Check if already referred
+    const { rows: existing } = await pool.query(
+        'SELECT id FROM referrals WHERE referred_username = $1',
+        [newUsername]
+    );
+    if (existing.length > 0) return { success: false, error: 'Ви вже використали реферальний код' };
+
+    await pool.query(
+        `INSERT INTO referrals (referrer_username, referred_username, referral_code, status)
+         VALUES ($1, $2, $3, 'active')`,
+        [referrer, newUsername, code.toUpperCase()]
+    );
+
+    // Reward referred user immediately
+    await ensureCurrency(newUsername);
+    await awardCoins(newUsername, 200, 'Реферальний бонус (новий користувач)', 'referral');
+
+    log.info(`Referral: ${newUsername} used code ${code} from ${referrer}`);
+    return { success: true, bonus: 200 };
+}
+
+async function checkReferralReward(username) {
+    // Check if referrer should be rewarded (referred user made first booking)
+    const { rows: unrewarded } = await pool.query(
+        `SELECT r.* FROM referrals r
+         WHERE r.referrer_username = $1 AND r.referrer_rewarded = false AND r.status = 'active'`,
+        [username]
+    );
+
+    let rewarded = 0;
+    for (const ref of unrewarded) {
+        const { rows: bookings } = await pool.query(
+            'SELECT id FROM bookings WHERE created_by = $1 LIMIT 1',
+            [ref.referred_username]
+        );
+        if (bookings.length > 0) {
+            await pool.query(
+                `UPDATE referrals SET referrer_rewarded = true, status = 'rewarded', activated_at = NOW()
+                 WHERE id = $1`,
+                [ref.id]
+            );
+            await awardCoins(username, ref.reward_coins, `Реферал: ${ref.referred_username} створив бронювання`, 'referral');
+            rewarded++;
+        }
+    }
+
+    return { rewarded };
+}
+
+async function getReferralStats(username) {
+    const code = await getReferralCode(username);
+
+    const { rows: referrals } = await pool.query(
+        `SELECT referred_username, status, referrer_rewarded, reward_coins, created_at, activated_at
+         FROM referrals WHERE referrer_username = $1 ORDER BY created_at DESC`,
+        [username]
+    );
+
+    const totalReferred = referrals.length;
+    const totalRewarded = referrals.filter(r => r.referrer_rewarded).length;
+    const totalCoinsEarned = referrals.filter(r => r.referrer_rewarded).reduce((sum, r) => sum + r.reward_coins, 0);
+
+    return {
+        code,
+        referrals,
+        totalReferred,
+        totalRewarded,
+        totalCoinsEarned
+    };
+}
+
+// ============================================================
+// BONUS REDEMPTIONS (v30.8.0)
+// ============================================================
+
+async function getRedemptions(username, isAdmin = false) {
+    const query = isAdmin
+        ? `SELECT br.*, si.name as item_name, si.icon as item_icon
+           FROM bonus_redemptions br
+           LEFT JOIN shop_items si ON br.shop_item_id = si.id
+           ORDER BY br.created_at DESC LIMIT 100`
+        : `SELECT br.*, si.name as item_name, si.icon as item_icon
+           FROM bonus_redemptions br
+           LEFT JOIN shop_items si ON br.shop_item_id = si.id
+           WHERE br.username = $1
+           ORDER BY br.created_at DESC LIMIT 50`;
+
+    const { rows } = isAdmin
+        ? await pool.query(query)
+        : await pool.query(query, [username]);
+
+    return rows;
+}
+
+async function updateRedemption(redemptionId, status, adminNote, resolvedBy) {
+    const validStatuses = ['pending', 'approved', 'delivered', 'rejected'];
+    if (!validStatuses.includes(status)) return { success: false, error: 'Невірний статус' };
+
+    const { rows } = await pool.query(
+        `UPDATE bonus_redemptions SET status = $1, admin_note = $2, resolved_by = $3, resolved_at = NOW()
+         WHERE id = $4 RETURNING *`,
+        [status, adminNote, resolvedBy, redemptionId]
+    );
+
+    if (rows.length === 0) return { success: false, error: 'Заявку не знайдено' };
+
+    // If rejected, refund coins
+    if (status === 'rejected' && rows[0].coins_paid > 0) {
+        await awardCoins(rows[0].username, rows[0].coins_paid, 'Повернення: заявку відхилено', 'refund');
+    }
+
+    return { success: true, redemption: rows[0] };
+}
+
+// ============================================================
+// STREAK FREEZE (v30.8.0)
+// ============================================================
+
+async function purchaseStreakFreeze(username) {
+    const FREEZE_COST = 50;
+
+    // Check if already used this week
+    const { rows: recent } = await pool.query(
+        `SELECT id FROM coin_transactions
+         WHERE username = $1 AND reason = 'Заморозка streak' AND type = 'spend'
+         AND created_at > NOW() - INTERVAL '7 days'`,
+        [username]
+    );
+    if (recent.length > 0) {
+        return { success: false, error: 'Заморозку можна використовувати раз на тиждень' };
+    }
+
+    const spent = await spendCoins(username, FREEZE_COST, 'Заморозка streak', 'streak_freeze');
+    if (!spent) {
+        return { success: false, error: 'Недостатньо монет (потрібно 50)' };
+    }
+
+    // Mark streak as frozen for today
+    await pool.query(
+        `UPDATE user_streaks SET last_activity = CURRENT_DATE WHERE username = $1`,
+        [username]
+    );
+
+    log.info(`${username} purchased streak freeze`);
+    return { success: true, cost: FREEZE_COST };
+}
+
 module.exports = {
     ensureProfile,
     ensureCurrency,
@@ -723,5 +1340,24 @@ module.exports = {
     updateProfile,
     giftCoins,
     onTaskComplete,
-    onBookingCreate
+    onBookingCreate,
+    // v30.8.0 — Gamification v3
+    getMonthlyLeaderboard,
+    recalculateMonthlyLeaderboard,
+    getSeasonalQuests,
+    checkSeasonalProgress,
+    claimSeasonalReward,
+    getTeams,
+    getUserTeam,
+    joinTeam,
+    leaveTeam,
+    getTeamChallenges,
+    recalculateTeamChallenges,
+    getReferralCode,
+    applyReferralCode,
+    checkReferralReward,
+    getReferralStats,
+    getRedemptions,
+    updateRedemption,
+    purchaseStreakFreeze
 };

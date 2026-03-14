@@ -255,10 +255,243 @@ router.get('/leaderboard', async (req, res) => {
 });
 
 // ============================================================
-// PENALTY POINTS SYSTEM (v25.4.0)
+// MONTHLY LEADERBOARD (v30.8.0)
 // ============================================================
 
 const { pool } = require('../db');
+
+// GET /leaderboard/monthly — monthly ranking
+router.get('/leaderboard/monthly', async (req, res) => {
+    try {
+        const now = new Date();
+        const year = parseInt(req.query.year) || now.getFullYear();
+        const month = parseInt(req.query.month) || now.getMonth() + 1;
+        const category = ['overall', 'bookings', 'tasks', 'xp', 'coins'].includes(req.query.category)
+            ? req.query.category : 'overall';
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 50);
+
+        const leaderboard = await gamification.getMonthlyLeaderboard(year, month, category, limit);
+        res.json({ year, month, category, leaderboard });
+    } catch (err) {
+        log.error('Monthly leaderboard error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /leaderboard/recalculate — admin: recalculate monthly leaderboard
+router.post('/leaderboard/recalculate', requireRole('admin', 'creator'), async (req, res) => {
+    try {
+        const now = new Date();
+        const year = parseInt(req.body.year) || now.getFullYear();
+        const month = parseInt(req.body.month) || now.getMonth() + 1;
+        const count = await gamification.recalculateMonthlyLeaderboard(year, month);
+        res.json({ success: true, usersRanked: count });
+    } catch (err) {
+        log.error('Recalculate leaderboard error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================================
+// SEASONAL QUESTS (v30.8.0)
+// ============================================================
+
+// GET /seasons — active seasonal quests with user progress
+router.get('/seasons', async (req, res) => {
+    try {
+        const quests = await gamification.getSeasonalQuests(req.user.username);
+        res.json(quests);
+    } catch (err) {
+        log.error('Get seasonal quests error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /seasons/check — update seasonal progress
+router.post('/seasons/check', async (req, res) => {
+    try {
+        const updated = await gamification.checkSeasonalProgress(req.user.username);
+        res.json({ updated });
+    } catch (err) {
+        log.error('Check seasonal progress error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /seasons/:id/claim — claim seasonal reward
+router.post('/seasons/:id/claim', async (req, res) => {
+    try {
+        const questId = parseInt(req.params.id);
+        if (!Number.isInteger(questId) || questId <= 0) {
+            return res.status(400).json({ error: 'Невірний ID квесту' });
+        }
+        const result = await gamification.claimSeasonalReward(req.user.username, questId);
+        if (!result.success) return res.status(400).json({ error: result.error });
+        res.json(result);
+    } catch (err) {
+        log.error('Claim seasonal reward error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================================
+// TEAMS & CHALLENGES (v30.8.0)
+// ============================================================
+
+// GET /teams — all teams with members
+router.get('/teams', async (req, res) => {
+    try {
+        const teams = await gamification.getTeams();
+        const userTeam = await gamification.getUserTeam(req.user.username);
+        res.json({ teams, userTeamId: userTeam?.id || null });
+    } catch (err) {
+        log.error('Get teams error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /teams/:id/join — join a team
+router.post('/teams/:id/join', async (req, res) => {
+    try {
+        const teamId = parseInt(req.params.id);
+        if (!Number.isInteger(teamId) || teamId <= 0) {
+            return res.status(400).json({ error: 'Невірний ID команди' });
+        }
+        const result = await gamification.joinTeam(req.user.username, teamId);
+        if (!result.success) return res.status(400).json({ error: result.error });
+        res.json(result);
+    } catch (err) {
+        log.error('Join team error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /teams/leave — leave current team
+router.post('/teams/leave', async (req, res) => {
+    try {
+        const result = await gamification.leaveTeam(req.user.username);
+        if (!result.success) return res.status(400).json({ error: result.error });
+        res.json(result);
+    } catch (err) {
+        log.error('Leave team error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /challenges — active team challenges
+router.get('/challenges', async (req, res) => {
+    try {
+        const challenges = await gamification.getTeamChallenges(req.user.username);
+        res.json(challenges);
+    } catch (err) {
+        log.error('Get challenges error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /challenges/recalculate — admin: recalculate team challenge scores
+router.post('/challenges/recalculate', requireRole('admin', 'creator'), async (req, res) => {
+    try {
+        await gamification.recalculateTeamChallenges();
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Recalculate challenges error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================================
+// REFERRAL SYSTEM (v30.8.0)
+// ============================================================
+
+// GET /referral — get own referral code and stats
+router.get('/referral', async (req, res) => {
+    try {
+        const stats = await gamification.getReferralStats(req.user.username);
+        res.json(stats);
+    } catch (err) {
+        log.error('Get referral error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /referral/apply — apply a referral code
+router.post('/referral/apply', async (req, res) => {
+    try {
+        const { code } = req.body;
+        if (!code || typeof code !== 'string' || code.length < 3 || code.length > 20) {
+            return res.status(400).json({ error: 'Невірний реферальний код' });
+        }
+        const result = await gamification.applyReferralCode(req.user.username, code);
+        if (!result.success) return res.status(400).json({ error: result.error });
+        res.json(result);
+    } catch (err) {
+        log.error('Apply referral error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /referral/check — check pending referral rewards
+router.post('/referral/check', async (req, res) => {
+    try {
+        const result = await gamification.checkReferralReward(req.user.username);
+        res.json(result);
+    } catch (err) {
+        log.error('Check referral error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================================
+// BONUS REDEMPTIONS (v30.8.0)
+// ============================================================
+
+// GET /redemptions — own redemption history (or all for admin)
+router.get('/redemptions', async (req, res) => {
+    try {
+        const isAdmin = ['admin', 'creator', 'director'].includes(req.user.role);
+        const redemptions = await gamification.getRedemptions(req.user.username, isAdmin && req.query.all === 'true');
+        res.json(redemptions);
+    } catch (err) {
+        log.error('Get redemptions error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PUT /redemptions/:id — admin: update redemption status
+router.put('/redemptions/:id', requireRole('admin', 'creator', 'director'), async (req, res) => {
+    try {
+        const { status, adminNote } = req.body;
+        const result = await gamification.updateRedemption(
+            parseInt(req.params.id), status, adminNote, req.user.username
+        );
+        if (!result.success) return res.status(400).json({ error: result.error });
+        res.json(result);
+    } catch (err) {
+        log.error('Update redemption error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================================
+// STREAK FREEZE (v30.8.0)
+// ============================================================
+
+// POST /streak/freeze — purchase streak freeze (50 coins, 1/week)
+router.post('/streak/freeze', async (req, res) => {
+    try {
+        const result = await gamification.purchaseStreakFreeze(req.user.username);
+        if (!result.success) return res.status(400).json({ error: result.error });
+        res.json(result);
+    } catch (err) {
+        log.error('Streak freeze error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================================
+// PENALTY POINTS SYSTEM (v25.4.0)
+// ============================================================
 
 // POST /penalty — issue penalty points (manager+)
 router.post('/penalty', requireRole('admin', 'creator', 'director', 'manager'), async (req, res) => {

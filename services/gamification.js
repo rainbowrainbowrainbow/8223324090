@@ -731,9 +731,13 @@ async function recalculateMonthlyLeaderboard(year, month) {
                    WHERE created_at >= $1 AND created_at < $2 GROUP BY created_by`,
         tasks: `SELECT assigned_to as username, COUNT(*) as score FROM tasks
                 WHERE status = 'done' AND updated_at >= $1 AND updated_at < $2 GROUP BY assigned_to`,
-        xp: `SELECT username, SUM(amount) as score FROM coin_transactions
-             WHERE type = 'earn' AND created_at >= $1 AND created_at < $2
-             GROUP BY username`,
+        xp: `SELECT username, SUM(xp_earned) as score FROM (
+                  SELECT created_by as username, COUNT(*) * 10 as xp_earned FROM bookings
+                  WHERE created_at >= $1 AND created_at < $2 GROUP BY created_by
+                  UNION ALL
+                  SELECT assigned_to as username, COUNT(*) * 5 as xp_earned FROM tasks
+                  WHERE status = 'done' AND updated_at >= $1 AND updated_at < $2 GROUP BY assigned_to
+             ) xp_sources GROUP BY username`,
         coins: `SELECT username, SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as score
                 FROM coin_transactions
                 WHERE created_at >= $1 AND created_at < $2
@@ -928,7 +932,12 @@ async function claimSeasonalReward(username, questId) {
         );
 
         if (quest.reward_coins > 0) {
-            await ensureCurrency(username);
+            // Ensure currency row exists within the transaction
+            await client.query(
+                `INSERT INTO game_currency (username, coins) VALUES ($1, 0)
+                 ON CONFLICT (username) DO NOTHING`,
+                [username]
+            );
             await client.query(
                 `UPDATE game_currency SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW()
                  WHERE username = $2`,
@@ -1207,21 +1216,50 @@ async function checkReferralReward(username) {
         [username]
     );
 
+    if (unrewarded.length === 0) return { rewarded: 0 };
+
+    const client = await pool.connect();
     let rewarded = 0;
-    for (const ref of unrewarded) {
-        const { rows: bookings } = await pool.query(
-            'SELECT id FROM bookings WHERE created_by = $1 LIMIT 1',
-            [ref.referred_username]
-        );
-        if (bookings.length > 0) {
-            await pool.query(
-                `UPDATE referrals SET referrer_rewarded = true, status = 'rewarded', activated_at = NOW()
-                 WHERE id = $1`,
-                [ref.id]
+    try {
+        await client.query('BEGIN');
+
+        for (const ref of unrewarded) {
+            const { rows: bookings } = await client.query(
+                'SELECT id FROM bookings WHERE created_by = $1 LIMIT 1',
+                [ref.referred_username]
             );
-            await awardCoins(username, ref.reward_coins, `Реферал: ${ref.referred_username} створив бронювання`, 'referral');
-            rewarded++;
+            if (bookings.length > 0) {
+                await client.query(
+                    `UPDATE referrals SET referrer_rewarded = true, status = 'rewarded', activated_at = NOW()
+                     WHERE id = $1`,
+                    [ref.id]
+                );
+                // Award coins within the transaction
+                await client.query(
+                    `INSERT INTO game_currency (username, coins) VALUES ($1, 0)
+                     ON CONFLICT (username) DO NOTHING`,
+                    [username]
+                );
+                await client.query(
+                    `UPDATE game_currency SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW()
+                     WHERE username = $2`,
+                    [ref.reward_coins, username]
+                );
+                await client.query(
+                    `INSERT INTO coin_transactions (username, amount, type, reason, source_type, source_id)
+                     VALUES ($1, $2, 'earn', $3, 'referral', NULL)`,
+                    [username, ref.reward_coins, `Реферал: ${ref.referred_username} створив бронювання`]
+                );
+                rewarded++;
+            }
         }
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Check referral reward error', err);
+    } finally {
+        client.release();
     }
 
     return { rewarded };
@@ -1276,20 +1314,49 @@ async function updateRedemption(redemptionId, status, adminNote, resolvedBy) {
     const validStatuses = ['pending', 'approved', 'delivered', 'rejected'];
     if (!validStatuses.includes(status)) return { success: false, error: 'Невірний статус' };
 
-    const { rows } = await pool.query(
-        `UPDATE bonus_redemptions SET status = $1, admin_note = $2, resolved_by = $3, resolved_at = NOW()
-         WHERE id = $4 RETURNING *`,
-        [status, adminNote, resolvedBy, redemptionId]
-    );
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
 
-    if (rows.length === 0) return { success: false, error: 'Заявку не знайдено' };
+        const { rows } = await client.query(
+            `UPDATE bonus_redemptions SET status = $1, admin_note = $2, resolved_by = $3, resolved_at = NOW()
+             WHERE id = $4 RETURNING *`,
+            [status, adminNote, resolvedBy, redemptionId]
+        );
 
-    // If rejected, refund coins
-    if (status === 'rejected' && rows[0].coins_paid > 0) {
-        await awardCoins(rows[0].username, rows[0].coins_paid, 'Повернення: заявку відхилено', 'refund');
+        if (rows.length === 0) {
+            await client.query('ROLLBACK');
+            return { success: false, error: 'Заявку не знайдено' };
+        }
+
+        // If rejected, refund coins within same transaction
+        if (status === 'rejected' && rows[0].coins_paid > 0) {
+            await client.query(
+                `INSERT INTO game_currency (username, coins) VALUES ($1, 0)
+                 ON CONFLICT (username) DO NOTHING`,
+                [rows[0].username]
+            );
+            await client.query(
+                `UPDATE game_currency SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW()
+                 WHERE username = $2`,
+                [rows[0].coins_paid, rows[0].username]
+            );
+            await client.query(
+                `INSERT INTO coin_transactions (username, amount, type, reason, source_type, source_id)
+                 VALUES ($1, $2, 'earn', $3, $4, $5)`,
+                [rows[0].username, rows[0].coins_paid, 'Повернення: заявку відхилено', 'refund', null]
+            );
+        }
+
+        await client.query('COMMIT');
+        return { success: true, redemption: rows[0] };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Update redemption error', err);
+        return { success: false, error: 'Помилка оновлення заявки' };
+    } finally {
+        client.release();
     }
-
-    return { success: true, redemption: rows[0] };
 }
 
 // ============================================================

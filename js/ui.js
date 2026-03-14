@@ -13,6 +13,14 @@ function formatDate(date) {
     return `${year}-${month}-${day}`;
 }
 
+// v30.7: Human-friendly Ukrainian date format (e.g. "14 бер")
+const MONTHS_SHORT_UKR = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
+function formatDateUkr(date) {
+    const day = date.getDate();
+    const month = MONTHS_SHORT_UKR[date.getMonth()];
+    return `${day} ${month}`;
+}
+
 function timeToMinutes(time) {
     if (!time || typeof time !== 'string' || !time.includes(':')) return 0;
     const [h, m] = time.split(':').map(Number);
@@ -783,7 +791,7 @@ async function changeBookingStatus(bookingId, newStatus) {
 // ЕКСПОРТ У КАРТИНКУ
 // ==========================================
 
-function drawExportHeader(ctx, canvas, padding, headerHeight) {
+function drawExportHeader(ctx, canvas, padding, headerHeight, dateLabel) {
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -795,7 +803,8 @@ function drawExportHeader(ctx, canvas, padding, headerHeight) {
     ctx.fillText(`Парк Закревського Періоду - Таймлайн`, padding, 35);
 
     ctx.font = '20px Arial';
-    ctx.fillText(`${formatDate(AppState.selectedDate)} (${DAYS[AppState.selectedDate.getDay()]})`, padding, 60);
+    const label = dateLabel || `${formatDate(AppState.selectedDate)} (${DAYS[AppState.selectedDate.getDay()]})`;
+    ctx.fillText(label, padding, 60);
 }
 
 function drawExportTimeScale(ctx, start, end, padding, timeWidth, headerHeight, cellWidth) {
@@ -858,9 +867,26 @@ function drawExportLines(ctx, lines, bookings, start, padding, timeWidth, header
             ctx.fill();
 
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 12px Arial';
-            const text = `${booking.label || booking.programCode}: ${booking.room}`;
-            ctx.fillText(text, bx + 6, by + bh / 2 + 4, bw - 12);
+            ctx.font = 'bold 11px Arial';
+            // v30.7: Richer export info — time, program, room, kids, group
+            const progName = booking.label || booking.programCode || '';
+            const timeStr = booking.time || '';
+            const durStr = booking.duration ? `${booking.duration}хв` : '';
+            const roomStr = booking.room || '';
+            const kidsStr = booking.kidsCount ? `${booking.kidsCount} діт.` : '';
+            const groupStr = booking.groupName || '';
+            // Line 1: time + program
+            const line1 = `${timeStr} ${progName}`.trim();
+            // Line 2: room, kids, group
+            const line2Parts = [roomStr, kidsStr, groupStr].filter(Boolean);
+            const line2 = line2Parts.join(' · ');
+            if (bh > 30 && line2) {
+                ctx.fillText(line1, bx + 6, by + bh / 2 - 2, bw - 12);
+                ctx.font = '10px Arial';
+                ctx.fillText(line2, bx + 6, by + bh / 2 + 12, bw - 12);
+            } else {
+                ctx.fillText(`${line1} ${roomStr ? '| ' + roomStr : ''}`, bx + 6, by + bh / 2 + 4, bw - 12);
+            }
         });
     });
 }
@@ -879,6 +905,11 @@ function drawExportGrid(ctx, start, end, padding, timeWidth, headerHeight, cellW
 }
 
 async function exportTimelineImage() {
+    // v30.7: Support multi-day export
+    if (AppState.multiDayMode) {
+        return exportMultiDayImage();
+    }
+
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const lines = await getLinesForDate(AppState.selectedDate);
     const { start, end } = getTimeRange();
@@ -896,13 +927,159 @@ async function exportTimelineImage() {
     const timeWidth = 120;
     const cellWidth = (canvas.width - padding * 2 - timeWidth) / ((end - start) * 4);
 
-    drawExportHeader(ctx, canvas, padding, headerHeight);
+    const dateLabel = `${formatDate(AppState.selectedDate)} (${DAYS[AppState.selectedDate.getDay()]})`;
+    drawExportHeader(ctx, canvas, padding, headerHeight, dateLabel);
     drawExportTimeScale(ctx, start, end, padding, timeWidth, headerHeight, cellWidth);
     drawExportLines(ctx, lines, bookings, start, padding, timeWidth, headerHeight, lineHeight, cellWidth, canvas.width);
     drawExportGrid(ctx, start, end, padding, timeWidth, headerHeight, cellWidth, canvas.height);
 
     const link = document.createElement('a');
     link.download = `timeline_${formatDate(AppState.selectedDate)}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+
+    showNotification('Таймлайн експортовано як картинку!', 'success');
+}
+
+// v30.7: Multi-day PNG export — each day as a separate section
+async function exportMultiDayImage() {
+    const dates = [];
+    const startDate = new Date(AppState.selectedDate);
+    for (let i = 0; i < AppState.daysToShow; i++) {
+        const d = new Date(startDate);
+        d.setDate(startDate.getDate() + i);
+        dates.push(d);
+    }
+
+    // Collect all data first
+    const daysData = [];
+    for (const date of dates) {
+        const bookings = await getBookingsForDate(date);
+        const lines = await getLinesForDate(date);
+        daysData.push({ date, bookings, lines });
+    }
+
+    const dpi = 150;
+    const canvasWidth = 297 * dpi / 25.4;
+    const padding = 40;
+    const headerHeight = 80;
+    const dayHeaderHeight = 36;
+    const lineHeight = 50;
+    const timeWidth = 120;
+
+    // Calculate total height: header + each day (day header + lines)
+    let totalHeight = headerHeight + padding * 2;
+    for (const dd of daysData) {
+        totalHeight += dayHeaderHeight + Math.max(dd.lines.length, 1) * lineHeight + 10;
+    }
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvasWidth;
+    canvas.height = totalHeight;
+
+    // Determine time range (use widest across all days)
+    let globalStart = 12, globalEnd = 20;
+    for (const dd of daysData) {
+        const dow = dd.date.getDay();
+        const isWknd = dow === 0 || dow === 6;
+        const s = isWknd ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START;
+        const e = isWknd ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END;
+        if (s < globalStart) globalStart = s;
+        if (e > globalEnd) globalEnd = e;
+    }
+
+    const cellWidth = (canvasWidth - padding * 2 - timeWidth) / ((globalEnd - globalStart) * 4);
+
+    // Header
+    const firstDateStr = formatDateUkr(dates[0]);
+    const lastDateStr = formatDateUkr(dates[dates.length - 1]);
+    const dateLabel = `${firstDateStr} — ${lastDateStr}`;
+    drawExportHeader(ctx, canvas, padding, headerHeight, dateLabel);
+
+    // Draw each day
+    let yOffset = headerHeight + padding;
+    for (const dd of daysData) {
+        // Day sub-header
+        ctx.fillStyle = '#E8F5E9';
+        ctx.fillRect(padding, yOffset, canvasWidth - padding * 2, dayHeaderHeight);
+        ctx.fillStyle = '#333333';
+        ctx.font = 'bold 16px Arial';
+        const dayLabel = `${DAYS[dd.date.getDay()]}, ${formatDateUkr(dd.date)}`;
+        ctx.fillText(dayLabel, padding + 10, yOffset + dayHeaderHeight / 2 + 5);
+        yOffset += dayHeaderHeight;
+
+        // Lines and bookings for this day
+        drawExportLines(ctx, dd.lines, dd.bookings, globalStart, padding, timeWidth, yOffset - (headerHeight + padding), lineHeight, cellWidth, canvasWidth);
+
+        // Actually draw at correct y position
+        dd.lines.forEach((line, index) => {
+            const y = yOffset + index * lineHeight;
+
+            ctx.fillStyle = index % 2 === 0 ? '#F5F5F5' : '#FFFFFF';
+            ctx.fillRect(padding, y, canvasWidth - padding * 2, lineHeight);
+
+            ctx.fillStyle = line.color;
+            ctx.fillRect(padding, y, 4, lineHeight);
+
+            ctx.fillStyle = '#333333';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText(line.name, padding + 12, y + lineHeight / 2 + 5);
+
+            const lineBookings = dd.bookings.filter(b => b.lineId === line.id);
+            lineBookings.forEach(booking => {
+                const startMin = timeToMinutes(booking.time) - timeToMinutes(`${globalStart}:00`);
+                const bx = padding + timeWidth + (startMin / 15) * cellWidth;
+                const bw = (booking.duration / 15) * cellWidth - 4;
+                const by = y + 6;
+                const bh = lineHeight - 12;
+
+                ctx.fillStyle = CATEGORY_COLORS[booking.category] || '#607D8B';
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(bx, by, bw, bh, 6);
+                } else {
+                    const r = 6;
+                    ctx.moveTo(bx + r, by); ctx.lineTo(bx + bw - r, by);
+                    ctx.arcTo(bx + bw, by, bx + bw, by + r, r);
+                    ctx.lineTo(bx + bw, by + bh - r);
+                    ctx.arcTo(bx + bw, by + bh, bx + bw - r, by + bh, r);
+                    ctx.lineTo(bx + r, by + bh);
+                    ctx.arcTo(bx, by + bh, bx, by + bh - r, r);
+                    ctx.lineTo(bx, by + r);
+                    ctx.arcTo(bx, by, bx + r, by, r);
+                    ctx.closePath();
+                }
+                ctx.fill();
+
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 11px Arial';
+                const progName = booking.label || booking.programCode || '';
+                const timeStr = booking.time || '';
+                const roomStr = booking.room || '';
+                const kidsStr = booking.kidsCount ? `${booking.kidsCount} діт.` : '';
+                const line1 = `${timeStr} ${progName}`.trim();
+                const line2Parts = [roomStr, kidsStr, booking.groupName || ''].filter(Boolean);
+                const line2 = line2Parts.join(' · ');
+                if (bh > 26 && line2) {
+                    ctx.fillText(line1, bx + 6, by + bh / 2 - 2, bw - 12);
+                    ctx.font = '10px Arial';
+                    ctx.fillText(line2, bx + 6, by + bh / 2 + 10, bw - 12);
+                } else {
+                    ctx.fillText(`${line1}${roomStr ? ' | ' + roomStr : ''}`, bx + 6, by + bh / 2 + 4, bw - 12);
+                }
+            });
+        });
+
+        yOffset += Math.max(dd.lines.length, 1) * lineHeight + 10;
+    }
+
+    // Time scale at top (after header)
+    drawExportTimeScale(ctx, globalStart, globalEnd, padding, timeWidth, headerHeight, cellWidth);
+
+    const link = document.createElement('a');
+    const fname = `timeline_${formatDate(dates[0])}_${formatDate(dates[dates.length - 1])}.png`;
+    link.download = fname;
     link.href = canvas.toDataURL('image/png');
     link.click();
 
@@ -917,9 +1094,21 @@ function exportTimelinePdf() {
     // Add print class for CSS targeting
     document.body.classList.add('printing-timeline');
 
-    // Temporarily show all booking details
-    const dateStr = formatDate(AppState.selectedDate);
-    document.title = `Таймлайн ${dateStr} — Парк Закревського Періоду`;
+    // v30.7: Support multi-day title
+    let titleStr;
+    if (AppState.multiDayMode) {
+        const dates = [];
+        const startDate = new Date(AppState.selectedDate);
+        for (let i = 0; i < AppState.daysToShow; i++) {
+            const d = new Date(startDate);
+            d.setDate(startDate.getDate() + i);
+            dates.push(d);
+        }
+        titleStr = `Таймлайн ${formatDateUkr(dates[0])} — ${formatDateUkr(dates[dates.length - 1])}`;
+    } else {
+        titleStr = `Таймлайн ${formatDate(AppState.selectedDate)}`;
+    }
+    document.title = `${titleStr} — Парк Закревського Періоду`;
 
     window.print();
 
@@ -1234,12 +1423,17 @@ function executeTimelineSearch(query) {
     }
 
     const q = query.toLowerCase();
-    const blocks = document.querySelectorAll('.booking-block:not(.status-hidden)');
+    // v30.7: Support both single-day (.booking-block) and multi-day (.mini-booking-block) modes
+    const selector = AppState.multiDayMode
+        ? '.mini-booking-block'
+        : '.booking-block:not(.status-hidden)';
+    const blocks = document.querySelectorAll(selector);
 
     blocks.forEach(block => {
         const text = block.textContent.toLowerCase();
         const ariaLabel = (block.getAttribute('aria-label') || '').toLowerCase();
-        if (text.includes(q) || ariaLabel.includes(q)) {
+        const title = (block.getAttribute('title') || '').toLowerCase();
+        if (text.includes(q) || ariaLabel.includes(q) || title.includes(q)) {
             AppState.searchResults.push(block);
             block.classList.add('search-match');
         } else {

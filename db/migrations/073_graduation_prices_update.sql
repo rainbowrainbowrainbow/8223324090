@@ -7,7 +7,7 @@ UPDATE graduation_services SET price_park = 2500, price_per_child = 480, cost_ho
 UPDATE graduation_services SET price_park = 0, price_per_child = 160, cost_host = 400, cost_other = 50 WHERE name = 'Велком Зона';
 UPDATE graduation_services SET price_park = 0, price_per_child = 280, cost_host = 400, cost_delivery = 90, cost_box = 590, cost_markers = 100 WHERE name = 'Капсула часу';
 UPDATE graduation_services SET price_park = 0, price_per_child = 210, cost_host = 400, cost_print_per_kid = 10, cost_design_per_kid = 10 WHERE name = 'Видача дипломів та вітання класу на сцені';
-UPDATE graduation_services SET price_park = 0, price_per_child = 5 WHERE name = 'Вхід';
+UPDATE graduation_services SET price_park = 0, price_per_child = 10 WHERE name = 'Вхід';
 UPDATE graduation_services SET price_park = 2400, price_per_child = 460, cost_host = 800, cost_costume = 60, cost_solution = 120 WHERE name = 'Шоу Бульбашок';
 UPDATE graduation_services SET price_park = 2900, price_per_child = 560, cost_host = 500, cost_costume = 60, cost_cleaning = 100 WHERE name = 'Паперова дискотека';
 UPDATE graduation_services SET price_park = 4400, price_per_child = 850, cost_host = 700, cost_costume = 60, cost_delivery = 90, cost_ice = 610 WHERE name = 'Шоу з сухим льодом';

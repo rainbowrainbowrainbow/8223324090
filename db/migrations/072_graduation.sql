@@ -21,7 +21,7 @@ ON CONFLICT (key) DO NOTHING;
 CREATE TABLE IF NOT EXISTS graduation_services (
     id SERIAL PRIMARY KEY,
     sort_order INTEGER NOT NULL DEFAULT 0,
-    name TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
     description TEXT,
     duration_min INTEGER DEFAULT 0,
     price_park REAL DEFAULT 0,
@@ -125,7 +125,7 @@ INSERT INTO graduation_services (sort_order, name, description, duration_min, pr
 (23, 'Неонова паперова дискотека', 'Яскраве диско-шоу з паперовою пушкою та неоновим світлом! Веселощі, рух і танці в атмосфері абсолютного неонового божевілля! Спеціальні ультрафіолетові лампи та флуоресцентний папір!', 30, 1900, 450, 'fixed', 500, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 0, 'standard', 'neon', NULL),
 (24, 'Неонові мильні бульбашки', 'Феєричне мильне шоу у неонових відтінках! Під ультрафіолетовим світлом бульбашки переливаються яскравими кольорами — магія та краса в кожній бульбашці!', 30, 2000, 430, 'fixed', 750, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 120, 0, 0, 'standard', 'neon', NULL),
 (25, 'Неоновий аквагрим', 'Ваша яскрава індивідуальність засяє під неоновим світлом! Спеціальні фарби створюють унікальні малюнки, які світяться під ультрафіолетом — кожна дитина стає зіркою неонової вечірки!', 30, 0, 160, 'fixed', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'standard', 'neon', NULL)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (name) DO NOTHING;
 
 -- Seed: 7 пакетів
 INSERT INTO graduation_packages (name, slug, sort_order) VALUES

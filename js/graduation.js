@@ -1,5 +1,5 @@
 /**
- * js/graduation.js — Graduation Event Builder (v30.1.0)
+ * js/graduation.js — Graduation Event Builder (v30.2.0)
  * Конструктор випускного: вибір послуг, підрахунок, збереження, КП
  */
 (function () {
@@ -400,11 +400,11 @@
 
         let html = `
         <div class="grad-quotes-filter">
-            <button class="grad-filter-btn active" onclick="GradPage.filterQuotes('')">Всі</button>
-            <button class="grad-filter-btn" onclick="GradPage.filterQuotes('draft')">Чернетки</button>
-            <button class="grad-filter-btn" onclick="GradPage.filterQuotes('sent')">Відправлені</button>
-            <button class="grad-filter-btn" onclick="GradPage.filterQuotes('approved')">Погоджені</button>
-            <button class="grad-filter-btn" onclick="GradPage.filterQuotes('booked')">Заброньовані</button>
+            <button class="grad-filter-btn active" onclick="GradPage.filterQuotes('',this)">Всі</button>
+            <button class="grad-filter-btn" onclick="GradPage.filterQuotes('draft',this)">Чернетки</button>
+            <button class="grad-filter-btn" onclick="GradPage.filterQuotes('sent',this)">Відправлені</button>
+            <button class="grad-filter-btn" onclick="GradPage.filterQuotes('approved',this)">Погоджені</button>
+            <button class="grad-filter-btn" onclick="GradPage.filterQuotes('booked',this)">Заброньовані</button>
         </div>
         <div class="grad-quotes-list">`;
 
@@ -725,9 +725,9 @@
         }
     }
 
-    function filterQuotes(status) {
+    function filterQuotes(status, btn) {
         document.querySelectorAll('.grad-filter-btn').forEach(b => b.classList.remove('active'));
-        event.target.classList.add('active');
+        if (btn) btn.classList.add('active');
         document.querySelectorAll('.grad-quote-row').forEach(row => {
             if (!status || row.dataset.status === status) {
                 row.style.display = '';

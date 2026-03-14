@@ -7,14 +7,14 @@
     <meta name="description" content="Event Genix — Конструктор випускного">
     <meta property="og:title" content="Event Genix — Випускний">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=30.1.0">
-    <link rel="stylesheet" href="css/layout.css?v=30.1.0">
-    <link rel="stylesheet" href="css/pages.css?v=30.1.0">
-    <link rel="stylesheet" href="css/modals.css?v=30.1.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=30.1.0">
-    <link rel="stylesheet" href="css/responsive.css?v=30.1.0">
-    <link rel="stylesheet" href="css/graduation.css?v=30.1.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=30.1.0">
+    <link rel="stylesheet" href="css/base.css?v=30.2.0">
+    <link rel="stylesheet" href="css/layout.css?v=30.2.0">
+    <link rel="stylesheet" href="css/pages.css?v=30.2.0">
+    <link rel="stylesheet" href="css/modals.css?v=30.2.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=30.2.0">
+    <link rel="stylesheet" href="css/responsive.css?v=30.2.0">
+    <link rel="stylesheet" href="css/graduation.css?v=30.2.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=30.2.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -75,11 +75,11 @@
     <!-- Notification -->
     <div id="notification" class="notification" style="display:none"></div>
 
-    <script src="js/config.js?v=30.1.0"></script>
-    <script src="js/api.js?v=30.1.0"></script>
-    <script src="js/auth.js?v=30.1.0"></script>
-    <script src="js/components/sidebar.js?v=30.1.0"></script>
-    <script src="js/graduation.js?v=30.1.0"></script>
+    <script src="js/config.js?v=30.2.0"></script>
+    <script src="js/api.js?v=30.2.0"></script>
+    <script src="js/auth.js?v=30.2.0"></script>
+    <script src="js/components/sidebar.js?v=30.2.0"></script>
+    <script src="js/graduation.js?v=30.2.0"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const isEmbedded = new URLSearchParams(location.search).get('embedded') === '1';
@@ -95,7 +95,7 @@
                 if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
                 // Load role-panel only in standalone mode
                 const s = document.createElement('script');
-                s.src = 'js/role-panel.js?v=30.1.0';
+                s.src = 'js/role-panel.js?v=30.2.0';
                 document.body.appendChild(s);
             }
             if (typeof GradPage !== 'undefined') GradPage.init();

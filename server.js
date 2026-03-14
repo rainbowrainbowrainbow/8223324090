@@ -98,6 +98,10 @@ app.use('/api', (req, res, next) => {
     if (req.path.startsWith('/auth/') || req.path === '/health' || req.path === '/version' || req.path.startsWith('/telegram/webhook') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || req.path === '/demo/login' || req.path === '/demo/scenarios' || req.path === '/packages' || req.path === '/status/public' || req.path.startsWith('/leads/webhook/') || (req.path === '/leads/landing' && req.method === 'POST')) {
         return next();
     }
+    // Support token in query string for proposal/print endpoints opened via window.open()
+    if (!req.headers['authorization'] && req.query.token) {
+        req.headers['authorization'] = `Bearer ${req.query.token}`;
+    }
     authenticateToken(req, res, next);
 });
 

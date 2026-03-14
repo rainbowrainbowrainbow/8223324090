@@ -415,7 +415,7 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
             return res.status(400).json({ error: 'Quote already has a booking' });
         }
 
-        const { date, time, roomId } = req.body;
+        const { date, time, room, lineId } = req.body;
         if (!date || !time) {
             return res.status(400).json({ error: 'date and time are required' });
         }
@@ -441,12 +441,12 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
             await client.query('BEGIN');
 
             await client.query(
-                `INSERT INTO bookings (id, date, time, room_id, program_name, kids_count,
+                `INSERT INTO bookings (id, date, time, line_id, room, program_name, kids_count,
                     price, category, status, extra_data, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'graduation', 'confirmed',
-                    $8, $9)`,
-                [bookingId, date, time, roomId || null, programName, q.kids_count,
-                 q.total_all, JSON.stringify({
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'graduation', 'confirmed',
+                    $9, $10)`,
+                [bookingId, date, time, lineId || 'graduation', room || null, programName, q.kids_count,
+                 Math.round(q.total_all), JSON.stringify({
                      quoteId: q.id,
                      quoteNumber: q.quote_number,
                      services: q.selected_services,
@@ -477,7 +477,13 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
 });
 
 // GET /api/graduation/quotes/:id/proposal — генерація КП (HTML)
-router.get('/quotes/:id/proposal', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+// Support token in query string for window.open() usage
+router.get('/quotes/:id/proposal', (req, res, next) => {
+    if (!req.headers['authorization'] && req.query.token) {
+        req.headers['authorization'] = `Bearer ${req.query.token}`;
+    }
+    next();
+}, requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
         const { id } = req.params;
         const quote = await pool.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);

@@ -1,5 +1,5 @@
-/* css/graduation.css — Graduation Event Builder (v30.1.0) */
-/* Uses design system variables — works in light + dark mode */
+/* css/graduation.css — Graduation Event Builder (v30.3.0) */
+/* Features: collapse, color-code, timeline, FAB, analytics, comparison, recommendations */
 
 .grad-page {
     padding: 16px;
@@ -26,6 +26,16 @@
     border-radius: 12px;
     padding: 4px;
     border: 1px solid var(--gray-200);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+.grad-tabs::-webkit-scrollbar { display: none; }
+
+/* #45: Tab scroll indicators */
+.grad-tabs {
+    mask-image: linear-gradient(to right, transparent, black 8px, black calc(100% - 8px), transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 8px, black calc(100% - 8px), transparent);
 }
 
 .grad-tab {
@@ -41,6 +51,7 @@
     transition: all 0.2s;
     font-family: inherit;
     min-height: 44px;
+    white-space: nowrap;
 }
 
 .grad-tab:hover {
@@ -49,7 +60,7 @@
 }
 
 .grad-tab.active {
-    color: #C9A84C;
+    color: var(--grad-accent, #C9A84C);
     background: rgba(201, 168, 76, 0.12);
 }
 
@@ -76,6 +87,14 @@
     min-width: 120px;
 }
 
+.grad-field-actions {
+    display: flex;
+    gap: 8px;
+    flex-direction: row;
+    align-items: flex-end;
+    min-width: auto;
+}
+
 .grad-field label {
     font-size: 12px;
     color: var(--gray-500);
@@ -98,7 +117,7 @@
 
 .grad-field input:focus {
     outline: none;
-    border-color: #C9A84C;
+    border-color: var(--grad-accent, #C9A84C);
     box-shadow: 0 0 0 2px rgba(201, 168, 76, 0.2);
 }
 
@@ -123,7 +142,7 @@
 .grad-stepper-btn {
     background: rgba(201, 168, 76, 0.15);
     border: 1px solid rgba(201, 168, 76, 0.3);
-    color: #C9A84C;
+    color: var(--grad-accent, #C9A84C);
     width: 44px;
     height: 44px;
     font-size: 20px;
@@ -132,47 +151,95 @@
     font-family: inherit;
 }
 
-.grad-stepper-btn:first-child {
-    border-radius: 8px 0 0 8px;
-}
+.grad-stepper-btn:first-child { border-radius: 8px 0 0 8px; }
+.grad-stepper-btn:last-child { border-radius: 0 8px 8px 0; }
+.grad-stepper-btn:hover { background: rgba(201, 168, 76, 0.25); }
 
-.grad-stepper-btn:last-child {
-    border-radius: 0 8px 8px 0;
-}
+/* #10: Clear / Share buttons */
+.grad-btn-clear { color: var(--gray-500); background: var(--gray-100); border: 1px solid var(--gray-300); }
+.grad-btn-clear:hover { background: rgba(239, 68, 68, 0.1); color: #EF4444; border-color: #EF4444; }
+.grad-btn-clear:disabled { opacity: 0.4; cursor: not-allowed; }
+.grad-btn-share { color: var(--gray-500); background: var(--gray-100); border: 1px solid var(--gray-300); }
+.grad-btn-share:hover { background: rgba(59, 130, 246, 0.1); color: #3B82F6; border-color: #3B82F6; }
 
-.grad-stepper-btn:hover {
-    background: rgba(201, 168, 76, 0.25);
+/* === WARNINGS === */
+.grad-warnings {
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-size: 13px;
 }
+.grad-conflicts {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: #F59E0B;
+}
+.grad-kids-warnings {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #3B82F6;
+}
+.grad-warning-item { padding: 2px 0; }
 
 /* === SERVICE CARDS === */
-.grad-category {
-    margin-bottom: 20px;
-}
+.grad-category { margin-bottom: 20px; }
 
+/* #2: Collapse/expand */
 .grad-category-title {
     font-size: 16px;
     font-weight: 700;
-    color: #C9A84C;
     margin-bottom: 10px;
     padding-left: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+    transition: opacity 0.2s;
 }
+.grad-category-title:hover { opacity: 0.8; }
+
+.grad-cat-count {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+.grad-chevron {
+    margin-left: auto;
+    font-size: 10px;
+    transition: transform 0.3s;
+    opacity: 0.5;
+}
+.grad-chevron.collapsed { transform: rotate(-90deg); }
 
 .grad-category-items {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    max-height: 2000px;
+    overflow: hidden;
+    transition: max-height 0.4s ease, opacity 0.3s;
+    opacity: 1;
+}
+.grad-category-items.grad-collapsed {
+    max-height: 0;
+    opacity: 0;
+    margin-bottom: 0;
 }
 
+/* #3/#5: Selection animation */
 .grad-service-card {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     background: var(--white);
     border: 1px solid var(--gray-200);
     border-radius: 12px;
-    padding: 12px 16px;
+    padding: 12px 14px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.25s ease;
     position: relative;
     min-height: 44px;
 }
@@ -180,25 +247,37 @@
 .grad-service-card:hover {
     background: var(--gray-50);
     border-color: var(--gray-300);
+    transform: translateX(2px);
 }
 
 .grad-service-selected {
-    background: rgba(201, 168, 76, 0.08);
-    border-color: rgba(201, 168, 76, 0.3);
+    transform: translateX(4px);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+
+/* #11: Service icon */
+.grad-service-icon {
+    font-size: 20px;
+    min-width: 28px;
+    text-align: center;
 }
 
 .grad-service-check input[type="checkbox"] {
     width: 20px;
     height: 20px;
-    accent-color: #C9A84C;
     cursor: pointer;
     min-width: 20px;
+    transition: transform 0.2s;
+}
+.grad-service-check input[type="checkbox"]:checked {
+    transform: scale(1.15);
+}
+.grad-service-check input[type="checkbox"]:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
-.grad-service-info {
-    flex: 1;
-    min-width: 0;
-}
+.grad-service-info { flex: 1; min-width: 0; }
 
 .grad-service-name {
     font-size: 14px;
@@ -207,7 +286,23 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
+
+/* #15: Badges */
+.grad-badge {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+.grad-badge-hit { background: rgba(245, 158, 11, 0.15); color: #F59E0B; }
+.grad-badge-new { background: rgba(16, 185, 129, 0.15); color: #10B981; }
 
 .grad-service-meta {
     display: flex;
@@ -226,26 +321,14 @@
     font-weight: 700;
     text-transform: uppercase;
 }
+.grad-formula { background: rgba(59, 130, 246, 0.15); color: #3B82F6; }
+.grad-fixed { background: rgba(16, 185, 129, 0.15); color: #10B981; }
 
-.grad-formula {
-    background: rgba(59, 130, 246, 0.15);
-    color: #3B82F6;
-}
-
-.grad-fixed {
-    background: rgba(16, 185, 129, 0.15);
-    color: #10B981;
-}
-
-.grad-entry-note {
-    color: #C9A84C;
-    font-size: 11px;
-}
+.grad-entry-note { font-size: 11px; }
 
 .grad-service-price {
     font-size: 16px;
     font-weight: 800;
-    color: #C9A84C;
     white-space: nowrap;
 }
 
@@ -269,11 +352,104 @@
     transition: all 0.2s;
     font-family: inherit;
 }
-
 .grad-info-btn:hover {
     background: rgba(201, 168, 76, 0.15);
-    border-color: #C9A84C;
-    color: #C9A84C;
+    border-color: var(--grad-accent, #C9A84C);
+    color: var(--grad-accent, #C9A84C);
+}
+
+/* #30: Recommendations */
+.grad-recommendations {
+    background: var(--gray-50);
+    border: 1px dashed var(--gray-300);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-top: 12px;
+}
+.grad-rec-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gray-500);
+    margin-bottom: 8px;
+}
+.grad-rec-items { display: flex; gap: 8px; flex-wrap: wrap; }
+.grad-rec-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    background: var(--white);
+    border: 1px solid var(--gray-300);
+    color: var(--gray-700);
+    transition: all 0.2s;
+    font-family: inherit;
+    min-height: 36px;
+}
+.grad-rec-btn:hover {
+    border-color: var(--grad-accent, #C9A84C);
+    background: rgba(201, 168, 76, 0.08);
+}
+.grad-rec-price { color: var(--gray-400); font-size: 11px; margin-left: 4px; }
+
+/* #13: Timeline */
+.grad-timeline {
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-top: 12px;
+}
+.grad-timeline-header {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gray-700);
+    margin-bottom: 10px;
+}
+.grad-timeline-bar {
+    display: flex;
+    height: 28px;
+    border-radius: 8px;
+    overflow: hidden;
+    gap: 2px;
+}
+.grad-timeline-segment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 4px;
+    transition: all 0.3s;
+    border-radius: 4px;
+}
+.grad-timeline-segment:hover { opacity: 0.8; filter: brightness(1.1); }
+.grad-tl-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 4px;
+}
+.grad-timeline-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+.grad-tl-legend-item {
+    font-size: 11px;
+    color: var(--gray-500);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.grad-tl-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
 }
 
 /* === SUMMARY === */
@@ -287,9 +463,7 @@
     bottom: 16px;
 }
 
-.grad-summary-error {
-    border-color: #EF4444;
-}
+.grad-summary-error { border-color: #EF4444; }
 
 .grad-error {
     color: #EF4444;
@@ -324,11 +498,13 @@
     font-size: 18px;
     font-weight: 800;
     color: var(--gray-900);
+    /* #16: Animated counter effect */
+    transition: color 0.3s;
 }
 
 .grad-summary-main {
     font-size: 24px;
-    color: #C9A84C;
+    color: var(--grad-accent, #C9A84C);
 }
 
 .director-only {
@@ -340,6 +516,67 @@
     border-left: 2px solid rgba(239, 68, 68, 0.3);
     padding-left: 12px;
 }
+
+/* #26: Customer search */
+.grad-customer-row {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--gray-200);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.grad-customer-row label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gray-500);
+    white-space: nowrap;
+}
+.grad-customer-search {
+    flex: 1;
+    position: relative;
+}
+.grad-customer-search input {
+    width: 100%;
+    background: var(--white);
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    color: var(--gray-900);
+    padding: 8px 12px;
+    font-size: 16px;
+    font-family: inherit;
+    min-height: 44px;
+}
+.grad-customer-search input:focus {
+    outline: none;
+    border-color: var(--grad-accent, #C9A84C);
+}
+.grad-customer-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--white);
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    z-index: 50;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.grad-customer-option {
+    padding: 10px 12px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    transition: background 0.15s;
+    border-bottom: 1px solid var(--gray-100);
+}
+.grad-customer-option:hover { background: var(--gray-50); }
+.grad-customer-option:last-child { border-bottom: none; }
+.grad-customer-name { font-weight: 600; color: var(--gray-900); font-size: 14px; }
+.grad-customer-phone { color: var(--gray-400); font-size: 13px; }
+.grad-customer-empty { padding: 12px; text-align: center; color: var(--gray-400); font-size: 13px; }
 
 /* === ACTIONS === */
 .grad-actions {
@@ -365,7 +602,6 @@
     background: linear-gradient(135deg, #C9A84C, #B8942F);
     color: #fff;
 }
-
 .grad-btn-primary:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 16px rgba(201, 168, 76, 0.3);
@@ -376,86 +612,29 @@
     border: 1px solid var(--gray-300);
     color: var(--gray-700);
 }
-
-.grad-btn-secondary:hover {
-    background: var(--gray-200);
-}
+.grad-btn-secondary:hover { background: var(--gray-200); }
 
 .grad-btn-sm {
     padding: 6px 12px;
     font-size: 12px;
     border-radius: 6px;
     background: rgba(201, 168, 76, 0.12);
-    color: #C9A84C;
+    color: var(--grad-accent, #C9A84C);
     border: 1px solid rgba(201, 168, 76, 0.2);
     min-height: 32px;
 }
+.grad-btn-sm:hover { background: rgba(201, 168, 76, 0.2); }
+.grad-btn-sm:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.grad-btn-sm:hover {
-    background: rgba(201, 168, 76, 0.2);
+/* #22: Booking button */
+.grad-btn-book {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10B981;
+    border-color: rgba(16, 185, 129, 0.3);
 }
+.grad-btn-book:hover { background: rgba(16, 185, 129, 0.2); }
 
 /* === PACKAGES === */
-.grad-packages-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
-}
-
-.grad-package-card {
-    background: var(--white);
-    border: 1px solid var(--gray-200);
-    border-radius: 16px;
-    padding: 20px;
-    transition: all 0.2s;
-}
-
-.grad-package-card:hover {
-    border-color: rgba(201, 168, 76, 0.3);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-}
-
-.grad-package-name {
-    font-size: 18px;
-    font-weight: 800;
-    color: var(--gray-900);
-    margin-bottom: 8px;
-    text-align: center;
-    background: rgba(201, 168, 76, 0.1);
-    padding: 8px;
-    border-radius: 8px;
-}
-
-.grad-package-price {
-    font-size: 28px;
-    font-weight: 900;
-    color: #C9A84C;
-    margin-bottom: 12px;
-}
-
-.grad-package-price span {
-    font-size: 14px;
-    font-weight: 400;
-    color: var(--gray-500);
-}
-
-.grad-package-services {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 16px;
-}
-
-.grad-package-tag {
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 6px;
-    background: var(--gray-100);
-    color: var(--gray-600);
-    border: 1px solid var(--gray-200);
-}
-
 .grad-packages-kids-row {
     display: flex;
     align-items: center;
@@ -465,38 +644,79 @@
     color: var(--gray-700);
 }
 
+.grad-packages-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+/* #18: Gradient per package */
+.grad-package-card {
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: 16px;
+    padding: 20px;
+    transition: all 0.2s;
+}
+.grad-package-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.grad-package-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.grad-package-name {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--gray-900);
+    text-align: center;
+    flex: 1;
+    background: rgba(201, 168, 76, 0.1);
+    padding: 8px;
+    border-radius: 8px;
+}
+
+/* #8: Compare checkbox */
+.grad-compare-check {
+    cursor: pointer;
+    padding: 4px;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.grad-compare-check input { width: 16px; height: 16px; cursor: pointer; }
+
 .grad-package-table {
     width: 100%;
     border-collapse: collapse;
     margin: 12px 0 16px;
 }
-
 .grad-package-table td {
     padding: 6px 0;
     border-bottom: 1px solid var(--gray-200);
     font-size: 14px;
 }
-
-.grad-pkg-svc-name {
-    color: var(--gray-700);
-}
-
+.grad-pkg-svc-name { color: var(--gray-700); }
 .grad-pkg-svc-price {
     text-align: right;
     color: var(--gray-900);
     font-weight: 600;
     white-space: nowrap;
 }
-
 .grad-pkg-total-row td {
     border-top: 2px solid rgba(201, 168, 76, 0.4);
     border-bottom: none;
     padding-top: 10px;
     font-weight: 800;
-    color: #C9A84C;
+    color: var(--grad-accent, #C9A84C);
     font-size: 15px;
 }
-
 .grad-pkg-total-all-row td {
     border-bottom: none;
     padding-top: 4px;
@@ -504,10 +724,29 @@
     color: var(--gray-500);
     font-size: 13px;
 }
+.grad-pkg-select-btn { width: 100%; margin-top: 4px; }
 
-.grad-pkg-select-btn {
+/* #8: Comparison table */
+.grad-compare-table {
     width: 100%;
-    margin-top: 4px;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.grad-compare-table th, .grad-compare-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--gray-200);
+    text-align: left;
+}
+.grad-compare-table th {
+    font-weight: 700;
+    color: var(--grad-accent, #C9A84C);
+    background: var(--gray-50);
+    position: sticky;
+    top: 0;
+}
+.grad-compare-table tfoot td {
+    border-top: 2px solid var(--gray-300);
+    font-weight: 700;
 }
 
 /* === QUOTES === */
@@ -531,15 +770,11 @@
     font-family: inherit;
     min-height: 44px;
 }
-
-.grad-filter-btn:hover {
-    color: var(--gray-800);
-}
-
+.grad-filter-btn:hover { color: var(--gray-800); }
 .grad-filter-btn.active {
     background: rgba(201, 168, 76, 0.12);
     border-color: rgba(201, 168, 76, 0.3);
-    color: #C9A84C;
+    color: var(--grad-accent, #C9A84C);
 }
 
 .grad-quotes-list {
@@ -562,7 +797,7 @@
 .grad-quote-number {
     font-weight: 700;
     font-size: 14px;
-    color: #C9A84C;
+    color: var(--grad-accent, #C9A84C);
     min-width: 140px;
 }
 
@@ -602,7 +837,7 @@
 .grad-settings h3 {
     font-size: 16px;
     font-weight: 700;
-    color: #C9A84C;
+    color: var(--grad-accent, #C9A84C);
     margin-bottom: 12px;
 }
 
@@ -617,12 +852,7 @@
     flex-direction: column;
     gap: 6px;
 }
-
-.grad-setting-item label {
-    font-size: 12px;
-    color: var(--gray-500);
-}
-
+.grad-setting-item label { font-size: 12px; color: var(--gray-500); }
 .grad-setting-item input {
     background: var(--white);
     border: 1px solid var(--gray-300);
@@ -633,15 +863,9 @@
     font-family: inherit;
     min-height: 44px;
 }
+.grad-setting-item input:focus { outline: none; border-color: var(--grad-accent, #C9A84C); }
 
-.grad-setting-item input:focus {
-    outline: none;
-    border-color: #C9A84C;
-}
-
-.grad-services-table {
-    font-size: 13px;
-}
+.grad-services-table { font-size: 13px; }
 
 .grad-table-header {
     display: grid;
@@ -662,10 +886,78 @@
     align-items: center;
     color: var(--gray-700);
 }
+.grad-table-row:hover { background: var(--gray-50); }
 
-.grad-table-row:hover {
-    background: var(--gray-50);
+/* === ANALYTICS (#46, #47, #48) === */
+.grad-analytics { padding: 4px 0; }
+
+.grad-section-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--grad-accent, #C9A84C);
+    margin: 24px 0 12px;
 }
+
+.grad-analytics-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.grad-analytics-card {
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: 14px;
+    padding: 20px;
+    text-align: center;
+    transition: transform 0.2s;
+}
+.grad-analytics-card:hover { transform: translateY(-2px); }
+.grad-analytics-icon { font-size: 28px; margin-bottom: 8px; }
+.grad-analytics-num {
+    font-size: 24px;
+    font-weight: 900;
+    color: var(--grad-accent, #C9A84C);
+    margin-bottom: 4px;
+}
+.grad-analytics-label { font-size: 12px; color: var(--gray-500); }
+
+/* Funnel */
+.grad-funnel { display: flex; flex-direction: column; gap: 8px; }
+.grad-funnel-step { display: flex; align-items: center; gap: 12px; }
+.grad-funnel-label { min-width: 120px; font-size: 13px; color: var(--gray-500); font-weight: 500; }
+.grad-funnel-bar-wrap {
+    flex: 1;
+    height: 24px;
+    background: var(--gray-100);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.grad-funnel-bar {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.5s ease;
+}
+.grad-funnel-val { min-width: 80px; font-size: 13px; font-weight: 600; color: var(--gray-700); text-align: right; }
+
+/* Popularity */
+.grad-popularity { display: flex; flex-direction: column; gap: 6px; }
+.grad-pop-row { display: flex; align-items: center; gap: 10px; }
+.grad-pop-name { min-width: 200px; font-size: 13px; color: var(--gray-700); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grad-pop-bar-container {
+    flex: 1;
+    height: 18px;
+    background: var(--gray-100);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.grad-pop-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--grad-accent, #C9A84C), #B8942F);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+.grad-pop-pct { min-width: 70px; font-size: 12px; color: var(--gray-400); text-align: right; }
 
 /* === MODAL === */
 .grad-modal {
@@ -687,7 +979,7 @@
     border: 1px solid var(--gray-200);
     border-radius: 16px;
     padding: 24px;
-    max-width: 500px;
+    max-width: 600px;
     width: 100%;
     max-height: 80vh;
     overflow-y: auto;
@@ -700,11 +992,9 @@
     align-items: center;
     margin-bottom: 16px;
 }
-
 .grad-modal-header h3 {
     font-size: 18px;
     font-weight: 700;
-    color: #C9A84C;
 }
 
 .grad-modal-close {
@@ -732,76 +1022,55 @@
     padding: 6px 0;
     font-size: 14px;
 }
+.grad-modal-row span:first-child { color: var(--gray-500); }
+.grad-modal-row span:last-child { font-weight: 600; color: var(--gray-900); }
+.grad-modal-edit { margin-top: 16px; text-align: right; }
 
-.grad-modal-row span:first-child {
-    color: var(--gray-500);
+/* #43: FAB button */
+.grad-fab {
+    display: none;
+    position: fixed;
+    bottom: 80px;
+    right: 16px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #C9A84C, #B8942F);
+    color: #fff;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(201, 168, 76, 0.4);
+    z-index: 100;
+    transition: transform 0.2s;
 }
-
-.grad-modal-row span:last-child {
-    font-weight: 600;
-    color: var(--gray-900);
-}
-
-.grad-modal-edit {
-    margin-top: 16px;
-    text-align: right;
-}
+.grad-fab:hover { transform: scale(1.1); }
 
 /* === RESPONSIVE === */
 @media (max-width: 768px) {
-    .grad-page {
-        padding: 12px;
-    }
-
-    .grad-page h1 {
-        font-size: 20px;
-    }
-
-    .grad-tabs {
-        overflow-x: auto;
-    }
+    .grad-page { padding: 12px; }
+    .grad-page h1 { font-size: 20px; }
 
     .grad-tab {
         font-size: 12px;
         padding: 8px 10px;
-        white-space: nowrap;
     }
 
-    .grad-control-row {
-        flex-direction: column;
-    }
+    .grad-control-row { flex-direction: column; }
+    .grad-field { width: 100%; }
+    .grad-field input { width: 100%; }
+    .grad-field-actions { width: 100%; justify-content: center; }
+    .grad-stepper { width: 100%; }
+    .grad-stepper input { flex: 1; }
 
-    .grad-field {
-        width: 100%;
-    }
+    /* #44: Compact mode */
+    .grad-service-card { padding: 10px 10px; gap: 8px; }
+    .grad-service-icon { font-size: 16px; min-width: 24px; }
+    .grad-service-name { font-size: 13px; }
+    .grad-service-price { font-size: 14px; }
 
-    .grad-field input {
-        width: 100%;
-    }
-
-    .grad-stepper {
-        width: 100%;
-    }
-
-    .grad-stepper input {
-        flex: 1;
-    }
-
-    .grad-service-card {
-        padding: 10px 12px;
-    }
-
-    .grad-service-name {
-        font-size: 13px;
-    }
-
-    .grad-summary-grid {
-        grid-template-columns: 1fr 1fr;
-    }
-
-    .grad-packages-grid {
-        grid-template-columns: 1fr;
-    }
+    .grad-summary-grid { grid-template-columns: 1fr 1fr; }
+    .grad-packages-grid { grid-template-columns: 1fr; }
 
     .grad-quote-row {
         flex-direction: column;
@@ -814,23 +1083,55 @@
         grid-template-columns: 1fr 60px 80px 80px;
         font-size: 12px;
     }
-
     .grad-table-header span:last-child,
-    .grad-table-row span:last-child {
-        display: none;
+    .grad-table-row span:last-child { display: none; }
+
+    /* #43: FAB visible on mobile */
+    .grad-fab { display: block; }
+
+    /* #41: Bottom sheet modal on mobile */
+    .grad-modal { align-items: flex-end; padding: 0; }
+    .grad-modal-content {
+        max-width: 100%;
+        border-radius: 16px 16px 0 0;
+        max-height: 85vh;
     }
+
+    .grad-timeline-legend { flex-direction: column; }
+    .grad-pop-name { min-width: 120px; }
+    .grad-funnel-label { min-width: 80px; font-size: 12px; }
+
+    .grad-customer-row { flex-direction: column; align-items: stretch; }
+    .grad-analytics-cards { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 480px) {
-    .grad-summary-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .grad-actions {
-        flex-direction: column;
-    }
-
-    .grad-btn {
-        width: 100%;
-    }
+    .grad-summary-grid { grid-template-columns: 1fr; }
+    .grad-actions { flex-direction: column; }
+    .grad-btn { width: 100%; }
+    .grad-analytics-cards { grid-template-columns: 1fr; }
+    .grad-pop-name { min-width: 80px; font-size: 12px; }
 }
+
+/* FAB desktop: always hidden */
+@media (min-width: 769px) {
+    .grad-fab { display: none !important; }
+}
+
+/* #19: Dark mode fixes */
+body.dark-mode .grad-service-card { background: var(--gray-100); }
+body.dark-mode .grad-service-selected { box-shadow: 0 2px 12px rgba(0,0,0,0.2); }
+body.dark-mode .grad-controls { background: var(--gray-100); }
+body.dark-mode .grad-summary { background: var(--gray-100); }
+body.dark-mode .grad-timeline { background: var(--gray-100); }
+body.dark-mode .grad-recommendations { background: var(--gray-100); border-color: var(--gray-300); }
+body.dark-mode .grad-package-card { background: var(--gray-100); }
+body.dark-mode .grad-quote-row { background: var(--gray-100); }
+body.dark-mode .grad-analytics-card { background: var(--gray-100); }
+body.dark-mode .grad-customer-results { background: var(--gray-100); }
+body.dark-mode .grad-modal-content { background: var(--gray-100); border-color: var(--gray-300); }
+body.dark-mode .grad-rec-btn { background: var(--gray-200); border-color: var(--gray-300); }
+body.dark-mode .grad-customer-search input { background: var(--gray-200); }
+body.dark-mode .grad-tl-label { color: #fff; }
+body.dark-mode .grad-funnel-bar-wrap { background: var(--gray-200); }
+body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }

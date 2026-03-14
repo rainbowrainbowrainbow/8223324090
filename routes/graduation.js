@@ -581,6 +581,106 @@ ${q.discount_percent > 0 ? `<div style="color:#4CAF50;margin-top:4px">Знижк
     }
 });
 
+// GET /api/graduation/analytics — статистика (#46, #47, #48)
+router.get('/analytics', requireRole('creator', 'director'), async (req, res) => {
+    try {
+        // #46: Service popularity
+        const popularityResult = await pool.query(`
+            SELECT s.value->>'serviceId' as service_id,
+                   s.value->>'name' as service_name,
+                   COUNT(*) as usage_count
+            FROM graduation_quotes q,
+                 jsonb_array_elements(q.selected_services) s
+            WHERE q.status != 'cancelled'
+            GROUP BY s.value->>'serviceId', s.value->>'name'
+            ORDER BY usage_count DESC
+        `);
+
+        const totalQuotes = await pool.query(
+            "SELECT COUNT(*) FROM graduation_quotes WHERE status != 'cancelled'"
+        );
+        const total = parseInt(totalQuotes.rows[0].count) || 1;
+
+        const popularity = popularityResult.rows.map(r => ({
+            serviceId: parseInt(r.service_id),
+            serviceName: r.service_name,
+            count: parseInt(r.usage_count),
+            percentage: Math.round(parseInt(r.usage_count) / total * 100)
+        }));
+
+        // #47: Average check
+        const avgResult = await pool.query(`
+            SELECT
+                COALESCE(AVG(total_per_child), 0) as avg_per_child,
+                COALESCE(AVG(total_all), 0) as avg_total,
+                COALESCE(AVG(kids_count), 0) as avg_kids,
+                COUNT(*) as total_quotes
+            FROM graduation_quotes
+            WHERE status IN ('approved', 'booked')
+        `);
+        const avg = avgResult.rows[0];
+
+        // #48: Conversion funnel
+        const funnelResult = await pool.query(`
+            SELECT status, COUNT(*) as cnt
+            FROM graduation_quotes
+            GROUP BY status
+        `);
+        const funnel = {};
+        let totalAll = 0;
+        for (const r of funnelResult.rows) {
+            funnel[r.status] = parseInt(r.cnt);
+            totalAll += parseInt(r.cnt);
+        }
+
+        res.json({
+            popularity,
+            averageCheck: {
+                perChild: Math.round(parseFloat(avg.avg_per_child)),
+                total: Math.round(parseFloat(avg.avg_total)),
+                avgKids: Math.round(parseFloat(avg.avg_kids)),
+                totalQuotes: parseInt(avg.total_quotes)
+            },
+            funnel: {
+                total: totalAll,
+                draft: funnel.draft || 0,
+                sent: funnel.sent || 0,
+                approved: funnel.approved || 0,
+                booked: funnel.booked || 0,
+                cancelled: funnel.cancelled || 0,
+                conversionRate: totalAll > 0 ? Math.round((funnel.booked || 0) / totalAll * 100) : 0
+            }
+        });
+    } catch (err) {
+        log.error('Analytics error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/graduation/customers/search — пошук клієнтів (#26)
+router.get('/customers/search', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q || q.length < 2) return res.json([]);
+
+        const result = await pool.query(
+            `SELECT id, name, phone, email FROM customers
+             WHERE name ILIKE $1 OR phone ILIKE $1
+             ORDER BY name LIMIT 10`,
+            [`%${q}%`]
+        );
+        res.json(result.rows.map(r => ({
+            id: r.id,
+            name: r.name,
+            phone: r.phone,
+            email: r.email
+        })));
+    } catch (err) {
+        log.error('Customer search error', err);
+        res.json([]);
+    }
+});
+
 function formatUAH(amount) {
     if (!amount) return '0 ₴';
     return Math.round(amount).toLocaleString('uk-UA') + ' ₴';

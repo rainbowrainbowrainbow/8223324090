@@ -33,3 +33,11 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS nps_score INTEGER;
 
 -- 4. Phone index for duplicate detection and auto-linking
 CREATE INDEX IF NOT EXISTS idx_customers_phone_lower ON customers(LOWER(phone)) WHERE phone IS NOT NULL AND phone != '';
+
+-- 5. Reminder settings defaults
+INSERT INTO settings (key, value) VALUES
+    ('reminder_birthday_7days', 'true'),
+    ('reminder_dormant_60days', 'true'),
+    ('reminder_booking_3days', 'true'),
+    ('nps_auto_send', 'true')
+ON CONFLICT (key) DO NOTHING;

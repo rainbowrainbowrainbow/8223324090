@@ -1,5 +1,5 @@
 /**
- * js/graduation.js — Graduation Event Builder (v30.0.0)
+ * js/graduation.js — Graduation Event Builder (v30.1.0)
  * Конструктор випускного: вибір послуг, підрахунок, збереження, КП
  */
 (function () {
@@ -158,14 +158,18 @@
 
     async function loadAll() {
         try {
-            [services, packages, settings] = await Promise.all([
-                gradApi('GET','/graduation/services'),
-                gradApi('GET','/graduation/packages'),
-                gradApi('GET','/graduation/settings')
+            const [svc, pkg, sett] = await Promise.all([
+                apiCall('GET', '/graduation/services', null, { fallback: [] }),
+                apiCall('GET', '/graduation/packages', null, { fallback: [] }),
+                apiCall('GET', '/graduation/settings', null, { fallback: {} })
             ]);
+            services = Array.isArray(svc) ? svc : [];
+            packages = Array.isArray(pkg) ? pkg : [];
+            settings = (sett && typeof sett === 'object' && !Array.isArray(sett)) ? sett : {};
+            console.log(`[Graduation] Loaded: ${services.length} services, ${packages.length} packages`);
             renderCurrentTab();
         } catch (err) {
-            console.error('Failed to load graduation data:', err);
+            console.error('[Graduation] loadAll error:', err);
             showNotification('Помилка завантаження даних', 'error');
         }
     }

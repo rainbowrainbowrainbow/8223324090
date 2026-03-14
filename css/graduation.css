@@ -1,5 +1,5 @@
-/* css/graduation.css — Graduation Event Builder (v30.0.0) */
-/* Glassmorphism v4.0 — dark theme with gold accents */
+/* css/graduation.css — Graduation Event Builder (v30.1.0) */
+/* Uses design system variables — works in light + dark mode */
 
 .grad-page {
     padding: 16px;
@@ -14,6 +14,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    color: var(--gray-900);
 }
 
 /* === TABS === */
@@ -21,10 +22,10 @@
     display: flex;
     gap: 4px;
     margin-bottom: 20px;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--gray-100);
     border-radius: 12px;
     padding: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--gray-200);
 }
 
 .grad-tab {
@@ -32,7 +33,7 @@
     padding: 10px 16px;
     border: none;
     background: none;
-    color: #999;
+    color: var(--gray-500);
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -43,8 +44,8 @@
 }
 
 .grad-tab:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.05);
+    color: var(--gray-800);
+    background: var(--gray-200);
 }
 
 .grad-tab.active {
@@ -54,10 +55,8 @@
 
 /* === CONTROLS === */
 .grad-controls {
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
     border-radius: 16px;
     padding: 20px;
     margin-bottom: 20px;
@@ -79,17 +78,17 @@
 
 .grad-field label {
     font-size: 12px;
-    color: #999;
+    color: var(--gray-500);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
 .grad-field input {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--white);
+    border: 1px solid var(--gray-300);
     border-radius: 8px;
-    color: #fff;
+    color: var(--gray-900);
     padding: 8px 12px;
     font-size: 16px;
     font-family: inherit;
@@ -168,8 +167,8 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--white);
+    border: 1px solid var(--gray-200);
     border-radius: 12px;
     padding: 12px 16px;
     cursor: pointer;
@@ -179,8 +178,8 @@
 }
 
 .grad-service-card:hover {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.12);
+    background: var(--gray-50);
+    border-color: var(--gray-300);
 }
 
 .grad-service-selected {
@@ -204,7 +203,7 @@
 .grad-service-name {
     font-size: 14px;
     font-weight: 600;
-    color: #fff;
+    color: var(--gray-900);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -216,7 +215,7 @@
     align-items: center;
     margin-top: 3px;
     font-size: 12px;
-    color: #888;
+    color: var(--gray-500);
 }
 
 .grad-price-badge {
@@ -230,12 +229,12 @@
 
 .grad-formula {
     background: rgba(59, 130, 246, 0.15);
-    color: #60A5FA;
+    color: #3B82F6;
 }
 
 .grad-fixed {
     background: rgba(16, 185, 129, 0.15);
-    color: #34D399;
+    color: #10B981;
 }
 
 .grad-entry-note {
@@ -253,7 +252,7 @@
 .grad-price-unit {
     font-size: 11px;
     font-weight: 400;
-    color: #888;
+    color: var(--gray-500);
 }
 
 .grad-info-btn {
@@ -261,9 +260,9 @@
     height: 28px;
     min-width: 28px;
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(255, 255, 255, 0.05);
-    color: #999;
+    border: 1px solid var(--gray-300);
+    background: var(--gray-100);
+    color: var(--gray-500);
     font-size: 13px;
     font-weight: 700;
     cursor: pointer;
@@ -279,9 +278,7 @@
 
 /* === SUMMARY === */
 .grad-summary {
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: var(--gray-50);
     border: 1px solid rgba(201, 168, 76, 0.2);
     border-radius: 16px;
     padding: 24px;
@@ -319,14 +316,14 @@
 
 .grad-summary-label {
     font-size: 12px;
-    color: #999;
+    color: var(--gray-500);
     font-weight: 500;
 }
 
 .grad-summary-value {
     font-size: 18px;
     font-weight: 800;
-    color: #fff;
+    color: var(--gray-900);
 }
 
 .grad-summary-main {
@@ -366,7 +363,7 @@
 
 .grad-btn-primary {
     background: linear-gradient(135deg, #C9A84C, #B8942F);
-    color: #0D0D0D;
+    color: #fff;
 }
 
 .grad-btn-primary:hover {
@@ -375,13 +372,13 @@
 }
 
 .grad-btn-secondary {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    color: #fff;
+    background: var(--gray-100);
+    border: 1px solid var(--gray-300);
+    color: var(--gray-700);
 }
 
 .grad-btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--gray-200);
 }
 
 .grad-btn-sm {
@@ -406,27 +403,28 @@
 }
 
 .grad-package-card {
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--white);
+    border: 1px solid var(--gray-200);
     border-radius: 16px;
     padding: 20px;
-    cursor: pointer;
     transition: all 0.2s;
 }
 
 .grad-package-card:hover {
     border-color: rgba(201, 168, 76, 0.3);
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .grad-package-name {
     font-size: 18px;
     font-weight: 800;
-    color: #fff;
+    color: var(--gray-900);
     margin-bottom: 8px;
+    text-align: center;
+    background: rgba(201, 168, 76, 0.1);
+    padding: 8px;
+    border-radius: 8px;
 }
 
 .grad-package-price {
@@ -439,7 +437,7 @@
 .grad-package-price span {
     font-size: 14px;
     font-weight: 400;
-    color: #888;
+    color: var(--gray-500);
 }
 
 .grad-package-services {
@@ -453,9 +451,9 @@
     font-size: 11px;
     padding: 3px 8px;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #bbb;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--gray-100);
+    color: var(--gray-600);
+    border: 1px solid var(--gray-200);
 }
 
 .grad-packages-kids-row {
@@ -464,7 +462,7 @@
     gap: 12px;
     margin-bottom: 20px;
     font-size: 15px;
-    color: #ccc;
+    color: var(--gray-700);
 }
 
 .grad-package-table {
@@ -475,17 +473,17 @@
 
 .grad-package-table td {
     padding: 6px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--gray-200);
     font-size: 14px;
 }
 
 .grad-pkg-svc-name {
-    color: #ccc;
+    color: var(--gray-700);
 }
 
 .grad-pkg-svc-price {
     text-align: right;
-    color: #fff;
+    color: var(--gray-900);
     font-weight: 600;
     white-space: nowrap;
 }
@@ -503,7 +501,7 @@
     border-bottom: none;
     padding-top: 4px;
     font-weight: 600;
-    color: #999;
+    color: var(--gray-500);
     font-size: 13px;
 }
 
@@ -526,16 +524,16 @@
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #999;
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
+    color: var(--gray-500);
     transition: all 0.2s;
     font-family: inherit;
     min-height: 44px;
 }
 
 .grad-filter-btn:hover {
-    color: #fff;
+    color: var(--gray-800);
 }
 
 .grad-filter-btn.active {
@@ -555,8 +553,8 @@
     align-items: center;
     gap: 16px;
     padding: 12px 16px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--white);
+    border: 1px solid var(--gray-200);
     border-radius: 10px;
     flex-wrap: wrap;
 }
@@ -571,7 +569,7 @@
 .grad-quote-info {
     display: flex;
     gap: 12px;
-    color: #999;
+    color: var(--gray-500);
     font-size: 13px;
     flex: 1;
 }
@@ -583,7 +581,7 @@
 }
 
 .grad-quote-date {
-    color: #666;
+    color: var(--gray-400);
     font-size: 12px;
     min-width: 80px;
 }
@@ -595,7 +593,7 @@
 
 .grad-empty {
     text-align: center;
-    color: #666;
+    color: var(--gray-400);
     padding: 40px;
     font-size: 15px;
 }
@@ -622,14 +620,14 @@
 
 .grad-setting-item label {
     font-size: 12px;
-    color: #999;
+    color: var(--gray-500);
 }
 
 .grad-setting-item input {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--white);
+    border: 1px solid var(--gray-300);
     border-radius: 8px;
-    color: #fff;
+    color: var(--gray-900);
     padding: 8px 12px;
     font-size: 16px;
     font-family: inherit;
@@ -650,9 +648,9 @@
     grid-template-columns: 1fr 80px 100px 100px 120px;
     gap: 8px;
     padding: 8px 12px;
-    color: #888;
+    color: var(--gray-500);
     font-weight: 600;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--gray-200);
 }
 
 .grad-table-row {
@@ -660,12 +658,13 @@
     grid-template-columns: 1fr 80px 100px 100px 120px;
     gap: 8px;
     padding: 8px 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid var(--gray-100);
     align-items: center;
+    color: var(--gray-700);
 }
 
 .grad-table-row:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--gray-50);
 }
 
 /* === MODAL === */
@@ -676,7 +675,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.4);
     z-index: 1000;
     justify-content: center;
     align-items: center;
@@ -684,14 +683,15 @@
 }
 
 .grad-modal-content {
-    background: #1a1a1a;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--white);
+    border: 1px solid var(--gray-200);
     border-radius: 16px;
     padding: 24px;
     max-width: 500px;
     width: 100%;
     max-height: 80vh;
     overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
 }
 
 .grad-modal-header {
@@ -711,16 +711,16 @@
     width: 32px;
     height: 32px;
     border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.05);
-    color: #999;
+    border: 1px solid var(--gray-300);
+    background: var(--gray-100);
+    color: var(--gray-500);
     font-size: 20px;
     cursor: pointer;
     font-family: inherit;
 }
 
 .grad-modal-desc {
-    color: #bbb;
+    color: var(--gray-600);
     font-size: 14px;
     line-height: 1.6;
     margin-bottom: 16px;
@@ -734,12 +734,12 @@
 }
 
 .grad-modal-row span:first-child {
-    color: #999;
+    color: var(--gray-500);
 }
 
 .grad-modal-row span:last-child {
     font-weight: 600;
-    color: #fff;
+    color: var(--gray-900);
 }
 
 .grad-modal-edit {

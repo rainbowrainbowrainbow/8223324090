@@ -2,6 +2,7 @@
  * routes/customers.js — CRM Customer CRUD + search + filters + RFM + export
  * v15.1: Phase 2 — filters, RFM analytics, CSV export, certificate link
  * v20.9.12: Supabase migration — customers read/write via Supabase, fallback to Railway
+ * v30.4.0: Tags, duplicates, merge, LTV, journey, communications, NPS, vCard, bulk
  */
 const router = require('express').Router();
 const { pool } = require('../db');
@@ -10,6 +11,15 @@ const { createLogger } = require('../utils/logger');
 const { exportLimiter } = require('../middleware/rateLimit');
 
 const log = createLogger('Customers');
+
+// v30.4: Predefined tag templates
+const PREDEFINED_TAGS = [
+    { tag: 'VIP', color: '#F59E0B' },
+    { tag: 'Проблемний', color: '#EF4444' },
+    { tag: 'Корпорат', color: '#3B82F6' },
+    { tag: 'Рекомендація', color: '#10B981' },
+    { tag: 'Постійний', color: '#8B5CF6' }
+];
 
 // Helper: check if Supabase is available
 function useSupabase() {
@@ -314,6 +324,406 @@ router.get('/stats', async (req, res) => {
     }
 });
 
+// ==========================================
+// v30.4: TAGS
+// ==========================================
+
+// List all unique tags (for filter dropdown)
+router.get('/tags', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT tag, color, COUNT(*) AS count
+             FROM customer_tags WHERE customer_id IS NOT NULL
+             GROUP BY tag, color ORDER BY count DESC`
+        );
+        res.json({ success: true, tags: result.rows, predefined: PREDEFINED_TAGS });
+    } catch (err) {
+        log.error('GET /tags error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Add tag to customer
+router.post('/:id/tags', async (req, res) => {
+    try {
+        const customerId = parseInt(req.params.id);
+        const { tag, color } = req.body;
+        if (!tag || !tag.trim()) return res.status(400).json({ error: 'Тег обовʼязковий' });
+        const tagColor = color || PREDEFINED_TAGS.find(p => p.tag === tag.trim())?.color || '#6B7280';
+        const result = await pool.query(
+            `INSERT INTO customer_tags (customer_id, tag, color, created_by)
+             VALUES ($1, $2, $3, $4) ON CONFLICT (customer_id, tag) DO NOTHING RETURNING *`,
+            [customerId, tag.trim(), tagColor, req.user?.id || null]
+        );
+        if (result.rows.length === 0) return res.json({ success: true, message: 'Тег вже існує' });
+        res.json({ success: true, tag: result.rows[0] });
+    } catch (err) {
+        log.error('POST /:id/tags error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Remove tag from customer
+router.delete('/:id/tags/:tagId', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM customer_tags WHERE id = $1 AND customer_id = $2',
+            [parseInt(req.params.tagId), parseInt(req.params.id)]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /:id/tags error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.4: DUPLICATES + MERGE
+// ==========================================
+
+router.get('/duplicates', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT c1.id AS id1, c1.name AS name1, c1.phone AS phone1, c1.instagram AS ig1,
+                   c1.total_bookings AS bookings1, c1.total_spent AS spent1,
+                   c2.id AS id2, c2.name AS name2, c2.phone AS phone2, c2.instagram AS ig2,
+                   c2.total_bookings AS bookings2, c2.total_spent AS spent2,
+                   CASE
+                     WHEN c1.phone IS NOT NULL AND c1.phone != '' AND LOWER(TRIM(c1.phone)) = LOWER(TRIM(c2.phone)) THEN 'phone'
+                     WHEN c1.instagram IS NOT NULL AND c1.instagram != '' AND LOWER(TRIM(c1.instagram)) = LOWER(TRIM(c2.instagram)) THEN 'instagram'
+                   END AS match_type
+            FROM customers c1
+            JOIN customers c2 ON c1.id < c2.id
+            WHERE (c1.phone IS NOT NULL AND c1.phone != '' AND LOWER(TRIM(c1.phone)) = LOWER(TRIM(c2.phone)))
+               OR (c1.instagram IS NOT NULL AND c1.instagram != '' AND LOWER(TRIM(c1.instagram)) = LOWER(TRIM(c2.instagram)))
+            ORDER BY c1.id
+            LIMIT 100
+        `);
+        res.json({ success: true, duplicates: result.rows, count: result.rows.length });
+    } catch (err) {
+        log.error('GET /duplicates error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/:primaryId/merge', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const primaryId = parseInt(req.params.primaryId);
+        const { duplicateId } = req.body;
+        if (!duplicateId) return res.status(400).json({ error: 'duplicateId обовʼязковий' });
+        const dupId = parseInt(duplicateId);
+        if (primaryId === dupId) return res.status(400).json({ error: 'Не можна обʼєднати з собою' });
+
+        await client.query('BEGIN');
+
+        // Check both exist
+        const [p, d] = await Promise.all([
+            client.query('SELECT * FROM customers WHERE id = $1', [primaryId]),
+            client.query('SELECT * FROM customers WHERE id = $1', [dupId])
+        ]);
+        if (p.rows.length === 0 || d.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Клієнт не знайдений' });
+        }
+        const primary = p.rows[0];
+        const dup = d.rows[0];
+
+        // Move bookings, certificates, tags, communication logs
+        await client.query('UPDATE bookings SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]);
+        await client.query('UPDATE certificates SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]).catch(() => {});
+        await client.query('DELETE FROM customer_tags WHERE customer_id = $1 AND tag IN (SELECT tag FROM customer_tags WHERE customer_id = $2)', [dupId, primaryId]).catch(() => {});
+        await client.query('UPDATE customer_tags SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]).catch(() => {});
+        await client.query('UPDATE communication_log SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]).catch(() => {});
+
+        // Merge missing fields
+        const updates = [];
+        const params = [];
+        if (!primary.phone && dup.phone) { params.push(dup.phone); updates.push(`phone = $${params.length}`); }
+        if (!primary.instagram && dup.instagram) { params.push(dup.instagram); updates.push(`instagram = $${params.length}`); }
+        if (!primary.child_name && dup.child_name) { params.push(dup.child_name); updates.push(`child_name = $${params.length}`); }
+        if (!primary.child_birthday && dup.child_birthday) { params.push(dup.child_birthday); updates.push(`child_birthday = $${params.length}`); }
+
+        // Recalculate aggregates
+        const aggResult = await client.query(
+            `SELECT COUNT(*) AS cnt, COALESCE(SUM(price), 0) AS total,
+                    MIN(date) AS first, MAX(date) AS last
+             FROM bookings WHERE customer_id = $1 AND linked_to IS NULL`, [primaryId]
+        );
+        const agg = aggResult.rows[0];
+        params.push(parseInt(agg.cnt)); updates.push(`total_bookings = $${params.length}`);
+        params.push(parseInt(agg.total)); updates.push(`total_spent = $${params.length}`);
+        if (agg.first) { params.push(agg.first); updates.push(`first_visit = $${params.length}`); }
+        if (agg.last) { params.push(agg.last); updates.push(`last_visit = $${params.length}`); }
+
+        if (updates.length > 0) {
+            params.push(primaryId);
+            await client.query(`UPDATE customers SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length}`, params);
+        }
+
+        // Delete duplicate
+        await client.query('DELETE FROM customers WHERE id = $1', [dupId]);
+        await client.query('COMMIT');
+
+        log.info(`Merged customer ${dupId} into ${primaryId} by ${req.user?.username}`);
+        res.json({ success: true, primaryId, deletedId: dupId });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('POST /:id/merge error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// ==========================================
+// v30.4: CUSTOMER JOURNEY FUNNEL
+// ==========================================
+
+router.get('/journey-stats', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE total_bookings = 0) AS prospects,
+                COUNT(*) FILTER (WHERE total_bookings = 1) AS first_timers,
+                COUNT(*) FILTER (WHERE total_bookings BETWEEN 2 AND 4) AS returning,
+                COUNT(*) FILTER (WHERE total_bookings >= 5) AS loyal
+            FROM customers
+        `);
+        const leadsResult = await pool.query("SELECT COUNT(*) AS cnt FROM leads WHERE status = 'new'");
+        const stats = result.rows[0];
+        stats.leads = parseInt(leadsResult.rows[0].cnt);
+        res.json({ success: true, stats });
+    } catch (err) {
+        log.error('GET /journey-stats error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.4: LTV
+// ==========================================
+
+router.get('/ltv', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, name, phone, total_bookings, total_spent, first_visit, last_visit
+            FROM customers WHERE total_bookings > 0
+            ORDER BY total_spent DESC LIMIT 100
+        `);
+        const customers = result.rows.map(r => {
+            const c = mapCustomerRow(r);
+            c.ltv = calculateLTV(r);
+            return c;
+        });
+        res.json({ success: true, customers });
+    } catch (err) {
+        log.error('GET /ltv error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.4: NPS STATS
+// ==========================================
+
+router.get('/nps-stats', async (req, res) => {
+    try {
+        const [avgResult, distResult, recentResult] = await Promise.all([
+            pool.query('SELECT AVG(rating)::numeric(3,1) AS avg_score, COUNT(*) AS total FROM event_reviews'),
+            pool.query('SELECT rating, COUNT(*) AS count FROM event_reviews GROUP BY rating ORDER BY rating'),
+            pool.query('SELECT * FROM event_reviews ORDER BY created_at DESC LIMIT 20')
+        ]);
+        res.json({
+            success: true,
+            avgScore: parseFloat(avgResult.rows[0]?.avg_score) || 0,
+            totalReviews: parseInt(avgResult.rows[0]?.total) || 0,
+            distribution: distResult.rows.map(r => ({ rating: r.rating, count: parseInt(r.count) })),
+            recent: recentResult.rows
+        });
+    } catch (err) {
+        log.error('GET /nps-stats error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.4: COMMUNICATIONS
+// ==========================================
+
+router.get('/:id/communications', async (req, res) => {
+    try {
+        const customerId = parseInt(req.params.id);
+        const result = await pool.query(
+            `SELECT cl.*, u.name AS created_by_name
+             FROM communication_log cl
+             LEFT JOIN users u ON cl.created_by = u.id
+             WHERE cl.customer_id = $1
+             ORDER BY cl.created_at DESC LIMIT 100`, [customerId]
+        );
+        res.json({ success: true, communications: result.rows });
+    } catch (err) {
+        log.error('GET /:id/communications error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/:id/communications', async (req, res) => {
+    try {
+        const customerId = parseInt(req.params.id);
+        const { type, direction, summary } = req.body;
+        if (!type) return res.status(400).json({ error: 'Тип обовʼязковий' });
+        const result = await pool.query(
+            `INSERT INTO communication_log (customer_id, type, direction, summary, created_by)
+             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+            [customerId, type, direction || 'internal', summary || '', req.user?.id || null]
+        );
+        res.json({ success: true, communication: result.rows[0] });
+    } catch (err) {
+        log.error('POST /:id/communications error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.4: VCARD EXPORT
+// ==========================================
+
+router.get('/export-vcf', exportLimiter, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM customers ORDER BY name');
+        const vcards = result.rows.map(r => {
+            const lines = [
+                'BEGIN:VCARD',
+                'VERSION:3.0',
+                `FN:${(r.name || '').replace(/[;\n]/g, ' ')}`,
+            ];
+            if (r.phone) lines.push(`TEL;TYPE=CELL:${r.phone}`);
+            if (r.instagram) lines.push(`X-INSTAGRAM:${r.instagram}`);
+            if (r.child_name) lines.push(`NOTE:Дитина: ${r.child_name}${r.notes ? ' | ' + r.notes.replace(/\n/g, ' ') : ''}`);
+            else if (r.notes) lines.push(`NOTE:${r.notes.replace(/\n/g, ' ')}`);
+            if (r.child_birthday) {
+                const d = new Date(r.child_birthday);
+                lines.push(`BDAY:${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`);
+            }
+            lines.push('END:VCARD');
+            return lines.join('\r\n');
+        });
+        res.setHeader('Content-Type', 'text/vcard; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="customers_${new Date().toISOString().slice(0,10)}.vcf"`);
+        res.send(vcards.join('\r\n'));
+    } catch (err) {
+        log.error('GET /export-vcf error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/import-vcf', async (req, res) => {
+    try {
+        const { vcfData } = req.body;
+        if (!vcfData) return res.status(400).json({ error: 'vcfData обовʼязковий' });
+        const cards = vcfData.split('END:VCARD').filter(c => c.includes('BEGIN:VCARD'));
+        let created = 0, updated = 0, skipped = 0;
+        for (const card of cards) {
+            const lines = card.split(/\r?\n/);
+            const get = (prefix) => {
+                const line = lines.find(l => l.startsWith(prefix));
+                return line ? line.substring(prefix.length).trim() : null;
+            };
+            const name = get('FN:');
+            if (!name) { skipped++; continue; }
+            const phone = get('TEL;TYPE=CELL:') || get('TEL:');
+            const instagram = get('X-INSTAGRAM:');
+            const note = get('NOTE:');
+            const bday = get('BDAY:');
+            let childBirthday = null;
+            if (bday && bday.length === 8) {
+                childBirthday = `${bday.slice(0,4)}-${bday.slice(4,6)}-${bday.slice(6,8)}`;
+            }
+            // Try to find by phone
+            if (phone) {
+                const existing = await pool.query('SELECT id FROM customers WHERE phone = $1 LIMIT 1', [phone]);
+                if (existing.rows.length > 0) {
+                    await pool.query(
+                        'UPDATE customers SET name = $1, instagram = COALESCE($2, instagram), updated_at = NOW() WHERE id = $3',
+                        [name, instagram, existing.rows[0].id]
+                    );
+                    updated++;
+                    continue;
+                }
+            }
+            await pool.query(
+                'INSERT INTO customers (name, phone, instagram, child_birthday, notes) VALUES ($1, $2, $3, $4, $5)',
+                [name, phone, instagram, childBirthday, note]
+            );
+            created++;
+        }
+        res.json({ success: true, created, updated, skipped });
+    } catch (err) {
+        log.error('POST /import-vcf error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.4: BULK MESSAGING
+// ==========================================
+
+router.post('/bulk-message', async (req, res) => {
+    try {
+        const { filters, template, dryRun } = req.body;
+        if (!template) return res.status(400).json({ error: 'Шаблон повідомлення обовʼязковий' });
+
+        // Build filter query
+        const conditions = [];
+        const params = [];
+        if (filters?.tags?.length) {
+            params.push(filters.tags);
+            conditions.push(`c.id IN (SELECT customer_id FROM customer_tags WHERE tag = ANY($${params.length}))`);
+        }
+        if (filters?.minVisits) {
+            params.push(parseInt(filters.minVisits));
+            conditions.push(`c.total_bookings >= $${params.length}`);
+        }
+        if (filters?.source) {
+            params.push(filters.source);
+            conditions.push(`c.source = $${params.length}`);
+        }
+        const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+        // Get matching customers
+        const result = await pool.query(
+            `SELECT c.id, c.name, c.phone, c.child_name, c.instagram
+             FROM customers c ${where}
+             ORDER BY c.name`, params
+        );
+
+        if (dryRun) {
+            return res.json({ success: true, dryRun: true, recipientCount: result.rows.length });
+        }
+
+        // Send messages (rate-limited, fire-and-forget)
+        let sent = 0;
+        for (const customer of result.rows) {
+            const message = template
+                .replace(/\{name\}/g, customer.name || '')
+                .replace(/\{childName\}/g, customer.child_name || '')
+                .replace(/\{phone\}/g, customer.phone || '');
+
+            // Log to communication_log
+            await pool.query(
+                'INSERT INTO communication_log (customer_id, type, direction, summary, created_by) VALUES ($1, $2, $3, $4, $5)',
+                [customer.id, 'bulk_message', 'out', message, req.user?.id || null]
+            );
+            sent++;
+        }
+
+        log.info(`Bulk message sent to ${sent} customers by ${req.user?.username}`);
+        res.json({ success: true, sent });
+    } catch (err) {
+        log.error('POST /bulk-message error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // List customers (with pagination, search, and filters)
 router.get('/', async (req, res) => {
     try {
@@ -327,6 +737,7 @@ router.get('/', async (req, res) => {
         const dateFrom = (req.query.dateFrom || '').trim();
         const dateTo = (req.query.dateTo || '').trim();
         const sortBy = (req.query.sortBy || 'updated_at').trim();
+        const tag = (req.query.tag || '').trim();
 
         const sb = getSupabase();
         if (sb) {
@@ -378,6 +789,7 @@ router.get('/', async (req, res) => {
         if (maxVisits > 0) { params.push(maxVisits); conditions.push(`total_bookings <= $${params.length}`); }
         if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) { params.push(dateFrom); conditions.push(`last_visit >= $${params.length}::date`); }
         if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) { params.push(dateTo); conditions.push(`last_visit <= $${params.length}::date`); }
+        if (tag) { params.push(tag); conditions.push(`id IN (SELECT customer_id FROM customer_tags WHERE tag = $${params.length})`); }
 
         const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
         const allowedSorts = {
@@ -396,8 +808,29 @@ router.get('/', async (req, res) => {
             dataParams
         );
 
+        // v30.4: Attach tags to each customer
+        const customerIds = result.rows.map(r => r.id);
+        let tagsMap = {};
+        if (customerIds.length > 0) {
+            try {
+                const tagsResult = await pool.query(
+                    'SELECT id, customer_id, tag, color FROM customer_tags WHERE customer_id = ANY($1)',
+                    [customerIds]
+                );
+                for (const t of tagsResult.rows) {
+                    if (!tagsMap[t.customer_id]) tagsMap[t.customer_id] = [];
+                    tagsMap[t.customer_id].push({ id: t.id, tag: t.tag, color: t.color });
+                }
+            } catch { /* tags table may not exist yet */ }
+        }
+
         res.json({
-            customers: result.rows.map(mapCustomerRow),
+            customers: result.rows.map(r => {
+                const c = mapCustomerRow(r);
+                c.tags = tagsMap[r.id] || [];
+                c.ltv = calculateLTV(r);
+                return c;
+            }),
             total, page,
             pages: Math.ceil(total / limit)
         });
@@ -447,6 +880,21 @@ router.get('/:id', async (req, res) => {
                 typeText: c.type_text, status: c.status, validUntil: c.valid_until, issuedAt: c.issued_at
             }));
         } catch { customer.certificates = []; }
+
+        // v30.4: Tags
+        try {
+            const tags = await pool.query('SELECT id, tag, color FROM customer_tags WHERE customer_id = $1', [numId]);
+            customer.tags = tags.rows;
+        } catch { customer.tags = []; }
+
+        // v30.4: LTV
+        if (customer.totalBookings > 0) {
+            const raw = { total_bookings: customer.totalBookings, total_spent: customer.totalSpent,
+                          first_visit: customer.firstVisit, last_visit: customer.lastVisit };
+            customer.ltv = calculateLTV(raw);
+        } else {
+            customer.ltv = 0;
+        }
 
         res.json(customer);
     } catch (err) {
@@ -639,6 +1087,19 @@ function getRFMSegment(r, f, m) {
     if (r <= 2 && f >= 2) return 'at_risk';
     if (avg <= 2) return 'lost';
     return 'potential';
+}
+
+// v30.4: LTV calculation
+function calculateLTV(row) {
+    const bookings = row.total_bookings || 0;
+    const spent = row.total_spent || 0;
+    if (bookings === 0 || !row.first_visit) return 0;
+    const firstDate = new Date(row.first_visit);
+    const lastDate = row.last_visit ? new Date(row.last_visit) : new Date();
+    const daysDiff = Math.max(1, (lastDate - firstDate) / (1000 * 60 * 60 * 24));
+    const visitsPerYear = bookings / (daysDiff / 365);
+    const avgSpend = spent / bookings;
+    return Math.round(spent + (avgSpend * visitsPerYear * 2));
 }
 
 function escapeCsv(str) {

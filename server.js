@@ -17,7 +17,7 @@ const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
@@ -457,6 +457,10 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkStreakUpdates', checkStreakUpdates, { dedup: 'daily' }), 60000));
         // v15.1: Birthday greetings
         schedulerIntervals.push(setInterval(guardScheduler('checkBirthdayGreetings', checkBirthdayGreetings, { dedup: 'daily' }), 60000));
+        // v30.4: CRM reminders — birthday 7d, dormant, upcoming bookings
+        schedulerIntervals.push(setInterval(guardScheduler('checkBirthdayReminders', checkBirthdayReminders, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkDormantCustomers', checkDormantCustomers, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkUpcomingBookings', checkUpcomingBookings, { dedup: 'daily' }), 60000));
         // v19.1: Event queue processor + SLA breach + announcements
         schedulerIntervals.push(setInterval(guardScheduler('checkEventQueue', checkEventQueue, { dedup: null }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkSLABreach', checkSLABreach, { dedup: 'hourly' }), 60000));

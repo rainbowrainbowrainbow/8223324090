@@ -928,6 +928,164 @@ async function checkBirthdayGreetings() {
     }
 }
 
+// v30.4: Birthday reminder — 7 days before
+let birthdayReminderSentToday = null;
+
+async function checkBirthdayReminders() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (birthdayReminderSentToday === todayStr) return;
+
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '09:30') return;
+
+        const dbLast = await getLastSent('birthday_reminder_7d');
+        if (dbLast === todayStr) { birthdayReminderSentToday = todayStr; return; }
+
+        birthdayReminderSentToday = todayStr;
+        await setLastSent('birthday_reminder_7d', todayStr);
+
+        const kyiv = getKyivDate();
+        const futureDate = new Date(kyiv);
+        futureDate.setDate(futureDate.getDate() + 7);
+        const month = futureDate.getMonth() + 1;
+        const day = futureDate.getDate();
+
+        const result = await pool.query(
+            `SELECT id, name, phone, child_name, child_birthday, total_bookings
+             FROM customers
+             WHERE child_birthday IS NOT NULL
+               AND EXTRACT(MONTH FROM child_birthday) = $1
+               AND EXTRACT(DAY FROM child_birthday) = $2`,
+            [month, day]
+        );
+
+        if (result.rows.length === 0) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        let text = `📅 <b>ДНІ НАРОДЖЕННЯ ЧЕРЕЗ ТИЖДЕНЬ</b>\n\n`;
+        for (const c of result.rows) {
+            const age = c.child_birthday ? kyiv.getFullYear() - new Date(c.child_birthday).getFullYear() + 1 : '?';
+            text += `🎂 <b>${c.child_name || 'Дитина'}</b> — ${age} р.\n`;
+            text += `   👤 ${c.name}`;
+            if (c.phone) text += ` · 📞 ${c.phone}`;
+            text += `\n\n`;
+        }
+        text += `💡 <i>Час запропонувати святкування!</i>`;
+
+        await sendTelegramMessage(chatId, text, { silent: true });
+        log.info(`Birthday reminders (7d) sent: ${result.rows.length}`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('BirthdayReminders error', err);
+        }
+    }
+}
+
+// v30.4: Dormant customers — no visit for 60+ days
+let dormantSentToday = null;
+
+async function checkDormantCustomers() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (dormantSentToday === todayStr) return;
+
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '10:00') return;
+
+        const dbLast = await getLastSent('dormant_customers');
+        if (dbLast === todayStr) { dormantSentToday = todayStr; return; }
+
+        dormantSentToday = todayStr;
+        await setLastSent('dormant_customers', todayStr);
+
+        const result = await pool.query(`
+            SELECT id, name, phone, total_bookings, total_spent, last_visit
+            FROM customers
+            WHERE last_visit < NOW() - INTERVAL '60 days'
+              AND total_bookings >= 2
+            ORDER BY last_visit ASC LIMIT 15
+        `);
+
+        if (result.rows.length === 0) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        let text = `😴 <b>КЛІЄНТИ БЕЗ ВІЗИТІВ 60+ ДНІВ</b>\n\n`;
+        for (const c of result.rows) {
+            const days = Math.floor((Date.now() - new Date(c.last_visit).getTime()) / (1000*60*60*24));
+            text += `👤 <b>${c.name}</b> — ${days} днів\n`;
+            if (c.phone) text += `   📞 ${c.phone}`;
+            text += ` · ${c.total_bookings} візит. · ${c.total_spent} ₴\n\n`;
+        }
+        text += `💡 <i>Зателефонуйте або надішліть пропозицію!</i>`;
+
+        await sendTelegramMessage(chatId, text, { silent: true });
+        log.info(`Dormant customers alert sent: ${result.rows.length}`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('DormantCustomers error', err);
+        }
+    }
+}
+
+// v30.4: Upcoming booking reminder — 3 days before
+let upcomingSentToday = null;
+
+async function checkUpcomingBookings() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (upcomingSentToday === todayStr) return;
+
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '11:00') return;
+
+        const dbLast = await getLastSent('upcoming_bookings');
+        if (dbLast === todayStr) { upcomingSentToday = todayStr; return; }
+
+        upcomingSentToday = todayStr;
+        await setLastSent('upcoming_bookings', todayStr);
+
+        const result = await pool.query(`
+            SELECT b.id, b.date, b.time, b.label, b.program_name, b.room,
+                   c.name AS customer_name, c.phone AS customer_phone
+            FROM bookings b
+            LEFT JOIN customers c ON b.customer_id = c.id
+            WHERE b.date = CURRENT_DATE + INTERVAL '3 days'
+              AND b.status IN ('confirmed', 'pending')
+              AND b.linked_to IS NULL
+        `);
+
+        if (result.rows.length === 0) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        let text = `📅 <b>БРОНЮВАННЯ ЧЕРЕЗ 3 ДНІ</b>\n\n`;
+        for (const b of result.rows) {
+            text += `🎉 <b>${b.label || b.program_name || b.id}</b>\n`;
+            text += `   ⏰ ${b.time} · 🏠 ${b.room || '?'}\n`;
+            if (b.customer_name) {
+                text += `   👤 ${b.customer_name}`;
+                if (b.customer_phone) text += ` · 📞 ${b.customer_phone}`;
+                text += `\n`;
+            }
+            text += `\n`;
+        }
+        text += `💡 <i>Перевірте готовність!</i>`;
+
+        await sendTelegramMessage(chatId, text, { silent: true });
+        log.info(`Upcoming bookings reminder sent: ${result.rows.length}`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('UpcomingBookings error', err);
+        }
+    }
+}
+
 // v19.1: Event Queue processor — retry failed events + move to DLQ
 async function checkEventQueue() {
     try {
@@ -1451,6 +1609,7 @@ module.exports = {
     checkRecurringBookings, checkCertificateExpiry,
     checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset,
     checkStreakUpdates, checkBirthdayGreetings,
+    checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings,
     checkEventQueue, checkSLABreach, checkScheduledAnnouncements,
     checkTaskOverdue, checkCustomerRetention, checkAutoReport,
     checkHotLeads,

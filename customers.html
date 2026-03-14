@@ -13,19 +13,19 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=30.4.0">
+    <link rel="stylesheet" href="css/layout.css?v=30.4.0">
+    <link rel="stylesheet" href="css/pages.css?v=30.4.0">
+    <link rel="stylesheet" href="css/modals.css?v=30.4.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=30.4.0">
+    <link rel="stylesheet" href="css/responsive.css?v=30.4.0">
+    <link rel="stylesheet" href="css/base.css?v=30.4.0">
+    <link rel="stylesheet" href="css/layout.css?v=30.4.0">
+    <link rel="stylesheet" href="css/pages.css?v=30.4.0">
+    <link rel="stylesheet" href="css/modals.css?v=30.4.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=30.4.0">
+    <link rel="stylesheet" href="css/responsive.css?v=30.4.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=30.4.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -486,6 +486,264 @@
         [data-theme="dark"] .detail-field .field-value { color: var(--gray-200); }
         [data-theme="dark"] .detail-booking-row { border-bottom-color: var(--gray-700); }
 
+        /* v30.4: Tag pills */
+        .crm-tags-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 4px;
+        }
+        .crm-tag-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .crm-tag-remove {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0 2px;
+            color: inherit;
+            opacity: 0.6;
+        }
+        .crm-tag-remove:hover { opacity: 1; }
+        .crm-tags-detail {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+        .crm-tag-add-btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border: 1px dashed var(--gray-300);
+            background: transparent;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gray-500);
+            cursor: pointer;
+            font-family: inherit;
+            min-height: 28px;
+        }
+        .crm-tag-add-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .crm-tag-dropdown {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            padding: 8px;
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-sm);
+            margin-top: 6px;
+            width: 100%;
+        }
+        .crm-tag-option {
+            padding: 4px 10px;
+            border: 1px solid currentColor;
+            background: transparent;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .crm-tag-option:hover { opacity: 0.8; }
+
+        /* v30.4: Journey funnel */
+        .journey-funnel {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 20px;
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-sm);
+        }
+        .journey-stage {
+            margin-bottom: 8px;
+        }
+        .journey-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            color: white;
+            font-weight: 700;
+            font-size: 13px;
+            min-height: 44px;
+            transition: width 0.3s ease;
+        }
+        .journey-icon { font-size: 18px; }
+        .journey-label { flex: 1; }
+        .journey-count {
+            font-size: 14px;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+
+        /* v30.4: Duplicate cards */
+        .duplicates-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .duplicate-pair {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 12px;
+            box-shadow: var(--shadow-xs);
+            flex-wrap: wrap;
+        }
+        .dup-card {
+            flex: 1;
+            min-width: 180px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .dup-match {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        /* v30.4: Communications timeline */
+        .comm-timeline {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .comm-entry {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--gray-50);
+            font-size: 13px;
+        }
+        .comm-entry:last-child { border-bottom: none; }
+        .comm-icon { font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+        .comm-text { flex: 1; color: var(--gray-700); }
+        .comm-date { font-size: 11px; color: var(--gray-400); white-space: nowrap; }
+
+        /* v30.4: NPS dashboard */
+        .nps-dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .nps-score-card {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 20px;
+            text-align: center;
+            box-shadow: var(--shadow-sm);
+        }
+        .nps-big-score {
+            font-size: 48px;
+            font-weight: 900;
+            line-height: 1.2;
+        }
+        .nps-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+        .nps-bar-label { width: 30px; text-align: right; font-weight: 700; }
+        .nps-bar-track {
+            flex: 1;
+            height: 20px;
+            background: var(--gray-100);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .nps-bar-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s;
+        }
+        .nps-bar-count { width: 30px; font-size: 12px; color: var(--gray-500); }
+
+        /* v30.4: Bulk messaging */
+        .bulk-form {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: var(--shadow-sm);
+        }
+        .bulk-form label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .bulk-form select,
+        .bulk-form input,
+        .bulk-form textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: var(--font-sm);
+            font-family: inherit;
+            min-height: 44px;
+            box-sizing: border-box;
+            margin-bottom: 12px;
+        }
+        .bulk-form textarea { min-height: 100px; resize: vertical; }
+        .bulk-preview {
+            padding: 12px;
+            background: var(--gray-50);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--gray-600);
+            margin-bottom: 12px;
+        }
+
+        /* v30.4: Dark mode for new components */
+        [data-theme="dark"] .crm-tag-dropdown {
+            background: var(--gray-800);
+            border-color: var(--gray-600);
+        }
+        [data-theme="dark"] .journey-funnel,
+        [data-theme="dark"] .nps-score-card,
+        [data-theme="dark"] .bulk-form {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .duplicate-pair {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .comm-entry { border-bottom-color: var(--gray-700); }
+        [data-theme="dark"] .nps-bar-track { background: var(--gray-700); }
+        [data-theme="dark"] .bulk-preview { background: var(--gray-700); color: var(--gray-300); }
+        [data-theme="dark"] .bulk-form select,
+        [data-theme="dark"] .bulk-form input,
+        [data-theme="dark"] .bulk-form textarea {
+            background: var(--gray-700);
+            border-color: var(--gray-600);
+            color: var(--gray-200);
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .crm-stats {
@@ -506,6 +764,16 @@
             }
             .rfm-overview {
                 grid-template-columns: repeat(2, 1fr);
+            }
+            .nps-dashboard {
+                grid-template-columns: 1fr;
+            }
+            .duplicate-pair {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .crm-tabs {
+                flex-wrap: wrap;
             }
         }
     </style>
@@ -555,9 +823,12 @@
         <main id="main-content" class="page-container" style="margin-left: 220px;">
             <div class="page-header">
                 <h2>База клієнтів</h2>
-                <div style="display:flex;gap:6px">
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <button id="exportVcfBtn" class="btn-page-secondary" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">vCard</button>
+                    <button id="importVcfBtn" class="btn-page-secondary" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">vCard</button>
                     <button id="exportCsvBtn" class="btn-page-secondary" style="display:none">Експорт CSV</button>
                     <button id="addCustomerBtn" class="btn-page-primary" style="display:none">+ Новий клієнт</button>
+                    <input type="file" id="vcfFileInput" accept=".vcf,.vcard" style="display:none">
                 </div>
             </div>
 
@@ -568,6 +839,10 @@
             <div class="crm-tabs">
                 <button class="crm-tab active" data-tab="list">Список</button>
                 <button class="crm-tab" data-tab="rfm">RFM-аналітика</button>
+                <button class="crm-tab" data-tab="journey">Воронка</button>
+                <button class="crm-tab" data-tab="duplicates">Дублікати</button>
+                <button class="crm-tab" data-tab="nps">NPS</button>
+                <button class="crm-tab" data-tab="bulk">Розсилка</button>
             </div>
 
             <!-- List tab -->
@@ -575,6 +850,14 @@
                 <!-- Filters -->
                 <div class="crm-filters">
                     <input type="text" id="searchInput" class="crm-search" aria-label="Пошук по імені, телефону, Instagram..." placeholder="Пошук по імені, телефону, Instagram...">
+                    <select id="tagFilter" class="crm-filter-select">
+                        <option value="">Всі теги</option>
+                        <option value="VIP">VIP</option>
+                        <option value="Проблемний">Проблемний</option>
+                        <option value="Корпорат">Корпорат</option>
+                        <option value="Рекомендація">Рекомендація</option>
+                        <option value="Постійний">Постійний</option>
+                    </select>
                     <select id="sourceFilter" class="crm-filter-select">
                         <option value="">Всі джерела</option>
                         <option value="telegram">🔵 Telegram</option>
@@ -597,6 +880,7 @@
                         <option value="total_spent">За витратами</option>
                         <option value="last_visit">За останнім візитом</option>
                         <option value="created_at">За створенням</option>
+                        <option value="ltv">За LTV</option>
                     </select>
                     <input type="date" id="dateFromFilter" class="crm-filter-date" title="Візити від">
                     <input type="date" id="dateToFilter" class="crm-filter-date" title="Візити до">
@@ -643,6 +927,18 @@
                     </table>
                 </div>
             </div>
+
+            <!-- Journey funnel tab -->
+            <div id="tabJourney" style="display:none"></div>
+
+            <!-- Duplicates tab -->
+            <div id="tabDuplicates" style="display:none"></div>
+
+            <!-- NPS tab -->
+            <div id="tabNps" style="display:none"></div>
+
+            <!-- Bulk messaging tab -->
+            <div id="tabBulk" style="display:none"></div>
         </main>
     </div>
 
@@ -722,19 +1018,19 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <script src="js/config.js?v=30.4.0"></script>
+    <script src="js/api.js?v=30.4.0"></script>
+    <script src="js/auth.js?v=30.4.0"></script>
+    <script src="js/components/sidebar.js?v=30.4.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/customers-page.js?v=25.3.0"></script>
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/ui.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <script src="js/customers-page.js?v=30.4.0"></script>
+    <script src="js/config.js?v=30.4.0"></script>
+    <script src="js/api.js?v=30.4.0"></script>
+    <script src="js/auth.js?v=30.4.0"></script>
+    <script src="js/ui.js?v=30.4.0"></script>
+    <script src="js/components/sidebar.js?v=30.4.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/customers-page.js?v=25.3.0"></script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/customers-page.js?v=30.4.0"></script>
+    <script src="js/role-panel.js?v=30.4.0"></script>
 </body>
 </html>

@@ -26,7 +26,8 @@ const CrmState = {
         source: '',
         sortBy: 'updated_at',
         dateFrom: '',
-        dateTo: ''
+        dateTo: '',
+        tag: ''
     }
 };
 
@@ -102,6 +103,7 @@ async function fetchCustomers() {
     if (CrmState.filters.sortBy) params.set('sortBy', CrmState.filters.sortBy);
     if (CrmState.filters.dateFrom) params.set('dateFrom', CrmState.filters.dateFrom);
     if (CrmState.filters.dateTo) params.set('dateTo', CrmState.filters.dateTo);
+    if (CrmState.filters.tag) params.set('tag', CrmState.filters.tag);
 
     const res = await fetch(`/api/customers?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -209,10 +211,15 @@ function renderCustomerTable() {
 
     tbody.innerHTML = CrmState.customers.map(c => {
         const sourceLabel = SOURCE_LABELS[c.source] || c.source || '—';
+        const tagsHtml = (c.tags || []).map(t =>
+            `<span class="crm-tag-pill" style="background:${escapeHtml(t.color)}20;color:${escapeHtml(t.color)};border:1px solid ${escapeHtml(t.color)}40">${escapeHtml(t.tag)}</span>`
+        ).join('');
+        const ltvBadge = c.ltv > 10000 ? ' 🔥' : '';
         return `<tr data-id="${c.id}">
             <td>
-                <div class="customer-name">${escapeHtml(c.name)}</div>
+                <div class="customer-name">${escapeHtml(c.name)}${ltvBadge}</div>
                 ${c.childName ? `<div class="customer-child">👶 ${escapeHtml(c.childName)}</div>` : ''}
+                ${tagsHtml ? `<div class="crm-tags-row">${tagsHtml}</div>` : ''}
             </td>
             <td>${escapeHtml(c.phone) || '—'}</td>
             <td>${c.instagram ? '@' + escapeHtml(c.instagram) : '—'}</td>
@@ -372,6 +379,31 @@ async function showCustomerDetail(id) {
                 </div>
             </div>`;
 
+        // v30.4: Tags section
+        html += `<div class="detail-section">
+            <h4>Теги</h4>
+            <div class="crm-tags-detail" id="detailTags">
+                ${(customer.tags || []).map(t =>
+                    `<span class="crm-tag-pill" style="background:${t.color}20;color:${t.color};border:1px solid ${t.color}40">${escapeHtml(t.tag)} <button class="crm-tag-remove" onclick="removeTag(${customer.id},${t.id})">×</button></span>`
+                ).join('')}
+                <button class="crm-tag-add-btn" onclick="showAddTagDropdown(${customer.id})">+ Тег</button>
+            </div>
+        </div>`;
+
+        // v30.4: LTV
+        if (customer.ltv > 0) {
+            html += `<div class="detail-section">
+                <h4>LTV (Lifetime Value)</h4>
+                <div class="stat-value" style="font-size:24px;color:var(--primary)">${formatMoney(customer.ltv)}</div>
+            </div>`;
+        }
+
+        // v30.4: Communications timeline
+        html += `<div class="detail-section">
+            <h4>Комунікації <button class="crm-tag-add-btn" onclick="addCommunication(${customer.id})" style="margin-left:8px">+ Нотатка</button></h4>
+            <div id="detailComms" class="comm-timeline"><div style="color:var(--gray-400);font-size:12px">Завантаження...</div></div>
+        </div>`;
+
         if (customer.notes) {
             html += `<div class="detail-section">
                 <h4>Нотатки</h4>
@@ -415,6 +447,22 @@ async function showCustomerDetail(id) {
         }
 
         content.innerHTML = html;
+
+        // Load communications timeline
+        loadCommunications(customer.id).then(comms => {
+            const commsEl = document.getElementById('detailComms');
+            if (!commsEl) return;
+            const COMM_ICONS = { call: '📞', sms: '💬', telegram: '💬', email: '📧', note: '📝', meeting: '🤝' };
+            if (comms.length === 0) {
+                commsEl.innerHTML = '<div style="color:var(--gray-400);font-size:12px">Немає записів</div>';
+                return;
+            }
+            commsEl.innerHTML = comms.map(c => `<div class="comm-entry">
+                <span class="comm-icon">${COMM_ICONS[c.type] || '📝'}</span>
+                <span class="comm-text">${escapeHtml(c.summary)}</span>
+                <span class="comm-date">${formatDate(c.created_at || c.createdAt)}</span>
+            </div>`).join('');
+        });
     } catch (err) {
         content.innerHTML = `<div style="text-align:center;padding:20px;color:#DC2626">Помилка завантаження</div>`;
     }
@@ -496,18 +544,364 @@ window.confirmDeleteCustomer = async function(id) {
 };
 
 // ==========================================
+// v30.4: TAG MANAGEMENT
+// ==========================================
+
+window.removeTag = async function(customerId, tagId) {
+    const token = localStorage.getItem('pzp_token');
+    await fetch(`/api/customers/${customerId}/tags/${tagId}`, {
+        method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
+    });
+    showCustomerDetail(customerId);
+    refreshData();
+};
+
+window.showAddTagDropdown = function(customerId) {
+    const predefined = ['VIP', 'Проблемний', 'Корпорат', 'Рекомендація', 'Постійний'];
+    const colors = { 'VIP': '#F59E0B', 'Проблемний': '#EF4444', 'Корпорат': '#3B82F6', 'Рекомендація': '#10B981', 'Постійний': '#8B5CF6' };
+    const html = predefined.map(t =>
+        `<button class="crm-tag-option" onclick="addTag(${customerId},'${t}','${colors[t]}')" style="color:${colors[t]}">${t}</button>`
+    ).join('');
+    const container = document.getElementById('detailTags');
+    // Remove existing dropdown
+    const old = container.querySelector('.crm-tag-dropdown');
+    if (old) { old.remove(); return; }
+    const dropdown = document.createElement('div');
+    dropdown.className = 'crm-tag-dropdown';
+    dropdown.innerHTML = html;
+    container.appendChild(dropdown);
+};
+
+window.addTag = async function(customerId, tag, color) {
+    const token = localStorage.getItem('pzp_token');
+    await fetch(`/api/customers/${customerId}/tags`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag, color })
+    });
+    showCustomerDetail(customerId);
+    refreshData();
+};
+
+// ==========================================
+// v30.4: JOURNEY FUNNEL
+// ==========================================
+
+async function loadJourney() {
+    const token = localStorage.getItem('pzp_token');
+    try {
+        const res = await fetch('/api/customers/journey-stats', { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        if (!data.success) return;
+        const s = data.stats;
+        const total = (parseInt(s.leads) || 0) + (parseInt(s.prospects) || 0) + (parseInt(s.first_timers) || 0) + (parseInt(s.returning) || 0) + (parseInt(s.loyal) || 0);
+        const maxWidth = Math.max(1, parseInt(s.leads) || 0, parseInt(s.prospects) || 0, parseInt(s.first_timers) || 0, parseInt(s.returning) || 0, parseInt(s.loyal) || 0);
+
+        const stages = [
+            { label: 'Ліди', count: parseInt(s.leads) || 0, color: '#94A3B8', icon: '📋' },
+            { label: 'Нові (1 візит)', count: parseInt(s.first_timers) || 0, color: '#3B82F6', icon: '🆕' },
+            { label: 'Повторні (2-4)', count: parseInt(s.returning) || 0, color: '#10B981', icon: '🔄' },
+            { label: 'Лояльні (5+)', count: parseInt(s.loyal) || 0, color: '#F59E0B', icon: '⭐' }
+        ];
+
+        const el = document.getElementById('tabJourney');
+        el.innerHTML = `<div class="journey-funnel">
+            <h4 style="margin-bottom:16px">Customer Journey</h4>
+            ${stages.map(st => {
+                const pct = total > 0 ? Math.round(st.count / total * 100) : 0;
+                const width = Math.max(20, Math.round(st.count / maxWidth * 100));
+                return `<div class="journey-stage">
+                    <div class="journey-bar" style="width:${width}%;background:${st.color}">
+                        <span class="journey-icon">${st.icon}</span>
+                        <span class="journey-label">${st.label}</span>
+                        <span class="journey-count">${st.count} (${pct}%)</span>
+                    </div>
+                </div>`;
+            }).join('')}
+            <div style="margin-top:12px;font-size:12px;color:var(--gray-400)">Всього: ${total}</div>
+        </div>`;
+    } catch { /* journey load failed */ }
+}
+
+// ==========================================
+// v30.4: DUPLICATES
+// ==========================================
+
+async function loadDuplicates() {
+    const token = localStorage.getItem('pzp_token');
+    try {
+        const res = await fetch('/api/customers/duplicates', { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        const el = document.getElementById('tabDuplicates');
+        if (!data.duplicates || data.duplicates.length === 0) {
+            el.innerHTML = '<div class="crm-empty"><div class="empty-icon">✅</div><div class="empty-text">Дублікатів не знайдено</div></div>';
+            return;
+        }
+        el.innerHTML = `<h4 style="margin-bottom:12px">⚠️ Знайдено ${data.count} можливих дублікатів</h4>
+            <div class="duplicates-list">${data.duplicates.map(d => `
+                <div class="duplicate-pair">
+                    <div class="dup-card">
+                        <b>${escapeHtml(d.name1)}</b><br>
+                        📞 ${escapeHtml(d.phone1 || '—')} · IG: ${escapeHtml(d.ig1 || '—')}<br>
+                        ${d.bookings1} бронювань · ${formatMoney(d.spent1)}
+                    </div>
+                    <span class="dup-match">= ${d.match_type === 'phone' ? '📞' : '📷'}</span>
+                    <div class="dup-card">
+                        <b>${escapeHtml(d.name2)}</b><br>
+                        📞 ${escapeHtml(d.phone2 || '—')} · IG: ${escapeHtml(d.ig2 || '—')}<br>
+                        ${d.bookings2} бронювань · ${formatMoney(d.spent2)}
+                    </div>
+                    <button class="btn-page-primary" onclick="mergeCustomers(${d.id1},${d.id2})" style="padding:6px 12px;font-size:12px;min-height:36px">Об'єднати →</button>
+                </div>
+            `).join('')}</div>`;
+    } catch { /* duplicates load failed */ }
+}
+
+window.mergeCustomers = async function(primaryId, duplicateId) {
+    if (!await confirmModal(`Об'єднати клієнтів? Всі бронювання будуть перенесені до основного профілю.`, { type: 'warning', okText: "Об'єднати" })) return;
+    const token = localStorage.getItem('pzp_token');
+    try {
+        const res = await fetch(`/api/customers/${primaryId}/merge`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ duplicateId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showNotification('Клієнтів об\'єднано');
+            loadDuplicates();
+            refreshData();
+        } else {
+            showNotification(data.error || 'Помилка', 'error');
+        }
+    } catch { showNotification('Помилка об\'єднання', 'error'); }
+};
+
+// ==========================================
+// v30.4: COMMUNICATIONS
+// ==========================================
+
+async function loadCommunications(customerId) {
+    const token = localStorage.getItem('pzp_token');
+    try {
+        const res = await fetch(`/api/customers/${customerId}/communications`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        return data.communications || [];
+    } catch { return []; }
+}
+
+window.addCommunication = async function(customerId) {
+    const summary = prompt('Нотатка:');
+    if (!summary) return;
+    const token = localStorage.getItem('pzp_token');
+    await fetch(`/api/customers/${customerId}/communications`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'note', direction: 'internal', summary })
+    });
+    showCustomerDetail(customerId);
+};
+
+// ==========================================
+// v30.4: NPS DASHBOARD
+// ==========================================
+
+async function loadNps() {
+    const token = localStorage.getItem('pzp_token');
+    const el = document.getElementById('tabNps');
+    try {
+        const res = await fetch('/api/customers/nps-stats', { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        if (!data.success) { el.innerHTML = '<div class="crm-empty"><div class="empty-icon">📊</div><div class="empty-text">Дані NPS недоступні</div></div>'; return; }
+
+        const avg = parseFloat(data.avgNps) || 0;
+        const total = parseInt(data.totalReviews) || 0;
+        const dist = data.distribution || [];
+        const recent = data.recentReviews || [];
+
+        const scoreColor = avg >= 4 ? '#059669' : avg >= 3 ? '#D97706' : '#DC2626';
+        const maxCount = Math.max(1, ...dist.map(d => parseInt(d.count) || 0));
+
+        const NPS_COLORS = { 5: '#059669', 4: '#10B981', 3: '#F59E0B', 2: '#F97316', 1: '#EF4444' };
+
+        el.innerHTML = `<div class="nps-dashboard">
+            <div class="nps-score-card">
+                <div class="nps-big-score" style="color:${scoreColor}">${avg.toFixed(1)}</div>
+                <div style="font-size:14px;font-weight:700;color:var(--gray-500);margin-top:4px">Середня оцінка</div>
+                <div style="font-size:12px;color:var(--gray-400);margin-top:4px">${total} відгуків</div>
+            </div>
+            <div class="nps-score-card">
+                <h4 style="margin-bottom:12px;font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase">Розподіл оцінок</h4>
+                ${[5,4,3,2,1].map(score => {
+                    const item = dist.find(d => parseInt(d.rating) === score);
+                    const count = item ? parseInt(item.count) : 0;
+                    const pct = Math.round(count / maxCount * 100);
+                    return `<div class="nps-bar-row">
+                        <span class="nps-bar-label">${'⭐'.repeat(score)}</span>
+                        <div class="nps-bar-track"><div class="nps-bar-fill" style="width:${pct}%;background:${NPS_COLORS[score]}"></div></div>
+                        <span class="nps-bar-count">${count}</span>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>
+        ${recent.length > 0 ? `<div style="margin-top:16px">
+            <h4 style="margin-bottom:12px;font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase">Останні відгуки</h4>
+            <div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Клієнт</th><th>Оцінка</th><th>Коментар</th><th>Дата</th></tr></thead><tbody>
+            ${recent.map(r => `<tr>
+                <td class="customer-name">${escapeHtml(r.customer_name || r.customerName || '—')}</td>
+                <td>${'⭐'.repeat(parseInt(r.rating) || 0)}</td>
+                <td>${escapeHtml(r.comment || '—')}</td>
+                <td>${formatDate(r.created_at || r.createdAt)}</td>
+            </tr>`).join('')}
+            </tbody></table></div>
+        </div>` : ''}`;
+    } catch { el.innerHTML = '<div class="crm-empty"><div class="empty-icon">📊</div><div class="empty-text">Помилка завантаження NPS</div></div>'; }
+}
+
+// ==========================================
+// v30.4: BULK MESSAGING
+// ==========================================
+
+async function loadBulkTab() {
+    const el = document.getElementById('tabBulk');
+    el.innerHTML = `<div class="bulk-form">
+        <h4 style="margin-bottom:16px;font-size:14px;font-weight:800">Масова розсилка Telegram</h4>
+        <label>Фільтр по тегу</label>
+        <select id="bulkTagFilter">
+            <option value="">Всі клієнти</option>
+            <option value="VIP">VIP</option>
+            <option value="Корпорат">Корпорат</option>
+            <option value="Постійний">Постійний</option>
+        </select>
+        <label>Мін. кількість візитів</label>
+        <input type="number" id="bulkMinVisits" value="0" min="0">
+        <label>Джерело</label>
+        <select id="bulkSourceFilter">
+            <option value="">Всі джерела</option>
+            <option value="telegram">Telegram</option>
+            <option value="instagram">Instagram</option>
+            <option value="facebook">Facebook</option>
+        </select>
+        <label>Шаблон повідомлення</label>
+        <textarea id="bulkTemplate" placeholder="Привіт, {name}! Запрошуємо {childName} на свято 🎉"></textarea>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:-8px;margin-bottom:12px">Доступні змінні: {name}, {childName}, {phone}</div>
+        <div id="bulkPreview" class="bulk-preview" style="display:none"></div>
+        <div style="display:flex;gap:8px">
+            <button class="btn-page-secondary" onclick="previewBulk()" style="flex:1">Попередній перегляд</button>
+            <button class="btn-page-primary" onclick="sendBulk()" style="flex:1">Надіслати</button>
+        </div>
+    </div>`;
+}
+
+window.previewBulk = async function() {
+    const token = localStorage.getItem('pzp_token');
+    const filters = {
+        tags: document.getElementById('bulkTagFilter').value ? [document.getElementById('bulkTagFilter').value] : [],
+        minVisits: parseInt(document.getElementById('bulkMinVisits').value) || 0,
+        source: document.getElementById('bulkSourceFilter').value || undefined
+    };
+    const template = document.getElementById('bulkTemplate').value;
+    if (!template.trim()) { showNotification('Введіть шаблон повідомлення', 'error'); return; }
+    try {
+        const res = await fetch('/api/customers/bulk-message', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filters, template, dryRun: true })
+        });
+        const data = await res.json();
+        const preview = document.getElementById('bulkPreview');
+        preview.style.display = '';
+        preview.textContent = `Отримають: ${data.recipientCount || 0} клієнтів`;
+    } catch { showNotification('Помилка перегляду', 'error'); }
+};
+
+window.sendBulk = async function() {
+    if (!await confirmModal('Надіслати повідомлення всім обраним клієнтам?', { type: 'warning', okText: 'Надіслати' })) return;
+    const token = localStorage.getItem('pzp_token');
+    const filters = {
+        tags: document.getElementById('bulkTagFilter').value ? [document.getElementById('bulkTagFilter').value] : [],
+        minVisits: parseInt(document.getElementById('bulkMinVisits').value) || 0,
+        source: document.getElementById('bulkSourceFilter').value || undefined
+    };
+    const template = document.getElementById('bulkTemplate').value;
+    if (!template.trim()) { showNotification('Введіть шаблон повідомлення', 'error'); return; }
+    try {
+        const res = await fetch('/api/customers/bulk-message', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filters, template, dryRun: false })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showNotification(`Надіслано: ${data.sent || 0} повідомлень`);
+        } else {
+            showNotification(data.error || 'Помилка розсилки', 'error');
+        }
+    } catch { showNotification('Помилка розсилки', 'error'); }
+};
+
+// ==========================================
+// v30.4: VCARD EXPORT/IMPORT
+// ==========================================
+
+function exportVcf() {
+    const token = localStorage.getItem('pzp_token');
+    fetch('/api/customers/export-vcf', {
+        headers: { 'Authorization': `Bearer ${token}` }
+    }).then(res => res.blob()).then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `customers_${new Date().toISOString().slice(0, 10)}.vcf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showNotification('vCard завантажено');
+    }).catch(() => showNotification('Помилка експорту vCard', 'error'));
+}
+
+async function importVcf(file) {
+    const token = localStorage.getItem('pzp_token');
+    const formData = new FormData();
+    formData.append('vcf', file);
+    try {
+        const res = await fetch('/api/customers/import-vcf', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+            showNotification(`Імпортовано: ${data.imported || 0}, оновлено: ${data.updated || 0}`);
+            await refreshData();
+        } else {
+            showNotification(data.error || 'Помилка імпорту', 'error');
+        }
+    } catch { showNotification('Помилка імпорту vCard', 'error'); }
+}
+
+// ==========================================
 // TAB SWITCHING
 // ==========================================
 
 function switchTab(tab) {
     CrmState.activeTab = tab;
     document.querySelectorAll('.crm-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-    document.getElementById('tabList').style.display = tab === 'list' ? '' : 'none';
-    document.getElementById('tabRfm').style.display = tab === 'rfm' ? '' : 'none';
+    const tabs = ['tabList', 'tabRfm', 'tabJourney', 'tabDuplicates', 'tabNps', 'tabBulk'];
+    const map = { list: 'tabList', rfm: 'tabRfm', journey: 'tabJourney', duplicates: 'tabDuplicates', nps: 'tabNps', bulk: 'tabBulk' };
+    tabs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = id === map[tab] ? '' : 'none';
+    });
 
     if (tab === 'rfm' && !CrmState.rfmData) {
         fetchRFM().then(renderRFM).catch(function() { /* RFM load failed */ });
     }
+    if (tab === 'journey') loadJourney();
+    if (tab === 'duplicates') loadDuplicates();
+    if (tab === 'nps') loadNps();
+    if (tab === 'bulk') loadBulkTab();
 }
 
 // ==========================================
@@ -576,6 +970,8 @@ async function initPage() {
     const canManage = MANAGE_ROLES.includes(user.role);
     document.getElementById('addCustomerBtn').style.display = canManage ? '' : 'none';
     document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';
+    document.getElementById('exportVcfBtn').style.display = canManage ? '' : 'none';
+    document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';
 
     // Logout
     document.getElementById('logoutBtn').addEventListener('click', () => {
@@ -638,6 +1034,22 @@ async function initPage() {
 
     // Export
     document.getElementById('exportCsvBtn').addEventListener('click', downloadCSV);
+
+    // vCard
+    document.getElementById('exportVcfBtn').addEventListener('click', exportVcf);
+    document.getElementById('importVcfBtn').addEventListener('click', () => document.getElementById('vcfFileInput').click());
+    document.getElementById('vcfFileInput').addEventListener('change', (e) => {
+        if (e.target.files[0]) { importVcf(e.target.files[0]); e.target.value = ''; }
+    });
+
+    // Tag filter
+    document.getElementById('tagFilter').addEventListener('change', async (e) => {
+        CrmState.filters.tag = e.target.value;
+        CrmState.page = 1;
+        await fetchCustomers();
+        renderCustomerTable();
+        renderPagination();
+    });
 
     // Save customer
     document.getElementById('saveCustomerBtn').addEventListener('click', handleSave);

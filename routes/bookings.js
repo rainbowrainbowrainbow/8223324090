@@ -102,16 +102,29 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             }
         }
 
-        // CRM: resolve or create customer
+        // CRM: resolve or create customer (v30.4: auto-link by phone)
         let customerId = b.customerId ? parseInt(b.customerId) : null;
         if (b.customer && b.customer.name && !customerId) {
             const c = b.customer;
-            const custResult = await client.query(
-                `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
-                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-                [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
-            );
-            customerId = custResult.rows[0].id;
+            // v30.4: Try to find existing customer by phone first
+            if (c.phone && c.phone.trim()) {
+                const existing = await client.query(
+                    'SELECT id FROM customers WHERE phone = $1 LIMIT 1',
+                    [c.phone.trim()]
+                );
+                if (existing.rows.length > 0) {
+                    customerId = existing.rows[0].id;
+                }
+            }
+            // Create new customer only if not found
+            if (!customerId) {
+                const custResult = await client.query(
+                    `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
+                     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                    [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+                );
+                customerId = custResult.rows[0].id;
+            }
         }
 
         if (!b.id || !/^BK-\d{4}-\d{4,}$/.test(b.id)) {

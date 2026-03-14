@@ -167,28 +167,48 @@ INSERT INTO team_challenges (title, description, icon, challenge_type, target_va
     ('Весняний Кубок', 'Яка команда створить більше бронювань за березень?', '🏆', 'bookings', 50, 200, 50, '2026-03-01', '2026-03-31')
 ON CONFLICT DO NOTHING;
 
--- Seed: Real bonus shop items (use only columns guaranteed to exist)
+-- Seed: Real bonus shop items (dynamic SQL to handle optional icon column)
 DO $$
+DECLARE
+    has_icon BOOLEAN;
+    has_category BOOLEAN;
 BEGIN
-    -- Check if icon column exists in shop_items
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shop_items' AND column_name = 'icon') THEN
-        INSERT INTO shop_items (name, description, icon, price_coins, type, category, is_active) VALUES
-            ('Додатковий вихідний', 'Один додатковий вихідний день на твій вибір', '🏖️', 5000, 'real', 'real', true),
-            ('Обід за рахунок парку', 'Безкоштовний обід у кафе парку', '🍕', 1500, 'real', 'real', true),
-            ('Сертифікат ATB 200₴', 'Подарунковий сертифікат на 200 гривень', '🎁', 3000, 'real', 'real', true),
-            ('Вибір зміни на тиждень', 'Обирай свою зміну протягом тижня', '📋', 2000, 'real', 'real', true),
-            ('Знижка 10% на ДН', 'Знижка на святкування дня народження в парку', '🎂', 500, 'coupon', 'coupon', true),
-            ('Безкоштовний напій', 'Один напій у кафе парку безкоштовно', '☕', 300, 'coupon', 'coupon', true)
-        ON CONFLICT DO NOTHING;
+    SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = 'shop_items' AND column_name = 'icon') INTO has_icon;
+    SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = 'shop_items' AND column_name = 'category') INTO has_category;
+
+    IF has_icon AND has_category THEN
+        EXECUTE $x$
+            INSERT INTO shop_items (name, description, icon, price_coins, type, category, is_active) VALUES
+                ('Додатковий вихідний', 'Один додатковий вихідний день на твій вибір', '🏖️', 5000, 'real', 'real', true),
+                ('Обід за рахунок парку', 'Безкоштовний обід у кафе парку', '🍕', 1500, 'real', 'real', true),
+                ('Сертифікат ATB 200₴', 'Подарунковий сертифікат на 200 гривень', '🎁', 3000, 'real', 'real', true),
+                ('Вибір зміни на тиждень', 'Обирай свою зміну протягом тижня', '📋', 2000, 'real', 'real', true),
+                ('Знижка 10% на ДН', 'Знижка на святкування дня народження в парку', '🎂', 500, 'coupon', 'coupon', true),
+                ('Безкоштовний напій', 'Один напій у кафе парку безкоштовно', '☕', 300, 'coupon', 'coupon', true)
+            ON CONFLICT DO NOTHING
+        $x$;
+    ELSIF has_category THEN
+        EXECUTE $x$
+            INSERT INTO shop_items (name, description, price_coins, type, category, is_active) VALUES
+                ('Додатковий вихідний', 'Один додатковий вихідний день на твій вибір', 5000, 'real', 'real', true),
+                ('Обід за рахунок парку', 'Безкоштовний обід у кафе парку', 1500, 'real', 'real', true),
+                ('Сертифікат ATB 200₴', 'Подарунковий сертифікат на 200 гривень', 3000, 'real', 'real', true),
+                ('Вибір зміни на тиждень', 'Обирай свою зміну протягом тижня', 2000, 'real', 'real', true),
+                ('Знижка 10% на ДН', 'Знижка на святкування дня народження в парку', 500, 'coupon', 'coupon', true),
+                ('Безкоштовний напій', 'Один напій у кафе парку безкоштовно', 300, 'coupon', 'coupon', true)
+            ON CONFLICT DO NOTHING
+        $x$;
     ELSE
-        INSERT INTO shop_items (name, description, price_coins, type, category, is_active) VALUES
-            ('Додатковий вихідний', 'Один додатковий вихідний день на твій вибір', 5000, 'real', 'real', true),
-            ('Обід за рахунок парку', 'Безкоштовний обід у кафе парку', 1500, 'real', 'real', true),
-            ('Сертифікат ATB 200₴', 'Подарунковий сертифікат на 200 гривень', 3000, 'real', 'real', true),
-            ('Вибір зміни на тиждень', 'Обирай свою зміну протягом тижня', 2000, 'real', 'real', true),
-            ('Знижка 10% на ДН', 'Знижка на святкування дня народження в парку', 500, 'coupon', 'coupon', true),
-            ('Безкоштовний напій', 'Один напій у кафе парку безкоштовно', 300, 'coupon', 'coupon', true)
-        ON CONFLICT DO NOTHING;
+        EXECUTE $x$
+            INSERT INTO shop_items (name, description, price_coins, type, is_active) VALUES
+                ('Додатковий вихідний', 'Один додатковий вихідний день на твій вибір', 5000, 'real', true),
+                ('Обід за рахунок парку', 'Безкоштовний обід у кафе парку', 1500, 'real', true),
+                ('Сертифікат ATB 200₴', 'Подарунковий сертифікат на 200 гривень', 3000, 'real', true),
+                ('Вибір зміни на тиждень', 'Обирай свою зміну протягом тижня', 2000, 'real', true),
+                ('Знижка 10% на ДН', 'Знижка на святкування дня народження в парку', 500, 'coupon', true),
+                ('Безкоштовний напій', 'Один напій у кафе парку безкоштовно', 300, 'coupon', true)
+            ON CONFLICT DO NOTHING
+        $x$;
     END IF;
 END $$;
 

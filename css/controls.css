@@ -541,3 +541,351 @@ body.dark-mode .btn-reset-auto {
 
 .duration-badge.short { background: #DBEAFE; color: #1E40AF; }    /* <=60 min */
 .duration-badge.long { background: #FDE68A; color: #92400E; }     /* >60 min */
+
+/* ==========================================
+   TIMELINE SEARCH (v30.3)
+   ========================================== */
+
+.btn-search-timeline {
+    padding: 6px 10px;
+    border: 1px solid var(--gray-200);
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all var(--speed-fast) var(--ease-smooth);
+    font-family: inherit;
+    min-height: 36px;
+}
+
+.btn-search-timeline:hover {
+    background: var(--primary-50, #ECFDF5);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+}
+
+.timeline-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    border: 2px solid var(--primary);
+    border-radius: var(--radius-sm);
+    background: var(--white);
+    min-height: 36px;
+}
+
+.timeline-search-wrap.hidden {
+    display: none;
+}
+
+.timeline-search-input {
+    border: none;
+    outline: none;
+    font-size: 13px;
+    font-family: inherit;
+    width: 160px;
+    background: transparent;
+    color: var(--gray-700);
+}
+
+.timeline-search-count {
+    font-size: 11px;
+    color: var(--gray-400);
+    white-space: nowrap;
+    min-width: 40px;
+    text-align: center;
+}
+
+.timeline-search-nav {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 2px 5px;
+    font-size: 10px;
+    color: var(--gray-500);
+    border-radius: 3px;
+    line-height: 1;
+}
+
+.timeline-search-nav:hover {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.timeline-search-close {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 2px 5px;
+    font-size: 13px;
+    color: var(--gray-400);
+    border-radius: 3px;
+    line-height: 1;
+}
+
+.timeline-search-close:hover {
+    background: #FEE2E2;
+    color: #DC2626;
+}
+
+/* Search highlight on booking blocks */
+.booking-block.search-match {
+    outline: 3px solid var(--primary) !important;
+    outline-offset: 1px;
+    z-index: 20 !important;
+}
+
+.booking-block.search-match-active {
+    outline: 3px solid #F59E0B !important;
+    outline-offset: 1px;
+    z-index: 25 !important;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+}
+
+.booking-block.search-dimmed {
+    opacity: 0.35;
+}
+
+/* Dark mode overrides */
+[data-theme="dark"] .timeline-search-wrap {
+    background: var(--gray-800);
+    border-color: var(--primary);
+}
+
+[data-theme="dark"] .timeline-search-input {
+    color: var(--gray-100);
+}
+
+[data-theme="dark"] .btn-search-timeline {
+    background: var(--gray-700);
+    border-color: var(--gray-600);
+    color: var(--gray-200);
+}
+
+[data-theme="dark"] .btn-search-timeline:hover {
+    background: var(--gray-600);
+}
+
+/* ==========================================
+   BOOKING TEMPLATES (v30.3)
+   ========================================== */
+
+.template-section {
+    padding: 8px 0 4px;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.template-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.template-select {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--white);
+    color: var(--gray-700);
+    min-height: 36px;
+    cursor: pointer;
+}
+
+.btn-save-template {
+    padding: 6px 10px;
+    border: 1px solid var(--gray-200);
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    cursor: pointer;
+    min-height: 36px;
+    min-width: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.btn-save-template:hover {
+    background: var(--primary-50, #ECFDF5);
+    border-color: var(--primary);
+}
+
+[data-theme="dark"] .template-select {
+    background: var(--gray-800);
+    border-color: var(--gray-600);
+    color: var(--gray-200);
+}
+
+[data-theme="dark"] .btn-save-template {
+    background: var(--gray-700);
+    border-color: var(--gray-600);
+}
+
+/* ==========================================
+   RECURRING BOOKINGS UI (v30.3)
+   ========================================== */
+
+.btn-recurring-booking {
+    padding: 8px 14px;
+    border: 1px solid var(--gray-200);
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.btn-recurring-booking:hover {
+    background: #EDE9FE;
+    border-color: #8B5CF6;
+    color: #6D28D9;
+}
+
+.recurring-form .form-section {
+    margin-bottom: 12px;
+}
+
+.recurring-form label {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+    display: block;
+}
+
+.recurring-form select,
+.recurring-form input[type="date"] {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-family: inherit;
+    min-height: 40px;
+}
+
+.recurring-days {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.recurring-days label {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+    min-height: 36px;
+}
+
+.recurring-days label:has(input:checked) {
+    background: var(--primary-50, #ECFDF5);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+}
+
+.recurring-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.recurring-actions .btn-primary {
+    flex: 1;
+    padding: 10px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    min-height: 44px;
+}
+
+.recurring-actions .btn-secondary {
+    padding: 10px 16px;
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    min-height: 44px;
+}
+
+/* Recurring icon on timeline blocks */
+.booking-block .recurring-icon {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+/* Bulk operations (v30.3) */
+
+.booking-block.bulk-selected {
+    outline: 3px solid #3B82F6 !important;
+    outline-offset: 1px;
+    z-index: 20 !important;
+}
+
+.bulk-action-bar {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--gray-800);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 12px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    z-index: 1000;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.bulk-action-bar .bulk-count {
+    font-weight: 700;
+    margin-right: 6px;
+}
+
+.bulk-action-bar button {
+    padding: 6px 12px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.1);
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    min-height: 36px;
+}
+
+.bulk-action-bar button:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.bulk-action-bar button.bulk-cancel {
+    background: #EF4444;
+    border-color: #EF4444;
+}
+
+.bulk-action-bar button.bulk-cancel:hover {
+    background: #DC2626;
+}

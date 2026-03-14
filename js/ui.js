@@ -524,17 +524,27 @@ function updateZoomButtons() {
 function pushUndo(action, data) {
     AppState.undoStack.push({ action, data, timestamp: Date.now() });
     if (AppState.undoStack.length > 10) AppState.undoStack.shift();
-    updateUndoButton();
+    // v30.3: Clear redo stack on new action (standard undo/redo behavior)
+    AppState.redoStack = [];
+    updateUndoRedoButtons();
 }
 
-function updateUndoButton() {
-    const btn = document.getElementById('undoBtn');
-    if (btn) btn.classList.toggle('hidden', AppState.undoStack.length === 0);
+function updateUndoRedoButtons() {
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    if (undoBtn) undoBtn.classList.toggle('hidden', AppState.undoStack.length === 0);
+    if (redoBtn) redoBtn.classList.toggle('hidden', AppState.redoStack.length === 0);
 }
+
+// v30.3: Backward compat alias
+function updateUndoButton() { updateUndoRedoButtons(); }
 
 async function handleUndo() {
     if (AppState.undoStack.length === 0) return;
     const item = AppState.undoStack.pop();
+    // v30.3: Push to redo stack for redo support
+    AppState.redoStack.push(item);
+    if (AppState.redoStack.length > 10) AppState.redoStack.shift();
 
     if (item.action === 'create') {
         for (const b of item.data) {
@@ -549,20 +559,17 @@ async function handleUndo() {
         await apiAddHistory('undo_delete', AppState.currentUser?.username, item.data[0]);
         showNotification('Видалення скасовано', 'warning');
     } else if (item.action === 'edit') {
-        // v5.51: Undo edit — restore old booking state
         const old = item.data.old;
         await apiUpdateBooking(old.id, old);
         await apiAddHistory('undo_edit', AppState.currentUser?.username, old);
         showNotification('Редагування скасовано', 'warning');
     } else if (item.action === 'shift') {
-        // v5.51: Undo shift — reverse the time shift
         const { bookingId, minutes, linked } = item.data;
         const bookings = await getBookingsForDate(AppState.selectedDate);
         const booking = bookings.find(b => b.id === bookingId);
         if (booking) {
             const revertedTime = addMinutesToTime(booking.time, minutes);
             await apiUpdateBooking(bookingId, { ...booking, time: revertedTime });
-            // Revert linked bookings
             for (const linkedId of linked) {
                 const lb = bookings.find(b => b.id === linkedId);
                 if (lb) {
@@ -577,7 +584,58 @@ async function handleUndo() {
 
     AppState.cachedBookings = {};
     await renderTimeline();
-    updateUndoButton();
+    updateUndoRedoButtons();
+}
+
+// ==========================================
+// v30.3: REDO
+// ==========================================
+
+async function handleRedo() {
+    if (AppState.redoStack.length === 0) return;
+    const item = AppState.redoStack.pop();
+    // Push back to undo without clearing redo
+    AppState.undoStack.push(item);
+    if (AppState.undoStack.length > 10) AppState.undoStack.shift();
+
+    if (item.action === 'create') {
+        for (const b of item.data) {
+            await apiCreateBooking(b);
+        }
+        showNotification('Створення повторено', 'info');
+    } else if (item.action === 'delete') {
+        for (const b of item.data) {
+            await apiDeleteBooking(b.id);
+        }
+        showNotification('Видалення повторено', 'info');
+    } else if (item.action === 'edit') {
+        const old = item.data.old;
+        // For redo of edit, we need the "new" state — but we stored "old"
+        // After undo, the server has the "old" state, so redo re-applies the original edit
+        // Since we don't store the new state separately, we just notify
+        showNotification('Для повтору редагування — повторіть дію вручну', 'warning');
+    } else if (item.action === 'shift') {
+        const { bookingId, minutes, linked } = item.data;
+        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const booking = bookings.find(b => b.id === bookingId);
+        if (booking) {
+            // Re-apply the shift (opposite of undo direction)
+            const newTime = addMinutesToTime(booking.time, -minutes);
+            await apiUpdateBooking(bookingId, { ...booking, time: newTime });
+            for (const linkedId of linked) {
+                const lb = bookings.find(b => b.id === linkedId);
+                if (lb) {
+                    const lbTime = addMinutesToTime(lb.time, -minutes);
+                    await apiUpdateBooking(linkedId, { ...lb, time: lbTime });
+                }
+            }
+        }
+        showNotification('Перенос часу повторено', 'info');
+    }
+
+    AppState.cachedBookings = {};
+    await renderTimeline();
+    updateUndoRedoButtons();
 }
 
 // ==========================================
@@ -852,6 +910,27 @@ async function exportTimelineImage() {
 }
 
 // ==========================================
+// v30.3: PDF EXPORT (Print-based)
+// ==========================================
+
+function exportTimelinePdf() {
+    // Add print class for CSS targeting
+    document.body.classList.add('printing-timeline');
+
+    // Temporarily show all booking details
+    const dateStr = formatDate(AppState.selectedDate);
+    document.title = `Таймлайн ${dateStr} — Парк Закревського Періоду`;
+
+    window.print();
+
+    // Restore
+    setTimeout(() => {
+        document.body.classList.remove('printing-timeline');
+        document.title = 'Парк Закревського Періоду';
+    }, 500);
+}
+
+// ==========================================
 // POINTS PANEL — Role-Based Dashboard
 // ==========================================
 
@@ -1090,4 +1169,168 @@ function _renderTasksDashboard() {
 
     html += '</div>';
     return html;
+}
+
+// ==========================================
+// v30.3: TIMELINE SEARCH
+// ==========================================
+
+function initTimelineSearch() {
+    const wrap = document.getElementById('timelineSearchWrap');
+    const input = document.getElementById('timelineSearchInput');
+    const countEl = document.getElementById('timelineSearchCount');
+    const btnOpen = document.getElementById('timelineSearchBtn');
+    const btnClose = document.getElementById('timelineSearchClose');
+    const btnPrev = document.getElementById('timelineSearchPrev');
+    const btnNext = document.getElementById('timelineSearchNext');
+    if (!wrap || !input) return;
+
+    function openSearch() {
+        wrap.classList.remove('hidden');
+        if (btnOpen) btnOpen.style.display = 'none';
+        input.focus();
+    }
+
+    function closeSearch() {
+        wrap.classList.add('hidden');
+        if (btnOpen) btnOpen.style.display = '';
+        input.value = '';
+        clearSearchHighlights();
+        AppState.searchQuery = '';
+        AppState.searchResults = [];
+        AppState.searchIndex = -1;
+    }
+
+    if (btnOpen) btnOpen.addEventListener('click', openSearch);
+    if (btnClose) btnClose.addEventListener('click', closeSearch);
+    if (btnPrev) btnPrev.addEventListener('click', () => navigateSearch(-1));
+    if (btnNext) btnNext.addEventListener('click', () => navigateSearch(1));
+
+    let searchTimeout;
+    input.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => executeTimelineSearch(input.value.trim()), 200);
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { closeSearch(); return; }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            navigateSearch(e.shiftKey ? -1 : 1);
+        }
+    });
+}
+
+function executeTimelineSearch(query) {
+    clearSearchHighlights();
+    const countEl = document.getElementById('timelineSearchCount');
+    AppState.searchQuery = query;
+    AppState.searchResults = [];
+    AppState.searchIndex = -1;
+
+    if (!query || query.length < 2) {
+        if (countEl) countEl.textContent = '';
+        return;
+    }
+
+    const q = query.toLowerCase();
+    const blocks = document.querySelectorAll('.booking-block:not(.status-hidden)');
+
+    blocks.forEach(block => {
+        const text = block.textContent.toLowerCase();
+        const ariaLabel = (block.getAttribute('aria-label') || '').toLowerCase();
+        if (text.includes(q) || ariaLabel.includes(q)) {
+            AppState.searchResults.push(block);
+            block.classList.add('search-match');
+        } else {
+            block.classList.add('search-dimmed');
+        }
+    });
+
+    if (AppState.searchResults.length > 0) {
+        AppState.searchIndex = 0;
+        highlightActiveResult();
+    }
+
+    updateSearchCount(countEl);
+}
+
+function navigateSearch(direction) {
+    if (AppState.searchResults.length === 0) return;
+    // Remove active highlight from current
+    if (AppState.searchIndex >= 0 && AppState.searchIndex < AppState.searchResults.length) {
+        AppState.searchResults[AppState.searchIndex].classList.remove('search-match-active');
+    }
+    AppState.searchIndex += direction;
+    if (AppState.searchIndex >= AppState.searchResults.length) AppState.searchIndex = 0;
+    if (AppState.searchIndex < 0) AppState.searchIndex = AppState.searchResults.length - 1;
+    highlightActiveResult();
+    const countEl = document.getElementById('timelineSearchCount');
+    updateSearchCount(countEl);
+}
+
+function highlightActiveResult() {
+    const block = AppState.searchResults[AppState.searchIndex];
+    if (!block) return;
+    block.classList.add('search-match-active');
+    // Auto-scroll to the found block
+    block.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+}
+
+function updateSearchCount(el) {
+    if (!el) return;
+    const total = AppState.searchResults.length;
+    if (total === 0 && AppState.searchQuery.length >= 2) {
+        el.textContent = 'Не знайдено';
+    } else if (total > 0) {
+        el.textContent = `${AppState.searchIndex + 1}/${total}`;
+    } else {
+        el.textContent = '';
+    }
+}
+
+function clearSearchHighlights() {
+    document.querySelectorAll('.search-match, .search-match-active, .search-dimmed').forEach(el => {
+        el.classList.remove('search-match', 'search-match-active', 'search-dimmed');
+    });
+}
+
+// ==========================================
+// v30.3: KEYBOARD SHORTCUTS
+// ==========================================
+
+function initKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Skip if user is typing in an input/textarea
+        const tag = e.target.tagName;
+        const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+        // Ctrl+F — open timeline search (override browser default on timeline page)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            const timelinePage = document.getElementById('timelineScroll');
+            if (timelinePage && !timelinePage.closest('.hidden')) {
+                e.preventDefault();
+                const btnOpen = document.getElementById('timelineSearchBtn');
+                if (btnOpen) btnOpen.click();
+                return;
+            }
+        }
+
+        // Skip other shortcuts when typing
+        if (isInput) return;
+
+        // Ctrl+Z — undo
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+            e.preventDefault();
+            handleUndo();
+            return;
+        }
+
+        // Ctrl+Shift+Z or Ctrl+Y — redo
+        if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key === 'Z' || e.key === 'y')) {
+            e.preventDefault();
+            handleRedo();
+            return;
+        }
+    });
 }

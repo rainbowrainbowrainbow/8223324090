@@ -535,16 +535,29 @@ function createBookingBlock(booking, startHour) {
     `;
 
     // v5.19: Linked bookings click → navigate to parent booking details
+    // v30.3: Store booking ID on block for bulk operations
+    block._bookingId = booking.id;
+    block.setAttribute('data-booking-id', booking.id);
     if (isLinked) {
         block.addEventListener('click', (e) => {
-            // Feature #14: Don't trigger click if drag just ended
             if (block._dragJustEnded) { block._dragJustEnded = false; return; }
+            // v30.3: Shift+Click for bulk select
+            if (e.shiftKey && typeof BulkOps !== 'undefined') {
+                e.preventDefault();
+                BulkOps.toggle(booking.linkedTo || booking.id);
+                return;
+            }
             showBookingDetails(booking.linkedTo);
         });
     } else {
         block.addEventListener('click', (e) => {
-            // Feature #14: Don't trigger click if drag just ended
             if (block._dragJustEnded) { block._dragJustEnded = false; return; }
+            // v30.3: Shift+Click for bulk select
+            if (e.shiftKey && typeof BulkOps !== 'undefined') {
+                e.preventDefault();
+                BulkOps.toggle(booking.id);
+                return;
+            }
             showBookingDetails(booking.id);
         });
     }

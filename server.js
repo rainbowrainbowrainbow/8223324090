@@ -119,6 +119,7 @@ app.use('/api', apiAudit);
 // --- Mount route modules ---
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/bookings', require('./routes/bookings'));
+app.use('/api/booking-templates', require('./routes/booking-templates'));
 app.use('/api/lines', require('./routes/lines'));
 app.use('/api/history', require('./routes/history'));
 app.use('/api/afisha', require('./routes/afisha'));

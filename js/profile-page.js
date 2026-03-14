@@ -748,6 +748,7 @@ function renderMonthlyLeaderboard() {
         <div class="profile-tabs" style="margin-bottom:14px">${catTabs}</div>
         ${listHtml}
     </div>`;
+}
 
 // ==========================================
 // MINI AVATAR (for chat)

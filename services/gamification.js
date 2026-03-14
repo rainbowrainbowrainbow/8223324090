@@ -269,7 +269,7 @@ async function checkAchievements(username, context = {}) {
         switch (ach.condition_type) {
             case 'task_count': {
                 const { rows } = await pool.query(
-                    "SELECT COUNT(*) FROM tasks WHERE assignee = $1 AND status = 'done'",
+                    "SELECT COUNT(*) FROM tasks WHERE assigned_to = $1 AND status = 'done'",
                     [username]
                 );
                 shouldUnlock = parseInt(rows[0].count) >= ach.condition_value;
@@ -729,8 +729,8 @@ async function recalculateMonthlyLeaderboard(year, month) {
     const categories = {
         bookings: `SELECT created_by as username, COUNT(*) as score FROM bookings
                    WHERE created_at >= $1 AND created_at < $2 GROUP BY created_by`,
-        tasks: `SELECT assignee as username, COUNT(*) as score FROM tasks
-                WHERE status = 'done' AND updated_at >= $1 AND updated_at < $2 GROUP BY assignee`,
+        tasks: `SELECT assigned_to as username, COUNT(*) as score FROM tasks
+                WHERE status = 'done' AND updated_at >= $1 AND updated_at < $2 GROUP BY assigned_to`,
         xp: `SELECT username, SUM(amount) as score FROM coin_transactions
              WHERE type = 'earn' AND created_at >= $1 AND created_at < $2
              GROUP BY username`,
@@ -853,7 +853,7 @@ async function checkSeasonalProgress(username) {
             case 'task_count': {
                 const { rows } = await pool.query(
                     `SELECT COUNT(*) FROM tasks
-                     WHERE assignee = $1 AND status = 'done'
+                     WHERE assigned_to = $1 AND status = 'done'
                      AND updated_at >= $2 AND updated_at <= $3`,
                     [username, quest.start_date, quest.end_date]
                 );
@@ -869,14 +869,19 @@ async function checkSeasonalProgress(username) {
                 break;
             }
             case 'login_days': {
-                const { rows } = await pool.query(
-                    `SELECT COUNT(DISTINCT DATE(created_at)) as days
-                     FROM coin_transactions
-                     WHERE username = $1 AND source_type = 'daily_login'
-                     AND created_at >= $2 AND created_at <= $3`,
-                    [username, quest.start_date, quest.end_date]
-                );
-                progress = parseInt(rows[0].days);
+                try {
+                    // Try username-based query first (gamification coin_transactions)
+                    const { rows } = await pool.query(
+                        `SELECT COUNT(DISTINCT DATE(created_at)) as days
+                         FROM coin_transactions
+                         WHERE username = $1 AND (source_type = 'daily_login' OR type = 'daily_login' OR reason LIKE '%Щоденний%')
+                         AND created_at >= $2 AND created_at <= $3`,
+                        [username, quest.start_date, quest.end_date]
+                    );
+                    progress = parseInt(rows[0].days) || 0;
+                } catch (e) {
+                    progress = 0;
+                }
                 break;
             }
         }
@@ -1088,7 +1093,7 @@ async function recalculateTeamChallenges() {
                 case 'tasks': {
                     const { rows } = await pool.query(
                         `SELECT COUNT(*) FROM tasks
-                         WHERE assignee = ANY($1) AND status = 'done'
+                         WHERE assigned_to = ANY($1) AND status = 'done'
                          AND updated_at >= $2 AND updated_at <= $3`,
                         [usernames, ch.start_date, ch.end_date]
                     );
@@ -1312,8 +1317,8 @@ async function purchaseStreakFreeze(username) {
 
     // Mark streak as frozen for today
     await pool.query(
-        `UPDATE user_streaks SET last_activity = CURRENT_DATE WHERE username = $1`,
-        [username]
+        `UPDATE user_streaks SET last_active_date = $2, updated_at = NOW() WHERE username = $1`,
+        [username, new Date().toISOString().split('T')[0]]
     );
 
     log.info(`${username} purchased streak freeze`);

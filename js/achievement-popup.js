@@ -147,8 +147,11 @@ const AchievementPopup = (() => {
             modal.classList.add('achievement-modal-visible');
         });
 
-        // Close handler
+        // Close handler (guarded against multiple calls)
+        let closed = false;
         const close = () => {
+            if (closed) return;
+            closed = true;
             modal.classList.remove('achievement-modal-visible');
             overlay.classList.remove('achievement-overlay-visible');
             confettiAnim.stop();
@@ -171,6 +174,7 @@ const AchievementPopup = (() => {
     // Canvas confetti particle system
     function startConfetti(canvas) {
         const ctx = canvas.getContext('2d');
+        if (!ctx) return { stop: () => {} };
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 

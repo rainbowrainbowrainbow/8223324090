@@ -350,10 +350,10 @@ function renderKanban() {
                 </div>
                 <div class="kanban-card-meta">${escapeHtml(phone)} <span class="lead-type-badge ${lt.cls}">${lt.emoji}</span></div>
                 ${l.event_date ? '<div class="kanban-card-date">📅 ' + new Date(l.event_date).toLocaleDateString('uk-UA') + '</div>' : ''}
-                <div class="kanban-card-actions" onclick="event.stopPropagation()">
-                    ${phoneTel ? `<a class="kanban-action-btn" href="tel:${escapeHtml(phoneTel)}" title="Зателефонувати">📞</a>` : ''}
-                    ${phoneTel ? `<a class="kanban-action-btn" href="https://t.me/${escapeHtml(phoneTel)}" target="_blank" title="Telegram">💬</a>` : ''}
-                </div>
+                ${phoneTel ? `<div class="kanban-card-actions" onclick="event.stopPropagation()">
+                    <a class="kanban-action-btn" href="tel:${escapeHtml(phoneTel)}" title="Зателефонувати">📞</a>
+                    <a class="kanban-action-btn" href="https://t.me/${escapeHtml(phoneTel)}" target="_blank" title="Telegram">💬</a>
+                </div>` : ''}
             </div>`;
         }).join('');
 

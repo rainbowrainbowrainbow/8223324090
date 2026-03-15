@@ -79,7 +79,7 @@ router.get('/widgets/:type', async (req, res) => {
                         CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
                         deadline ASC NULLS LAST
                     LIMIT 10
-                `, [req.user.id]);
+                `, [req.user.name]);
                 data = { tasks: result.rows };
                 break;
             }
@@ -242,7 +242,7 @@ router.get('/today', async (req, res) => {
 
         const [bookings, tasks, revenue, teamOnline, newLeads] = await Promise.all([
             pool.query("SELECT COUNT(*) as count FROM bookings WHERE date = $1 AND status != 'cancelled'", [today]),
-            pool.query("SELECT COUNT(*) as count FROM tasks WHERE (assigned_to = $1 OR created_by = $1) AND status NOT IN ('done', 'cancelled')", [req.user.id]),
+            pool.query("SELECT COUNT(*) as count FROM tasks WHERE (assigned_to = $1 OR created_by = $1) AND status NOT IN ('done', 'cancelled')", [req.user.name]),
             pool.query("SELECT COALESCE(SUM(price), 0) as total FROM bookings WHERE date = $1 AND status = 'confirmed'", [today]),
             pool.query("SELECT COUNT(*) as count FROM users u LEFT JOIN employee_profiles ep ON ep.user_id = u.id WHERE u.is_active = true AND ep.last_activity_at > NOW() - INTERVAL '5 minutes'"),
             pool.query("SELECT COUNT(*) as count FROM leads WHERE status = 'new'").catch(() => ({ rows: [{ count: 0 }] })),

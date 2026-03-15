@@ -131,9 +131,19 @@ BEGIN
 END $$;
 
 -- Ensure shop_items has all required columns (may be missing if table was created by older code)
-ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
-ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS icon VARCHAR(10) DEFAULT '🛒';
-ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS category VARCHAR(30) DEFAULT 'cosmetic';
+DO $$
+BEGIN
+    ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+    ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS icon VARCHAR(10) DEFAULT '🛒';
+    ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS category VARCHAR(30) DEFAULT 'cosmetic';
+    ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS code VARCHAR(50);
+    ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS rarity VARCHAR(20) DEFAULT 'common';
+    ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS equip_slot VARCHAR(30);
+    -- Fix: code should be nullable for seed items without codes
+    ALTER TABLE shop_items ALTER COLUMN code DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN
+    NULL; -- ignore if columns don't exist or table missing
+END $$;
 
 -- Seed: Level thresholds (ensure they exist)
 INSERT INTO level_thresholds (level, xp_required, title) VALUES
@@ -171,13 +181,13 @@ INSERT INTO team_challenges (title, description, icon, challenge_type, target_va
 ON CONFLICT DO NOTHING;
 
 -- Seed: Real bonus shop items
-INSERT INTO shop_items (name, description, price_coins, type, icon, category, is_active) VALUES
-    ('Додатковий вихідний', 'Один додатковий вихідний день на твій вибір', 5000, 'real', '🏖️', 'real', true),
-    ('Обід за рахунок парку', 'Безкоштовний обід у кафе парку', 1500, 'real', '🍕', 'real', true),
-    ('Сертифікат ATB 200₴', 'Подарунковий сертифікат на 200 гривень', 3000, 'real', '🎁', 'real', true),
-    ('Вибір зміни на тиждень', 'Обирай свою зміну протягом тижня', 2000, 'real', '📋', 'real', true),
-    ('Знижка 10% на ДН', 'Знижка на святкування дня народження в парку', 500, 'coupon', '🎂', 'coupon', true),
-    ('Безкоштовний напій', 'Один напій у кафе парку безкоштовно', 300, 'coupon', '☕', 'coupon', true)
+INSERT INTO shop_items (name, description, price_coins, type, icon, category, is_active, code) VALUES
+    ('Додатковий вихідний', 'Один додатковий вихідний день на твій вибір', 5000, 'real', '🏖️', 'real', true, 'bonus_dayoff'),
+    ('Обід за рахунок парку', 'Безкоштовний обід у кафе парку', 1500, 'real', '🍕', 'real', true, 'bonus_lunch'),
+    ('Сертифікат ATB 200₴', 'Подарунковий сертифікат на 200 гривень', 3000, 'real', '🎁', 'real', true, 'bonus_atb200'),
+    ('Вибір зміни на тиждень', 'Обирай свою зміну протягом тижня', 2000, 'real', '📋', 'real', true, 'bonus_shift'),
+    ('Знижка 10% на ДН', 'Знижка на святкування дня народження в парку', 500, 'coupon', '🎂', 'coupon', true, 'coupon_bday10'),
+    ('Безкоштовний напій', 'Один напій у кафе парку безкоштовно', 300, 'coupon', '☕', 'coupon', true, 'coupon_drink')
 ON CONFLICT DO NOTHING;
 
 -- Seed: New achievements for gamification v3 (is_active defaults to true)

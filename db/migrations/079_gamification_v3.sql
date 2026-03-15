@@ -130,7 +130,10 @@ BEGIN
     END IF;
 END $$;
 
--- Note: shop_items.category column already exists from migration 040
+-- Ensure shop_items has all required columns (may be missing if table was created by older code)
+ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS icon VARCHAR(10) DEFAULT '🛒';
+ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS category VARCHAR(30) DEFAULT 'cosmetic';
 
 -- Seed: Level thresholds (ensure they exist)
 INSERT INTO level_thresholds (level, xp_required, title) VALUES
@@ -167,61 +170,15 @@ INSERT INTO team_challenges (title, description, icon, challenge_type, target_va
     ('Весняний Кубок', 'Яка команда створить більше бронювань за березень?', '🏆', 'bookings', 50, 200, 50, '2026-03-01', '2026-03-31')
 ON CONFLICT DO NOTHING;
 
--- Seed: Real bonus shop items (dynamic SQL to handle optional columns)
-DO $$
-DECLARE
-    has_icon BOOLEAN;
-    has_category BOOLEAN;
-    has_is_active BOOLEAN;
-    cols TEXT;
-    vals TEXT;
-BEGIN
-    SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = 'shop_items' AND column_name = 'icon') INTO has_icon;
-    SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = 'shop_items' AND column_name = 'category') INTO has_category;
-    SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = 'shop_items' AND column_name = 'is_active') INTO has_is_active;
-
-    -- Build column list dynamically
-    cols := 'name, description, price_coins, type';
-    IF has_icon THEN cols := cols || ', icon'; END IF;
-    IF has_category THEN cols := cols || ', category'; END IF;
-    IF has_is_active THEN cols := cols || ', is_active'; END IF;
-
-    -- Build values for each row
-    EXECUTE format(
-        'INSERT INTO shop_items (%s) VALUES %s ON CONFLICT DO NOTHING',
-        cols,
-        -- Row 1: Додатковий вихідний
-        '(' || quote_literal('Додатковий вихідний') || ', ' || quote_literal('Один додатковий вихідний день на твій вибір') || ', 5000, ' || quote_literal('real')
-            || CASE WHEN has_icon THEN ', ' || quote_literal('🏖️') ELSE '' END
-            || CASE WHEN has_category THEN ', ' || quote_literal('real') ELSE '' END
-            || CASE WHEN has_is_active THEN ', true' ELSE '' END || '), '
-        -- Row 2: Обід за рахунок парку
-        || '(' || quote_literal('Обід за рахунок парку') || ', ' || quote_literal('Безкоштовний обід у кафе парку') || ', 1500, ' || quote_literal('real')
-            || CASE WHEN has_icon THEN ', ' || quote_literal('🍕') ELSE '' END
-            || CASE WHEN has_category THEN ', ' || quote_literal('real') ELSE '' END
-            || CASE WHEN has_is_active THEN ', true' ELSE '' END || '), '
-        -- Row 3: Сертифікат ATB
-        || '(' || quote_literal('Сертифікат ATB 200₴') || ', ' || quote_literal('Подарунковий сертифікат на 200 гривень') || ', 3000, ' || quote_literal('real')
-            || CASE WHEN has_icon THEN ', ' || quote_literal('🎁') ELSE '' END
-            || CASE WHEN has_category THEN ', ' || quote_literal('real') ELSE '' END
-            || CASE WHEN has_is_active THEN ', true' ELSE '' END || '), '
-        -- Row 4: Вибір зміни
-        || '(' || quote_literal('Вибір зміни на тиждень') || ', ' || quote_literal('Обирай свою зміну протягом тижня') || ', 2000, ' || quote_literal('real')
-            || CASE WHEN has_icon THEN ', ' || quote_literal('📋') ELSE '' END
-            || CASE WHEN has_category THEN ', ' || quote_literal('real') ELSE '' END
-            || CASE WHEN has_is_active THEN ', true' ELSE '' END || '), '
-        -- Row 5: Знижка 10%
-        || '(' || quote_literal('Знижка 10% на ДН') || ', ' || quote_literal('Знижка на святкування дня народження в парку') || ', 500, ' || quote_literal('coupon')
-            || CASE WHEN has_icon THEN ', ' || quote_literal('🎂') ELSE '' END
-            || CASE WHEN has_category THEN ', ' || quote_literal('coupon') ELSE '' END
-            || CASE WHEN has_is_active THEN ', true' ELSE '' END || '), '
-        -- Row 6: Безкоштовний напій
-        || '(' || quote_literal('Безкоштовний напій') || ', ' || quote_literal('Один напій у кафе парку безкоштовно') || ', 300, ' || quote_literal('coupon')
-            || CASE WHEN has_icon THEN ', ' || quote_literal('☕') ELSE '' END
-            || CASE WHEN has_category THEN ', ' || quote_literal('coupon') ELSE '' END
-            || CASE WHEN has_is_active THEN ', true' ELSE '' END || ')'
-    );
-END $$;
+-- Seed: Real bonus shop items
+INSERT INTO shop_items (name, description, price_coins, type, icon, category, is_active) VALUES
+    ('Додатковий вихідний', 'Один додатковий вихідний день на твій вибір', 5000, 'real', '🏖️', 'real', true),
+    ('Обід за рахунок парку', 'Безкоштовний обід у кафе парку', 1500, 'real', '🍕', 'real', true),
+    ('Сертифікат ATB 200₴', 'Подарунковий сертифікат на 200 гривень', 3000, 'real', '🎁', 'real', true),
+    ('Вибір зміни на тиждень', 'Обирай свою зміну протягом тижня', 2000, 'real', '📋', 'real', true),
+    ('Знижка 10% на ДН', 'Знижка на святкування дня народження в парку', 500, 'coupon', '🎂', 'coupon', true),
+    ('Безкоштовний напій', 'Один напій у кафе парку безкоштовно', 300, 'coupon', '☕', 'coupon', true)
+ON CONFLICT DO NOTHING;
 
 -- Seed: New achievements for gamification v3 (is_active defaults to true)
 INSERT INTO achievement_catalog (key, name, description, icon, category, condition_type, condition_value, reward_type, reward_value, rarity) VALUES

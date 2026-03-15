@@ -37,15 +37,15 @@ async function gatherAIContext(username, dateStr) {
             `SELECT COUNT(*) cnt, COALESCE(SUM(price),0) revenue,
                     COUNT(*) FILTER (WHERE status='confirmed') confirmed,
                     COUNT(*) FILTER (WHERE status='preliminary') preliminary
-             FROM bookings WHERE date = $1 AND linked_to IS NULL AND status != 'cancelled'`,
+             FROM bookings WHERE date = $1 AND (linked_to IS NULL OR linked_to = '') AND status != 'cancelled'`,
             [dateStr]
         );
         ctx.todayBookings = bookRes.rows[0];
 
         // Upcoming bookings (next 3 today)
         const upcomingRes = await pool.query(
-            `SELECT time, program_name, group_name, room, kids_count, price, status
-             FROM bookings WHERE date = $1 AND linked_to IS NULL AND status != 'cancelled'
+            `SELECT time, program_name, group_name, room, kids_count, price, status, hosts, second_animator
+             FROM bookings WHERE date = $1 AND (linked_to IS NULL OR linked_to = '') AND status != 'cancelled'
              ORDER BY time LIMIT 5`,
             [dateStr]
         );
@@ -81,7 +81,7 @@ async function gatherAIContext(username, dateStr) {
         const weekRange = getKyivWeekRange();
         const weekRes = await pool.query(
             `SELECT COUNT(*) cnt, COALESCE(SUM(price),0) revenue
-             FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status = 'confirmed'`,
+             FROM bookings WHERE date >= $1 AND date <= $2 AND (linked_to IS NULL OR linked_to = '') AND status = 'confirmed'`,
             [weekRange.from, weekRange.to]
         );
         ctx.weekStats = weekRes.rows[0];
@@ -126,7 +126,7 @@ function buildSystemPrompt(ctx, username, dateStr) {
 📊 Бронювання сьогодні: ${ctx.todayBookings?.cnt || 0} (підтв: ${ctx.todayBookings?.confirmed || 0}, непідтв: ${ctx.todayBookings?.preliminary || 0})
 💰 Виручка сьогодні: ${ctx.todayBookings?.revenue || 0} ₴
 ${ctx.upcomingBookings?.length > 0 ? 'Найближчі бронювання:\n' + ctx.upcomingBookings.map(b =>
-    `  - ${b.time || '?'} ${b.program_name || '?'} ${b.group_name ? '(' + b.group_name + ')' : ''} ${b.room ? '| ' + b.room : ''} | ${b.price || 0} ₴`
+    `  - ${b.time || '?'} ${b.program_name || '?'} ${b.group_name ? '(' + b.group_name + ')' : ''} ${b.hosts > 1 ? '| ' + b.hosts + ' ведучих' : ''} ${b.room ? '| ' + b.room : ''} | ${b.price || 0} ₴`
 ).join('\n') : 'Бронювань на сьогодні немає.'}
 
 📋 Задачі користувача (активні): ${ctx.userTasks?.length || 0}
@@ -488,10 +488,10 @@ async function tryHandleCategoryStats(lower, username) {
 
     // Query bookings filtered by category
     const res = await pool.query(
-        `SELECT id, date, time, program_name, price, status, group_name, kids_count
+        `SELECT id, date, time, program_name, price, status, group_name, kids_count, hosts
          FROM bookings
          WHERE date >= $1 AND date <= $2 AND category = $3
-           AND status != 'cancelled' AND linked_to IS NULL
+           AND status != 'cancelled' AND (linked_to IS NULL OR linked_to = '')
          ORDER BY date, time`,
         [from, to, matchedCat.db]
     );
@@ -521,6 +521,7 @@ async function tryHandleCategoryStats(lower, username) {
         const dateLabel = from !== to ? `${formatDateUkr(b.date)} ` : '';
         msg += `• ${dateLabel}${b.time || '—'} — ${b.program_name || matchedCat.name}`;
         if (b.group_name) msg += ` (${b.group_name})`;
+        if (b.hosts > 1) msg += ` | ${b.hosts} вед.`;
         msg += ` | ${formatPrice(b.price)}\n`;
     }
     if (total > 10) {
@@ -629,7 +630,7 @@ async function handleBookings(lower, username) {
                     COUNT(*) FILTER (WHERE status='confirmed') confirmed,
                     COUNT(*) FILTER (WHERE status='preliminary') preliminary,
                     COUNT(*) FILTER (WHERE status='cancelled') cancelled
-             FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL`,
+             FROM bookings WHERE date >= $1 AND date <= $2 AND (linked_to IS NULL OR linked_to = '')`,
             [dateIntent.from, dateIntent.to]
         );
         const r = res.rows[0];
@@ -645,8 +646,8 @@ async function handleBookings(lower, username) {
     // Single date
     const date = dateIntent.date;
     const res = await pool.query(
-        `SELECT id, time, program_name, group_name, room, price, status, kids_count, duration
-         FROM bookings WHERE date = $1 AND linked_to IS NULL ORDER BY time`,
+        `SELECT id, time, program_name, group_name, room, price, status, kids_count, duration, hosts
+         FROM bookings WHERE date = $1 AND (linked_to IS NULL OR linked_to = '') ORDER BY time`,
         [date]
     );
 
@@ -674,6 +675,7 @@ async function handleBookings(lower, username) {
         msg += `${statusIcon} <b>${b.time || '—'}</b> ${b.program_name || '?'}`;
         if (b.group_name) msg += ` — ${b.group_name}`;
         if (b.kids_count) msg += ` (${b.kids_count} діт.)`;
+        if (b.hosts > 1) msg += ` | ${b.hosts} вед.`;
         if (b.room) msg += ` | ${b.room}`;
         msg += ` | ${formatPrice(b.price)}`;
         msg += '\n';
@@ -957,7 +959,7 @@ async function handleRevenue(lower, username) {
                 COALESCE(ROUND(AVG(price)), 0) avg_price,
                 COUNT(*) FILTER (WHERE status='confirmed') confirmed,
                 COUNT(*) FILTER (WHERE status='preliminary') preliminary
-         FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != 'cancelled'`,
+         FROM bookings WHERE date >= $1 AND date <= $2 AND (linked_to IS NULL OR linked_to = '') AND status != 'cancelled'`,
         [from, to]
     );
 
@@ -992,7 +994,7 @@ async function handleRevenue(lower, username) {
 
     const prevRes = await pool.query(
         `SELECT COALESCE(SUM(price), 0) revenue, COUNT(*) cnt
-         FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != 'cancelled'`,
+         FROM bookings WHERE date >= $1 AND date <= $2 AND (linked_to IS NULL OR linked_to = '') AND status != 'cancelled'`,
         [prevFrom, prevTo]
     );
 
@@ -1189,7 +1191,7 @@ async function handleRooms(lower, username) {
 
     const res = await pool.query(
         `SELECT room, COUNT(*) cnt, SUM(duration) total_mins, MIN(time) first_time, MAX(time) last_time
-         FROM bookings WHERE date = $1 AND status != 'cancelled' AND room IS NOT NULL AND linked_to IS NULL
+         FROM bookings WHERE date = $1 AND status != 'cancelled' AND room IS NOT NULL AND (linked_to IS NULL OR linked_to = '')
          GROUP BY room ORDER BY cnt DESC`,
         [date]
     );
@@ -1224,7 +1226,7 @@ async function handleAnalytics(lower, username) {
         const range = getMonthRange();
         const res = await pool.query(
             `SELECT program_name, COUNT(*) cnt, SUM(price) revenue
-             FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL
+             FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND (linked_to IS NULL OR linked_to = '')
              GROUP BY program_name ORDER BY cnt DESC LIMIT 10`,
             [range.from, range.to]
         );
@@ -1258,12 +1260,12 @@ async function handleAnalytics(lower, username) {
     const [currRes, prevRes] = await Promise.all([
         pool.query(
             `SELECT COUNT(*) cnt, COALESCE(SUM(price),0) revenue, COALESCE(ROUND(AVG(price)),0) avg_price
-             FROM bookings WHERE date >= $1 AND date <= $2 AND status='confirmed' AND linked_to IS NULL`,
+             FROM bookings WHERE date >= $1 AND date <= $2 AND status='confirmed' AND (linked_to IS NULL OR linked_to = '')`,
             [curr.from, curr.to]
         ),
         pool.query(
             `SELECT COUNT(*) cnt, COALESCE(SUM(price),0) revenue, COALESCE(ROUND(AVG(price)),0) avg_price
-             FROM bookings WHERE date >= $1 AND date <= $2 AND status='confirmed' AND linked_to IS NULL`,
+             FROM bookings WHERE date >= $1 AND date <= $2 AND status='confirmed' AND (linked_to IS NULL OR linked_to = '')`,
             [prev.from, prev.to]
         )
     ]);

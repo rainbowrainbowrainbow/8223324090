@@ -139,7 +139,7 @@ async function gatherContext(username, dateStr) {
     try {
         // Bookings for today
         const bookingsRes = await pool.query(
-            "SELECT COUNT(*) as cnt, COALESCE(SUM(price), 0) as revenue FROM bookings WHERE date = $1 AND status != 'cancelled' AND linked_to IS NULL",
+            "SELECT COUNT(*) as cnt, COALESCE(SUM(price), 0) as revenue FROM bookings WHERE date = $1 AND status != 'cancelled' AND (linked_to IS NULL OR linked_to = '')",
             [dateStr]
         );
         ctx.bookingsCount = parseInt(bookingsRes.rows[0].cnt);
@@ -147,7 +147,7 @@ async function gatherContext(username, dateStr) {
 
         // Preliminary bookings
         const prelimRes = await pool.query(
-            "SELECT COUNT(*) as cnt FROM bookings WHERE date = $1 AND status = 'preliminary' AND linked_to IS NULL",
+            "SELECT COUNT(*) as cnt FROM bookings WHERE date = $1 AND status = 'preliminary' AND (linked_to IS NULL OR linked_to = '')",
             [dateStr]
         );
         ctx.preliminaryCount = parseInt(prelimRes.rows[0].cnt);

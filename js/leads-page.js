@@ -257,7 +257,7 @@ function renderKanban() {
     const kanbanWrap = document.getElementById('kanbanView');
     const mailingWrap = document.getElementById('mailingView');
     if (tableWrap) tableWrap.style.display = 'none';
-    if (kanbanWrap) kanbanWrap.style.display = '';
+    if (kanbanWrap) kanbanWrap.style.display = 'flex';
     if (mailingWrap) mailingWrap.style.display = 'none';
 
     if (!kanbanWrap) return;

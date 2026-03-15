@@ -70,6 +70,7 @@ const SOURCE_MAP = {
 let currentView = 'table'; // table | kanban | mailing
 let currentFilter = '';
 let currentTypeFilter = '';
+let currentDateFilter = '';
 let leadsData = [];
 let pipelineData = {};
 let usersData = [];
@@ -150,6 +151,7 @@ async function loadLeads() {
         const params = new URLSearchParams();
         if (currentFilter) params.set('status', currentFilter);
         if (currentTypeFilter) params.set('lead_type', currentTypeFilter);
+        if (currentDateFilter) params.set('event_date', currentDateFilter);
         const search = document.getElementById('leadsSearch')?.value?.trim();
         if (search) params.set('search', search);
         params.set('limit', '200');
@@ -749,6 +751,26 @@ function setupEvents() {
             btn.classList.add('active');
             currentFilter = btn.dataset.status;
             currentTypeFilter = '';
+            loadLeads();
+        });
+    });
+
+    // Date filter buttons (Сьогодні / Завтра)
+    document.querySelectorAll('#dateBtns .filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const isActive = btn.classList.contains('active');
+            document.querySelectorAll('#dateBtns .filter-btn').forEach(b => b.classList.remove('active'));
+            if (isActive) {
+                // Toggle off — clear date filter
+                currentDateFilter = '';
+            } else {
+                btn.classList.add('active');
+                const now = new Date();
+                if (btn.dataset.date === 'tomorrow') {
+                    now.setDate(now.getDate() + 1);
+                }
+                currentDateFilter = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Kyiv' });
+            }
             loadLeads();
         });
     });

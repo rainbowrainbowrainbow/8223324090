@@ -99,6 +99,10 @@ router.get('/', async (req, res) => {
             params.push(pattern);
             conditions.push(`(l.client_name ILIKE $${params.length} OR l.phone ILIKE $${params.length} OR l.instagram ILIKE $${params.length})`);
         }
+        if (req.query.event_date) {
+            params.push(req.query.event_date);
+            conditions.push(`l.event_date::date = $${params.length}::date`);
+        }
 
         const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
         const limitVal = Math.min(parseInt(lim) || 50, 200);

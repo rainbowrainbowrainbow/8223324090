@@ -7,37 +7,46 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=31.1.0">
-    <link rel="stylesheet" href="css/auth.css?v=31.1.0">
-    <link rel="stylesheet" href="css/layout.css?v=31.1.0">
-    <link rel="stylesheet" href="css/pages.css?v=31.1.0">
-    <link rel="stylesheet" href="css/modals.css?v=31.1.0">
-    <link rel="stylesheet" href="css/dashboard.css?v=31.1.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=31.1.0">
-    <link rel="stylesheet" href="css/responsive.css?v=31.1.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=31.1.0">
+    <link rel="stylesheet" href="css/base.css?v=31.7.0">
+    <link rel="stylesheet" href="css/auth.css?v=31.7.0">
+    <link rel="stylesheet" href="css/layout.css?v=31.7.0">
+    <link rel="stylesheet" href="css/pages.css?v=31.7.0">
+    <link rel="stylesheet" href="css/modals.css?v=31.7.0">
+    <link rel="stylesheet" href="css/dashboard.css?v=31.7.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=31.7.0">
+    <link rel="stylesheet" href="css/responsive.css?v=31.7.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=31.7.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
     <script>
     // Dark mode flash prevention
     (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
     </script>
-    <!-- Login screen (shared pattern) -->
+    <!-- Login screen (shared pattern — canonical version from index.html) -->
     <div id="loginScreen" class="login-screen">
         <div class="login-container">
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
+                <h1>Event Genix</h1>
+                <p class="tagline">AI First CRM v31.7.0 — Каталог випускних</p>
             </div>
-            <h1>Event Genix</h1>
-            <p class="login-subtitle">AI First CRM v31.0.0</p>
-            <form id="loginForm" onsubmit="return false;">
-                <input type="text" id="loginUsername" placeholder="Логін" autocomplete="username" required aria-label="Логін">
-                <input type="password" id="loginPassword" placeholder="Пароль" autocomplete="current-password" required aria-label="Пароль">
-                <button type="submit" class="btn-login" id="loginBtn">Увійти</button>
-                <div id="loginError" class="login-error hidden"></div>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v31.7.0</button>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="username">Ім'я</label>
+                    <input type="text" id="username" placeholder="Введіть ім'я" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Пароль</label>
+                    <input type="password" id="password" placeholder="Введіть пароль" required>
+                </div>
+                <button type="submit" class="btn-login">Увійти →</button>
+                <p id="loginError" class="error-message"></p>
             </form>
+            <p class="login-footer">MagicGears · Event Genix · 2026</p>
+            <a href="/landing/" class="login-landing-link" target="_blank">🌐 Наш сайт</a>
         </div>
     </div>
 
@@ -108,18 +117,18 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/config.js?v=31.1.0"></script>
-    <script src="js/api.js?v=31.1.0"></script>
-    <script src="js/auth.js?v=31.1.0"></script>
-    <script src="js/components/sidebar.js?v=31.1.0"></script>
+    <script src="js/config.js?v=31.7.0"></script>
+    <script src="js/api.js?v=31.7.0"></script>
+    <script src="js/auth.js?v=31.7.0"></script>
+    <script src="js/components/sidebar.js?v=31.7.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/dashboard-page.js?v=31.1.0"></script>
-    <script src="js/ui.js?v=31.1.0"></script>
+    <script src="js/dashboard-page.js?v=31.7.0"></script>
+    <script src="js/ui.js?v=31.7.0"></script>
     <script>
     // Login handler
     document.getElementById('loginForm').addEventListener('submit', async () => {
-        const username = document.getElementById('loginUsername').value;
-        const password = document.getElementById('loginPassword').value;
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
         const errorEl = document.getElementById('loginError');
         errorEl.classList.add('hidden');
 
@@ -150,10 +159,10 @@
                 return;
             }
         }
-        document.getElementById('loginScreen').classList.remove('hidden');
-        document.getElementById('mainApp').classList.add('hidden');
+        // v31.7.1: Redirect to canonical login page
+        window.location.href = '/';
     })();
     </script>
-    <script src="js/role-panel.js?v=31.1.0"></script>
+    <script src="js/role-panel.js?v=31.7.0"></script>
 </body>
 </html>

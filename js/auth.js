@@ -60,6 +60,12 @@ function logout() {
 }
 
 function showLoginScreen() {
+    // v31.7.1: Redirect to canonical login page from sub-pages
+    const path = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+    if (path !== '/' && path !== '/index') {
+        window.location.href = '/';
+        return;
+    }
     document.getElementById('loginScreen').classList.remove('hidden');
     document.getElementById('mainApp').classList.add('hidden');
     // Hide floating buttons that are outside mainApp

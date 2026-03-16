@@ -25,8 +25,26 @@ let editTags = [];
 // AUTH CHECK (same pattern as tasks-page)
 // ==========================================
 (async function initAuth() {
+    const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === '1'
+        || window.self !== window.top;
+
+    // v31.7: Embedded mode — hide chrome BEFORE auth to prevent blank page
+    if (isEmbedded) {
+        const sidebar = document.getElementById('sidebarNav');
+        const header = document.querySelector('.header');
+        if (sidebar) sidebar.style.display = 'none';
+        if (header) header.style.display = 'none';
+        const main = document.querySelector('.page-container');
+        if (main) main.style.marginLeft = '0';
+    }
+
     const token = localStorage.getItem('pzp_token');
     if (!token) {
+        if (isEmbedded) {
+            // In embed mode, still show content (parent page is authenticated)
+            initPage();
+            return;
+        }
         document.getElementById('loginOverlay').classList.remove('hidden');
         document.getElementById('mainApp').style.display = 'none';
         return;
@@ -42,6 +60,11 @@ let editTags = [];
         const user = data.user || data;
         document.getElementById('currentUser').textContent = user.name || user.username;
     } catch {
+        if (isEmbedded) {
+            // In embed mode, still show content — API calls use token from localStorage
+            initPage();
+            return;
+        }
         document.getElementById('loginOverlay').classList.remove('hidden');
         document.getElementById('mainApp').style.display = 'none';
         return;
@@ -52,16 +75,6 @@ let editTags = [];
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location.href = '/';
     });
-
-    // v20.8.0: Embedded mode — hide chrome when inside Art page
-    if (new URLSearchParams(window.location.search).get('embedded') === '1') {
-        const sidebar = document.getElementById('sidebarNav');
-        const header = document.querySelector('.header');
-        if (sidebar) sidebar.style.display = 'none';
-        if (header) header.style.display = 'none';
-        const main = document.querySelector('.page-container');
-        if (main) main.style.marginLeft = '0';
-    }
 
     initPage();
 })();
@@ -82,7 +95,8 @@ async function initPage() {
     await Promise.all([
         loadDesigns(),
         loadCollections(),
-        loadTags()
+        loadTags(),
+        loadCatalogs()
     ]);
 
     renderTagChips();
@@ -187,7 +201,11 @@ async function loadTags() {
 function renderDesignGrid() {
     const grid = document.getElementById('designGrid');
     if (designs.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><span>🎨</span>Немає дизайнів. Перетягніть файли у зону завантаження.</div>';
+        grid.innerHTML = `<div class="empty-state">
+            <span>🎨</span>
+            Немає дизайнів. Перетягніть файли у зону завантаження вище.
+            ${catalogPackages.length > 0 ? '<br><br><button onclick="document.querySelector(\'[data-tab=catalogs]\').click()" style="padding:10px 24px;border:none;border-radius:8px;background:var(--primary);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;">Переглянути каталоги</button>' : ''}
+        </div>`;
         return;
     }
 

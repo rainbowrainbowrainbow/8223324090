@@ -525,8 +525,12 @@
         }
 
         /* Empty state */
-        .empty-state { text-align: center; padding: 40px 20px; color: var(--gray-400); font-size: 14px; }
-        .empty-state span { font-size: 40px; display: block; margin-bottom: 12px; }
+        .empty-state {
+            text-align: center; padding: 60px 20px; color: var(--gray-500); font-size: 15px;
+            background: rgba(255,255,255,0.4); border-radius: 16px; margin-top: 12px;
+            backdrop-filter: blur(10px); border: 1.5px dashed var(--gray-200);
+        }
+        .empty-state span { font-size: 48px; display: block; margin-bottom: 16px; }
 
         /* ==========================================
            DARK MODE

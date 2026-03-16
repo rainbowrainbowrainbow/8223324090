@@ -145,9 +145,11 @@ router.get('/health', async (req, res) => {
     } catch { /* ignore */ }
     checks.userCount = userCount;
 
-    // Memory warning
-    const heapPct = Math.round((mem.heapUsed / mem.heapTotal) * 100);
-    checks.status = checks.database === 'connected' && heapPct < 90 ? 'ok' : 'degraded';
+    // Memory warning — use absolute heap limit (512MB) instead of percentage
+    // because Node.js heapTotal grows dynamically and heapUsed/heapTotal ratio
+    // is unreliable (often 85-95% even under normal load)
+    const heapUsedMB = Math.round(mem.heapUsed / 1024 / 1024);
+    checks.status = checks.database === 'connected' && heapUsedMB < 512 ? 'ok' : 'degraded';
 
     res.status(checks.status === 'ok' ? 200 : 503).json(checks);
 });

@@ -266,7 +266,12 @@ app.get('/kleshnya', (req, res) => {
     res.redirect('/chat');
 });
 // v22.0.0: designs merged into art-director page
-app.get('/designs', (req, res) => res.redirect(301, '/art?tab=designs'));
+app.get('/designs', (req, res) => {
+    if (req.query.embedded === '1') {
+        return res.sendFile(path.join(__dirname, 'designs.html'));
+    }
+    res.redirect(301, '/art?tab=designs');
+});
 app.get('/warehouse', (req, res) => {
     res.sendFile(path.join(__dirname, 'warehouse.html'));
 });

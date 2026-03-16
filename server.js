@@ -290,6 +290,16 @@ app.get('/analytics', (req, res) => {
 app.get('/center', (req, res) => {
     res.sendFile(path.join(__dirname, 'center.html'));
 });
+// Embed routes — direct file serving for art-director iframes (no redirects)
+app.get('/embed/designs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'designs.html'));
+});
+app.get('/embed/programs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'programs.html'));
+});
+app.get('/embed/graduation', (req, res) => {
+    res.sendFile(path.join(__dirname, 'graduation.html'));
+});
 // v20.3.0: art-director → art rename
 app.get('/art', (req, res) => {
     res.sendFile(path.join(__dirname, 'art-director.html'));

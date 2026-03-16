@@ -7,6 +7,15 @@
     <meta name="description" content="Event Genix — Конструктор випускного">
     <meta property="og:title" content="Event Genix — Випускний">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <script>
+    (function() {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('embedded') === '1' || params.get('embed') === '1') {
+            document.documentElement.classList.add('embed-mode');
+        }
+        try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
+    })();
+    </script>
     <link rel="stylesheet" href="css/base.css?v=31.1.0">
     <link rel="stylesheet" href="css/layout.css?v=31.1.0">
     <link rel="stylesheet" href="css/pages.css?v=31.1.0">
@@ -17,6 +26,14 @@
     <link rel="stylesheet" href="css/role-panel.css?v=31.1.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        .embed-mode .sidebar-nav,
+        .embed-mode .header,
+        .embed-mode .sidebar-overlay,
+        .embed-mode .skip-link,
+        .embed-mode .page-login-overlay { display: none !important; }
+        .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
+    </style>
 </head>
 <body>
     <div id="loginOverlay" class="login-overlay" style="display:none">

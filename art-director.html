@@ -352,7 +352,9 @@
 
                 <!-- Tab: Graduation (v30.0.0) -->
                 <div class="artdir-tab-content" id="tab-graduation">
-                    <iframe data-src="/embed/graduation?embedded=1" class="artdir-embed-frame" title="Конструктор випускного"></iframe>
+                    <div class="artdir-iframe-loading" id="gradIframeLoading" style="padding:40px;text-align:center;color:var(--gray-500)">Завантаження конструктора випускного...</div>
+                    <iframe data-src="/embed/graduation?embedded=1" class="artdir-embed-frame" title="Конструктор випускного"
+                        onload="var l=document.getElementById('gradIframeLoading');if(l)l.style.display='none'"></iframe>
                 </div>
 
                 <!-- Tab: Overview -->

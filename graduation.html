@@ -32,8 +32,7 @@
         .embed-mode .sidebar-overlay,
         .embed-mode .skip-link,
         .embed-mode .page-login-overlay { display: none !important; }
-        .embed-mode .page-container,
-        .embed-mode #main-content { margin-left: 0 !important; padding: 16px !important; }
+        .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
     </style>
 </head>
 <body>
@@ -69,7 +68,7 @@
             </div>
         </header>
 
-        <main id="main-content">
+        <main id="main-content" class="page-container">
             <div class="grad-page">
                 <h1>Конструктор випускного</h1>
 
@@ -115,6 +114,18 @@
                 if (loginOverlay) loginOverlay.style.display = 'none';
                 const main = document.getElementById('main-content');
                 if (main) main.style.marginLeft = '0';
+                // Inherit token from URL query (passed by parent art-director iframe loader)
+                const urlToken = new URLSearchParams(location.search).get('token');
+                if (urlToken && !localStorage.getItem('pzp_token')) {
+                    localStorage.setItem('pzp_token', urlToken);
+                }
+                // Also try inheriting from parent frame
+                try {
+                    if (!localStorage.getItem('pzp_token') && window.parent && window.parent.localStorage) {
+                        const parentToken = window.parent.localStorage.getItem('pzp_token');
+                        if (parentToken) localStorage.setItem('pzp_token', parentToken);
+                    }
+                } catch (e) { /* cross-origin — token should already be shared via same-origin localStorage */ }
             } else {
                 if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
                 // Load role-panel only in standalone mode
@@ -122,7 +133,19 @@
                 s.src = 'js/role-panel.js?v=31.1.0';
                 document.body.appendChild(s);
             }
-            if (typeof GradPage !== 'undefined') GradPage.init();
+            try {
+                if (typeof GradPage !== 'undefined') {
+                    GradPage.init();
+                } else {
+                    console.error('[Graduation] GradPage not defined — check graduation.js loading');
+                    const content = document.getElementById('gradContent');
+                    if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#999">Помилка завантаження конструктора. Спробуйте оновити сторінку.</div>';
+                }
+            } catch (err) {
+                console.error('[Graduation] Init error:', err);
+                const content = document.getElementById('gradContent');
+                if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#999">Помилка: ' + err.message + '</div>';
+            }
         });
     </script>
 </body>

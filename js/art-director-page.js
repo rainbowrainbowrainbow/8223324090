@@ -177,7 +177,14 @@ function lazyLoadIframe(tabName) {
     if (!tabEl) return;
     const iframe = tabEl.querySelector('iframe[data-src]');
     if (iframe && !iframe.src.includes(iframe.dataset.src)) {
-        iframe.src = iframe.dataset.src;
+        let src = iframe.dataset.src;
+        // Pass auth token via URL for embedded pages that may not access parent localStorage
+        const token = localStorage.getItem('pzp_token');
+        if (token) {
+            const sep = src.includes('?') ? '&' : '?';
+            src += sep + 'token=' + encodeURIComponent(token);
+        }
+        iframe.src = src;
     }
 }
 

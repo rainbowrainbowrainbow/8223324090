@@ -186,6 +186,8 @@
     }
 
     async function loadAll() {
+        const content = document.getElementById('gradContent');
+        if (content) content.innerHTML = '<div class="grad-loading" style="padding:40px;text-align:center;color:var(--gray-500)">Завантаження...</div>';
         try {
             const [svc, pkg, sett] = await Promise.all([
                 apiCall('GET', '/graduation/services', null, { fallback: [] }),
@@ -209,8 +211,13 @@
             } catch (e) { /* ignore */ }
 
             renderCurrentTab();
+
+            if (services.length === 0) {
+                console.warn('[Graduation] No services loaded — API may require auth');
+            }
         } catch (err) {
             console.error('[Graduation] loadAll error:', err);
+            if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#e74c3c">Помилка завантаження даних: ' + (err.message || 'невідома помилка') + '</div>';
             showNotification('Помилка завантаження даних', 'error');
         }
     }

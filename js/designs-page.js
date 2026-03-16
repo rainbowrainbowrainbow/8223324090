@@ -93,20 +93,24 @@ async function initPage() {
 // TABS
 // ==========================================
 function setupTabs() {
+    const tabIds = ['tabGallery', 'tabCollections', 'tabPrice', 'tabCalendar', 'tabCatalogs'];
+    const tabMap = { gallery: 'tabGallery', collections: 'tabCollections', price: 'tabPrice', calendar: 'tabCalendar', catalogs: 'tabCatalogs' };
+
     document.querySelectorAll('.design-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.design-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             activeTab = tab.dataset.tab;
 
-            document.getElementById('tabGallery').style.display = activeTab === 'gallery' ? '' : 'none';
-            document.getElementById('tabCollections').style.display = activeTab === 'collections' ? '' : 'none';
-            document.getElementById('tabPrice').style.display = activeTab === 'price' ? '' : 'none';
-            document.getElementById('tabCalendar').style.display = activeTab === 'calendar' ? '' : 'none';
+            for (const id of tabIds) {
+                const el = document.getElementById(id);
+                if (el) el.style.display = id === tabMap[activeTab] ? '' : 'none';
+            }
 
             if (activeTab === 'price') loadPriceList();
             if (activeTab === 'calendar') renderCalendar();
             if (activeTab === 'collections') renderCollections();
+            if (activeTab === 'catalogs') loadCatalogs();
         });
     });
 }
@@ -815,6 +819,284 @@ function showNotification(message, type = '') {
 }
 
 // ==========================================
+// CATALOGS
+// ==========================================
+
+const CATALOG_DESCRIPTIONS = {
+    'best-dj': 'Музика, танці, кольоровий паперовий дощ і яскравий аквагрим! Ведучий-діджей запалить справжню вечірку, а на завершення — капсула часу з мріями та урочиста видача дипломів. Ідеальний вибір для класу, який любить рухатись!',
+    'super-party': 'Класична програма з аніматорами у костюмах улюблених героїв! Захопливі ігри, конкурси, живі танці — а на фінал капсула часу з листами у майбутнє та урочиста видача дипломів на сцені. Перевірений формат, який обожнюють діти!',
+    'science-party': 'Для розумників та допитливих! Починаємо з велком-зони, де ведучий-персонаж знайомить всіх. Потім — гра Мафія (інтелектуальний батл!) і фінальне шоу з сухим льодом: димові каскади, хімічні експерименти та магічні перетворення. Наука ще ніколи не була такою крутою!',
+    'handmade-party': 'Створюй, їж і святкуй! Два крутих майстер-класи: кожен робить свій унікальний слайм (обирає колір та блискітки) та авторську піцу з улюбленою начинкою. А на завершення — капсула часу і дипломи. Ідеально для творчого класу!',
+    'pizza-party': 'Піца + вечірка = ідеальний випускний! Спочатку кожен робить свою авторську піцу, а потім — два повних години нон-стоп анімації з аніматорами у костюмах героїв. Ігри, конкурси, танці — і все це з повним животом!',
+    'squid-game': 'Для сміливих! Захоплива інтерактивна програма в стилі серіалу. Три ведучих у яскравих костюмах проводять кілька циклів ігор на швидкість, логіку та витримку. Два раунди, фінальний сюрприз і подарунки для переможців. Адреналін гарантовано!',
+    'neon-party': 'Вечірка у світлі ультрафіолету! Неонова паперова дискотека, магічні мильні бульбашки що світяться, аквагрим який перетворює кожного на зірку неонової вечірки — і подарунки на пам\'ять. Це як потрапити всередину неонової мрії!'
+};
+
+const CATALOG_ICONS = {
+    'best-dj': '🎧', 'super-party': '🎉', 'science-party': '🔬',
+    'handmade-party': '🎨', 'pizza-party': '🍕', 'squid-game': '🦑', 'neon-party': '✨'
+};
+
+const SERVICE_ICONS = {
+    'Вхід': '🎟️', 'Паперова дискотека': '🎵', 'Аквагрим': '🎨',
+    'Капсула часу': '📦', 'Видача дипломів та вітання класу на сцені': '🎓',
+    'Анімація': '🎪', 'Анімація 2 години': '🎪', 'Велком Зона': '👋',
+    'Мафія': '🕵️', 'Шоу з сухим льодом': '🧊', 'МК "Слайм"': '🧪',
+    'МК "Піца"': '🍕', 'Подарунки': '🎁', 'Неонова паперова дискотека': '🎵',
+    'Неонові мильні бульбашки': '🫧', 'Неоновий аквагрим': '🎨',
+    'Програма "Гра в кальмара" Ч.1': '🦑', 'Програма "Гра в кальмара" Ч.2': '🦑'
+};
+
+let catalogPackages = [];
+let currentCatalogPage = 0;
+
+async function loadCatalogs() {
+    try {
+        const res = await apiFetch('/api/graduation/packages');
+        if (!res) return;
+        catalogPackages = await res.json();
+        const updatedEl = document.getElementById('catalogUpdated');
+        if (updatedEl) updatedEl.textContent = 'Оновлено: ' + new Date().toLocaleDateString('uk-UA');
+    } catch (err) {
+        console.error('Load catalogs error:', err);
+    }
+}
+
+function openCatalog(catalogId) {
+    if (catalogId !== 'graduation' || catalogPackages.length === 0) {
+        loadCatalogs().then(() => {
+            if (catalogPackages.length > 0) renderCatalogViewer();
+        });
+        return;
+    }
+    renderCatalogViewer();
+}
+
+function renderCatalogViewer() {
+    currentCatalogPage = 0;
+    const viewer = document.getElementById('catalogViewer');
+    viewer.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    renderCurrentPage();
+
+    // Keyboard navigation
+    viewer._keyHandler = (e) => {
+        if (e.key === 'ArrowRight') catalogNext();
+        else if (e.key === 'ArrowLeft') catalogPrev();
+        else if (e.key === 'Escape') closeCatalog();
+    };
+    document.addEventListener('keydown', viewer._keyHandler);
+}
+
+function renderCurrentPage() {
+    const pkg = catalogPackages[currentCatalogPage];
+    if (!pkg) return;
+
+    const container = document.getElementById('catalogPages');
+    const icon = CATALOG_ICONS[pkg.slug] || '🎉';
+    const desc = CATALOG_DESCRIPTIONS[pkg.slug] || '';
+    const totalPrice = pkg.totalPerChild || pkg.services.reduce((s, svc) => s + (svc.pricePerChild || 0), 0);
+    const totalDuration = pkg.totalDuration || pkg.services.reduce((s, svc) => s + (svc.durationMin || 0), 0);
+    const hours = Math.round(totalDuration / 60 * 10) / 10;
+
+    const imgPath = `images/catalogs/graduation/${pkg.slug}.png`;
+
+    const servicesHtml = pkg.services.map(svc => {
+        const svcIcon = SERVICE_ICONS[svc.serviceName] || '•';
+        const dur = svc.durationMin ? ` — ${svc.durationMin} хв` : '';
+        return `<li>${svcIcon} ${esc(svc.serviceName)}${dur}</li>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="catalog-page" data-package="${pkg.slug}">
+            <div class="catalog-page-image">
+                <img src="${imgPath}" alt="${esc(pkg.name)}"
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                <div class="catalog-img-placeholder" style="display:none;">${icon}</div>
+            </div>
+            <div class="catalog-page-content">
+                <h2 class="catalog-package-name">${icon} ${esc(pkg.name)}</h2>
+                <div class="catalog-package-price">
+                    <span class="price-value">${totalPrice.toLocaleString('uk-UA')}</span> ₴/дитина
+                </div>
+                <div class="catalog-package-description">${esc(desc)}</div>
+                <div class="catalog-package-includes">
+                    <h4>Що входить:</h4>
+                    <ul>${servicesHtml}</ul>
+                </div>
+                <div class="catalog-package-duration">
+                    ⏱️ Загальна тривалість: ~${hours} год (${totalDuration} хв)
+                </div>
+                <div class="catalog-page-actions">
+                    <button onclick="printCatalogPage('graduation', '${pkg.slug}')">🖨️ Друк сторінки</button>
+                    <button onclick="shareCatalogPage('graduation', '${pkg.slug}')">📤 Поділитись</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('catalogPageIndicator').textContent =
+        `${currentCatalogPage + 1} / ${catalogPackages.length}`;
+}
+
+function catalogNext() {
+    if (currentCatalogPage < catalogPackages.length - 1) {
+        currentCatalogPage++;
+        renderCurrentPage();
+    }
+}
+
+function catalogPrev() {
+    if (currentCatalogPage > 0) {
+        currentCatalogPage--;
+        renderCurrentPage();
+    }
+}
+
+function closeCatalog() {
+    const viewer = document.getElementById('catalogViewer');
+    viewer.style.display = 'none';
+    document.body.style.overflow = '';
+    if (viewer._keyHandler) {
+        document.removeEventListener('keydown', viewer._keyHandler);
+        viewer._keyHandler = null;
+    }
+}
+
+function printCatalog(catalogId) {
+    if (catalogPackages.length === 0) {
+        loadCatalogs().then(() => {
+            if (catalogPackages.length > 0) doPrintCatalog();
+        });
+        return;
+    }
+    doPrintCatalog();
+}
+
+function doPrintCatalog() {
+    // Open viewer with all pages and trigger print
+    const viewer = document.getElementById('catalogViewer');
+    viewer.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    const container = document.getElementById('catalogPages');
+    container.innerHTML = catalogPackages.map(pkg => {
+        const icon = CATALOG_ICONS[pkg.slug] || '🎉';
+        const desc = CATALOG_DESCRIPTIONS[pkg.slug] || '';
+        const totalPrice = pkg.totalPerChild || 0;
+        const totalDuration = pkg.totalDuration || 0;
+        const hours = Math.round(totalDuration / 60 * 10) / 10;
+        const imgPath = `images/catalogs/graduation/${pkg.slug}.png`;
+        const servicesHtml = pkg.services.map(svc => {
+            const svcIcon = SERVICE_ICONS[svc.serviceName] || '•';
+            const dur = svc.durationMin ? ` — ${svc.durationMin} хв` : '';
+            return `<li>${svcIcon} ${esc(svc.serviceName)}${dur}</li>`;
+        }).join('');
+
+        return `
+            <div class="catalog-page" data-package="${pkg.slug}">
+                <div class="catalog-page-image">
+                    <img src="${imgPath}" alt="${esc(pkg.name)}"
+                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                    <div class="catalog-img-placeholder" style="display:none;">${icon}</div>
+                </div>
+                <div class="catalog-page-content">
+                    <h2 class="catalog-package-name">${icon} ${esc(pkg.name)}</h2>
+                    <div class="catalog-package-price">
+                        <span class="price-value">${totalPrice.toLocaleString('uk-UA')}</span> ₴/дитина
+                    </div>
+                    <div class="catalog-package-description">${esc(desc)}</div>
+                    <div class="catalog-package-includes">
+                        <h4>Що входить:</h4>
+                        <ul>${servicesHtml}</ul>
+                    </div>
+                    <div class="catalog-package-duration">
+                        ⏱️ Загальна тривалість: ~${hours} год (${totalDuration} хв)
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    setTimeout(() => {
+        window.print();
+        closeCatalog();
+    }, 300);
+}
+
+function printCatalogPage(catalogId, slug) {
+    const pkg = catalogPackages.find(p => p.slug === slug);
+    if (!pkg) return;
+
+    const container = document.getElementById('catalogPages');
+    const icon = CATALOG_ICONS[pkg.slug] || '🎉';
+    const desc = CATALOG_DESCRIPTIONS[pkg.slug] || '';
+    const totalPrice = pkg.totalPerChild || 0;
+    const totalDuration = pkg.totalDuration || 0;
+    const hours = Math.round(totalDuration / 60 * 10) / 10;
+    const imgPath = `images/catalogs/graduation/${pkg.slug}.png`;
+    const servicesHtml = pkg.services.map(svc => {
+        const svcIcon = SERVICE_ICONS[svc.serviceName] || '•';
+        const dur = svc.durationMin ? ` — ${svc.durationMin} хв` : '';
+        return `<li>${svcIcon} ${esc(svc.serviceName)}${dur}</li>`;
+    }).join('');
+
+    // Temporarily show only this page
+    const prevHtml = container.innerHTML;
+    container.innerHTML = `
+        <div class="catalog-page" data-package="${pkg.slug}">
+            <div class="catalog-page-image">
+                <img src="${imgPath}" alt="${esc(pkg.name)}"
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                <div class="catalog-img-placeholder" style="display:none;">${icon}</div>
+            </div>
+            <div class="catalog-page-content">
+                <h2 class="catalog-package-name">${icon} ${esc(pkg.name)}</h2>
+                <div class="catalog-package-price">
+                    <span class="price-value">${totalPrice.toLocaleString('uk-UA')}</span> ₴/дитина
+                </div>
+                <div class="catalog-package-description">${esc(desc)}</div>
+                <div class="catalog-package-includes">
+                    <h4>Що входить:</h4>
+                    <ul>${servicesHtml}</ul>
+                </div>
+                <div class="catalog-package-duration">
+                    ⏱️ Загальна тривалість: ~${hours} год (${totalDuration} хв)
+                </div>
+            </div>
+        </div>
+    `;
+
+    setTimeout(() => {
+        window.print();
+        container.innerHTML = prevHtml;
+    }, 300);
+}
+
+async function shareCatalog(catalogId) {
+    if (catalogPackages.length === 0) await loadCatalogs();
+    showNotification('Каталог готовий до друку. Використовуйте "Друк → Зберегти як PDF"');
+}
+
+async function shareCatalogPage(catalogId, slug) {
+    // Try to capture page as image using canvas if available
+    const page = document.querySelector(`.catalog-page[data-package="${slug}"]`);
+    if (!page) return;
+
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: `Випускний: ${catalogPackages.find(p => p.slug === slug)?.name || slug}`,
+                text: CATALOG_DESCRIPTIONS[slug] || '',
+                url: window.location.href
+            });
+            return;
+        } catch { /* fallback */ }
+    }
+    showNotification('Використовуйте "Друк → Зберегти як PDF" для шейрінгу');
+}
+
+// ==========================================
 // EXPOSE GLOBALS
 // ==========================================
 window.downloadDesign = downloadDesign;
@@ -822,3 +1104,11 @@ window.copyDesign = copyDesign;
 window.togglePin = togglePin;
 window.deleteDesign = deleteDesign;
 window.sendToTelegram = sendToTelegram;
+window.openCatalog = openCatalog;
+window.closeCatalog = closeCatalog;
+window.catalogNext = catalogNext;
+window.catalogPrev = catalogPrev;
+window.printCatalog = printCatalog;
+window.printCatalogPage = printCatalogPage;
+window.shareCatalog = shareCatalog;
+window.shareCatalogPage = shareCatalogPage;

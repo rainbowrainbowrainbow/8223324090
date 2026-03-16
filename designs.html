@@ -7,13 +7,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=31.1.0">
-    <link rel="stylesheet" href="css/layout.css?v=31.1.0">
-    <link rel="stylesheet" href="css/pages.css?v=31.1.0">
-    <link rel="stylesheet" href="css/modals.css?v=31.1.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=31.1.0">
-    <link rel="stylesheet" href="css/responsive.css?v=31.1.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=31.1.0">
+    <link rel="stylesheet" href="css/base.css?v=31.5.0">
+    <link rel="stylesheet" href="css/layout.css?v=31.5.0">
+    <link rel="stylesheet" href="css/pages.css?v=31.5.0">
+    <link rel="stylesheet" href="css/modals.css?v=31.5.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=31.5.0">
+    <link rel="stylesheet" href="css/responsive.css?v=31.5.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=31.5.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -354,6 +354,153 @@
         }
         .tag-autocomplete-item:hover { background: var(--gray-50); }
 
+        /* ==========================================
+           CATALOG STYLES
+           ========================================== */
+        .catalog-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        .catalog-card {
+            background: rgba(255,255,255,0.5); border-radius: 16px;
+            overflow: hidden; backdrop-filter: blur(20px);
+            border: 1px solid rgba(0,0,0,0.06); transition: all 0.2s;
+        }
+        .catalog-card:hover { transform: translateY(-3px); box-shadow: 0 8px 30px rgba(201,168,76,0.15); }
+        .catalog-cover-placeholder {
+            width: 100%; height: 180px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: #fff; position: relative;
+        }
+        .catalog-cover-icon { font-size: 56px; }
+        .catalog-cover-year {
+            font-size: 28px; font-weight: 900; margin-top: 4px;
+            background: linear-gradient(135deg, #C9A84C, #FFD700);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .catalog-info { padding: 14px 16px 8px; }
+        .catalog-info h3 { font-weight: 800; font-size: 16px; margin-bottom: 4px; }
+        .catalog-meta { font-size: 12px; color: var(--gray-500); display: block; }
+        .catalog-actions { padding: 8px 16px 14px; display: flex; gap: 6px; flex-wrap: wrap; }
+        .btn-catalog {
+            padding: 8px 14px; border: none; border-radius: 8px;
+            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+            background: var(--primary); color: #fff; transition: all 0.15s;
+        }
+        .btn-catalog:hover { opacity: 0.9; }
+        .btn-catalog-print { background: var(--gray-100); color: var(--gray-700); }
+        .btn-catalog-share { background: #E3F2FD; color: #1565C0; }
+
+        /* Catalog viewer (fullscreen) */
+        .catalog-viewer {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.95);
+            z-index: 9999; display: flex; flex-direction: column;
+        }
+        .catalog-viewer-nav {
+            display: flex; align-items: center; justify-content: center;
+            gap: 16px; padding: 16px; flex-shrink: 0;
+        }
+        .btn-catalog-nav {
+            background: rgba(255,255,255,0.1); border: none; color: #fff;
+            width: 44px; height: 44px; border-radius: 50%; font-size: 18px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .btn-catalog-nav:hover { background: rgba(255,255,255,0.2); }
+        .btn-catalog-close { margin-left: auto; font-size: 24px; }
+        .catalog-page-indicator { color: rgba(255,255,255,0.7); font-weight: 700; font-size: 14px; }
+
+        .catalog-pages-container { flex: 1; overflow-y: auto; padding: 0 20px 20px; }
+
+        /* Single catalog page */
+        .catalog-page {
+            display: flex; gap: 24px; max-width: 1000px;
+            margin: 0 auto; padding: 20px; color: #fff;
+        }
+        .catalog-page-image { flex: 0 0 45%; }
+        .catalog-page-image img {
+            width: 100%; border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4); aspect-ratio: 4/3; object-fit: cover;
+        }
+        .catalog-page-image .catalog-img-placeholder {
+            width: 100%; aspect-ratio: 4/3; border-radius: 16px;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 72px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .catalog-page-content { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+        .catalog-package-name {
+            font-size: 28px; font-weight: 900; margin-bottom: 12px;
+            background: linear-gradient(135deg, #C9A84C, #FFD700);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .catalog-package-price { font-size: 18px; margin-bottom: 16px; color: rgba(255,255,255,0.9); }
+        .catalog-package-price .price-value {
+            font-size: 36px; font-weight: 900; color: #6EE7B7;
+        }
+        .catalog-package-description {
+            font-size: 15px; line-height: 1.6; color: rgba(255,255,255,0.75); margin-bottom: 20px;
+        }
+        .catalog-package-includes h4 {
+            font-size: 14px; font-weight: 800; margin-bottom: 8px;
+            color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .catalog-package-includes ul { list-style: none; padding: 0; margin: 0; }
+        .catalog-package-includes li {
+            padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08);
+            font-size: 14px; color: rgba(255,255,255,0.85);
+        }
+        .catalog-package-includes li:last-child { border-bottom: none; }
+        .catalog-package-duration {
+            margin-top: 16px; padding: 10px 16px;
+            background: rgba(201,168,76,0.15); border-radius: 10px;
+            font-weight: 700; color: #C9A84C; font-size: 14px;
+        }
+        .catalog-page-actions {
+            margin-top: 16px; display: flex; gap: 8px;
+        }
+        .catalog-page-actions button {
+            padding: 8px 16px; border: none; border-radius: 8px;
+            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+            background: rgba(255,255,255,0.1); color: #fff; transition: all 0.15s;
+        }
+        .catalog-page-actions button:hover { background: rgba(255,255,255,0.2); }
+
+        /* Print styles for catalog */
+        @media print {
+            .catalog-viewer { position: static; background: #fff; }
+            .catalog-viewer-nav, .catalog-page-actions,
+            .catalog-actions, .header, .design-tabs, .sidebar-nav,
+            .user-panel, .notification, .skip-link, .page-login-overlay { display: none !important; }
+            body { background: #fff !important; }
+            .catalog-pages-container { overflow: visible; padding: 0; }
+            .catalog-page {
+                page-break-after: always; color: #1a1a1a !important;
+                padding: 10mm; max-width: none;
+            }
+            .catalog-page:last-child { page-break-after: auto; }
+            .catalog-page-image img, .catalog-page-image .catalog-img-placeholder {
+                max-height: 45%; width: 100%; print-color-adjust: exact; -webkit-print-color-adjust: exact;
+            }
+            .catalog-package-name {
+                font-size: 28pt; color: #1a1a1a !important;
+                -webkit-text-fill-color: #1a1a1a !important; background: none !important;
+            }
+            .catalog-package-price .price-value {
+                font-size: 36pt; font-weight: 900; color: #10B981 !important;
+            }
+            .catalog-package-price { color: #1a1a1a !important; }
+            .catalog-package-description { color: #555 !important; }
+            .catalog-package-includes li { color: #333 !important; border-bottom-color: #eee !important; }
+            .catalog-package-includes h4 { color: #888 !important; }
+            .catalog-package-duration {
+                background: #f0f0f0 !important; color: #8B6914 !important;
+                print-color-adjust: exact; -webkit-print-color-adjust: exact;
+            }
+        }
+
         /* Print styles for price list */
         @media print {
             .header, .design-tabs, .design-filters, .drop-zone,
@@ -462,6 +609,13 @@
             border-color: rgba(255,255,255,0.12);
         }
         body.dark-mode .empty-state { color: var(--gray-500); }
+        body.dark-mode .catalog-card {
+            background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08);
+        }
+        body.dark-mode .catalog-card:hover { box-shadow: 0 8px 30px rgba(201,168,76,0.1); }
+        body.dark-mode .catalog-info h3 { color: var(--gray-200); }
+        body.dark-mode .btn-catalog-print { background: rgba(255,255,255,0.08); color: var(--gray-300); }
+        body.dark-mode .btn-catalog-share { background: rgba(21,101,192,0.2); color: #90CAF9; }
 
         /* Responsive */
         @media (max-width: 768px) {
@@ -510,6 +664,12 @@
             /* Price */
             .price-table th, .price-table td { padding: 8px 10px; font-size: 13px; }
             .price-section-header { font-size: 15px; }
+
+            /* Catalog */
+            .catalog-page { flex-direction: column; }
+            .catalog-page-image { flex: none; }
+            .catalog-package-name { font-size: 22px; }
+            .catalog-package-price .price-value { font-size: 28px; }
         }
 
         @media (max-width: 480px) {
@@ -581,6 +741,7 @@
                 <button class="design-tab" data-tab="collections">Колекції <span class="tab-count" id="countCollections">0</span></button>
                 <button class="design-tab" data-tab="price">Прайс-лист</button>
                 <button class="design-tab" data-tab="calendar">Календар</button>
+                <button class="design-tab" data-tab="catalogs">Каталоги</button>
             </div>
 
             <!-- ==================== GALLERY TAB ==================== -->
@@ -643,6 +804,42 @@
                 <div class="calendar-grid" id="calendarGrid"></div>
                 <div class="calendar-day-detail" id="calDetail" style="display:none"></div>
             </div>
+
+            <!-- ==================== CATALOGS TAB ==================== -->
+            <div id="tabCatalogs" style="display:none">
+                <!-- Catalog list -->
+                <div class="catalog-list" id="catalogList">
+                    <div class="catalog-card" data-catalog="graduation">
+                        <div class="catalog-cover">
+                            <div class="catalog-cover-placeholder">
+                                <span class="catalog-cover-icon">🎓</span>
+                                <span class="catalog-cover-year">2026</span>
+                            </div>
+                        </div>
+                        <div class="catalog-info">
+                            <h3>Випускні 2026</h3>
+                            <span class="catalog-meta">7 пакетів</span>
+                            <span class="catalog-meta catalog-updated" id="catalogUpdated"></span>
+                        </div>
+                        <div class="catalog-actions">
+                            <button class="btn-catalog" onclick="openCatalog('graduation')">Переглянути</button>
+                            <button class="btn-catalog btn-catalog-print" onclick="printCatalog('graduation')">Друк</button>
+                            <button class="btn-catalog btn-catalog-share" onclick="shareCatalog('graduation')">Поділитись</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fullscreen catalog viewer -->
+                <div class="catalog-viewer" id="catalogViewer" style="display:none;">
+                    <div class="catalog-viewer-nav">
+                        <button class="btn-catalog-nav" onclick="catalogPrev()" id="catalogPrevBtn">&#9664;</button>
+                        <span class="catalog-page-indicator" id="catalogPageIndicator">1 / 7</span>
+                        <button class="btn-catalog-nav" onclick="catalogNext()" id="catalogNextBtn">&#9654;</button>
+                        <button class="btn-catalog-nav btn-catalog-close" onclick="closeCatalog()">&times;</button>
+                    </div>
+                    <div class="catalog-pages-container" id="catalogPages"></div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -696,12 +893,12 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/config.js?v=31.1.0"></script>
-    <script src="js/api.js?v=31.1.0"></script>
-    <script src="js/auth.js?v=31.1.0"></script>
-    <script src="js/components/sidebar.js?v=31.1.0"></script>
+    <script src="js/config.js?v=31.5.0"></script>
+    <script src="js/api.js?v=31.5.0"></script>
+    <script src="js/auth.js?v=31.5.0"></script>
+    <script src="js/components/sidebar.js?v=31.5.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/designs-page.js?v=31.1.0"></script>
-    <script src="js/role-panel.js?v=31.1.0"></script>
+    <script src="js/designs-page.js?v=31.5.0"></script>
+    <script src="js/role-panel.js?v=31.5.0"></script>
 </body>
 </html>

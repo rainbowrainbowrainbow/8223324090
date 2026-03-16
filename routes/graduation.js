@@ -107,6 +107,18 @@ router.put('/settings', requireRole('creator', 'director'), async (req, res) => 
         }
 
         log.info(`Settings updated by ${req.user.username}`);
+
+        // Catalog auto-task: if coefficient or markup changed, all formula packages affected
+        for (const [key, value] of Object.entries(settings)) {
+            if (key === 'coefficient' || key === 'markup') {
+                try {
+                    await onSettingsChanged(key, value, req.user.username);
+                } catch (e) {
+                    log.error('onSettingsChanged error', e);
+                }
+            }
+        }
+
         const result = await pool.query('SELECT * FROM graduation_settings ORDER BY key');
         const updated = {};
         for (const row of result.rows) {
@@ -182,22 +194,35 @@ router.put('/services/:id', requireRole('creator', 'director'), async (req, res)
             ]
         );
 
+        const updated = result.rows[0];
         log.info(`Service ${id} updated by ${req.user.username}`);
-        res.json(mapServiceRow(result.rows[0]));
+
+        // Catalog auto-task: if price changed, create task for affected packages
+        if (b.pricePerChild !== undefined || b.pricePark !== undefined) {
+            try {
+                await onServicePriceChanged(id, req.user.username);
+            } catch (e) {
+                log.error('onServicePriceChanged error', e);
+            }
+        }
+
+        res.json(mapServiceRow(updated));
     } catch (err) {
         log.error('Update service error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// GET /api/graduation/packages — готові пакети
+// GET /api/graduation/packages — готові пакети (з цінами для каталогу)
 router.get('/packages', async (req, res) => {
     try {
         const packages = await pool.query(
             'SELECT * FROM graduation_packages WHERE is_active = true ORDER BY sort_order'
         );
         const items = await pool.query(
-            `SELECT pi.package_id, pi.service_id, pi.override_price, s.name as service_name
+            `SELECT pi.package_id, pi.service_id, pi.override_price,
+                    s.name as service_name, s.price_per_child, s.duration_min,
+                    s.description as service_description, s.category, s.price_type
              FROM graduation_package_items pi
              JOIN graduation_services s ON s.id = pi.service_id
              ORDER BY s.sort_order`
@@ -209,17 +234,29 @@ router.get('/packages', async (req, res) => {
             itemMap[item.package_id].push({
                 serviceId: item.service_id,
                 serviceName: item.service_name,
-                overridePrice: item.override_price
+                overridePrice: item.override_price,
+                pricePerChild: item.override_price || item.price_per_child,
+                durationMin: item.duration_min,
+                description: item.service_description,
+                category: item.category,
+                priceType: item.price_type
             });
         }
 
-        const result = packages.rows.map(p => ({
-            id: p.id,
-            name: p.name,
-            slug: p.slug,
-            sortOrder: p.sort_order,
-            services: itemMap[p.id] || []
-        }));
+        const result = packages.rows.map(p => {
+            const services = itemMap[p.id] || [];
+            const totalPerChild = services.reduce((sum, s) => sum + (s.pricePerChild || 0), 0);
+            const totalDuration = services.reduce((sum, s) => sum + (s.durationMin || 0), 0);
+            return {
+                id: p.id,
+                name: p.name,
+                slug: p.slug,
+                sortOrder: p.sort_order,
+                services,
+                totalPerChild,
+                totalDuration
+            };
+        });
 
         res.json(result);
     } catch (err) {
@@ -684,6 +721,51 @@ router.get('/customers/search', requireRole('creator', 'director', 'senior_manag
 function formatUAH(amount) {
     if (!amount) return '0 ₴';
     return Math.round(amount).toLocaleString('uk-UA') + ' ₴';
+}
+
+// --- Catalog auto-tasks on price changes ---
+
+async function onServicePriceChanged(serviceId, username) {
+    const packages = await pool.query(`
+        SELECT DISTINCT gp.name, gp.slug
+        FROM graduation_packages gp
+        JOIN graduation_package_items gpi ON gpi.package_id = gp.id
+        WHERE gpi.service_id = $1 AND gp.is_active = true
+    `, [serviceId]);
+
+    for (const pkg of packages.rows) {
+        await pool.query(`
+            INSERT INTO tasks (title, description, assigned_to, priority, category, status, created_by, source_type)
+            VALUES ($1, $2, 'sergiy', 'high', 'admin', 'todo', $3, 'auto')
+        `, [
+            `Каталог: оновити та надрукувати сторінку "${pkg.name}"`,
+            `Ціна послуги змінилась. Потрібно оновити каталог та роздрукувати оновлену сторінку пакету "${pkg.name}".`,
+            username
+        ]);
+        log.info(`Catalog task created for package "${pkg.name}" (price change)`);
+    }
+}
+
+async function onSettingsChanged(key, newValue, username) {
+    const packages = await pool.query(`
+        SELECT DISTINCT gp.name, gp.slug
+        FROM graduation_packages gp
+        JOIN graduation_package_items gpi ON gpi.package_id = gp.id
+        JOIN graduation_services gs ON gs.id = gpi.service_id
+        WHERE gs.price_type = 'formula' AND gp.is_active = true
+    `);
+
+    for (const pkg of packages.rows) {
+        await pool.query(`
+            INSERT INTO tasks (title, description, assigned_to, priority, category, status, created_by, source_type)
+            VALUES ($1, $2, 'sergiy', 'high', 'admin', 'todo', $3, 'auto')
+        `, [
+            `Каталог: оновити та надрукувати сторінку "${pkg.name}"`,
+            `Глобальний параметр "${key}" змінився (нове значення: ${newValue}). Формульні ціни перераховані. Потрібно оновити каталог та роздрукувати оновлену сторінку.`,
+            username
+        ]);
+        log.info(`Catalog task created for package "${pkg.name}" (${key} changed)`);
+    }
 }
 
 module.exports = router;

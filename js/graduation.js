@@ -655,6 +655,45 @@
         </label>`;
     }
 
+    // Package image path helper
+    const PACKAGE_GRADIENTS = {
+        'best-dj': 'linear-gradient(135deg, #8B5CF6, #6D28D9)',
+        'super-party': 'linear-gradient(135deg, #C9A84C, #B8942F)',
+        'science-party': 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
+        'handmade-party': 'linear-gradient(135deg, #10B981, #059669)',
+        'pizza-party': 'linear-gradient(135deg, #F59E0B, #D97706)',
+        'squid-game': 'linear-gradient(135deg, #EF4444, #DC2626)',
+        'neon-party': 'linear-gradient(135deg, #EC4899, #DB2777)'
+    };
+    const PACKAGE_BORDER_COLORS = {
+        'best-dj': '#8B5CF6', 'super-party': '#C9A84C', 'science-party': '#3B82F6',
+        'handmade-party': '#10B981', 'pizza-party': '#F59E0B', 'squid-game': '#EF4444',
+        'neon-party': '#EC4899'
+    };
+
+    function getPackageImageHtml(slug, name, cssClass) {
+        const gradient = PACKAGE_GRADIENTS[slug] || 'linear-gradient(135deg, #C9A84C, #B8942F)';
+        const fallback = `<div class="${cssClass}-fallback" style="background:${gradient}"><span>${name}</span></div>`;
+        return `<img class="${cssClass}" src="images/catalogs/graduation/${slug}.png" alt="${name}"
+            onerror="this.parentElement.innerHTML='${fallback.replace(/'/g, "\\'")}'">`;
+    }
+
+    function calcPackageTotals(pkg) {
+        let totalPerChild = 0;
+        let totalDuration = 0;
+        const rows = [];
+        for (const item of pkg.services) {
+            const svc = services.find(s => s.id === item.serviceId);
+            if (svc) {
+                const price = item.overridePrice || getEffectivePrice(svc);
+                totalPerChild += price;
+                totalDuration += svc.durationMin || 0;
+                rows.push({ name: svc.name, price, duration: svc.durationMin || 0, icon: getServiceIcon(svc), description: svc.description || '' });
+            }
+        }
+        return { totalPerChild, totalDuration, rows };
+    }
+
     function renderPackages(container) {
         const kids = getKidsCount();
         let html = `
@@ -669,76 +708,199 @@
             <button class="grad-btn grad-btn-sm" onclick="GradPage.showComparison()" ${comparePackageSlugs.size < 2 ? 'disabled' : ''}>
                 📊 Порівняти (${comparePackageSlugs.size})
             </button>
+            <button class="grad-btn grad-btn-sm" onclick="GradPage.exportCatalog()" title="Експорт каталогу для друку">
+                📤 Експорт каталогу
+            </button>
         </div>
         <div class="grad-packages-grid">`;
 
         for (const pkg of packages) {
-            let totalPerChild = 0;
-            const rows = [];
-            for (const item of pkg.services) {
-                const svc = services.find(s => s.id === item.serviceId);
-                if (svc) {
-                    const price = item.overridePrice || getEffectivePrice(svc);
-                    totalPerChild += price;
-                    rows.push({ name: svc.name, price, icon: svc ? getServiceIcon(svc) : '' });
-                }
-            }
+            const { totalPerChild, totalDuration, rows } = calcPackageTotals(pkg);
             const totalAll = totalPerChild * kids;
             const isComparing = comparePackageSlugs.has(pkg.slug);
-
-            // #18: Gradient per package
-            const gradients = {
-                'best-dj': 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(139,92,246,0.02))',
-                'super-party': 'linear-gradient(135deg, rgba(201,168,76,0.08), rgba(201,168,76,0.02))',
-                'science-party': 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(59,130,246,0.02))',
-                'handmade-party': 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.02))',
-                'pizza-party': 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(245,158,11,0.02))',
-                'squid-game': 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(239,68,68,0.02))',
-                'neon-party': 'linear-gradient(135deg, rgba(236,72,153,0.08), rgba(236,72,153,0.02))'
-            };
-            const borderColors = {
-                'best-dj': '#8B5CF6', 'super-party': '#C9A84C', 'science-party': '#3B82F6',
-                'handmade-party': '#10B981', 'pizza-party': '#F59E0B', 'squid-game': '#EF4444',
-                'neon-party': '#EC4899'
-            };
-            const gradient = gradients[pkg.slug] || '';
-            const borderColor = borderColors[pkg.slug] || '#C9A84C';
+            const gradient = PACKAGE_GRADIENTS[pkg.slug] || 'linear-gradient(135deg, #C9A84C, #B8942F)';
+            const borderColor = PACKAGE_BORDER_COLORS[pkg.slug] || '#C9A84C';
+            const cardBg = gradient.replace(/,\s*#\w+\)/, ', rgba(255,255,255,0.02))').replace(/#\w+,/, 'rgba(' + hexToRgb(borderColor) + ',0.06),');
 
             html += `
-            <div class="grad-package-card" style="background:${gradient};border-top:3px solid ${borderColor}">
+            <div class="grad-package-card" style="border-top:3px solid ${borderColor}" onclick="GradPage.openCatalogViewer(${packages.indexOf(pkg)})" role="button" tabindex="0">
+                <div class="grad-pkg-image-wrap">
+                    ${getPackageImageHtml(pkg.slug, pkg.name, 'grad-pkg-thumb')}
+                </div>
                 <div class="grad-package-header">
                     <div class="grad-package-name">${pkg.name}</div>
-                    <label class="grad-compare-check" title="Порівняти">
+                    <label class="grad-compare-check" title="Порівняти" onclick="event.stopPropagation()">
                         <input type="checkbox" ${isComparing ? 'checked' : ''}
                             onchange="GradPage.toggleCompare('${pkg.slug}')">
                         📊
                     </label>
                 </div>
-                <table class="grad-package-table">
-                    <tbody>
-                        ${rows.map(r => `
-                        <tr>
-                            <td class="grad-pkg-svc-name">${r.icon} ${r.name}</td>
-                            <td class="grad-pkg-svc-price">${formatPrice(r.price)}</td>
-                        </tr>`).join('')}
-                    </tbody>
-                    <tfoot>
-                        <tr class="grad-pkg-total-row">
-                            <td>Вартість 1 дитина</td>
-                            <td>${formatPrice(totalPerChild)}</td>
-                        </tr>
-                        <tr class="grad-pkg-total-all-row">
-                            <td>Всього (${kids} дітей)</td>
-                            <td>${formatPrice(totalAll)}</td>
-                        </tr>
-                    </tfoot>
-                </table>
-                <button class="grad-btn grad-btn-sm grad-pkg-select-btn" onclick="GradPage.selectPackage('${pkg.slug}')">Обрати пакет</button>
+                <div class="grad-pkg-price-line">
+                    <span class="grad-pkg-price-main">${formatPrice(totalPerChild)}</span>
+                    <span class="grad-pkg-price-unit">/дитина</span>
+                </div>
+                <div class="grad-pkg-meta-line">
+                    <span>⏱ ${formatDuration(totalDuration)}</span>
+                    <span>👶 ${rows.length} активностей</span>
+                </div>
+                <div class="grad-pkg-total-line">Всього (${kids} діт.): <strong>${formatPrice(totalAll)}</strong></div>
+                <div class="grad-pkg-actions" onclick="event.stopPropagation()">
+                    <button class="grad-btn grad-btn-sm grad-pkg-select-btn" onclick="GradPage.selectPackage('${pkg.slug}')">Обрати пакет</button>
+                    <button class="grad-btn grad-btn-sm" onclick="GradPage.openCatalogViewer(${packages.indexOf(pkg)})" title="Переглянути">👁</button>
+                </div>
             </div>`;
         }
         html += '</div>';
 
         container.innerHTML = html;
+    }
+
+    // Hex to RGB helper
+    function hexToRgb(hex) {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `${r},${g},${b}`;
+    }
+
+    // === CATALOG VIEWER (fullscreen modal) ===
+    let catalogViewerIndex = 0;
+    let touchStartX = 0;
+
+    function openCatalogViewer(index) {
+        catalogViewerIndex = index;
+        renderCatalogViewer();
+    }
+
+    function renderCatalogViewer() {
+        const pkg = packages[catalogViewerIndex];
+        if (!pkg) return;
+
+        const { totalPerChild, totalDuration, rows } = calcPackageTotals(pkg);
+        const kids = getKidsCount();
+
+        // Parse description into intro, bullets, outro
+        const descLines = (pkg.description || '').split('\n').filter(l => l.trim());
+        const introLine = descLines[0] || '';
+        const bulletLines = descLines.filter(l => l.trim().startsWith('•'));
+        const lastLine = descLines[descLines.length - 1] || '';
+        const outroLine = (!lastLine.trim().startsWith('•') && lastLine !== introLine) ? lastLine : '';
+
+        // Build description HTML
+        let descHtml = introLine ? `<p class="catalog-page-intro">${introLine}</p>` : '';
+        if (bulletLines.length > 0) {
+            // Find "Що чекає" header
+            const headerLine = descLines.find(l => l.includes('Що чекає'));
+            if (headerLine) descHtml += `<p class="catalog-page-section-title">${headerLine}</p>`;
+            descHtml += '<div class="catalog-page-bullets">';
+            for (const b of bulletLines) {
+                const text = b.replace(/^•\s*/, '');
+                const dashIdx = text.indexOf(' — ');
+                if (dashIdx > 0) {
+                    descHtml += `<div class="catalog-bullet"><span class="catalog-bullet-name">${text.substring(0, dashIdx)}</span><span class="catalog-bullet-desc"> — ${text.substring(dashIdx + 3)}</span></div>`;
+                } else {
+                    descHtml += `<div class="catalog-bullet"><span class="catalog-bullet-name">${text}</span></div>`;
+                }
+            }
+            descHtml += '</div>';
+        }
+        if (outroLine) descHtml += `<p class="catalog-page-outro">${outroLine}</p>`;
+
+        // Services list
+        const servicesHtml = rows.map(r =>
+            `<li class="catalog-svc-item">
+                <span class="catalog-svc-icon">${r.icon}</span>
+                <span class="catalog-svc-name">${r.name}</span>
+                ${r.duration ? `<span class="catalog-svc-dur">${r.duration} хв</span>` : ''}
+                <span class="catalog-svc-price">${formatPrice(r.price)}</span>
+            </li>`
+        ).join('');
+
+        // Remove existing viewer
+        let viewer = document.getElementById('catalogViewer');
+        if (!viewer) {
+            viewer = document.createElement('div');
+            viewer.id = 'catalogViewer';
+            viewer.className = 'catalog-viewer';
+            document.body.appendChild(viewer);
+        }
+
+        viewer.innerHTML = `
+            <button class="catalog-close" onclick="GradPage.closeCatalogViewer()" title="Закрити">&times;</button>
+            <div class="catalog-nav catalog-nav-prev">
+                <button onclick="GradPage.catalogNav(-1)" ${catalogViewerIndex === 0 ? 'disabled' : ''}>◀</button>
+            </div>
+            <div class="catalog-nav catalog-nav-next">
+                <button onclick="GradPage.catalogNav(1)" ${catalogViewerIndex === packages.length - 1 ? 'disabled' : ''}>▶</button>
+            </div>
+            <div class="catalog-page" id="catalogPage">
+                <div class="catalog-page-hero">
+                    ${getPackageImageHtml(pkg.slug, pkg.name, 'catalog-hero-img')}
+                </div>
+                <h1 class="catalog-page-title">${pkg.name}</h1>
+                <div class="catalog-page-price">${formatPrice(totalPerChild)} <span>/дитина</span></div>
+                <div class="catalog-page-desc">${descHtml}</div>
+                <ul class="catalog-page-services">${servicesHtml}</ul>
+                <div class="catalog-page-duration">⏱ Загальна тривалість: ${formatDuration(totalDuration)}</div>
+                <button class="catalog-page-cta" onclick="GradPage.closeCatalogViewer();GradPage.selectPackage('${pkg.slug}')">Обрати цей пакет</button>
+                <div class="catalog-page-actions">
+                    <button class="grad-btn grad-btn-sm" onclick="GradPage.printPackagePage(${catalogViewerIndex})">🖨️ Друк сторінки</button>
+                </div>
+            </div>
+            <div class="catalog-page-indicator">${catalogViewerIndex + 1} / ${packages.length}</div>`;
+
+        viewer.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+
+        // Touch swipe support
+        const page = document.getElementById('catalogPage');
+        page.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; }, { passive: true });
+        page.addEventListener('touchend', (e) => {
+            const dx = e.changedTouches[0].clientX - touchStartX;
+            if (Math.abs(dx) > 60) {
+                if (dx > 0 && catalogViewerIndex > 0) catalogNav(-1);
+                else if (dx < 0 && catalogViewerIndex < packages.length - 1) catalogNav(1);
+            }
+        }, { passive: true });
+
+        // Keyboard nav
+        viewer._keyHandler = (e) => {
+            if (e.key === 'Escape') closeCatalogViewer();
+            if (e.key === 'ArrowLeft') catalogNav(-1);
+            if (e.key === 'ArrowRight') catalogNav(1);
+        };
+        document.addEventListener('keydown', viewer._keyHandler);
+    }
+
+    function catalogNav(dir) {
+        const newIdx = catalogViewerIndex + dir;
+        if (newIdx < 0 || newIdx >= packages.length) return;
+        catalogViewerIndex = newIdx;
+        renderCatalogViewer();
+    }
+
+    function closeCatalogViewer() {
+        const viewer = document.getElementById('catalogViewer');
+        if (viewer) {
+            if (viewer._keyHandler) document.removeEventListener('keydown', viewer._keyHandler);
+            viewer.remove();
+        }
+        document.body.style.overflow = '';
+    }
+
+    function exportCatalog() {
+        const token = localStorage.getItem('pzp_token');
+        const url = (window.API_BASE || '') + '/api/graduation/catalog/export?token=' + encodeURIComponent(token);
+        window.open(url, '_blank');
+    }
+
+    function printPackagePage(index) {
+        const token = localStorage.getItem('pzp_token');
+        const pkg = packages[index];
+        if (!pkg) return;
+        // Open export with hash to scroll to specific package
+        const url = (window.API_BASE || '') + '/api/graduation/catalog/export?token=' + encodeURIComponent(token) + '#pkg-' + pkg.slug;
+        window.open(url, '_blank');
     }
 
     // #8: Package comparison modal
@@ -1441,6 +1603,11 @@
         selectCustomer,
         convertToBooking,
         toggleCompare,
-        showComparison
+        showComparison,
+        openCatalogViewer,
+        closeCatalogViewer,
+        catalogNav,
+        exportCatalog,
+        printPackagePage
     };
 })();

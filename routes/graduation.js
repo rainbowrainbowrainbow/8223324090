@@ -251,6 +251,7 @@ router.get('/packages', async (req, res) => {
                 id: p.id,
                 name: p.name,
                 slug: p.slug,
+                description: p.description || '',
                 sortOrder: p.sort_order,
                 services,
                 totalPerChild,
@@ -767,5 +768,200 @@ async function onSettingsChanged(key, newValue, username) {
         log.info(`Catalog task created for package "${pkg.name}" (${key} changed)`);
     }
 }
+
+// GET /api/graduation/catalog/export — print-ready HTML catalog
+// Support token in query string for window.open() usage
+router.get('/catalog/export', (req, res, next) => {
+    if (!req.headers['authorization'] && req.query.token) {
+        req.headers['authorization'] = `Bearer ${req.query.token}`;
+    }
+    next();
+}, requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const pkgResult = await pool.query(
+            'SELECT * FROM graduation_packages WHERE is_active = true ORDER BY sort_order'
+        );
+        const itemsResult = await pool.query(
+            `SELECT pi.package_id, pi.service_id, pi.override_price,
+                    s.name as service_name, s.price_per_child, s.duration_min,
+                    s.description as service_description, s.category, s.price_type, s.price_park
+             FROM graduation_package_items pi
+             JOIN graduation_services s ON s.id = pi.service_id
+             ORDER BY s.sort_order`
+        );
+
+        // Get settings for formula prices
+        const settingsResult = await pool.query('SELECT * FROM graduation_settings ORDER BY key');
+        const gradSettings = {};
+        for (const row of settingsResult.rows) {
+            gradSettings[row.key] = row.value;
+        }
+        const coefficient = gradSettings.coefficient || 6;
+        const markup = gradSettings.markup || 1.15;
+
+        function calcFormulaPrice(pricePark) {
+            if (!pricePark) return 0;
+            return Math.ceil(pricePark / coefficient * markup / 10) * 10;
+        }
+
+        function getPrice(item) {
+            if (item.override_price) return item.override_price;
+            if (item.price_type === 'formula' && item.price_park) return calcFormulaPrice(item.price_park);
+            return item.price_per_child || 0;
+        }
+
+        const itemMap = {};
+        for (const item of itemsResult.rows) {
+            if (!itemMap[item.package_id]) itemMap[item.package_id] = [];
+            itemMap[item.package_id].push(item);
+        }
+
+        function fmtDuration(totalMin) {
+            const hours = Math.floor(totalMin / 60);
+            const mins = totalMin % 60;
+            if (hours === 0) return totalMin + ' хв';
+            if (mins === 0) return hours + ' год';
+            return '~' + hours + ' год ' + mins + ' хв';
+        }
+
+        const packagePages = pkgResult.rows.map(p => {
+            const items = itemMap[p.id] || [];
+            const totalPrice = items.reduce((sum, i) => sum + getPrice(i), 0);
+            const totalDuration = items.reduce((sum, i) => sum + (i.duration_min || 0), 0);
+
+            const serviceRows = items.map(i => {
+                const price = getPrice(i);
+                return `<li><span class="svc-name">${i.service_name}</span>${i.duration_min ? '<span class="svc-dur">' + i.duration_min + ' хв</span>' : ''}<span class="svc-price">${Math.round(price)} ₴</span></li>`;
+            }).join('');
+
+            const descLines = (p.description || '').split('\n').filter(l => l.trim());
+            const introLine = descLines[0] || '';
+            const bulletLines = descLines.filter(l => l.trim().startsWith('•'));
+            const outroLine = descLines[descLines.length - 1] || '';
+            const isOutroBullet = outroLine.trim().startsWith('•');
+
+            let descHtml = `<p class="pkg-intro">${introLine}</p>`;
+            if (bulletLines.length > 0) {
+                descHtml += '<ul class="pkg-bullets">' + bulletLines.map(b => `<li>${b.replace(/^•\s*/, '')}</li>`).join('') + '</ul>';
+            }
+            if (!isOutroBullet && outroLine !== introLine) {
+                descHtml += `<p class="pkg-outro">${outroLine}</p>`;
+            }
+
+            const imgPath = `/images/catalogs/graduation/${p.slug}.png`;
+
+            return `
+    <div class="page package-page">
+        <div class="pkg-hero-wrap">
+            <img class="pkg-hero" src="${imgPath}" alt="${p.name}" onerror="this.parentElement.innerHTML='<div class=\\'pkg-hero-fallback\\'><span>${p.name}</span></div>'">
+        </div>
+        <div class="pkg-content">
+            <h2 class="pkg-name">${p.name}</h2>
+            <div class="pkg-price">${formatUAH(totalPrice)}<span>/дитина</span></div>
+            <div class="pkg-desc">${descHtml}</div>
+            <ul class="pkg-services">${serviceRows}</ul>
+            <div class="pkg-duration">⏱ ${fmtDuration(totalDuration)}</div>
+        </div>
+        <div class="pkg-footer">
+            <span>Парк Закревського · Київ, вул. Закревського 61/2</span>
+            <span>📞 (050) 344-37-71</span>
+        </div>
+    </div>`;
+        }).join('\n');
+
+        const html = `<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Випускні 2026 — Парк Закревського</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+@page { margin: 10mm; size: A4; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Nunito', sans-serif; margin: 0; padding: 0; color: #1a1a1a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+.page {
+    page-break-after: always;
+    min-height: 277mm;
+    padding: 0;
+    position: relative;
+    overflow: hidden;
+    background: white;
+}
+.page:last-child { page-break-after: avoid; }
+
+/* Cover */
+.cover-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0D0D0D, #1a1a2e);
+    color: white;
+    text-align: center;
+    min-height: 277mm;
+}
+.cover-icon { font-size: 80px; margin-bottom: 24px; }
+.cover-title { font-size: 48px; font-weight: 900; color: #C9A84C; line-height: 1.2; }
+.cover-subtitle { font-size: 22px; color: rgba(255,255,255,0.7); margin-top: 12px; font-weight: 600; }
+.cover-divider { width: 80px; height: 3px; background: #C9A84C; margin: 32px auto; border-radius: 2px; }
+.cover-info { font-size: 18px; color: rgba(255,255,255,0.5); margin-top: 8px; }
+.cover-contact { font-size: 15px; color: rgba(255,255,255,0.4); margin-top: 40px; line-height: 1.8; }
+
+/* Package page */
+.package-page { background: white; color: #1a1a1a; }
+.pkg-hero-wrap { width: 100%; height: 38%; overflow: hidden; background: linear-gradient(135deg, #667eea, #764ba2); }
+.pkg-hero { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pkg-hero-fallback { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #C9A84C, #D4AF37); }
+.pkg-hero-fallback span { font-size: 36px; font-weight: 900; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.3); text-align: center; padding: 20px; }
+.pkg-content { padding: 16px 24px 12px; }
+.pkg-name { font-size: 26px; font-weight: 900; color: #1a1a1a; margin-bottom: 4px; }
+.pkg-price { font-size: 32px; font-weight: 900; color: #10B981; margin-bottom: 12px; }
+.pkg-price span { font-size: 16px; color: #888; font-weight: 600; }
+.pkg-desc { font-size: 12px; line-height: 1.5; color: #444; margin-bottom: 12px; }
+.pkg-intro { margin-bottom: 6px; font-weight: 600; font-size: 13px; color: #333; }
+.pkg-outro { margin-top: 6px; font-weight: 600; font-size: 13px; color: #333; }
+.pkg-bullets { list-style: none; padding: 0; margin: 4px 0; }
+.pkg-bullets li { padding: 2px 0; padding-left: 16px; position: relative; font-size: 11.5px; line-height: 1.5; }
+.pkg-bullets li::before { content: "•"; position: absolute; left: 0; color: #C9A84C; font-weight: 900; }
+.pkg-services { list-style: none; padding: 0; margin: 0 0 8px; border-top: 1px solid #eee; }
+.pkg-services li { display: flex; align-items: center; padding: 5px 0; border-bottom: 1px solid #f0f0f0; font-size: 12px; gap: 8px; }
+.svc-name { flex: 1; font-weight: 600; }
+.svc-dur { color: #999; font-size: 11px; white-space: nowrap; }
+.svc-price { font-weight: 700; color: #10B981; white-space: nowrap; }
+.pkg-duration { display: inline-block; padding: 6px 14px; background: rgba(201,168,76,0.1); border: 1px solid rgba(201,168,76,0.25); border-radius: 8px; color: #C9A84C; font-weight: 700; font-size: 13px; margin-top: 4px; }
+.pkg-footer { position: absolute; bottom: 8mm; left: 24px; right: 24px; font-size: 11px; color: #999; border-top: 1px solid #eee; padding-top: 6px; display: flex; justify-content: space-between; }
+
+@media screen {
+    body { background: #eee; }
+    .page { max-width: 210mm; margin: 20px auto; box-shadow: 0 4px 20px rgba(0,0,0,0.15); border-radius: 4px; }
+}
+</style>
+</head>
+<body>
+    <div class="page cover-page">
+        <div class="cover-icon">🎓</div>
+        <div class="cover-title">Випускні 2026</div>
+        <div class="cover-subtitle">Парк Закревського періоду</div>
+        <div class="cover-divider"></div>
+        <div class="cover-info">${pkgResult.rows.length} пакетних пропозицій для вашого класу</div>
+        <div class="cover-contact">
+            📞 (050) 344-37-71<br>
+            📍 Київ, вул. Закревського 61/2<br>
+            💬 @park_zakrevskogo
+        </div>
+    </div>
+${packagePages}
+</body>
+</html>`;
+
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+    } catch (err) {
+        log.error('Catalog export error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 module.exports = router;

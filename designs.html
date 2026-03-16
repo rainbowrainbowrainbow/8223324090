@@ -405,136 +405,213 @@
 
         /* Catalog viewer (fullscreen) */
         .catalog-viewer {
-            position: fixed; inset: 0; background: #f5f5f0;
+            position: fixed; inset: 0; background: #f0ebe3;
             z-index: 9999; display: flex; flex-direction: column;
         }
         .catalog-viewer-nav {
             display: flex; align-items: center; justify-content: center;
-            gap: 16px; padding: 12px 16px; flex-shrink: 0;
-            background: #fff; border-bottom: 1px solid #e5e5e5;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            gap: 16px; padding: 10px 20px; flex-shrink: 0;
+            background: rgba(255,255,255,0.95); backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            box-shadow: 0 2px 12px rgba(0,0,0,0.04);
         }
         .btn-catalog-nav {
             background: #f0f0f0; border: none; color: #333;
             width: 44px; height: 44px; border-radius: 50%; font-size: 18px;
             cursor: pointer; display: flex; align-items: center; justify-content: center;
-            transition: background 0.15s;
+            transition: all 0.2s;
         }
-        .btn-catalog-nav:hover { background: #e0e0e0; }
+        .btn-catalog-nav:hover { background: #e0e0e0; transform: scale(1.05); }
         .btn-catalog-close { margin-left: auto; font-size: 24px; color: #666; }
-        .catalog-page-indicator { color: #888; font-weight: 700; font-size: 14px; }
+        .catalog-page-indicator { color: #888; font-weight: 700; font-size: 14px; min-width: 50px; text-align: center; }
 
-        .catalog-pages-container { flex: 1; overflow-y: auto; padding: 20px; }
-
-        /* === Mosaic catalog page === */
-        .catalog-page-mosaic {
-            position: relative; max-width: 600px; margin: 0 auto;
-            border-radius: 24px; overflow: hidden;
-            background: linear-gradient(160deg, var(--theme-bg1), var(--theme-bg2), var(--theme-bg3));
-            box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+        .catalog-pages-container {
+            flex: 1; overflow-y: auto; padding: 24px 20px;
+            display: flex; align-items: flex-start; justify-content: center;
         }
 
-        /* Geometric mosaic overlay */
+        /* === Premium catalog page === */
+        .catalog-page-mosaic {
+            position: relative; width: 100%; max-width: 780px;
+            border-radius: 28px; overflow: hidden;
+            background: linear-gradient(160deg, var(--theme-bg1), var(--theme-bg2), var(--theme-bg3));
+            box-shadow: 0 12px 60px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        /* Geometric mosaic overlay — more vibrant */
         .catalog-mosaic-bg {
             position: absolute; inset: 0; pointer-events: none; z-index: 0;
             background-image:
-                linear-gradient(30deg, rgba(255,255,255,0.18) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.18) 87.5%, rgba(255,255,255,0.18)),
-                linear-gradient(150deg, rgba(255,255,255,0.18) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.18) 87.5%, rgba(255,255,255,0.18)),
-                linear-gradient(30deg, rgba(255,255,255,0.12) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.12) 87.5%, rgba(255,255,255,0.12)),
-                linear-gradient(150deg, rgba(255,255,255,0.12) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.12) 87.5%, rgba(255,255,255,0.12)),
-                linear-gradient(60deg, rgba(255,255,255,0.10) 25%, transparent 25.5%, transparent 75%, rgba(255,255,255,0.10) 75%, rgba(255,255,255,0.10)),
-                linear-gradient(60deg, rgba(255,255,255,0.10) 25%, transparent 25.5%, transparent 75%, rgba(255,255,255,0.10) 75%, rgba(255,255,255,0.10));
-            background-size: 40px 70px;
-            background-position: 0 0, 0 0, 20px 35px, 20px 35px, 0 0, 20px 35px;
+                linear-gradient(30deg, rgba(255,255,255,0.22) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.22) 87.5%),
+                linear-gradient(150deg, rgba(255,255,255,0.22) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.22) 87.5%),
+                linear-gradient(30deg, rgba(255,255,255,0.15) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.15) 87.5%),
+                linear-gradient(150deg, rgba(255,255,255,0.15) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.15) 87.5%),
+                linear-gradient(60deg, rgba(255,255,255,0.12) 25%, transparent 25.5%, transparent 75%, rgba(255,255,255,0.12) 75%),
+                linear-gradient(60deg, rgba(255,255,255,0.12) 25%, transparent 25.5%, transparent 75%, rgba(255,255,255,0.12) 75%);
+            background-size: 48px 84px;
+            background-position: 0 0, 0 0, 24px 42px, 24px 42px, 0 0, 24px 42px;
         }
 
         .catalog-mosaic-content {
-            position: relative; z-index: 1; padding: 24px;
+            position: relative; z-index: 1; padding: 0;
         }
 
-        /* Hero */
-        .catalog-hero-section {
-            border-radius: 16px; overflow: hidden; margin-bottom: 20px;
-            aspect-ratio: 16/10;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        /* === Hero Banner — Bold colored header === */
+        .catalog-hero-banner {
+            position: relative; padding: 40px 32px 32px;
+            text-align: center; overflow: hidden;
         }
-        .catalog-hero-photo {
-            width: 100%; height: 100%; object-fit: cover; display: block;
+        .catalog-hero-banner::before {
+            content: ''; position: absolute; inset: 0;
+            background: var(--theme-accent);
+            opacity: 0.85;
         }
-        .catalog-hero-gradient {
-            width: 100%; height: 100%;
-            display: flex; align-items: center; justify-content: center;
+        .catalog-hero-banner::after {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.2) 100%);
         }
-        .catalog-hero-icon { font-size: 80px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
-
-        /* Info section */
-        .catalog-info-section {
-            background: rgba(255,255,255,0.85); backdrop-filter: blur(10px);
-            border-radius: 16px; padding: 20px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        .catalog-hero-inner {
+            position: relative; z-index: 2;
         }
-        .catalog-pkg-badge {
-            display: inline-block; padding: 4px 12px; border-radius: 20px;
-            font-size: 11px; font-weight: 800; letter-spacing: 1px; margin-bottom: 8px;
+        .catalog-hero-icon-large {
+            font-size: 64px; display: block; margin-bottom: 8px;
+            filter: drop-shadow(0 4px 16px rgba(0,0,0,0.3));
+            animation: catalogIconFloat 3s ease-in-out infinite;
         }
-        .catalog-pkg-name {
-            font-size: 24px; font-weight: 900; color: #1a1a1a; margin: 0 0 16px;
-            line-height: 1.2;
+        @keyframes catalogIconFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
         }
-        .catalog-stats-row {
-            display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;
-            align-items: center;
+        .catalog-hero-type {
+            display: inline-block; padding: 6px 20px; border-radius: 6px;
+            font-size: 18px; font-weight: 900; letter-spacing: 3px;
+            text-transform: uppercase; color: #fff;
+            background: rgba(255,255,255,0.2); backdrop-filter: blur(4px);
+            margin-bottom: 8px;
         }
-        .catalog-stat {
-            display: flex; align-items: center; gap: 6px;
-            font-size: 14px; color: #555; font-weight: 600;
-        }
-        .catalog-stat-icon { font-size: 16px; }
-        .catalog-stat-val { font-weight: 800; color: #333; }
-        .catalog-stat-price {
-            flex-direction: column; align-items: flex-start; gap: 0;
-            margin-left: auto;
-        }
-        .catalog-stat-unit {
-            font-size: 12px; color: #888; font-weight: 600; text-transform: uppercase;
-        }
-        .catalog-pkg-desc {
-            font-size: 14px; line-height: 1.6; color: #555; margin: 0 0 16px;
+        .catalog-hero-title {
+            font-size: 42px; font-weight: 900; color: #fff; margin: 0;
+            line-height: 1.1; text-transform: uppercase;
+            text-shadow: 0 3px 12px rgba(0,0,0,0.25);
+            letter-spacing: 1px;
         }
 
-        /* Services block */
-        .catalog-services-block {
-            background: rgba(255,255,255,0.6); border-radius: 12px; padding: 16px;
-            border-left: 3px solid;
+        /* === Stats bar — prominent boxes === */
+        .catalog-stats-bar {
+            display: flex; justify-content: center; gap: 0;
+            margin: 0; background: rgba(255,255,255,0.95);
+            border-bottom: 3px solid var(--theme-accent);
         }
-        .catalog-services-block h4 {
-            font-size: 12px; font-weight: 800; margin: 0 0 10px;
+        .catalog-stat-box {
+            flex: 1; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            padding: 16px 12px; gap: 4px;
+            border-right: 1px solid rgba(0,0,0,0.08);
+        }
+        .catalog-stat-box:last-child { border-right: none; }
+        .catalog-stat-box-icon {
+            font-size: 28px; line-height: 1;
+        }
+        .catalog-stat-box-val {
+            font-size: 24px; font-weight: 900; color: #1a1a1a; line-height: 1.1;
+        }
+        .catalog-stat-box-label {
+            font-size: 11px; font-weight: 700; color: #888;
             text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .catalog-stat-box-price .catalog-stat-box-val {
+            font-size: 28px; color: var(--theme-price);
+        }
+        .catalog-stat-box-price .catalog-stat-box-icon {
+            font-size: 24px;
+        }
+
+        /* === Disclaimer note === */
+        .catalog-disclaimer {
+            text-align: center; font-size: 10px; color: #999;
+            padding: 8px 32px; line-height: 1.4;
+            background: rgba(255,255,255,0.6);
+        }
+
+        /* === Services block — centered styled card === */
+        .catalog-services-card {
+            margin: 20px 24px;
+            background: rgba(255,255,255,0.9); backdrop-filter: blur(8px);
+            border-radius: 16px; overflow: hidden;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            border: 2px solid var(--theme-accent);
+        }
+        .catalog-services-header {
+            background: var(--theme-accent);
+            color: #fff; text-align: center;
+            padding: 10px 16px; font-size: 13px; font-weight: 800;
+            letter-spacing: 1px; text-transform: uppercase;
         }
         .catalog-svc-list { list-style: none; padding: 0; margin: 0; }
         .catalog-svc-list li {
-            padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,0.06);
-            font-size: 13px; color: #444; font-weight: 500;
+            padding: 10px 20px; border-bottom: 1px solid rgba(0,0,0,0.06);
+            font-size: 14px; color: #333; font-weight: 600;
+            text-align: center; text-transform: uppercase; letter-spacing: 0.3px;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
         }
         .catalog-svc-list li:last-child { border-bottom: none; }
+        .catalog-svc-list li .svc-icon { font-size: 16px; }
+        .catalog-svc-list li .svc-name { }
+        .catalog-svc-list li .svc-dur {
+            font-size: 12px; color: #888; font-weight: 500; text-transform: none;
+        }
 
-        /* Footer actions */
+        /* === Description section === */
+        .catalog-desc-section {
+            padding: 20px 28px 24px;
+        }
+        .catalog-desc-block {
+            margin-bottom: 16px;
+        }
+        .catalog-desc-block:last-child { margin-bottom: 0; }
+        .catalog-desc-block-title {
+            font-size: 13px; font-weight: 900; color: var(--theme-accent);
+            text-transform: uppercase; margin: 0 0 6px; letter-spacing: 0.5px;
+        }
+        .catalog-desc-block-text {
+            font-size: 13px; line-height: 1.6; color: #444; margin: 0;
+            font-weight: 500;
+        }
+
+        /* === Footer actions === */
         .catalog-page-footer {
             position: relative; z-index: 1;
-            display: flex; gap: 8px; padding: 0 24px 24px; justify-content: center;
+            display: flex; gap: 10px; padding: 0 24px 24px; justify-content: center;
         }
         .catalog-page-footer button {
-            padding: 10px 20px; border: none; border-radius: 10px;
-            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
-            background: rgba(255,255,255,0.7); color: #333;
-            backdrop-filter: blur(6px); transition: all 0.15s;
+            padding: 12px 24px; border: none; border-radius: 12px;
+            font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+            background: rgba(255,255,255,0.8); color: #333;
+            backdrop-filter: blur(6px); transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
         }
-        .catalog-page-footer button:hover { background: rgba(255,255,255,0.9); }
+        .catalog-page-footer button:hover {
+            background: rgba(255,255,255,0.95); transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        }
+
+        /* Responsive catalog */
+        @media (max-width: 600px) {
+            .catalog-hero-title { font-size: 28px; }
+            .catalog-hero-type { font-size: 14px; letter-spacing: 2px; }
+            .catalog-hero-icon-large { font-size: 48px; }
+            .catalog-hero-banner { padding: 28px 20px 24px; }
+            .catalog-stat-box-val { font-size: 18px; }
+            .catalog-stat-box-price .catalog-stat-box-val { font-size: 22px; }
+            .catalog-stat-box-icon { font-size: 22px; }
+            .catalog-desc-section { padding: 16px 20px 20px; }
+            .catalog-services-card { margin: 16px 16px; }
+            .catalog-svc-list li { font-size: 13px; padding: 8px 16px; }
+        }
 
         /* Print styles for catalog */
         @media print {
             @page { margin: 8mm; }
-            /* Hide everything except catalog viewer */
             body { background: #fff !important; margin: 0 !important; }
             .header, .sidebar-nav, .design-tabs, .user-panel, .notification,
             .skip-link, .page-login-overlay, .kleshnya-widget,
@@ -559,30 +636,17 @@
                 color-adjust: exact !important;
             }
             .catalog-page-mosaic:last-child { page-break-after: auto; }
-            .catalog-mosaic-bg {
+            .catalog-mosaic-bg, .catalog-hero-banner, .catalog-hero-banner::before,
+            .catalog-services-header, .catalog-stats-bar, .catalog-services-card {
                 print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
                 color-adjust: exact !important;
             }
-            .catalog-mosaic-content { padding: 20px !important; }
-            .catalog-info-section {
-                background: rgba(255,255,255,0.9) !important;
-                backdrop-filter: none !important;
-                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
-            }
-            .catalog-pkg-badge {
-                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
-            }
-            .catalog-pkg-name { color: #1a1a1a !important; }
-            .catalog-hero-section { box-shadow: none !important; }
-            .catalog-services-block {
-                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
-            }
-            /* Hide main content wrapper, show only viewer */
+            .catalog-mosaic-content { padding: 0 !important; }
+            .catalog-hero-title { color: #fff !important; }
             .main-content, main { overflow: visible !important; }
             #tabCatalogs { display: block !important; overflow: visible !important; }
         }
 
-        /* When printing catalog — hide ALL non-catalog content */
         @media print {
             body.printing-catalog .page-container > *:not(#tabCatalogs),
             body.printing-catalog #tabCatalogs > *:not(#catalogViewer) {
@@ -712,16 +776,18 @@
         body.dark-mode .catalog-info h3 { color: var(--gray-200); }
         body.dark-mode .btn-catalog-print { background: rgba(255,255,255,0.08); color: var(--gray-300); }
         body.dark-mode .btn-catalog-share { background: rgba(21,101,192,0.2); color: #90CAF9; }
-        body.dark-mode .catalog-viewer { background: #1a1a1a; }
-        body.dark-mode .catalog-viewer-nav { background: #222; border-bottom-color: #333; }
+        body.dark-mode .catalog-viewer { background: #141418; }
+        body.dark-mode .catalog-viewer-nav { background: rgba(30,30,35,0.95); border-bottom-color: #333; }
         body.dark-mode .btn-catalog-nav { background: #333; color: #ddd; }
-        body.dark-mode .catalog-info-section { background: rgba(30,30,30,0.9); }
-        body.dark-mode .catalog-pkg-name { color: #eee; }
-        body.dark-mode .catalog-stat { color: #aaa; }
-        body.dark-mode .catalog-stat-val { color: #ddd; }
-        body.dark-mode .catalog-pkg-desc { color: #999; }
-        body.dark-mode .catalog-services-block { background: rgba(255,255,255,0.05); }
-        body.dark-mode .catalog-svc-list li { color: #bbb; border-bottom-color: rgba(255,255,255,0.06); }
+        body.dark-mode .catalog-stats-bar { background: rgba(30,30,35,0.95); }
+        body.dark-mode .catalog-stat-box { border-right-color: rgba(255,255,255,0.08); }
+        body.dark-mode .catalog-stat-box-val { color: #eee; }
+        body.dark-mode .catalog-stat-box-label { color: #888; }
+        body.dark-mode .catalog-disclaimer { background: rgba(255,255,255,0.04); color: #666; }
+        body.dark-mode .catalog-services-card { background: rgba(30,30,35,0.9); }
+        body.dark-mode .catalog-svc-list li { color: #ccc; border-bottom-color: rgba(255,255,255,0.06); }
+        body.dark-mode .catalog-desc-section { }
+        body.dark-mode .catalog-desc-block-text { color: #bbb; }
         body.dark-mode .catalog-page-footer button { background: rgba(255,255,255,0.1); color: #ddd; }
 
         /* Responsive */

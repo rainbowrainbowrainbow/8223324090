@@ -861,49 +861,49 @@ const CATALOG_ICONS = {
     'handmade-party': '🎨', 'pizza-party': '🍕', 'squid-game': '🦑', 'neon-party': '✨'
 };
 
-// Package color themes for geometric mosaic backgrounds
+// Package color themes — vibrant, bold colors matching marketing materials
 const CATALOG_THEMES = {
     'best-dj': {
-        bg1: '#e8d0f0', bg2: '#d4b8e8', bg3: '#c0a0d8',
+        bg1: '#e0b8f0', bg2: '#d098e8', bg3: '#b878d8',
         accent: '#9333ea', accentLight: 'rgba(147,51,234,0.15)',
-        heroGradient: 'linear-gradient(135deg, #8e24aa, #e040fb)',
-        priceColor: '#a855f7'
+        heroGradient: 'linear-gradient(135deg, #7c3aed, #c026d3)',
+        priceColor: '#9333ea'
     },
     'super-party': {
-        bg1: '#f0e0c0', bg2: '#e8d4a8', bg3: '#d8c490',
+        bg1: '#f5dca0', bg2: '#ecd080', bg3: '#e0c060',
         accent: '#C9A84C', accentLight: 'rgba(201,168,76,0.15)',
-        heroGradient: 'linear-gradient(135deg, #C9A84C, #e8c84c)',
-        priceColor: '#C9A84C'
+        heroGradient: 'linear-gradient(135deg, #b8960a, #e8c84c)',
+        priceColor: '#b8960a'
     },
     'science-party': {
-        bg1: '#c8d8f0', bg2: '#b0c8e8', bg3: '#98b8d8',
-        accent: '#3B82F6', accentLight: 'rgba(59,130,246,0.15)',
-        heroGradient: 'linear-gradient(135deg, #3B82F6, #60a5fa)',
-        priceColor: '#3B82F6'
+        bg1: '#a8c8f0', bg2: '#88b0e8', bg3: '#6898e0',
+        accent: '#2563eb', accentLight: 'rgba(37,99,235,0.15)',
+        heroGradient: 'linear-gradient(135deg, #1d4ed8, #60a5fa)',
+        priceColor: '#2563eb'
     },
     'handmade-party': {
-        bg1: '#b8e8d0', bg2: '#a0d8c0', bg3: '#88c8b0',
-        accent: '#10B981', accentLight: 'rgba(16,185,129,0.15)',
-        heroGradient: 'linear-gradient(135deg, #059669, #34d399)',
-        priceColor: '#10B981'
+        bg1: '#90e8c0', bg2: '#70d8a8', bg3: '#50c890',
+        accent: '#059669', accentLight: 'rgba(5,150,105,0.15)',
+        heroGradient: 'linear-gradient(135deg, #047857, #34d399)',
+        priceColor: '#059669'
     },
     'pizza-party': {
-        bg1: '#f0e8c0', bg2: '#e8dca0', bg3: '#dcd088',
-        accent: '#f59e0b', accentLight: 'rgba(245,158,11,0.15)',
-        heroGradient: 'linear-gradient(135deg, #d97706, #fbbf24)',
-        priceColor: '#f59e0b'
+        bg1: '#fce0a0', bg2: '#f8d080', bg3: '#f0c060',
+        accent: '#d97706', accentLight: 'rgba(217,119,6,0.15)',
+        heroGradient: 'linear-gradient(135deg, #b45309, #fbbf24)',
+        priceColor: '#d97706'
     },
     'squid-game': {
-        bg1: '#f0c8c8', bg2: '#e8b0b0', bg3: '#d89898',
-        accent: '#ef4444', accentLight: 'rgba(239,68,68,0.15)',
-        heroGradient: 'linear-gradient(135deg, #dc2626, #f87171)',
-        priceColor: '#ef4444'
+        bg1: '#fca0a0', bg2: '#f07878', bg3: '#e85050',
+        accent: '#dc2626', accentLight: 'rgba(220,38,38,0.15)',
+        heroGradient: 'linear-gradient(135deg, #b91c1c, #f87171)',
+        priceColor: '#dc2626'
     },
     'neon-party': {
-        bg1: '#e8c0e0', bg2: '#d8a8d0', bg3: '#c890c0',
-        accent: '#ec4899', accentLight: 'rgba(236,72,153,0.15)',
-        heroGradient: 'linear-gradient(135deg, #db2777, #f472b6)',
-        priceColor: '#ec4899'
+        bg1: '#f0a0d8', bg2: '#e878c8', bg3: '#d850b0',
+        accent: '#db2777', accentLight: 'rgba(219,39,119,0.15)',
+        heroGradient: 'linear-gradient(135deg, #be185d, #f472b6)',
+        priceColor: '#db2777'
     }
 };
 
@@ -924,6 +924,28 @@ const SERVICE_ICONS = {
     'МК "Піца"': '🍕', 'Подарунки': '🎁', 'Неонова паперова дискотека': '🎵',
     'Неонові мильні бульбашки': '🫧', 'Неоновий аквагрим': '🎨',
     'Програма "Гра в кальмара" Ч.1': '🦑', 'Програма "Гра в кальмара" Ч.2': '🦑'
+};
+
+// Detailed descriptions for each service
+const SERVICE_DESCRIPTIONS = {
+    'Аквагрим': 'Веселі та яскраві аквагрим-образи для дітей на вашому святі! Нехай маленькі гості насолоджуються перетворенням у фантастичних героїв та казкових тварин.',
+    'Неоновий аквагрим': 'Магічний аквагрим, що світиться в ультрафіолеті! Кожна дитина стає зіркою неонової вечірки з яскравими візерунками.',
+    'Паперова дискотека': 'Приєднуйтесь до нас на паперовій дискотеці! 80 кг яскравого паперу перетворюють місце проведення на райський куточок. Талановиті ведучі, популярна музика, танці та інтерактиви.',
+    'Неонова паперова дискотека': 'Паперове шоу в ультрафіолетовому світлі! 80 кг неонового паперу, музика, танці — незабутня атмосфера свята.',
+    'Капсула часу': 'Яскраве завершення вечірки. Ведучий збирає всіх учасників, всі пишуть ким вони хочуть стати через 10 років, що видатного хочуть зробити — кладуть у капсулу часу та урочисто заклеюють.',
+    'Видача дипломів та вітання класу на сцені': 'Урочистий момент! Потім всім дітям заповнюють дипломи. Ведучий грає з дітьми в кілька ігор на сцені і вітає їх зі святом.',
+    'Анімація': 'Захопливі ігри, конкурси та живі танці з аніматорами у костюмах улюблених героїв! Нон-стоп веселощі для всього класу.',
+    'Анімація 2 години': 'Два повних години нон-стоп анімації! Аніматори у костюмах героїв проводять ігри, конкурси, танці — найвеселіший формат.',
+    'Велком Зона': 'Ведучий-персонаж зустрічає всіх гостей, знайомить між собою та створює атмосферу свята з перших хвилин.',
+    'Мафія': 'Інтелектуальний батл! Захоплива гра Мафія з ведучим — діти вчаться дедукції, логіці та командній грі.',
+    'Шоу з сухим льодом': 'Димові каскади, хімічні експерименти та магічні перетворення! Наука ще ніколи не була такою крутою — шоу що вражає.',
+    'МК "Слайм"': 'Кожен робить свій унікальний слайм — обирає колір та блискітки. Творчий процес та чудовий подарунок на пам\'ять!',
+    'МК "Піца"': 'Кожна дитина робить свою авторську піцу з улюбленою начинкою. Смачно, весело та креативно!',
+    'Подарунки': 'Кожен учасник отримує подарунок на пам\'ять про незабутнє свято!',
+    'Неонові мильні бульбашки': 'Магічні мильні бульбашки що світяться в ультрафіолеті! Казкова атмосфера, від якої діти в захваті.',
+    'Вхід': 'Вхід до розважального парку — простір для свята та пригод!',
+    'Програма "Гра в кальмара" Ч.1': 'Перший раунд захопливої програми! Три ведучих у костюмах проводять ігри на швидкість, логіку та витримку.',
+    'Програма "Гра в кальмара" Ч.2': 'Фінальний раунд з новими випробуваннями! Сюрпризи, адреналін та подарунки для переможців.'
 };
 
 let catalogPackages = [];
@@ -978,59 +1000,80 @@ function renderCurrentPage() {
     const totalPrice = pkg.totalPerChild || pkg.services.reduce((s, svc) => s + (svc.pricePerChild || 0), 0);
     const totalDuration = pkg.totalDuration || pkg.services.reduce((s, svc) => s + (svc.durationMin || 0), 0);
 
-    const imgPath = `images/catalogs/graduation/${pkg.slug}.png`;
-
+    // Services list HTML — centered, uppercase, like original catalog
     const servicesHtml = pkg.services.map(svc => {
         const svcIcon = SERVICE_ICONS[svc.serviceName] || '•';
-        const dur = svc.durationMin ? ` — ${svc.durationMin} хв` : '';
-        return `<li>${svcIcon} ${esc(svc.serviceName)}${dur}</li>`;
+        return `<li><span class="svc-icon">${svcIcon}</span> <span class="svc-name">${esc(svc.serviceName)}</span></li>`;
     }).join('');
+
+    // Service descriptions — detailed blocks like old catalog
+    const descBlocksHtml = pkg.services
+        .filter(svc => SERVICE_DESCRIPTIONS[svc.serviceName])
+        .map(svc => {
+            const svcDesc = SERVICE_DESCRIPTIONS[svc.serviceName];
+            return `<div class="catalog-desc-block">
+                <h4 class="catalog-desc-block-title">${esc(svc.serviceName)}</h4>
+                <p class="catalog-desc-block-text">${esc(svcDesc)}</p>
+            </div>`;
+        }).join('');
+
+    // Format duration for stats
+    const durationHours = Math.round(totalDuration / 60 * 10) / 10;
+    const durationDisplay = durationHours >= 1 ? durationHours : totalDuration;
+    const durationUnit = durationHours >= 1 ? (durationHours === 1 ? 'ГОДИНА' : 'ГОДИНИ') : 'ХВИЛИН';
 
     container.innerHTML = `
         <div class="catalog-page-mosaic" data-package="${pkg.slug}"
              style="--theme-bg1:${theme.bg1};--theme-bg2:${theme.bg2};--theme-bg3:${theme.bg3};--theme-accent:${theme.accent};--theme-price:${theme.priceColor}">
             <div class="catalog-mosaic-bg"></div>
             <div class="catalog-mosaic-content">
-                <!-- Hero section -->
-                <div class="catalog-hero-section">
-                    <img class="catalog-hero-photo" src="${imgPath}" alt="${esc(pkg.name)}"
-                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-                    <div class="catalog-hero-gradient" style="background:${theme.heroGradient};display:none">
-                        <span class="catalog-hero-icon">${icon}</span>
+
+                <!-- Bold Hero Banner -->
+                <div class="catalog-hero-banner">
+                    <div class="catalog-hero-inner">
+                        <span class="catalog-hero-icon-large">${icon}</span>
+                        <div class="catalog-hero-type">ВИПУСКНИЙ</div>
+                        <h1 class="catalog-hero-title">${esc(pkg.name)}</h1>
                     </div>
                 </div>
 
-                <!-- Info card -->
-                <div class="catalog-info-section">
-                    <div class="catalog-pkg-badge" style="background:${theme.accentLight};color:${theme.accent}">ВИПУСКНИЙ</div>
-                    <h2 class="catalog-pkg-name">${esc(pkg.name)}</h2>
-
-                    <div class="catalog-stats-row">
-                        <div class="catalog-stat">
-                            <span class="catalog-stat-icon">⏱</span>
-                            <span class="catalog-stat-val">${catalogFormatDuration(totalDuration)}</span>
-                        </div>
-                        <div class="catalog-stat">
-                            <span class="catalog-stat-icon">👥</span>
-                            <span class="catalog-stat-val">${pkg.minKids || 7}–${pkg.maxKids || 50} дітей</span>
-                        </div>
-                        <div class="catalog-stat catalog-stat-price">
-                            <span class="catalog-stat-val" style="color:${theme.priceColor};font-size:32px">${totalPrice.toLocaleString('uk-UA')} ₴</span>
-                            <span class="catalog-stat-unit">за дитину</span>
-                        </div>
+                <!-- Stats Bar -->
+                <div class="catalog-stats-bar">
+                    <div class="catalog-stat-box">
+                        <span class="catalog-stat-box-icon">🕐</span>
+                        <span class="catalog-stat-box-val">${durationDisplay}</span>
+                        <span class="catalog-stat-box-label">${durationUnit}</span>
                     </div>
-
-                    <p class="catalog-pkg-desc">${esc(desc)}</p>
-
-                    <!-- Services grid -->
-                    <div class="catalog-services-block" style="border-color:${theme.accent}40">
-                        <h4 style="color:${theme.accent}">Що входить:</h4>
-                        <ul class="catalog-svc-list">${servicesHtml}</ul>
+                    <div class="catalog-stat-box">
+                        <span class="catalog-stat-box-icon">👥</span>
+                        <span class="catalog-stat-box-val">${pkg.minKids || 7} - ${pkg.maxKids || 50}</span>
+                        <span class="catalog-stat-box-label">ДІТЕЙ</span>
+                    </div>
+                    <div class="catalog-stat-box catalog-stat-box-price">
+                        <span class="catalog-stat-box-icon">₴</span>
+                        <span class="catalog-stat-box-val">${totalPrice.toLocaleString('uk-UA')}</span>
+                        <span class="catalog-stat-box-label">ЗА ДИТИНУ</span>
                     </div>
                 </div>
+
+                <!-- Disclaimer -->
+                <div class="catalog-disclaimer">
+                    * В розважальному парку діти знаходяться увесь день. Це загальна тривалість заходів з нашими ведучими, в залежності від кількості учасників, час може змінюватися.
+                </div>
+
+                <!-- Services Card -->
+                <div class="catalog-services-card">
+                    <div class="catalog-services-header">Що входить</div>
+                    <ul class="catalog-svc-list">${servicesHtml}</ul>
+                </div>
+
+                <!-- Service Descriptions -->
+                ${descBlocksHtml ? `<div class="catalog-desc-section">${descBlocksHtml}</div>` : ''}
+
             </div>
+
             <div class="catalog-page-footer">
-                <button onclick="printCatalogPage('graduation', '${pkg.slug}')">🖨️ Друк</button>
+                <button onclick="printCatalogPage('graduation', '${pkg.slug}')">🖨️ Друк сторінки</button>
                 <button onclick="shareCatalogPage('graduation', '${pkg.slug}')">📤 Поділитись</button>
             </div>
         </div>

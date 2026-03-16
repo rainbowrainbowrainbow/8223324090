@@ -160,12 +160,25 @@ function setupTabs() {
             url.searchParams.set('tab', tabName);
             history.replaceState(null, '', url);
 
+            // Lazy-load iframe tabs (programs, designs, graduation)
+            lazyLoadIframe(tabName);
+
             // Lazy-load tab data
             if (tabName === 'pipeline') loadPipeline();
             if (tabName === 'templates') loadTemplates();
             if (tabName === 'brand') loadBrand();
         });
     });
+}
+
+// Lazy-load iframes: set src from data-src only when tab is activated
+function lazyLoadIframe(tabName) {
+    const tabEl = document.getElementById(`tab-${tabName}`);
+    if (!tabEl) return;
+    const iframe = tabEl.querySelector('iframe[data-src]');
+    if (iframe && !iframe.src.includes(iframe.dataset.src)) {
+        iframe.src = iframe.dataset.src;
+    }
 }
 
 // ==========================================

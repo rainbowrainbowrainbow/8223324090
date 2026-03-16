@@ -38,7 +38,8 @@ function mapServiceRow(row) {
         minKids: row.min_kids,
         maxKids: row.max_kids,
         entryRule: row.entry_rule,
-        isActive: row.is_active
+        isActive: row.is_active,
+        catalogDescription: row.catalog_description || null
     };
 }
 
@@ -254,6 +255,8 @@ router.get('/packages', async (req, res) => {
                 description: p.description || '',
                 imageUrl: p.image_url || null,
                 sortOrder: p.sort_order,
+                minKids: p.min_kids || 7,
+                maxKids: p.max_kids || 50,
                 services,
                 totalPerChild,
                 totalDuration
@@ -819,55 +822,84 @@ router.get('/catalog/export', (req, res, next) => {
             itemMap[item.package_id].push(item);
         }
 
-        function fmtDuration(totalMin) {
-            const hours = Math.floor(totalMin / 60);
-            const mins = totalMin % 60;
-            if (hours === 0) return totalMin + ' хв';
-            if (mins === 0) return hours + ' год';
-            return '~' + hours + ' год ' + mins + ' хв';
+        // Fetch catalog_description for services
+        const catalogDescResult = await pool.query(
+            'SELECT id, catalog_description FROM graduation_services WHERE catalog_description IS NOT NULL'
+        );
+        const catalogDescMap = {};
+        for (const row of catalogDescResult.rows) catalogDescMap[row.id] = row.catalog_description;
+        for (const items of Object.values(itemMap)) {
+            for (const item of items) {
+                item.catalog_description = catalogDescMap[item.service_id] || null;
+            }
+        }
+
+        // Package theme colors for premium catalog
+        const THEMES = {
+            'best-dj': { bg1:'#e8d0f0',bg2:'#d4b8e8',bg3:'#c0a0d8', accent:'#9333ea', accentLight:'rgba(147,51,234,0.15)', heroGrad:'linear-gradient(135deg,#8e24aa,#e040fb)', emoji:'🎧' },
+            'super-party': { bg1:'#f0e0c0',bg2:'#e8d4a8',bg3:'#d8c490', accent:'#C9A84C', accentLight:'rgba(201,168,76,0.15)', heroGrad:'linear-gradient(135deg,#C9A84C,#e8c84c)', emoji:'🎉' },
+            'science-party': { bg1:'#c8d8f0',bg2:'#b0c8e8',bg3:'#98b8d8', accent:'#3B82F6', accentLight:'rgba(59,130,246,0.15)', heroGrad:'linear-gradient(135deg,#3B82F6,#60a5fa)', emoji:'🧪' },
+            'handmade-party': { bg1:'#b8e8d0',bg2:'#a0d8c0',bg3:'#88c8b0', accent:'#10B981', accentLight:'rgba(16,185,129,0.15)', heroGrad:'linear-gradient(135deg,#059669,#34d399)', emoji:'✂️' },
+            'pizza-party': { bg1:'#f0e8c0',bg2:'#e8dca0',bg3:'#dcd088', accent:'#f59e0b', accentLight:'rgba(245,158,11,0.15)', heroGrad:'linear-gradient(135deg,#d97706,#fbbf24)', emoji:'🍕' },
+            'squid-game': { bg1:'#f0c8c8',bg2:'#e8b0b0',bg3:'#d89898', accent:'#ef4444', accentLight:'rgba(239,68,68,0.15)', heroGrad:'linear-gradient(135deg,#dc2626,#f87171)', emoji:'🦑' },
+            'neon-party': { bg1:'#e8c0e0',bg2:'#d8a8d0',bg3:'#c890c0', accent:'#ec4899', accentLight:'rgba(236,72,153,0.15)', heroGrad:'linear-gradient(135deg,#db2777,#f472b6)', emoji:'💜' },
+        };
+
+        function fmtDurationHours(totalMin) {
+            const hours = totalMin / 60;
+            if (hours === Math.floor(hours)) return String(Math.floor(hours));
+            return hours.toFixed(1).replace('.0', '');
+        }
+
+        function durationUnit(totalMin) {
+            if (totalMin >= 120) return 'ГОДИНИ';
+            if (totalMin >= 60) return 'ГОДИНА';
+            return 'ХВ';
         }
 
         const packagePages = pkgResult.rows.map(p => {
             const items = itemMap[p.id] || [];
             const totalPrice = items.reduce((sum, i) => sum + getPrice(i), 0);
             const totalDuration = items.reduce((sum, i) => sum + (i.duration_min || 0), 0);
-
-            const serviceRows = items.map(i => {
-                const price = getPrice(i);
-                return `<li><span class="svc-name">${i.service_name}</span>${i.duration_min ? '<span class="svc-dur">' + i.duration_min + ' хв</span>' : ''}<span class="svc-price">${Math.round(price)} ₴</span></li>`;
-            }).join('');
-
-            const descLines = (p.description || '').split('\n').filter(l => l.trim());
-            const introLine = descLines[0] || '';
-            const bulletLines = descLines.filter(l => l.trim().startsWith('•'));
-            const outroLine = descLines[descLines.length - 1] || '';
-            const isOutroBullet = outroLine.trim().startsWith('•');
-
-            let descHtml = `<p class="pkg-intro">${introLine}</p>`;
-            if (bulletLines.length > 0) {
-                descHtml += '<ul class="pkg-bullets">' + bulletLines.map(b => `<li>${b.replace(/^•\s*/, '')}</li>`).join('') + '</ul>';
-            }
-            if (!isOutroBullet && outroLine !== introLine) {
-                descHtml += `<p class="pkg-outro">${outroLine}</p>`;
-            }
+            const theme = THEMES[p.slug] || THEMES['super-party'];
+            const minKids = p.min_kids || 7;
+            const maxKids = p.max_kids || 50;
 
             const imgPath = p.image_url || `/images/catalogs/graduation/${p.slug}.png`;
 
+            // Service names list
+            const servicesListHtml = items.map(i =>
+                `<li>— ${i.service_name.toUpperCase()}</li>`
+            ).join('');
+
+            // Service descriptions
+            const descsHtml = items
+                .filter(i => i.service_description || i.catalog_description)
+                .map(i => `<div class="desc-item"><strong>${i.service_name.toUpperCase()}</strong> — ${i.catalog_description || i.service_description}</div>`)
+                .join('');
+
             return `
-    <div class="page package-page">
-        <div class="pkg-hero-wrap">
-            <img class="pkg-hero" src="${imgPath}" alt="${p.name}" onerror="this.parentElement.innerHTML='<div class=\\'pkg-hero-fallback\\'><span>${p.name}</span></div>'">
-        </div>
-        <div class="pkg-content">
-            <h2 class="pkg-name">${p.name}</h2>
-            <div class="pkg-price">${formatUAH(totalPrice)}<span>/дитина</span></div>
-            <div class="pkg-desc">${descHtml}</div>
-            <ul class="pkg-services">${serviceRows}</ul>
-            <div class="pkg-duration">⏱ ${fmtDuration(totalDuration)}</div>
-        </div>
-        <div class="pkg-footer">
-            <span>Парк Закревського · Київ, вул. Закревського 61/2</span>
-            <span>📞 (050) 344-37-71</span>
+    <div class="page pkg-page" id="pkg-${p.slug}" style="--bg1:${theme.bg1};--bg2:${theme.bg2};--bg3:${theme.bg3}">
+        <div class="geo-overlay"></div>
+        <div class="page-inner">
+            <div class="hero-wrap">
+                <img class="hero-img" src="${imgPath}" alt="${p.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                <div class="hero-placeholder" style="background:${theme.heroGrad};display:none"><span class="hero-emoji">${theme.emoji}</span></div>
+            </div>
+            <div class="info-card">
+                <div class="info-label">ВИПУСКНИЙ</div>
+                <div class="info-title">${p.name.toUpperCase()}</div>
+                <div class="info-row">
+                    <div class="info-item"><span class="info-icon">⏱</span><span class="info-val">${fmtDurationHours(totalDuration)}</span><span class="info-unit">${durationUnit(totalDuration)}</span></div>
+                    <div class="info-item"><span class="info-icon">👥</span><span class="info-val">${minKids}-${maxKids}</span><span class="info-unit">ДІТЕЙ</span></div>
+                    <div class="info-item"><span class="info-icon">₴</span><span class="info-val">${Math.round(totalPrice)}</span><span class="info-unit">/ДИТИНА</span></div>
+                </div>
+                <div class="info-disclaimer">* В розважальному парку діти знаходяться увесь день. Це загальна тривалість заходів з нашими ведучими.</div>
+            </div>
+            <div class="svc-card" style="background:${theme.accentLight};border:2px solid ${theme.accent}40">
+                <ul class="svc-list">${servicesListHtml}</ul>
+            </div>
+            ${descsHtml ? `<div class="desc-card">${descsHtml}</div>` : ''}
         </div>
     </div>`;
         }).join('\n');
@@ -880,7 +912,7 @@ router.get('/catalog/export', (req, res, next) => {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-@page { margin: 10mm; size: A4; }
+@page { margin: 8mm; size: A4 portrait; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Nunito', sans-serif; margin: 0; padding: 0; color: #1a1a1a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
@@ -890,7 +922,6 @@ body { font-family: 'Nunito', sans-serif; margin: 0; padding: 0; color: #1a1a1a;
     padding: 0;
     position: relative;
     overflow: hidden;
-    background: white;
 }
 .page:last-child { page-break-after: avoid; }
 
@@ -912,33 +943,56 @@ body { font-family: 'Nunito', sans-serif; margin: 0; padding: 0; color: #1a1a1a;
 .cover-info { font-size: 18px; color: rgba(255,255,255,0.5); margin-top: 8px; }
 .cover-contact { font-size: 15px; color: rgba(255,255,255,0.4); margin-top: 40px; line-height: 1.8; }
 
-/* Package page */
-.package-page { background: white; color: #1a1a1a; }
-.pkg-hero-wrap { width: 100%; height: 38%; overflow: hidden; background: linear-gradient(135deg, #667eea, #764ba2); }
-.pkg-hero { width: 100%; height: 100%; object-fit: cover; display: block; }
-.pkg-hero-fallback { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #C9A84C, #D4AF37); }
-.pkg-hero-fallback span { font-size: 36px; font-weight: 900; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.3); text-align: center; padding: 20px; }
-.pkg-content { padding: 16px 24px 12px; }
-.pkg-name { font-size: 26px; font-weight: 900; color: #1a1a1a; margin-bottom: 4px; }
-.pkg-price { font-size: 32px; font-weight: 900; color: #10B981; margin-bottom: 12px; }
-.pkg-price span { font-size: 16px; color: #888; font-weight: 600; }
-.pkg-desc { font-size: 12px; line-height: 1.5; color: #444; margin-bottom: 12px; }
-.pkg-intro { margin-bottom: 6px; font-weight: 600; font-size: 13px; color: #333; }
-.pkg-outro { margin-top: 6px; font-weight: 600; font-size: 13px; color: #333; }
-.pkg-bullets { list-style: none; padding: 0; margin: 4px 0; }
-.pkg-bullets li { padding: 2px 0; padding-left: 16px; position: relative; font-size: 11.5px; line-height: 1.5; }
-.pkg-bullets li::before { content: "•"; position: absolute; left: 0; color: #C9A84C; font-weight: 900; }
-.pkg-services { list-style: none; padding: 0; margin: 0 0 8px; border-top: 1px solid #eee; }
-.pkg-services li { display: flex; align-items: center; padding: 5px 0; border-bottom: 1px solid #f0f0f0; font-size: 12px; gap: 8px; }
-.svc-name { flex: 1; font-weight: 600; }
-.svc-dur { color: #999; font-size: 11px; white-space: nowrap; }
-.svc-price { font-weight: 700; color: #10B981; white-space: nowrap; }
-.pkg-duration { display: inline-block; padding: 6px 14px; background: rgba(201,168,76,0.1); border: 1px solid rgba(201,168,76,0.25); border-radius: 8px; color: #C9A84C; font-weight: 700; font-size: 13px; margin-top: 4px; }
-.pkg-footer { position: absolute; bottom: 8mm; left: 24px; right: 24px; font-size: 11px; color: #999; border-top: 1px solid #eee; padding-top: 6px; display: flex; justify-content: space-between; }
+/* Package page — geometric mosaic */
+.pkg-page {
+    background: linear-gradient(135deg, var(--bg1), var(--bg2), var(--bg3));
+    position: relative;
+}
+.geo-overlay {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image:
+        linear-gradient(30deg, rgba(255,255,255,0.14) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.14) 87.5%),
+        linear-gradient(150deg, rgba(255,255,255,0.14) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.14) 87.5%),
+        linear-gradient(30deg, rgba(255,255,255,0.09) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.09) 87.5%),
+        linear-gradient(150deg, rgba(255,255,255,0.09) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.09) 87.5%),
+        linear-gradient(60deg, rgba(255,255,255,0.07) 25%, transparent 25.5%, transparent 75%, rgba(255,255,255,0.07) 75%),
+        linear-gradient(60deg, rgba(255,255,255,0.07) 25%, transparent 25.5%, transparent 75%, rgba(255,255,255,0.07) 75%);
+    background-size: 40px 70px;
+    background-position: 0 0, 0 0, 20px 35px, 20px 35px, 0 0, 20px 35px;
+}
+.page-inner { position: relative; z-index: 1; padding: 10mm; }
+
+/* Hero */
+.hero-wrap { width: 100%; aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; margin-bottom: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+.hero-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hero-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.hero-emoji { font-size: 60px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3)); }
+
+/* Info Card */
+.info-card { background: rgba(255,255,255,0.92); border-radius: 14px; padding: 14px 12px; margin-bottom: 8px; text-align: center; border: 2px solid rgba(255,255,255,0.7); }
+.info-label { font-size: 10px; font-weight: 800; letter-spacing: 4px; color: #888; margin-bottom: 2px; }
+.info-title { font-size: 22px; font-weight: 900; color: #1a1a1a; line-height: 1.1; margin-bottom: 10px; text-transform: uppercase; }
+.info-row { display: flex; justify-content: center; gap: 24px; margin-bottom: 8px; }
+.info-item { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.info-icon { font-size: 16px; }
+.info-val { font-size: 20px; font-weight: 900; color: #1a1a1a; }
+.info-unit { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #999; }
+.info-disclaimer { font-size: 7px; color: #aaa; line-height: 1.3; margin-top: 4px; }
+
+/* Services Card */
+.svc-card { border-radius: 12px; padding: 10px 16px; margin-bottom: 8px; text-align: center; }
+.svc-list { list-style: none; padding: 0; margin: 0; }
+.svc-list li { font-size: 10px; font-weight: 700; color: #1a1a1a; padding: 3px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Description Card */
+.desc-card { background: rgba(255,255,255,0.88); border-radius: 12px; padding: 10px 14px; border: 2px solid rgba(255,255,255,0.5); }
+.desc-item { font-size: 8.5px; line-height: 1.4; color: #444; margin-bottom: 6px; text-align: center; }
+.desc-item:last-child { margin-bottom: 0; }
+.desc-item strong { font-weight: 900; color: #1a1a1a; font-size: 9px; }
 
 @media screen {
-    body { background: #eee; }
-    .page { max-width: 210mm; margin: 20px auto; box-shadow: 0 4px 20px rgba(0,0,0,0.15); border-radius: 4px; }
+    body { background: #f0ebe4; }
+    .page { max-width: 210mm; margin: 20px auto; box-shadow: 0 8px 40px rgba(0,0,0,0.12); border-radius: 8px; }
 }
 </style>
 </head>

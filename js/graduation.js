@@ -764,9 +764,61 @@
         return `${r},${g},${b}`;
     }
 
-    // === CATALOG VIEWER (fullscreen modal) ===
+    // === PREMIUM CATALOG VIEWER v32.0 ===
     let catalogViewerIndex = 0;
     let touchStartX = 0;
+
+    // Package color themes (geometric mosaic palettes per spec)
+    const PACKAGE_THEMES = {
+        'best-dj': {
+            bg1: '#e8d0f0', bg2: '#d4b8e8', bg3: '#c0a0d8',
+            accent: '#9333ea', accentLight: 'rgba(147,51,234,0.15)',
+            heroGradient: 'linear-gradient(135deg, #8e24aa, #e040fb)',
+            emoji: '🎧'
+        },
+        'super-party': {
+            bg1: '#f0e0c0', bg2: '#e8d4a8', bg3: '#d8c490',
+            accent: '#C9A84C', accentLight: 'rgba(201,168,76,0.15)',
+            heroGradient: 'linear-gradient(135deg, #C9A84C, #e8c84c)',
+            emoji: '🎉'
+        },
+        'science-party': {
+            bg1: '#c8d8f0', bg2: '#b0c8e8', bg3: '#98b8d8',
+            accent: '#3B82F6', accentLight: 'rgba(59,130,246,0.15)',
+            heroGradient: 'linear-gradient(135deg, #3B82F6, #60a5fa)',
+            emoji: '🧪'
+        },
+        'handmade-party': {
+            bg1: '#b8e8d0', bg2: '#a0d8c0', bg3: '#88c8b0',
+            accent: '#10B981', accentLight: 'rgba(16,185,129,0.15)',
+            heroGradient: 'linear-gradient(135deg, #059669, #34d399)',
+            emoji: '✂️'
+        },
+        'pizza-party': {
+            bg1: '#f0e8c0', bg2: '#e8dca0', bg3: '#dcd088',
+            accent: '#f59e0b', accentLight: 'rgba(245,158,11,0.15)',
+            heroGradient: 'linear-gradient(135deg, #d97706, #fbbf24)',
+            emoji: '🍕'
+        },
+        'squid-game': {
+            bg1: '#f0c8c8', bg2: '#e8b0b0', bg3: '#d89898',
+            accent: '#ef4444', accentLight: 'rgba(239,68,68,0.15)',
+            heroGradient: 'linear-gradient(135deg, #dc2626, #f87171)',
+            emoji: '🦑'
+        },
+        'neon-party': {
+            bg1: '#e8c0e0', bg2: '#d8a8d0', bg3: '#c890c0',
+            accent: '#ec4899', accentLight: 'rgba(236,72,153,0.15)',
+            heroGradient: 'linear-gradient(135deg, #db2777, #f472b6)',
+            emoji: '💜'
+        }
+    };
+
+    function formatDurationHours(totalMin) {
+        const hours = totalMin / 60;
+        if (hours === Math.floor(hours)) return String(Math.floor(hours));
+        return hours.toFixed(1).replace('.0', '');
+    }
 
     function openCatalogViewer(index) {
         catalogViewerIndex = index;
@@ -778,46 +830,35 @@
         if (!pkg) return;
 
         const { totalPerChild, totalDuration, rows } = calcPackageTotals(pkg);
-        const kids = getKidsCount();
+        const theme = PACKAGE_THEMES[pkg.slug] || PACKAGE_THEMES['super-party'];
+        const minKids = pkg.minKids || 7;
+        const maxKids = pkg.maxKids || 50;
 
-        // Parse description into intro, bullets, outro
-        const descLines = (pkg.description || '').split('\n').filter(l => l.trim());
-        const introLine = descLines[0] || '';
-        const bulletLines = descLines.filter(l => l.trim().startsWith('•'));
-        const lastLine = descLines[descLines.length - 1] || '';
-        const outroLine = (!lastLine.trim().startsWith('•') && lastLine !== introLine) ? lastLine : '';
+        // Hero image or placeholder
+        const imgSrc = pkg.imageUrl || `images/catalogs/graduation/${pkg.slug}.png`;
+        const heroHtml = `
+            <img class="catalog-hero-img" src="${imgSrc}" alt="${pkg.name}"
+                onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+            <div class="catalog-hero-placeholder" style="background:${theme.heroGradient};display:none">
+                <span class="catalog-hero-emoji">${theme.emoji}</span>
+            </div>`;
 
-        // Build description HTML
-        let descHtml = introLine ? `<p class="catalog-page-intro">${introLine}</p>` : '';
-        if (bulletLines.length > 0) {
-            // Find "Що чекає" header
-            const headerLine = descLines.find(l => l.includes('Що чекає'));
-            if (headerLine) descHtml += `<p class="catalog-page-section-title">${headerLine}</p>`;
-            descHtml += '<div class="catalog-page-bullets">';
-            for (const b of bulletLines) {
-                const text = b.replace(/^•\s*/, '');
-                const dashIdx = text.indexOf(' — ');
-                if (dashIdx > 0) {
-                    descHtml += `<div class="catalog-bullet"><span class="catalog-bullet-name">${text.substring(0, dashIdx)}</span><span class="catalog-bullet-desc"> — ${text.substring(dashIdx + 3)}</span></div>`;
-                } else {
-                    descHtml += `<div class="catalog-bullet"><span class="catalog-bullet-name">${text}</span></div>`;
-                }
-            }
-            descHtml += '</div>';
-        }
-        if (outroLine) descHtml += `<p class="catalog-page-outro">${outroLine}</p>`;
-
-        // Services list
+        // Services list (uppercase names)
         const servicesHtml = rows.map(r =>
-            `<li class="catalog-svc-item">
-                <span class="catalog-svc-icon">${r.icon}</span>
-                <span class="catalog-svc-name">${r.name}</span>
-                ${r.duration ? `<span class="catalog-svc-dur">${r.duration} хв</span>` : ''}
-                <span class="catalog-svc-price">${formatPrice(r.price)}</span>
-            </li>`
+            `<li>${r.name.toUpperCase()}</li>`
         ).join('');
 
-        // Remove existing viewer
+        // Service descriptions (catalog_description or fallback to description)
+        const descsHtml = rows.filter(r => {
+            const svc = services.find(s => s.name === r.name);
+            return svc && (svc.catalogDescription || svc.description);
+        }).map(r => {
+            const svc = services.find(s => s.name === r.name);
+            const desc = svc.catalogDescription || svc.description || '';
+            return `<div class="catalog-desc-item"><strong>${r.name.toUpperCase()}</strong> — ${desc}</div>`;
+        }).join('');
+
+        // Create or reuse viewer
         let viewer = document.getElementById('catalogViewer');
         if (!viewer) {
             viewer = document.createElement('div');
@@ -827,33 +868,72 @@
         }
 
         viewer.innerHTML = `
-            <button class="catalog-close" onclick="GradPage.closeCatalogViewer()" title="Закрити">&times;</button>
-            <div class="catalog-nav catalog-nav-prev">
-                <button onclick="GradPage.catalogNav(-1)" ${catalogViewerIndex === 0 ? 'disabled' : ''}>◀</button>
-            </div>
-            <div class="catalog-nav catalog-nav-next">
-                <button onclick="GradPage.catalogNav(1)" ${catalogViewerIndex === packages.length - 1 ? 'disabled' : ''}>▶</button>
-            </div>
-            <div class="catalog-page" id="catalogPage">
-                <div class="catalog-page-hero">
-                    ${getPackageImageHtml(pkg.slug, pkg.name, 'catalog-hero-img', pkg.imageUrl)}
+            <div class="catalog-viewer-topbar">
+                <div class="catalog-topbar-actions">
+                    <button onclick="GradPage.exportCatalog()">📤 Експорт</button>
+                    <button onclick="GradPage.printPackagePage(${catalogViewerIndex})">🖨️ Друк</button>
                 </div>
-                <h1 class="catalog-page-title">${pkg.name}</h1>
-                <div class="catalog-page-price">${formatPrice(totalPerChild)} <span>/дитина</span></div>
-                <div class="catalog-page-desc">${descHtml}</div>
-                <ul class="catalog-page-services">${servicesHtml}</ul>
-                <div class="catalog-page-duration">⏱ Загальна тривалість: ${formatDuration(totalDuration)}</div>
-                <button class="catalog-page-cta" onclick="GradPage.closeCatalogViewer();GradPage.selectPackage('${pkg.slug}')">Обрати цей пакет</button>
-                <div class="catalog-page-actions">
-                    <button class="grad-btn grad-btn-sm" onclick="GradPage.printPackagePage(${catalogViewerIndex})">🖨️ Друк сторінки</button>
+                <button class="catalog-nav-btn" onclick="GradPage.catalogNav(-1)" ${catalogViewerIndex === 0 ? 'disabled' : ''}>◀</button>
+                <span class="catalog-page-counter">${catalogViewerIndex + 1} / ${packages.length}</span>
+                <button class="catalog-nav-btn" onclick="GradPage.catalogNav(1)" ${catalogViewerIndex === packages.length - 1 ? 'disabled' : ''}>▶</button>
+                <button class="catalog-close-btn" onclick="GradPage.closeCatalogViewer()" title="Закрити">✕</button>
+            </div>
+            <div class="catalog-page-wrapper">
+                <div class="catalog-page-bg" id="catalogPage"
+                    style="--catalog-bg-1:${theme.bg1};--catalog-bg-2:${theme.bg2};--catalog-bg-3:${theme.bg3}">
+
+                    <!-- Hero -->
+                    <div class="catalog-hero">${heroHtml}</div>
+
+                    <!-- Info Card -->
+                    <div class="catalog-info-card">
+                        <div class="catalog-pkg-label">ВИПУСКНИЙ</div>
+                        <div class="catalog-pkg-title">${pkg.name.toUpperCase()}</div>
+                        <div class="catalog-info-row">
+                            <div class="catalog-info-item">
+                                <span class="catalog-info-icon">⏱</span>
+                                <span class="catalog-info-value">${formatDurationHours(totalDuration)}</span>
+                                <span class="catalog-info-unit">${totalDuration >= 120 ? 'ГОДИНИ' : totalDuration >= 60 ? 'ГОДИНА' : 'ХВ'}</span>
+                            </div>
+                            <div class="catalog-info-item">
+                                <span class="catalog-info-icon">👥</span>
+                                <span class="catalog-info-value">${minKids}-${maxKids}</span>
+                                <span class="catalog-info-unit">ДІТЕЙ</span>
+                            </div>
+                            <div class="catalog-info-item">
+                                <span class="catalog-info-icon">₴</span>
+                                <span class="catalog-info-value">${Math.round(totalPerChild)}</span>
+                                <span class="catalog-info-unit">/ДИТИНА</span>
+                            </div>
+                        </div>
+                        <div class="catalog-info-disclaimer">
+                            * В розважальному парку діти знаходяться увесь день. Це загальна тривалість заходів з нашими ведучими. В залежності від кількості учасників час може змінюватися.
+                        </div>
+                    </div>
+
+                    <!-- Services Card -->
+                    <div class="catalog-services-card" style="background:${theme.accentLight};border:2px solid ${theme.accent}40">
+                        <ul class="catalog-services-list">${servicesHtml}</ul>
+                    </div>
+
+                    <!-- Descriptions Card -->
+                    ${descsHtml ? `<div class="catalog-desc-card">${descsHtml}</div>` : ''}
                 </div>
             </div>
-            <div class="catalog-page-indicator">${catalogViewerIndex + 1} / ${packages.length}</div>`;
+
+            <div class="catalog-viewer-cta-bar">
+                <button class="catalog-cta-primary" onclick="GradPage.closeCatalogViewer();GradPage.selectPackage('${pkg.slug}')">
+                    Обрати цей пакет
+                </button>
+                <button class="catalog-cta-secondary" onclick="GradPage.shareCatalogPage(${catalogViewerIndex})">
+                    📤 Поділитись
+                </button>
+            </div>`;
 
         viewer.style.display = 'block';
         document.body.style.overflow = 'hidden';
 
-        // Touch swipe support
+        // Touch swipe
         const page = document.getElementById('catalogPage');
         page.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; }, { passive: true });
         page.addEventListener('touchend', (e) => {
@@ -889,6 +969,19 @@
         document.body.style.overflow = '';
     }
 
+    function shareCatalogPage(index) {
+        const pkg = packages[index];
+        if (!pkg) return;
+        const text = `Випускний "${pkg.name}" — ${formatPrice(calcPackageTotals(pkg).totalPerChild)}/дитина\nПарк Закревського`;
+        if (navigator.share) {
+            navigator.share({ title: `Випускний: ${pkg.name}`, text }).catch(() => {});
+        } else {
+            navigator.clipboard.writeText(text).then(() => {
+                if (window.showNotification) showNotification('Скопійовано!', 'success');
+            }).catch(() => {});
+        }
+    }
+
     function exportCatalog() {
         const token = localStorage.getItem('pzp_token');
         const url = (window.API_BASE || '') + '/api/graduation/catalog/export?token=' + encodeURIComponent(token);
@@ -899,7 +992,6 @@
         const token = localStorage.getItem('pzp_token');
         const pkg = packages[index];
         if (!pkg) return;
-        // Open export with hash to scroll to specific package
         const url = (window.API_BASE || '') + '/api/graduation/catalog/export?token=' + encodeURIComponent(token) + '#pkg-' + pkg.slug;
         window.open(url, '_blank');
     }
@@ -1609,6 +1701,7 @@
         closeCatalogViewer,
         catalogNav,
         exportCatalog,
-        printPackagePage
+        printPackagePage,
+        shareCatalogPage
     };
 })();

@@ -144,16 +144,17 @@
         const discount = getDiscount();
         const selected = services.filter(s => selectedServiceIds.has(s.id));
 
-        let totalPerChild = 0;
+        let perChildSum = 0;
+        let entryFlat = 0;
         let totalDuration = 0;
         let totalCost = 0;
 
         for (const svc of selected) {
             const price = getEffectivePrice(svc);
             if (svc.entryRule) {
-                totalPerChild += price * calcEntryCount(kids, svc.entryRule);
+                entryFlat += price * calcEntryCount(kids, svc.entryRule);
             } else {
-                totalPerChild += price;
+                perChildSum += price;
             }
             totalDuration += svc.durationMin || 0;
             if (svc.costType === 'mk_external') {
@@ -164,13 +165,15 @@
             }
         }
 
-        const totalAll = totalPerChild * kids * (1 - discount);
+        const grossTotal = perChildSum * kids + entryFlat;
+        const totalAll = grossTotal * (1 - discount);
+        const totalPerChild = kids > 0 ? Math.round(grossTotal / kids) : 0;
         const profit = totalAll - totalCost;
         const margin = totalAll > 0 ? (profit / totalAll * 100) : 0;
         const kickback = totalAll * getKickbackRate();
         const animators = calcAnimators(kids);
 
-        return { totalPerChild, totalAll, totalCost, profit, margin, kickback, totalDuration, kids, discount, animators };
+        return { totalPerChild, totalAll, totalCost, profit, margin, kickback, totalDuration, kids, discount, animators, entryFlat };
     }
 
     // === API ===
@@ -639,7 +642,7 @@
             </div>
             <div class="grad-service-price" style="color:${colors.text}">
                 ${formatPrice(price)}
-                <span class="grad-price-unit">/дит</span>
+                <span class="grad-price-unit">${isEntry ? '/вх' : '/дит'}</span>
             </div>
             <button class="grad-info-btn" onclick="event.preventDefault();event.stopPropagation();GradPage.showInfo(${svc.id})" title="Детальніше">i</button>
         </label>`;

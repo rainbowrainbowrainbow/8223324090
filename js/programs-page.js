@@ -23,8 +23,31 @@ function escapeHtml(str) {
 
 async function initPage() {
     initDarkMode();
+
+    // Detect embedded mode early — before any auth check
+    const isEmbeddedEarly = new URLSearchParams(window.location.search).get('embedded') === '1'
+        || window.self !== window.top;
+    if (isEmbeddedEarly) {
+        document.documentElement.classList.add('embed-mode');
+        document.body.classList.add('embed-mode');
+        const sidebar = document.getElementById('sidebarNav');
+        const header = document.querySelector('.header');
+        const loginOverlay = document.getElementById('loginOverlay');
+        if (sidebar) sidebar.style.display = 'none';
+        if (header) header.style.display = 'none';
+        if (loginOverlay) loginOverlay.style.display = 'none';
+        const main = document.querySelector('.page-container');
+        if (main) main.style.marginLeft = '0';
+    }
+
     const token = localStorage.getItem('pzp_token');
     if (!token) {
+        if (isEmbeddedEarly) {
+            // In embed mode, continue without auth — parent handles it
+            renderCategoryTabs();
+            await loadProducts();
+            return;
+        }
         document.getElementById('loginOverlay').classList.remove('hidden');
         document.getElementById('mainApp').style.display = 'none';
         return;
@@ -32,6 +55,12 @@ async function initPage() {
 
     const user = await apiVerifyToken();
     if (!user) {
+        if (isEmbeddedEarly) {
+            // In embed mode, continue without auth
+            renderCategoryTabs();
+            await loadProducts();
+            return;
+        }
         document.getElementById('loginOverlay').classList.remove('hidden');
         document.getElementById('mainApp').style.display = 'none';
         return;
@@ -41,17 +70,9 @@ async function initPage() {
     document.getElementById('currentUser').textContent = user.name;
 
     // v20.8.0: Embedded mode — read-only (no edit/delete/add)
-    const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === '1';
+    const isEmbedded = isEmbeddedEarly;
     if (isEmbedded) {
         AppState.embedded = true;
-        const sidebar = document.getElementById('sidebarNav');
-        const header = document.querySelector('.header');
-        const loginOverlay = document.getElementById('loginOverlay');
-        if (sidebar) sidebar.style.display = 'none';
-        if (header) header.style.display = 'none';
-        if (loginOverlay) loginOverlay.style.display = 'none';
-        const main = document.querySelector('.page-container');
-        if (main) main.style.marginLeft = '0';
     }
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];

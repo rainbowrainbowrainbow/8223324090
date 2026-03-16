@@ -16,6 +16,11 @@ function getAuthHeaders(withContentType = true) {
 // v5.0: Handle 401/403 — redirect to login
 function handleAuthError(response) {
     if (response.status === 401 || response.status === 403) {
+        // In embedded mode (iframe), never redirect — parent page handles auth
+        const isEmbedded = document.documentElement.classList.contains('embed-mode')
+            || (window.self !== window.top);
+        if (isEmbedded) return true;
+
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         localStorage.removeItem(CONFIG.STORAGE.SESSION);

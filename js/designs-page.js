@@ -30,6 +30,8 @@ let editTags = [];
 
     // v31.7: Embedded mode — hide chrome BEFORE auth to prevent blank page
     if (isEmbedded) {
+        document.documentElement.classList.add('embed-mode');
+        document.body.classList.add('embed-mode');
         const sidebar = document.getElementById('sidebarNav');
         const header = document.querySelector('.header');
         if (sidebar) sidebar.style.display = 'none';
@@ -143,8 +145,12 @@ function authHeaders(contentType = true) {
 async function apiFetch(url, options = {}) {
     const res = await fetch(url, { ...options, headers: { ...authHeaders(!options.body || typeof options.body === 'string'), ...options.headers } });
     if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem('pzp_token');
-        window.location.href = '/';
+        // In embedded mode, never redirect — parent page handles auth
+        const embedded = document.documentElement.classList.contains('embed-mode');
+        if (!embedded) {
+            localStorage.removeItem('pzp_token');
+            window.location.href = '/';
+        }
         return null;
     }
     return res;

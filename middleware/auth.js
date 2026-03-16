@@ -65,7 +65,7 @@ const PAGE_ACCESS = {
     '/settings':  ['creator', 'director'],
     '/demo':      MANAGER_UP,
     '/programs':  [...ADMIN_UP, 'senior_instructor'],
-    '/hr':        [...MANAGEMENT_UP, 'hr'],
+    '/hr':        [...MANAGER_UP, 'hr'],
     '/chat':      ALL_STAFF,
     '/finance':   ['creator', 'director', 'accountant'],
     '/analytics': MANAGER_UP,
@@ -81,10 +81,10 @@ const ACTION_PERMISSIONS = {
     view_all:        ADMIN_UP,
     view_own:        ['senior_instructor', 'instructor', 'animator', 'reception'],
     manage_users:    ['creator', 'director'],
-    view_revenue:    [...MANAGEMENT_UP, 'accountant'],
+    view_revenue:    [...MANAGER_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
-    export_data:     MANAGEMENT_UP,
-    manage_staff:    [...MANAGEMENT_UP, 'hr'],
+    export_data:     MANAGER_UP,
+    manage_staff:    [...MANAGER_UP, 'hr'],
 };
 
 function authenticateToken(req, res, next) {

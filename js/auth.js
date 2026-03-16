@@ -114,11 +114,11 @@ const PAGE_ACCESS = {
     '/settings':  ['creator', 'director'],
     '/demo':      _MANAGER_UP,
     '/programs':  [..._ADMIN_UP, 'senior_instructor'],
-    '/hr':        [..._MANAGEMENT_UP, 'hr'],
+    '/hr':        [..._MANAGER_UP, 'hr'],
     '/finance':   ['creator', 'director', 'accountant'],
     '/analytics': _MANAGER_UP,
     '/status':    _MANAGER_UP,
-    '/omni':      _MANAGEMENT_UP,
+    '/omni':      _MANAGER_UP,
 };
 
 const ACTION_PERMISSIONS = {
@@ -127,9 +127,9 @@ const ACTION_PERMISSIONS = {
     cancel_booking:  _MANAGER_UP,
     delete_booking:  ['creator', 'director'],
     manage_users:    ['creator', 'director'],
-    view_revenue:    [..._MANAGEMENT_UP, 'accountant'],
+    view_revenue:    [..._MANAGER_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
-    export_data:     _MANAGEMENT_UP,
+    export_data:     _MANAGER_UP,
 };
 
 function getUserRole() {

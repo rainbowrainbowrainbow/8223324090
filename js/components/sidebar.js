@@ -90,14 +90,14 @@ const Sidebar = (() => {
 
         hr: [
             'creator', 'director', 'vice_director',
-            'senior_manager',
+            'senior_manager', 'manager',
             'hr'
         ],
 
         finance: [
             'creator', 'director', 'vice_director',
             'accountant',
-            'senior_manager'
+            'senior_manager', 'manager'
         ],
 
         analytics: [

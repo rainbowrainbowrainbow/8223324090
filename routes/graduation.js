@@ -252,6 +252,7 @@ router.get('/packages', async (req, res) => {
                 name: p.name,
                 slug: p.slug,
                 description: p.description || '',
+                imageUrl: p.image_url || null,
                 sortOrder: p.sort_order,
                 services,
                 totalPerChild,
@@ -288,6 +289,8 @@ router.get('/packages/:slug', async (req, res) => {
             id: pkg.rows[0].id,
             name: pkg.rows[0].name,
             slug: pkg.rows[0].slug,
+            description: pkg.rows[0].description || '',
+            imageUrl: pkg.rows[0].image_url || null,
             services: items.rows.map(r => ({
                 ...mapServiceRow(r),
                 overridePrice: r.override_price
@@ -848,7 +851,7 @@ router.get('/catalog/export', (req, res, next) => {
                 descHtml += `<p class="pkg-outro">${outroLine}</p>`;
             }
 
-            const imgPath = `/images/catalogs/graduation/${p.slug}.png`;
+            const imgPath = p.image_url || `/images/catalogs/graduation/${p.slug}.png`;
 
             return `
     <div class="page package-page">

@@ -671,10 +671,11 @@
         'neon-party': '#EC4899'
     };
 
-    function getPackageImageHtml(slug, name, cssClass) {
+    function getPackageImageHtml(slug, name, cssClass, imageUrl) {
         const gradient = PACKAGE_GRADIENTS[slug] || 'linear-gradient(135deg, #C9A84C, #B8942F)';
         const fallback = `<div class="${cssClass}-fallback" style="background:${gradient}"><span>${name}</span></div>`;
-        return `<img class="${cssClass}" src="images/catalogs/graduation/${slug}.png" alt="${name}"
+        const src = imageUrl || `images/catalogs/graduation/${slug}.png`;
+        return `<img class="${cssClass}" src="${src}" alt="${name}"
             onerror="this.parentElement.innerHTML='${fallback.replace(/'/g, "\\'")}'">`;
     }
 
@@ -725,7 +726,7 @@
             html += `
             <div class="grad-package-card" style="border-top:3px solid ${borderColor}" onclick="GradPage.openCatalogViewer(${packages.indexOf(pkg)})" role="button" tabindex="0">
                 <div class="grad-pkg-image-wrap">
-                    ${getPackageImageHtml(pkg.slug, pkg.name, 'grad-pkg-thumb')}
+                    ${getPackageImageHtml(pkg.slug, pkg.name, 'grad-pkg-thumb', pkg.imageUrl)}
                 </div>
                 <div class="grad-package-header">
                     <div class="grad-package-name">${pkg.name}</div>
@@ -835,7 +836,7 @@
             </div>
             <div class="catalog-page" id="catalogPage">
                 <div class="catalog-page-hero">
-                    ${getPackageImageHtml(pkg.slug, pkg.name, 'catalog-hero-img')}
+                    ${getPackageImageHtml(pkg.slug, pkg.name, 'catalog-hero-img', pkg.imageUrl)}
                 </div>
                 <h1 class="catalog-page-title">${pkg.name}</h1>
                 <div class="catalog-page-price">${formatPrice(totalPerChild)} <span>/дитина</span></div>
@@ -1530,8 +1531,8 @@
         const h = Math.floor(min / 60);
         const m = min % 60;
         if (h === 0) return `${m} хв`;
-        if (m === 0) return `${h} год`;
-        return `${h} год ${m} хв`;
+        if (m === 0) return `~${h} год`;
+        return `~${h} год ${m} хв`;
     }
 
     function showNotification(msg, type) {

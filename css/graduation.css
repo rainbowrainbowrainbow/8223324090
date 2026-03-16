@@ -1445,3 +1445,111 @@ body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }
     .catalog-svc-item { font-size: 13px; gap: 8px; padding: 10px 0; }
     .catalog-page-cta { font-size: 16px; padding: 14px; }
 }
+
+/* === PRINT === */
+@media print {
+    @page {
+        margin: 10mm;
+        size: A4 portrait;
+    }
+
+    /* Each package = exactly 1 A4 page */
+    .catalog-page,
+    .grad-package-detail {
+        page-break-inside: avoid !important;
+        page-break-after: always !important;
+        max-height: 277mm;
+        overflow: hidden;
+    }
+
+    /* Compact image height for print */
+    .catalog-page-hero img,
+    .catalog-hero-img,
+    .grad-package-hero,
+    .grad-pkg-thumb {
+        max-height: 35vh !important;
+        object-fit: cover;
+    }
+
+    /* Compact text for print */
+    .catalog-page-desc,
+    .grad-package-desc {
+        font-size: 12px !important;
+        line-height: 1.4 !important;
+    }
+    .catalog-page-services li,
+    .catalog-svc-item {
+        padding: 4px 0 !important;
+        font-size: 12px !important;
+    }
+    .catalog-bullet {
+        padding: 4px 8px !important;
+        font-size: 11px !important;
+    }
+
+    /* Hide UI elements */
+    .grad-tabs,
+    .sidebar-nav,
+    .header,
+    .catalog-nav,
+    .catalog-close,
+    .catalog-page-cta,
+    .catalog-page-actions,
+    .catalog-page-indicator,
+    .grad-btn,
+    .grad-packages-kids-row,
+    .grad-compare-check,
+    .grad-pkg-actions,
+    .grad-fab,
+    button:not(.no-print-hide) {
+        display: none !important;
+    }
+
+    /* White background for print */
+    body,
+    .catalog-viewer,
+    .catalog-page,
+    .grad-package-detail {
+        background: white !important;
+        color: #1a1a1a !important;
+    }
+
+    /* Catalog viewer: remove overlay styles */
+    .catalog-viewer {
+        position: static !important;
+        overflow: visible !important;
+    }
+
+    /* Price — green for print */
+    .catalog-page-price,
+    .grad-package-price,
+    .grad-pkg-price-main,
+    .catalog-svc-price {
+        color: #10B981 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Gold title */
+    .catalog-page-title {
+        -webkit-text-fill-color: #C9A84C !important;
+        color: #C9A84C !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Duration badge */
+    .catalog-page-duration {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Description text */
+    .catalog-page-intro,
+    .catalog-page-outro,
+    .catalog-page-section-title {
+        color: #333 !important;
+    }
+    .catalog-bullet-name { color: #1a1a1a !important; }
+    .catalog-bullet-desc { color: #444 !important; }
+}

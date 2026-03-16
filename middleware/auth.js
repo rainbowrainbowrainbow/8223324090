@@ -55,11 +55,12 @@ const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY,  // Everyone
     '/':          ALL_STAFF,
     '/tasks':     ALL_STAFF,
-    '/center':    MANAGEMENT_UP,
-    '/art':       [...MANAGEMENT_UP, 'art_director'],
+    '/center':    MANAGER_UP,
+    '/art':       [...MANAGER_UP, 'art_director', 'marketer'],
+    '/graduation': [...MANAGER_UP, 'admin', 'art_director', 'marketer'],
     '/customers': [...ADMIN_UP, 'reception'],
-    '/staff':     [...MANAGEMENT_UP, 'hr'],
-    '/warehouse': [...MANAGEMENT_UP, 'admin'],
+    '/staff':     [...MANAGER_UP, 'hr'],
+    '/warehouse': [...MANAGER_UP, 'admin'],
     '/training':  [...MANAGER_UP, 'senior_instructor', 'instructor'],
     '/settings':  ['creator', 'director'],
     '/demo':      MANAGER_UP,
@@ -67,8 +68,8 @@ const PAGE_ACCESS = {
     '/hr':        [...MANAGEMENT_UP, 'hr'],
     '/chat':      ALL_STAFF,
     '/finance':   ['creator', 'director', 'accountant'],
-    '/analytics': MANAGEMENT_UP,
-    '/status':    MANAGEMENT_UP,
+    '/analytics': MANAGER_UP,
+    '/status':    MANAGER_UP,
 };
 
 // v22.0.0: Action permissions matrix for timeline

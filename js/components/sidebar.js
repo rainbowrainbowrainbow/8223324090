@@ -31,9 +31,10 @@ const Sidebar = (() => {
         // BLOCK 3: Product / Creative
         { type: 'divider' },
         { type: 'section', label: 'Продукт' },
-        { href: '/programs',  icon: '🎪', label: 'Програми',    access: 'programs' },
-        { href: '/center',    icon: '💲', label: 'Центр цін',   access: 'center' },
-        { href: '/art',       icon: '🎨', label: 'Арт',         access: 'art' },
+        { href: '/programs',    icon: '🎪', label: 'Програми',    access: 'programs' },
+        { href: '/graduation',  icon: '🎓', label: 'Випускний',   access: 'graduation' },
+        { href: '/center',      icon: '💲', label: 'Центр цін',   access: 'center' },
+        { href: '/art',         icon: '🎨', label: 'Арт',         access: 'art' },
 
         // BLOCK 4: System
         { type: 'divider' },
@@ -121,9 +122,16 @@ const Sidebar = (() => {
             'accountant'
         ],
 
+        graduation: [
+            'creator', 'director', 'vice_director',
+            'senior_manager', 'manager',
+            'admin',
+            'art_director', 'marketer'
+        ],
+
         art: [
             'creator', 'director', 'vice_director',
-            'senior_manager',
+            'senior_manager', 'manager',
             'art_director', 'marketer'
         ],
 

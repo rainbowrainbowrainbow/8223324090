@@ -533,21 +533,64 @@
 
         /* Print styles for catalog */
         @media print {
-            .catalog-viewer { position: static; background: #fff; }
-            .catalog-viewer-nav, .catalog-page-footer,
-            .catalog-actions, .header, .design-tabs, .sidebar-nav,
-            .user-panel, .notification, .skip-link, .page-login-overlay { display: none !important; }
-            body { background: #fff !important; }
-            .catalog-pages-container { overflow: visible; padding: 0; }
+            @page { margin: 8mm; }
+            /* Hide everything except catalog viewer */
+            body { background: #fff !important; margin: 0 !important; }
+            .header, .sidebar-nav, .design-tabs, .user-panel, .notification,
+            .skip-link, .page-login-overlay, .kleshnya-widget,
+            .catalog-viewer-nav, .catalog-page-footer, .catalog-actions,
+            .catalog-list, .design-filters, .tag-chips, .drop-zone,
+            .lightbox, .design-edit-overlay { display: none !important; }
+            body.printing-catalog .catalog-viewer {
+                position: static !important; display: block !important;
+                background: transparent !important;
+                width: 100% !important; height: auto !important;
+                overflow: visible !important;
+            }
+            .catalog-pages-container {
+                overflow: visible !important; padding: 0 !important;
+                display: block !important;
+            }
             .catalog-page-mosaic {
-                page-break-after: always; max-width: none;
-                box-shadow: none; border-radius: 0;
-                print-color-adjust: exact; -webkit-print-color-adjust: exact;
+                page-break-after: always; max-width: 100% !important;
+                width: 100% !important;
+                border-radius: 0 !important;
+                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
             }
             .catalog-page-mosaic:last-child { page-break-after: auto; }
-            .catalog-mosaic-bg { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-            .catalog-info-section { background: #fff !important; }
+            .catalog-mosaic-bg {
+                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+            .catalog-mosaic-content { padding: 20px !important; }
+            .catalog-info-section {
+                background: rgba(255,255,255,0.9) !important;
+                backdrop-filter: none !important;
+                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
+            }
+            .catalog-pkg-badge {
+                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
+            }
             .catalog-pkg-name { color: #1a1a1a !important; }
+            .catalog-hero-section { box-shadow: none !important; }
+            .catalog-services-block {
+                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
+            }
+            /* Hide main content wrapper, show only viewer */
+            .main-content, main { overflow: visible !important; }
+            #tabCatalogs { display: block !important; overflow: visible !important; }
+        }
+
+        /* When printing catalog — hide ALL non-catalog content */
+        @media print {
+            body.printing-catalog .page-container > *:not(#tabCatalogs),
+            body.printing-catalog #tabCatalogs > *:not(#catalogViewer) {
+                display: none !important;
+            }
+            body.printing-catalog .page-container {
+                margin: 0 !important; padding: 0 !important;
+            }
         }
 
         /* Print styles for price list */

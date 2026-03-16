@@ -1078,12 +1078,14 @@ function doPrintCatalog() {
     const viewer = document.getElementById('catalogViewer');
     viewer.style.display = 'flex';
     document.body.style.overflow = 'hidden';
+    document.body.classList.add('printing-catalog');
 
     const container = document.getElementById('catalogPages');
     container.innerHTML = catalogPackages.map(pkg => buildCatalogPageHtml(pkg)).join('');
 
     setTimeout(() => {
         window.print();
+        document.body.classList.remove('printing-catalog');
         closeCatalog();
     }, 300);
 }
@@ -1145,13 +1147,20 @@ function printCatalogPage(catalogId, slug) {
     const pkg = catalogPackages.find(p => p.slug === slug);
     if (!pkg) return;
 
+    const viewer = document.getElementById('catalogViewer');
     const container = document.getElementById('catalogPages');
     const prevHtml = container.innerHTML;
+    const wasHidden = viewer.style.display === 'none';
+
     container.innerHTML = buildCatalogPageHtml(pkg);
+    if (wasHidden) viewer.style.display = 'flex';
+    document.body.classList.add('printing-catalog');
 
     setTimeout(() => {
         window.print();
+        document.body.classList.remove('printing-catalog');
         container.innerHTML = prevHtml;
+        if (wasHidden) viewer.style.display = 'none';
     }, 300);
 }
 

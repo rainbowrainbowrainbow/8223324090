@@ -32,7 +32,8 @@
         .embed-mode .sidebar-overlay,
         .embed-mode .skip-link,
         .embed-mode .page-login-overlay { display: none !important; }
-        .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
+        .embed-mode .page-container,
+        .embed-mode #main-content { margin-left: 0 !important; padding: 16px !important; }
     </style>
 </head>
 <body>
@@ -100,13 +101,18 @@
     <script src="js/graduation.js?v=31.1.0"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const isEmbedded = new URLSearchParams(location.search).get('embedded') === '1';
+            const isEmbedded = new URLSearchParams(location.search).get('embedded') === '1'
+                || window.self !== window.top;
             if (isEmbedded) {
-                // Hide sidebar, header, and don't load role-panel (parent page already has it)
+                document.documentElement.classList.add('embed-mode');
+                document.body.classList.add('embed-mode');
+                // Hide sidebar, header, login overlay
                 const sidebar = document.querySelector('.sidebar-nav');
                 const header = document.querySelector('.header');
+                const loginOverlay = document.getElementById('loginOverlay');
                 if (sidebar) sidebar.style.display = 'none';
                 if (header) header.style.display = 'none';
+                if (loginOverlay) loginOverlay.style.display = 'none';
                 const main = document.getElementById('main-content');
                 if (main) main.style.marginLeft = '0';
             } else {

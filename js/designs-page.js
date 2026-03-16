@@ -861,6 +861,61 @@ const CATALOG_ICONS = {
     'handmade-party': '🎨', 'pizza-party': '🍕', 'squid-game': '🦑', 'neon-party': '✨'
 };
 
+// Package color themes for geometric mosaic backgrounds
+const CATALOG_THEMES = {
+    'best-dj': {
+        bg1: '#e8d0f0', bg2: '#d4b8e8', bg3: '#c0a0d8',
+        accent: '#9333ea', accentLight: 'rgba(147,51,234,0.15)',
+        heroGradient: 'linear-gradient(135deg, #8e24aa, #e040fb)',
+        priceColor: '#a855f7'
+    },
+    'super-party': {
+        bg1: '#f0e0c0', bg2: '#e8d4a8', bg3: '#d8c490',
+        accent: '#C9A84C', accentLight: 'rgba(201,168,76,0.15)',
+        heroGradient: 'linear-gradient(135deg, #C9A84C, #e8c84c)',
+        priceColor: '#C9A84C'
+    },
+    'science-party': {
+        bg1: '#c8d8f0', bg2: '#b0c8e8', bg3: '#98b8d8',
+        accent: '#3B82F6', accentLight: 'rgba(59,130,246,0.15)',
+        heroGradient: 'linear-gradient(135deg, #3B82F6, #60a5fa)',
+        priceColor: '#3B82F6'
+    },
+    'handmade-party': {
+        bg1: '#b8e8d0', bg2: '#a0d8c0', bg3: '#88c8b0',
+        accent: '#10B981', accentLight: 'rgba(16,185,129,0.15)',
+        heroGradient: 'linear-gradient(135deg, #059669, #34d399)',
+        priceColor: '#10B981'
+    },
+    'pizza-party': {
+        bg1: '#f0e8c0', bg2: '#e8dca0', bg3: '#dcd088',
+        accent: '#f59e0b', accentLight: 'rgba(245,158,11,0.15)',
+        heroGradient: 'linear-gradient(135deg, #d97706, #fbbf24)',
+        priceColor: '#f59e0b'
+    },
+    'squid-game': {
+        bg1: '#f0c8c8', bg2: '#e8b0b0', bg3: '#d89898',
+        accent: '#ef4444', accentLight: 'rgba(239,68,68,0.15)',
+        heroGradient: 'linear-gradient(135deg, #dc2626, #f87171)',
+        priceColor: '#ef4444'
+    },
+    'neon-party': {
+        bg1: '#e8c0e0', bg2: '#d8a8d0', bg3: '#c890c0',
+        accent: '#ec4899', accentLight: 'rgba(236,72,153,0.15)',
+        heroGradient: 'linear-gradient(135deg, #db2777, #f472b6)',
+        priceColor: '#ec4899'
+    }
+};
+
+function catalogFormatDuration(min) {
+    if (!min) return '0 хв';
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (h === 0) return `${m} хв`;
+    if (m === 0) return `${h} год`;
+    return `${h} год ${m} хв`;
+}
+
 const SERVICE_ICONS = {
     'Вхід': '🎟️', 'Паперова дискотека': '🎵', 'Аквагрим': '🎨',
     'Капсула часу': '📦', 'Видача дипломів та вітання класу на сцені': '🎓',
@@ -919,9 +974,9 @@ function renderCurrentPage() {
     const container = document.getElementById('catalogPages');
     const icon = CATALOG_ICONS[pkg.slug] || '🎉';
     const desc = CATALOG_DESCRIPTIONS[pkg.slug] || '';
+    const theme = CATALOG_THEMES[pkg.slug] || CATALOG_THEMES['super-party'];
     const totalPrice = pkg.totalPerChild || pkg.services.reduce((s, svc) => s + (svc.pricePerChild || 0), 0);
     const totalDuration = pkg.totalDuration || pkg.services.reduce((s, svc) => s + (svc.durationMin || 0), 0);
-    const hours = Math.round(totalDuration / 60 * 10) / 10;
 
     const imgPath = `images/catalogs/graduation/${pkg.slug}.png`;
 
@@ -932,29 +987,51 @@ function renderCurrentPage() {
     }).join('');
 
     container.innerHTML = `
-        <div class="catalog-page" data-package="${pkg.slug}">
-            <div class="catalog-page-image">
-                <img src="${imgPath}" alt="${esc(pkg.name)}"
-                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-                <div class="catalog-img-placeholder" style="display:none;">${icon}</div>
+        <div class="catalog-page-mosaic" data-package="${pkg.slug}"
+             style="--theme-bg1:${theme.bg1};--theme-bg2:${theme.bg2};--theme-bg3:${theme.bg3};--theme-accent:${theme.accent};--theme-price:${theme.priceColor}">
+            <div class="catalog-mosaic-bg"></div>
+            <div class="catalog-mosaic-content">
+                <!-- Hero section -->
+                <div class="catalog-hero-section">
+                    <img class="catalog-hero-photo" src="${imgPath}" alt="${esc(pkg.name)}"
+                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                    <div class="catalog-hero-gradient" style="background:${theme.heroGradient};display:none">
+                        <span class="catalog-hero-icon">${icon}</span>
+                    </div>
+                </div>
+
+                <!-- Info card -->
+                <div class="catalog-info-section">
+                    <div class="catalog-pkg-badge" style="background:${theme.accentLight};color:${theme.accent}">ВИПУСКНИЙ</div>
+                    <h2 class="catalog-pkg-name">${esc(pkg.name)}</h2>
+
+                    <div class="catalog-stats-row">
+                        <div class="catalog-stat">
+                            <span class="catalog-stat-icon">⏱</span>
+                            <span class="catalog-stat-val">${catalogFormatDuration(totalDuration)}</span>
+                        </div>
+                        <div class="catalog-stat">
+                            <span class="catalog-stat-icon">👥</span>
+                            <span class="catalog-stat-val">${pkg.minKids || 7}–${pkg.maxKids || 50} дітей</span>
+                        </div>
+                        <div class="catalog-stat catalog-stat-price">
+                            <span class="catalog-stat-val" style="color:${theme.priceColor};font-size:32px">${totalPrice.toLocaleString('uk-UA')} ₴</span>
+                            <span class="catalog-stat-unit">за дитину</span>
+                        </div>
+                    </div>
+
+                    <p class="catalog-pkg-desc">${esc(desc)}</p>
+
+                    <!-- Services grid -->
+                    <div class="catalog-services-block" style="border-color:${theme.accent}40">
+                        <h4 style="color:${theme.accent}">Що входить:</h4>
+                        <ul class="catalog-svc-list">${servicesHtml}</ul>
+                    </div>
+                </div>
             </div>
-            <div class="catalog-page-content">
-                <h2 class="catalog-package-name">${icon} ${esc(pkg.name)}</h2>
-                <div class="catalog-package-price">
-                    <span class="price-value">${totalPrice.toLocaleString('uk-UA')}</span> ₴/дитина
-                </div>
-                <div class="catalog-package-description">${esc(desc)}</div>
-                <div class="catalog-package-includes">
-                    <h4>Що входить:</h4>
-                    <ul>${servicesHtml}</ul>
-                </div>
-                <div class="catalog-package-duration">
-                    ⏱️ Загальна тривалість: ~${hours} год (${totalDuration} хв)
-                </div>
-                <div class="catalog-page-actions">
-                    <button onclick="printCatalogPage('graduation', '${pkg.slug}')">🖨️ Друк сторінки</button>
-                    <button onclick="shareCatalogPage('graduation', '${pkg.slug}')">📤 Поділитись</button>
-                </div>
+            <div class="catalog-page-footer">
+                <button onclick="printCatalogPage('graduation', '${pkg.slug}')">🖨️ Друк</button>
+                <button onclick="shareCatalogPage('graduation', '${pkg.slug}')">📤 Поділитись</button>
             </div>
         </div>
     `;
@@ -998,49 +1075,12 @@ function printCatalog(catalogId) {
 }
 
 function doPrintCatalog() {
-    // Open viewer with all pages and trigger print
     const viewer = document.getElementById('catalogViewer');
     viewer.style.display = 'flex';
     document.body.style.overflow = 'hidden';
 
     const container = document.getElementById('catalogPages');
-    container.innerHTML = catalogPackages.map(pkg => {
-        const icon = CATALOG_ICONS[pkg.slug] || '🎉';
-        const desc = CATALOG_DESCRIPTIONS[pkg.slug] || '';
-        const totalPrice = pkg.totalPerChild || 0;
-        const totalDuration = pkg.totalDuration || 0;
-        const hours = Math.round(totalDuration / 60 * 10) / 10;
-        const imgPath = `images/catalogs/graduation/${pkg.slug}.png`;
-        const servicesHtml = pkg.services.map(svc => {
-            const svcIcon = SERVICE_ICONS[svc.serviceName] || '•';
-            const dur = svc.durationMin ? ` — ${svc.durationMin} хв` : '';
-            return `<li>${svcIcon} ${esc(svc.serviceName)}${dur}</li>`;
-        }).join('');
-
-        return `
-            <div class="catalog-page" data-package="${pkg.slug}">
-                <div class="catalog-page-image">
-                    <img src="${imgPath}" alt="${esc(pkg.name)}"
-                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-                    <div class="catalog-img-placeholder" style="display:none;">${icon}</div>
-                </div>
-                <div class="catalog-page-content">
-                    <h2 class="catalog-package-name">${icon} ${esc(pkg.name)}</h2>
-                    <div class="catalog-package-price">
-                        <span class="price-value">${totalPrice.toLocaleString('uk-UA')}</span> ₴/дитина
-                    </div>
-                    <div class="catalog-package-description">${esc(desc)}</div>
-                    <div class="catalog-package-includes">
-                        <h4>Що входить:</h4>
-                        <ul>${servicesHtml}</ul>
-                    </div>
-                    <div class="catalog-package-duration">
-                        ⏱️ Загальна тривалість: ~${hours} год (${totalDuration} хв)
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
+    container.innerHTML = catalogPackages.map(pkg => buildCatalogPageHtml(pkg)).join('');
 
     setTimeout(() => {
         window.print();
@@ -1048,16 +1088,12 @@ function doPrintCatalog() {
     }, 300);
 }
 
-function printCatalogPage(catalogId, slug) {
-    const pkg = catalogPackages.find(p => p.slug === slug);
-    if (!pkg) return;
-
-    const container = document.getElementById('catalogPages');
+function buildCatalogPageHtml(pkg) {
     const icon = CATALOG_ICONS[pkg.slug] || '🎉';
     const desc = CATALOG_DESCRIPTIONS[pkg.slug] || '';
+    const theme = CATALOG_THEMES[pkg.slug] || CATALOG_THEMES['super-party'];
     const totalPrice = pkg.totalPerChild || 0;
     const totalDuration = pkg.totalDuration || 0;
-    const hours = Math.round(totalDuration / 60 * 10) / 10;
     const imgPath = `images/catalogs/graduation/${pkg.slug}.png`;
     const servicesHtml = pkg.services.map(svc => {
         const svcIcon = SERVICE_ICONS[svc.serviceName] || '•';
@@ -1065,31 +1101,53 @@ function printCatalogPage(catalogId, slug) {
         return `<li>${svcIcon} ${esc(svc.serviceName)}${dur}</li>`;
     }).join('');
 
-    // Temporarily show only this page
-    const prevHtml = container.innerHTML;
-    container.innerHTML = `
-        <div class="catalog-page" data-package="${pkg.slug}">
-            <div class="catalog-page-image">
-                <img src="${imgPath}" alt="${esc(pkg.name)}"
-                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-                <div class="catalog-img-placeholder" style="display:none;">${icon}</div>
-            </div>
-            <div class="catalog-page-content">
-                <h2 class="catalog-package-name">${icon} ${esc(pkg.name)}</h2>
-                <div class="catalog-package-price">
-                    <span class="price-value">${totalPrice.toLocaleString('uk-UA')}</span> ₴/дитина
+    return `
+        <div class="catalog-page-mosaic" data-package="${pkg.slug}"
+             style="--theme-bg1:${theme.bg1};--theme-bg2:${theme.bg2};--theme-bg3:${theme.bg3};--theme-accent:${theme.accent};--theme-price:${theme.priceColor}">
+            <div class="catalog-mosaic-bg"></div>
+            <div class="catalog-mosaic-content">
+                <div class="catalog-hero-section">
+                    <img class="catalog-hero-photo" src="${imgPath}" alt="${esc(pkg.name)}"
+                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                    <div class="catalog-hero-gradient" style="background:${theme.heroGradient};display:none">
+                        <span class="catalog-hero-icon">${icon}</span>
+                    </div>
                 </div>
-                <div class="catalog-package-description">${esc(desc)}</div>
-                <div class="catalog-package-includes">
-                    <h4>Що входить:</h4>
-                    <ul>${servicesHtml}</ul>
-                </div>
-                <div class="catalog-package-duration">
-                    ⏱️ Загальна тривалість: ~${hours} год (${totalDuration} хв)
+                <div class="catalog-info-section">
+                    <div class="catalog-pkg-badge" style="background:${theme.accentLight};color:${theme.accent}">ВИПУСКНИЙ</div>
+                    <h2 class="catalog-pkg-name">${esc(pkg.name)}</h2>
+                    <div class="catalog-stats-row">
+                        <div class="catalog-stat">
+                            <span class="catalog-stat-icon">⏱</span>
+                            <span class="catalog-stat-val">${catalogFormatDuration(totalDuration)}</span>
+                        </div>
+                        <div class="catalog-stat">
+                            <span class="catalog-stat-icon">👥</span>
+                            <span class="catalog-stat-val">${pkg.minKids || 7}–${pkg.maxKids || 50} дітей</span>
+                        </div>
+                        <div class="catalog-stat catalog-stat-price">
+                            <span class="catalog-stat-val" style="color:${theme.priceColor};font-size:32px">${totalPrice.toLocaleString('uk-UA')} ₴</span>
+                            <span class="catalog-stat-unit">за дитину</span>
+                        </div>
+                    </div>
+                    <p class="catalog-pkg-desc">${esc(desc)}</p>
+                    <div class="catalog-services-block" style="border-color:${theme.accent}40">
+                        <h4 style="color:${theme.accent}">Що входить:</h4>
+                        <ul class="catalog-svc-list">${servicesHtml}</ul>
+                    </div>
                 </div>
             </div>
         </div>
     `;
+}
+
+function printCatalogPage(catalogId, slug) {
+    const pkg = catalogPackages.find(p => p.slug === slug);
+    if (!pkg) return;
+
+    const container = document.getElementById('catalogPages');
+    const prevHtml = container.innerHTML;
+    container.innerHTML = buildCatalogPageHtml(pkg);
 
     setTimeout(() => {
         window.print();
@@ -1104,7 +1162,7 @@ async function shareCatalog(catalogId) {
 
 async function shareCatalogPage(catalogId, slug) {
     // Try to capture page as image using canvas if available
-    const page = document.querySelector(`.catalog-page[data-package="${slug}"]`);
+    const page = document.querySelector(`.catalog-page-mosaic[data-package="${slug}"]`);
     if (!page) return;
 
     if (navigator.share) {

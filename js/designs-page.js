@@ -992,93 +992,7 @@ function renderCatalogViewer() {
 function renderCurrentPage() {
     const pkg = catalogPackages[currentCatalogPage];
     if (!pkg) return;
-
-    const container = document.getElementById('catalogPages');
-    const icon = CATALOG_ICONS[pkg.slug] || '🎉';
-    const desc = CATALOG_DESCRIPTIONS[pkg.slug] || '';
-    const theme = CATALOG_THEMES[pkg.slug] || CATALOG_THEMES['super-party'];
-    const totalPrice = pkg.totalPerChild || pkg.services.reduce((s, svc) => s + (svc.pricePerChild || 0), 0);
-    const totalDuration = pkg.totalDuration || pkg.services.reduce((s, svc) => s + (svc.durationMin || 0), 0);
-
-    // Services list HTML — centered, uppercase, like original catalog
-    const servicesHtml = pkg.services.map(svc => {
-        const svcIcon = SERVICE_ICONS[svc.serviceName] || '•';
-        return `<li><span class="svc-icon">${svcIcon}</span> <span class="svc-name">${esc(svc.serviceName)}</span></li>`;
-    }).join('');
-
-    // Service descriptions — detailed blocks like old catalog
-    const descBlocksHtml = pkg.services
-        .filter(svc => SERVICE_DESCRIPTIONS[svc.serviceName])
-        .map(svc => {
-            const svcDesc = SERVICE_DESCRIPTIONS[svc.serviceName];
-            return `<div class="catalog-desc-block">
-                <h4 class="catalog-desc-block-title">${esc(svc.serviceName)}</h4>
-                <p class="catalog-desc-block-text">${esc(svcDesc)}</p>
-            </div>`;
-        }).join('');
-
-    // Format duration for stats
-    const durationHours = Math.round(totalDuration / 60 * 10) / 10;
-    const durationDisplay = durationHours >= 1 ? durationHours : totalDuration;
-    const durationUnit = durationHours >= 1 ? (durationHours === 1 ? 'ГОДИНА' : 'ГОДИНИ') : 'ХВИЛИН';
-
-    container.innerHTML = `
-        <div class="catalog-page-mosaic" data-package="${pkg.slug}"
-             style="--theme-bg1:${theme.bg1};--theme-bg2:${theme.bg2};--theme-bg3:${theme.bg3};--theme-accent:${theme.accent};--theme-price:${theme.priceColor}">
-            <div class="catalog-mosaic-bg"></div>
-            <div class="catalog-mosaic-content">
-
-                <!-- Bold Hero Banner -->
-                <div class="catalog-hero-banner">
-                    <div class="catalog-hero-inner">
-                        <span class="catalog-hero-icon-large">${icon}</span>
-                        <div class="catalog-hero-type">ВИПУСКНИЙ</div>
-                        <h1 class="catalog-hero-title">${esc(pkg.name)}</h1>
-                    </div>
-                </div>
-
-                <!-- Stats Bar -->
-                <div class="catalog-stats-bar">
-                    <div class="catalog-stat-box">
-                        <span class="catalog-stat-box-icon">🕐</span>
-                        <span class="catalog-stat-box-val">${durationDisplay}</span>
-                        <span class="catalog-stat-box-label">${durationUnit}</span>
-                    </div>
-                    <div class="catalog-stat-box">
-                        <span class="catalog-stat-box-icon">👥</span>
-                        <span class="catalog-stat-box-val">${pkg.minKids || 7} - ${pkg.maxKids || 50}</span>
-                        <span class="catalog-stat-box-label">ДІТЕЙ</span>
-                    </div>
-                    <div class="catalog-stat-box catalog-stat-box-price">
-                        <span class="catalog-stat-box-icon">₴</span>
-                        <span class="catalog-stat-box-val">${totalPrice.toLocaleString('uk-UA')}</span>
-                        <span class="catalog-stat-box-label">ЗА ДИТИНУ</span>
-                    </div>
-                </div>
-
-                <!-- Disclaimer -->
-                <div class="catalog-disclaimer">
-                    * В розважальному парку діти знаходяться увесь день. Це загальна тривалість заходів з нашими ведучими, в залежності від кількості учасників, час може змінюватися.
-                </div>
-
-                <!-- Services Card -->
-                <div class="catalog-services-card">
-                    <div class="catalog-services-header">Що входить</div>
-                    <ul class="catalog-svc-list">${servicesHtml}</ul>
-                </div>
-
-                <!-- Service Descriptions -->
-                ${descBlocksHtml ? `<div class="catalog-desc-section">${descBlocksHtml}</div>` : ''}
-
-            </div>
-
-            <div class="catalog-page-footer">
-                <button onclick="printCatalogPage('graduation', '${pkg.slug}')">🖨️ Друк сторінки</button>
-                <button onclick="shareCatalogPage('graduation', '${pkg.slug}')">📤 Поділитись</button>
-            </div>
-        </div>
-    `;
-
+    document.getElementById('catalogPages').innerHTML = buildCatalogPageHtml(pkg);
     document.getElementById('catalogPageIndicator').textContent =
         `${currentCatalogPage + 1} / ${catalogPackages.length}`;
 }
@@ -1139,48 +1053,72 @@ function buildCatalogPageHtml(pkg) {
     const theme = CATALOG_THEMES[pkg.slug] || CATALOG_THEMES['super-party'];
     const totalPrice = pkg.totalPerChild || 0;
     const totalDuration = pkg.totalDuration || 0;
-    const imgPath = `images/catalogs/graduation/${pkg.slug}.png`;
-    const servicesHtml = pkg.services.map(svc => {
-        const svcIcon = SERVICE_ICONS[svc.serviceName] || '•';
-        const dur = svc.durationMin ? ` — ${svc.durationMin} хв` : '';
-        return `<li>${svcIcon} ${esc(svc.serviceName)}${dur}</li>`;
-    }).join('');
+
+    // Services grid — 2 columns, filter out "Вхід"
+    const servicesHtml = pkg.services
+        .filter(svc => svc.serviceName !== 'Вхід')
+        .map(svc => {
+            const svcIcon = SERVICE_ICONS[svc.serviceName] || '✨';
+            const dur = svc.durationMin > 0
+                ? `<span class="csvc-dur">${svc.durationMin} хв</span>`
+                : '';
+            return `
+                <div class="csvc-card">
+                    <span class="csvc-icon">${svcIcon}</span>
+                    <span class="csvc-name">${esc(svc.serviceName)}</span>
+                    ${dur}
+                </div>`;
+        }).join('');
+
+    const durationStr = catalogFormatDuration(totalDuration);
+    const kidsStr = `${pkg.minKids || 7}–${pkg.maxKids || 50}`;
 
     return `
-        <div class="catalog-page-mosaic" data-package="${pkg.slug}"
-             style="--theme-bg1:${theme.bg1};--theme-bg2:${theme.bg2};--theme-bg3:${theme.bg3};--theme-accent:${theme.accent};--theme-price:${theme.priceColor}">
-            <div class="catalog-mosaic-bg"></div>
-            <div class="catalog-mosaic-content">
-                <div class="catalog-hero-section">
-                    <img class="catalog-hero-photo" src="${imgPath}" alt="${esc(pkg.name)}"
-                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-                    <div class="catalog-hero-gradient" style="background:${theme.heroGradient};display:none">
-                        <span class="catalog-hero-icon">${icon}</span>
-                    </div>
+        <div class="cat-page" data-package="${pkg.slug}"
+             style="--cat-bg1:${theme.bg1};--cat-bg2:${theme.bg2};--cat-bg3:${theme.bg3};--cat-accent:${theme.accent};--cat-price:${theme.priceColor}">
+            <!-- HERO -->
+            <div class="cat-hero">
+                <div class="cat-hero-overlay"></div>
+                <div class="cat-hero-content">
+                    <span class="cat-icon">${icon}</span>
+                    <h1 class="cat-title">${esc(pkg.name).toUpperCase()}</h1>
+                    <p class="cat-subtitle">Програма випускного свята</p>
                 </div>
-                <div class="catalog-info-section">
-                    <div class="catalog-pkg-badge" style="background:${theme.accentLight};color:${theme.accent}">ВИПУСКНИЙ</div>
-                    <h2 class="catalog-pkg-name">${esc(pkg.name)}</h2>
-                    <div class="catalog-stats-row">
-                        <div class="catalog-stat">
-                            <span class="catalog-stat-icon">⏱</span>
-                            <span class="catalog-stat-val">${catalogFormatDuration(totalDuration)}</span>
-                        </div>
-                        <div class="catalog-stat">
-                            <span class="catalog-stat-icon">👥</span>
-                            <span class="catalog-stat-val">${pkg.minKids || 7}–${pkg.maxKids || 50} дітей</span>
-                        </div>
-                        <div class="catalog-stat catalog-stat-price">
-                            <span class="catalog-stat-val" style="color:${theme.priceColor};font-size:32px">${totalPrice.toLocaleString('uk-UA')} ₴</span>
-                            <span class="catalog-stat-unit">за дитину</span>
-                        </div>
-                    </div>
-                    <p class="catalog-pkg-desc">${esc(desc)}</p>
-                    <div class="catalog-services-block" style="border-color:${theme.accent}40">
-                        <h4 style="color:${theme.accent}">Що входить:</h4>
-                        <ul class="catalog-svc-list">${servicesHtml}</ul>
-                    </div>
+            </div>
+            <!-- STATS -->
+            <div class="cat-stats">
+                <div class="cat-stat">
+                    <span class="cat-stat-icon">⏱</span>
+                    <span class="cat-stat-val">${durationStr}</span>
+                    <span class="cat-stat-lbl">тривалість</span>
                 </div>
+                <div class="cat-stat-divider"></div>
+                <div class="cat-stat">
+                    <span class="cat-stat-icon">👥</span>
+                    <span class="cat-stat-val">${kidsStr}</span>
+                    <span class="cat-stat-lbl">дітей</span>
+                </div>
+                <div class="cat-stat-divider"></div>
+                <div class="cat-stat cat-stat-price">
+                    <span class="cat-price-val">${totalPrice.toLocaleString('uk-UA')} ₴</span>
+                    <span class="cat-stat-lbl">за дитину</span>
+                </div>
+            </div>
+            <!-- SERVICES -->
+            <div class="cat-body">
+                <div class="cat-section-title">Що входить у програму</div>
+                <div class="cat-services">${servicesHtml}</div>
+                ${desc ? `<div class="cat-desc">${esc(desc)}</div>` : ''}
+            </div>
+            <!-- FOOTER -->
+            <div class="cat-footer">
+                <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
+                <span>📱 @EventHelper_One_Bot</span>
+            </div>
+            <!-- ACTIONS (hidden in print) -->
+            <div class="cat-actions">
+                <button class="cat-btn cat-btn-print" onclick="printCatalogPage('graduation', '${pkg.slug}')">🖨️ Друк / PDF</button>
+                <button class="cat-btn cat-btn-share" onclick="shareCatalogPage('graduation', '${pkg.slug}')">📤 Поділитись</button>
             </div>
         </div>
     `;
@@ -1190,9 +1128,9 @@ function printCatalogPage(catalogId, slug) {
     const pkg = catalogPackages.find(p => p.slug === slug);
     if (!pkg) return;
 
-    const viewer = document.getElementById('catalogViewer');
     const container = document.getElementById('catalogPages');
     const prevHtml = container.innerHTML;
+    const viewer = document.getElementById('catalogViewer');
     const wasHidden = viewer.style.display === 'none';
 
     container.innerHTML = buildCatalogPageHtml(pkg);
@@ -1204,7 +1142,7 @@ function printCatalogPage(catalogId, slug) {
         document.body.classList.remove('printing-catalog');
         container.innerHTML = prevHtml;
         if (wasHidden) viewer.style.display = 'none';
-    }, 300);
+    }, 400);
 }
 
 async function shareCatalog(catalogId) {

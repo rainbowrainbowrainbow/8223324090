@@ -7,16 +7,33 @@
     <meta name="description" content="Event Genix — Конструктор випускного">
     <meta property="og:title" content="Event Genix — Випускний">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=30.0.0">
-    <link rel="stylesheet" href="css/layout.css?v=30.0.0">
-    <link rel="stylesheet" href="css/pages.css?v=30.0.0">
-    <link rel="stylesheet" href="css/modals.css?v=30.0.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=30.0.0">
-    <link rel="stylesheet" href="css/responsive.css?v=30.0.0">
-    <link rel="stylesheet" href="css/graduation.css?v=30.0.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=30.0.0">
+    <script>
+    (function() {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('embedded') === '1' || params.get('embed') === '1') {
+            document.documentElement.classList.add('embed-mode');
+        }
+        try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
+    })();
+    </script>
+    <link rel="stylesheet" href="css/base.css?v=32.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=32.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=32.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=32.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=32.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=32.0.0">
+    <link rel="stylesheet" href="css/graduation.css?v=32.0.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=32.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        .embed-mode .sidebar-nav,
+        .embed-mode .header,
+        .embed-mode .sidebar-overlay,
+        .embed-mode .skip-link,
+        .embed-mode .page-login-overlay { display: none !important; }
+        .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
+    </style>
 </head>
 <body>
     <div id="loginOverlay" class="login-overlay" style="display:none">
@@ -51,7 +68,7 @@
             </div>
         </header>
 
-        <main id="main-content">
+        <main id="main-content" class="page-container">
             <div class="grad-page">
                 <h1>Конструктор випускного</h1>
 
@@ -59,6 +76,7 @@
                     <button class="grad-tab active" data-tab="constructor">Конструктор</button>
                     <button class="grad-tab" data-tab="packages">Пакети</button>
                     <button class="grad-tab" data-tab="quotes">Кошики</button>
+                    <button class="grad-tab" data-tab="analytics">Аналітика</button>
                     <button class="grad-tab" data-tab="settings">Налаштування</button>
                 </div>
 
@@ -75,27 +93,59 @@
     <!-- Notification -->
     <div id="notification" class="notification" style="display:none"></div>
 
-    <script src="js/config.js?v=30.0.0"></script>
-    <script src="js/api.js?v=30.0.0"></script>
-    <script src="js/auth.js?v=30.0.0"></script>
-    <script src="js/components/sidebar.js?v=30.0.0"></script>
-    <script src="js/graduation.js?v=30.0.0"></script>
-    <script src="js/role-panel.js?v=30.0.0"></script>
+    <script src="js/config.js?v=32.0.0"></script>
+    <script src="js/api.js?v=32.0.0"></script>
+    <script src="js/auth.js?v=32.0.0"></script>
+    <script src="js/components/sidebar.js?v=32.0.0"></script>
+    <script src="js/graduation.js?v=32.0.0"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Embedded mode: hide sidebar/header when loaded inside iframe
-            const isEmbedded = new URLSearchParams(location.search).get('embedded') === '1';
+            const isEmbedded = new URLSearchParams(location.search).get('embedded') === '1'
+                || window.self !== window.top;
             if (isEmbedded) {
+                document.documentElement.classList.add('embed-mode');
+                document.body.classList.add('embed-mode');
+                // Hide sidebar, header, login overlay
                 const sidebar = document.querySelector('.sidebar-nav');
                 const header = document.querySelector('.header');
+                const loginOverlay = document.getElementById('loginOverlay');
                 if (sidebar) sidebar.style.display = 'none';
                 if (header) header.style.display = 'none';
+                if (loginOverlay) loginOverlay.style.display = 'none';
                 const main = document.getElementById('main-content');
                 if (main) main.style.marginLeft = '0';
+                // Inherit token from URL query (passed by parent art-director iframe loader)
+                const urlToken = new URLSearchParams(location.search).get('token');
+                if (urlToken && !localStorage.getItem('pzp_token')) {
+                    localStorage.setItem('pzp_token', urlToken);
+                }
+                // Also try inheriting from parent frame
+                try {
+                    if (!localStorage.getItem('pzp_token') && window.parent && window.parent.localStorage) {
+                        const parentToken = window.parent.localStorage.getItem('pzp_token');
+                        if (parentToken) localStorage.setItem('pzp_token', parentToken);
+                    }
+                } catch (e) { /* cross-origin — token should already be shared via same-origin localStorage */ }
             } else {
                 if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
+                // Load role-panel only in standalone mode
+                const s = document.createElement('script');
+                s.src = 'js/role-panel.js?v=32.0.0';
+                document.body.appendChild(s);
             }
-            if (typeof GradPage !== 'undefined') GradPage.init();
+            try {
+                if (typeof GradPage !== 'undefined') {
+                    GradPage.init();
+                } else {
+                    console.error('[Graduation] GradPage not defined — check graduation.js loading');
+                    const content = document.getElementById('gradContent');
+                    if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#999">Помилка завантаження конструктора. Спробуйте оновити сторінку.</div>';
+                }
+            } catch (err) {
+                console.error('[Graduation] Init error:', err);
+                const content = document.getElementById('gradContent');
+                if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#999">Помилка: ' + err.message + '</div>';
+            }
         });
     </script>
 </body>

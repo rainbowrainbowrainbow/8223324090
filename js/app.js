@@ -84,6 +84,14 @@ function initializeApp() {
     if (typeof BookingForm !== 'undefined' && BookingForm.init) BookingForm.init();
     // v19.11: Room Load Panel
     if (typeof initRoomLoadPanel === 'function') initRoomLoadPanel();
+    // v30.3: Timeline search + keyboard shortcuts + redo
+    if (typeof initTimelineSearch === 'function') initTimelineSearch();
+    if (typeof initKeyboardShortcuts === 'function') initKeyboardShortcuts();
+    // v30.3: Redo button listener
+    const redoBtn = document.getElementById('redoBtn');
+    if (redoBtn) redoBtn.addEventListener('click', () => {
+        if (typeof handleRedo === 'function') handleRedo();
+    });
     AppState.nowLineInterval = setInterval(renderNowLine, 60000);
 }
 
@@ -200,6 +208,9 @@ function initTimelineListeners() {
 
     document.getElementById('addLineBtn').addEventListener('click', addNewLine);
     document.getElementById('exportTimelineBtn').addEventListener('click', exportTimelineImage);
+    // v30.3: PDF export
+    const pdfBtn = document.getElementById('exportPdfBtn');
+    if (pdfBtn) pdfBtn.addEventListener('click', exportTimelinePdf);
 
     // v5.15: Today button
     const todayBtn = document.getElementById('todayBtn');

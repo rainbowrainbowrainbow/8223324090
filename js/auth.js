@@ -60,6 +60,12 @@ function logout() {
 }
 
 function showLoginScreen() {
+    // v31.7.1: Redirect to canonical login page from sub-pages
+    const path = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+    if (path !== '/' && path !== '/index') {
+        window.location.href = '/';
+        return;
+    }
     document.getElementById('loginScreen').classList.remove('hidden');
     document.getElementById('mainApp').classList.add('hidden');
     // Hide floating buttons that are outside mainApp
@@ -104,20 +110,21 @@ const PAGE_ACCESS = {
     '/':          _ALL_STAFF,
     '/tasks':     _ALL_STAFF,
     '/chat':      _ALL_STAFF,
-    '/center':    _MANAGEMENT_UP,
-    '/art':       [..._MANAGEMENT_UP, 'art_director'],
+    '/center':    _MANAGER_UP,
+    '/art':       [..._MANAGER_UP, 'art_director', 'marketer'],
+    '/graduation': [..._MANAGER_UP, 'admin', 'art_director', 'marketer'],
     '/customers': [..._ADMIN_UP, 'reception'],
-    '/staff':     [..._MANAGEMENT_UP, 'hr'],
-    '/warehouse': [..._MANAGEMENT_UP, 'admin'],
+    '/staff':     [..._MANAGER_UP, 'hr'],
+    '/warehouse': [..._MANAGER_UP, 'admin'],
     '/training':  [..._MANAGER_UP, 'senior_instructor', 'instructor'],
     '/settings':  ['creator', 'director'],
     '/demo':      _MANAGER_UP,
     '/programs':  [..._ADMIN_UP, 'senior_instructor'],
-    '/hr':        [..._MANAGEMENT_UP, 'hr'],
+    '/hr':        [..._MANAGER_UP, 'hr'],
     '/finance':   ['creator', 'director', 'accountant'],
-    '/analytics': _MANAGEMENT_UP,
-    '/status':    _MANAGEMENT_UP,
-    '/omni':      _MANAGEMENT_UP,
+    '/analytics': _MANAGER_UP,
+    '/status':    _MANAGER_UP,
+    '/omni':      _MANAGER_UP,
 };
 
 const ACTION_PERMISSIONS = {
@@ -126,9 +133,9 @@ const ACTION_PERMISSIONS = {
     cancel_booking:  _MANAGER_UP,
     delete_booking:  ['creator', 'director'],
     manage_users:    ['creator', 'director'],
-    view_revenue:    [..._MANAGEMENT_UP, 'accountant'],
+    view_revenue:    [..._MANAGER_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
-    export_data:     _MANAGEMENT_UP,
+    export_data:     _MANAGER_UP,
 };
 
 function getUserRole() {

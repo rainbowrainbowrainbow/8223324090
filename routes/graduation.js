@@ -38,7 +38,8 @@ function mapServiceRow(row) {
         minKids: row.min_kids,
         maxKids: row.max_kids,
         entryRule: row.entry_rule,
-        isActive: row.is_active
+        isActive: row.is_active,
+        catalogDescription: row.catalog_description || null
     };
 }
 
@@ -107,6 +108,18 @@ router.put('/settings', requireRole('creator', 'director'), async (req, res) => 
         }
 
         log.info(`Settings updated by ${req.user.username}`);
+
+        // Catalog auto-task: if coefficient or markup changed, all formula packages affected
+        for (const [key, value] of Object.entries(settings)) {
+            if (key === 'coefficient' || key === 'markup') {
+                try {
+                    await onSettingsChanged(key, value, req.user.username);
+                } catch (e) {
+                    log.error('onSettingsChanged error', e);
+                }
+            }
+        }
+
         const result = await pool.query('SELECT * FROM graduation_settings ORDER BY key');
         const updated = {};
         for (const row of result.rows) {
@@ -182,22 +195,35 @@ router.put('/services/:id', requireRole('creator', 'director'), async (req, res)
             ]
         );
 
+        const updated = result.rows[0];
         log.info(`Service ${id} updated by ${req.user.username}`);
-        res.json(mapServiceRow(result.rows[0]));
+
+        // Catalog auto-task: if price changed, create task for affected packages
+        if (b.pricePerChild !== undefined || b.pricePark !== undefined) {
+            try {
+                await onServicePriceChanged(id, req.user.username);
+            } catch (e) {
+                log.error('onServicePriceChanged error', e);
+            }
+        }
+
+        res.json(mapServiceRow(updated));
     } catch (err) {
         log.error('Update service error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// GET /api/graduation/packages — готові пакети
+// GET /api/graduation/packages — готові пакети (з цінами для каталогу)
 router.get('/packages', async (req, res) => {
     try {
         const packages = await pool.query(
             'SELECT * FROM graduation_packages WHERE is_active = true ORDER BY sort_order'
         );
         const items = await pool.query(
-            `SELECT pi.package_id, pi.service_id, pi.override_price, s.name as service_name
+            `SELECT pi.package_id, pi.service_id, pi.override_price,
+                    s.name as service_name, s.price_per_child, s.duration_min,
+                    s.description as service_description, s.category, s.price_type
              FROM graduation_package_items pi
              JOIN graduation_services s ON s.id = pi.service_id
              ORDER BY s.sort_order`
@@ -209,17 +235,33 @@ router.get('/packages', async (req, res) => {
             itemMap[item.package_id].push({
                 serviceId: item.service_id,
                 serviceName: item.service_name,
-                overridePrice: item.override_price
+                overridePrice: item.override_price,
+                pricePerChild: item.override_price || item.price_per_child,
+                durationMin: item.duration_min,
+                description: item.service_description,
+                category: item.category,
+                priceType: item.price_type
             });
         }
 
-        const result = packages.rows.map(p => ({
-            id: p.id,
-            name: p.name,
-            slug: p.slug,
-            sortOrder: p.sort_order,
-            services: itemMap[p.id] || []
-        }));
+        const result = packages.rows.map(p => {
+            const services = itemMap[p.id] || [];
+            const totalPerChild = services.reduce((sum, s) => sum + (s.pricePerChild || 0), 0);
+            const totalDuration = services.reduce((sum, s) => sum + (s.durationMin || 0), 0);
+            return {
+                id: p.id,
+                name: p.name,
+                slug: p.slug,
+                description: p.description || '',
+                imageUrl: p.image_url || null,
+                sortOrder: p.sort_order,
+                minKids: p.min_kids || 7,
+                maxKids: p.max_kids || 50,
+                services,
+                totalPerChild,
+                totalDuration
+            };
+        });
 
         res.json(result);
     } catch (err) {
@@ -250,6 +292,8 @@ router.get('/packages/:slug', async (req, res) => {
             id: pkg.rows[0].id,
             name: pkg.rows[0].name,
             slug: pkg.rows[0].slug,
+            description: pkg.rows[0].description || '',
+            imageUrl: pkg.rows[0].image_url || null,
             services: items.rows.map(r => ({
                 ...mapServiceRow(r),
                 overridePrice: r.override_price
@@ -415,7 +459,7 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
             return res.status(400).json({ error: 'Quote already has a booking' });
         }
 
-        const { date, time, roomId } = req.body;
+        const { date, time, room, lineId } = req.body;
         if (!date || !time) {
             return res.status(400).json({ error: 'date and time are required' });
         }
@@ -441,12 +485,12 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
             await client.query('BEGIN');
 
             await client.query(
-                `INSERT INTO bookings (id, date, time, room_id, program_name, kids_count,
+                `INSERT INTO bookings (id, date, time, line_id, room, program_name, kids_count,
                     price, category, status, extra_data, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'graduation', 'confirmed',
-                    $8, $9)`,
-                [bookingId, date, time, roomId || null, programName, q.kids_count,
-                 q.total_all, JSON.stringify({
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'graduation', 'confirmed',
+                    $9, $10)`,
+                [bookingId, date, time, lineId || 'graduation', room || null, programName, q.kids_count,
+                 Math.round(q.total_all), JSON.stringify({
                      quoteId: q.id,
                      quoteNumber: q.quote_number,
                      services: q.selected_services,
@@ -477,7 +521,13 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
 });
 
 // GET /api/graduation/quotes/:id/proposal — генерація КП (HTML)
-router.get('/quotes/:id/proposal', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+// Support token in query string for window.open() usage
+router.get('/quotes/:id/proposal', (req, res, next) => {
+    if (!req.headers['authorization'] && req.query.token) {
+        req.headers['authorization'] = `Bearer ${req.query.token}`;
+    }
+    next();
+}, requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
         const { id } = req.params;
         const quote = await pool.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);
@@ -575,9 +625,400 @@ ${q.discount_percent > 0 ? `<div style="color:#4CAF50;margin-top:4px">Знижк
     }
 });
 
+// GET /api/graduation/analytics — статистика (#46, #47, #48)
+router.get('/analytics', requireRole('creator', 'director'), async (req, res) => {
+    try {
+        // #46: Service popularity
+        const popularityResult = await pool.query(`
+            SELECT s.value->>'serviceId' as service_id,
+                   s.value->>'name' as service_name,
+                   COUNT(*) as usage_count
+            FROM graduation_quotes q,
+                 jsonb_array_elements(q.selected_services) s
+            WHERE q.status != 'cancelled'
+            GROUP BY s.value->>'serviceId', s.value->>'name'
+            ORDER BY usage_count DESC
+        `);
+
+        const totalQuotes = await pool.query(
+            "SELECT COUNT(*) FROM graduation_quotes WHERE status != 'cancelled'"
+        );
+        const total = parseInt(totalQuotes.rows[0].count) || 1;
+
+        const popularity = popularityResult.rows.map(r => ({
+            serviceId: parseInt(r.service_id),
+            serviceName: r.service_name,
+            count: parseInt(r.usage_count),
+            percentage: Math.round(parseInt(r.usage_count) / total * 100)
+        }));
+
+        // #47: Average check
+        const avgResult = await pool.query(`
+            SELECT
+                COALESCE(AVG(total_per_child), 0) as avg_per_child,
+                COALESCE(AVG(total_all), 0) as avg_total,
+                COALESCE(AVG(kids_count), 0) as avg_kids,
+                COUNT(*) as total_quotes
+            FROM graduation_quotes
+            WHERE status IN ('approved', 'booked')
+        `);
+        const avg = avgResult.rows[0];
+
+        // #48: Conversion funnel
+        const funnelResult = await pool.query(`
+            SELECT status, COUNT(*) as cnt
+            FROM graduation_quotes
+            GROUP BY status
+        `);
+        const funnel = {};
+        let totalAll = 0;
+        for (const r of funnelResult.rows) {
+            funnel[r.status] = parseInt(r.cnt);
+            totalAll += parseInt(r.cnt);
+        }
+
+        res.json({
+            popularity,
+            averageCheck: {
+                perChild: Math.round(parseFloat(avg.avg_per_child)),
+                total: Math.round(parseFloat(avg.avg_total)),
+                avgKids: Math.round(parseFloat(avg.avg_kids)),
+                totalQuotes: parseInt(avg.total_quotes)
+            },
+            funnel: {
+                total: totalAll,
+                draft: funnel.draft || 0,
+                sent: funnel.sent || 0,
+                approved: funnel.approved || 0,
+                booked: funnel.booked || 0,
+                cancelled: funnel.cancelled || 0,
+                conversionRate: totalAll > 0 ? Math.round((funnel.booked || 0) / totalAll * 100) : 0
+            }
+        });
+    } catch (err) {
+        log.error('Analytics error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/graduation/customers/search — пошук клієнтів (#26)
+router.get('/customers/search', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q || q.length < 2) return res.json([]);
+
+        const result = await pool.query(
+            `SELECT id, name, phone, email FROM customers
+             WHERE name ILIKE $1 OR phone ILIKE $1
+             ORDER BY name LIMIT 10`,
+            [`%${q}%`]
+        );
+        res.json(result.rows.map(r => ({
+            id: r.id,
+            name: r.name,
+            phone: r.phone,
+            email: r.email
+        })));
+    } catch (err) {
+        log.error('Customer search error', err);
+        res.json([]);
+    }
+});
+
 function formatUAH(amount) {
     if (!amount) return '0 ₴';
     return Math.round(amount).toLocaleString('uk-UA') + ' ₴';
 }
+
+// --- Catalog auto-tasks on price changes ---
+
+async function onServicePriceChanged(serviceId, username) {
+    const packages = await pool.query(`
+        SELECT DISTINCT gp.name, gp.slug
+        FROM graduation_packages gp
+        JOIN graduation_package_items gpi ON gpi.package_id = gp.id
+        WHERE gpi.service_id = $1 AND gp.is_active = true
+    `, [serviceId]);
+
+    for (const pkg of packages.rows) {
+        await pool.query(`
+            INSERT INTO tasks (title, description, assigned_to, priority, category, status, created_by, source_type)
+            VALUES ($1, $2, 'sergiy', 'high', 'admin', 'todo', $3, 'auto')
+        `, [
+            `Каталог: оновити та надрукувати сторінку "${pkg.name}"`,
+            `Ціна послуги змінилась. Потрібно оновити каталог та роздрукувати оновлену сторінку пакету "${pkg.name}".`,
+            username
+        ]);
+        log.info(`Catalog task created for package "${pkg.name}" (price change)`);
+    }
+}
+
+async function onSettingsChanged(key, newValue, username) {
+    const packages = await pool.query(`
+        SELECT DISTINCT gp.name, gp.slug
+        FROM graduation_packages gp
+        JOIN graduation_package_items gpi ON gpi.package_id = gp.id
+        JOIN graduation_services gs ON gs.id = gpi.service_id
+        WHERE gs.price_type = 'formula' AND gp.is_active = true
+    `);
+
+    for (const pkg of packages.rows) {
+        await pool.query(`
+            INSERT INTO tasks (title, description, assigned_to, priority, category, status, created_by, source_type)
+            VALUES ($1, $2, 'sergiy', 'high', 'admin', 'todo', $3, 'auto')
+        `, [
+            `Каталог: оновити та надрукувати сторінку "${pkg.name}"`,
+            `Глобальний параметр "${key}" змінився (нове значення: ${newValue}). Формульні ціни перераховані. Потрібно оновити каталог та роздрукувати оновлену сторінку.`,
+            username
+        ]);
+        log.info(`Catalog task created for package "${pkg.name}" (${key} changed)`);
+    }
+}
+
+// GET /api/graduation/catalog/export — print-ready HTML catalog
+// Support token in query string for window.open() usage
+router.get('/catalog/export', (req, res, next) => {
+    if (!req.headers['authorization'] && req.query.token) {
+        req.headers['authorization'] = `Bearer ${req.query.token}`;
+    }
+    next();
+}, requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const pkgResult = await pool.query(
+            'SELECT * FROM graduation_packages WHERE is_active = true ORDER BY sort_order'
+        );
+        const itemsResult = await pool.query(
+            `SELECT pi.package_id, pi.service_id, pi.override_price,
+                    s.name as service_name, s.price_per_child, s.duration_min,
+                    s.description as service_description, s.category, s.price_type, s.price_park
+             FROM graduation_package_items pi
+             JOIN graduation_services s ON s.id = pi.service_id
+             ORDER BY s.sort_order`
+        );
+
+        // Get settings for formula prices
+        const settingsResult = await pool.query('SELECT * FROM graduation_settings ORDER BY key');
+        const gradSettings = {};
+        for (const row of settingsResult.rows) {
+            gradSettings[row.key] = row.value;
+        }
+        const coefficient = gradSettings.coefficient || 6;
+        const markup = gradSettings.markup || 1.15;
+
+        function calcFormulaPrice(pricePark) {
+            if (!pricePark) return 0;
+            return Math.ceil(pricePark / coefficient * markup / 10) * 10;
+        }
+
+        function getPrice(item) {
+            if (item.override_price) return item.override_price;
+            if (item.price_type === 'formula' && item.price_park) return calcFormulaPrice(item.price_park);
+            return item.price_per_child || 0;
+        }
+
+        const itemMap = {};
+        for (const item of itemsResult.rows) {
+            if (!itemMap[item.package_id]) itemMap[item.package_id] = [];
+            itemMap[item.package_id].push(item);
+        }
+
+        // Fetch catalog_description for services
+        const catalogDescResult = await pool.query(
+            'SELECT id, catalog_description FROM graduation_services WHERE catalog_description IS NOT NULL'
+        );
+        const catalogDescMap = {};
+        for (const row of catalogDescResult.rows) catalogDescMap[row.id] = row.catalog_description;
+        for (const items of Object.values(itemMap)) {
+            for (const item of items) {
+                item.catalog_description = catalogDescMap[item.service_id] || null;
+            }
+        }
+
+        // Package theme colors for premium catalog
+        const THEMES = {
+            'best-dj': { bg1:'#e8d0f0',bg2:'#d4b8e8',bg3:'#c0a0d8', accent:'#9333ea', accentLight:'rgba(147,51,234,0.15)', heroGrad:'linear-gradient(135deg,#8e24aa,#e040fb)', emoji:'🎧' },
+            'super-party': { bg1:'#f0e0c0',bg2:'#e8d4a8',bg3:'#d8c490', accent:'#C9A84C', accentLight:'rgba(201,168,76,0.15)', heroGrad:'linear-gradient(135deg,#C9A84C,#e8c84c)', emoji:'🎉' },
+            'science-party': { bg1:'#c8d8f0',bg2:'#b0c8e8',bg3:'#98b8d8', accent:'#3B82F6', accentLight:'rgba(59,130,246,0.15)', heroGrad:'linear-gradient(135deg,#3B82F6,#60a5fa)', emoji:'🧪' },
+            'handmade-party': { bg1:'#b8e8d0',bg2:'#a0d8c0',bg3:'#88c8b0', accent:'#10B981', accentLight:'rgba(16,185,129,0.15)', heroGrad:'linear-gradient(135deg,#059669,#34d399)', emoji:'✂️' },
+            'pizza-party': { bg1:'#f0e8c0',bg2:'#e8dca0',bg3:'#dcd088', accent:'#f59e0b', accentLight:'rgba(245,158,11,0.15)', heroGrad:'linear-gradient(135deg,#d97706,#fbbf24)', emoji:'🍕' },
+            'squid-game': { bg1:'#f0c8c8',bg2:'#e8b0b0',bg3:'#d89898', accent:'#ef4444', accentLight:'rgba(239,68,68,0.15)', heroGrad:'linear-gradient(135deg,#dc2626,#f87171)', emoji:'🦑' },
+            'neon-party': { bg1:'#e8c0e0',bg2:'#d8a8d0',bg3:'#c890c0', accent:'#ec4899', accentLight:'rgba(236,72,153,0.15)', heroGrad:'linear-gradient(135deg,#db2777,#f472b6)', emoji:'💜' },
+        };
+
+        function fmtDurationHours(totalMin) {
+            const hours = totalMin / 60;
+            if (hours === Math.floor(hours)) return String(Math.floor(hours));
+            return hours.toFixed(1).replace('.0', '');
+        }
+
+        function durationUnit(totalMin) {
+            if (totalMin >= 120) return 'ГОДИНИ';
+            if (totalMin >= 60) return 'ГОДИНА';
+            return 'ХВ';
+        }
+
+        const packagePages = pkgResult.rows.map(p => {
+            const items = itemMap[p.id] || [];
+            const totalPrice = items.reduce((sum, i) => sum + getPrice(i), 0);
+            const totalDuration = items.reduce((sum, i) => sum + (i.duration_min || 0), 0);
+            const theme = THEMES[p.slug] || THEMES['super-party'];
+            const minKids = p.min_kids || 7;
+            const maxKids = p.max_kids || 50;
+
+            const imgPath = p.image_url || `/images/catalogs/graduation/${p.slug}.png`;
+
+            // Service names list
+            const servicesListHtml = items.map(i =>
+                `<li>— ${i.service_name.toUpperCase()}</li>`
+            ).join('');
+
+            // Service descriptions
+            const descsHtml = items
+                .filter(i => i.service_description || i.catalog_description)
+                .map(i => `<div class="desc-item"><strong>${i.service_name.toUpperCase()}</strong> — ${i.catalog_description || i.service_description}</div>`)
+                .join('');
+
+            return `
+    <div class="page pkg-page" id="pkg-${p.slug}" style="--bg1:${theme.bg1};--bg2:${theme.bg2};--bg3:${theme.bg3}">
+        <div class="geo-overlay"></div>
+        <div class="page-inner">
+            <div class="hero-wrap">
+                <img class="hero-img" src="${imgPath}" alt="${p.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                <div class="hero-placeholder" style="background:${theme.heroGrad};display:none"><span class="hero-emoji">${theme.emoji}</span></div>
+            </div>
+            <div class="info-card">
+                <div class="info-label">ВИПУСКНИЙ</div>
+                <div class="info-title">${p.name.toUpperCase()}</div>
+                <div class="info-row">
+                    <div class="info-item"><span class="info-icon">⏱</span><span class="info-val">${fmtDurationHours(totalDuration)}</span><span class="info-unit">${durationUnit(totalDuration)}</span></div>
+                    <div class="info-item"><span class="info-icon">👥</span><span class="info-val">${minKids}-${maxKids}</span><span class="info-unit">ДІТЕЙ</span></div>
+                    <div class="info-item"><span class="info-icon">₴</span><span class="info-val">${Math.round(totalPrice)}</span><span class="info-unit">/ДИТИНА</span></div>
+                </div>
+                <div class="info-disclaimer">* В розважальному парку діти знаходяться увесь день. Це загальна тривалість заходів з нашими ведучими.</div>
+            </div>
+            <div class="svc-card" style="background:${theme.accentLight};border:2px solid ${theme.accent}40">
+                <ul class="svc-list">${servicesListHtml}</ul>
+            </div>
+            ${descsHtml ? `<div class="desc-card">${descsHtml}</div>` : ''}
+        </div>
+    </div>`;
+        }).join('\n');
+
+        const html = `<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Випускні 2026 — Парк Закревського</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+@page { margin: 8mm; size: A4 portrait; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Nunito', sans-serif; margin: 0; padding: 0; color: #1a1a1a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+.page {
+    page-break-after: always;
+    min-height: 277mm;
+    padding: 0;
+    position: relative;
+    overflow: hidden;
+}
+.page:last-child { page-break-after: avoid; }
+
+/* Cover */
+.cover-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0D0D0D, #1a1a2e);
+    color: white;
+    text-align: center;
+    min-height: 277mm;
+}
+.cover-icon { font-size: 80px; margin-bottom: 24px; }
+.cover-title { font-size: 48px; font-weight: 900; color: #C9A84C; line-height: 1.2; }
+.cover-subtitle { font-size: 22px; color: rgba(255,255,255,0.7); margin-top: 12px; font-weight: 600; }
+.cover-divider { width: 80px; height: 3px; background: #C9A84C; margin: 32px auto; border-radius: 2px; }
+.cover-info { font-size: 18px; color: rgba(255,255,255,0.5); margin-top: 8px; }
+.cover-contact { font-size: 15px; color: rgba(255,255,255,0.4); margin-top: 40px; line-height: 1.8; }
+
+/* Package page — geometric mosaic */
+.pkg-page {
+    background: linear-gradient(135deg, var(--bg1), var(--bg2), var(--bg3));
+    position: relative;
+}
+.geo-overlay {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image:
+        linear-gradient(30deg, rgba(255,255,255,0.14) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.14) 87.5%),
+        linear-gradient(150deg, rgba(255,255,255,0.14) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.14) 87.5%),
+        linear-gradient(30deg, rgba(255,255,255,0.09) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.09) 87.5%),
+        linear-gradient(150deg, rgba(255,255,255,0.09) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.09) 87.5%),
+        linear-gradient(60deg, rgba(255,255,255,0.07) 25%, transparent 25.5%, transparent 75%, rgba(255,255,255,0.07) 75%),
+        linear-gradient(60deg, rgba(255,255,255,0.07) 25%, transparent 25.5%, transparent 75%, rgba(255,255,255,0.07) 75%);
+    background-size: 40px 70px;
+    background-position: 0 0, 0 0, 20px 35px, 20px 35px, 0 0, 20px 35px;
+}
+.page-inner { position: relative; z-index: 1; padding: 10mm; }
+
+/* Hero */
+.hero-wrap { width: 100%; aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; margin-bottom: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+.hero-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hero-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.hero-emoji { font-size: 60px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3)); }
+
+/* Info Card */
+.info-card { background: rgba(255,255,255,0.92); border-radius: 14px; padding: 14px 12px; margin-bottom: 8px; text-align: center; border: 2px solid rgba(255,255,255,0.7); }
+.info-label { font-size: 10px; font-weight: 800; letter-spacing: 4px; color: #888; margin-bottom: 2px; }
+.info-title { font-size: 22px; font-weight: 900; color: #1a1a1a; line-height: 1.1; margin-bottom: 10px; text-transform: uppercase; }
+.info-row { display: flex; justify-content: center; gap: 24px; margin-bottom: 8px; }
+.info-item { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.info-icon { font-size: 16px; }
+.info-val { font-size: 20px; font-weight: 900; color: #1a1a1a; }
+.info-unit { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #999; }
+.info-disclaimer { font-size: 7px; color: #aaa; line-height: 1.3; margin-top: 4px; }
+
+/* Services Card */
+.svc-card { border-radius: 12px; padding: 10px 16px; margin-bottom: 8px; text-align: center; }
+.svc-list { list-style: none; padding: 0; margin: 0; }
+.svc-list li { font-size: 10px; font-weight: 700; color: #1a1a1a; padding: 3px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Description Card */
+.desc-card { background: rgba(255,255,255,0.88); border-radius: 12px; padding: 10px 14px; border: 2px solid rgba(255,255,255,0.5); }
+.desc-item { font-size: 8.5px; line-height: 1.4; color: #444; margin-bottom: 6px; text-align: center; }
+.desc-item:last-child { margin-bottom: 0; }
+.desc-item strong { font-weight: 900; color: #1a1a1a; font-size: 9px; }
+
+@media screen {
+    body { background: #f0ebe4; }
+    .page { max-width: 210mm; margin: 20px auto; box-shadow: 0 8px 40px rgba(0,0,0,0.12); border-radius: 8px; }
+}
+</style>
+</head>
+<body>
+    <div class="page cover-page">
+        <div class="cover-icon">🎓</div>
+        <div class="cover-title">Випускні 2026</div>
+        <div class="cover-subtitle">Парк Закревського періоду</div>
+        <div class="cover-divider"></div>
+        <div class="cover-info">${pkgResult.rows.length} пакетних пропозицій для вашого класу</div>
+        <div class="cover-contact">
+            📞 (050) 344-37-71<br>
+            📍 Київ, вул. Закревського 61/2<br>
+            💬 @park_zakrevskogo
+        </div>
+    </div>
+${packagePages}
+</body>
+</html>`;
+
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+    } catch (err) {
+        log.error('Catalog export error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 module.exports = router;

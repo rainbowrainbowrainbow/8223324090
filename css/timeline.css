@@ -857,3 +857,76 @@ body.dragging-active {
         right: -6px;
     }
 }
+
+/* ==========================================
+   v30.3: PRINT STYLES FOR PDF EXPORT
+   ========================================== */
+
+@media print {
+    /* Hide everything except timeline */
+    body > *:not(.main-content),
+    .nav-bar, .booking-panel, .panel-backdrop,
+    .modal, .toast-container, .v32-controls,
+    .action-buttons, .date-controls,
+    .bulk-action-bar, #kleshnyaWidget,
+    .agents-panel, .command-panel,
+    .btn-fab, .status-filter-section {
+        display: none !important;
+    }
+
+    body {
+        background: white !important;
+        color: black !important;
+        margin: 0;
+        padding: 0;
+    }
+
+    .main-content {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    .timeline-container {
+        overflow: visible !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    #timelineScroll {
+        overflow: visible !important;
+        max-height: none !important;
+    }
+
+    .timeline-line {
+        break-inside: avoid;
+        border-bottom: 1px solid #ddd;
+    }
+
+    .booking-block {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+        box-shadow: none !important;
+    }
+
+    .booking-block .resize-handle {
+        display: none !important;
+    }
+
+    .line-header {
+        background: #f8f8f8 !important;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+
+    /* Print header */
+    .printing-timeline .main-content::before {
+        content: attr(data-print-title);
+        display: block;
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+        padding: 10px 0;
+        border-bottom: 2px solid #333;
+        margin-bottom: 10px;
+    }
+}

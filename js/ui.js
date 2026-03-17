@@ -13,6 +13,14 @@ function formatDate(date) {
     return `${year}-${month}-${day}`;
 }
 
+// v30.7: Human-friendly Ukrainian date format (e.g. "14 бер")
+const MONTHS_SHORT_UKR = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
+function formatDateUkr(date) {
+    const day = date.getDate();
+    const month = MONTHS_SHORT_UKR[date.getMonth()];
+    return `${day} ${month}`;
+}
+
 function timeToMinutes(time) {
     if (!time || typeof time !== 'string' || !time.includes(':')) return 0;
     const [h, m] = time.split(':').map(Number);
@@ -524,17 +532,27 @@ function updateZoomButtons() {
 function pushUndo(action, data) {
     AppState.undoStack.push({ action, data, timestamp: Date.now() });
     if (AppState.undoStack.length > 10) AppState.undoStack.shift();
-    updateUndoButton();
+    // v30.3: Clear redo stack on new action (standard undo/redo behavior)
+    AppState.redoStack = [];
+    updateUndoRedoButtons();
 }
 
-function updateUndoButton() {
-    const btn = document.getElementById('undoBtn');
-    if (btn) btn.classList.toggle('hidden', AppState.undoStack.length === 0);
+function updateUndoRedoButtons() {
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    if (undoBtn) undoBtn.classList.toggle('hidden', AppState.undoStack.length === 0);
+    if (redoBtn) redoBtn.classList.toggle('hidden', AppState.redoStack.length === 0);
 }
+
+// v30.3: Backward compat alias
+function updateUndoButton() { updateUndoRedoButtons(); }
 
 async function handleUndo() {
     if (AppState.undoStack.length === 0) return;
     const item = AppState.undoStack.pop();
+    // v30.3: Push to redo stack for redo support
+    AppState.redoStack.push(item);
+    if (AppState.redoStack.length > 10) AppState.redoStack.shift();
 
     if (item.action === 'create') {
         for (const b of item.data) {
@@ -549,20 +567,17 @@ async function handleUndo() {
         await apiAddHistory('undo_delete', AppState.currentUser?.username, item.data[0]);
         showNotification('Видалення скасовано', 'warning');
     } else if (item.action === 'edit') {
-        // v5.51: Undo edit — restore old booking state
         const old = item.data.old;
         await apiUpdateBooking(old.id, old);
         await apiAddHistory('undo_edit', AppState.currentUser?.username, old);
         showNotification('Редагування скасовано', 'warning');
     } else if (item.action === 'shift') {
-        // v5.51: Undo shift — reverse the time shift
         const { bookingId, minutes, linked } = item.data;
         const bookings = await getBookingsForDate(AppState.selectedDate);
         const booking = bookings.find(b => b.id === bookingId);
         if (booking) {
             const revertedTime = addMinutesToTime(booking.time, minutes);
             await apiUpdateBooking(bookingId, { ...booking, time: revertedTime });
-            // Revert linked bookings
             for (const linkedId of linked) {
                 const lb = bookings.find(b => b.id === linkedId);
                 if (lb) {
@@ -577,7 +592,58 @@ async function handleUndo() {
 
     AppState.cachedBookings = {};
     await renderTimeline();
-    updateUndoButton();
+    updateUndoRedoButtons();
+}
+
+// ==========================================
+// v30.3: REDO
+// ==========================================
+
+async function handleRedo() {
+    if (AppState.redoStack.length === 0) return;
+    const item = AppState.redoStack.pop();
+    // Push back to undo without clearing redo
+    AppState.undoStack.push(item);
+    if (AppState.undoStack.length > 10) AppState.undoStack.shift();
+
+    if (item.action === 'create') {
+        for (const b of item.data) {
+            await apiCreateBooking(b);
+        }
+        showNotification('Створення повторено', 'info');
+    } else if (item.action === 'delete') {
+        for (const b of item.data) {
+            await apiDeleteBooking(b.id);
+        }
+        showNotification('Видалення повторено', 'info');
+    } else if (item.action === 'edit') {
+        const old = item.data.old;
+        // For redo of edit, we need the "new" state — but we stored "old"
+        // After undo, the server has the "old" state, so redo re-applies the original edit
+        // Since we don't store the new state separately, we just notify
+        showNotification('Для повтору редагування — повторіть дію вручну', 'warning');
+    } else if (item.action === 'shift') {
+        const { bookingId, minutes, linked } = item.data;
+        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const booking = bookings.find(b => b.id === bookingId);
+        if (booking) {
+            // Re-apply the shift (opposite of undo direction)
+            const newTime = addMinutesToTime(booking.time, -minutes);
+            await apiUpdateBooking(bookingId, { ...booking, time: newTime });
+            for (const linkedId of linked) {
+                const lb = bookings.find(b => b.id === linkedId);
+                if (lb) {
+                    const lbTime = addMinutesToTime(lb.time, -minutes);
+                    await apiUpdateBooking(linkedId, { ...lb, time: lbTime });
+                }
+            }
+        }
+        showNotification('Перенос часу повторено', 'info');
+    }
+
+    AppState.cachedBookings = {};
+    await renderTimeline();
+    updateUndoRedoButtons();
 }
 
 // ==========================================
@@ -725,7 +791,7 @@ async function changeBookingStatus(bookingId, newStatus) {
 // ЕКСПОРТ У КАРТИНКУ
 // ==========================================
 
-function drawExportHeader(ctx, canvas, padding, headerHeight) {
+function drawExportHeader(ctx, canvas, padding, headerHeight, dateLabel) {
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -737,7 +803,8 @@ function drawExportHeader(ctx, canvas, padding, headerHeight) {
     ctx.fillText(`Парк Закревського Періоду - Таймлайн`, padding, 35);
 
     ctx.font = '20px Arial';
-    ctx.fillText(`${formatDate(AppState.selectedDate)} (${DAYS[AppState.selectedDate.getDay()]})`, padding, 60);
+    const label = dateLabel || `${formatDate(AppState.selectedDate)} (${DAYS[AppState.selectedDate.getDay()]})`;
+    ctx.fillText(label, padding, 60);
 }
 
 function drawExportTimeScale(ctx, start, end, padding, timeWidth, headerHeight, cellWidth) {
@@ -800,9 +867,26 @@ function drawExportLines(ctx, lines, bookings, start, padding, timeWidth, header
             ctx.fill();
 
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 12px Arial';
-            const text = `${booking.label || booking.programCode}: ${booking.room}`;
-            ctx.fillText(text, bx + 6, by + bh / 2 + 4, bw - 12);
+            ctx.font = 'bold 11px Arial';
+            // v30.7: Richer export info — time, program, room, kids, group
+            const progName = booking.label || booking.programCode || '';
+            const timeStr = booking.time || '';
+            const durStr = booking.duration ? `${booking.duration}хв` : '';
+            const roomStr = booking.room || '';
+            const kidsStr = booking.kidsCount ? `${booking.kidsCount} діт.` : '';
+            const groupStr = booking.groupName || '';
+            // Line 1: time + program
+            const line1 = `${timeStr} ${progName}`.trim();
+            // Line 2: room, kids, group
+            const line2Parts = [roomStr, kidsStr, groupStr].filter(Boolean);
+            const line2 = line2Parts.join(' · ');
+            if (bh > 30 && line2) {
+                ctx.fillText(line1, bx + 6, by + bh / 2 - 2, bw - 12);
+                ctx.font = '10px Arial';
+                ctx.fillText(line2, bx + 6, by + bh / 2 + 12, bw - 12);
+            } else {
+                ctx.fillText(`${line1} ${roomStr ? '| ' + roomStr : ''}`, bx + 6, by + bh / 2 + 4, bw - 12);
+            }
         });
     });
 }
@@ -821,6 +905,11 @@ function drawExportGrid(ctx, start, end, padding, timeWidth, headerHeight, cellW
 }
 
 async function exportTimelineImage() {
+    // v30.7: Support multi-day export
+    if (AppState.multiDayMode) {
+        return exportMultiDayImage();
+    }
+
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const lines = await getLinesForDate(AppState.selectedDate);
     const { start, end } = getTimeRange();
@@ -838,7 +927,8 @@ async function exportTimelineImage() {
     const timeWidth = 120;
     const cellWidth = (canvas.width - padding * 2 - timeWidth) / ((end - start) * 4);
 
-    drawExportHeader(ctx, canvas, padding, headerHeight);
+    const dateLabel = `${formatDate(AppState.selectedDate)} (${DAYS[AppState.selectedDate.getDay()]})`;
+    drawExportHeader(ctx, canvas, padding, headerHeight, dateLabel);
     drawExportTimeScale(ctx, start, end, padding, timeWidth, headerHeight, cellWidth);
     drawExportLines(ctx, lines, bookings, start, padding, timeWidth, headerHeight, lineHeight, cellWidth, canvas.width);
     drawExportGrid(ctx, start, end, padding, timeWidth, headerHeight, cellWidth, canvas.height);
@@ -849,6 +939,184 @@ async function exportTimelineImage() {
     link.click();
 
     showNotification('Таймлайн експортовано як картинку!', 'success');
+}
+
+// v30.7: Multi-day PNG export — each day as a separate section
+async function exportMultiDayImage() {
+    const dates = [];
+    const startDate = new Date(AppState.selectedDate);
+    for (let i = 0; i < AppState.daysToShow; i++) {
+        const d = new Date(startDate);
+        d.setDate(startDate.getDate() + i);
+        dates.push(d);
+    }
+
+    // Collect all data first
+    const daysData = [];
+    for (const date of dates) {
+        const bookings = await getBookingsForDate(date);
+        const lines = await getLinesForDate(date);
+        daysData.push({ date, bookings, lines });
+    }
+
+    const dpi = 150;
+    const canvasWidth = 297 * dpi / 25.4;
+    const padding = 40;
+    const headerHeight = 80;
+    const dayHeaderHeight = 36;
+    const lineHeight = 50;
+    const timeWidth = 120;
+
+    // Calculate total height: header + each day (day header + lines)
+    let totalHeight = headerHeight + padding * 2;
+    for (const dd of daysData) {
+        totalHeight += dayHeaderHeight + Math.max(dd.lines.length, 1) * lineHeight + 10;
+    }
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvasWidth;
+    canvas.height = totalHeight;
+
+    // Determine time range (use widest across all days)
+    let globalStart = 12, globalEnd = 20;
+    for (const dd of daysData) {
+        const dow = dd.date.getDay();
+        const isWknd = dow === 0 || dow === 6;
+        const s = isWknd ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START;
+        const e = isWknd ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END;
+        if (s < globalStart) globalStart = s;
+        if (e > globalEnd) globalEnd = e;
+    }
+
+    const cellWidth = (canvasWidth - padding * 2 - timeWidth) / ((globalEnd - globalStart) * 4);
+
+    // Header
+    const firstDateStr = formatDateUkr(dates[0]);
+    const lastDateStr = formatDateUkr(dates[dates.length - 1]);
+    const dateLabel = `${firstDateStr} — ${lastDateStr}`;
+    drawExportHeader(ctx, canvas, padding, headerHeight, dateLabel);
+
+    // Draw each day
+    let yOffset = headerHeight + padding;
+    for (const dd of daysData) {
+        // Day sub-header
+        ctx.fillStyle = '#E8F5E9';
+        ctx.fillRect(padding, yOffset, canvasWidth - padding * 2, dayHeaderHeight);
+        ctx.fillStyle = '#333333';
+        ctx.font = 'bold 16px Arial';
+        const dayLabel = `${DAYS[dd.date.getDay()]}, ${formatDateUkr(dd.date)}`;
+        ctx.fillText(dayLabel, padding + 10, yOffset + dayHeaderHeight / 2 + 5);
+        yOffset += dayHeaderHeight;
+
+        // Lines and bookings for this day
+        drawExportLines(ctx, dd.lines, dd.bookings, globalStart, padding, timeWidth, yOffset - (headerHeight + padding), lineHeight, cellWidth, canvasWidth);
+
+        // Actually draw at correct y position
+        dd.lines.forEach((line, index) => {
+            const y = yOffset + index * lineHeight;
+
+            ctx.fillStyle = index % 2 === 0 ? '#F5F5F5' : '#FFFFFF';
+            ctx.fillRect(padding, y, canvasWidth - padding * 2, lineHeight);
+
+            ctx.fillStyle = line.color;
+            ctx.fillRect(padding, y, 4, lineHeight);
+
+            ctx.fillStyle = '#333333';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText(line.name, padding + 12, y + lineHeight / 2 + 5);
+
+            const lineBookings = dd.bookings.filter(b => b.lineId === line.id);
+            lineBookings.forEach(booking => {
+                const startMin = timeToMinutes(booking.time) - timeToMinutes(`${globalStart}:00`);
+                const bx = padding + timeWidth + (startMin / 15) * cellWidth;
+                const bw = (booking.duration / 15) * cellWidth - 4;
+                const by = y + 6;
+                const bh = lineHeight - 12;
+
+                ctx.fillStyle = CATEGORY_COLORS[booking.category] || '#607D8B';
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(bx, by, bw, bh, 6);
+                } else {
+                    const r = 6;
+                    ctx.moveTo(bx + r, by); ctx.lineTo(bx + bw - r, by);
+                    ctx.arcTo(bx + bw, by, bx + bw, by + r, r);
+                    ctx.lineTo(bx + bw, by + bh - r);
+                    ctx.arcTo(bx + bw, by + bh, bx + bw - r, by + bh, r);
+                    ctx.lineTo(bx + r, by + bh);
+                    ctx.arcTo(bx, by + bh, bx, by + bh - r, r);
+                    ctx.lineTo(bx, by + r);
+                    ctx.arcTo(bx, by, bx + r, by, r);
+                    ctx.closePath();
+                }
+                ctx.fill();
+
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 11px Arial';
+                const progName = booking.label || booking.programCode || '';
+                const timeStr = booking.time || '';
+                const roomStr = booking.room || '';
+                const kidsStr = booking.kidsCount ? `${booking.kidsCount} діт.` : '';
+                const line1 = `${timeStr} ${progName}`.trim();
+                const line2Parts = [roomStr, kidsStr, booking.groupName || ''].filter(Boolean);
+                const line2 = line2Parts.join(' · ');
+                if (bh > 26 && line2) {
+                    ctx.fillText(line1, bx + 6, by + bh / 2 - 2, bw - 12);
+                    ctx.font = '10px Arial';
+                    ctx.fillText(line2, bx + 6, by + bh / 2 + 10, bw - 12);
+                } else {
+                    ctx.fillText(`${line1}${roomStr ? ' | ' + roomStr : ''}`, bx + 6, by + bh / 2 + 4, bw - 12);
+                }
+            });
+        });
+
+        yOffset += Math.max(dd.lines.length, 1) * lineHeight + 10;
+    }
+
+    // Time scale at top (after header)
+    drawExportTimeScale(ctx, globalStart, globalEnd, padding, timeWidth, headerHeight, cellWidth);
+
+    const link = document.createElement('a');
+    const fname = `timeline_${formatDate(dates[0])}_${formatDate(dates[dates.length - 1])}.png`;
+    link.download = fname;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+
+    showNotification('Таймлайн експортовано як картинку!', 'success');
+}
+
+// ==========================================
+// v30.3: PDF EXPORT (Print-based)
+// ==========================================
+
+function exportTimelinePdf() {
+    // Add print class for CSS targeting
+    document.body.classList.add('printing-timeline');
+
+    // v30.7: Support multi-day title
+    let titleStr;
+    if (AppState.multiDayMode) {
+        const dates = [];
+        const startDate = new Date(AppState.selectedDate);
+        for (let i = 0; i < AppState.daysToShow; i++) {
+            const d = new Date(startDate);
+            d.setDate(startDate.getDate() + i);
+            dates.push(d);
+        }
+        titleStr = `Таймлайн ${formatDateUkr(dates[0])} — ${formatDateUkr(dates[dates.length - 1])}`;
+    } else {
+        titleStr = `Таймлайн ${formatDate(AppState.selectedDate)}`;
+    }
+    document.title = `${titleStr} — Парк Закревського Періоду`;
+
+    window.print();
+
+    // Restore
+    setTimeout(() => {
+        document.body.classList.remove('printing-timeline');
+        document.title = 'Парк Закревського Періоду';
+    }, 500);
 }
 
 // ==========================================
@@ -1090,4 +1358,173 @@ function _renderTasksDashboard() {
 
     html += '</div>';
     return html;
+}
+
+// ==========================================
+// v30.3: TIMELINE SEARCH
+// ==========================================
+
+function initTimelineSearch() {
+    const wrap = document.getElementById('timelineSearchWrap');
+    const input = document.getElementById('timelineSearchInput');
+    const countEl = document.getElementById('timelineSearchCount');
+    const btnOpen = document.getElementById('timelineSearchBtn');
+    const btnClose = document.getElementById('timelineSearchClose');
+    const btnPrev = document.getElementById('timelineSearchPrev');
+    const btnNext = document.getElementById('timelineSearchNext');
+    if (!wrap || !input) return;
+
+    function openSearch() {
+        wrap.classList.remove('hidden');
+        if (btnOpen) btnOpen.style.display = 'none';
+        input.focus();
+    }
+
+    function closeSearch() {
+        wrap.classList.add('hidden');
+        if (btnOpen) btnOpen.style.display = '';
+        input.value = '';
+        clearSearchHighlights();
+        AppState.searchQuery = '';
+        AppState.searchResults = [];
+        AppState.searchIndex = -1;
+    }
+
+    if (btnOpen) btnOpen.addEventListener('click', openSearch);
+    if (btnClose) btnClose.addEventListener('click', closeSearch);
+    if (btnPrev) btnPrev.addEventListener('click', () => navigateSearch(-1));
+    if (btnNext) btnNext.addEventListener('click', () => navigateSearch(1));
+
+    let searchTimeout;
+    input.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => executeTimelineSearch(input.value.trim()), 200);
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { closeSearch(); return; }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            navigateSearch(e.shiftKey ? -1 : 1);
+        }
+    });
+}
+
+function executeTimelineSearch(query) {
+    clearSearchHighlights();
+    const countEl = document.getElementById('timelineSearchCount');
+    AppState.searchQuery = query;
+    AppState.searchResults = [];
+    AppState.searchIndex = -1;
+
+    if (!query || query.length < 2) {
+        if (countEl) countEl.textContent = '';
+        return;
+    }
+
+    const q = query.toLowerCase();
+    // v30.7: Support both single-day (.booking-block) and multi-day (.mini-booking-block) modes
+    const selector = AppState.multiDayMode
+        ? '.mini-booking-block'
+        : '.booking-block:not(.status-hidden)';
+    const blocks = document.querySelectorAll(selector);
+
+    blocks.forEach(block => {
+        const text = block.textContent.toLowerCase();
+        const ariaLabel = (block.getAttribute('aria-label') || '').toLowerCase();
+        const title = (block.getAttribute('title') || '').toLowerCase();
+        if (text.includes(q) || ariaLabel.includes(q) || title.includes(q)) {
+            AppState.searchResults.push(block);
+            block.classList.add('search-match');
+        } else {
+            block.classList.add('search-dimmed');
+        }
+    });
+
+    if (AppState.searchResults.length > 0) {
+        AppState.searchIndex = 0;
+        highlightActiveResult();
+    }
+
+    updateSearchCount(countEl);
+}
+
+function navigateSearch(direction) {
+    if (AppState.searchResults.length === 0) return;
+    // Remove active highlight from current
+    if (AppState.searchIndex >= 0 && AppState.searchIndex < AppState.searchResults.length) {
+        AppState.searchResults[AppState.searchIndex].classList.remove('search-match-active');
+    }
+    AppState.searchIndex += direction;
+    if (AppState.searchIndex >= AppState.searchResults.length) AppState.searchIndex = 0;
+    if (AppState.searchIndex < 0) AppState.searchIndex = AppState.searchResults.length - 1;
+    highlightActiveResult();
+    const countEl = document.getElementById('timelineSearchCount');
+    updateSearchCount(countEl);
+}
+
+function highlightActiveResult() {
+    const block = AppState.searchResults[AppState.searchIndex];
+    if (!block) return;
+    block.classList.add('search-match-active');
+    // Auto-scroll to the found block
+    block.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+}
+
+function updateSearchCount(el) {
+    if (!el) return;
+    const total = AppState.searchResults.length;
+    if (total === 0 && AppState.searchQuery.length >= 2) {
+        el.textContent = 'Не знайдено';
+    } else if (total > 0) {
+        el.textContent = `${AppState.searchIndex + 1}/${total}`;
+    } else {
+        el.textContent = '';
+    }
+}
+
+function clearSearchHighlights() {
+    document.querySelectorAll('.search-match, .search-match-active, .search-dimmed').forEach(el => {
+        el.classList.remove('search-match', 'search-match-active', 'search-dimmed');
+    });
+}
+
+// ==========================================
+// v30.3: KEYBOARD SHORTCUTS
+// ==========================================
+
+function initKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Skip if user is typing in an input/textarea
+        const tag = e.target.tagName;
+        const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+        // Ctrl+F — open timeline search (override browser default on timeline page)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            const timelinePage = document.getElementById('timelineScroll');
+            if (timelinePage && !timelinePage.closest('.hidden')) {
+                e.preventDefault();
+                const btnOpen = document.getElementById('timelineSearchBtn');
+                if (btnOpen) btnOpen.click();
+                return;
+            }
+        }
+
+        // Skip other shortcuts when typing
+        if (isInput) return;
+
+        // Ctrl+Z — undo
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+            e.preventDefault();
+            handleUndo();
+            return;
+        }
+
+        // Ctrl+Shift+Z or Ctrl+Y — redo
+        if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key === 'Z' || e.key === 'y')) {
+            e.preventDefault();
+            handleRedo();
+            return;
+        }
+    });
 }

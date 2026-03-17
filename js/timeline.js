@@ -535,16 +535,29 @@ function createBookingBlock(booking, startHour) {
     `;
 
     // v5.19: Linked bookings click → navigate to parent booking details
+    // v30.3: Store booking ID on block for bulk operations
+    block._bookingId = booking.id;
+    block.setAttribute('data-booking-id', booking.id);
     if (isLinked) {
         block.addEventListener('click', (e) => {
-            // Feature #14: Don't trigger click if drag just ended
             if (block._dragJustEnded) { block._dragJustEnded = false; return; }
+            // v30.3: Shift+Click for bulk select
+            if (e.shiftKey && typeof BulkOps !== 'undefined') {
+                e.preventDefault();
+                BulkOps.toggle(booking.linkedTo || booking.id);
+                return;
+            }
             showBookingDetails(booking.linkedTo);
         });
     } else {
         block.addEventListener('click', (e) => {
-            // Feature #14: Don't trigger click if drag just ended
             if (block._dragJustEnded) { block._dragJustEnded = false; return; }
+            // v30.3: Shift+Click for bulk select
+            if (e.shiftKey && typeof BulkOps !== 'undefined') {
+                e.preventDefault();
+                BulkOps.toggle(booking.id);
+                return;
+            }
             showBookingDetails(booking.id);
         });
     }
@@ -1982,7 +1995,7 @@ async function renderDaySectionHtml(date) {
         <div class="day-section" data-date="${formatDate(date)}">
             <div class="day-section-header">
                 <span>${DAYS[dayOfWeek]}</span>
-                <span class="date-label">${formatDate(date)} (${isWeekend ? '10:00-20:00' : '12:00-20:00'})</span>
+                <span class="date-label">${date.getDate()} ${MONTHS_SHORT_UKR[date.getMonth()]} (${isWeekend ? '10:00-20:00' : '12:00-20:00'})</span>
             </div>
             <div class="day-section-content">
                 ${timeScaleHtml}
@@ -2066,8 +2079,11 @@ async function renderMultiDayTimeline() {
 
     const dates = buildMultiDayDates();
 
-    const _dowEl2 = document.getElementById('dayOfWeekLabel'); if (_dowEl2) _dowEl2.textContent = `${AppState.daysToShow} днів`;
-    const _whEl2 = document.getElementById('workingHours'); if (_whEl2) _whEl2.textContent = `${formatDate(dates[0])} - ${formatDate(dates[dates.length - 1])}`;
+    // v30.7: User-friendly date labels for multi-day mode
+    const _dowEl2 = document.getElementById('dayOfWeekLabel');
+    if (_dowEl2) _dowEl2.textContent = `${formatDateUkr(dates[0])} — ${formatDateUkr(dates[dates.length - 1])}`;
+    const _whEl2 = document.getElementById('workingHours');
+    if (_whEl2) _whEl2.textContent = `${AppState.daysToShow === 7 ? 'тиждень' : AppState.daysToShow + ' дні'}`;
 
     let multiDayHtml = '<div class="multi-day-container">';
     for (const date of dates) {

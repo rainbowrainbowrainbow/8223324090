@@ -28,16 +28,18 @@ const QUALITY_CATEGORIES = {
 };
 
 const PIPELINE_STAGES = [
-    { key: 'new',              label: 'Новий лід',    emoji: '🔵' },
-    { key: 'contacted',        label: 'Контакт',      emoji: '📞' },
-    { key: 'info_sent',        label: 'Надання інфо',  emoji: '📋' },
-    { key: 'deal',             label: 'Угода',         emoji: '🤝' },
-    { key: 'deposit_received', label: 'Завдаток',      emoji: '💰' },
-    { key: 'waiting',          label: 'В очікуванні',  emoji: '⏳' },
-    { key: 'completed',        label: 'Проведено',     emoji: '✅' },
-    { key: 'closed',           label: 'Закрито',       emoji: '💚' },
-    { key: 'lost',             label: 'Провалено',     emoji: '❌' }
+    { key: 'new',              label: 'Новий лід',    emoji: '🔵', color: '#3B82F6' },
+    { key: 'contacted',        label: 'Контакт',      emoji: '📞', color: '#8B5CF6' },
+    { key: 'info_sent',        label: 'Надання інфо',  emoji: '📋', color: '#F59E0B' },
+    { key: 'deal',             label: 'Угода',         emoji: '🤝', color: '#F97316' },
+    { key: 'deposit_received', label: 'Завдаток',      emoji: '💰', color: '#10B981' },
+    { key: 'waiting',          label: 'В очікуванні',  emoji: '⏳', color: '#06B6D4' },
+    { key: 'completed',        label: 'Проведено',     emoji: '✅', color: '#22C55E' },
+    { key: 'closed',           label: 'Закрито',       emoji: '💚', color: '#059669' },
+    { key: 'lost',             label: 'Провалено',     emoji: '❌', color: '#EF4444' }
 ];
+
+const WIP_LIMIT = 10;
 
 const LOSS_REASONS = [
     'Вибрали конкурента',
@@ -68,6 +70,7 @@ const SOURCE_MAP = {
 let currentView = 'table'; // table | kanban | mailing
 let currentFilter = '';
 let currentTypeFilter = '';
+let currentDateFilter = '';
 let leadsData = [];
 let pipelineData = {};
 let usersData = [];
@@ -148,6 +151,7 @@ async function loadLeads() {
         const params = new URLSearchParams();
         if (currentFilter) params.set('status', currentFilter);
         if (currentTypeFilter) params.set('lead_type', currentTypeFilter);
+        if (currentDateFilter) params.set('event_date', currentDateFilter);
         const search = document.getElementById('leadsSearch')?.value?.trim();
         if (search) params.set('search', search);
         params.set('limit', '200');
@@ -205,6 +209,11 @@ function getIdleColor(lead) {
     return 'idle-red';
 }
 
+function hideFunnelBar() {
+    const funnelEl = document.getElementById('kanbanFunnel');
+    if (funnelEl) funnelEl.style.display = 'none';
+}
+
 function renderTable() {
     const tbody = document.getElementById('leadsTableBody');
     const tableWrap = document.getElementById('tableView');
@@ -213,6 +222,7 @@ function renderTable() {
     if (tableWrap) tableWrap.style.display = '';
     if (kanbanWrap) kanbanWrap.style.display = 'none';
     if (mailingWrap) mailingWrap.style.display = 'none';
+    hideFunnelBar();
 
     if (!tbody) return;
     if (leadsData.length === 0) {
@@ -252,12 +262,50 @@ function renderTable() {
 // ==========================================
 // KANBAN VIEW
 // ==========================================
+function getDaysOnStage(lead) {
+    const ref = lead.stage_changed_at || lead.last_contact_at || lead.created_at;
+    if (!ref) return 0;
+    return Math.floor((Date.now() - new Date(ref).getTime()) / 86400000);
+}
+
+function formatDaysLabel(days) {
+    if (days === 0) return 'сьогодні';
+    if (days === 1) return '1 день';
+    if (days < 5) return days + ' дні';
+    return days + ' днів';
+}
+
+function renderFunnelBar(grouped) {
+    // Only count stages that form the funnel (exclude lost/closed)
+    const funnelStages = PIPELINE_STAGES.filter(s => s.key !== 'lost' && s.key !== 'closed');
+    const counts = funnelStages.map(s => (grouped[s.key] || []).length);
+    const maxCount = Math.max(...counts, 1);
+
+    const bars = funnelStages.map((stage, i) => {
+        const count = counts[i];
+        const pct = Math.max(Math.round((count / maxCount) * 100), 8);
+        const nextCount = counts[i + 1];
+        const convRate = (i < funnelStages.length - 1 && count > 0)
+            ? Math.round((nextCount / count) * 100) + '%'
+            : '';
+
+        return `<div class="funnel-step">
+            <div class="funnel-bar" style="width:${pct}%;background:${stage.color}">
+                <span class="funnel-bar-label">${stage.emoji} ${count}</span>
+            </div>
+            ${convRate ? `<div class="funnel-arrow">→ ${convRate}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    return `<div class="funnel-bar-container">${bars}</div>`;
+}
+
 function renderKanban() {
     const tableWrap = document.getElementById('tableView');
     const kanbanWrap = document.getElementById('kanbanView');
     const mailingWrap = document.getElementById('mailingView');
     if (tableWrap) tableWrap.style.display = 'none';
-    if (kanbanWrap) kanbanWrap.style.display = '';
+    if (kanbanWrap) kanbanWrap.style.display = 'flex';
     if (mailingWrap) mailingWrap.style.display = 'none';
 
     if (!kanbanWrap) return;
@@ -271,23 +319,54 @@ function renderKanban() {
         grouped[stage].push(l);
     }
 
+    // Render funnel bar above kanban
+    let funnelEl = document.getElementById('kanbanFunnel');
+    if (!funnelEl) {
+        funnelEl = document.createElement('div');
+        funnelEl.id = 'kanbanFunnel';
+        kanbanWrap.parentNode.insertBefore(funnelEl, kanbanWrap);
+    }
+    funnelEl.innerHTML = renderFunnelBar(grouped);
+    funnelEl.style.display = '';
+
     kanbanWrap.innerHTML = PIPELINE_STAGES.map(stage => {
         const leads = grouped[stage.key] || [];
+        const isEmpty = leads.length === 0;
+        const isOverWip = leads.length > WIP_LIMIT;
+
+        // Sum of budget_approx for the column
+        const totalSum = leads.reduce((sum, l) => sum + (l.budget_approx || 0), 0);
+
         const cards = leads.map(l => {
             const idleClass = getIdleColor(l);
             const lt = LEAD_TYPE_MAP[l.lead_type] || LEAD_TYPE_MAP.quality;
+            const days = getDaysOnStage(l);
+            const daysClass = days > 7 ? 'days-warn' : days > 3 ? 'days-mid' : '';
+            const phone = l.phone || '';
+            const phoneTel = phone.replace(/[^+\d]/g, '');
+
             return `<div class="kanban-card ${idleClass}" draggable="true" data-id="${l.id}" onclick="editLead(${l.id})">
-                <div class="kanban-card-name">${escapeHtml(l.client_name || '—')}</div>
-                <div class="kanban-card-meta">${escapeHtml(l.phone || '')} <span class="lead-type-badge ${lt.cls}">${lt.emoji}</span></div>
+                <div class="kanban-card-top">
+                    <div class="kanban-card-name">${escapeHtml(l.client_name || '—')}</div>
+                    <span class="kanban-days ${daysClass}" title="На етапі">${formatDaysLabel(days)}</span>
+                </div>
+                <div class="kanban-card-meta">${escapeHtml(phone)} <span class="lead-type-badge ${lt.cls}">${lt.emoji}</span></div>
                 ${l.event_date ? '<div class="kanban-card-date">📅 ' + new Date(l.event_date).toLocaleDateString('uk-UA') + '</div>' : ''}
+                ${phoneTel ? `<div class="kanban-card-actions" onclick="event.stopPropagation()">
+                    <a class="kanban-action-btn" href="tel:${escapeHtml(phoneTel)}" title="Зателефонувати">📞</a>
+                    <a class="kanban-action-btn" href="https://t.me/${escapeHtml(phoneTel)}" target="_blank" title="Telegram">💬</a>
+                </div>` : ''}
             </div>`;
         }).join('');
 
-        return `<div class="kanban-column" data-stage="${stage.key}">
-            <div class="kanban-column-header">
-                <span>${stage.emoji} ${stage.label}</span>
-                <span class="kanban-count">${leads.length}</span>
+        const wipWarning = isOverWip ? `<span class="wip-warning" title="Забагато лідів!">⚠️</span>` : '';
+
+        return `<div class="kanban-column ${isEmpty ? 'kanban-column-empty' : ''} ${isOverWip ? 'kanban-column-wip' : ''}" data-stage="${stage.key}">
+            <div class="kanban-column-header" style="border-bottom-color:${stage.color}">
+                <span style="color:${stage.color}">${stage.emoji} ${stage.label}</span>
+                <span class="kanban-count" style="background:${stage.color};color:#fff">${leads.length}${wipWarning}</span>
             </div>
+            ${totalSum > 0 ? `<div class="kanban-column-sum">${totalSum.toLocaleString('uk-UA')} ₴</div>` : ''}
             <div class="kanban-cards" data-stage="${stage.key}">
                 ${cards || '<div class="kanban-empty">—</div>'}
             </div>
@@ -572,6 +651,7 @@ async function loadMailing() {
     if (tableWrap) tableWrap.style.display = 'none';
     if (kanbanWrap) kanbanWrap.style.display = 'none';
     if (mailingWrap) mailingWrap.style.display = '';
+    hideFunnelBar();
 
     try {
         const res = await apiFetch('/api/leads/mailing');
@@ -671,6 +751,26 @@ function setupEvents() {
             btn.classList.add('active');
             currentFilter = btn.dataset.status;
             currentTypeFilter = '';
+            loadLeads();
+        });
+    });
+
+    // Date filter buttons (Сьогодні / Завтра)
+    document.querySelectorAll('#dateBtns .filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const isActive = btn.classList.contains('active');
+            document.querySelectorAll('#dateBtns .filter-btn').forEach(b => b.classList.remove('active'));
+            if (isActive) {
+                // Toggle off — clear date filter
+                currentDateFilter = '';
+            } else {
+                btn.classList.add('active');
+                const now = new Date();
+                if (btn.dataset.date === 'tomorrow') {
+                    now.setDate(now.getDate() + 1);
+                }
+                currentDateFilter = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Kyiv' });
+            }
             loadLeads();
         });
     });

@@ -47,10 +47,11 @@ const MANAGER_ROLES = ['creator', 'director', 'senior_manager', 'manager'];
 const rateLimitAI = rateLimit({
     windowMs: 60 * 1000,
     max: 15,
-    keyGenerator: (req) => String(req.user?.id || req.ip),
+    keyGenerator: (req) => String(req.user?.id || 'anon'),
     message: { error: 'Забагато запитів. Зачекайте хвилину.' },
     standardHeaders: false,
-    legacyHeaders: false
+    legacyHeaders: false,
+    validate: { ipv6SubnetOrKeyGenerator: false }
 });
 
 // All routes require manager+ role

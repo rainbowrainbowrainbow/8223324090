@@ -3889,3 +3889,172 @@ describe('Customers — Excel Export (v17.0)', () => {
         assert.ok(res.headers.get('content-type').includes('spreadsheetml'));
     });
 });
+
+// ==========================================
+// HR IMPROVEMENTS (v30.7)
+// ==========================================
+
+describe('HR — Leave Requests (v30.7)', () => {
+    let leaveId;
+    it('POST /api/hr/leave-requests — create leave request', async () => {
+        const res = await authRequest('POST', '/api/hr/leave-requests', {
+            staff_id: 1, type: 'vacation', date_from: '2026-05-01', date_to: '2026-05-03', reason: 'Test leave'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        leaveId = res.data.data.id;
+        assert.equal(res.data.data.days, 3);
+    });
+
+    it('GET /api/hr/leave-requests — list requests', async () => {
+        const res = await authRequest('GET', '/api/hr/leave-requests');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(Array.isArray(res.data.data));
+    });
+
+    it('PUT /api/hr/leave-requests/:id/review — approve', async () => {
+        const res = await authRequest('PUT', `/api/hr/leave-requests/${leaveId}/review`, { status: 'approved' });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.data.status, 'approved');
+    });
+});
+
+describe('HR — Ratings (v30.7)', () => {
+    it('GET /api/hr/ratings — leaderboard', async () => {
+        const res = await authRequest('GET', '/api/hr/ratings');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(Array.isArray(res.data.data));
+    });
+
+    it('POST /api/hr/ratings/:staffId — add rating', async () => {
+        const res = await authRequest('POST', '/api/hr/ratings/1', { score: 4, comment: 'Good' });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(res.data.avg_rating > 0);
+    });
+});
+
+describe('HR — Certifications (v30.7)', () => {
+    let certId;
+    it('POST /api/hr/certifications — create', async () => {
+        const res = await authRequest('POST', '/api/hr/certifications', {
+            staff_id: 1, name: 'Fire Safety', category: 'safety', expires_at: '2026-12-31'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        certId = res.data.data.id;
+    });
+
+    it('GET /api/hr/certifications — list', async () => {
+        const res = await authRequest('GET', '/api/hr/certifications');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(res.data.data.length >= 1);
+    });
+
+    it('DELETE /api/hr/certifications/:id — delete', async () => {
+        const res = await authRequest('DELETE', `/api/hr/certifications/${certId}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+});
+
+describe('HR — Onboarding (v30.7)', () => {
+    let progressId;
+    it('GET /api/hr/onboarding/templates — list templates', async () => {
+        const res = await authRequest('GET', '/api/hr/onboarding/templates');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(res.data.data.length >= 1);
+    });
+
+    it('POST /api/hr/onboarding/start — start onboarding', async () => {
+        const res = await authRequest('POST', '/api/hr/onboarding/start', { staff_id: 1, template_id: 1 });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        progressId = res.data.data.id;
+        assert.equal(res.data.data.total_items, 8);
+    });
+
+    it('PUT /api/hr/onboarding/:id/check — toggle item', async () => {
+        const res = await authRequest('PUT', `/api/hr/onboarding/${progressId}/check`, { item_id: 1, done: true });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.data.completed_items, 1);
+    });
+});
+
+describe('HR — Costumes (v30.7)', () => {
+    let costumeId;
+    it('POST /api/hr/costumes — create', async () => {
+        const res = await authRequest('POST', '/api/hr/costumes', { name: 'Test Costume', category: 'test', size: 'L' });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        costumeId = res.data.data.id;
+    });
+
+    it('GET /api/hr/costumes — list', async () => {
+        const res = await authRequest('GET', '/api/hr/costumes');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(res.data.data.length >= 1);
+    });
+
+    it('PUT /api/hr/costumes/:id — update', async () => {
+        const res = await authRequest('PUT', `/api/hr/costumes/${costumeId}`, { condition: 'worn' });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+
+    it('DELETE /api/hr/costumes/:id — delete', async () => {
+        const res = await authRequest('DELETE', `/api/hr/costumes/${costumeId}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+});
+
+describe('HR — Salary (v30.7)', () => {
+    it('GET /api/hr/salary — salary report', async () => {
+        const res = await authRequest('GET', '/api/hr/salary?month=2026-03');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(Array.isArray(res.data.data));
+        assert.ok(res.data.totals);
+        assert.equal(res.data.month, '2026-03');
+    });
+
+    it('POST /api/hr/salary/adjustment — add bonus', async () => {
+        const res = await authRequest('POST', '/api/hr/salary/adjustment', {
+            staff_id: 1, month: '2026-03', type: 'bonus', amount: 1000, reason: 'Test bonus'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+});
+
+describe('HR — Availability (v30.7)', () => {
+    it('GET /api/hr/availability — list', async () => {
+        const res = await authRequest('GET', '/api/hr/availability');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(Array.isArray(res.data.data));
+    });
+
+    it('PUT /api/hr/availability/:staffId — update status', async () => {
+        const res = await authRequest('PUT', '/api/hr/availability/1', { status: 'busy', booking_id: 'BK-2026-0001' });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+    });
+});
+
+describe('HR — Auto-assign (v30.7)', () => {
+    it('POST /api/hr/auto-assign — find candidates', async () => {
+        const res = await authRequest('POST', '/api/hr/auto-assign', { date: '2026-03-20', time_start: '10:00' });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(typeof res.data.total_available === 'number');
+    });
+});

@@ -546,11 +546,19 @@ function switchTab(tabName) {
     });
 
     // Show/hide tab panels
-    document.getElementById('tabDashboard').style.display = tabName === 'dashboard' ? '' : 'none';
-    document.getElementById('tabTransactions').style.display = tabName === 'transactions' ? '' : 'none';
-    document.getElementById('tabMonthly').style.display = tabName === 'monthly' ? '' : 'none';
-    document.getElementById('tabSalary').style.display = tabName === 'salary' ? '' : 'none';
-    document.getElementById('tabBudget').style.display = tabName === 'budget' ? '' : 'none';
+    const tabs = ['tabDashboard','tabTransactions','tabMonthly','tabSalary','tabBudget',
+                  'tabShift','tabForecast','tabPnl','tabDebts','tabAdvanced'];
+    tabs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    const activePanel = document.getElementById({
+        dashboard: 'tabDashboard', transactions: 'tabTransactions',
+        monthly: 'tabMonthly', salary: 'tabSalary', budget: 'tabBudget',
+        shift: 'tabShift', forecast: 'tabForecast', pnl: 'tabPnl',
+        debts: 'tabDebts', advanced: 'tabAdvanced'
+    }[tabName]);
+    if (activePanel) activePanel.style.display = '';
 
     // Load data for tab
     if (tabName === 'dashboard') fetchDashboard();
@@ -558,6 +566,11 @@ function switchTab(tabName) {
     if (tabName === 'monthly') fetchMonthlyReport();
     if (tabName === 'salary') fetchSalaryReport();
     if (tabName === 'budget') initBudgetTab();
+    if (tabName === 'shift') loadShiftData();
+    if (tabName === 'forecast') loadForecast();
+    if (tabName === 'pnl') loadPnlReport();
+    if (tabName === 'debts') loadDebts();
+    if (tabName === 'advanced') loadAdvancedDashboard();
 }
 
 // ==========================================
@@ -810,6 +823,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Year filter
     populateYearFilter();
 
+    // v30.6: P&L year filter
+    const pnlYear = document.getElementById('pnlYear');
+    if (pnlYear) {
+        const curYear = new Date().getFullYear();
+        for (let y = curYear; y >= curYear - 5; y--) {
+            pnlYear.innerHTML += `<option value="${y}">${y}</option>`;
+        }
+    }
+
     // Fetch initial data
     await fetchCategories();
     fetchDashboard();
@@ -876,4 +898,432 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Salary month change
     document.getElementById('salaryMonth')?.addEventListener('change', fetchSalaryReport);
+
+    // v30.6: Shift buttons
+    document.getElementById('openShiftBtn')?.addEventListener('click', openShift);
+    document.getElementById('closeShiftBtn')?.addEventListener('click', closeShift);
+
+    // v30.6: Currency converter
+    document.getElementById('convertCurrencyBtn')?.addEventListener('click', convertCurrency);
 });
+
+// ==========================================
+// v30.6: CASH REGISTER SHIFTS
+// ==========================================
+
+async function loadShiftData() {
+    try {
+        const data = await apiRequest('GET', '/api/finance/shift/current');
+        const container = document.getElementById('shiftStatus');
+        if (!container) return;
+
+        if (data.isOpen && data.shift) {
+            const s = data.shift;
+            container.innerHTML = `
+                <div class="fin-stat-card" style="border-left:4px solid #10B981">
+                    <div style="font-weight:800;color:#10B981;margin-bottom:8px">Зміна відкрита</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+                        <div>Каса на початок: <b>${formatMoney(s.openingCash)}</b></div>
+                        <div>Готівка (дохід): <b style="color:#10B981">+${formatMoney(s.cashIncome)}</b></div>
+                        <div>Готівка (витрати): <b style="color:#EF4444">-${formatMoney(s.cashExpense)}</b></div>
+                        <div>Очікувана каса: <b style="color:#6366F1">${formatMoney(s.expectedCash)}</b></div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('openShiftBtn').style.display = 'none';
+            document.getElementById('closeShiftBtn').style.display = '';
+            document.getElementById('closeShiftSection').style.display = '';
+        } else {
+            container.innerHTML = `
+                <div class="fin-stat-card" style="border-left:4px solid #9CA3AF">
+                    <div style="font-weight:800;color:#9CA3AF">Зміна закрита</div>
+                    <div style="font-size:13px;margin-top:4px">Відкрийте нову зміну для обліку готівки</div>
+                </div>
+            `;
+            document.getElementById('openShiftBtn').style.display = '';
+            document.getElementById('closeShiftBtn').style.display = 'none';
+            document.getElementById('closeShiftSection').style.display = 'none';
+        }
+
+        // Load history
+        const history = await apiRequest('GET', '/api/finance/shift/history?limit=10');
+        const tbody = document.getElementById('shiftHistoryBody');
+        if (tbody && history.shifts) {
+            tbody.innerHTML = history.shifts.map(s => {
+                const diff = s.cash_difference;
+                const diffColor = diff === 0 ? '#10B981' : (diff > 0 ? '#3B82F6' : '#EF4444');
+                return `<tr>
+                    <td>${s.opened_at ? new Date(s.opened_at).toLocaleString('uk-UA') : '—'}</td>
+                    <td>${s.closed_at ? new Date(s.closed_at).toLocaleString('uk-UA') : '—'}</td>
+                    <td>${formatMoney(s.opening_cash)}</td>
+                    <td>${s.closing_cash !== null ? formatMoney(s.closing_cash) : '—'}</td>
+                    <td>${s.expected_cash !== null ? formatMoney(s.expected_cash) : '—'}</td>
+                    <td style="color:${diffColor};font-weight:700">${diff !== null ? (diff > 0 ? '+' : '') + formatMoney(diff) : '—'}</td>
+                    <td><span class="fin-type-badge ${s.status === 'open' ? 'income' : 'expense'}">${s.status === 'open' ? 'Відкрита' : 'Закрита'}</span></td>
+                </tr>`;
+            }).join('');
+        }
+    } catch (err) {
+        console.error('Failed to load shift data', err);
+    }
+}
+
+async function openShift() {
+    const cashInput = document.getElementById('openingCashInput');
+    const openingCash = parseInt(cashInput?.value) || 0;
+    try {
+        await apiRequest('POST', '/api/finance/shift/open', { openingCash });
+        showNotification('Зміну відкрито');
+        if (cashInput) cashInput.value = '';
+        loadShiftData();
+    } catch (err) {
+        showNotification(err.message || 'Помилка', 'error');
+    }
+}
+
+async function closeShift() {
+    const cashInput = document.getElementById('closingCashInput');
+    const closingCash = parseInt(cashInput?.value);
+    if (isNaN(closingCash) || closingCash < 0) {
+        showNotification('Вкажіть суму готівки в касі', 'error');
+        return;
+    }
+    try {
+        const result = await apiRequest('POST', '/api/finance/shift/close', { closingCash });
+        const s = result.summary;
+        const diffAbs = Math.abs(s.difference);
+        const diffSign = s.difference >= 0 ? '+' : '-';
+        showNotification(`Зміну закрито. Різниця: ${diffSign}${formatMoney(diffAbs)}`);
+        if (cashInput) cashInput.value = '';
+        loadShiftData();
+    } catch (err) {
+        showNotification(err.message || 'Помилка', 'error');
+    }
+}
+
+// ==========================================
+// v30.6: REVENUE FORECAST
+// ==========================================
+
+async function loadForecast() {
+    try {
+        const days = document.getElementById('forecastDays')?.value || 30;
+        const data = await apiRequest('GET', `/api/finance/forecast?days=${days}`);
+        const container = document.getElementById('forecastContent');
+        if (!container) return;
+
+        let html = `<div class="fin-stats" style="margin-bottom:16px">
+            <div class="fin-stat-card fin-stat-income">
+                <div class="fin-stat-value">${formatMoney(data.totals.expectedRevenue)}</div>
+                <div class="fin-stat-label">Прогноз доходу (${days} дн.)</div>
+            </div>
+            <div class="fin-stat-card fin-stat-bookings">
+                <div class="fin-stat-value">${data.totals.bookingCount}</div>
+                <div class="fin-stat-label">Підтверджених бронювань</div>
+            </div>
+            <div class="fin-stat-card fin-stat-profit">
+                <div class="fin-stat-value">${data.totals.bookingCount > 0 ? formatMoney(Math.round(data.totals.expectedRevenue / data.totals.bookingCount)) : '0 ₴'}</div>
+                <div class="fin-stat-label">Середній чек</div>
+            </div>
+        </div>`;
+
+        // Weekly breakdown
+        if (data.weekly && data.weekly.length > 0) {
+            html += `<div class="fin-table-wrap"><table class="fin-monthly-table">
+                <thead><tr><th style="text-align:left">Тиждень</th><th>Бронювань</th><th>Прогноз ₴</th></tr></thead>
+                <tbody>${data.weekly.map(w => `<tr>
+                    <td style="text-align:left">${formatDate(w.week_start)}</td>
+                    <td>${w.booking_count}</td>
+                    <td class="fin-amount-income">${formatMoney(w.expected_revenue)}</td>
+                </tr>`).join('')}</tbody>
+            </table></div>`;
+        }
+
+        // Historical pattern
+        if (data.historicalAverage && data.historicalAverage.length > 0) {
+            const DOW = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+            html += `<div style="margin-top:16px"><h4 style="font-weight:800;margin-bottom:8px">Середній дохід по днях тижня (останні 90 днів)</h4>
+                <div class="fin-table-wrap"><table class="fin-monthly-table">
+                <thead><tr><th style="text-align:left">День</th><th>Середній дохід</th><th>Середня к-сть</th></tr></thead>
+                <tbody>${data.historicalAverage.map(h => `<tr>
+                    <td style="text-align:left">${DOW[h.dow] || h.dow}</td>
+                    <td class="fin-amount-income">${formatMoney(h.avg_revenue)}</td>
+                    <td>${h.avg_count}</td>
+                </tr>`).join('')}</tbody>
+            </table></div></div>`;
+        }
+
+        container.innerHTML = html;
+    } catch (err) {
+        console.error('Failed to load forecast', err);
+    }
+}
+
+// ==========================================
+// v30.6: ENHANCED P&L REPORT
+// ==========================================
+
+async function loadPnlReport() {
+    try {
+        const year = document.getElementById('pnlYear')?.value || new Date().getFullYear();
+        const month = document.getElementById('pnlMonth')?.value || '';
+        let url = `/api/finance/report/pnl?year=${year}`;
+        if (month) url += `&month=${month}`;
+
+        const data = await apiRequest('GET', url);
+        const container = document.getElementById('pnlContent');
+        if (!container) return;
+
+        const s = data.summary;
+        const incChange = s.incomeChange;
+        const expChange = s.expenseChange;
+
+        let html = `<div class="fin-stats">
+            <div class="fin-stat-card fin-stat-income">
+                <div class="fin-stat-value">${formatMoney(s.totalIncome)}</div>
+                <div class="fin-stat-label">Виручка ${incChange !== 0 ? `<span style="color:${incChange >= 0 ? '#10B981' : '#EF4444'}">(${incChange >= 0 ? '+' : ''}${incChange}%)</span>` : ''}</div>
+            </div>
+            <div class="fin-stat-card fin-stat-expense">
+                <div class="fin-stat-value">${formatMoney(s.totalExpenses)}</div>
+                <div class="fin-stat-label">Витрати ${expChange !== 0 ? `<span style="color:${expChange <= 0 ? '#10B981' : '#EF4444'}">(${expChange >= 0 ? '+' : ''}${expChange}%)</span>` : ''}</div>
+            </div>
+            <div class="fin-stat-card fin-stat-profit">
+                <div class="fin-stat-value">${formatMoney(s.grossProfit)}</div>
+                <div class="fin-stat-label">Чистий прибуток (маржа ${s.margin}%)</div>
+            </div>
+            <div class="fin-stat-card fin-stat-bookings">
+                <div class="fin-stat-value">${formatMoney(data.bookingRevenue)}</div>
+                <div class="fin-stat-label">Виручка з бронювань</div>
+            </div>
+        </div>`;
+
+        // Revenue breakdown
+        html += `<div class="fin-categories"><div class="fin-cat-section">
+            <h4 style="color:#10B981">Доходи по статтях</h4>`;
+        if (data.revenue.length > 0) {
+            const maxInc = Math.max(...data.revenue.map(r => r.total), 1);
+            html += data.revenue.map(r => `<div class="fin-cat-row">
+                <span class="fin-cat-icon">${r.icon || '📋'}</span>
+                <span class="fin-cat-name">${r.name}</span>
+                <div class="fin-cat-bar"><div class="fin-cat-bar-fill" style="width:${Math.round(r.total / maxInc * 100)}%;background:#10B981"></div></div>
+                <span class="fin-cat-amount" style="color:#10B981">${formatMoney(r.total)}</span>
+            </div>`).join('');
+        } else {
+            html += '<div style="color:var(--gray-400);font-size:13px;padding:8px">Немає даних</div>';
+        }
+        html += '</div><div class="fin-cat-section"><h4 style="color:#EF4444">Витрати по статтях</h4>';
+        if (data.expenses.length > 0) {
+            const maxExp = Math.max(...data.expenses.map(r => r.total), 1);
+            html += data.expenses.map(r => `<div class="fin-cat-row">
+                <span class="fin-cat-icon">${r.icon || '📋'}</span>
+                <span class="fin-cat-name">${r.name}</span>
+                <div class="fin-cat-bar"><div class="fin-cat-bar-fill" style="width:${Math.round(r.total / maxExp * 100)}%;background:#EF4444"></div></div>
+                <span class="fin-cat-amount" style="color:#EF4444">${formatMoney(r.total)}</span>
+            </div>`).join('');
+        } else {
+            html += '<div style="color:var(--gray-400);font-size:13px;padding:8px">Немає даних</div>';
+        }
+        html += '</div></div>';
+
+        // Previous period comparison
+        html += `<div class="fin-chart"><h4>Порівняння з попереднім періодом</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center">
+                <div><div style="font-size:12px;color:var(--gray-500)">Попередній дохід</div><div style="font-weight:800">${formatMoney(s.previousIncome)}</div></div>
+                <div><div style="font-size:12px;color:var(--gray-500)">Попередні витрати</div><div style="font-weight:800">${formatMoney(s.previousExpenses)}</div></div>
+                <div><div style="font-size:12px;color:var(--gray-500)">Попередній прибуток</div><div style="font-weight:800;color:${s.previousProfit >= 0 ? '#10B981' : '#EF4444'}">${formatMoney(s.previousProfit)}</div></div>
+            </div>
+        </div>`;
+
+        container.innerHTML = html;
+    } catch (err) {
+        console.error('Failed to load P&L', err);
+    }
+}
+
+// ==========================================
+// v30.6: DEBTS
+// ==========================================
+
+async function loadDebts() {
+    try {
+        const data = await apiRequest('GET', '/api/finance/debts');
+        const container = document.getElementById('debtsContent');
+        if (!container) return;
+
+        let html = `<div class="fin-stats" style="margin-bottom:16px">
+            <div class="fin-stat-card fin-stat-expense">
+                <div class="fin-stat-value">${formatMoney(data.totalDebt)}</div>
+                <div class="fin-stat-label">Загальний борг</div>
+            </div>
+            <div class="fin-stat-card" style="border-left:3px solid #F59E0B">
+                <div class="fin-stat-value" style="color:#F59E0B">${data.count}</div>
+                <div class="fin-stat-label">Неоплачених бронювань</div>
+            </div>
+        </div>`;
+
+        if (data.debts.length > 0) {
+            html += `<div class="fin-table-wrap"><table class="fin-table">
+                <thead><tr><th>Дата</th><th>Бронювання</th><th>Клієнт</th><th>Ціна</th><th>Сплачено</th><th>Борг</th><th>Дія</th></tr></thead>
+                <tbody>${data.debts.map(d => `<tr>
+                    <td>${formatDate(d.date)}</td>
+                    <td>${escapeHtml(d.label || d.programName || d.bookingId)}</td>
+                    <td>${escapeHtml(d.customerName || '—')}<br><small>${d.customerPhone || ''}</small></td>
+                    <td>${formatMoney(d.price)}</td>
+                    <td>${formatMoney(d.paidAmount || 0)}</td>
+                    <td class="fin-amount-expense">${formatMoney(d.debtAmount)}</td>
+                    <td><button onclick="markPaid('${d.bookingId}')" class="btn-page-primary" style="font-size:12px;padding:6px 12px;min-height:36px">Сплачено</button></td>
+                </tr>`).join('')}</tbody>
+            </table></div>`;
+        } else {
+            html += '<div style="text-align:center;color:var(--gray-400);padding:40px">Немає боргів</div>';
+        }
+
+        container.innerHTML = html;
+    } catch (err) {
+        console.error('Failed to load debts', err);
+    }
+}
+
+window.markPaid = async function(bookingId) {
+    try {
+        await apiRequest('POST', `/api/finance/debts/${bookingId}/mark-paid`, {});
+        showNotification('Оплату зараховано');
+        loadDebts();
+    } catch (err) {
+        showNotification('Помилка', 'error');
+    }
+};
+
+// ==========================================
+// v30.6: ADVANCED DASHBOARD
+// ==========================================
+
+async function loadAdvancedDashboard() {
+    try {
+        const data = await apiRequest('GET', '/api/finance/advanced-dashboard');
+        const container = document.getElementById('advancedContent');
+        if (!container) return;
+
+        const m = data.metrics;
+        let html = `<div class="fin-stats">
+            <div class="fin-stat-card fin-stat-income">
+                <div class="fin-stat-value">${formatMoney(m.monthIncome)}</div>
+                <div class="fin-stat-label">Дохід (цей місяць)</div>
+            </div>
+            <div class="fin-stat-card fin-stat-expense">
+                <div class="fin-stat-value">${formatMoney(m.monthExpense)}</div>
+                <div class="fin-stat-label">Витрати</div>
+            </div>
+            <div class="fin-stat-card fin-stat-profit">
+                <div class="fin-stat-value">${formatMoney(m.monthProfit)}</div>
+                <div class="fin-stat-label">Прибуток (маржа ${m.margin}%)</div>
+            </div>
+            <div class="fin-stat-card fin-stat-bookings">
+                <div class="fin-stat-value">${formatMoney(m.avgBookingPrice)}</div>
+                <div class="fin-stat-label">Середній чек (${m.bookingsCount} брон.)</div>
+            </div>
+        </div>`;
+
+        // Debt alert
+        if (data.debt && data.debt.total_debt > 0) {
+            html += `<div class="fin-stat-card" style="border-left:4px solid #EF4444;margin-bottom:16px;text-align:left;padding:12px 16px">
+                <span style="color:#EF4444;font-weight:800">Борги:</span> ${formatMoney(data.debt.total_debt)} (${data.debt.count} бронювань)
+                <button onclick="switchTab('debts')" style="float:right;padding:4px 12px;background:#EF4444;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit">Переглянути</button>
+            </div>`;
+        }
+
+        // Revenue trend chart
+        if (data.revenueTrend && data.revenueTrend.length > 0) {
+            const maxTrend = Math.max(...data.revenueTrend.map(r => Math.max(r.income, r.expense)), 1);
+            html += `<div class="fin-chart"><h4>Тренд доходів/витрат (6 місяців)</h4>
+                <div class="fin-bar-chart">${data.revenueTrend.map(r => {
+                    const incH = Math.max((r.income / maxTrend) * 140, 2);
+                    const expH = Math.max((r.expense / maxTrend) * 140, 2);
+                    return `<div class="fin-bar-group">
+                        <div class="fin-bar-pair">
+                            <div class="fin-bar income" style="height:${incH}px" title="Дохід: ${formatMoney(r.income)}"></div>
+                            <div class="fin-bar expense" style="height:${expH}px" title="Витрати: ${formatMoney(r.expense)}"></div>
+                        </div>
+                        <div class="fin-bar-label">${r.month.substring(5)}</div>
+                    </div>`;
+                }).join('')}</div></div>`;
+        }
+
+        // Cash flow
+        if (data.cashFlow && data.cashFlow.length > 0) {
+            const maxFlow = Math.max(...data.cashFlow.map(r => Math.max(r.inflow, r.outflow)), 1);
+            html += `<div class="fin-chart"><h4>Cash Flow (8 тижнів)</h4>
+                <div class="fin-bar-chart">${data.cashFlow.map(r => {
+                    const inH = Math.max((r.inflow / maxFlow) * 140, 2);
+                    const outH = Math.max((r.outflow / maxFlow) * 140, 2);
+                    const weekLabel = r.week ? new Date(r.week).toLocaleDateString('uk-UA', {day:'numeric',month:'short'}) : '';
+                    return `<div class="fin-bar-group">
+                        <div class="fin-bar-pair">
+                            <div class="fin-bar income" style="height:${inH}px" title="Надходження: ${formatMoney(r.inflow)}"></div>
+                            <div class="fin-bar expense" style="height:${outH}px" title="Відтік: ${formatMoney(r.outflow)}"></div>
+                        </div>
+                        <div class="fin-bar-label">${weekLabel}</div>
+                    </div>`;
+                }).join('')}</div></div>`;
+        }
+
+        // Top expenses + Payment distribution side by side
+        html += '<div class="fin-categories">';
+
+        // Top expenses
+        html += '<div class="fin-cat-section"><h4 style="color:#EF4444">Топ-5 витрат (місяць)</h4>';
+        if (data.topExpenses && data.topExpenses.length > 0) {
+            html += data.topExpenses.map(e => `<div class="fin-cat-row">
+                <span class="fin-cat-icon">${e.icon || '💰'}</span>
+                <span class="fin-cat-name">${escapeHtml(e.description || e.category || '—')}</span>
+                <span class="fin-cat-amount" style="color:#EF4444">${formatMoney(e.amount)}</span>
+            </div>`).join('');
+        } else {
+            html += '<div style="color:var(--gray-400);font-size:13px;padding:8px">Немає даних</div>';
+        }
+        html += '</div>';
+
+        // Payment distribution
+        html += '<div class="fin-cat-section"><h4 style="color:#6366F1">Способи оплати</h4>';
+        if (data.paymentDistribution && data.paymentDistribution.length > 0) {
+            const maxPay = Math.max(...data.paymentDistribution.map(p => p.total), 1);
+            html += data.paymentDistribution.map(p => `<div class="fin-cat-row">
+                <span class="fin-cat-name">${PAYMENT_LABELS[p.payment_method] || p.payment_method}</span>
+                <div class="fin-cat-bar"><div class="fin-cat-bar-fill" style="width:${Math.round(p.total / maxPay * 100)}%;background:#6366F1"></div></div>
+                <span class="fin-cat-amount" style="color:#6366F1">${formatMoney(p.total)} (${p.count})</span>
+            </div>`).join('');
+        } else {
+            html += '<div style="color:var(--gray-400);font-size:13px;padding:8px">Немає даних</div>';
+        }
+        html += '</div></div>';
+
+        container.innerHTML = html;
+    } catch (err) {
+        console.error('Failed to load advanced dashboard', err);
+    }
+}
+
+// ==========================================
+// v30.6: CURRENCY CONVERTER
+// ==========================================
+
+async function convertCurrency() {
+    const amount = parseFloat(document.getElementById('currencyAmount')?.value);
+    const currency = document.getElementById('currencySelect')?.value || 'EUR';
+    if (!amount || amount <= 0) {
+        showNotification('Вкажіть суму', 'error');
+        return;
+    }
+    try {
+        const result = await apiRequest('POST', '/api/finance/currency/convert', { amount, currency });
+        const el = document.getElementById('currencyResult');
+        if (el) {
+            el.innerHTML = `<div class="fin-stat-card" style="text-align:center;border-left:3px solid #10B981">
+                <div style="font-size:24px;font-weight:900;color:#10B981">${formatMoney(result.converted.amount)}</div>
+                <div style="font-size:13px;color:var(--gray-500)">${result.formatted} (курс: ${result.rate})</div>
+            </div>`;
+        }
+    } catch (err) {
+        showNotification(err.message || 'Помилка конвертації', 'error');
+    }
+}

@@ -231,14 +231,21 @@ const DashboardPage = (() => {
         const items = data.tasks.slice(0, 6).map(t => {
             const priorityCls = t.priority || 'medium';
             const deadline = t.deadline ? formatDeadline(t.deadline) : '';
-            return `<div class="widget-task-item">
+            const catInfo = { event: '🎉', purchase: '🛒', admin: '📎', trampoline: '🤸', personal: '👤', improvement: '⚡' };
+            const catIcon = catInfo[t.category] || '📋';
+            const statusLabel = t.status === 'in_progress' ? 'В роботі' : t.status === 'todo' ? 'Todo' : t.status;
+            return `<div class="widget-task-item" onclick="DashboardPage.openTask(${t.id})" title="Відкрити задачу">
                 <div class="widget-task-icon ${priorityCls}"></div>
-                <div class="widget-task-title">${escapeHtml(t.title)}</div>
-                ${deadline ? `<div class="widget-task-deadline">${deadline}</div>` : ''}
+                <div class="widget-task-info">
+                    <div class="widget-task-title">${escapeHtml(t.title)}</div>
+                    <div class="widget-task-meta">${catIcon} ${statusLabel}${deadline ? ' · ' + deadline : ''}</div>
+                </div>
+                <div class="widget-task-arrow">›</div>
             </div>`;
         }).join('');
 
-        container.innerHTML = `<div class="widget-task-list">${items}</div>`;
+        const footer = `<div class="widget-footer"><a href="/tasks" class="widget-footer-link">Всі задачі →</a></div>`;
+        container.innerHTML = `<div class="widget-task-list">${items}</div>${footer}`;
     }
 
     function renderBookings(data, container) {
@@ -786,6 +793,81 @@ const DashboardPage = (() => {
         badge.textContent = `Тестовий режим: ${roleName}`;
     }
 
+    async function openTask(taskId) {
+        // Fetch full task details
+        try {
+            const resp = await fetch(`/api/tasks/${taskId}`, {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const task = await resp.json();
+            if (!task || !task.id) throw new Error('Task not found');
+
+            showTaskModal(task);
+        } catch (err) {
+            console.error('Open task error:', err);
+            // Fallback: navigate to tasks page
+            window.location.href = '/tasks';
+        }
+    }
+
+    function showTaskModal(t) {
+        // Remove previous if open
+        const prev = document.getElementById('dashTaskModal');
+        if (prev) prev.remove();
+
+        const priorityLabels = { critical: 'Критичний', high: 'Високий', medium: 'Середній', low: 'Низький' };
+        const statusLabels = { todo: 'Todo', in_progress: 'В роботі', done: 'Готово', cancelled: 'Скасовано' };
+        const catLabels = { event: '🎉 Івент', purchase: '🛒 Закупівлі', admin: '📎 Адмін', trampoline: '🤸 Батути', personal: '👤 Особисті', improvement: '⚡ Покращення' };
+
+        const priorityCls = t.priority === 'high' || t.priority === 'critical' ? 'high' : t.priority === 'low' ? 'low' : 'medium';
+
+        let deadlineHtml = '';
+        if (t.deadline) {
+            const dl = new Date(t.deadline);
+            const now = new Date();
+            const isOverdue = dl < now;
+            const dlStr = dl.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            deadlineHtml = `<div class="task-modal-row"><span class="task-modal-label">Дедлайн:</span> <span class="${isOverdue ? 'text-danger' : ''}">${dlStr}${isOverdue ? ' (протерміновано!)' : ''}</span></div>`;
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'dashTaskModal';
+        modal.className = 'modal';
+        modal.setAttribute('role', 'dialog');
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="modal-close" onclick="document.getElementById('dashTaskModal').remove()">&times;</span>
+                <div class="task-modal-header">
+                    <span class="task-modal-priority ${priorityCls}"></span>
+                    <h3>${escapeHtml(t.title)}</h3>
+                </div>
+                <div class="task-modal-body">
+                    <div class="task-modal-row"><span class="task-modal-label">Статус:</span> ${statusLabels[t.status] || t.status}</div>
+                    <div class="task-modal-row"><span class="task-modal-label">Пріоритет:</span> ${priorityLabels[t.priority] || t.priority}</div>
+                    <div class="task-modal-row"><span class="task-modal-label">Категорія:</span> ${catLabels[t.category] || t.category || '—'}</div>
+                    ${t.assigned_to ? `<div class="task-modal-row"><span class="task-modal-label">Відповідальний:</span> ${escapeHtml(t.assigned_to)}</div>` : ''}
+                    ${t.owner ? `<div class="task-modal-row"><span class="task-modal-label">Власник:</span> ${escapeHtml(t.owner)}</div>` : ''}
+                    ${deadlineHtml}
+                    ${t.date ? `<div class="task-modal-row"><span class="task-modal-label">Дата:</span> ${new Date(t.date).toLocaleDateString('uk-UA')}</div>` : ''}
+                    ${t.description ? `<div class="task-modal-description"><span class="task-modal-label">Опис:</span><p>${escapeHtml(t.description)}</p></div>` : ''}
+                    ${t.notes ? `<div class="task-modal-description"><span class="task-modal-label">Нотатки:</span><p>${escapeHtml(t.notes)}</p></div>` : ''}
+                </div>
+                <div class="task-modal-footer">
+                    <a href="/tasks" class="dashboard-btn primary">Відкрити на сторінці задач</a>
+                    <button class="dashboard-btn" onclick="document.getElementById('dashTaskModal').remove()">Закрити</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Close on overlay click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
+    }
+
     function refreshWidget(type) {
         loadWidgetData(type);
     }
@@ -817,6 +899,7 @@ const DashboardPage = (() => {
     return {
         init,
         refreshWidget,
+        openTask,
         toggleOnboardingWidget,
         saveOnboarding,
         openSettings,

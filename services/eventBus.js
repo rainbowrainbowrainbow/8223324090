@@ -86,14 +86,14 @@ async function processEventRules(event) {
 
                 // Log successful execution
                 await pool.query(
-                    `INSERT INTO rule_execution_log (rule_id, trigger_event, status, actions_count, context)
-                     VALUES ($1, $2, 'success', $3, $4)`,
-                    [rule.id, event.event_type, actionsExecuted, JSON.stringify({ event_id: event.id })]
+                    `INSERT INTO rule_execution_log (rule_id, trigger_event, result, output)
+                     VALUES ($1, $2, 'success', $3)`,
+                    [rule.id, event.event_type, JSON.stringify({ actions_count: actionsExecuted, event_id: event.id })]
                 );
                 applied++;
             } catch (ruleErr) {
                 await pool.query(
-                    `INSERT INTO rule_execution_log (rule_id, trigger_event, status, error_message, context)
+                    `INSERT INTO rule_execution_log (rule_id, trigger_event, result, error, output)
                      VALUES ($1, $2, 'error', $3, $4)`,
                     [rule.id, event.event_type, ruleErr.message, JSON.stringify({ event_id: event.id })]
                 );

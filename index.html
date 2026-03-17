@@ -15,19 +15,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=30.0.0">
-    <link rel="stylesheet" href="css/auth.css?v=30.0.0">
-    <link rel="stylesheet" href="css/layout.css?v=30.0.0">
-    <link rel="stylesheet" href="css/timeline.css?v=30.0.0">
-    <link rel="stylesheet" href="css/panel.css?v=30.0.0">
-    <link rel="stylesheet" href="css/modals.css?v=30.0.0">
-    <link rel="stylesheet" href="css/controls.css?v=30.0.0">
-    <link rel="stylesheet" href="css/features.css?v=30.0.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=30.0.0">
-    <link rel="stylesheet" href="css/responsive.css?v=30.0.0">
-    <link rel="stylesheet" href="css/pages.css?v=30.0.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=30.0.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=30.0.0">
+    <link rel="stylesheet" href="css/base.css?v=32.0.0">
+    <link rel="stylesheet" href="css/auth.css?v=32.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=32.0.0">
+    <link rel="stylesheet" href="css/timeline.css?v=32.0.0">
+    <link rel="stylesheet" href="css/panel.css?v=32.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=32.0.0">
+    <link rel="stylesheet" href="css/controls.css?v=32.0.0">
+    <link rel="stylesheet" href="css/features.css?v=32.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=32.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=32.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=32.0.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=32.0.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=32.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -44,9 +44,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v30.0.0 — Випускний</p>
+                <p class="tagline">AI First CRM v32.0.0 — Premium Каталог Випускних</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v30.0.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v32.0.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -155,11 +155,24 @@
                         <span id="darkModeIcon">🌙</span>
                         <span class="toggle-mini-label">Тема</span>
                     </label>
-                    <button id="undoBtn" class="btn-undo hidden" title="Скасувати останню дію">↩ Скасувати</button>
+                    <button id="undoBtn" class="btn-undo hidden" title="Скасувати останню дію (Ctrl+Z)">↩ Скасувати</button>
+                    <button id="redoBtn" class="btn-undo hidden" title="Повторити дію (Ctrl+Shift+Z)">↪ Повторити</button>
+                    <div class="timeline-search-wrap hidden" id="timelineSearchWrap">
+                        <input type="text" id="timelineSearchInput" class="timeline-search-input" placeholder="Пошук по таймлайну..." autocomplete="off" />
+                        <span id="timelineSearchCount" class="timeline-search-count"></span>
+                        <button id="timelineSearchPrev" class="timeline-search-nav" title="Попередній (↑)">▲</button>
+                        <button id="timelineSearchNext" class="timeline-search-nav" title="Наступний (↓)">▼</button>
+                        <button id="timelineSearchClose" class="timeline-search-close" title="Закрити (Esc)">✕</button>
+                    </div>
+                    <button id="timelineSearchBtn" class="toggle-mini" title="Пошук по таймлайну (Ctrl+F)">
+                        <span>🔍</span>
+                        <span class="toggle-mini-label">Пошук</span>
+                    </button>
                     <button id="roomLoadBtn" class="btn-room-load" title="Навантаження кімнат">🏠 Кімнати</button>
                 </div>
                 <div class="action-buttons">
-                    <button id="exportTimelineBtn" class="btn-export" title="Експортувати таймлайн як картинку">Експорт</button>
+                    <button id="exportTimelineBtn" class="btn-export" title="Експортувати таймлайн як PNG">Експорт PNG</button>
+                    <button id="exportPdfBtn" class="btn-export" title="Друк / Зберегти як PDF">Друк PDF</button>
                     <div class="admin-dropdown" id="adminDropdown">
                         <button type="button" id="menuToggleBtn" class="btn-menu-toggle" title="Меню дій">☰ Меню</button>
                         <div class="dropdown-content hidden" id="dropdownContent" role="menu">
@@ -331,6 +344,16 @@
                 </div>
                 <input type="hidden" id="bookingTime">
                 <input type="hidden" id="bookingLine">
+
+                <!-- v30.3: Booking templates -->
+                <div class="form-section template-section">
+                    <div class="template-controls">
+                        <select id="templateSelect" class="template-select">
+                            <option value="">Завантажити шаблон...</option>
+                        </select>
+                        <button type="button" id="saveTemplateBtn" class="btn-save-template" title="Зберегти як шаблон">💾</button>
+                    </div>
+                </div>
 
                 <!-- ===== БЛОК 1: Списки та налаштування (вгорі) ===== -->
 
@@ -640,6 +663,47 @@
         <div class="modal-content">
             <span class="modal-close">&times;</span>
             <div id="bookingDetails"></div>
+        </div>
+    </div>
+
+    <!-- v30.3: Модальне вікно створення повторюваного бронювання -->
+    <div id="recurringModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Повторюване бронювання">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3>🔄 Створити повторюване бронювання</h3>
+            <form id="recurringForm" class="recurring-form">
+                <input type="hidden" id="recurringBookingId">
+                <div class="form-section">
+                    <label>Патерн повторення</label>
+                    <select id="recurringPattern" required>
+                        <option value="weekly">Щотижня</option>
+                        <option value="biweekly">Через тиждень</option>
+                        <option value="weekdays">Будні (Пн-Пт)</option>
+                        <option value="weekends">Вихідні (Сб-Нд)</option>
+                        <option value="monthly">Щомісяця</option>
+                    </select>
+                </div>
+                <div class="form-section" id="recurringDaysSection">
+                    <label>Дні тижня</label>
+                    <div class="recurring-days">
+                        <label><input type="checkbox" name="recurringDay" value="1"> Пн</label>
+                        <label><input type="checkbox" name="recurringDay" value="2"> Вт</label>
+                        <label><input type="checkbox" name="recurringDay" value="3"> Ср</label>
+                        <label><input type="checkbox" name="recurringDay" value="4"> Чт</label>
+                        <label><input type="checkbox" name="recurringDay" value="5"> Пт</label>
+                        <label><input type="checkbox" name="recurringDay" value="6"> Сб</label>
+                        <label><input type="checkbox" name="recurringDay" value="0"> Нд</label>
+                    </div>
+                </div>
+                <div class="form-section">
+                    <label>Дата завершення</label>
+                    <input type="date" id="recurringEndDate" required>
+                </div>
+                <div class="form-section recurring-actions">
+                    <button type="submit" class="btn-primary">Створити шаблон</button>
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('recurringModal').classList.add('hidden')">Скасувати</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -1143,6 +1207,190 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v32.0.0 — Premium Каталог Випускних (Claude Code, 16.03.2026)</h4>
+                    <ul>
+                        <li><b>Каталог</b> — повний редизайн на рівні друкованих каталогів 2025</li>
+                        <li><b>Geometric Mosaic</b> — полігональний фон з унікальною палітрою для кожного пакету</li>
+                        <li><b>Info Cards</b> — тривалість / діти / ціна з іконками ⏱/👥/₴</li>
+                        <li><b>Services + Descriptions</b> — кольорові блоки з переліком та описами</li>
+                        <li><b>Fullscreen Viewer</b> — immersive перегляд каталогу з sticky topbar</li>
+                        <li><b>Print</b> — 1 пакет = 1 сторінка A4 з кольорами та мозаїчним фоном</li>
+                        <li><b>Export</b> — повний каталог в новій вкладці для друку/PDF</li>
+                        <li><b>Share</b> — Web Share API + clipboard для поширення пакету</li>
+                        <li><b>7 тем</b> — лавандовий, золотий, блакитний, м'ятний, жовтий, червоний, рожевий</li>
+                    </ul>
+
+                    <h4>v31.8.0 — Каталог випускних: редизайн + друк + експорт (Claude Code, 16.03.2026)</h4>
+                    <ul>
+                        <li><b>Друк</b> — 1 пакет = 1 сторінка A4, compact layout, білий фон</li>
+                        <li><b>Картинки</b> — підтримка custom image per package (поле image_url)</li>
+                        <li><b>Описи</b> — розгорнуті продажні тексти для всіх 7 пакетів</li>
+                        <li><b>Layout</b> — вертикальний catalog viewer (hero image + CTA)</li>
+                        <li><b>Тривалість</b> — людський формат "~X год Y хв"</li>
+                        <li><b>Експорт</b> — повний каталог для друку (обкладинка + 7 сторінок)</li>
+                        <li><b>Ціни</b> — перевірка коректності розрахунку</li>
+                    </ul>
+
+                    <h4>v31.7.0 — Редизайн каталогу випускних (Claude Code, 16.03.2026)</h4>
+                    <ul>
+                        <li><b>Каталог</b> — повний редизайн UI: hero-картинки, продажні описи, красива верстка</li>
+                        <li><b>Картинки</b> — підтримка AI-згенерованих ілюстрацій з gradient fallback</li>
+                        <li><b>Тексти</b> — розгорнуті продажні описи для кожного з 7 пакетів</li>
+                        <li><b>Каталог-в'юер</b> — повноекранний перегляд з навігацією, swipe, клавіатурою</li>
+                        <li><b>Експорт</b> — повний каталог для друку (A4, обкладинка + 7 сторінок)</li>
+                        <li><b>Тривалість</b> — людський формат "~X год Y хв"</li>
+                    </ul>
+
+                    <h4>v31.6.0 — Фікс iframe embed-mode (Claude Code, 16.03.2026)</h4>
+                    <ul>
+                        <li><b>Embed-mode fix</b> — сайдбар більше не дублюється в iframe (Дизайни, Програми, Випускний)</li>
+                        <li><b>Раннє визначення</b> — embed-mode клас додається в &lt;head&gt; до рендерингу CSS</li>
+                        <li><b>Sidebar.init() skip</b> — в embedded режимі сайдбар не ініціалізується</li>
+                    </ul>
+
+                    <h4>v31.5.0 — Каталоги випускних (Claude Code, 16.03.2026)</h4>
+                    <ul>
+                        <li><b>Каталоги</b> — нова вкладка в Дизайнах з повноекранним переглядом пакетів</li>
+                        <li><b>7 пакетних пропозицій</b> — з продажними описами та автоцінами з модуля Випускний</li>
+                        <li><b>Автозадачі</b> — при зміні ціни послуги/коефіцієнту створюється задача на оновлення каталогу</li>
+                        <li><b>Друк</b> — print-ready сторінки каталогу (A4), друк всього каталогу або окремої сторінки</li>
+                        <li><b>Шейрінг</b> — підтримка Web Share API + PDF через друк</li>
+                    </ul>
+
+                    <h4>v31.4.0 — Синхронізація статусу лідів (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li><b>Статус лідів</b> — при оновленні ліда статус автоматично синхронізується з pipeline_stage</li>
+                    </ul>
+
+                    <h4>v31.3.0 — Кнопки Сьогодні/Завтра в Лідах (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li>Додано кнопки «Сьогодні» та «Завтра» для фільтрації лідів по даті івенту</li>
+                        <li>Кнопки працюють як toggle — повторний клік скидає фільтр</li>
+                        <li>Бекенд: фільтрація по event_date в GET /api/leads</li>
+                    </ul>
+
+                    <h4>v31.2.0 — Фікс задач на дашборді (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li><b>Задачі на дашборді</b> — виправлено фільтрацію: використовувався числовий ID замість username, задачі не знаходились і не відображались</li>
+                        <li><b>Лічильник задач</b> — аналогічний фікс у stats-блоці дашборду</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v31.1.0 — CSS Cleanup: прибрано дублі на 23 сторінках (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li><b>Дублі CSS</b> — видалено подвійні CSS-імпорти на 16 сторінках (~98 зайвих тегів)</li>
+                        <li><b>Дублі JS</b> — видалено подвійні JS-імпорти на customers.html</li>
+                        <li><b>Cache Busting</b> — оновлено ?v= теги до 31.1.0 на всіх 23 standalone-сторінках</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v31.0.0 — Kanban Pro: 7 покращень воронки (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li><b>Конверсійна воронка</b> — візуальний бар з % переходу між етапами над канбаном</li>
+                        <li><b>Сума угод</b> — підсумок budget_approx по кожному стовпцю в ₴</li>
+                        <li><b>Кольорові заголовки</b> — кожен етап має свій унікальний колір</li>
+                        <li><b>Дні на етапі</b> — бейдж на картці (жовтий >3дн, червоний >7дн)</li>
+                        <li><b>Швидкі дії</b> — кнопки 📞 дзвінок та 💬 Telegram прямо на картці</li>
+                        <li><b>WIP-ліміти</b> — попередження при >10 лідів у стовпці</li>
+                        <li><b>Згорнуті порожні</b> — порожні стовпці мінімізуються, розкриваються при наведенні</li>
+                        <li><b>Фікс</b> — дашборд гігантський gear-logo (login-logo-img → login-gear-icon)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v30.9.0 — Kanban воронка + кеш-фікс (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li><b>Kanban воронка</b> — виправлено відображення стовпців (display:flex замість hidden)</li>
+                        <li><b>Cache-bust</b> — оновлено версії CSS/JS на leads.html (29.2.0 → 30.9.0)</li>
+                        <li><b>Inline стилі</b> — прибрано конфлікт display:none/display:flex в kanbanView</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v30.7.0 — HR: 10 покращень (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Заявки на відпустку</b> — подання, затвердження/відхилення, автозапис у табель</li>
+                        <li><b>Рейтинг аніматорів</b> — лідерборд з оцінками, кількістю подій за 30 днів</li>
+                        <li><b>Автопризначення</b> — підбір аніматора за навичками, доступністю та рейтингом</li>
+                        <li><b>Онбординг чеклист</b> — шаблони з 8 пунктів, прогрес-бар, відмітка виконання</li>
+                        <li><b>Сертифікація</b> — трекінг сертифікатів з дедлайнами, авто-нагадування за 14 днів</li>
+                        <li><b>Зарплатна відомість</b> — ставка x години + переробки x1.5 + бонуси - штрафи</li>
+                        <li><b>Костюмерна</b> — облік костюмів, стан, розмір, призначення до аніматора</li>
+                        <li><b>Push-нагадування</b> — Telegram за 30 хв до бронювання з деталями</li>
+                        <li><b>Доступність в реалтаймі</b> — статус online/busy/break/offline для кожного</li>
+                        <li><b>Нові таби</b> — Відпустки, Зарплата, Рейтинг, Онбординг, Костюмерна в HR</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v30.6.0 — Фінанси: 10 покращень (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Каса дня</b> — відкриття/закриття зміни з підрахунком готівки, різниця факт/очікувана</li>
+                        <li><b>Прогноз доходу</b> — на основі підтверджених бронювань, тижневий і денний розріз</li>
+                        <li><b>Рознесення витрат</b> — автоматичний розподіл по категоріях з відсотками</li>
+                        <li><b>P&L звіт</b> — повний Profit & Loss з порівнянням попереднього періоду</li>
+                        <li><b>Чекова інтеграція</b> — генерація чеків RCP-YYYY-NNNN з QR-даними</li>
+                        <li><b>Боргові сповіщення</b> — список неоплачених, щотижневий Telegram дайджест</li>
+                        <li><b>Бюджет план/факт</b> — розширений з трендами та алертами</li>
+                        <li><b>Multi-currency</b> — конвертація EUR/USD/GBP/PLN/CZK → UAH</li>
+                        <li><b>Акт виконаних робіт</b> — HTML/PDF генерація для корпоративних клієнтів</li>
+                        <li><b>Фінансовий дашборд</b> — revenue trend, cash flow, top expenses, payment distribution</li>
+                    </ul>
+                </div>
+
+                <div class="changelog-section">
+                    <h4>v30.5.0 — Version bump (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li>Cache bust всіх CSS/JS, фікс міграції 076</li>
+                    </ul>
+                </div>
+
+                <div class="changelog-section">
+                    <h4>v30.4.0 — CRM: 10 покращень (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Теги клієнтів</b> — VIP, Корпорат, Проблемний та інші, кольорові pills, фільтрація по тегу</li>
+                        <li><b>Дедуплікація</b> — автодетект дублікатів по телефону/Instagram, обʼєднання профілів</li>
+                        <li><b>Customer Journey</b> — воронка: Ліди → Нові → Повторні → Лояльні</li>
+                        <li><b>LTV розрахунок</b> — прогноз lifetime value для кожного клієнта</li>
+                        <li><b>NPS/Feedback</b> — дашборд оцінок, розподіл, останні відгуки</li>
+                        <li><b>Масова розсилка</b> — фільтри по тегах, візитах, джерелу + шаблони з {name}</li>
+                        <li><b>Історія комунікацій</b> — timeline дзвінків, повідомлень, нотаток в профілі клієнта</li>
+                        <li><b>Автопривʼязка</b> — автоматичне зʼєднання бронювання з клієнтом по телефону</li>
+                        <li><b>vCard</b> — імпорт/експорт контактів у форматі .vcf</li>
+                        <li><b>Нагадування</b> — ДН за 7 днів, dormant 60+ днів, бронювання за 3 дні</li>
+                    </ul>
+                </div>
+
+                <div class="changelog-section">
+                    <h4>v30.3.0 — Пошук, Шаблони, Повтори (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Пошук по таймлайну</b> — Ctrl+F, підсвітка, навігація по результатах, авто-скрол</li>
+                        <li><b>Redo + Hotkeys</b> — Ctrl+Z скасувати, Ctrl+Shift+Z повторити, повний redo стек</li>
+                        <li><b>Шаблони бронювань</b> — збереження/завантаження пресетів із форми бронювання</li>
+                        <li><b>Повторювані бронювання</b> — UI для створення recurring (щотижня, будні, щомісяця)</li>
+                        <li><b>Bulk-операції</b> — Shift+Click мульти-вибір, масове видалення та зміна статусу</li>
+                        <li><b>PDF експорт</b> — друк таймлайну як PDF через print stylesheet</li>
+                    </ul>
+                </div>
+
+                <div class="changelog-section">
+                    <h4>v30.2.0 — QA Fix Випускний (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Дублікати послуг</b> — виправлено ON CONFLICT, додано UNIQUE на name, очищено 25 дублів з БД</li>
+                        <li><b>Booking creation</b> — виправлено room_id→room, додано line_id (NOT NULL)</li>
+                        <li><b>КП proposal</b> — підтримка ?token= в query string для window.open()</li>
+                        <li><b>art-director.html</b> — прибрано дублікати CSS, синхронізовано cache-bust до v30.2.0</li>
+                        <li><b>filterQuotes</b> — виправлено implicit event → передача btn як параметра</li>
+                    </ul>
+                </div>
+
+                <div class="changelog-section">
+                    <h4>v30.1.0 — Hotfix Випускний (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Авторизація</b> — виправлено ключ токена (pzp_token), послуги і пакети тепер завантажуються</li>
+                        <li><b>Подвійна панель</b> — прибрано дублювання кнопки "ПАНЕЛЬ" в iframe</li>
+                        <li><b>API</b> — перехід на глобальний apiCall() замість кастомних fetch-обгорток</li>
+                    </ul>
+                </div>
+
+                <div class="changelog-section">
                     <h4>v30.0.0 — Модуль Випускний (Claude Code, 14.03.2026)</h4>
                     <ul>
                         <li><b>Конструктор випускного</b> — інтерактивний вибір послуг з автопідрахунком</li>
@@ -1402,7 +1650,7 @@
                         <li><b>Version Sync</b> — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG</li>
                         <li><b>Landing Carousel</b> — команда з каруселлю, Anli Lektor, swipe/dots/arrows [kleshnya]</li>
                         <li><b>Manager Guide</b> — нова сторінка для менеджерів з продажу [kleshnya]</li>
-                        <li><b>Cache Busting</b> — ?v=30.0.0 на всіх CSS/JS ресурсах (25 файлів)</li>
+                        <li><b>Cache Busting</b> — ?v=32.0.0 на всіх CSS/JS ресурсах (25 файлів)</li>
                         <li><b>Swagger API</b> — оновлена версія OpenAPI spec до v23.0.0</li>
                     </ul>
                 </div>
@@ -4158,26 +4406,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=30.0.0"></script>
-    <script src="js/api.js?v=30.0.0"></script>
-    <script src="js/ui.js?v=30.0.0"></script>
-    <script src="js/auth.js?v=30.0.0"></script>
-    <script src="js/timeline.js?v=30.0.0"></script>
-    <script src="js/booking.js?v=30.0.0"></script>
-    <script src="js/settings.js?v=30.0.0"></script>
-    <script src="js/booking-form.js?v=30.0.0"></script>
-    <script src="js/booking-linked.js?v=30.0.0"></script>
-    <script src="js/settings-dashboard.js?v=30.0.0"></script>
-    <script src="js/settings-history.js?v=30.0.0"></script>
-    <script src="js/settings-afisha.js?v=30.0.0"></script>
-    <script src="js/settings-certificates.js?v=30.0.0"></script>
-    <script src="js/offline.js?v=30.0.0"></script>
-    <script src="js/search.js?v=30.0.0"></script>
-    <script src="js/ws.js?v=30.0.0"></script>
-    <script src="js/app.js?v=30.0.0"></script>
-    <script src="js/kleshnya-widget.js?v=30.0.0"></script>
-    <script src="js/components/sidebar.js?v=30.0.0"></script>
+    <script src="js/config.js?v=32.0.0"></script>
+    <script src="js/api.js?v=32.0.0"></script>
+    <script src="js/ui.js?v=32.0.0"></script>
+    <script src="js/auth.js?v=32.0.0"></script>
+    <script src="js/timeline.js?v=32.0.0"></script>
+    <script src="js/booking.js?v=32.0.0"></script>
+    <script src="js/settings.js?v=32.0.0"></script>
+    <script src="js/booking-form.js?v=32.0.0"></script>
+    <script src="js/booking-linked.js?v=32.0.0"></script>
+    <script src="js/settings-dashboard.js?v=32.0.0"></script>
+    <script src="js/settings-history.js?v=32.0.0"></script>
+    <script src="js/settings-afisha.js?v=32.0.0"></script>
+    <script src="js/settings-certificates.js?v=32.0.0"></script>
+    <script src="js/offline.js?v=32.0.0"></script>
+    <script src="js/search.js?v=32.0.0"></script>
+    <script src="js/ws.js?v=32.0.0"></script>
+    <script src="js/app.js?v=32.0.0"></script>
+    <script src="js/achievement-popup.js?v=32.0.0"></script>
+    <script src="js/kleshnya-widget.js?v=32.0.0"></script>
+    <script src="js/components/sidebar.js?v=32.0.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=30.0.0"></script>
+    <script src="js/role-panel.js?v=32.0.0"></script>
 </body>
 </html>

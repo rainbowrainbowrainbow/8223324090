@@ -1172,6 +1172,7 @@ async function showBookingDetails(bookingId) {
         <div class="booking-actions modal-footer-sticky">
             <button onclick="editBooking('${escapeHtml(booking.id)}')" class="btn-edit-booking">✏️ Редагувати</button>
             <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">📋 Повторити</button>
+            <button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="btn-recurring-booking">🔄 Повторюване</button>
             <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Видалити</button>
         </div>
     `;
@@ -1755,3 +1756,199 @@ async function switchBookingLine(bookingId, targetLineId) {
         handleError('Переключення лінії', error);
     }
 }
+
+// ==========================================
+// v30.3: RECURRING BOOKINGS UI
+// ==========================================
+
+async function showRecurringModal(bookingId) {
+    const bookings = await getBookingsForDate(AppState.selectedDate);
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+
+    document.getElementById('recurringBookingId').value = bookingId;
+
+    // Set default end date to 3 months from now
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + 3);
+    document.getElementById('recurringEndDate').value = formatDate(endDate);
+
+    // Pre-check current day of week
+    const bookingDate = new Date(booking.date);
+    const dayOfWeek = bookingDate.getDay();
+    document.querySelectorAll('input[name="recurringDay"]').forEach(cb => {
+        cb.checked = parseInt(cb.value) === dayOfWeek;
+    });
+
+    // Show/hide days section based on pattern
+    const patternSel = document.getElementById('recurringPattern');
+    const daysSection = document.getElementById('recurringDaysSection');
+    function updateDaysVisibility() {
+        const pattern = patternSel.value;
+        daysSection.style.display = (pattern === 'weekly' || pattern === 'biweekly') ? '' : 'none';
+    }
+    patternSel.onchange = updateDaysVisibility;
+    updateDaysVisibility();
+
+    closeAllModals();
+    document.getElementById('recurringModal').classList.remove('hidden');
+}
+
+// Form submit handler
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('recurringForm');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const bookingId = document.getElementById('recurringBookingId').value;
+            const bookings = await getBookingsForDate(AppState.selectedDate);
+            const booking = bookings.find(b => b.id === bookingId);
+            if (!booking) return;
+
+            const pattern = document.getElementById('recurringPattern').value;
+            const endDate = document.getElementById('recurringEndDate').value;
+            const daysOfWeek = Array.from(document.querySelectorAll('input[name="recurringDay"]:checked'))
+                .map(cb => parseInt(cb.value));
+
+            const body = {
+                pattern,
+                daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : [new Date(booking.date).getDay()],
+                startDate: booking.date,
+                endDate,
+                timeStart: booking.time,
+                timeEnd: addMinutesToTime(booking.time, booking.duration),
+                lineId: booking.lineId,
+                room: booking.room,
+                productId: booking.programId,
+                productCode: booking.programCode,
+                productName: booking.programName,
+                duration: booking.duration,
+                price: booking.price,
+                hosts: booking.hosts,
+                secondAnimatorName: booking.secondAnimator || null,
+                pinataFiller: booking.pinataFiller || null,
+                costume: booking.costume || null,
+                kidsCount: booking.kidsCount || null,
+                notes: booking.notes || null
+            };
+
+            try {
+                const res = await fetch('/api/recurring', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                if (res.ok) {
+                    const result = await res.json();
+                    document.getElementById('recurringModal').classList.add('hidden');
+                    AppState.cachedBookings = {};
+                    await renderTimeline();
+                    const count = result.generated || 0;
+                    showNotification(`Створено повторюване бронювання (${count} подій)`, 'success');
+                } else {
+                    const err = await res.json();
+                    showNotification(err.error || 'Помилка створення', 'error');
+                }
+            } catch (error) {
+                handleError('Recurring creation', error);
+            }
+        });
+    }
+});
+
+// ==========================================
+// v30.3: BULK OPERATIONS
+// ==========================================
+
+const BulkOps = {
+    selected: new Set(),
+
+    toggle(bookingId) {
+        if (this.selected.has(bookingId)) {
+            this.selected.delete(bookingId);
+        } else {
+            this.selected.add(bookingId);
+        }
+        this.updateUI();
+    },
+
+    clear() {
+        this.selected.clear();
+        this.updateUI();
+    },
+
+    updateUI() {
+        // Update block highlights
+        document.querySelectorAll('.booking-block').forEach(block => {
+            const id = block.getAttribute('data-booking-id') || block._bookingId;
+            if (id && this.selected.has(id)) {
+                block.classList.add('bulk-selected');
+            } else {
+                block.classList.remove('bulk-selected');
+            }
+        });
+
+        // Show/hide action bar
+        let bar = document.getElementById('bulkActionBar');
+        if (this.selected.size > 0) {
+            if (!bar) {
+                bar = document.createElement('div');
+                bar.id = 'bulkActionBar';
+                bar.className = 'bulk-action-bar';
+                document.body.appendChild(bar);
+            }
+            bar.innerHTML = `
+                <span class="bulk-count">${this.selected.size} обрано</span>
+                <button onclick="BulkOps.bulkDelete()">🗑 Видалити</button>
+                <button onclick="BulkOps.bulkStatus('confirmed')">✅ Підтвердити</button>
+                <button onclick="BulkOps.bulkStatus('preliminary')">⏳ Попередні</button>
+                <button class="bulk-cancel" onclick="BulkOps.clear()">✕ Скасувати</button>
+            `;
+        } else if (bar) {
+            bar.remove();
+        }
+    },
+
+    async bulkDelete() {
+        if (!await customConfirm(`Видалити ${this.selected.size} бронювань?`)) return;
+        const ids = Array.from(this.selected);
+        const undoData = [];
+
+        for (const id of ids) {
+            try {
+                const bookings = await getBookingsForDate(AppState.selectedDate);
+                const b = bookings.find(x => x.id === id);
+                if (b) undoData.push(b);
+                await apiDeleteBooking(id);
+            } catch (e) { /* continue */ }
+        }
+
+        if (undoData.length > 0) pushUndo('delete', undoData);
+        this.clear();
+        AppState.cachedBookings = {};
+        await renderTimeline();
+        showNotification(`Видалено ${ids.length} бронювань`, 'warning');
+    },
+
+    async bulkStatus(status) {
+        const ids = Array.from(this.selected);
+        for (const id of ids) {
+            try {
+                const bookings = await getBookingsForDate(AppState.selectedDate);
+                const b = bookings.find(x => x.id === id);
+                if (b) await apiUpdateBooking(id, { ...b, status });
+            } catch (e) { /* continue */ }
+        }
+
+        this.clear();
+        AppState.cachedBookings = {};
+        await renderTimeline();
+        showNotification(`Статус змінено для ${ids.length} бронювань`, 'success');
+    }
+};
+
+window.BulkOps = BulkOps;

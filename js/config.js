@@ -209,6 +209,10 @@ const AppState = {
     compactMode: false,
     darkMode: false,
     undoStack: [],
+    redoStack: [],
+    searchQuery: '',
+    searchResults: [],
+    searchIndex: -1,
     nowLineInterval: null,
     pendingPollInterval: null,  // v3.9: track polling for cleanup
     editingBookingId: null,     // v5.5: ID бронювання в режимі редагування

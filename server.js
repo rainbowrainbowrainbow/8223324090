@@ -17,7 +17,7 @@ const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
@@ -98,6 +98,10 @@ app.use('/api', (req, res, next) => {
     if (req.path.startsWith('/auth/') || req.path === '/health' || req.path === '/version' || req.path.startsWith('/telegram/webhook') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || req.path === '/demo/login' || req.path === '/demo/scenarios' || req.path === '/packages' || req.path === '/status/public' || req.path.startsWith('/leads/webhook/') || (req.path === '/leads/landing' && req.method === 'POST')) {
         return next();
     }
+    // Support token in query string for proposal/print endpoints opened via window.open()
+    if (!req.headers['authorization'] && req.query.token) {
+        req.headers['authorization'] = `Bearer ${req.query.token}`;
+    }
     authenticateToken(req, res, next);
 });
 
@@ -115,6 +119,7 @@ app.use('/api', apiAudit);
 // --- Mount route modules ---
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/bookings', require('./routes/bookings'));
+app.use('/api/booking-templates', require('./routes/booking-templates'));
 app.use('/api/lines', require('./routes/lines'));
 app.use('/api/history', require('./routes/history'));
 app.use('/api/afisha', require('./routes/afisha'));
@@ -261,7 +266,12 @@ app.get('/kleshnya', (req, res) => {
     res.redirect('/chat');
 });
 // v22.0.0: designs merged into art-director page
-app.get('/designs', (req, res) => res.redirect(301, '/art?tab=designs'));
+app.get('/designs', (req, res) => {
+    if (req.query.embedded === '1') {
+        return res.sendFile(path.join(__dirname, 'designs.html'));
+    }
+    res.redirect(302, '/art?tab=designs');
+});
 app.get('/warehouse', (req, res) => {
     res.sendFile(path.join(__dirname, 'warehouse.html'));
 });
@@ -279,6 +289,16 @@ app.get('/analytics', (req, res) => {
 });
 app.get('/center', (req, res) => {
     res.sendFile(path.join(__dirname, 'center.html'));
+});
+// Embed routes — direct file serving for art-director iframes (no redirects)
+app.get('/embed/designs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'designs.html'));
+});
+app.get('/embed/programs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'programs.html'));
+});
+app.get('/embed/graduation', (req, res) => {
+    res.sendFile(path.join(__dirname, 'graduation.html'));
 });
 // v20.3.0: art-director → art rename
 app.get('/art', (req, res) => {
@@ -452,6 +472,10 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkStreakUpdates', checkStreakUpdates, { dedup: 'daily' }), 60000));
         // v15.1: Birthday greetings
         schedulerIntervals.push(setInterval(guardScheduler('checkBirthdayGreetings', checkBirthdayGreetings, { dedup: 'daily' }), 60000));
+        // v30.4: CRM reminders — birthday 7d, dormant, upcoming bookings
+        schedulerIntervals.push(setInterval(guardScheduler('checkBirthdayReminders', checkBirthdayReminders, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkDormantCustomers', checkDormantCustomers, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkUpcomingBookings', checkUpcomingBookings, { dedup: 'daily' }), 60000));
         // v19.1: Event queue processor + SLA breach + announcements
         schedulerIntervals.push(setInterval(guardScheduler('checkEventQueue', checkEventQueue, { dedup: null }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkSLABreach', checkSLABreach, { dedup: 'hourly' }), 60000));
@@ -472,6 +496,9 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoReviewRequests', checkAutoReviewRequests, { dedup: 'hourly' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkTeamPulseReminder', checkTeamPulseReminder, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoOrdering', checkAutoOrdering, { dedup: 'hourly' }), 60000));
+        // v30.7: HR push reminders (every minute) + cert expiry (daily)
+        schedulerIntervals.push(setInterval(guardScheduler('checkBookingPushReminders', checkBookingPushReminders), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkCertExpiryReminders', checkCertExpiryReminders, { dedup: 'daily' }), 60000));
         // v20.4.0: Training prompts (Mon 09:00 Kyiv) + summary (Fri 17:00 Kyiv)
         async function checkTrainingPrompts() {
             const { getKyivTimeStr, getKyivDate } = require('./services/booking');

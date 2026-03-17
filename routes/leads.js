@@ -27,6 +27,19 @@ const { notifyNewLead } = require('../services/leadNotifier');
 
 const log = createLogger('Leads');
 
+// Auto-sync status when pipeline_stage changes
+const STAGE_TO_STATUS = {
+    new: 'new',
+    contacted: 'contact',
+    info_sent: 'contact',
+    deal: 'proposal',
+    deposit_received: 'booked',
+    waiting: 'booked',
+    completed: 'completed',
+    closed: 'completed',
+    lost: 'lost'
+};
+
 const UNIVERSAL_WEBHOOK_TOKEN = process.env.UNIVERSAL_WEBHOOK_TOKEN || '';
 const FB_VERIFY_TOKEN         = process.env.FB_VERIFY_TOKEN         || '';
 const FB_PAGE_ACCESS_TOKEN    = process.env.FB_PAGE_ACCESS_TOKEN    || '';
@@ -98,6 +111,10 @@ router.get('/', async (req, res) => {
             const pattern = `%${search}%`;
             params.push(pattern);
             conditions.push(`(l.client_name ILIKE $${params.length} OR l.phone ILIKE $${params.length} OR l.instagram ILIKE $${params.length})`);
+        }
+        if (req.query.event_date) {
+            params.push(req.query.event_date);
+            conditions.push(`l.event_date::date = $${params.length}::date`);
         }
 
         const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
@@ -221,7 +238,15 @@ router.patch('/:id', async (req, res) => {
         if (children_count !== undefined) { params.push(children_count); updates.push(`children_count = $${params.length}`); }
         if (child_age !== undefined) { params.push(child_age); updates.push(`child_age = $${params.length}`); }
         if (program_id !== undefined) { params.push(program_id || null); updates.push(`program_id = $${params.length}`); }
-        if (pipeline_stage !== undefined) { params.push(pipeline_stage); updates.push(`pipeline_stage = $${params.length}`); }
+        if (pipeline_stage !== undefined) {
+            params.push(pipeline_stage);
+            updates.push(`pipeline_stage = $${params.length}`);
+            // Auto-sync status from pipeline_stage (if status not explicitly set)
+            if (!status && STAGE_TO_STATUS[pipeline_stage]) {
+                params.push(STAGE_TO_STATUS[pipeline_stage]);
+                updates.push(`status = $${params.length}`);
+            }
+        }
         if (milestone_tags !== undefined) { params.push(milestone_tags); updates.push(`milestone_tags = $${params.length}`); }
         if (lead_type !== undefined) { params.push(lead_type); updates.push(`lead_type = $${params.length}`); }
         if (quality_category !== undefined) { params.push(quality_category || null); updates.push(`quality_category = $${params.length}`); }

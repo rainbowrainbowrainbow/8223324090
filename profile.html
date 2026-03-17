@@ -6,14 +6,14 @@
     <title>Event Genix | Профіль</title>
     <meta name="description" content="Event Genix — Особистий кабінет з ачивками та геймифікацією">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/controls.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=32.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=32.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=32.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=32.0.0">
+    <link rel="stylesheet" href="css/controls.css?v=32.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=32.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=32.0.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=32.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -791,6 +791,555 @@
             background: rgba(255,255,255,0.05);
         }
 
+        /* ==========================================
+           GAMIFICATION v3 — New Components (v30.8.0)
+           ========================================== */
+
+        /* --- Level Progress Card --- */
+        .level-progress-card {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md, 12px);
+            padding: 20px;
+        }
+
+        .level-badge-lg {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+        }
+
+        .level-badge-lg[data-level="10"] {
+            background: linear-gradient(135deg, #f59e0b, #ef4444);
+            box-shadow: 0 4px 16px rgba(245,158,11,0.4);
+            animation: levelGlow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes levelGlow {
+            from { box-shadow: 0 4px 16px rgba(245,158,11,0.3); }
+            to { box-shadow: 0 4px 24px rgba(245,158,11,0.6); }
+        }
+
+        .level-number {
+            color: white;
+            font-weight: 900;
+            font-size: 22px;
+        }
+
+        .xp-progress-bar {
+            height: 8px;
+            background: var(--gray-200);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .xp-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            border-radius: 4px;
+            transition: width 0.8s ease;
+        }
+
+        /* --- Streak Roadmap --- */
+        .streak-roadmap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            margin-top: 12px;
+        }
+
+        .streak-milestone {
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .milestone-dot {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--gray-200);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gray-500);
+            margin: 0 auto 2px;
+        }
+
+        .streak-milestone.reached .milestone-dot {
+            background: #22c55e;
+            color: white;
+            font-size: 14px;
+        }
+
+        .streak-milestone.next .milestone-dot {
+            background: #fbbf24;
+            color: #92400e;
+            box-shadow: 0 0 8px rgba(251,191,36,0.4);
+        }
+
+        .milestone-label { font-size: 10px; color: var(--gray-400); }
+        .milestone-line { width: 16px; height: 2px; background: var(--gray-200); margin-bottom: 14px; }
+
+        .streak-milestone-bar {
+            height: 4px;
+            background: var(--gray-200);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .streak-milestone-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ef4444, #f59e0b);
+            border-radius: 2px;
+        }
+
+        /* Streak Heatmap */
+        .heatmap-grid {
+            display: flex;
+            gap: 2px;
+            flex-wrap: wrap;
+        }
+
+        .streak-day {
+            width: 14px;
+            height: 14px;
+            border-radius: 2px;
+            background: var(--gray-100);
+        }
+
+        .streak-day.active {
+            background: #22c55e;
+        }
+
+        .streak-freeze-btn {
+            background: none;
+            border: 1px solid var(--gray-300);
+            padding: 6px 14px;
+            border-radius: var(--radius-sm, 8px);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            color: var(--gray-600);
+            transition: all 0.15s;
+        }
+
+        .streak-freeze-btn:hover {
+            border-color: #60a5fa;
+            color: #2563eb;
+            background: #eff6ff;
+        }
+
+        /* --- Season Quest Cards --- */
+        .season-quest-card {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md, 12px);
+            padding: 16px;
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+            margin-bottom: 10px;
+            transition: all 0.15s;
+        }
+
+        .season-quest-card:hover { border-color: var(--primary); }
+        .season-quest-card.completed { border-color: #22c55e; background: #f0fdf4; }
+        .season-quest-card.claimed { opacity: 0.7; }
+
+        .season-quest-icon { font-size: 32px; flex-shrink: 0; }
+
+        .season-quest-info { flex: 1; }
+        .season-quest-info h4 { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--gray-800); }
+        .season-quest-info p { margin: 0 0 8px; font-size: 13px; color: var(--gray-500); }
+
+        .season-quest-progress { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .season-quest-bar { flex: 1; height: 6px; background: var(--gray-200); border-radius: 3px; overflow: hidden; }
+        .season-quest-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+        .season-quest-progress span { font-size: 12px; font-weight: 700; color: var(--gray-600); }
+
+        .season-quest-reward { font-size: 12px; color: var(--gray-400); }
+
+        .quest-claim-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 6px 16px;
+            border-radius: var(--radius-sm, 8px);
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+
+        .quest-claim-btn:hover { filter: brightness(1.1); }
+
+        /* --- Team Cards --- */
+        .teams-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 12px;
+        }
+
+        .team-card {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md, 12px);
+            padding: 16px;
+            transition: all 0.15s;
+        }
+
+        .team-card.my-team {
+            border-color: var(--primary);
+            background: linear-gradient(135deg, rgba(99,102,241,0.05), rgba(139,92,246,0.05));
+        }
+
+        .team-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+
+        .team-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .team-icon { font-size: 24px; }
+        .team-name { font-weight: 700; font-size: 15px; color: var(--gray-800); flex: 1; }
+        .team-count { font-size: 12px; color: var(--gray-400); }
+
+        .team-members { display: flex; gap: -4px; }
+
+        .team-member-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--gray-200);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--gray-600);
+            border: 2px solid var(--white);
+            margin-left: -4px;
+        }
+
+        .team-member-avatar:first-child { margin-left: 0; }
+
+        .team-btn {
+            padding: 5px 14px;
+            border-radius: var(--radius-sm, 8px);
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            border: 1px solid;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+
+        .team-btn.join { background: var(--primary); color: white; border-color: var(--primary); }
+        .team-btn.join:hover { filter: brightness(1.1); }
+        .team-btn.leave { background: none; color: #dc2626; border-color: #dc2626; }
+        .team-btn.leave:hover { background: #fef2f2; }
+
+        /* --- Challenge Cards --- */
+        .challenge-card {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md, 12px);
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .challenge-card h4 { margin: 0; font-size: 15px; color: var(--gray-800); }
+
+        .challenge-team-score {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+        }
+
+        .challenge-team-score.my-team { font-weight: 700; }
+        .challenge-rank { width: 24px; text-align: center; font-size: 14px; }
+        .challenge-team-name { width: 120px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .challenge-score-bar { height: 8px; background: var(--gray-100); border-radius: 4px; overflow: hidden; }
+        .challenge-score-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+        .challenge-score-num { font-size: 12px; color: var(--gray-500); white-space: nowrap; }
+
+        /* --- Referral --- */
+        .referral-code-card {
+            background: linear-gradient(135deg, #eff6ff, #eef2ff);
+            border: 1px solid #c7d2fe;
+            border-radius: var(--radius-md, 12px);
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .referral-code-display {
+            font-size: 24px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            color: var(--primary);
+            font-family: monospace;
+        }
+
+        .referral-copy-btn {
+            padding: 8px 16px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm, 8px);
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .referral-copy-btn:hover { filter: brightness(1.1); }
+
+        .referral-stats {
+            display: flex;
+            gap: 12px;
+        }
+
+        .referral-stat-card {
+            flex: 1;
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md, 12px);
+            padding: 14px;
+            text-align: center;
+        }
+
+        .referral-stat-value { font-size: 22px; font-weight: 800; color: var(--gray-800); }
+        .referral-stat-label { font-size: 11px; color: var(--gray-400); text-transform: uppercase; }
+
+        .referral-milestone {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm, 8px);
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+
+        .referral-milestone.reached {
+            border-color: #22c55e;
+            background: #f0fdf4;
+        }
+
+        .referral-milestone-label { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+
+        .referral-milestone-bar { height: 6px; background: var(--gray-200); border-radius: 3px; overflow: hidden; margin-bottom: 4px; }
+        .referral-milestone-fill { height: 100%; background: var(--primary); border-radius: 3px; }
+
+        .referral-list {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-md, 12px);
+            overflow: hidden;
+        }
+
+        .referral-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--gray-100);
+            font-size: 13px;
+        }
+
+        .referral-row:last-child { border-bottom: none; }
+        .referral-user { font-weight: 600; color: var(--gray-700); }
+        .referral-status { font-size: 12px; }
+        .referral-status.rewarded { color: #22c55e; }
+        .referral-status.active { color: #f59e0b; }
+        .referral-date { font-size: 11px; color: var(--gray-400); }
+
+        /* --- Achievement Popup Overlay --- */
+        .achievement-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .achievement-overlay-visible { opacity: 1; }
+
+        .achievement-confetti {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .achievement-modal {
+            background: var(--white, #fff);
+            border-radius: 20px;
+            padding: 32px 28px 24px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+            border: 3px solid #6366f1;
+            transform: scale(0.5);
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .achievement-modal-visible {
+            transform: scale(1);
+            opacity: 1;
+        }
+
+        .achievement-header {
+            font-size: 18px;
+            font-weight: 800;
+            margin-bottom: 16px;
+            color: var(--gray-800);
+        }
+
+        #achIcon {
+            font-size: 56px;
+            margin-bottom: 12px;
+        }
+
+        #achName {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--gray-800);
+            margin-bottom: 6px;
+        }
+
+        #achDesc {
+            font-size: 14px;
+            color: var(--gray-500);
+            margin-bottom: 12px;
+        }
+
+        #achRarity {
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .rarity-stars { letter-spacing: 2px; }
+
+        #achReward {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--gray-700);
+            margin-bottom: 16px;
+        }
+
+        .achievement-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+
+        .achievement-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+        /* --- XP Gain Toast --- */
+        .xp-gain-toast {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 800;
+            font-size: 15px;
+            z-index: 9999;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s ease;
+            pointer-events: none;
+        }
+
+        .xp-gain-visible { opacity: 1; transform: translateY(0); }
+        .xp-gain-exit { opacity: 0; transform: translateY(-20px); }
+
+        /* --- Quest Complete Toast --- */
+        .quest-complete-toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: #f0fdf4;
+            border: 1px solid #22c55e;
+            color: #15803d;
+            padding: 12px 20px;
+            border-radius: var(--radius-md, 12px);
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 9999;
+            opacity: 0;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            max-width: 90vw;
+        }
+
+        .quest-toast-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .quest-toast-exit { opacity: 0; transform: translateX(-50%) translateY(20px); }
+
+        /* --- Dark mode overrides for v3 components --- */
+        [data-theme="dark"] .level-progress-card,
+        [data-theme="dark"] .season-quest-card,
+        [data-theme="dark"] .team-card,
+        [data-theme="dark"] .challenge-card,
+        [data-theme="dark"] .referral-stat-card,
+        [data-theme="dark"] .referral-milestone,
+        [data-theme="dark"] .referral-list {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+        }
+
+        [data-theme="dark"] .referral-code-card {
+            background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1));
+            border-color: rgba(99,102,241,0.3);
+        }
+
+        [data-theme="dark"] .team-card.my-team {
+            background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1));
+            border-color: rgba(99,102,241,0.4);
+        }
+
+        [data-theme="dark"] .season-quest-card.completed {
+            background: rgba(34,197,94,0.1);
+            border-color: rgba(34,197,94,0.3);
+        }
+
+        [data-theme="dark"] .achievement-modal {
+            background: #1e1e2e;
+            color: #e0e0e0;
+        }
+
+        [data-theme="dark"] .streak-day {
+            background: rgba(255,255,255,0.08);
+        }
+
+        [data-theme="dark"] .streak-day.active {
+            background: #22c55e;
+        }
+
         /* --- Responsive --- */
         @media (max-width: 600px) {
             .profile-header-content {
@@ -817,6 +1366,23 @@
             .streak-widget {
                 flex-direction: column;
             }
+
+            .teams-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .referral-stats {
+                flex-direction: column;
+            }
+
+            .referral-code-display {
+                font-size: 18px;
+            }
+
+            .streak-roadmap {
+                gap: 0;
+                overflow-x: auto;
+            }
         }
     </style>
 </head>
@@ -831,11 +1397,12 @@
         </div>
     </div>
 
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/ui.js?v=25.3.0"></script>
-    <script src="js/profile-page.js?v=25.3.0"></script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/config.js?v=32.0.0"></script>
+    <script src="js/api.js?v=32.0.0"></script>
+    <script src="js/auth.js?v=32.0.0"></script>
+    <script src="js/ui.js?v=32.0.0"></script>
+    <script src="js/achievement-popup.js?v=32.0.0"></script>
+    <script src="js/profile-page.js?v=32.0.0"></script>
+    <script src="js/role-panel.js?v=32.0.0"></script>
 </body>
 </html>

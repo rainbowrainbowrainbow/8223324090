@@ -7,19 +7,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=32.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=32.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=32.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=32.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=32.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=32.0.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=32.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -518,9 +512,14 @@
             <div class="fin-tabs">
                 <button class="fin-tab active" data-tab="dashboard">Дашборд</button>
                 <button class="fin-tab" data-tab="transactions">Транзакції</button>
-                <button class="fin-tab" data-tab="monthly">Звіт по місяцях</button>
+                <button class="fin-tab" data-tab="shift">Каса</button>
+                <button class="fin-tab" data-tab="forecast">Прогноз</button>
+                <button class="fin-tab" data-tab="pnl">P&L</button>
+                <button class="fin-tab" data-tab="debts">Борги</button>
+                <button class="fin-tab" data-tab="monthly">Місяці</button>
                 <button class="fin-tab" data-tab="salary">Зарплати</button>
                 <button class="fin-tab" data-tab="budget">Бюджет</button>
+                <button class="fin-tab" data-tab="advanced">Аналітика</button>
             </div>
 
             <!-- Dashboard tab -->
@@ -642,6 +641,84 @@
                 </div>
             </div>
 
+            <!-- v30.6: Cash Register Shift tab -->
+            <div id="tabShift" style="display:none">
+                <div id="shiftStatus" style="margin-bottom:16px"></div>
+                <div class="fin-filters" style="gap:8px;margin-bottom:16px">
+                    <input type="number" id="openingCashInput" min="0" placeholder="Готівка в касі, ₴" style="width:200px;padding:10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px">
+                    <button id="openShiftBtn" class="btn-page-primary">Відкрити зміну</button>
+                </div>
+                <div id="closeShiftSection" style="display:none;margin-bottom:16px">
+                    <div class="fin-filters" style="gap:8px">
+                        <input type="number" id="closingCashInput" min="0" placeholder="Фактична готівка, ₴" style="width:200px;padding:10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px">
+                        <button id="closeShiftBtn" class="btn-page-primary" style="background:#EF4444">Закрити зміну</button>
+                    </div>
+                </div>
+                <h4 style="font-weight:800;margin-bottom:8px">Історія змін</h4>
+                <div class="fin-table-wrap">
+                    <table class="fin-table">
+                        <thead><tr>
+                            <th>Відкриття</th><th>Закриття</th><th>Початок ₴</th>
+                            <th>Кінець ₴</th><th>Очікувано ₴</th><th>Різниця</th><th>Статус</th>
+                        </tr></thead>
+                        <tbody id="shiftHistoryBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- v30.6: Revenue Forecast tab -->
+            <div id="tabForecast" style="display:none">
+                <div class="fin-filters" style="margin-bottom:16px">
+                    <select id="forecastDays" class="fin-filter-select" onchange="loadForecast()">
+                        <option value="7">7 днів</option>
+                        <option value="14">14 днів</option>
+                        <option value="30" selected>30 днів</option>
+                        <option value="60">60 днів</option>
+                        <option value="90">90 днів</option>
+                    </select>
+                </div>
+                <div id="forecastContent"></div>
+            </div>
+
+            <!-- v30.6: Enhanced P&L tab -->
+            <div id="tabPnl" style="display:none">
+                <div class="fin-filters" style="margin-bottom:16px">
+                    <select id="pnlYear" class="fin-filter-select" onchange="loadPnlReport()"></select>
+                    <select id="pnlMonth" class="fin-filter-select" onchange="loadPnlReport()">
+                        <option value="">Весь рік</option>
+                        <option value="1">Січень</option><option value="2">Лютий</option>
+                        <option value="3">Березень</option><option value="4">Квітень</option>
+                        <option value="5">Травень</option><option value="6">Червень</option>
+                        <option value="7">Липень</option><option value="8">Серпень</option>
+                        <option value="9">Вересень</option><option value="10">Жовтень</option>
+                        <option value="11">Листопад</option><option value="12">Грудень</option>
+                    </select>
+                    <!-- Currency converter -->
+                    <span style="color:var(--gray-400);margin:0 4px">|</span>
+                    <input type="number" id="currencyAmount" min="1" placeholder="Сума" style="width:100px;padding:10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px">
+                    <select id="currencySelect" class="fin-filter-select" style="min-width:80px">
+                        <option value="EUR">EUR</option>
+                        <option value="USD">USD</option>
+                        <option value="GBP">GBP</option>
+                        <option value="PLN">PLN</option>
+                        <option value="CZK">CZK</option>
+                    </select>
+                    <button id="convertCurrencyBtn" class="btn-page-secondary">= UAH</button>
+                </div>
+                <div id="currencyResult" style="margin-bottom:16px"></div>
+                <div id="pnlContent"></div>
+            </div>
+
+            <!-- v30.6: Debts tab -->
+            <div id="tabDebts" style="display:none">
+                <div id="debtsContent"></div>
+            </div>
+
+            <!-- v30.6: Advanced Financial Dashboard tab -->
+            <div id="tabAdvanced" style="display:none">
+                <div id="advancedContent"></div>
+            </div>
+
             <!-- Budget tab (v17.0) -->
             <div id="tabBudget" style="display:none">
                 <div class="fin-filters" style="margin-bottom:16px">
@@ -749,12 +826,12 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <script src="js/config.js?v=32.0.0"></script>
+    <script src="js/api.js?v=32.0.0"></script>
+    <script src="js/auth.js?v=32.0.0"></script>
+    <script src="js/components/sidebar.js?v=32.0.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/finance-page.js?v=25.3.0"></script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/finance-page.js?v=32.0.0"></script>
+    <script src="js/role-panel.js?v=32.0.0"></script>
 </body>
 </html>

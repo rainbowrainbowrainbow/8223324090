@@ -7,19 +7,23 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <script>
+    // Early embed-mode detection — MUST run before CSS to prevent sidebar flash
+    (function() {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('embedded') === '1' || params.get('embed') === '1') {
+            document.documentElement.classList.add('embed-mode');
+        }
+        try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
+    })();
+    </script>
+    <link rel="stylesheet" href="css/base.css?v=32.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=32.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=32.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=32.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=32.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=32.0.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=32.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -360,6 +364,235 @@
         }
         .tag-autocomplete-item:hover { background: var(--gray-50); }
 
+        /* ==========================================
+           CATALOG STYLES
+           ========================================== */
+        .catalog-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        .catalog-card {
+            background: rgba(255,255,255,0.5); border-radius: 16px;
+            overflow: hidden; backdrop-filter: blur(20px);
+            border: 1px solid rgba(0,0,0,0.06); transition: all 0.2s;
+        }
+        .catalog-card:hover { transform: translateY(-3px); box-shadow: 0 8px 30px rgba(201,168,76,0.15); }
+        .catalog-cover-placeholder {
+            width: 100%; height: 180px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: #fff; position: relative;
+        }
+        .catalog-cover-icon { font-size: 56px; }
+        .catalog-cover-year {
+            font-size: 28px; font-weight: 900; margin-top: 4px;
+            background: linear-gradient(135deg, #C9A84C, #FFD700);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .catalog-info { padding: 14px 16px 8px; }
+        .catalog-info h3 { font-weight: 800; font-size: 16px; margin-bottom: 4px; }
+        .catalog-meta { font-size: 12px; color: var(--gray-500); display: block; }
+        .catalog-actions { padding: 8px 16px 14px; display: flex; gap: 6px; flex-wrap: wrap; }
+        .btn-catalog {
+            padding: 8px 14px; border: none; border-radius: 8px;
+            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+            background: var(--primary); color: #fff; transition: all 0.15s;
+        }
+        .btn-catalog:hover { opacity: 0.9; }
+        .btn-catalog-print { background: var(--gray-100); color: var(--gray-700); }
+        .btn-catalog-share { background: #E3F2FD; color: #1565C0; }
+
+        /* Catalog viewer (fullscreen) */
+        .catalog-viewer {
+            position: fixed; inset: 0; background: #f5f5f0;
+            z-index: 9999; display: flex; flex-direction: column;
+        }
+        .catalog-viewer-nav {
+            display: flex; align-items: center; justify-content: center;
+            gap: 16px; padding: 12px 16px; flex-shrink: 0;
+            background: #fff; border-bottom: 1px solid #e5e5e5;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        .btn-catalog-nav {
+            background: #f0f0f0; border: none; color: #333;
+            width: 44px; height: 44px; border-radius: 50%; font-size: 18px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .btn-catalog-nav:hover { background: #e0e0e0; }
+        .btn-catalog-close { margin-left: auto; font-size: 24px; color: #666; }
+        .catalog-page-indicator { color: #888; font-weight: 700; font-size: 14px; }
+
+        .catalog-pages-container { flex: 1; overflow-y: auto; padding: 20px; }
+
+        /* === Mosaic catalog page === */
+        .catalog-page-mosaic {
+            position: relative; max-width: 600px; margin: 0 auto;
+            border-radius: 24px; overflow: hidden;
+            background: linear-gradient(160deg, var(--theme-bg1), var(--theme-bg2), var(--theme-bg3));
+            box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+        }
+
+        /* Geometric mosaic overlay */
+        .catalog-mosaic-bg {
+            position: absolute; inset: 0; pointer-events: none; z-index: 0;
+            background-image:
+                linear-gradient(30deg, rgba(255,255,255,0.18) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.18) 87.5%, rgba(255,255,255,0.18)),
+                linear-gradient(150deg, rgba(255,255,255,0.18) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.18) 87.5%, rgba(255,255,255,0.18)),
+                linear-gradient(30deg, rgba(255,255,255,0.12) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.12) 87.5%, rgba(255,255,255,0.12)),
+                linear-gradient(150deg, rgba(255,255,255,0.12) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.12) 87.5%, rgba(255,255,255,0.12)),
+                linear-gradient(60deg, rgba(255,255,255,0.10) 25%, transparent 25.5%, transparent 75%, rgba(255,255,255,0.10) 75%, rgba(255,255,255,0.10)),
+                linear-gradient(60deg, rgba(255,255,255,0.10) 25%, transparent 25.5%, transparent 75%, rgba(255,255,255,0.10) 75%, rgba(255,255,255,0.10));
+            background-size: 40px 70px;
+            background-position: 0 0, 0 0, 20px 35px, 20px 35px, 0 0, 20px 35px;
+        }
+
+        .catalog-mosaic-content {
+            position: relative; z-index: 1; padding: 24px;
+        }
+
+        /* Hero */
+        .catalog-hero-section {
+            border-radius: 16px; overflow: hidden; margin-bottom: 20px;
+            aspect-ratio: 16/10;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        .catalog-hero-photo {
+            width: 100%; height: 100%; object-fit: cover; display: block;
+        }
+        .catalog-hero-gradient {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .catalog-hero-icon { font-size: 80px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
+
+        /* Info section */
+        .catalog-info-section {
+            background: rgba(255,255,255,0.85); backdrop-filter: blur(10px);
+            border-radius: 16px; padding: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        }
+        .catalog-pkg-badge {
+            display: inline-block; padding: 4px 12px; border-radius: 20px;
+            font-size: 11px; font-weight: 800; letter-spacing: 1px; margin-bottom: 8px;
+        }
+        .catalog-pkg-name {
+            font-size: 24px; font-weight: 900; color: #1a1a1a; margin: 0 0 16px;
+            line-height: 1.2;
+        }
+        .catalog-stats-row {
+            display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;
+            align-items: center;
+        }
+        .catalog-stat {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 14px; color: #555; font-weight: 600;
+        }
+        .catalog-stat-icon { font-size: 16px; }
+        .catalog-stat-val { font-weight: 800; color: #333; }
+        .catalog-stat-price {
+            flex-direction: column; align-items: flex-start; gap: 0;
+            margin-left: auto;
+        }
+        .catalog-stat-unit {
+            font-size: 12px; color: #888; font-weight: 600; text-transform: uppercase;
+        }
+        .catalog-pkg-desc {
+            font-size: 14px; line-height: 1.6; color: #555; margin: 0 0 16px;
+        }
+
+        /* Services block */
+        .catalog-services-block {
+            background: rgba(255,255,255,0.6); border-radius: 12px; padding: 16px;
+            border-left: 3px solid;
+        }
+        .catalog-services-block h4 {
+            font-size: 12px; font-weight: 800; margin: 0 0 10px;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .catalog-svc-list { list-style: none; padding: 0; margin: 0; }
+        .catalog-svc-list li {
+            padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,0.06);
+            font-size: 13px; color: #444; font-weight: 500;
+        }
+        .catalog-svc-list li:last-child { border-bottom: none; }
+
+        /* Footer actions */
+        .catalog-page-footer {
+            position: relative; z-index: 1;
+            display: flex; gap: 8px; padding: 0 24px 24px; justify-content: center;
+        }
+        .catalog-page-footer button {
+            padding: 10px 20px; border: none; border-radius: 10px;
+            font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+            background: rgba(255,255,255,0.7); color: #333;
+            backdrop-filter: blur(6px); transition: all 0.15s;
+        }
+        .catalog-page-footer button:hover { background: rgba(255,255,255,0.9); }
+
+        /* Print styles for catalog */
+        @media print {
+            @page { margin: 8mm; }
+            /* Hide everything except catalog viewer */
+            body { background: #fff !important; margin: 0 !important; }
+            .header, .sidebar-nav, .design-tabs, .user-panel, .notification,
+            .skip-link, .page-login-overlay, .kleshnya-widget,
+            .catalog-viewer-nav, .catalog-page-footer, .catalog-actions,
+            .catalog-list, .design-filters, .tag-chips, .drop-zone,
+            .lightbox, .design-edit-overlay { display: none !important; }
+            body.printing-catalog .catalog-viewer {
+                position: static !important; display: block !important;
+                background: transparent !important;
+                width: 100% !important; height: auto !important;
+                overflow: visible !important;
+            }
+            .catalog-pages-container {
+                overflow: visible !important; padding: 0 !important;
+                display: block !important;
+            }
+            .catalog-page-mosaic {
+                page-break-after: always; max-width: 100% !important;
+                width: 100% !important;
+                border-radius: 0 !important;
+                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+            .catalog-page-mosaic:last-child { page-break-after: auto; }
+            .catalog-mosaic-bg {
+                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+            .catalog-mosaic-content { padding: 20px !important; }
+            .catalog-info-section {
+                background: rgba(255,255,255,0.9) !important;
+                backdrop-filter: none !important;
+                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
+            }
+            .catalog-pkg-badge {
+                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
+            }
+            .catalog-pkg-name { color: #1a1a1a !important; }
+            .catalog-hero-section { box-shadow: none !important; }
+            .catalog-services-block {
+                print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
+            }
+            /* Hide main content wrapper, show only viewer */
+            .main-content, main { overflow: visible !important; }
+            #tabCatalogs { display: block !important; overflow: visible !important; }
+        }
+
+        /* When printing catalog — hide ALL non-catalog content */
+        @media print {
+            body.printing-catalog .page-container > *:not(#tabCatalogs),
+            body.printing-catalog #tabCatalogs > *:not(#catalogViewer) {
+                display: none !important;
+            }
+            body.printing-catalog .page-container {
+                margin: 0 !important; padding: 0 !important;
+            }
+        }
+
         /* Print styles for price list */
         @media print {
             .header, .design-tabs, .design-filters, .drop-zone,
@@ -374,8 +607,12 @@
         }
 
         /* Empty state */
-        .empty-state { text-align: center; padding: 40px 20px; color: var(--gray-400); font-size: 14px; }
-        .empty-state span { font-size: 40px; display: block; margin-bottom: 12px; }
+        .empty-state {
+            text-align: center; padding: 60px 20px; color: var(--gray-500); font-size: 15px;
+            background: rgba(255,255,255,0.4); border-radius: 16px; margin-top: 12px;
+            backdrop-filter: blur(10px); border: 1.5px dashed var(--gray-200);
+        }
+        .empty-state span { font-size: 48px; display: block; margin-bottom: 16px; }
 
         /* ==========================================
            DARK MODE
@@ -468,6 +705,24 @@
             border-color: rgba(255,255,255,0.12);
         }
         body.dark-mode .empty-state { color: var(--gray-500); }
+        body.dark-mode .catalog-card {
+            background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08);
+        }
+        body.dark-mode .catalog-card:hover { box-shadow: 0 8px 30px rgba(201,168,76,0.1); }
+        body.dark-mode .catalog-info h3 { color: var(--gray-200); }
+        body.dark-mode .btn-catalog-print { background: rgba(255,255,255,0.08); color: var(--gray-300); }
+        body.dark-mode .btn-catalog-share { background: rgba(21,101,192,0.2); color: #90CAF9; }
+        body.dark-mode .catalog-viewer { background: #1a1a1a; }
+        body.dark-mode .catalog-viewer-nav { background: #222; border-bottom-color: #333; }
+        body.dark-mode .btn-catalog-nav { background: #333; color: #ddd; }
+        body.dark-mode .catalog-info-section { background: rgba(30,30,30,0.9); }
+        body.dark-mode .catalog-pkg-name { color: #eee; }
+        body.dark-mode .catalog-stat { color: #aaa; }
+        body.dark-mode .catalog-stat-val { color: #ddd; }
+        body.dark-mode .catalog-pkg-desc { color: #999; }
+        body.dark-mode .catalog-services-block { background: rgba(255,255,255,0.05); }
+        body.dark-mode .catalog-svc-list li { color: #bbb; border-bottom-color: rgba(255,255,255,0.06); }
+        body.dark-mode .catalog-page-footer button { background: rgba(255,255,255,0.1); color: #ddd; }
 
         /* Responsive */
         @media (max-width: 768px) {
@@ -516,6 +771,13 @@
             /* Price */
             .price-table th, .price-table td { padding: 8px 10px; font-size: 13px; }
             .price-section-header { font-size: 15px; }
+
+            /* Catalog */
+            .catalog-mosaic-content { padding: 16px; }
+            .catalog-pkg-name { font-size: 20px; }
+            .catalog-stat-price .catalog-stat-val { font-size: 26px !important; }
+            .catalog-hero-section { aspect-ratio: 16/9; }
+            .catalog-page-footer { padding: 0 16px 16px; }
         }
 
         @media (max-width: 480px) {
@@ -587,6 +849,7 @@
                 <button class="design-tab" data-tab="collections">Колекції <span class="tab-count" id="countCollections">0</span></button>
                 <button class="design-tab" data-tab="price">Прайс-лист</button>
                 <button class="design-tab" data-tab="calendar">Календар</button>
+                <button class="design-tab" data-tab="catalogs">Каталоги</button>
             </div>
 
             <!-- ==================== GALLERY TAB ==================== -->
@@ -649,6 +912,42 @@
                 <div class="calendar-grid" id="calendarGrid"></div>
                 <div class="calendar-day-detail" id="calDetail" style="display:none"></div>
             </div>
+
+            <!-- ==================== CATALOGS TAB ==================== -->
+            <div id="tabCatalogs" style="display:none">
+                <!-- Catalog list -->
+                <div class="catalog-list" id="catalogList">
+                    <div class="catalog-card" data-catalog="graduation">
+                        <div class="catalog-cover">
+                            <div class="catalog-cover-placeholder">
+                                <span class="catalog-cover-icon">🎓</span>
+                                <span class="catalog-cover-year">2026</span>
+                            </div>
+                        </div>
+                        <div class="catalog-info">
+                            <h3>Випускні 2026</h3>
+                            <span class="catalog-meta">7 пакетів</span>
+                            <span class="catalog-meta catalog-updated" id="catalogUpdated"></span>
+                        </div>
+                        <div class="catalog-actions">
+                            <button class="btn-catalog" onclick="openCatalog('graduation')">Переглянути</button>
+                            <button class="btn-catalog btn-catalog-print" onclick="printCatalog('graduation')">Друк</button>
+                            <button class="btn-catalog btn-catalog-share" onclick="shareCatalog('graduation')">Поділитись</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fullscreen catalog viewer -->
+                <div class="catalog-viewer" id="catalogViewer" style="display:none;">
+                    <div class="catalog-viewer-nav">
+                        <button class="btn-catalog-nav" onclick="catalogPrev()" id="catalogPrevBtn">&#9664;</button>
+                        <span class="catalog-page-indicator" id="catalogPageIndicator">1 / 7</span>
+                        <button class="btn-catalog-nav" onclick="catalogNext()" id="catalogNextBtn">&#9654;</button>
+                        <button class="btn-catalog-nav btn-catalog-close" onclick="closeCatalog()">&times;</button>
+                    </div>
+                    <div class="catalog-pages-container" id="catalogPages"></div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -697,17 +996,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script>
-    if (new URLSearchParams(window.location.search).get('embedded') === '1' || new URLSearchParams(window.location.search).get('embed') === '1' || window.self !== window.top) {
-        document.body.classList.add('embed-mode');
-    }
-    </script>
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/designs-page.js?v=25.3.0"></script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/config.js?v=32.0.0"></script>
+    <script src="js/api.js?v=32.0.0"></script>
+    <script src="js/auth.js?v=32.0.0"></script>
+    <script src="js/components/sidebar.js?v=32.0.0"></script>
+    <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
+    <script src="js/designs-page.js?v=32.0.0"></script>
+    <script src="js/role-panel.js?v=32.0.0"></script>
 </body>
 </html>

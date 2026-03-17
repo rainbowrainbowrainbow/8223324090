@@ -55,20 +55,21 @@ const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY,  // Everyone
     '/':          ALL_STAFF,
     '/tasks':     ALL_STAFF,
-    '/center':    MANAGEMENT_UP,
-    '/art':       [...MANAGEMENT_UP, 'art_director'],
+    '/center':    MANAGER_UP,
+    '/art':       [...MANAGER_UP, 'art_director', 'marketer'],
+    '/graduation': [...MANAGER_UP, 'admin', 'art_director', 'marketer'],
     '/customers': [...ADMIN_UP, 'reception'],
-    '/staff':     [...MANAGEMENT_UP, 'hr'],
-    '/warehouse': [...MANAGEMENT_UP, 'admin'],
+    '/staff':     [...MANAGER_UP, 'hr'],
+    '/warehouse': [...MANAGER_UP, 'admin'],
     '/training':  [...MANAGER_UP, 'senior_instructor', 'instructor'],
     '/settings':  ['creator', 'director'],
     '/demo':      MANAGER_UP,
     '/programs':  [...ADMIN_UP, 'senior_instructor'],
-    '/hr':        [...MANAGEMENT_UP, 'hr'],
+    '/hr':        [...MANAGER_UP, 'hr'],
     '/chat':      ALL_STAFF,
     '/finance':   ['creator', 'director', 'accountant'],
-    '/analytics': MANAGEMENT_UP,
-    '/status':    MANAGEMENT_UP,
+    '/analytics': MANAGER_UP,
+    '/status':    MANAGER_UP,
 };
 
 // v22.0.0: Action permissions matrix for timeline
@@ -80,10 +81,10 @@ const ACTION_PERMISSIONS = {
     view_all:        ADMIN_UP,
     view_own:        ['senior_instructor', 'instructor', 'animator', 'reception'],
     manage_users:    ['creator', 'director'],
-    view_revenue:    [...MANAGEMENT_UP, 'accountant'],
+    view_revenue:    [...MANAGER_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
-    export_data:     MANAGEMENT_UP,
-    manage_staff:    [...MANAGEMENT_UP, 'hr'],
+    export_data:     MANAGER_UP,
+    manage_staff:    [...MANAGER_UP, 'hr'],
 };
 
 function authenticateToken(req, res, next) {

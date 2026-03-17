@@ -4,6 +4,31 @@
 
 ---
 
+## v32.0.0 — Premium Каталог Випускних (2026-03-16)
+- **Premium Catalog Redesign** — повний редизайн каталогу випускних на рівні друкованих каталогів 2025 [claude-code]
+- **Geometric Mosaic** — CSS полігональний фон з унікальною пастельною палітрою для кожного з 7 пакетів [claude-code]
+- **Info Cards** — нова структура: "ВИПУСКНИЙ" label + назва великим текстом + іконки ⏱ тривалість / 👥 діти / ₴ ціна [claude-code]
+- **Services Card** — кольоровий акцентний блок з переліком послуг UPPERCASE [claude-code]
+- **Description Card** — детальні описи кожної послуги (catalog_description) з DB [claude-code]
+- **Fullscreen Viewer** — immersive перегляд з sticky topbar, навігація ◀▶, Escape/Arrow/Swipe [claude-code]
+- **7 Package Themes** — лавандовий (best-dj), золотий (super-party), блакитний (science), м'ятний (handmade), жовтий (pizza), червоний (squid-game), рожевий (neon) [claude-code]
+- **Print A4** — 1 пакет = 1 сторінка, geometric mosaic зберігається при друку, компактна типографіка [claude-code]
+- **Export** — повний каталог (обкладинка + 7 сторінок) з premium дизайном для друку/PDF [claude-code]
+- **Share** — Web Share API + clipboard fallback для поширення пакету [claude-code]
+- **DB Migration 086** — min_kids/max_kids для пакетів, catalog_description для послуг [claude-code]
+- **automation.test.js fix** — 28 тестів виправлено: додано 'auto_complete' до valid task type filter [claude-code]
+- **Version sync** — всі 360 cache-bust ?v= тегів синхронізовані [claude-code]
+- **SNAPSHOT.md** — повне оновлення з v24.3 до v31.8 з актуальними метриками [claude-code]
+
+## v30.3.0 — Пошук, Шаблони, Повтори (2026-03-14)
+- **Пошук по таймлайну** — Ctrl+F відкриває search bar, підсвітка знайдених блоків, навігація ▲▼ по результатах, авто-скрол, dimming непотрібних блоків [claude-code]
+- **Redo + Hotkeys** — Ctrl+Z скасувати, Ctrl+Shift+Z / Ctrl+Y повторити, повний redo стек (до 10 дій) [claude-code]
+- **Шаблони бронювань** — DB таблиця `booking_templates`, CRUD API `/api/booking-templates`, dropdown + кнопка 💾 у формі бронювання, лічильник використань, сортування по popular+favorites [claude-code]
+- **Повторювані бронювання UI** — модалка з вибором патерну (щотижня, через тиждень, будні, вихідні, щомісяця), дні тижня, дата завершення. Кнопка 🔄 в деталях бронювання [claude-code]
+- **Bulk-операції** — Shift+Click для multi-select блоків на таймлайні, floating action bar (видалити, підтвердити, зробити попередніми) [claude-code]
+- **PDF експорт** — кнопка "Друк PDF" з print stylesheet (ховає UI, зберігає кольори блоків) [claude-code]
+- **Міграція 075** — `booking_templates` таблиця з індексами на favorite та usage_count [claude-code]
+
 ## v24.4.0 — QA Mega Fix + Adaptive Layout (2026-03-12)
 - **8 сторінок виправлено** — додано відсутній ui.js (customers, chat, dashboard, leads, profile, shop, quiz, room) — confirmModal/showNotification були undefined [claude-code]
 - **Адаптивний layout** — прибрано max-width обмеження (1800/1400/1200px), контент розтягується на повну ширину коли панель закрита [claude-code]

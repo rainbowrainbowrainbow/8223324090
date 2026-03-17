@@ -25,8 +25,28 @@ let editTags = [];
 // AUTH CHECK (same pattern as tasks-page)
 // ==========================================
 (async function initAuth() {
+    const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === '1'
+        || window.self !== window.top;
+
+    // v31.7: Embedded mode — hide chrome BEFORE auth to prevent blank page
+    if (isEmbedded) {
+        document.documentElement.classList.add('embed-mode');
+        document.body.classList.add('embed-mode');
+        const sidebar = document.getElementById('sidebarNav');
+        const header = document.querySelector('.header');
+        if (sidebar) sidebar.style.display = 'none';
+        if (header) header.style.display = 'none';
+        const main = document.querySelector('.page-container');
+        if (main) main.style.marginLeft = '0';
+    }
+
     const token = localStorage.getItem('pzp_token');
     if (!token) {
+        if (isEmbedded) {
+            // In embed mode, still show content (parent page is authenticated)
+            initPage();
+            return;
+        }
         document.getElementById('loginOverlay').classList.remove('hidden');
         document.getElementById('mainApp').style.display = 'none';
         return;
@@ -42,6 +62,11 @@ let editTags = [];
         const user = data.user || data;
         document.getElementById('currentUser').textContent = user.name || user.username;
     } catch {
+        if (isEmbedded) {
+            // In embed mode, still show content — API calls use token from localStorage
+            initPage();
+            return;
+        }
         document.getElementById('loginOverlay').classList.remove('hidden');
         document.getElementById('mainApp').style.display = 'none';
         return;
@@ -52,16 +77,6 @@ let editTags = [];
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location.href = '/';
     });
-
-    // v20.8.0: Embedded mode — hide chrome when inside Art page
-    if (new URLSearchParams(window.location.search).get('embedded') === '1') {
-        const sidebar = document.getElementById('sidebarNav');
-        const header = document.querySelector('.header');
-        if (sidebar) sidebar.style.display = 'none';
-        if (header) header.style.display = 'none';
-        const main = document.querySelector('.page-container');
-        if (main) main.style.marginLeft = '0';
-    }
 
     initPage();
 })();
@@ -82,7 +97,8 @@ async function initPage() {
     await Promise.all([
         loadDesigns(),
         loadCollections(),
-        loadTags()
+        loadTags(),
+        loadCatalogs()
     ]);
 
     renderTagChips();
@@ -93,20 +109,24 @@ async function initPage() {
 // TABS
 // ==========================================
 function setupTabs() {
+    const tabIds = ['tabGallery', 'tabCollections', 'tabPrice', 'tabCalendar', 'tabCatalogs'];
+    const tabMap = { gallery: 'tabGallery', collections: 'tabCollections', price: 'tabPrice', calendar: 'tabCalendar', catalogs: 'tabCatalogs' };
+
     document.querySelectorAll('.design-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.design-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             activeTab = tab.dataset.tab;
 
-            document.getElementById('tabGallery').style.display = activeTab === 'gallery' ? '' : 'none';
-            document.getElementById('tabCollections').style.display = activeTab === 'collections' ? '' : 'none';
-            document.getElementById('tabPrice').style.display = activeTab === 'price' ? '' : 'none';
-            document.getElementById('tabCalendar').style.display = activeTab === 'calendar' ? '' : 'none';
+            for (const id of tabIds) {
+                const el = document.getElementById(id);
+                if (el) el.style.display = id === tabMap[activeTab] ? '' : 'none';
+            }
 
             if (activeTab === 'price') loadPriceList();
             if (activeTab === 'calendar') renderCalendar();
             if (activeTab === 'collections') renderCollections();
+            if (activeTab === 'catalogs') loadCatalogs();
         });
     });
 }
@@ -125,8 +145,12 @@ function authHeaders(contentType = true) {
 async function apiFetch(url, options = {}) {
     const res = await fetch(url, { ...options, headers: { ...authHeaders(!options.body || typeof options.body === 'string'), ...options.headers } });
     if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem('pzp_token');
-        window.location.href = '/';
+        // In embedded mode, never redirect — parent page handles auth
+        const embedded = document.documentElement.classList.contains('embed-mode');
+        if (!embedded) {
+            localStorage.removeItem('pzp_token');
+            window.location.href = '/';
+        }
         return null;
     }
     return res;
@@ -183,7 +207,11 @@ async function loadTags() {
 function renderDesignGrid() {
     const grid = document.getElementById('designGrid');
     if (designs.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><span>🎨</span>Немає дизайнів. Перетягніть файли у зону завантаження.</div>';
+        grid.innerHTML = `<div class="empty-state">
+            <span>🎨</span>
+            Немає дизайнів. Перетягніть файли у зону завантаження вище.
+            ${catalogPackages.length > 0 ? '<br><br><button onclick="document.querySelector(\'[data-tab=catalogs]\').click()" style="padding:10px 24px;border:none;border-radius:8px;background:var(--primary);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;">Переглянути каталоги</button>' : ''}
+        </div>`;
         return;
     }
 
@@ -815,6 +843,351 @@ function showNotification(message, type = '') {
 }
 
 // ==========================================
+// CATALOGS
+// ==========================================
+
+const CATALOG_DESCRIPTIONS = {
+    'best-dj': 'Музика, танці, кольоровий паперовий дощ і яскравий аквагрим! Ведучий-діджей запалить справжню вечірку, а на завершення — капсула часу з мріями та урочиста видача дипломів. Ідеальний вибір для класу, який любить рухатись!',
+    'super-party': 'Класична програма з аніматорами у костюмах улюблених героїв! Захопливі ігри, конкурси, живі танці — а на фінал капсула часу з листами у майбутнє та урочиста видача дипломів на сцені. Перевірений формат, який обожнюють діти!',
+    'science-party': 'Для розумників та допитливих! Починаємо з велком-зони, де ведучий-персонаж знайомить всіх. Потім — гра Мафія (інтелектуальний батл!) і фінальне шоу з сухим льодом: димові каскади, хімічні експерименти та магічні перетворення. Наука ще ніколи не була такою крутою!',
+    'handmade-party': 'Створюй, їж і святкуй! Два крутих майстер-класи: кожен робить свій унікальний слайм (обирає колір та блискітки) та авторську піцу з улюбленою начинкою. А на завершення — капсула часу і дипломи. Ідеально для творчого класу!',
+    'pizza-party': 'Піца + вечірка = ідеальний випускний! Спочатку кожен робить свою авторську піцу, а потім — два повних години нон-стоп анімації з аніматорами у костюмах героїв. Ігри, конкурси, танці — і все це з повним животом!',
+    'squid-game': 'Для сміливих! Захоплива інтерактивна програма в стилі серіалу. Три ведучих у яскравих костюмах проводять кілька циклів ігор на швидкість, логіку та витримку. Два раунди, фінальний сюрприз і подарунки для переможців. Адреналін гарантовано!',
+    'neon-party': 'Вечірка у світлі ультрафіолету! Неонова паперова дискотека, магічні мильні бульбашки що світяться, аквагрим який перетворює кожного на зірку неонової вечірки — і подарунки на пам\'ять. Це як потрапити всередину неонової мрії!'
+};
+
+const CATALOG_ICONS = {
+    'best-dj': '🎧', 'super-party': '🎉', 'science-party': '🔬',
+    'handmade-party': '🎨', 'pizza-party': '🍕', 'squid-game': '🦑', 'neon-party': '✨'
+};
+
+// Package color themes for geometric mosaic backgrounds
+const CATALOG_THEMES = {
+    'best-dj': {
+        bg1: '#e8d0f0', bg2: '#d4b8e8', bg3: '#c0a0d8',
+        accent: '#9333ea', accentLight: 'rgba(147,51,234,0.15)',
+        heroGradient: 'linear-gradient(135deg, #8e24aa, #e040fb)',
+        priceColor: '#a855f7'
+    },
+    'super-party': {
+        bg1: '#f0e0c0', bg2: '#e8d4a8', bg3: '#d8c490',
+        accent: '#C9A84C', accentLight: 'rgba(201,168,76,0.15)',
+        heroGradient: 'linear-gradient(135deg, #C9A84C, #e8c84c)',
+        priceColor: '#C9A84C'
+    },
+    'science-party': {
+        bg1: '#c8d8f0', bg2: '#b0c8e8', bg3: '#98b8d8',
+        accent: '#3B82F6', accentLight: 'rgba(59,130,246,0.15)',
+        heroGradient: 'linear-gradient(135deg, #3B82F6, #60a5fa)',
+        priceColor: '#3B82F6'
+    },
+    'handmade-party': {
+        bg1: '#b8e8d0', bg2: '#a0d8c0', bg3: '#88c8b0',
+        accent: '#10B981', accentLight: 'rgba(16,185,129,0.15)',
+        heroGradient: 'linear-gradient(135deg, #059669, #34d399)',
+        priceColor: '#10B981'
+    },
+    'pizza-party': {
+        bg1: '#f0e8c0', bg2: '#e8dca0', bg3: '#dcd088',
+        accent: '#f59e0b', accentLight: 'rgba(245,158,11,0.15)',
+        heroGradient: 'linear-gradient(135deg, #d97706, #fbbf24)',
+        priceColor: '#f59e0b'
+    },
+    'squid-game': {
+        bg1: '#f0c8c8', bg2: '#e8b0b0', bg3: '#d89898',
+        accent: '#ef4444', accentLight: 'rgba(239,68,68,0.15)',
+        heroGradient: 'linear-gradient(135deg, #dc2626, #f87171)',
+        priceColor: '#ef4444'
+    },
+    'neon-party': {
+        bg1: '#e8c0e0', bg2: '#d8a8d0', bg3: '#c890c0',
+        accent: '#ec4899', accentLight: 'rgba(236,72,153,0.15)',
+        heroGradient: 'linear-gradient(135deg, #db2777, #f472b6)',
+        priceColor: '#ec4899'
+    }
+};
+
+function catalogFormatDuration(min) {
+    if (!min) return '0 хв';
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (h === 0) return `${m} хв`;
+    if (m === 0) return `${h} год`;
+    return `${h} год ${m} хв`;
+}
+
+const SERVICE_ICONS = {
+    'Вхід': '🎟️', 'Паперова дискотека': '🎵', 'Аквагрим': '🎨',
+    'Капсула часу': '📦', 'Видача дипломів та вітання класу на сцені': '🎓',
+    'Анімація': '🎪', 'Анімація 2 години': '🎪', 'Велком Зона': '👋',
+    'Мафія': '🕵️', 'Шоу з сухим льодом': '🧊', 'МК "Слайм"': '🧪',
+    'МК "Піца"': '🍕', 'Подарунки': '🎁', 'Неонова паперова дискотека': '🎵',
+    'Неонові мильні бульбашки': '🫧', 'Неоновий аквагрим': '🎨',
+    'Програма "Гра в кальмара" Ч.1': '🦑', 'Програма "Гра в кальмара" Ч.2': '🦑'
+};
+
+let catalogPackages = [];
+let currentCatalogPage = 0;
+
+async function loadCatalogs() {
+    try {
+        const res = await apiFetch('/api/graduation/packages');
+        if (!res) return;
+        catalogPackages = await res.json();
+        const updatedEl = document.getElementById('catalogUpdated');
+        if (updatedEl) updatedEl.textContent = 'Оновлено: ' + new Date().toLocaleDateString('uk-UA');
+    } catch (err) {
+        console.error('Load catalogs error:', err);
+    }
+}
+
+function openCatalog(catalogId) {
+    if (catalogId !== 'graduation' || catalogPackages.length === 0) {
+        loadCatalogs().then(() => {
+            if (catalogPackages.length > 0) renderCatalogViewer();
+        });
+        return;
+    }
+    renderCatalogViewer();
+}
+
+function renderCatalogViewer() {
+    currentCatalogPage = 0;
+    const viewer = document.getElementById('catalogViewer');
+    viewer.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    renderCurrentPage();
+
+    // Keyboard navigation
+    viewer._keyHandler = (e) => {
+        if (e.key === 'ArrowRight') catalogNext();
+        else if (e.key === 'ArrowLeft') catalogPrev();
+        else if (e.key === 'Escape') closeCatalog();
+    };
+    document.addEventListener('keydown', viewer._keyHandler);
+}
+
+function renderCurrentPage() {
+    const pkg = catalogPackages[currentCatalogPage];
+    if (!pkg) return;
+
+    const container = document.getElementById('catalogPages');
+    const icon = CATALOG_ICONS[pkg.slug] || '🎉';
+    const desc = CATALOG_DESCRIPTIONS[pkg.slug] || '';
+    const theme = CATALOG_THEMES[pkg.slug] || CATALOG_THEMES['super-party'];
+    const totalPrice = pkg.totalPerChild || pkg.services.reduce((s, svc) => s + (svc.pricePerChild || 0), 0);
+    const totalDuration = pkg.totalDuration || pkg.services.reduce((s, svc) => s + (svc.durationMin || 0), 0);
+
+    const imgPath = `images/catalogs/graduation/${pkg.slug}.png`;
+
+    const servicesHtml = pkg.services.map(svc => {
+        const svcIcon = SERVICE_ICONS[svc.serviceName] || '•';
+        const dur = svc.durationMin ? ` — ${svc.durationMin} хв` : '';
+        return `<li>${svcIcon} ${esc(svc.serviceName)}${dur}</li>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="catalog-page-mosaic" data-package="${pkg.slug}"
+             style="--theme-bg1:${theme.bg1};--theme-bg2:${theme.bg2};--theme-bg3:${theme.bg3};--theme-accent:${theme.accent};--theme-price:${theme.priceColor}">
+            <div class="catalog-mosaic-bg"></div>
+            <div class="catalog-mosaic-content">
+                <!-- Hero section -->
+                <div class="catalog-hero-section">
+                    <img class="catalog-hero-photo" src="${imgPath}" alt="${esc(pkg.name)}"
+                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                    <div class="catalog-hero-gradient" style="background:${theme.heroGradient};display:none">
+                        <span class="catalog-hero-icon">${icon}</span>
+                    </div>
+                </div>
+
+                <!-- Info card -->
+                <div class="catalog-info-section">
+                    <div class="catalog-pkg-badge" style="background:${theme.accentLight};color:${theme.accent}">ВИПУСКНИЙ</div>
+                    <h2 class="catalog-pkg-name">${esc(pkg.name)}</h2>
+
+                    <div class="catalog-stats-row">
+                        <div class="catalog-stat">
+                            <span class="catalog-stat-icon">⏱</span>
+                            <span class="catalog-stat-val">${catalogFormatDuration(totalDuration)}</span>
+                        </div>
+                        <div class="catalog-stat">
+                            <span class="catalog-stat-icon">👥</span>
+                            <span class="catalog-stat-val">${pkg.minKids || 7}–${pkg.maxKids || 50} дітей</span>
+                        </div>
+                        <div class="catalog-stat catalog-stat-price">
+                            <span class="catalog-stat-val" style="color:${theme.priceColor};font-size:32px">${totalPrice.toLocaleString('uk-UA')} ₴</span>
+                            <span class="catalog-stat-unit">за дитину</span>
+                        </div>
+                    </div>
+
+                    <p class="catalog-pkg-desc">${esc(desc)}</p>
+
+                    <!-- Services grid -->
+                    <div class="catalog-services-block" style="border-color:${theme.accent}40">
+                        <h4 style="color:${theme.accent}">Що входить:</h4>
+                        <ul class="catalog-svc-list">${servicesHtml}</ul>
+                    </div>
+                </div>
+            </div>
+            <div class="catalog-page-footer">
+                <button onclick="printCatalogPage('graduation', '${pkg.slug}')">🖨️ Друк</button>
+                <button onclick="shareCatalogPage('graduation', '${pkg.slug}')">📤 Поділитись</button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('catalogPageIndicator').textContent =
+        `${currentCatalogPage + 1} / ${catalogPackages.length}`;
+}
+
+function catalogNext() {
+    if (currentCatalogPage < catalogPackages.length - 1) {
+        currentCatalogPage++;
+        renderCurrentPage();
+    }
+}
+
+function catalogPrev() {
+    if (currentCatalogPage > 0) {
+        currentCatalogPage--;
+        renderCurrentPage();
+    }
+}
+
+function closeCatalog() {
+    const viewer = document.getElementById('catalogViewer');
+    viewer.style.display = 'none';
+    document.body.style.overflow = '';
+    if (viewer._keyHandler) {
+        document.removeEventListener('keydown', viewer._keyHandler);
+        viewer._keyHandler = null;
+    }
+}
+
+function printCatalog(catalogId) {
+    if (catalogPackages.length === 0) {
+        loadCatalogs().then(() => {
+            if (catalogPackages.length > 0) doPrintCatalog();
+        });
+        return;
+    }
+    doPrintCatalog();
+}
+
+function doPrintCatalog() {
+    const viewer = document.getElementById('catalogViewer');
+    viewer.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    document.body.classList.add('printing-catalog');
+
+    const container = document.getElementById('catalogPages');
+    container.innerHTML = catalogPackages.map(pkg => buildCatalogPageHtml(pkg)).join('');
+
+    setTimeout(() => {
+        window.print();
+        document.body.classList.remove('printing-catalog');
+        closeCatalog();
+    }, 300);
+}
+
+function buildCatalogPageHtml(pkg) {
+    const icon = CATALOG_ICONS[pkg.slug] || '🎉';
+    const desc = CATALOG_DESCRIPTIONS[pkg.slug] || '';
+    const theme = CATALOG_THEMES[pkg.slug] || CATALOG_THEMES['super-party'];
+    const totalPrice = pkg.totalPerChild || 0;
+    const totalDuration = pkg.totalDuration || 0;
+    const imgPath = `images/catalogs/graduation/${pkg.slug}.png`;
+    const servicesHtml = pkg.services.map(svc => {
+        const svcIcon = SERVICE_ICONS[svc.serviceName] || '•';
+        const dur = svc.durationMin ? ` — ${svc.durationMin} хв` : '';
+        return `<li>${svcIcon} ${esc(svc.serviceName)}${dur}</li>`;
+    }).join('');
+
+    return `
+        <div class="catalog-page-mosaic" data-package="${pkg.slug}"
+             style="--theme-bg1:${theme.bg1};--theme-bg2:${theme.bg2};--theme-bg3:${theme.bg3};--theme-accent:${theme.accent};--theme-price:${theme.priceColor}">
+            <div class="catalog-mosaic-bg"></div>
+            <div class="catalog-mosaic-content">
+                <div class="catalog-hero-section">
+                    <img class="catalog-hero-photo" src="${imgPath}" alt="${esc(pkg.name)}"
+                         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                    <div class="catalog-hero-gradient" style="background:${theme.heroGradient};display:none">
+                        <span class="catalog-hero-icon">${icon}</span>
+                    </div>
+                </div>
+                <div class="catalog-info-section">
+                    <div class="catalog-pkg-badge" style="background:${theme.accentLight};color:${theme.accent}">ВИПУСКНИЙ</div>
+                    <h2 class="catalog-pkg-name">${esc(pkg.name)}</h2>
+                    <div class="catalog-stats-row">
+                        <div class="catalog-stat">
+                            <span class="catalog-stat-icon">⏱</span>
+                            <span class="catalog-stat-val">${catalogFormatDuration(totalDuration)}</span>
+                        </div>
+                        <div class="catalog-stat">
+                            <span class="catalog-stat-icon">👥</span>
+                            <span class="catalog-stat-val">${pkg.minKids || 7}–${pkg.maxKids || 50} дітей</span>
+                        </div>
+                        <div class="catalog-stat catalog-stat-price">
+                            <span class="catalog-stat-val" style="color:${theme.priceColor};font-size:32px">${totalPrice.toLocaleString('uk-UA')} ₴</span>
+                            <span class="catalog-stat-unit">за дитину</span>
+                        </div>
+                    </div>
+                    <p class="catalog-pkg-desc">${esc(desc)}</p>
+                    <div class="catalog-services-block" style="border-color:${theme.accent}40">
+                        <h4 style="color:${theme.accent}">Що входить:</h4>
+                        <ul class="catalog-svc-list">${servicesHtml}</ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function printCatalogPage(catalogId, slug) {
+    const pkg = catalogPackages.find(p => p.slug === slug);
+    if (!pkg) return;
+
+    const viewer = document.getElementById('catalogViewer');
+    const container = document.getElementById('catalogPages');
+    const prevHtml = container.innerHTML;
+    const wasHidden = viewer.style.display === 'none';
+
+    container.innerHTML = buildCatalogPageHtml(pkg);
+    if (wasHidden) viewer.style.display = 'flex';
+    document.body.classList.add('printing-catalog');
+
+    setTimeout(() => {
+        window.print();
+        document.body.classList.remove('printing-catalog');
+        container.innerHTML = prevHtml;
+        if (wasHidden) viewer.style.display = 'none';
+    }, 300);
+}
+
+async function shareCatalog(catalogId) {
+    if (catalogPackages.length === 0) await loadCatalogs();
+    showNotification('Каталог готовий до друку. Використовуйте "Друк → Зберегти як PDF"');
+}
+
+async function shareCatalogPage(catalogId, slug) {
+    // Try to capture page as image using canvas if available
+    const page = document.querySelector(`.catalog-page-mosaic[data-package="${slug}"]`);
+    if (!page) return;
+
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: `Випускний: ${catalogPackages.find(p => p.slug === slug)?.name || slug}`,
+                text: CATALOG_DESCRIPTIONS[slug] || '',
+                url: window.location.href
+            });
+            return;
+        } catch { /* fallback */ }
+    }
+    showNotification('Використовуйте "Друк → Зберегти як PDF" для шейрінгу');
+}
+
+// ==========================================
 // EXPOSE GLOBALS
 // ==========================================
 window.downloadDesign = downloadDesign;
@@ -822,3 +1195,11 @@ window.copyDesign = copyDesign;
 window.togglePin = togglePin;
 window.deleteDesign = deleteDesign;
 window.sendToTelegram = sendToTelegram;
+window.openCatalog = openCatalog;
+window.closeCatalog = closeCatalog;
+window.catalogNext = catalogNext;
+window.catalogPrev = catalogPrev;
+window.printCatalog = printCatalog;
+window.printCatalogPage = printCatalogPage;
+window.shareCatalog = shareCatalog;
+window.shareCatalogPage = shareCatalogPage;

@@ -1,7 +1,7 @@
 /**
- * hr-page.js — HR module frontend (v15.0)
+ * hr-page.js — HR module frontend (v30.7)
  *
- * 4 tabs: Today (clock-in/out), Schedule (shifts), Team (profiles), Reports
+ * 10 tabs: Today, Schedule, Team, Reports, AI Team, Leaves, Salary, Ratings, Onboarding, Costumes
  * API: /api/hr/*
  */
 
@@ -166,8 +166,18 @@ async function initPage() {
     initScheduleControls();
     initModals();
     initContextMenu();
+    initNewTabs();
     await loadToday();
     startPolling();
+}
+
+function initNewTabs() {
+    document.getElementById('leaveStatusFilter')?.addEventListener('change', loadLeaves);
+    document.getElementById('btnNewLeave')?.addEventListener('click', showNewLeaveForm);
+    document.getElementById('salaryMonth')?.addEventListener('change', loadSalary);
+    document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
+    document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
+    document.getElementById('btnAddCostume')?.addEventListener('click', showAddCostume);
 }
 
 // ==========================================
@@ -188,6 +198,11 @@ function initTabs() {
             if (target === 'team') loadTeam();
             if (target === 'reports') loadReports();
             if (target === 'ai-team') renderAITeam();
+            if (target === 'leaves') loadLeaves();
+            if (target === 'salary') loadSalary();
+            if (target === 'ratings') loadRatings();
+            if (target === 'onboarding') loadOnboarding();
+            if (target === 'costumes') loadCostumes();
         });
     });
 }
@@ -1180,6 +1195,292 @@ function sendAITask(workerId) {
     const worker = AI_WORKERS.find(w => w.id === workerId);
     showNotification(`Завдання відправлено ${worker ? worker.name : 'працівнику'}`, 'success');
 }
+
+// ==========================================
+// TAB 6: LEAVES (#2)
+// ==========================================
+
+async function loadLeaves() {
+    const statusFilter = document.getElementById('leaveStatusFilter')?.value || '';
+    const data = await hrFetch(`/leave-requests?status=${statusFilter}`);
+    if (!data || !data.success) return;
+    renderLeaves(data.data);
+}
+
+function renderLeaves(leaves) {
+    const el = document.getElementById('leavesList');
+    if (!leaves.length) {
+        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає заявок</div>';
+        return;
+    }
+    const typeLabels = { vacation: 'Відпустка', sick: 'Лікарняний', day_off: 'Вихідний', unpaid: 'За свій рахунок' };
+    const statusColors = { pending: '#F59E0B', approved: '#10B981', rejected: '#EF4444', cancelled: '#9CA3AF' };
+    const statusLabels = { pending: 'Очікує', approved: 'Затверджено', rejected: 'Відхилено', cancelled: 'Скасовано' };
+
+    el.innerHTML = leaves.map(l => `
+        <div style="background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow-xs);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div>
+                    <strong>${escapeHtml(l.staff_name)}</strong>
+                    <span style="margin-left:8px;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${statusColors[l.status]}20;color:${statusColors[l.status]};">${statusLabels[l.status]}</span>
+                </div>
+                <span style="font-size:12px;color:var(--gray-500);">${typeLabels[l.type] || l.type}</span>
+            </div>
+            <div style="font-size:13px;color:var(--gray-600);margin-bottom:6px;">
+                ${l.date_from?.split('T')[0]} — ${l.date_to?.split('T')[0]} (${l.days} дн.)
+            </div>
+            ${l.reason ? `<div style="font-size:12px;color:var(--gray-500);">Причина: ${escapeHtml(l.reason)}</div>` : ''}
+            ${l.status === 'pending' && canManage ? `
+                <div style="display:flex;gap:8px;margin-top:10px;">
+                    <button onclick="reviewLeave(${l.id}, 'approved')" style="padding:6px 16px;border:none;background:#10B981;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">Затвердити</button>
+                    <button onclick="reviewLeave(${l.id}, 'rejected')" style="padding:6px 16px;border:none;background:#EF4444;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">Відхилити</button>
+                </div>
+            ` : ''}
+        </div>
+    `).join('');
+}
+
+window.reviewLeave = async function(id, status) {
+    const comment = status === 'rejected' ? prompt('Причина відхилення:') : '';
+    const data = await hrFetch(`/leave-requests/${id}/review`, 'PUT', { status, comment });
+    if (data?.success) { showNotification(status === 'approved' ? 'Заявку затверджено' : 'Заявку відхилено', 'success'); loadLeaves(); }
+};
+
+window.showNewLeaveForm = async function() {
+    const staff = await hrFetch('/staff?active=true');
+    if (!staff?.success) return;
+    const staffId = prompt('ID співробітника:\n' + staff.data.map(s => `${s.id} — ${s.name}`).join('\n'));
+    if (!staffId) return;
+    const type = prompt('Тип (vacation/sick/day_off/unpaid):') || 'vacation';
+    const dateFrom = prompt('Дата з (YYYY-MM-DD):');
+    const dateTo = prompt('Дата по (YYYY-MM-DD):');
+    if (!dateFrom || !dateTo) return;
+    const reason = prompt('Причина:') || '';
+    const data = await hrFetch('/leave-requests', 'POST', { staff_id: parseInt(staffId), type, date_from: dateFrom, date_to: dateTo, reason });
+    if (data?.success) { showNotification('Заявку створено', 'success'); loadLeaves(); }
+};
+
+// ==========================================
+// TAB 7: SALARY (#7)
+// ==========================================
+
+async function loadSalary() {
+    const monthSelect = document.getElementById('salaryMonth');
+    if (monthSelect && !monthSelect.options.length) {
+        const now = new Date();
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const label = `${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+            monthSelect.add(new Option(label, val));
+        }
+    }
+    const month = monthSelect?.value || '';
+    const data = await hrFetch(`/salary?month=${month}`);
+    if (!data || !data.success) return;
+    renderSalary(data);
+}
+
+function renderSalary(data) {
+    const totals = data.totals;
+    document.getElementById('salaryTotals').innerHTML = `
+        <div class="hr-summary">
+            <div class="hr-summary-card"><div class="value">${(totals.total_salary || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Всього</div></div>
+            <div class="hr-summary-card green"><div class="value">${(totals.total_base || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Базова</div></div>
+            <div class="hr-summary-card"><div class="value">${(totals.total_overtime || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Переробки</div></div>
+            <div class="hr-summary-card green"><div class="value">${(totals.total_bonuses || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Бонуси</div></div>
+            <div class="hr-summary-card red"><div class="value">${(totals.total_deductions || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Утримання</div></div>
+        </div>
+    `;
+
+    document.getElementById('salaryHead').innerHTML = `<tr>
+        <th>Співробітник</th><th>Роль</th><th>Ставка</th><th>Днів</th><th>Годин</th>
+        <th>Базова</th><th>Переробки</th><th>Бонуси</th><th>Утримання</th><th>Всього</th>
+    </tr>`;
+
+    document.getElementById('salaryBody').innerHTML = data.data.map(s => `<tr>
+        <td><strong>${escapeHtml(s.staff_name)}</strong></td>
+        <td>${ROLE_LABELS[s.role_type] || s.role_type || ''}</td>
+        <td>${s.hourly_rate} ₴/год</td>
+        <td>${s.days_worked}</td>
+        <td>${s.hours_worked}</td>
+        <td>${s.base_salary.toLocaleString('uk-UA')} ₴</td>
+        <td>${s.overtime_pay ? s.overtime_pay.toLocaleString('uk-UA') + ' ₴' : '—'}</td>
+        <td style="color:#10B981;">${(s.bonuses + s.tips) ? '+' + (s.bonuses + s.tips).toLocaleString('uk-UA') + ' ₴' : '—'}</td>
+        <td style="color:#EF4444;">${(s.deductions + s.penalties) ? '-' + (s.deductions + s.penalties).toLocaleString('uk-UA') + ' ₴' : '—'}</td>
+        <td><strong>${s.total_salary.toLocaleString('uk-UA')} ₴</strong></td>
+    </tr>`).join('');
+}
+
+window.showAdjustmentForm = async function() {
+    const staff = await hrFetch('/staff?active=true');
+    if (!staff?.success) return;
+    const staffId = prompt('ID співробітника:\n' + staff.data.map(s => `${s.id} — ${s.name}`).join('\n'));
+    if (!staffId) return;
+    const type = prompt('Тип (bonus/deduction/penalty/tip):') || 'bonus';
+    const amount = parseInt(prompt('Сума (₴):') || '0');
+    if (!amount) return;
+    const reason = prompt('Причина:') || '';
+    const month = document.getElementById('salaryMonth')?.value || '';
+    const data = await hrFetch('/salary/adjustment', 'POST', { staff_id: parseInt(staffId), month, type, amount, reason });
+    if (data?.success) { showNotification('Коригування додано', 'success'); loadSalary(); }
+};
+
+// ==========================================
+// TAB 8: RATINGS (#3)
+// ==========================================
+
+async function loadRatings() {
+    const data = await hrFetch('/ratings');
+    if (!data || !data.success) return;
+    renderRatings(data.data);
+}
+
+function renderRatings(staff) {
+    const el = document.getElementById('ratingsBoard');
+    if (!staff.length) {
+        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає даних</div>';
+        return;
+    }
+
+    el.innerHTML = staff.map((s, i) => {
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+        const stars = '★'.repeat(Math.round(parseFloat(s.avg_rating))) + '☆'.repeat(5 - Math.round(parseFloat(s.avg_rating)));
+        return `
+        <div style="display:flex;align-items:center;gap:16px;padding:14px 16px;background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);margin-bottom:8px;box-shadow:var(--shadow-xs);">
+            <span style="font-size:20px;min-width:36px;text-align:center;">${medal}</span>
+            <div style="width:36px;height:36px;border-radius:50%;background:${s.color || '#6366F1'};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;">
+                ${escapeHtml(s.name?.charAt(0) || '?')}
+            </div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;">${escapeHtml(s.name)}</div>
+                <div style="font-size:12px;color:var(--gray-500);">${ROLE_LABELS[s.role_type] || s.role_type || ''}</div>
+            </div>
+            <div style="text-align:center;">
+                <div style="color:#F59E0B;font-size:14px;letter-spacing:1px;">${stars}</div>
+                <div style="font-size:12px;color:var(--gray-500);">${parseFloat(s.avg_rating).toFixed(1)} (${s.total_ratings} відгуків)</div>
+            </div>
+            <div style="text-align:center;min-width:60px;">
+                <div style="font-weight:800;font-size:18px;color:var(--gray-800);">${s.total_events}</div>
+                <div style="font-size:11px;color:var(--gray-500);">подій</div>
+            </div>
+            <div style="text-align:center;min-width:50px;">
+                <div style="font-weight:700;font-size:14px;color:#6366F1;">${s.events_30d}</div>
+                <div style="font-size:10px;color:var(--gray-400);">за 30 дн</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ==========================================
+// TAB 9: ONBOARDING (#5)
+// ==========================================
+
+async function loadOnboarding() {
+    const data = await hrFetch('/onboarding');
+    if (!data || !data.success) return;
+    renderOnboarding(data.data);
+}
+
+function renderOnboarding(list) {
+    const el = document.getElementById('onboardingList');
+    if (!list.length) {
+        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає активних онбордингів</div>';
+        return;
+    }
+
+    el.innerHTML = list.map(o => {
+        const pct = o.total_items > 0 ? Math.round(o.completed_items / o.total_items * 100) : 0;
+        const items = o.items || [];
+        return `
+        <div style="background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow-xs);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div>
+                    <strong>${escapeHtml(o.staff_name)}</strong>
+                    <span style="font-size:12px;color:var(--gray-500);margin-left:8px;">${escapeHtml(o.template_name || '')}</span>
+                </div>
+                <span style="font-weight:800;color:${pct === 100 ? '#10B981' : '#6366F1'};">${pct}%</span>
+            </div>
+            <div style="background:var(--gray-100);border-radius:99px;height:6px;margin-bottom:12px;overflow:hidden;">
+                <div style="background:${pct === 100 ? '#10B981' : '#6366F1'};height:100%;width:${pct}%;border-radius:99px;transition:width 0.3s;"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                ${items.map(it => `
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;${it.done ? 'color:var(--gray-400);text-decoration:line-through;' : ''}">
+                        <input type="checkbox" ${it.done ? 'checked' : ''} onchange="toggleOnboardingItem(${o.id}, ${it.id}, this.checked)" style="width:16px;height:16px;">
+                        <span>${escapeHtml(it.title)}</span>
+                    </label>
+                `).join('')}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+window.toggleOnboardingItem = async function(progressId, itemId, done) {
+    const data = await hrFetch(`/onboarding/${progressId}/check`, 'PUT', { item_id: itemId, done });
+    if (data?.success) loadOnboarding();
+};
+
+window.showStartOnboarding = async function() {
+    const [staff, templates] = await Promise.all([
+        hrFetch('/staff?active=true'),
+        hrFetch('/onboarding/templates')
+    ]);
+    if (!staff?.success || !templates?.success) return;
+    const staffId = prompt('ID співробітника:\n' + staff.data.map(s => `${s.id} — ${s.name}`).join('\n'));
+    if (!staffId) return;
+    const templateId = prompt('ID шаблону:\n' + templates.data.map(t => `${t.id} — ${t.name}`).join('\n'));
+    if (!templateId) return;
+    const data = await hrFetch('/onboarding/start', 'POST', { staff_id: parseInt(staffId), template_id: parseInt(templateId) });
+    if (data?.success) { showNotification('Онбординг запущено', 'success'); loadOnboarding(); }
+};
+
+// ==========================================
+// TAB 10: COSTUMES (#8)
+// ==========================================
+
+async function loadCostumes() {
+    const data = await hrFetch('/costumes');
+    if (!data || !data.success) return;
+    renderCostumes(data.data);
+}
+
+function renderCostumes(costumes) {
+    const el = document.getElementById('costumesList');
+    if (!costumes.length) {
+        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає костюмів</div>';
+        return;
+    }
+
+    const condLabels = { new: 'Новий', good: 'Добрий', worn: 'Потертий', damaged: 'Пошкоджений', retired: 'Списаний' };
+    const condColors = { new: '#10B981', good: '#6366F1', worn: '#F59E0B', damaged: '#EF4444', retired: '#9CA3AF' };
+
+    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
+        ${costumes.map(c => `
+            <div style="background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow-xs);">
+                <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
+                    <strong style="font-size:14px;">${escapeHtml(c.name)}</strong>
+                    <span style="padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${condColors[c.condition] || '#9CA3AF'}20;color:${condColors[c.condition] || '#9CA3AF'};">${condLabels[c.condition] || c.condition}</span>
+                </div>
+                ${c.category ? `<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">Категорія: ${escapeHtml(c.category)}</div>` : ''}
+                ${c.size ? `<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">Розмір: ${escapeHtml(c.size)}</div>` : ''}
+                <div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">
+                    ${c.assigned_name ? `Призначено: <strong>${escapeHtml(c.assigned_name)}</strong>` : '<span style="color:var(--gray-400);">Не призначено</span>'}
+                </div>
+                ${c.notes ? `<div style="font-size:11px;color:var(--gray-400);margin-top:4px;">${escapeHtml(c.notes)}</div>` : ''}
+            </div>
+        `).join('')}
+    </div>`;
+}
+
+window.showAddCostume = async function() {
+    const name = prompt('Назва костюму:');
+    if (!name) return;
+    const category = prompt('Категорія (наприклад: піратський, казковий, спортивний):') || 'general';
+    const size = prompt('Розмір:') || '';
+    const data = await hrFetch('/costumes', 'POST', { name, category, size });
+    if (data?.success) { showNotification('Костюм додано', 'success'); loadCostumes(); }
+};
 
 // ==========================================
 // DARK MODE

@@ -6,13 +6,13 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=29.2.0">
-    <link rel="stylesheet" href="css/layout.css?v=29.2.0">
-    <link rel="stylesheet" href="css/pages.css?v=29.2.0">
-    <link rel="stylesheet" href="css/modals.css?v=29.2.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=29.2.0">
-    <link rel="stylesheet" href="css/responsive.css?v=29.2.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=29.2.0">
+    <link rel="stylesheet" href="css/base.css?v=32.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=32.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=32.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=32.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=32.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=32.0.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=32.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -184,6 +184,39 @@
         .kanban-card-date { font-size: 11px; color: #64748B; margin-top: 4px; }
         .kanban-empty { color: #94A3B8; font-size: 12px; text-align: center; padding: 16px 0; }
 
+        /* Funnel conversion bar */
+        .funnel-bar-container { display: flex; flex-direction: column; gap: 2px; margin-bottom: 16px; padding: 16px; background: #FFFFFF; border-radius: var(--radius-card); border: 1.5px solid #E2E8F0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .funnel-step { display: flex; align-items: center; gap: 8px; }
+        .funnel-bar { height: 28px; border-radius: 6px; display: flex; align-items: center; padding: 0 12px; min-width: 60px; transition: width .3s ease; }
+        .funnel-bar-label { color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .funnel-arrow { font-size: 11px; font-weight: 700; color: #64748B; white-space: nowrap; min-width: 48px; }
+
+        /* Column sum */
+        .kanban-column-sum { text-align: center; padding: 4px 8px; font-size: 12px; font-weight: 700; color: #059669; background: #ECFDF5; border-bottom: 1px solid #E2E8F0; }
+
+        /* Days on stage badge */
+        .kanban-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; margin-bottom: 4px; }
+        .kanban-days { font-size: 10px; font-weight: 600; color: #94A3B8; background: #F1F5F9; padding: 1px 6px; border-radius: 8px; white-space: nowrap; flex-shrink: 0; }
+        .kanban-days.days-mid { color: #D97706; background: #FEF3C7; }
+        .kanban-days.days-warn { color: #DC2626; background: #FEE2E2; }
+
+        /* Quick action buttons */
+        .kanban-card-actions { display: flex; gap: 4px; margin-top: 6px; }
+        .kanban-action-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: #F1F5F9; text-decoration: none; font-size: 13px; transition: all .15s; cursor: pointer; }
+        .kanban-action-btn:hover { background: #DBEAFE; transform: scale(1.1); }
+
+        /* WIP warning */
+        .wip-warning { margin-left: 4px; animation: pulse-wip 1.5s infinite; }
+        .kanban-column-wip { border-color: #F59E0B !important; }
+        .kanban-column-wip .kanban-column-header { background: #FFFBEB; }
+        @keyframes pulse-wip { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* Empty columns collapsed */
+        .kanban-column-empty { min-width: 80px; max-width: 80px; opacity: 0.6; transition: all .2s; }
+        .kanban-column-empty:hover { min-width: 200px; max-width: 240px; opacity: 1; }
+        .kanban-column-empty .kanban-cards { min-height: 40px; }
+        .kanban-column-empty .kanban-column-header span:first-child { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
         /* Modal shared */
         .lead-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center; }
         .lead-modal-overlay.active { display: flex; }
@@ -243,6 +276,15 @@
         body.dark-mode .quality-category-btns button { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #E2E8F0; }
         body.dark-mode .quality-category-btns button:hover { border-color: var(--primary); background: rgba(16,185,129,0.1); }
         body.dark-mode .test-mode-badge { background: rgba(254,243,199,0.15); }
+        body.dark-mode .funnel-bar-container { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.06); }
+        body.dark-mode .funnel-arrow { color: #9CA3AF; }
+        body.dark-mode .kanban-column-sum { background: rgba(16,185,129,0.1); color: #34D399; border-color: rgba(255,255,255,0.06); }
+        body.dark-mode .kanban-days { background: rgba(255,255,255,0.08); color: #9CA3AF; }
+        body.dark-mode .kanban-days.days-mid { background: rgba(217,119,6,0.15); color: #FBBF24; }
+        body.dark-mode .kanban-days.days-warn { background: rgba(220,38,38,0.15); color: #F87171; }
+        body.dark-mode .kanban-action-btn { background: rgba(255,255,255,0.06); }
+        body.dark-mode .kanban-action-btn:hover { background: rgba(59,130,246,0.15); }
+        body.dark-mode .kanban-column-wip .kanban-column-header { background: rgba(245,158,11,0.1); }
 
         @media (max-width: 768px) {
             .leads-toolbar { flex-direction: column; align-items: stretch; }
@@ -253,6 +295,10 @@
             .quality-category-btns { grid-template-columns: 1fr; }
             #kanbanView { gap: 8px; }
             .kanban-column { min-width: 180px; }
+            .kanban-column-empty { min-width: 60px; max-width: 60px; }
+            .funnel-bar-container { padding: 10px; }
+            .funnel-bar { height: 22px; }
+            .funnel-bar-label { font-size: 10px; }
         }
     </style>
 </head>
@@ -296,6 +342,10 @@
                     <button class="filter-btn" data-status="booked">Заброньовано</button>
                     <button class="filter-btn" data-status="lost">Втрачено</button>
                 </div>
+                <div class="filter-btns" id="dateBtns">
+                    <button class="filter-btn" data-date="today">📅 Сьогодні</button>
+                    <button class="filter-btn" data-date="tomorrow">📅 Завтра</button>
+                </div>
                 <input type="text" class="search-input" id="leadsSearch" aria-label="Пошук" placeholder="Пошук за ім'ям, телефоном...">
             </div>
 
@@ -322,7 +372,7 @@
             </div>
 
             <!-- Kanban View -->
-            <div id="kanbanView" style="display:none;overflow-x:auto;display:flex;gap:12px;"></div>
+            <div id="kanbanView" style="display:none;overflow-x:auto;gap:12px;"></div>
 
             <!-- Mailing View -->
             <div id="mailingView" style="display:none;"></div>
@@ -596,13 +646,13 @@
         });
     }
     </script>
-    <script src="js/config.js?v=29.2.0"></script>
-    <script src="js/api.js?v=29.2.0"></script>
-    <script src="js/auth.js?v=29.2.0"></script>
-    <script src="js/components/sidebar.js?v=29.2.0"></script>
+    <script src="js/config.js?v=32.0.0"></script>
+    <script src="js/api.js?v=32.0.0"></script>
+    <script src="js/auth.js?v=32.0.0"></script>
+    <script src="js/components/sidebar.js?v=32.0.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=29.2.0"></script>
-    <script src="js/ui.js?v=29.2.0"></script>
-    <script src="js/role-panel.js?v=29.2.0"></script>
+    <script src="js/leads-page.js?v=32.0.0"></script>
+    <script src="js/ui.js?v=32.0.0"></script>
+    <script src="js/role-panel.js?v=32.0.0"></script>
 </body>
 </html>

@@ -1094,13 +1094,11 @@ function buildCatalogPageHtml(pkg) {
             <!-- STATS -->
             <div class="cat-stats">
                 <div class="cat-stat">
-                    <span class="cat-stat-icon">⏱</span>
                     <span class="cat-stat-val">${durationStr}</span>
                     <span class="cat-stat-lbl">тривалість</span>
                 </div>
                 <div class="cat-stat-divider"></div>
                 <div class="cat-stat">
-                    <span class="cat-stat-icon">👥</span>
                     <span class="cat-stat-val">${kidsStr}</span>
                     <span class="cat-stat-lbl">дітей</span>
                 </div>

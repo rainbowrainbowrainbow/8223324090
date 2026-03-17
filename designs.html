@@ -437,6 +437,9 @@
             border-radius: 24px; overflow: hidden;
             background: #fff;
             box-shadow: 0 20px 80px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.3);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
         }
         /* HERO */
         .cat-hero {
@@ -480,13 +483,12 @@
         .cat-stat-divider {
             width: 1px; background: rgba(0,0,0,0.08); flex-shrink: 0;
         }
-        .cat-stat-icon { font-size: 20px; line-height: 1; }
         .cat-stat-val {
-            font-size: 18px; font-weight: 800; color: #1a1a1a; line-height: 1.1;
+            font-size: 20px; font-weight: 800; color: #1a1a1a; line-height: 1.1;
         }
         .cat-stat-lbl {
-            font-size: 10px; font-weight: 600; color: #999;
-            text-transform: uppercase; letter-spacing: 0.5px;
+            font-size: 10px; font-weight: 700; color: #888;
+            text-transform: uppercase; letter-spacing: 1px;
         }
         .cat-stat-price { flex: 1.4; }
         .cat-price-val {

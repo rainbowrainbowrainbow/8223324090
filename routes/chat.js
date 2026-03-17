@@ -1686,4 +1686,48 @@ router.get('/polls/:pollId/results', async (req, res) => {
     }
 });
 
+// v32.1: Kleshnya bridge — proxy to OpenClaw (HostHatch)
+router.post('/kleshnya', async (req, res) => {
+    const { message, context } = req.body;
+    const user = req.user;
+
+    try {
+        const KLESHNYA_BRIDGE_URL = process.env.KLESHNYA_BRIDGE_URL;
+        const KLESHNYA_BRIDGE_TOKEN = process.env.KLESHNYA_BRIDGE_TOKEN;
+
+        if (!KLESHNYA_BRIDGE_URL) {
+            return res.json({
+                success: true,
+                reply: '🦞 Клешня тимчасово недоступна. Пиши в Telegram @EventHelper_One_Bot'
+            });
+        }
+
+        const response = await fetch(KLESHNYA_BRIDGE_URL + '/api/bridge/crm', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${KLESHNYA_BRIDGE_TOKEN}`
+            },
+            body: JSON.stringify({
+                message,
+                userId: user.id,
+                userName: user.name,
+                userRole: user.role,
+                context: context || {},
+                parkId: process.env.PARK_ID || 'park-zakrevskogo'
+            }),
+            signal: AbortSignal.timeout(15000)
+        });
+
+        const data = await response.json();
+        return res.json({ success: true, reply: data.reply || 'Немає відповіді' });
+    } catch (err) {
+        log.error('[Kleshnya Bridge Error]', err.message);
+        return res.json({
+            success: true,
+            reply: '🦞 Клешня зараз зайнята. Спробуй ще раз або пиши в Telegram.'
+        });
+    }
+});
+
 module.exports = router;

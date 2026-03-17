@@ -1268,33 +1268,47 @@ router.get('/salary', async (req, res) => {
         d.setDate(0);
         const dateTo = d.toISOString().split('T')[0];
 
-        // Get staff with hours
-        const staffList = await pool.query(
-            'SELECT id, name, role_type, hourly_rate, department FROM staff WHERE is_active = true ORDER BY name'
-        );
+        // Get staff with hours — v32.1: safe fallback if tables don't exist
+        let staffList;
+        try {
+            staffList = await pool.query(
+                'SELECT id, name, role_type, hourly_rate, department FROM staff WHERE is_active = true ORDER BY name'
+            );
+        } catch (staffErr) {
+            log.warn('staff query failed:', staffErr.message);
+            return res.json({ success: true, data: [], totals: { total_base: 0, total_overtime: 0, total_bonuses: 0, total_deductions: 0, total_salary: 0 }, month });
+        }
 
-        const records = await pool.query(
-            `SELECT staff_id, SUM(total_worked_minutes) AS total_minutes,
-                    SUM(overtime_minutes) AS overtime_minutes,
-                    COUNT(*) FILTER (WHERE status IN ('present', 'late', 'early_leave', 'auto_closed')) AS days_worked
-             FROM hr_time_records
-             WHERE record_date >= $1 AND record_date <= $2
-             GROUP BY staff_id`,
-            [dateFrom, dateTo]
-        );
         const recordMap = {};
-        for (const r of records.rows) recordMap[r.staff_id] = r;
+        try {
+            const records = await pool.query(
+                `SELECT staff_id, SUM(total_worked_minutes) AS total_minutes,
+                        SUM(overtime_minutes) AS overtime_minutes,
+                        COUNT(*) FILTER (WHERE status IN ('present', 'late', 'early_leave', 'auto_closed')) AS days_worked
+                 FROM hr_time_records
+                 WHERE record_date >= $1 AND record_date <= $2
+                 GROUP BY staff_id`,
+                [dateFrom, dateTo]
+            );
+            for (const r of records.rows) recordMap[r.staff_id] = r;
+        } catch (recErr) {
+            log.warn('hr_time_records query failed:', recErr.message);
+        }
 
-        // Get adjustments
-        const adjustments = await pool.query(
-            `SELECT staff_id, type, SUM(amount) AS total
-             FROM salary_adjustments WHERE month = $1 GROUP BY staff_id, type`,
-            [month]
-        );
+        // Get adjustments — v32.1: safe fallback if table doesn't exist yet
         const adjMap = {};
-        for (const a of adjustments.rows) {
-            if (!adjMap[a.staff_id]) adjMap[a.staff_id] = { bonus: 0, deduction: 0, penalty: 0, tip: 0 };
-            adjMap[a.staff_id][a.type] = parseInt(a.total);
+        try {
+            const adjustments = await pool.query(
+                `SELECT staff_id, type, SUM(amount) AS total
+                 FROM salary_adjustments WHERE month = $1 GROUP BY staff_id, type`,
+                [month]
+            );
+            for (const a of adjustments.rows) {
+                if (!adjMap[a.staff_id]) adjMap[a.staff_id] = { bonus: 0, deduction: 0, penalty: 0, tip: 0 };
+                adjMap[a.staff_id][a.type] = parseInt(a.total);
+            }
+        } catch (adjErr) {
+            log.warn('salary_adjustments query failed (table may not exist):', adjErr.message);
         }
 
         const data = staffList.rows.map(st => {

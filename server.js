@@ -172,6 +172,7 @@ app.use('/api/agents', require('./routes/agents'));
 app.use('/api/summary', require('./routes/summary'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/gamification', require('./routes/gamification'));
+app.use('/api/subscription', require('./routes/subscription'));
 
 // v22.4.0: Achievements system
 app.use('/api/wallet', require('./routes/wallet'));
@@ -243,9 +244,9 @@ app.get('/api/shifts/daily-digest', async (req, res) => {
 });
 
 // --- Static pages ---
-// v22.0.0: Dashboard as HOME page
+// v32.1: Redirect /dashboard → /center (old dashboard was stale)
 app.get('/dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dashboard.html'));
+    res.redirect('/center');
 });
 
 app.get('/invite', (req, res) => {

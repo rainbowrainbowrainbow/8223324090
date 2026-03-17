@@ -73,12 +73,20 @@ router.get('/rfm', async (req, res) => {
             if (error) throw error;
             rows = data || [];
         } else {
+            // v32.1: JOIN bookings for real totals
             const result = await pool.query(`
-                SELECT id, name, phone, instagram, child_name,
-                       total_bookings, total_spent, first_visit, last_visit,
-                       created_at, updated_at
-                FROM customers
-                ORDER BY last_visit DESC NULLS LAST
+                SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
+                       COALESCE(b.cnt, 0) AS total_bookings,
+                       COALESCE(b.spent, 0) AS total_spent,
+                       b.first_visit, b.last_visit,
+                       c.created_at, c.updated_at
+                FROM customers c
+                LEFT JOIN (
+                    SELECT customer_id, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS spent,
+                           MIN(date) AS first_visit, MAX(date) AS last_visit
+                    FROM bookings WHERE status != 'cancelled' GROUP BY customer_id
+                ) b ON b.customer_id = c.id
+                ORDER BY b.last_visit DESC NULLS LAST
             `);
             rows = result.rows;
         }
@@ -110,6 +118,79 @@ router.get('/rfm', async (req, res) => {
     } catch (err) {
         log.error('RFM analytics error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// v32.1: Customer segments (simplified from RFM)
+router.get('/segments', async (req, res) => {
+    try {
+        const now = new Date();
+        const threeMonthsAgo = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const oneMonthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+        const result = await pool.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE b.last_visit >= $1) AS active,
+                COUNT(*) FILTER (WHERE b.last_visit < $1 OR b.last_visit IS NULL) AS sleeping,
+                COUNT(*) FILTER (WHERE c.created_at >= $2::timestamp) AS new,
+                COUNT(*) FILTER (WHERE COALESCE(b.spent, 0) >= 10000) AS vip
+            FROM customers c
+            LEFT JOIN (
+                SELECT customer_id, MAX(date) AS last_visit, COALESCE(SUM(price), 0) AS spent
+                FROM bookings WHERE status != 'cancelled' GROUP BY customer_id
+            ) b ON b.customer_id = c.id
+        `, [threeMonthsAgo, oneMonthAgo]);
+
+        const row = result.rows[0];
+        res.json({
+            success: true,
+            segments: {
+                active: parseInt(row.active) || 0,
+                sleeping: parseInt(row.sleeping) || 0,
+                new: parseInt(row.new) || 0,
+                vip: parseInt(row.vip) || 0
+            }
+        });
+    } catch (err) {
+        log.error('Customer segments error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// v32.1: Upcoming birthdays (next N days)
+router.get('/birthdays', async (req, res) => {
+    try {
+        const days = Math.min(90, Math.max(1, parseInt(req.query.days) || 30));
+
+        // PostgreSQL: compare month-day to find upcoming birthdays (handles year wrap)
+        const result = await pool.query(`
+            SELECT c.id, c.name AS parent_name, c.phone,
+                   c.child_name, c.child_birthday,
+                   CASE
+                       WHEN TO_CHAR(c.child_birthday, 'MM-DD') >= TO_CHAR(CURRENT_DATE, 'MM-DD')
+                       THEN (TO_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::text || '-' || TO_CHAR(c.child_birthday, 'MM-DD'), 'YYYY-MM-DD') - CURRENT_DATE)
+                       ELSE (TO_DATE((EXTRACT(YEAR FROM CURRENT_DATE)::int + 1)::text || '-' || TO_CHAR(c.child_birthday, 'MM-DD'), 'YYYY-MM-DD') - CURRENT_DATE)
+                   END AS days_until_birthday
+            FROM customers c
+            WHERE c.child_birthday IS NOT NULL
+            ORDER BY days_until_birthday ASC
+        `);
+
+        const filtered = result.rows
+            .filter(r => parseInt(r.days_until_birthday) >= 0 && parseInt(r.days_until_birthday) <= days)
+            .map(r => ({
+                id: r.id,
+                parentName: r.parent_name,
+                phone: r.phone,
+                childName: r.child_name,
+                childBirthday: r.child_birthday,
+                daysUntilBirthday: parseInt(r.days_until_birthday)
+            }));
+
+        res.json({ success: true, birthdays: filtered });
+    } catch (err) {
+        log.error('Birthdays error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -291,24 +372,44 @@ router.get('/stats', async (req, res) => {
             });
         }
 
-        // Fallback: Railway
+        // Fallback: Railway — v32.1: JOIN bookings for real stats
         const totalResult = await pool.query('SELECT COUNT(*) FROM customers');
         const sourceResult = await pool.query(
             `SELECT COALESCE(source, 'unknown') AS source, COUNT(*) AS count
              FROM customers GROUP BY source ORDER BY count DESC`
         );
         const topResult = await pool.query(
-            `SELECT id, name, total_bookings, total_spent, last_visit
-             FROM customers ORDER BY total_spent DESC LIMIT 5`
+            `SELECT c.id, c.name,
+                    COALESCE(b.cnt, 0) AS total_bookings,
+                    COALESCE(b.spent, 0) AS total_spent,
+                    b.last_visit
+             FROM customers c
+             LEFT JOIN (
+                 SELECT customer_id, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS spent, MAX(date) AS last_visit
+                 FROM bookings WHERE status != 'cancelled' GROUP BY customer_id
+             ) b ON b.customer_id = c.id
+             ORDER BY COALESCE(b.spent, 0) DESC LIMIT 5`
         );
         const recentResult = await pool.query(
-            `SELECT id, name, total_bookings, total_spent, created_at
-             FROM customers ORDER BY created_at DESC LIMIT 5`
+            `SELECT c.id, c.name,
+                    COALESCE(b.cnt, 0) AS total_bookings,
+                    COALESCE(b.spent, 0) AS total_spent,
+                    c.created_at
+             FROM customers c
+             LEFT JOIN (
+                 SELECT customer_id, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS spent
+                 FROM bookings WHERE status != 'cancelled' GROUP BY customer_id
+             ) b ON b.customer_id = c.id
+             ORDER BY c.created_at DESC LIMIT 5`
         );
         const avgResult = await pool.query(
-            `SELECT ROUND(AVG(total_bookings), 1) AS avg_bookings,
-                    ROUND(AVG(total_spent), 0) AS avg_spent
-             FROM customers WHERE total_bookings > 0`
+            `SELECT ROUND(AVG(b.cnt), 1) AS avg_bookings,
+                    ROUND(AVG(b.spent), 0) AS avg_spent
+             FROM customers c
+             INNER JOIN (
+                 SELECT customer_id, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS spent
+                 FROM bookings WHERE status != 'cancelled' GROUP BY customer_id
+             ) b ON b.customer_id = c.id`
         );
 
         res.json({
@@ -803,8 +904,26 @@ router.get('/', async (req, res) => {
         const total = parseInt(countResult.rows[0].count);
 
         const dataParams = [...params, limit, offset];
+        // v32.1: JOIN bookings to compute real totalBookings/totalSpent/LTV
         const result = await pool.query(
-            `SELECT * FROM customers ${where} ORDER BY ${orderBy} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+            `SELECT c.*,
+                    COALESCE(b_agg.booking_count, 0) AS real_total_bookings,
+                    COALESCE(b_agg.booking_spent, 0) AS real_total_spent,
+                    b_agg.real_last_visit,
+                    b_agg.real_first_visit
+             FROM customers c
+             LEFT JOIN (
+                 SELECT customer_id,
+                        COUNT(*) AS booking_count,
+                        COALESCE(SUM(price), 0) AS booking_spent,
+                        MAX(date) AS real_last_visit,
+                        MIN(date) AS real_first_visit
+                 FROM bookings
+                 WHERE status != 'cancelled'
+                 GROUP BY customer_id
+             ) b_agg ON b_agg.customer_id = c.id
+             ${where ? where.replace(/WHERE/i, 'WHERE') : ''}
+             ORDER BY ${orderBy} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
             dataParams
         );
 
@@ -826,6 +945,11 @@ router.get('/', async (req, res) => {
 
         res.json({
             customers: result.rows.map(r => {
+                // v32.1: Override denormalized fields with real booking aggregates
+                r.total_bookings = parseInt(r.real_total_bookings) || r.total_bookings || 0;
+                r.total_spent = parseInt(r.real_total_spent) || r.total_spent || 0;
+                if (r.real_last_visit) r.last_visit = r.real_last_visit;
+                if (r.real_first_visit) r.first_visit = r.real_first_visit;
                 const c = mapCustomerRow(r);
                 c.tags = tagsMap[r.id] || [];
                 c.ltv = calculateLTV(r);

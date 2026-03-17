@@ -61,6 +61,12 @@ function validateStock(body) {
     return errors;
 }
 
+// v32.1: Alias /items → / for frontend compatibility
+router.get('/items', (req, res, next) => {
+    req.url = '/';
+    next();
+});
+
 // GET /api/warehouse — List all stock items
 router.get('/', async (req, res) => {
     try {
@@ -84,6 +90,20 @@ router.get('/', async (req, res) => {
         }
 
         const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+        // v32.1: Ensure table exists before querying
+        try {
+            await pool.query(`CREATE TABLE IF NOT EXISTS warehouse_stock (
+                id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL,
+                category VARCHAR(50) NOT NULL DEFAULT 'consumable',
+                quantity INTEGER NOT NULL DEFAULT 0, min_quantity INTEGER NOT NULL DEFAULT 0,
+                unit VARCHAR(30) NOT NULL DEFAULT 'шт', notes TEXT,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW(),
+                updated_by VARCHAR(100)
+            )`);
+        } catch (e) { /* table already exists */ }
+
         const result = await pool.query(
             `SELECT * FROM warehouse_stock ${where} ORDER BY category, name`,
             params
@@ -95,12 +115,13 @@ router.get('/', async (req, res) => {
         );
 
         res.json({
+            success: true,
             items: result.rows.map(mapStockRow),
             lowStockCount: parseInt(lowStockResult.rows[0].count)
         });
     } catch (err) {
         log.error('List warehouse stock error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 

@@ -1152,7 +1152,7 @@ async function shareCatalog(catalogId) {
 
 async function shareCatalogPage(catalogId, slug) {
     // Try to capture page as image using canvas if available
-    const page = document.querySelector(`.catalog-page-mosaic[data-package="${slug}"]`);
+    const page = document.querySelector(`.cat-page[data-package="${slug}"]`);
     if (!page) return;
 
     if (navigator.share) {

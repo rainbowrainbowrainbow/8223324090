@@ -923,7 +923,11 @@ const SERVICE_ICONS = {
     'Мафія': '🕵️', 'Шоу з сухим льодом': '🧊', 'МК "Слайм"': '🧪',
     'МК "Піца"': '🍕', 'Подарунки': '🎁', 'Неонова паперова дискотека': '🎵',
     'Неонові мильні бульбашки': '🫧', 'Неоновий аквагрим': '🎨',
-    'Програма "Гра в кальмара" Ч.1': '🦑', 'Програма "Гра в кальмара" Ч.2': '🦑'
+    'Програма "Гра в кальмара" Ч.1': '🦑', 'Програма "Гра в кальмара" Ч.2': '🦑',
+    'Шоу Бульбашок': '🫧', 'Шоу з сухим людом': '🧊',
+    'Тимчасові тату': '🖌️', 'МК "Розпис футболок"': '👕',
+    'МК "Термомозаїка"': '🧩', 'Тематична вечірка': '🎭',
+    'Солодка вата': '🍬', 'Бармен шоу': '🍹'
 };
 
 // Detailed descriptions for each service
@@ -1058,7 +1062,7 @@ function buildCatalogPageHtml(pkg) {
     const servicesHtml = pkg.services
         .filter(svc => svc.serviceName !== 'Вхід')
         .map(svc => {
-            const svcIcon = SERVICE_ICONS[svc.serviceName] || '✨';
+            const svcIcon = SERVICE_ICONS[svc.serviceName] || '🎯';
             const dur = svc.durationMin > 0
                 ? `<span class="csvc-dur">${svc.durationMin} хв</span>`
                 : '';
@@ -1084,7 +1088,6 @@ function buildCatalogPageHtml(pkg) {
                      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
                 <div class="cat-hero-overlay" style="display:none"></div>
                 <div class="cat-hero-content">
-                    <span class="cat-icon">${icon}</span>
                     <h1 class="cat-title">${esc(pkg.name).toUpperCase()}</h1>
                     <p class="cat-subtitle">Програма випускного свята</p>
                 </div>

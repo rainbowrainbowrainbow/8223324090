@@ -784,7 +784,7 @@ async function initAuth() {
     }
 
     AppState.currentUser = user;
-    const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+    const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     isAdminUser = ADMIN_ROLES.includes(user.role);
 
     const userEl = document.getElementById('currentUser');

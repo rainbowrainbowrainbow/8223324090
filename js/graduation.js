@@ -17,6 +17,8 @@
     let collapsedCategories = new Set();
     let comparePackageSlugs = new Set();
     let analyticsData = null;
+    let currentKidsCount = 15;
+    let currentDiscount = 0;
 
     // #14: Category colors
     const CATEGORY_COLORS = {
@@ -101,13 +103,11 @@
     function getKidsCount() {
         const pkgEl = document.getElementById('gradPkgKids');
         if (currentTab === 'packages' && pkgEl) return Math.max(1, parseInt(pkgEl.value) || 15);
-        const el = document.getElementById('gradKidsCount');
-        return el ? Math.max(1, parseInt(el.value) || 15) : 15;
+        return currentKidsCount;
     }
 
     function getDiscount() {
-        const el = document.getElementById('gradDiscount');
-        return el ? Math.max(0, Math.min(100, parseFloat(el.value) || 0)) / 100 : 0;
+        return currentDiscount / 100;
     }
 
     function calcEntryCount(kids, rule) {
@@ -245,20 +245,13 @@
                 autoAddEntry(); // Always ensure entry
             }
         }
-        // Kids and discount are set after render
-        if (kidsParam || discParam) {
-            setTimeout(() => {
-                if (kidsParam) {
-                    const el = document.getElementById('gradKidsCount');
-                    if (el) el.value = Math.max(1, Math.min(99, parseInt(kidsParam) || 15));
-                }
-                if (discParam) {
-                    const el = document.getElementById('gradDiscount');
-                    if (el) el.value = Math.max(0, Math.min(100, parseFloat(discParam) || 0));
-                }
-                recalc();
-            }, 100);
+        if (kidsParam) {
+            currentKidsCount = Math.max(1, Math.min(99, parseInt(kidsParam) || 15));
         }
+        if (discParam) {
+            currentDiscount = Math.max(0, Math.min(100, parseFloat(discParam) || 0));
+        }
+        if (kidsParam || discParam) recalc();
     }
 
     // #23: Generate share URL
@@ -427,15 +420,15 @@
                     <label>Кількість дітей</label>
                     <div class="grad-stepper">
                         <button class="grad-stepper-btn" onclick="GradPage.adjustKids(-1)">−</button>
-                        <input type="number" id="gradKidsCount" value="15" min="1" max="99"
-                            onchange="GradPage.recalc()" style="font-size:16px">
+                        <input type="number" id="gradKidsCount" value="${currentKidsCount}" min="1" max="99"
+                            onchange="GradPage.updateKids(this.value)" style="font-size:16px">
                         <button class="grad-stepper-btn" onclick="GradPage.adjustKids(1)">+</button>
                     </div>
                 </div>
                 <div class="grad-field">
                     <label>Знижка %</label>
-                    <input type="number" id="gradDiscount" value="0" min="0" max="100"
-                        onchange="GradPage.recalc()" style="font-size:16px">
+                    <input type="number" id="gradDiscount" value="${currentDiscount}" min="0" max="100"
+                        onchange="GradPage.updateDiscount(this.value)" style="font-size:16px">
                 </div>
                 ${isDirector() ? `
                 <div class="grad-field director-only">
@@ -1288,9 +1281,17 @@
     }
 
     function adjustKids(delta) {
-        const el = document.getElementById('gradKidsCount');
-        if (!el) return;
-        el.value = Math.max(1, Math.min(99, (parseInt(el.value) || 15) + delta));
+        currentKidsCount = Math.max(1, Math.min(99, currentKidsCount + delta));
+        recalc();
+    }
+
+    function updateKids(val) {
+        currentKidsCount = Math.max(1, Math.min(99, parseInt(val) || 15));
+        recalc();
+    }
+
+    function updateDiscount(val) {
+        currentDiscount = Math.max(0, Math.min(100, parseFloat(val) || 0));
         recalc();
     }
 
@@ -1431,13 +1432,9 @@
             currentTab = 'constructor';
             renderCurrentTab();
 
-            setTimeout(() => {
-                const kidsInput = document.getElementById('gradKidsCount');
-                const discInput = document.getElementById('gradDiscount');
-                if (kidsInput) kidsInput.value = quote.kidsCount;
-                if (discInput) discInput.value = quote.discountPercent;
-                recalc();
-            }, 50);
+            currentKidsCount = Math.max(1, parseInt(quote.kidsCount) || 15);
+            currentDiscount = Math.max(0, Math.min(100, parseFloat(quote.discountPercent) || 0));
+            recalc();
 
             showNotification(`Кошик ${quote.quoteNumber} завантажено`, 'success');
         } catch (err) {
@@ -1674,6 +1671,8 @@
         toggleService,
         recalc,
         adjustKids,
+        updateKids,
+        updateDiscount,
         adjustPkgKids,
         recalcPackages,
         updateCoeff,

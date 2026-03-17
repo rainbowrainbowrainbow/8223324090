@@ -32,7 +32,6 @@ const Sidebar = (() => {
         { type: 'divider' },
         { type: 'section', label: 'Продукт' },
         { href: '/programs',    icon: '🎪', label: 'Програми',    access: 'programs' },
-        { href: '/graduation',  icon: '🎓', label: 'Випускний',   access: 'graduation' },
         { href: '/center',      icon: '💲', label: 'Центр цін',   access: 'center' },
         { href: '/art',         icon: '🎨', label: 'Арт',         access: 'art' },
 

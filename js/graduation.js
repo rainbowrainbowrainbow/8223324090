@@ -673,10 +673,11 @@
 
     function getPackageImageHtml(slug, name, cssClass, imageUrl) {
         const gradient = PACKAGE_GRADIENTS[slug] || 'linear-gradient(135deg, #C9A84C, #B8942F)';
-        const fallback = `<div class="${cssClass}-fallback" style="background:${gradient}"><span>${name}</span></div>`;
         const src = imageUrl || `images/catalogs/graduation/${slug}.png`;
-        return `<img class="${cssClass}" src="${src}" alt="${name}"
-            onerror="this.parentElement.innerHTML='${fallback.replace(/'/g, "\\'")}'">`;
+        const safeName = name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        return `<img class="${cssClass}" src="${src}" alt="${safeName}"
+            onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+            <div class="${cssClass}-fallback" style="background:${gradient};display:none"><span>${safeName}</span></div>`;
     }
 
     function calcPackageTotals(pkg) {

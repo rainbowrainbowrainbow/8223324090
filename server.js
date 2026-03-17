@@ -244,9 +244,9 @@ app.get('/api/shifts/daily-digest', async (req, res) => {
 });
 
 // --- Static pages ---
-// v32.1: Redirect /dashboard → /center (old dashboard was stale)
+// v22.0.0: Dashboard
 app.get('/dashboard', (req, res) => {
-    res.redirect('/center');
+    res.sendFile(path.join(__dirname, 'dashboard.html'));
 });
 
 app.get('/invite', (req, res) => {

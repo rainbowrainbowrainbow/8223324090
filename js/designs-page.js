@@ -1073,12 +1073,16 @@ function buildCatalogPageHtml(pkg) {
     const durationStr = catalogFormatDuration(totalDuration);
     const kidsStr = `${pkg.minKids || 7}–${pkg.maxKids || 50}`;
 
+    const bannerSrc = `images/catalogs/graduation/${pkg.slug}-banner.png`;
+
     return `
         <div class="cat-page" data-package="${pkg.slug}"
              style="--cat-bg1:${theme.bg1};--cat-bg2:${theme.bg2};--cat-bg3:${theme.bg3};--cat-accent:${theme.accent};--cat-price:${theme.priceColor}">
-            <!-- HERO -->
+            <!-- HERO with generated banner image -->
             <div class="cat-hero">
-                <div class="cat-hero-overlay"></div>
+                <img class="cat-hero-img" src="${bannerSrc}" alt="${esc(pkg.name)}"
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                <div class="cat-hero-overlay" style="display:none"></div>
                 <div class="cat-hero-content">
                     <span class="cat-icon">${icon}</span>
                     <h1 class="cat-title">${esc(pkg.name).toUpperCase()}</h1>

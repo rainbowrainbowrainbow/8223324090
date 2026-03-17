@@ -1082,11 +1082,10 @@ function buildCatalogPageHtml(pkg) {
     return `
         <div class="cat-page" data-package="${pkg.slug}"
              style="--cat-bg1:${theme.bg1};--cat-bg2:${theme.bg2};--cat-bg3:${theme.bg3};--cat-accent:${theme.accent};--cat-price:${theme.priceColor}">
-            <!-- HERO with generated banner image -->
+            <!-- HERO with banner image overlay -->
             <div class="cat-hero">
                 <img class="cat-hero-img" src="${bannerSrc}" alt="${esc(pkg.name)}"
-                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-                <div class="cat-hero-overlay" style="display:none"></div>
+                     onerror="this.style.display='none'">
                 <div class="cat-hero-content">
                     <h1 class="cat-title">${esc(pkg.name).toUpperCase()}</h1>
                     <p class="cat-subtitle">Програма випускного свята</p>

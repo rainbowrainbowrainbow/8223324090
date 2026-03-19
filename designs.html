@@ -401,7 +401,6 @@
         }
         .btn-catalog:hover { opacity: 0.9; }
         .btn-catalog-print { background: var(--gray-100); color: var(--gray-700); }
-        .btn-catalog-share { background: #E3F2FD; color: #1565C0; }
 
         /* Catalog viewer (fullscreen) */
         .catalog-viewer {
@@ -535,8 +534,16 @@
         /* FOOTER */
         .cat-footer {
             background: var(--cat-accent); color: rgba(255,255,255,0.9);
-            padding: 12px 24px; display: flex; justify-content: space-between;
-            font-size: 12px; font-weight: 600; flex-wrap: wrap; gap: 4px;
+            padding: 12px 24px; display: flex; align-items: center;
+            font-size: 12px; font-weight: 600; gap: 12px;
+        }
+        .cat-footer-logo {
+            width: 40px; height: 40px; border-radius: 50%;
+            object-fit: cover; flex-shrink: 0;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+        .cat-footer-info {
+            display: flex; flex-direction: column; gap: 2px;
         }
         /* ACTIONS — hidden in print */
         .cat-actions {
@@ -553,11 +560,6 @@
             background: var(--cat-accent); color: #fff;
         }
         .cat-btn-print:hover { opacity: 0.9; transform: translateY(-1px); }
-        .cat-btn-share {
-            background: #fff; color: var(--cat-accent);
-            border: 2px solid var(--cat-accent);
-        }
-        .cat-btn-share:hover { background: rgba(0,0,0,0.04); transform: translateY(-1px); }
         /* Responsive catalog */
         @media (max-width: 600px) {
             .cat-title { font-size: 26px; }
@@ -565,7 +567,8 @@
             .cat-price-val { font-size: 20px; }
             .cat-stat-val { font-size: 15px; }
             .cat-services { grid-template-columns: 1fr; }
-            .cat-footer { flex-direction: column; gap: 2px; font-size: 11px; }
+            .cat-footer { font-size: 11px; }
+            .cat-footer-logo { width: 32px; height: 32px; }
         }
 
         /* PRINT — A4 portrait */
@@ -618,6 +621,11 @@
             .cat-footer {
                 print-color-adjust: exact !important;
                 -webkit-print-color-adjust: exact !important;
+                display: flex !important; align-items: center; gap: 12px;
+            }
+            .cat-footer-logo {
+                display: inline-block !important;
+                width: 30px !important; height: 30px !important;
             }
             .cat-actions { display: none !important; }
             body.printing-catalog .page-container > *:not(#tabCatalogs),
@@ -747,7 +755,6 @@
         body.dark-mode .catalog-card:hover { box-shadow: 0 8px 30px rgba(201,168,76,0.1); }
         body.dark-mode .catalog-info h3 { color: var(--gray-200); }
         body.dark-mode .btn-catalog-print { background: rgba(255,255,255,0.08); color: var(--gray-300); }
-        body.dark-mode .btn-catalog-share { background: rgba(21,101,192,0.2); color: #90CAF9; }
         body.dark-mode .catalog-viewer { background: #141418; }
         body.dark-mode .catalog-viewer-nav { background: rgba(30,30,35,0.95); border-bottom-color: #333; }
         body.dark-mode .btn-catalog-nav { background: #333; color: #ddd; }
@@ -761,7 +768,6 @@
         body.dark-mode .csvc-name { color: #ccc; }
         body.dark-mode .cat-desc { background: rgba(255,255,255,0.04); color: #bbb; border-color: rgba(255,255,255,0.08); }
         body.dark-mode .cat-actions { background: #141418; }
-        body.dark-mode .cat-btn-share { background: #1e1e24; color: #ddd; border-color: #555; }
 
         /* Responsive */
         @media (max-width: 768px) {
@@ -970,7 +976,6 @@
                         <div class="catalog-actions">
                             <button class="btn-catalog" onclick="openCatalog('graduation')">Переглянути</button>
                             <button class="btn-catalog btn-catalog-print" onclick="printCatalog('graduation')">Друк</button>
-                            <button class="btn-catalog btn-catalog-share" onclick="shareCatalog('graduation')">Поділитись</button>
                         </div>
                     </div>
                 </div>

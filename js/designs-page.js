@@ -1116,13 +1116,15 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
-                <span>📱 @EventHelper_One_Bot</span>
+                <img src="images/logo-new.png" alt="Парк Закревського" class="cat-footer-logo">
+                <div class="cat-footer-info">
+                    <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
+                    <span>📞 0800 75 35 53</span>
+                </div>
             </div>
             <!-- ACTIONS (hidden in print) -->
             <div class="cat-actions">
                 <button class="cat-btn cat-btn-print" onclick="printCatalogPage('graduation', '${pkg.slug}')">🖨️ Друк / PDF</button>
-                <button class="cat-btn cat-btn-share" onclick="shareCatalogPage('graduation', '${pkg.slug}')">📤 Поділитись</button>
             </div>
         </div>
     `;
@@ -1149,29 +1151,6 @@ function printCatalogPage(catalogId, slug) {
     }, 400);
 }
 
-async function shareCatalog(catalogId) {
-    if (catalogPackages.length === 0) await loadCatalogs();
-    showNotification('Каталог готовий до друку. Використовуйте "Друк → Зберегти як PDF"');
-}
-
-async function shareCatalogPage(catalogId, slug) {
-    // Try to capture page as image using canvas if available
-    const page = document.querySelector(`.cat-page[data-package="${slug}"]`);
-    if (!page) return;
-
-    if (navigator.share) {
-        try {
-            await navigator.share({
-                title: `Випускний: ${catalogPackages.find(p => p.slug === slug)?.name || slug}`,
-                text: CATALOG_DESCRIPTIONS[slug] || '',
-                url: window.location.href
-            });
-            return;
-        } catch { /* fallback */ }
-    }
-    showNotification('Використовуйте "Друк → Зберегти як PDF" для шейрінгу');
-}
-
 // ==========================================
 // EXPOSE GLOBALS
 // ==========================================
@@ -1186,5 +1165,3 @@ window.catalogNext = catalogNext;
 window.catalogPrev = catalogPrev;
 window.printCatalog = printCatalog;
 window.printCatalogPage = printCatalogPage;
-window.shareCatalog = shareCatalog;
-window.shareCatalogPage = shareCatalogPage;

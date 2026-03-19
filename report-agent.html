@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Субагент звітів</title>
+    <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=32.4.0">
+    <link rel="stylesheet" href="css/layout.css?v=32.4.0">
+    <link rel="stylesheet" href="css/pages.css?v=32.4.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=32.4.0">
+    <link rel="stylesheet" href="css/responsive.css?v=32.4.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=32.4.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        .ra-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .ra-hero {
+            text-align: center;
+            padding: 40px 20px;
+            margin-bottom: 24px;
+        }
+
+        .ra-hero-icon {
+            font-size: 72px;
+            margin-bottom: 16px;
+        }
+
+        .ra-hero-title {
+            font-size: 28px;
+            font-weight: 900;
+            margin-bottom: 8px;
+        }
+
+        .ra-hero-sub {
+            font-size: 15px;
+            color: var(--gray-500);
+            max-width: 500px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        .ra-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+
+        .ra-stat {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-xs);
+        }
+
+        .ra-stat-val {
+            font-size: 32px;
+            font-weight: 900;
+            color: var(--primary);
+        }
+
+        .ra-stat-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        .ra-section {
+            background: var(--white);
+            border-radius: var(--radius);
+            padding: 24px;
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-xs);
+            margin-bottom: 20px;
+        }
+
+        .ra-section-title {
+            font-size: 16px;
+            font-weight: 800;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ra-feature-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .ra-feature-list li {
+            padding: 10px 0;
+            border-bottom: 1px solid var(--gray-50, #f9fafb);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .ra-feature-list li:last-child {
+            border-bottom: none;
+        }
+
+        .ra-feature-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .ra-recent-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .ra-recent-table th {
+            text-align: left;
+            font-weight: 800;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--gray-500);
+            padding: 8px 10px;
+            border-bottom: 2px solid var(--gray-100);
+        }
+
+        .ra-recent-table td {
+            padding: 10px;
+            border-bottom: 1px solid var(--gray-50, #f9fafb);
+        }
+
+        .ra-tg-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            background: #0088cc;
+            color: white;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 15px;
+            transition: background 0.15s;
+        }
+
+        .ra-tg-link:hover {
+            background: #006da5;
+        }
+
+        .embed-mode .sidebar-nav,
+        .embed-mode .sidebar-overlay,
+        .embed-mode .skip-link,
+        .embed-mode .page-login-overlay { display: none !important; }
+        .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
+    </style>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-logo">
+                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                <div class="em-logo">
+                    <span class="em-logo-title">Event Genix</span>
+                    <span class="em-logo-sub">AI First CRM</span>
+                </div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+        </aside>
+
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                </div>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container" style="margin-left: 220px;">
+            <div class="ra-container">
+                <div class="ra-hero">
+                    <div class="ra-hero-icon">🤖</div>
+                    <div class="ra-hero-title">Субагент звітів</div>
+                    <div class="ra-hero-sub">
+                        AI-асистент для автоматичного збору фінансових звітів.
+                        Фотографуйте чеки, надсилайте голосові — бот розпізнає,
+                        структурує і збереже в CRM.
+                    </div>
+                </div>
+
+                <div class="ra-stats">
+                    <div class="ra-stat">
+                        <div class="ra-stat-val" id="raTotalReports">0</div>
+                        <div class="ra-stat-label">Звітів зібрано</div>
+                    </div>
+                    <div class="ra-stat">
+                        <div class="ra-stat-val" id="raTodayReports">0</div>
+                        <div class="ra-stat-label">Сьогодні</div>
+                    </div>
+                    <div class="ra-stat">
+                        <div class="ra-stat-val" id="raBotReports">0</div>
+                        <div class="ra-stat-label">Через бота</div>
+                    </div>
+                </div>
+
+                <div class="ra-section">
+                    <div class="ra-section-title">⚡ Можливості</div>
+                    <ul class="ra-feature-list">
+                        <li><span class="ra-feature-icon">📸</span> Розпізнавання тексту з фото чеків (OCR)</li>
+                        <li><span class="ra-feature-icon">🎤</span> Транскрипція голосових повідомлень</li>
+                        <li><span class="ra-feature-icon">📊</span> Автоматична категоризація витрат/доходів</li>
+                        <li><span class="ra-feature-icon">👩‍💼</span> Авто-розподіл на бухгалтера на зміні</li>
+                        <li><span class="ra-feature-icon">✅</span> Створення задачі бухгалтеру в CRM</li>
+                    </ul>
+                </div>
+
+                <div class="ra-section">
+                    <div class="ra-section-title">📋 Останні звіти</div>
+                    <table class="ra-recent-table">
+                        <thead>
+                            <tr><th>Дата</th><th>Тип</th><th>Сума</th><th>Опис</th><th>Джерело</th></tr>
+                        </thead>
+                        <tbody id="raRecentBody">
+                            <tr><td colspan="5" style="text-align:center;color:var(--gray-400);padding:20px">Завантаження...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="ra-section" style="text-align:center;">
+                    <div class="ra-section-title" style="justify-content:center">📱 Telegram бот</div>
+                    <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px">
+                        Надсилайте фото чеків та голосові повідомлення прямо в Telegram
+                    </p>
+                    <a href="/reports" class="btn-page-secondary" style="display:inline-block;text-decoration:none;margin-right:8px">
+                        ← Назад до звітів
+                    </a>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script>
+    if (new URLSearchParams(window.location.search).get('embed') === '1' || window.self !== window.top) {
+        document.body.classList.add('embed-mode');
+    }
+    </script>
+    <script src="js/config.js?v=32.4.0"></script>
+    <script src="js/api.js?v=32.4.0"></script>
+    <script src="js/auth.js?v=32.4.0"></script>
+    <script src="js/components/sidebar.js?v=32.4.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script>
+    (async function() {
+        try {
+            if (typeof apiVerifyToken === 'function') await apiVerifyToken();
+        } catch { return; }
+        if (typeof initDarkMode === 'function') initDarkMode();
+
+        const token = localStorage.getItem('pzp_token');
+        const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+
+        // Load summary stats
+        try {
+            const res = await fetch('/api/reports/summary?period=year', { headers });
+            if (res.ok) {
+                const data = await res.json();
+                document.getElementById('raTotalReports').textContent =
+                    data.totals.incomeCount + data.totals.expenseCount;
+                document.getElementById('raTodayReports').textContent = data.today.newReports;
+            }
+        } catch {}
+
+        // Load recent reports
+        try {
+            const res = await fetch('/api/reports?limit=10', { headers });
+            if (res.ok) {
+                const data = await res.json();
+                const botCount = (data.reports || []).filter(r => r.submittedVia === 'bot').length;
+                document.getElementById('raBotReports').textContent = botCount;
+
+                const tbody = document.getElementById('raRecentBody');
+                if (data.reports && data.reports.length > 0) {
+                    tbody.innerHTML = data.reports.slice(0, 5).map(r => `
+                        <tr>
+                            <td>${new Date(r.createdAt).toLocaleDateString('uk-UA', {day:'2-digit',month:'2-digit'})}</td>
+                            <td>${r.type === 'income' ? '📈' : '📉'} ${r.type === 'income' ? 'Дохід' : 'Витрата'}</td>
+                            <td style="font-weight:800">${Number(r.amount).toLocaleString('uk-UA')} ₴</td>
+                            <td>${r.description || '—'}</td>
+                            <td>${r.submittedVia === 'bot' ? '🤖' : '🌐'} ${r.submittedVia}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);padding:20px">Звітів поки немає</td></tr>';
+                }
+            }
+        } catch {}
+    })();
+    </script>
+    <script src="js/role-panel.js?v=32.4.0"></script>
+</body>
+</html>

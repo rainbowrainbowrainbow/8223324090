@@ -211,6 +211,21 @@ router.get('/widgets/:type', async (req, res) => {
                 break;
             }
 
+            case 'reports_today': {
+                const repToday = getKyivDateStr();
+                const [repIncome, repExpense, repNew] = await Promise.all([
+                    pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM reports WHERE created_at::date = $1 AND type = 'income'", [repToday]).catch(() => ({ rows: [{ total: 0 }] })),
+                    pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM reports WHERE created_at::date = $1 AND type = 'expense'", [repToday]).catch(() => ({ rows: [{ total: 0 }] })),
+                    pool.query("SELECT COUNT(*) as count FROM reports WHERE created_at::date = $1 AND status = 'new'", [repToday]).catch(() => ({ rows: [{ count: 0 }] })),
+                ]);
+                data = {
+                    income: parseFloat(repIncome.rows[0].total),
+                    expense: parseFloat(repExpense.rows[0].total),
+                    newCount: parseInt(repNew.rows[0].count)
+                };
+                break;
+            }
+
             default:
                 return res.status(400).json({ error: 'Unknown widget type' });
         }

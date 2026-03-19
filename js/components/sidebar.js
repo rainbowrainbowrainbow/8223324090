@@ -27,6 +27,7 @@ const Sidebar = (() => {
         { href: '/hr',        icon: '🤝', label: 'Кадри',      access: 'hr' },
         { href: '/finance',   icon: '💰', label: 'Фінанси',    access: 'finance' },
         { href: '/analytics', icon: '📊', label: 'Аналітика',  access: 'analytics' },
+        { href: '/reports',   icon: '📋', label: 'Звіти',      access: 'reports' },
 
         // BLOCK 3: Product / Creative
         { type: 'divider' },
@@ -104,6 +105,12 @@ const Sidebar = (() => {
             'senior_manager', 'manager',
             'accountant', 'marketer',
             'it_specialist'
+        ],
+
+        reports: [
+            'creator', 'director', 'vice_director',
+            'senior_manager', 'manager',
+            'admin', 'accountant'
         ],
 
         programs: [

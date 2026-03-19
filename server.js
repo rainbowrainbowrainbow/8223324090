@@ -141,6 +141,7 @@ app.use('/api/hr', require('./routes/hr'));
 app.use('/api/svitlana', require('./routes/svitlana'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/finance', require('./routes/finance'));
+app.use('/api/reports', require('./routes/reports'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/procurement', require('./routes/procurement'));
 app.use('/api/workers', require('./routes/workers'));
@@ -284,6 +285,12 @@ app.get('/customers', (req, res) => {
 });
 app.get('/finance', (req, res) => {
     res.sendFile(path.join(__dirname, 'finance.html'));
+});
+app.get('/reports', (req, res) => {
+    res.sendFile(path.join(__dirname, 'reports.html'));
+});
+app.get('/report-agent', (req, res) => {
+    res.sendFile(path.join(__dirname, 'report-agent.html'));
 });
 app.get('/analytics', (req, res) => {
     res.sendFile(path.join(__dirname, 'analytics.html'));

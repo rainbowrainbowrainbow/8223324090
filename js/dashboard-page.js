@@ -17,6 +17,7 @@ const DashboardPage = (() => {
         weather:        { icon: '🌤', title: 'Погода', minRole: null },
         currency:       { icon: '💱', title: 'Курси валют', minRole: 'manager' },
         announcements:  { icon: '📢', title: 'Оголошення', minRole: null },
+        reports_today:  { icon: '📋', title: 'Звіти сьогодні', minRole: 'senior_manager' },
     };
 
     let _config = { widgets: [], layout: {}, theme: 'default' };
@@ -197,6 +198,9 @@ const DashboardPage = (() => {
                 break;
             case 'finance_today':
                 renderFinanceToday(data, container);
+                break;
+            case 'reports_today':
+                renderReportsToday(data, container);
                 break;
             default:
                 container.innerHTML = '<div class="widget-empty">Невідомий віджет</div>';
@@ -436,6 +440,32 @@ const DashboardPage = (() => {
                     <div class="finance-stat-label">Бронювань</div>
                 </div>
             </div>
+        `;
+    }
+
+    function renderReportsToday(data, container) {
+        const fmt = (v) => {
+            if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+            return Math.round(v) + '';
+        };
+        container.innerHTML = `
+            <div class="finance-today-grid">
+                <div class="finance-stat revenue">
+                    <div class="finance-stat-value">${fmt(data.income || 0)} ₴</div>
+                    <div class="finance-stat-label">Доходи</div>
+                </div>
+                <div class="finance-stat expenses">
+                    <div class="finance-stat-value">${fmt(data.expense || 0)} ₴</div>
+                    <div class="finance-stat-label">Витрати</div>
+                </div>
+                <div class="finance-stat bookings">
+                    <div class="finance-stat-value">${data.newCount || 0}</div>
+                    <div class="finance-stat-label">Нових звітів</div>
+                </div>
+            </div>
+            <a href="/reports" style="display:block;text-align:center;margin-top:8px;font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">
+                Відкрити звіти →
+            </a>
         `;
     }
 

@@ -1077,7 +1077,7 @@ function buildCatalogPageHtml(pkg) {
     const durationStr = catalogFormatDuration(totalDuration);
     const kidsStr = `${pkg.minKids || 7}–${pkg.maxKids || 50}`;
 
-    const bannerSrc = `images/catalogs/graduation/${pkg.slug}-banner.png`;
+    const bannerSrc = `/images/catalogs/graduation/${pkg.slug}-banner.png`;
 
     return `
         <div class="cat-page" data-package="${pkg.slug}"
@@ -1116,7 +1116,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="images/logo_element.png?v=32.3" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=32.3" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>

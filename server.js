@@ -17,6 +17,7 @@ const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
+const { ensureReportBotWebhook, REPORT_BOT_TOKEN } = require('./services/report-bot');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
@@ -95,7 +96,7 @@ app.use('/api', rateLimiter);
 
 // Auth middleware: protect all API endpoints except public ones
 app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path === '/version' || req.path.startsWith('/telegram/webhook') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || req.path === '/demo/login' || req.path === '/demo/scenarios' || req.path === '/packages' || req.path === '/status/public' || req.path.startsWith('/leads/webhook/') || (req.path === '/leads/landing' && req.method === 'POST')) {
+    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path === '/version' || req.path.startsWith('/telegram/webhook') || req.path === '/report-bot/webhook' || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || req.path === '/demo/login' || req.path === '/demo/scenarios' || req.path === '/packages' || req.path === '/status/public' || req.path.startsWith('/leads/webhook/') || (req.path === '/leads/landing' && req.method === 'POST')) {
         return next();
     }
     // Support token in query string for proposal/print endpoints opened via window.open()
@@ -142,6 +143,7 @@ app.use('/api/svitlana', require('./routes/svitlana'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/finance', require('./routes/finance'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/report-bot', require('./routes/report-bot'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/procurement', require('./routes/procurement'));
 app.use('/api/workers', require('./routes/workers'));
@@ -412,6 +414,7 @@ initDatabase().then(() => {
         log.info(`Server running on port ${PORT}`);
         log.info(`Telegram bot token: ${TELEGRAM_BOT_TOKEN ? 'SET' : 'NOT SET'}`);
         log.info(`Telegram default chat ID: ${TELEGRAM_DEFAULT_CHAT_ID || 'NOT SET'}`);
+        log.info(`Report bot token: ${REPORT_BOT_TOKEN ? 'SET' : 'NOT SET'}`);
         try {
             const dbChatId = await getConfiguredChatId();
             log.info(`Telegram effective chat ID: ${dbChatId || 'NONE'}`);
@@ -430,6 +433,7 @@ initDatabase().then(() => {
             : null;
         if (appUrl) {
             ensureWebhook(appUrl).catch(err => log.error('Webhook auto-setup error', err));
+            ensureReportBotWebhook(appUrl).catch(err => log.error('Report bot webhook setup error', err));
         }
 
         // v11.1: Register bot commands (Telegram menu button)
@@ -437,6 +441,12 @@ initDatabase().then(() => {
             const { registerBotCommands } = require('./services/bot');
             registerBotCommands().catch(err => log.error('Bot commands registration error', err));
         } catch (e) { log.error('Failed to register bot commands', e); }
+
+        // v32.5: Register report bot commands
+        try {
+            const { registerReportBotCommands } = require('./services/report-bot');
+            registerReportBotCommands().catch(err => log.error('Report bot commands registration error', err));
+        } catch (e) { log.error('Failed to register report bot commands', e); }
 
         // Ensure chat bot is member of all default channels
         try {

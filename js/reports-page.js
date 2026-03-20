@@ -1,17 +1,27 @@
 /**
- * js/reports-page.js — Reports module frontend (v32.4)
+ * js/reports-page.js — Reports page frontend (v32.6)
  *
- * Summary dashboard with charts, reports table, gallery, accountant settings.
+ * Summary cards, filters, table with sorting/pagination, Chart.js charts,
+ * on-duty accountants, add/edit modal.
  */
 
-/* global apiVerifyToken, initDarkMode */
+/* global apiVerifyToken, initDarkMode, Chart */
 
 const ReportsPage = (() => {
     let _reports = [];
     let _summary = null;
-    let _accountants = [];
-    let _currentPeriod = 'month';
+    let _total = 0;
+    let _page = 1;
+    const _limit = 20;
+    let _sortField = 'createdAt';
+    let _sortDir = 'desc';
+    let _expandedRow = null;
     let _editingId = null;
+
+    // Chart instances
+    let _barChart = null;
+    let _pieChart = null;
+    let _lineChart = null;
 
     // ==========================================
     // HELPERS
@@ -53,7 +63,7 @@ const ReportsPage = (() => {
     function formatDate(dateStr) {
         if (!dateStr) return '—';
         const d = new Date(dateStr);
-        return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: undefined });
+        return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
     }
 
     function formatDateTime(dateStr) {
@@ -75,18 +85,41 @@ const ReportsPage = (() => {
     }
 
     const STATUS_LABELS = {
-        new: '🆕 Новий',
-        processing: '⏳ В обробці',
-        done: '✅ Опрацьовано',
-        rejected: '❌ Відхилено'
-    };
-
-    const TYPE_LABELS = {
-        income: '📈 Дохід',
-        expense: '📉 Витрата'
+        new: 'Новий',
+        processing: 'В обробці',
+        done: 'Опрацьовано',
+        rejected: 'Відхилено'
     };
 
     const PIE_COLORS = ['#8B5CF6', '#EC4899', '#F97316', '#EAB308', '#22C55E', '#06B6D4', '#6366F1', '#F43F5E'];
+
+    // ==========================================
+    // DATE RANGE HELPERS
+    // ==========================================
+
+    function getDateRange() {
+        const period = document.getElementById('periodFilter')?.value || 'month';
+        const now = new Date();
+        const today = now.toISOString().slice(0, 10);
+
+        if (period === 'custom') {
+            return {
+                dateFrom: document.getElementById('dateFromFilter')?.value || '',
+                dateTo: document.getElementById('dateToFilter')?.value || ''
+            };
+        }
+        if (period === 'today') {
+            return { dateFrom: today, dateTo: today };
+        }
+        if (period === 'week') {
+            const weekAgo = new Date(now);
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return { dateFrom: weekAgo.toISOString().slice(0, 10), dateTo: today };
+        }
+        // month
+        const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        return { dateFrom: monthStart, dateTo: today };
+    }
 
     // ==========================================
     // INIT
@@ -98,68 +131,30 @@ const ReportsPage = (() => {
         } catch { return; }
         if (typeof initDarkMode === 'function') initDarkMode();
 
-        initTabs();
-        initPeriodSelector();
-        initFilters();
-        initModal();
+        // Period filter toggle
+        const periodFilter = document.getElementById('periodFilter');
+        if (periodFilter) {
+            periodFilter.addEventListener('change', () => {
+                const custom = periodFilter.value === 'custom';
+                document.getElementById('dateFromFilter').style.display = custom ? '' : 'none';
+                document.getElementById('dateToFilter').style.display = custom ? '' : 'none';
+            });
+        }
+
+        // Add report button
+        document.getElementById('addReportBtn')?.addEventListener('click', () => openModal());
+
+        // Modal overlay close
+        document.getElementById('reportModal')?.addEventListener('click', e => {
+            if (e.target === e.currentTarget) closeModal();
+        });
 
         await Promise.all([
             loadSummary(),
             loadReports(),
-            loadAccountants()
+            loadOnDuty(),
+            loadSubmitters()
         ]);
-    }
-
-    function initTabs() {
-        document.querySelectorAll('.rep-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                document.querySelectorAll('.rep-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.rep-tab-panel').forEach(p => p.classList.remove('active'));
-                tab.classList.add('active');
-                const panel = document.querySelector(`.rep-tab-panel[data-tab="${tab.dataset.tab}"]`);
-                if (panel) panel.classList.add('active');
-
-                if (tab.dataset.tab === 'gallery') renderGallery();
-                if (tab.dataset.tab === 'settings') renderSettings();
-            });
-        });
-    }
-
-    function initPeriodSelector() {
-        document.querySelectorAll('.rep-period-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.rep-period-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                _currentPeriod = btn.dataset.period;
-                loadSummary();
-            });
-        });
-    }
-
-    function initFilters() {
-        document.getElementById('applyFiltersBtn')?.addEventListener('click', () => {
-            loadReports();
-        });
-
-        // Enter key triggers filter
-        ['filterDateFrom', 'filterDateTo', 'filterSubmittedBy'].forEach(id => {
-            document.getElementById(id)?.addEventListener('keydown', e => {
-                if (e.key === 'Enter') loadReports();
-            });
-        });
-
-        ['filterType', 'filterStatus'].forEach(id => {
-            document.getElementById(id)?.addEventListener('change', () => loadReports());
-        });
-    }
-
-    function initModal() {
-        document.getElementById('addReportBtn')?.addEventListener('click', () => openModal());
-
-        // Close on overlay click
-        document.getElementById('reportModal')?.addEventListener('click', e => {
-            if (e.target === e.currentTarget) closeModal();
-        });
     }
 
     // ==========================================
@@ -168,8 +163,15 @@ const ReportsPage = (() => {
 
     async function loadSummary() {
         try {
-            _summary = await apiRequest('GET', `/api/reports/summary?period=${_currentPeriod}`);
-            renderSummary();
+            const period = document.getElementById('periodFilter')?.value || 'month';
+            const range = getDateRange();
+            let url = `/api/reports/summary?period=${period}`;
+            if (range.dateFrom) url += `&dateFrom=${range.dateFrom}`;
+            if (range.dateTo) url += `&dateTo=${range.dateTo}`;
+
+            _summary = await apiRequest('GET', url);
+            renderSummaryCards();
+            renderCharts();
         } catch (err) {
             console.error('Load summary error:', err);
         }
@@ -178,339 +180,356 @@ const ReportsPage = (() => {
     async function loadReports() {
         try {
             const params = new URLSearchParams();
-            const dateFrom = document.getElementById('filterDateFrom')?.value;
-            const dateTo = document.getElementById('filterDateTo')?.value;
-            const type = document.getElementById('filterType')?.value;
-            const status = document.getElementById('filterStatus')?.value;
-            const submittedBy = document.getElementById('filterSubmittedBy')?.value;
+            const range = getDateRange();
+            if (range.dateFrom) params.set('dateFrom', range.dateFrom);
+            if (range.dateTo) params.set('dateTo', range.dateTo);
 
-            if (dateFrom) params.set('dateFrom', dateFrom);
-            if (dateTo) params.set('dateTo', dateTo);
+            const type = document.getElementById('typeFilter')?.value;
+            const status = document.getElementById('statusFilter')?.value;
+            const submittedBy = document.getElementById('submittedByFilter')?.value;
+            const category = document.getElementById('categoryFilter')?.value;
+
             if (type) params.set('type', type);
             if (status) params.set('status', status);
             if (submittedBy) params.set('submittedBy', submittedBy);
+            if (category) params.set('category', category);
+
+            params.set('limit', _limit);
+            params.set('offset', (_page - 1) * _limit);
 
             const data = await apiRequest('GET', `/api/reports?${params}`);
             _reports = data.reports || [];
+            _total = data.total || 0;
+
+            // Client-side sort
+            sortReports();
             renderTable();
+            renderPagination();
         } catch (err) {
             console.error('Load reports error:', err);
+            const tbody = document.getElementById('reportsTableBody');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#EF4444">Помилка завантаження</td></tr>';
         }
     }
 
-    async function loadAccountants() {
+    async function loadOnDuty() {
         try {
-            _accountants = await apiRequest('GET', '/api/reports/accountants');
+            const data = await apiRequest('GET', '/api/reports/accountants');
+            const list = document.getElementById('onDutyList');
+            if (!list) return;
+
+            const onDuty = (data || []).filter(a => a.isOnDuty);
+            if (onDuty.length === 0) {
+                list.innerHTML = '<li style="color:var(--gray-400)">Ніхто не на зміні</li>';
+                return;
+            }
+            list.innerHTML = onDuty.map(a =>
+                `<li>👩‍💼 ${esc(a.name)}${a.phone ? ` (${esc(a.phone)})` : ''} ✅</li>`
+            ).join('');
         } catch (err) {
-            console.error('Load accountants error:', err);
+            console.error('Load on-duty error:', err);
+        }
+    }
+
+    async function loadSubmitters() {
+        try {
+            const data = await apiRequest('GET', '/api/reports?limit=500');
+            const names = [...new Set((data.reports || []).map(r => r.submittedBy).filter(Boolean))];
+            const select = document.getElementById('submittedByFilter');
+            if (!select) return;
+            names.sort().forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                select.appendChild(opt);
+            });
+        } catch (err) {
+            console.error('Load submitters error:', err);
         }
     }
 
     // ==========================================
-    // RENDER: Summary
+    // SORTING
     // ==========================================
 
-    function renderSummary() {
+    function sortReports() {
+        _reports.sort((a, b) => {
+            let va = a[_sortField];
+            let vb = b[_sortField];
+
+            if (_sortField === 'amount') {
+                va = parseFloat(va) || 0;
+                vb = parseFloat(vb) || 0;
+            } else if (_sortField === 'createdAt') {
+                va = new Date(va || 0).getTime();
+                vb = new Date(vb || 0).getTime();
+            } else {
+                va = String(va || '').toLowerCase();
+                vb = String(vb || '').toLowerCase();
+            }
+
+            if (va < vb) return _sortDir === 'asc' ? -1 : 1;
+            if (va > vb) return _sortDir === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
+
+    function sort(field) {
+        if (_sortField === field) {
+            _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+            _sortField = field;
+            _sortDir = field === 'amount' || field === 'createdAt' ? 'desc' : 'asc';
+        }
+        sortReports();
+        renderTable();
+    }
+
+    // ==========================================
+    // RENDER: Summary Cards
+    // ==========================================
+
+    function renderSummaryCards() {
         if (!_summary) return;
-        const { totals, today } = _summary;
+        const { today } = _summary;
+        const inc = today?.income || 0;
+        const exp = today?.expense || 0;
+        const profit = inc - exp;
 
-        // Stats cards
-        document.getElementById('repStats').innerHTML = `
-            <div class="rep-stat-card income">
-                <div class="rep-stat-icon">📈</div>
-                <div class="rep-stat-value income">${formatAmount(totals.income)}</div>
-                <div class="rep-stat-label">Доходи (${totals.incomeCount})</div>
-            </div>
-            <div class="rep-stat-card expense">
-                <div class="rep-stat-icon">📉</div>
-                <div class="rep-stat-value expense">${formatAmount(totals.expense)}</div>
-                <div class="rep-stat-label">Витрати (${totals.expenseCount})</div>
-            </div>
-            <div class="rep-stat-card profit">
-                <div class="rep-stat-icon">💰</div>
-                <div class="rep-stat-value profit">${formatAmount(totals.profit)}</div>
-                <div class="rep-stat-label">Прибуток</div>
-            </div>
-            <div class="rep-stat-card count">
-                <div class="rep-stat-icon">📊</div>
-                <div class="rep-stat-value">${today.newReports}</div>
-                <div class="rep-stat-label">Сьогодні звітів</div>
-            </div>
+        document.getElementById('sumIncome').textContent = formatAmount(inc);
+        document.getElementById('sumExpense').textContent = formatAmount(exp);
+        document.getElementById('sumProfit').textContent = formatAmount(profit);
+        document.getElementById('sumPending').textContent = today?.newReports || _summary.statuses?.new || 0;
+    }
+
+    // ==========================================
+    // RENDER: Table
+    // ==========================================
+
+    function renderTable() {
+        const tbody = document.getElementById('reportsTableBody');
+        if (!tbody) return;
+
+        if (_reports.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--gray-400)">Немає звітів за обраний період</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = _reports.map(r => {
+            const typeClass = r.type === 'income' ? 'income' : 'expense';
+            const typeLabel = r.type === 'income' ? '📈 Дохід' : '📉 Витрата';
+            const statusLabel = STATUS_LABELS[r.status] || r.status;
+            const photoBtn = r.photoUrl
+                ? `<button class="rpt-photo-btn" onclick="event.stopPropagation();ReportsPage.showPhoto('${esc(r.photoUrl)}')" title="Переглянути фото">📸</button>`
+                : '—';
+
+            return `
+                <tr onclick="ReportsPage.toggleDetail(${r.id})" data-id="${r.id}">
+                    <td>${r.id}</td>
+                    <td>${formatDateTime(r.createdAt)}</td>
+                    <td><span class="rpt-type-badge ${typeClass}">${typeLabel}</span></td>
+                    <td><span class="rpt-amount-${typeClass}">${formatAmount(r.amount)}</span></td>
+                    <td>${esc(r.description) || '—'}</td>
+                    <td>${esc(r.category) || '—'}</td>
+                    <td>${esc(r.submittedBy) || '—'}</td>
+                    <td>${photoBtn}</td>
+                    <td><span class="rpt-status-badge ${r.status}">${statusLabel}</span></td>
+                    <td>
+                        <div style="display:flex;gap:2px">
+                            ${r.status === 'new' ? `<button class="rpt-action-btn" onclick="event.stopPropagation();ReportsPage.markProcessing(${r.id})" title="В обробку">⏳</button>` : ''}
+                            ${r.status !== 'done' ? `<button class="rpt-action-btn" onclick="event.stopPropagation();ReportsPage.markDone(${r.id})" title="Опрацьовано">✅</button>` : ''}
+                            <button class="rpt-action-btn" onclick="event.stopPropagation();ReportsPage.editReport(${r.id})" title="Редагувати">✏️</button>
+                            <button class="rpt-action-btn" onclick="event.stopPropagation();ReportsPage.deleteReport(${r.id})" title="Видалити">🗑️</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function toggleDetail(id) {
+        const existing = document.querySelector(`.rpt-detail-row[data-detail="${id}"]`);
+        if (existing) {
+            existing.remove();
+            _expandedRow = null;
+            return;
+        }
+
+        // Remove previous expanded
+        document.querySelectorAll('.rpt-detail-row').forEach(el => el.remove());
+
+        const report = _reports.find(r => r.id === id);
+        if (!report) return;
+        _expandedRow = id;
+
+        const row = document.querySelector(`tr[data-id="${id}"]`);
+        if (!row) return;
+
+        const detailRow = document.createElement('tr');
+        detailRow.className = 'rpt-detail-row';
+        detailRow.dataset.detail = id;
+        detailRow.innerHTML = `
+            <td colspan="10">
+                <div class="rpt-detail-content">
+                    ${report.ocrText ? `<p><strong>OCR текст:</strong> ${esc(report.ocrText)}</p>` : ''}
+                    ${report.voiceTranscript ? `<p><strong>Голосовий:</strong> ${esc(report.voiceTranscript)}</p>` : ''}
+                    <p><strong>Канал:</strong> ${esc(report.submittedVia) || 'web'}</p>
+                    ${report.accountantName ? `<p><strong>Бухгалтер:</strong> ${esc(report.accountantName)}</p>` : ''}
+                    ${report.processedAt ? `<p><strong>Опрацьовано:</strong> ${formatDateTime(report.processedAt)}</p>` : ''}
+                    <p><strong>Створено:</strong> ${formatDateTime(report.createdAt)}</p>
+                </div>
+            </td>
         `;
+        row.after(detailRow);
+    }
 
+    // ==========================================
+    // RENDER: Pagination
+    // ==========================================
+
+    function renderPagination() {
+        const container = document.getElementById('reportsPagination');
+        if (!container) return;
+
+        const totalPages = Math.ceil(_total / _limit) || 1;
+        if (totalPages <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+
+        let html = `<button ${_page <= 1 ? 'disabled' : ''} onclick="ReportsPage.goPage(${_page - 1})">←</button>`;
+        for (let i = 1; i <= totalPages; i++) {
+            if (totalPages > 7 && i > 2 && i < totalPages - 1 && Math.abs(i - _page) > 1) {
+                if (i === 3 || i === totalPages - 2) html += '<button disabled>...</button>';
+                continue;
+            }
+            html += `<button class="${i === _page ? 'active' : ''}" onclick="ReportsPage.goPage(${i})">${i}</button>`;
+        }
+        html += `<button ${_page >= totalPages ? 'disabled' : ''} onclick="ReportsPage.goPage(${_page + 1})">→</button>`;
+        container.innerHTML = html;
+    }
+
+    function goPage(page) {
+        _page = page;
+        loadReports();
+    }
+
+    // ==========================================
+    // RENDER: Charts (Chart.js)
+    // ==========================================
+
+    function renderCharts() {
+        if (!_summary) return;
         renderBarChart();
         renderPieChart();
         renderLineChart();
     }
 
-    // ==========================================
-    // RENDER: Bar chart (income vs expense by day/week)
-    // ==========================================
-
     function renderBarChart() {
-        const container = document.getElementById('repBarChart');
-        if (!container || !_summary) return;
+        const canvas = document.getElementById('barChart');
+        if (!canvas || !_summary) return;
 
         const daily = _summary.daily || [];
-        // Group by day
         const days = {};
         daily.forEach(d => {
             const key = d.day?.slice(0, 10) || d.day;
             if (!days[key]) days[key] = { income: 0, expense: 0 };
-            days[key][d.type] = d.total;
+            days[key][d.type] = parseFloat(d.total) || 0;
         });
 
-        const dayKeys = Object.keys(days).sort();
-        if (dayKeys.length === 0) {
-            container.innerHTML = '<div class="rep-empty" style="padding:20px">Немає даних</div>';
-            return;
-        }
+        const labels = Object.keys(days).sort().map(k => k.slice(5));
+        const incomeData = Object.keys(days).sort().map(k => days[k].income);
+        const expenseData = Object.keys(days).sort().map(k => days[k].expense);
 
-        const maxVal = Math.max(...dayKeys.map(k => Math.max(days[k].income, days[k].expense)), 1);
-
-        container.innerHTML = dayKeys.map(key => {
-            const d = days[key];
-            const incH = Math.max((d.income / maxVal) * 180, 4);
-            const expH = Math.max((d.expense / maxVal) * 180, 4);
-            const label = key.slice(5); // MM-DD
-            return `
-                <div class="rep-bar-group">
-                    <div class="rep-bar-pair">
-                        <div class="rep-bar income" style="height:${incH}px" title="Дохід: ${formatAmount(d.income)}"></div>
-                        <div class="rep-bar expense" style="height:${expH}px" title="Витрата: ${formatAmount(d.expense)}"></div>
-                    </div>
-                    <div class="rep-bar-label">${label}</div>
-                </div>
-            `;
-        }).join('');
+        if (_barChart) _barChart.destroy();
+        _barChart = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'Доходи', data: incomeData, backgroundColor: 'rgba(16,185,129,0.7)', borderRadius: 4 },
+                    { label: 'Витрати', data: expenseData, backgroundColor: 'rgba(239,68,68,0.7)', borderRadius: 4 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top', labels: { font: { family: 'Inter', size: 12 } } } },
+                scales: { y: { beginAtZero: true, ticks: { callback: v => (v / 1000) + 'k' } } }
+            }
+        });
     }
 
-    // ==========================================
-    // RENDER: Pie chart (top expense categories)
-    // ==========================================
-
     function renderPieChart() {
-        const container = document.getElementById('repPieChart');
-        if (!container || !_summary) return;
+        const canvas = document.getElementById('pieChart');
+        if (!canvas || !_summary) return;
 
         const categories = (_summary.categories || []).filter(c => c.type === 'expense');
         if (categories.length === 0) {
-            container.innerHTML = '<div class="rep-empty" style="padding:20px">Немає витрат</div>';
+            if (_pieChart) _pieChart.destroy();
+            _pieChart = null;
             return;
         }
 
-        const total = categories.reduce((sum, c) => sum + c.total, 0);
-        let cumPercent = 0;
-        const gradientParts = [];
-        const legendItems = [];
+        const labels = categories.map(c => c.category || 'Інше');
+        const data = categories.map(c => parseFloat(c.total) || 0);
 
-        categories.slice(0, 8).forEach((cat, i) => {
-            const percent = (cat.total / total) * 100;
-            const color = PIE_COLORS[i % PIE_COLORS.length];
-            gradientParts.push(`${color} ${cumPercent}% ${cumPercent + percent}%`);
-            cumPercent += percent;
-
-            legendItems.push(`
-                <div class="rep-pie-legend-item">
-                    <div class="rep-pie-color" style="background:${color}"></div>
-                    <span>${esc(cat.category)}</span>
-                    <span class="rep-pie-amount">${formatAmount(cat.total)}</span>
-                </div>
-            `);
+        if (_pieChart) _pieChart.destroy();
+        _pieChart = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{ data, backgroundColor: PIE_COLORS.slice(0, labels.length), borderWidth: 2 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right', labels: { font: { family: 'Inter', size: 11 }, padding: 12 } }
+                }
+            }
         });
-
-        container.innerHTML = `
-            <div class="rep-pie" style="background: conic-gradient(${gradientParts.join(', ')})"></div>
-            <div class="rep-pie-legend">${legendItems.join('')}</div>
-        `;
     }
 
-    // ==========================================
-    // RENDER: Line chart (canvas)
-    // ==========================================
-
     function renderLineChart() {
-        const canvas = document.getElementById('repLineChart');
+        const canvas = document.getElementById('lineChart');
         if (!canvas || !_summary) return;
-
-        const ctx = canvas.getContext('2d');
-        const rect = canvas.parentElement.getBoundingClientRect();
-        canvas.width = rect.width - 40;
-        canvas.height = 160;
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         const daily = _summary.daily || [];
         const days = {};
         daily.forEach(d => {
             const key = d.day?.slice(0, 10) || d.day;
             if (!days[key]) days[key] = { income: 0, expense: 0 };
-            days[key][d.type] = d.total;
+            days[key][d.type] = parseFloat(d.total) || 0;
         });
 
-        const dayKeys = Object.keys(days).sort();
-        if (dayKeys.length < 2) {
-            ctx.fillStyle = '#999';
-            ctx.font = '13px Inter, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('Недостатньо даних для графіка', canvas.width / 2, 80);
-            return;
-        }
+        const sortedKeys = Object.keys(days).sort();
+        const labels = sortedKeys.map(k => k.slice(5));
+        const profitData = sortedKeys.map(k => days[k].income - days[k].expense);
 
-        const incomeVals = dayKeys.map(k => days[k].income);
-        const expenseVals = dayKeys.map(k => days[k].expense);
-        const maxVal = Math.max(...incomeVals, ...expenseVals, 1);
-
-        const padX = 30;
-        const padY = 20;
-        const w = canvas.width - padX * 2;
-        const h = canvas.height - padY * 2;
-
-        function drawLine(values, color) {
-            ctx.beginPath();
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2.5;
-            ctx.lineJoin = 'round';
-            values.forEach((val, i) => {
-                const x = padX + (i / (values.length - 1)) * w;
-                const y = padY + h - (val / maxVal) * h;
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            });
-            ctx.stroke();
-
-            // Dots
-            ctx.fillStyle = color;
-            values.forEach((val, i) => {
-                const x = padX + (i / (values.length - 1)) * w;
-                const y = padY + h - (val / maxVal) * h;
-                ctx.beginPath();
-                ctx.arc(x, y, 3, 0, Math.PI * 2);
-                ctx.fill();
-            });
-        }
-
-        drawLine(incomeVals, '#38A169');
-        drawLine(expenseVals, '#E53E3E');
-
-        // X-axis labels
-        ctx.fillStyle = '#999';
-        ctx.font = '10px Inter, sans-serif';
-        ctx.textAlign = 'center';
-        const step = Math.max(1, Math.floor(dayKeys.length / 8));
-        dayKeys.forEach((key, i) => {
-            if (i % step === 0 || i === dayKeys.length - 1) {
-                const x = padX + (i / (dayKeys.length - 1)) * w;
-                ctx.fillText(key.slice(5), x, canvas.height - 4);
+        if (_lineChart) _lineChart.destroy();
+        _lineChart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Прибуток',
+                    data: profitData,
+                    borderColor: '#6366F1',
+                    backgroundColor: 'rgba(99,102,241,0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#6366F1'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { ticks: { callback: v => (v / 1000) + 'k' } } }
             }
         });
-
-        // Legend
-        ctx.font = '11px Inter, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillStyle = '#38A169';
-        ctx.fillRect(padX, 4, 12, 3);
-        ctx.fillText('Доходи', padX + 16, 10);
-        ctx.fillStyle = '#E53E3E';
-        ctx.fillRect(padX + 80, 4, 12, 3);
-        ctx.fillText('Витрати', padX + 96, 10);
-    }
-
-    // ==========================================
-    // RENDER: Reports Table
-    // ==========================================
-
-    function renderTable() {
-        const tbody = document.getElementById('reportsTableBody');
-        const emptyEl = document.getElementById('reportsEmpty');
-        if (!tbody) return;
-
-        if (_reports.length === 0) {
-            tbody.innerHTML = '';
-            if (emptyEl) emptyEl.style.display = 'block';
-            return;
-        }
-        if (emptyEl) emptyEl.style.display = 'none';
-
-        tbody.innerHTML = _reports.map(r => `
-            <tr>
-                <td>${formatDateTime(r.createdAt)}</td>
-                <td><span class="rep-type-badge ${r.type}">${TYPE_LABELS[r.type] || r.type}</span></td>
-                <td><span class="rep-amount ${r.type}">${formatAmount(r.amount)}</span></td>
-                <td>${esc(r.description) || '—'}</td>
-                <td>${esc(r.category) || '—'}</td>
-                <td>${esc(r.submittedBy) || '—'}</td>
-                <td>${r.photoUrl ? `<button class="rep-photo-btn" onclick="ReportsPage.showPhoto('${esc(r.photoUrl)}')">📸</button>` : '—'}</td>
-                <td><span class="rep-status-badge ${r.status}">${STATUS_LABELS[r.status] || r.status}</span></td>
-                <td>${esc(r.accountantName) || '—'}</td>
-                <td>
-                    <div class="rep-actions-cell">
-                        ${r.status === 'new' ? `<button class="rep-action-btn" onclick="ReportsPage.markProcessing(${r.id})">⏳</button>` : ''}
-                        ${r.status !== 'done' ? `<button class="rep-action-btn" onclick="ReportsPage.markDone(${r.id})">✅</button>` : ''}
-                        <button class="rep-action-btn" onclick="ReportsPage.editReport(${r.id})">✏️</button>
-                        <button class="rep-action-btn" onclick="ReportsPage.deleteReport(${r.id})">🗑️</button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
-    }
-
-    // ==========================================
-    // RENDER: Gallery
-    // ==========================================
-
-    function renderGallery() {
-        const container = document.getElementById('repGallery');
-        const emptyEl = document.getElementById('galleryEmpty');
-        if (!container) return;
-
-        const withPhotos = _reports.filter(r => r.photoUrl);
-        if (withPhotos.length === 0) {
-            container.innerHTML = '';
-            if (emptyEl) emptyEl.style.display = 'block';
-            return;
-        }
-        if (emptyEl) emptyEl.style.display = 'none';
-
-        container.innerHTML = withPhotos.map(r => `
-            <div class="rep-gallery-card" onclick="ReportsPage.showPhoto('${esc(r.photoUrl)}')">
-                <img class="rep-gallery-img" src="${esc(r.photoUrl)}" alt="Чек" onerror="this.outerHTML='<div class=\\'rep-gallery-img\\'>📄</div>'">
-                <div class="rep-gallery-info">
-                    <div class="rep-gallery-amount ${r.type}">${formatAmount(r.amount)}</div>
-                    <div class="rep-gallery-desc">${esc(r.description) || 'Без опису'}</div>
-                    ${r.ocrText ? `<div class="rep-gallery-ocr">${esc(r.ocrText)}</div>` : ''}
-                    <div class="rep-gallery-meta">
-                        <span>${esc(r.submittedBy)}</span>
-                        <span>${formatDateTime(r.createdAt)}</span>
-                    </div>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    // ==========================================
-    // RENDER: Settings
-    // ==========================================
-
-    function renderSettings() {
-        const container = document.getElementById('accountantsList');
-        if (!container) return;
-
-        if (_accountants.length === 0) {
-            container.innerHTML = '<p style="color:var(--gray-400);font-size:13px">Бухгалтерів не додано</p>';
-            return;
-        }
-
-        container.innerHTML = _accountants.map(a => `
-            <div class="rep-accountant-row">
-                <span class="rep-accountant-name">${esc(a.name)}</span>
-                <span style="font-size:12px;color:var(--gray-400)">${a.phone || ''}</span>
-                <label class="rep-duty-toggle" title="${a.isOnDuty ? 'На зміні' : 'Не на зміні'}">
-                    <input type="checkbox" ${a.isOnDuty ? 'checked' : ''} onchange="ReportsPage.toggleDuty(${a.id}, this.checked)">
-                    <span class="rep-duty-slider"></span>
-                </label>
-            </div>
-        `).join('');
     }
 
     // ==========================================
@@ -518,12 +537,11 @@ const ReportsPage = (() => {
     // ==========================================
 
     function showPhoto(url) {
-        const modal = document.getElementById('photoModal');
-        const img = document.getElementById('photoModalImg');
-        if (modal && img) {
-            img.src = url;
-            modal.classList.add('active');
-        }
+        const lb = document.createElement('div');
+        lb.className = 'rpt-lightbox';
+        lb.onclick = () => lb.remove();
+        lb.innerHTML = `<img src="${esc(url)}" alt="Фото звіту">`;
+        document.body.appendChild(lb);
     }
 
     async function markProcessing(id) {
@@ -540,8 +558,7 @@ const ReportsPage = (() => {
         try {
             await apiRequest('PUT', `/api/reports/${id}`, { status: 'done' });
             showNotification('Звіт опрацьовано');
-            await loadReports();
-            loadSummary();
+            await Promise.all([loadReports(), loadSummary()]);
         } catch (err) {
             showNotification('Помилка: ' + err.message, 'error');
         }
@@ -552,18 +569,7 @@ const ReportsPage = (() => {
         try {
             await apiRequest('DELETE', `/api/reports/${id}`);
             showNotification('Звіт видалено');
-            await loadReports();
-            loadSummary();
-        } catch (err) {
-            showNotification('Помилка: ' + err.message, 'error');
-        }
-    }
-
-    async function toggleDuty(accountantId, isOnDuty) {
-        try {
-            await apiRequest('PUT', `/api/reports/accountants/${accountantId}`, { isOnDuty });
-            showNotification(isOnDuty ? 'Бухгалтер на зміні' : 'Бухгалтер знятий зі зміни');
-            await loadAccountants();
+            await Promise.all([loadReports(), loadSummary()]);
         } catch (err) {
             showNotification('Помилка: ' + err.message, 'error');
         }
@@ -578,34 +584,33 @@ const ReportsPage = (() => {
         if (!modal) return;
 
         _editingId = report?.id || null;
-        document.getElementById('reportModalTitle').textContent = _editingId ? '✏️ Редагувати звіт' : '📝 Новий звіт';
+        document.getElementById('reportModalTitle').textContent = _editingId ? 'Редагувати звіт' : 'Додати звіт вручну';
+        document.getElementById('reportType').value = report?.type || 'expense';
         document.getElementById('reportAmount').value = report?.amount || '';
         document.getElementById('reportDescription').value = report?.description || '';
         document.getElementById('reportCategory').value = report?.category || '';
-        document.getElementById('reportSubmittedBy').value = report?.submittedBy || '';
         document.getElementById('reportEditId').value = _editingId || '';
 
-        selectType(report?.type || 'income');
+        modal.classList.remove('hidden');
         modal.classList.add('active');
     }
 
     function closeModal() {
-        document.getElementById('reportModal')?.classList.remove('active');
+        const modal = document.getElementById('reportModal');
+        if (modal) {
+            modal.classList.remove('active');
+            modal.classList.add('hidden');
+        }
         _editingId = null;
     }
 
-    function selectType(type) {
-        document.querySelectorAll('.rep-type-option').forEach(el => {
-            el.classList.toggle('selected', el.dataset.type === type);
-        });
-    }
+    async function submitReport(event) {
+        event.preventDefault();
 
-    async function saveReport() {
-        const type = document.querySelector('.rep-type-option.selected')?.dataset.type || 'income';
+        const type = document.getElementById('reportType')?.value;
         const amount = document.getElementById('reportAmount')?.value;
         const description = document.getElementById('reportDescription')?.value;
         const category = document.getElementById('reportCategory')?.value;
-        const submittedBy = document.getElementById('reportSubmittedBy')?.value;
 
         if (!amount || parseFloat(amount) <= 0) {
             showNotification('Вкажіть суму', 'error');
@@ -615,7 +620,10 @@ const ReportsPage = (() => {
         try {
             if (_editingId) {
                 await apiRequest('PUT', `/api/reports/${_editingId}`, {
-                    type, amount: parseFloat(amount), description, category
+                    type,
+                    amount: parseFloat(amount),
+                    description,
+                    category
                 });
                 showNotification('Звіт оновлено');
             } else {
@@ -624,14 +632,12 @@ const ReportsPage = (() => {
                     amount: parseFloat(amount),
                     description,
                     category,
-                    submittedBy: submittedBy || undefined,
                     submittedVia: 'web'
                 });
                 showNotification('Звіт створено');
             }
             closeModal();
-            await loadReports();
-            loadSummary();
+            await Promise.all([loadReports(), loadSummary()]);
         } catch (err) {
             showNotification('Помилка: ' + err.message, 'error');
         }
@@ -643,20 +649,48 @@ const ReportsPage = (() => {
     }
 
     // ==========================================
-    // EXPOSE
+    // FILTER ACTIONS (called from HTML)
+    // ==========================================
+
+    function applyFilters() {
+        _page = 1;
+        loadReports();
+        loadSummary();
+    }
+
+    function resetFilters() {
+        document.getElementById('periodFilter').value = 'month';
+        document.getElementById('dateFromFilter').style.display = 'none';
+        document.getElementById('dateToFilter').style.display = 'none';
+        document.getElementById('dateFromFilter').value = '';
+        document.getElementById('dateToFilter').value = '';
+        document.getElementById('typeFilter').value = '';
+        document.getElementById('statusFilter').value = '';
+        document.getElementById('submittedByFilter').value = '';
+        document.getElementById('categoryFilter').value = '';
+        _page = 1;
+        loadReports();
+        loadSummary();
+    }
+
+    // ==========================================
+    // INIT ON LOAD
     // ==========================================
 
     document.addEventListener('DOMContentLoaded', init);
 
     return {
-        selectType,
-        saveReport,
-        closeModal,
+        applyFilters,
+        resetFilters,
+        sort,
+        goPage,
+        toggleDetail,
         showPhoto,
         markProcessing,
         markDone,
         deleteReport,
         editReport,
-        toggleDuty
+        closeModal,
+        submitReport
     };
 })();

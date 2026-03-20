@@ -7,733 +7,302 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=32.4.0">
-    <link rel="stylesheet" href="css/layout.css?v=32.4.0">
-    <link rel="stylesheet" href="css/pages.css?v=32.4.0">
-    <link rel="stylesheet" href="css/modals.css?v=32.4.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=32.4.0">
-    <link rel="stylesheet" href="css/responsive.css?v=32.4.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=32.4.0">
+    <link rel="stylesheet" href="css/base.css?v=32.6.0">
+    <link rel="stylesheet" href="css/layout.css?v=32.6.0">
+    <link rel="stylesheet" href="css/pages.css?v=32.6.0">
+    <link rel="stylesheet" href="css/modals.css?v=32.6.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=32.6.0">
+    <link rel="stylesheet" href="css/responsive.css?v=32.6.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=32.6.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* ==========================================
            REPORTS PAGE STYLES
            ========================================== */
 
-        .rep-tabs {
+        .rpt-header {
             display: flex;
-            gap: 4px;
-            margin-bottom: 20px;
-            border-bottom: 2px solid var(--gray-100);
-            padding-bottom: 0;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 16px;
         }
-
-        .rep-tab {
-            padding: 10px 18px;
-            font-size: 14px;
-            font-weight: 700;
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: var(--gray-500);
-            border-bottom: 3px solid transparent;
-            margin-bottom: -2px;
-            transition: all 0.2s;
-            white-space: nowrap;
-        }
-
-        .rep-tab:hover {
-            color: var(--gray-700);
-        }
-
-        .rep-tab.active {
+        .rpt-header h2 { margin: 0; font-weight: 900; font-size: 22px; }
+        .rpt-header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .rpt-bot-link {
+            font-size: 12px;
             color: var(--primary);
-            border-bottom-color: var(--primary);
+            font-weight: 700;
+            text-decoration: none;
+            background: rgba(99,102,241,0.06);
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
         }
 
-        .rep-tab-panel {
-            display: none;
-        }
-
-        .rep-tab-panel.active {
-            display: block;
-        }
-
-        /* Stats cards */
-        .rep-stats {
+        /* Summary cards */
+        .rpt-summary {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 14px;
-            margin-bottom: 24px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
         }
-
-        .rep-stat-card {
+        .rpt-card {
             background: var(--white);
             border-radius: var(--radius);
-            padding: 20px;
+            padding: 18px;
             border: 1px solid var(--gray-100);
             box-shadow: var(--shadow-xs);
             text-align: center;
-            position: relative;
-            overflow: hidden;
         }
-
-        .rep-stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-        }
-
-        .rep-stat-card.income::before { background: var(--green-500, #38A169); }
-        .rep-stat-card.expense::before { background: var(--red-500, #E53E3E); }
-        .rep-stat-card.profit::before { background: var(--primary); }
-        .rep-stat-card.count::before { background: var(--blue-500, #3182CE); }
-
-        .rep-stat-icon {
-            font-size: 24px;
-            margin-bottom: 6px;
-        }
-
-        .rep-stat-value {
-            font-size: 28px;
+        .rpt-card-icon { font-size: 24px; margin-bottom: 4px; }
+        .rpt-card-value {
+            font-size: 26px;
             font-weight: 900;
             line-height: 1.2;
         }
-
-        .rep-stat-value.income { color: var(--green-500, #38A169); }
-        .rep-stat-value.expense { color: var(--red-500, #E53E3E); }
-        .rep-stat-value.profit { color: var(--primary); }
-
-        .rep-stat-label {
-            font-size: 12px;
+        .rpt-card-label {
+            font-size: 11px;
             font-weight: 700;
             color: var(--gray-500);
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin-top: 4px;
         }
-
-        /* Charts */
-        .rep-charts {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .rep-chart-card {
-            background: var(--white);
-            border-radius: var(--radius);
-            padding: 20px;
-            border: 1px solid var(--gray-100);
-            box-shadow: var(--shadow-xs);
-        }
-
-        .rep-chart-title {
-            font-size: 14px;
-            font-weight: 800;
-            color: var(--gray-700);
-            margin-bottom: 16px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .rep-bar-chart {
-            display: flex;
-            align-items: flex-end;
-            gap: 8px;
-            height: 200px;
-            padding: 0 4px;
-        }
-
-        .rep-bar-group {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            height: 100%;
-            justify-content: flex-end;
-        }
-
-        .rep-bar-pair {
-            display: flex;
-            gap: 3px;
-            align-items: flex-end;
-            width: 100%;
-            justify-content: center;
-        }
-
-        .rep-bar {
-            width: 16px;
-            min-height: 4px;
-            border-radius: 4px 4px 0 0;
-            transition: height 0.5s ease;
-        }
-
-        .rep-bar.income { background: var(--green-500, #38A169); }
-        .rep-bar.expense { background: var(--red-500, #E53E3E); }
-
-        .rep-bar-label {
-            font-size: 10px;
-            color: var(--gray-500);
-            margin-top: 6px;
-            font-weight: 600;
-        }
-
-        /* Pie chart (CSS-only) */
-        .rep-pie-container {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .rep-pie {
-            width: 140px;
-            height: 140px;
-            border-radius: 50%;
-            position: relative;
-            flex-shrink: 0;
-        }
-
-        .rep-pie-legend {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            flex: 1;
-        }
-
-        .rep-pie-legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .rep-pie-color {
-            width: 12px;
-            height: 12px;
-            border-radius: 3px;
-            flex-shrink: 0;
-        }
-
-        .rep-pie-amount {
-            margin-left: auto;
-            font-weight: 800;
-            color: var(--gray-700);
-        }
-
-        /* Line chart */
-        .rep-line-chart {
-            height: 160px;
-            position: relative;
-            margin-bottom: 24px;
-        }
-
-        .rep-line-canvas {
-            width: 100%;
-            height: 100%;
-        }
+        .rpt-card.income .rpt-card-value { color: #10B981; }
+        .rpt-card.expense .rpt-card-value { color: #EF4444; }
+        .rpt-card.profit .rpt-card-value { color: #6366F1; }
+        .rpt-card.pending .rpt-card-value { color: #F59E0B; }
 
         /* Filters */
-        .rep-filters {
+        .rpt-filters {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             flex-wrap: wrap;
-            margin-bottom: 16px;
             align-items: center;
-        }
-
-        .rep-filter {
-            padding: 8px 12px;
-            border: 1px solid var(--gray-200);
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: var(--white);
+            border: 1px solid var(--gray-100);
             border-radius: var(--radius);
+        }
+        .rpt-filter-select, .rpt-filter-date {
+            padding: 8px 10px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
             font-size: 13px;
             font-family: inherit;
             background: var(--white);
+            min-height: 44px;
             color: var(--gray-700);
-            min-width: 130px;
         }
-
-        .rep-filter:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(138, 43, 226, 0.1);
+        .rpt-filter-select { min-width: 120px; }
+        .rpt-filter-date { min-width: 130px; }
+        .rpt-filter-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            min-height: 44px;
         }
+        .rpt-filter-btn.primary { background: var(--primary); color: white; }
+        .rpt-filter-btn.secondary { background: var(--gray-100); color: var(--gray-600); }
 
-        /* Reports table */
-        .rep-table-wrap {
-            background: var(--white);
-            border-radius: var(--radius);
-            border: 1px solid var(--gray-100);
-            box-shadow: var(--shadow-xs);
+        /* Table */
+        .rpt-table-wrap {
             overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin-bottom: 12px;
         }
-
-        .rep-table {
+        .rpt-table {
             width: 100%;
             border-collapse: collapse;
             font-size: 13px;
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            overflow: hidden;
         }
-
-        .rep-table th {
-            padding: 12px 14px;
+        .rpt-table th {
+            padding: 10px 14px;
             text-align: left;
-            font-weight: 800;
             font-size: 11px;
+            font-weight: 700;
+            color: var(--gray-500);
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            color: var(--gray-500);
             border-bottom: 2px solid var(--gray-100);
             white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
         }
-
-        .rep-table td {
-            padding: 12px 14px;
-            border-bottom: 1px solid var(--gray-50, #f9fafb);
+        .rpt-table th:hover { color: var(--primary); }
+        .rpt-table th .sort-arrow { font-size: 10px; margin-left: 4px; }
+        .rpt-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--gray-50);
             vertical-align: middle;
         }
+        .rpt-table tbody tr { cursor: pointer; transition: background 0.15s; }
+        .rpt-table tbody tr:hover { background: rgba(99,102,241,0.03); }
 
-        .rep-table tr:hover {
-            background: var(--gray-25, #fcfcfd);
-        }
-
-        .rep-type-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 10px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 800;
-        }
-
-        .rep-type-badge.income {
-            background: #f0fff4;
-            color: #276749;
-        }
-
-        .rep-type-badge.expense {
-            background: #fff5f5;
-            color: #c53030;
-        }
-
-        .rep-status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 10px;
-            border-radius: 20px;
+        .rpt-type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
             font-size: 11px;
             font-weight: 700;
         }
+        .rpt-type-badge.income { background: #ECFDF5; color: #059669; }
+        .rpt-type-badge.expense { background: #FEF2F2; color: #DC2626; }
 
-        .rep-status-badge.new {
-            background: #ebf8ff;
-            color: #2b6cb0;
+        .rpt-status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
         }
+        .rpt-status-badge.new { background: #FEF3C7; color: #B45309; }
+        .rpt-status-badge.processing { background: #DBEAFE; color: #1D4ED8; }
+        .rpt-status-badge.done { background: #ECFDF5; color: #059669; }
+        .rpt-status-badge.rejected { background: #FEF2F2; color: #DC2626; }
 
-        .rep-status-badge.processing {
-            background: #fffff0;
-            color: #975a16;
-        }
+        .rpt-amount-income { color: #10B981; font-weight: 700; }
+        .rpt-amount-expense { color: #EF4444; font-weight: 700; }
 
-        .rep-status-badge.done {
-            background: #f0fff4;
-            color: #276749;
-        }
-
-        .rep-status-badge.rejected {
-            background: #fff5f5;
-            color: #c53030;
-        }
-
-        .rep-amount {
-            font-weight: 800;
-            font-variant-numeric: tabular-nums;
-        }
-
-        .rep-amount.income { color: #38A169; }
-        .rep-amount.expense { color: #E53E3E; }
-
-        .rep-photo-btn {
+        .rpt-photo-btn {
             background: none;
             border: none;
             cursor: pointer;
-            font-size: 18px;
-            padding: 2px;
+            font-size: 16px;
+            padding: 4px;
+            min-width: 44px;
+            min-height: 44px;
         }
 
-        .rep-actions-cell {
-            display: flex;
-            gap: 6px;
-        }
-
-        .rep-action-btn {
+        .rpt-action-btn {
             background: none;
-            border: 1px solid var(--gray-200);
-            border-radius: 6px;
-            padding: 4px 8px;
+            border: none;
             cursor: pointer;
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--gray-600);
-            transition: all 0.15s;
-        }
-
-        .rep-action-btn:hover {
-            border-color: var(--primary);
-            color: var(--primary);
-        }
-
-        .rep-empty {
-            text-align: center;
-            padding: 40px;
-            color: var(--gray-400);
             font-size: 14px;
+            padding: 4px 6px;
+            min-width: 36px;
+            min-height: 44px;
+            border-radius: var(--radius-sm);
+            transition: background 0.15s;
         }
+        .rpt-action-btn:hover { background: var(--gray-100); }
 
-        .rep-empty-icon {
-            font-size: 48px;
-            margin-bottom: 8px;
+        /* Detail row */
+        .rpt-detail-row td {
+            padding: 8px 14px;
+            background: var(--gray-50);
+            font-size: 12px;
+            color: var(--gray-600);
         }
+        .rpt-detail-content { max-width: 800px; }
+        .rpt-detail-content p { margin: 4px 0; }
+        .rpt-detail-content strong { color: var(--gray-700); }
 
-        /* Gallery tab */
-        .rep-gallery {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-            gap: 16px;
-        }
-
-        .rep-gallery-card {
-            background: var(--white);
-            border-radius: var(--radius);
-            border: 1px solid var(--gray-100);
-            box-shadow: var(--shadow-xs);
-            overflow: hidden;
-            cursor: pointer;
-            transition: transform 0.15s, box-shadow 0.15s;
-        }
-
-        .rep-gallery-card:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-md);
-        }
-
-        .rep-gallery-img {
-            width: 100%;
-            height: 160px;
-            object-fit: cover;
-            background: var(--gray-100);
+        /* Pagination */
+        .rpt-pagination {
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 48px;
-            color: var(--gray-300);
+            gap: 6px;
+            margin-top: 12px;
         }
-
-        .rep-gallery-info {
-            padding: 12px;
-        }
-
-        .rep-gallery-amount {
-            font-size: 18px;
-            font-weight: 900;
-        }
-
-        .rep-gallery-desc {
-            font-size: 12px;
-            color: var(--gray-500);
-            margin-top: 4px;
-        }
-
-        .rep-gallery-meta {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 8px;
-            font-size: 11px;
-            color: var(--gray-400);
-        }
-
-        .rep-gallery-ocr {
-            margin-top: 8px;
-            padding: 8px;
-            background: var(--gray-50, #f9fafb);
-            border-radius: 6px;
-            font-size: 11px;
-            color: var(--gray-600);
-            max-height: 60px;
-            overflow: hidden;
-        }
-
-        /* Settings tab */
-        .rep-settings-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-
-        .rep-settings-card {
-            background: var(--white);
-            border-radius: var(--radius);
-            padding: 20px;
-            border: 1px solid var(--gray-100);
-            box-shadow: var(--shadow-xs);
-        }
-
-        .rep-settings-title {
-            font-size: 14px;
-            font-weight: 800;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .rep-accountant-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 0;
-            border-bottom: 1px solid var(--gray-50, #f9fafb);
-        }
-
-        .rep-accountant-row:last-child {
-            border-bottom: none;
-        }
-
-        .rep-accountant-name {
-            font-weight: 700;
-            font-size: 14px;
-            flex: 1;
-        }
-
-        .rep-duty-toggle {
-            position: relative;
-            width: 44px;
-            height: 24px;
-        }
-
-        .rep-duty-toggle input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .rep-duty-slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: var(--gray-300);
-            border-radius: 24px;
-            transition: 0.3s;
-        }
-
-        .rep-duty-slider::before {
-            content: '';
-            position: absolute;
-            height: 18px;
-            width: 18px;
-            left: 3px;
-            bottom: 3px;
-            background: white;
-            border-radius: 50%;
-            transition: 0.3s;
-        }
-
-        .rep-duty-toggle input:checked + .rep-duty-slider {
-            background: var(--green-500, #38A169);
-        }
-
-        .rep-duty-toggle input:checked + .rep-duty-slider::before {
-            transform: translateX(20px);
-        }
-
-        /* Period selector */
-        .rep-period-selector {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 20px;
-        }
-
-        .rep-period-btn {
-            padding: 6px 14px;
+        .rpt-pagination button {
+            padding: 6px 12px;
             border: 1px solid var(--gray-200);
-            border-radius: 20px;
+            border-radius: var(--radius-sm);
             background: var(--white);
-            font-size: 12px;
-            font-weight: 700;
+            font-size: 13px;
+            font-family: inherit;
             cursor: pointer;
-            color: var(--gray-600);
-            transition: all 0.15s;
+            min-height: 44px;
         }
-
-        .rep-period-btn.active {
+        .rpt-pagination button.active {
             background: var(--primary);
             color: white;
             border-color: var(--primary);
         }
+        .rpt-pagination button:disabled { opacity: 0.5; cursor: default; }
 
-        /* Add report modal */
-        .rep-modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .rep-modal-overlay.active {
-            display: flex;
-        }
-
-        .rep-modal {
-            background: var(--white);
-            border-radius: 16px;
-            padding: 28px;
-            width: 480px;
-            max-width: 90vw;
-            max-height: 85vh;
-            overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-        }
-
-        .rep-modal-title {
-            font-size: 18px;
-            font-weight: 900;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .rep-modal-field {
-            margin-bottom: 14px;
-        }
-
-        .rep-modal-label {
-            display: block;
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--gray-500);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 6px;
-        }
-
-        .rep-modal-input {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid var(--gray-200);
-            border-radius: var(--radius);
-            font-size: 14px;
-            font-family: inherit;
-            box-sizing: border-box;
-        }
-
-        .rep-modal-input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(138, 43, 226, 0.1);
-        }
-
-        .rep-modal-type-switch {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 14px;
-        }
-
-        .rep-type-option {
-            flex: 1;
-            padding: 10px;
-            border: 2px solid var(--gray-200);
-            border-radius: var(--radius);
-            text-align: center;
-            font-weight: 700;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-
-        .rep-type-option.income.selected {
-            border-color: #38A169;
-            background: #f0fff4;
-            color: #276749;
-        }
-
-        .rep-type-option.expense.selected {
-            border-color: #E53E3E;
-            background: #fff5f5;
-            color: #c53030;
-        }
-
-        .rep-modal-actions {
-            display: flex;
-            gap: 10px;
+        /* Charts */
+        .rpt-charts {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 16px;
             margin-top: 20px;
-            justify-content: flex-end;
+            margin-bottom: 20px;
+        }
+        .rpt-chart-card {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 20px;
+        }
+        .rpt-chart-card h4 {
+            font-size: 14px;
+            font-weight: 800;
+            color: var(--gray-700);
+            margin: 0 0 12px 0;
+        }
+        .rpt-chart-canvas { max-height: 280px; }
+
+        /* On-duty block */
+        .rpt-on-duty {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .rpt-on-duty h4 { margin: 0 0 8px; font-size: 14px; font-weight: 800; }
+        .rpt-on-duty-list { list-style: none; padding: 0; margin: 0; }
+        .rpt-on-duty-list li {
+            padding: 4px 0;
+            font-size: 13px;
+            color: var(--gray-600);
         }
 
-        /* Photo preview modal */
-        .rep-photo-modal {
-            display: none;
+        /* Lightbox */
+        .rpt-lightbox {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.85);
-            z-index: 1100;
+            background: rgba(0,0,0,0.85);
+            display: flex;
             align-items: center;
             justify-content: center;
+            z-index: 10000;
             cursor: pointer;
         }
-
-        .rep-photo-modal.active {
-            display: flex;
-        }
-
-        .rep-photo-modal img {
+        .rpt-lightbox img {
             max-width: 90vw;
             max-height: 90vh;
             border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
         }
 
-        /* Responsive */
         @media (max-width: 768px) {
-            .rep-charts {
-                grid-template-columns: 1fr;
-            }
-            .rep-settings-grid {
-                grid-template-columns: 1fr;
-            }
-            .rep-stats {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            .rep-filters {
-                flex-direction: column;
-            }
-            .rep-filter {
-                width: 100%;
-            }
-            .rep-tabs {
-                overflow-x: auto;
-            }
+            .rpt-charts { grid-template-columns: 1fr; }
+            .rpt-header { flex-direction: column; align-items: stretch; }
+            .rpt-filters { flex-direction: column; }
+            .rpt-table { font-size: 12px; }
+            .rpt-table th, .rpt-table td { padding: 8px 10px; }
         }
-
-        /* Embed mode */
-        .embed-mode .sidebar-nav,
-        .embed-mode .sidebar-overlay,
-        .embed-mode .skip-link,
-        .embed-mode .page-login-overlay { display: none !important; }
-        .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
     </style>
 </head>
 <body>
     <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+
     <div id="loginOverlay" class="page-login-overlay hidden">
         <a href="/">Увійти в систему</a>
     </div>
@@ -763,173 +332,185 @@
         </header>
 
         <main id="main-content" class="page-container" style="margin-left: 220px;">
-            <div class="page-header">
-                <h2>Звіти</h2>
-                <div style="display:flex;gap:6px">
-                    <button id="addReportBtn" class="btn-page-primary">+ Звіт</button>
+            <div class="rpt-header">
+                <div>
+                    <h2>Звіти</h2>
+                    <p style="margin:4px 0 0;font-size:13px;color:var(--gray-500)">Фінансові звіти від команди</p>
+                </div>
+                <div class="rpt-header-actions">
+                    <a class="rpt-bot-link" href="https://t.me/EGen_Park_Report_bot" target="_blank">@EGen_Park_Report_bot — надсилай чеки боту!</a>
+                    <button id="addReportBtn" class="btn-page-primary">+ Додати звіт</button>
                 </div>
             </div>
 
-            <!-- Tabs -->
-            <div class="rep-tabs">
-                <button class="rep-tab active" data-tab="summary">📊 Зведення</button>
-                <button class="rep-tab" data-tab="all">📋 Всі звіти</button>
-                <button class="rep-tab" data-tab="gallery">📸 Чеки / Накладні</button>
-                <button class="rep-tab" data-tab="settings">⚙️ Налаштування</button>
-            </div>
-
-            <!-- TAB: Summary -->
-            <div class="rep-tab-panel active" id="tabSummary" data-tab="summary">
-                <div class="rep-period-selector">
-                    <button class="rep-period-btn" data-period="week">Тиждень</button>
-                    <button class="rep-period-btn active" data-period="month">Місяць</button>
-                    <button class="rep-period-btn" data-period="year">Рік</button>
+            <!-- Summary cards -->
+            <div class="rpt-summary" id="summaryCards">
+                <div class="rpt-card income">
+                    <div class="rpt-card-icon">💰</div>
+                    <div class="rpt-card-value" id="sumIncome">0 ₴</div>
+                    <div class="rpt-card-label">Доходи сьогодні</div>
                 </div>
-
-                <div class="rep-stats" id="repStats">
-                    <!-- Rendered by JS -->
+                <div class="rpt-card expense">
+                    <div class="rpt-card-icon">💸</div>
+                    <div class="rpt-card-value" id="sumExpense">0 ₴</div>
+                    <div class="rpt-card-label">Витрати сьогодні</div>
                 </div>
-
-                <div class="rep-charts">
-                    <div class="rep-chart-card">
-                        <div class="rep-chart-title">Доходи vs Витрати</div>
-                        <div class="rep-bar-chart" id="repBarChart"></div>
-                    </div>
-                    <div class="rep-chart-card">
-                        <div class="rep-chart-title">Топ категорій витрат</div>
-                        <div class="rep-pie-container" id="repPieChart"></div>
-                    </div>
+                <div class="rpt-card profit">
+                    <div class="rpt-card-icon">📈</div>
+                    <div class="rpt-card-value" id="sumProfit">0 ₴</div>
+                    <div class="rpt-card-label">Прибуток</div>
                 </div>
-
-                <div class="rep-chart-card">
-                    <div class="rep-chart-title">Динаміка по днях</div>
-                    <canvas class="rep-line-canvas" id="repLineChart" height="160"></canvas>
+                <div class="rpt-card pending">
+                    <div class="rpt-card-icon">⏳</div>
+                    <div class="rpt-card-value" id="sumPending">0</div>
+                    <div class="rpt-card-label">Очікують</div>
                 </div>
             </div>
 
-            <!-- TAB: All Reports -->
-            <div class="rep-tab-panel" id="tabAll" data-tab="all">
-                <div class="rep-filters">
-                    <input type="date" class="rep-filter" id="filterDateFrom" title="Від">
-                    <input type="date" class="rep-filter" id="filterDateTo" title="До">
-                    <select class="rep-filter" id="filterType">
-                        <option value="">Всі типи</option>
-                        <option value="income">Дохід</option>
-                        <option value="expense">Витрата</option>
-                    </select>
-                    <select class="rep-filter" id="filterStatus">
-                        <option value="">Всі статуси</option>
-                        <option value="new">Новий</option>
-                        <option value="processing">В обробці</option>
-                        <option value="done">Опрацьовано</option>
-                        <option value="rejected">Відхилено</option>
-                    </select>
-                    <input type="text" class="rep-filter" id="filterSubmittedBy" placeholder="Хто подав...">
-                    <button class="btn-page-secondary" id="applyFiltersBtn">Фільтрувати</button>
-                </div>
-
-                <div class="rep-table-wrap">
-                    <table class="rep-table">
-                        <thead>
-                            <tr>
-                                <th>Дата</th>
-                                <th>Тип</th>
-                                <th>Сума</th>
-                                <th>Опис</th>
-                                <th>Категорія</th>
-                                <th>Хто подав</th>
-                                <th>Фото</th>
-                                <th>Статус</th>
-                                <th>Бухгалтер</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody id="reportsTableBody">
-                        </tbody>
-                    </table>
-                </div>
-                <div class="rep-empty" id="reportsEmpty" style="display:none">
-                    <div class="rep-empty-icon">📭</div>
-                    Звітів поки немає
-                </div>
+            <!-- On-duty accountants -->
+            <div class="rpt-on-duty" id="onDutyBlock">
+                <h4>На зміні сьогодні</h4>
+                <ul class="rpt-on-duty-list" id="onDutyList">
+                    <li>Завантаження...</li>
+                </ul>
             </div>
 
-            <!-- TAB: Gallery -->
-            <div class="rep-tab-panel" id="tabGallery" data-tab="gallery">
-                <div class="rep-gallery" id="repGallery"></div>
-                <div class="rep-empty" id="galleryEmpty" style="display:none">
-                    <div class="rep-empty-icon">📷</div>
-                    Фото чеків поки немає
-                </div>
+            <!-- Filters -->
+            <div class="rpt-filters">
+                <select id="periodFilter" class="rpt-filter-select">
+                    <option value="today">Сьогодні</option>
+                    <option value="week">Тиждень</option>
+                    <option value="month" selected>Місяць</option>
+                    <option value="custom">Довільний</option>
+                </select>
+                <input type="date" id="dateFromFilter" class="rpt-filter-date" style="display:none" title="Від">
+                <input type="date" id="dateToFilter" class="rpt-filter-date" style="display:none" title="До">
+                <select id="typeFilter" class="rpt-filter-select">
+                    <option value="">Всі типи</option>
+                    <option value="income">Доходи</option>
+                    <option value="expense">Витрати</option>
+                </select>
+                <select id="statusFilter" class="rpt-filter-select">
+                    <option value="">Всі статуси</option>
+                    <option value="new">Нові</option>
+                    <option value="processing">В обробці</option>
+                    <option value="done">Опрацьовані</option>
+                    <option value="rejected">Відхилені</option>
+                </select>
+                <select id="submittedByFilter" class="rpt-filter-select">
+                    <option value="">Хто подав</option>
+                </select>
+                <select id="categoryFilter" class="rpt-filter-select">
+                    <option value="">Всі категорії</option>
+                    <option value="реквізит">Реквізит</option>
+                    <option value="їжа">Їжа</option>
+                    <option value="оренда">Оренда</option>
+                    <option value="зарплата">Зарплата</option>
+                    <option value="квест">Квест</option>
+                    <option value="свято">Свято</option>
+                    <option value="інше">Інше</option>
+                </select>
+                <button id="filterBtn" class="rpt-filter-btn primary" onclick="ReportsPage.applyFilters()">Фільтрувати</button>
+                <button class="rpt-filter-btn secondary" onclick="ReportsPage.resetFilters()">Скинути</button>
             </div>
 
-            <!-- TAB: Settings -->
-            <div class="rep-tab-panel" id="tabSettings" data-tab="settings">
-                <div class="rep-settings-grid">
-                    <div class="rep-settings-card">
-                        <div class="rep-settings-title">👩‍💼 Бухгалтери</div>
-                        <div id="accountantsList"></div>
-                    </div>
-                    <div class="rep-settings-card">
-                        <div class="rep-settings-title">🤖 Субагент звітів</div>
-                        <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px">
-                            AI-бот для автоматичного збору чеків, накладних та голосових звітів через Telegram.
-                        </p>
-                        <a href="/report-agent" class="btn-page-secondary" style="display:inline-block;text-decoration:none">
-                            Відкрити панель субагента
-                        </a>
-                    </div>
+            <!-- Table -->
+            <div class="rpt-table-wrap">
+                <table class="rpt-table">
+                    <thead>
+                        <tr>
+                            <th onclick="ReportsPage.sort('id')"># <span class="sort-arrow"></span></th>
+                            <th onclick="ReportsPage.sort('createdAt')">Дата <span class="sort-arrow"></span></th>
+                            <th onclick="ReportsPage.sort('type')">Тип <span class="sort-arrow"></span></th>
+                            <th onclick="ReportsPage.sort('amount')">Сума <span class="sort-arrow"></span></th>
+                            <th>Опис</th>
+                            <th>Категорія</th>
+                            <th onclick="ReportsPage.sort('submittedBy')">Хто подав <span class="sort-arrow"></span></th>
+                            <th>Фото</th>
+                            <th onclick="ReportsPage.sort('status')">Статус <span class="sort-arrow"></span></th>
+                            <th>Дії</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reportsTableBody">
+                        <tr><td colspan="10" style="text-align:center;padding:40px;color:var(--gray-400)">Завантаження...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div id="reportsPagination" class="rpt-pagination"></div>
+
+            <!-- Charts -->
+            <div class="rpt-charts">
+                <div class="rpt-chart-card">
+                    <h4>Доходи vs Витрати (по днях)</h4>
+                    <canvas id="barChart" class="rpt-chart-canvas"></canvas>
+                </div>
+                <div class="rpt-chart-card">
+                    <h4>Витрати по категоріях</h4>
+                    <canvas id="pieChart" class="rpt-chart-canvas"></canvas>
                 </div>
             </div>
+            <div class="rpt-chart-card" style="margin-bottom:20px">
+                <h4>Динаміка прибутку</h4>
+                <canvas id="lineChart" class="rpt-chart-canvas"></canvas>
+            </div>
+
         </main>
     </div>
 
-    <!-- Add/Edit Report Modal -->
-    <div class="rep-modal-overlay" id="reportModal">
-        <div class="rep-modal">
-            <div class="rep-modal-title" id="reportModalTitle">📝 Новий звіт</div>
-
-            <div class="rep-modal-type-switch">
-                <div class="rep-type-option income selected" data-type="income" onclick="ReportsPage.selectType('income')">
-                    📈 Дохід
+    <!-- Add/Edit report modal -->
+    <div id="reportModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Додати звіт">
+        <div class="modal-content modal-medium">
+            <span class="modal-close" onclick="ReportsPage.closeModal()">&times;</span>
+            <h3 id="reportModalTitle">Додати звіт вручну</h3>
+            <form id="reportForm" onsubmit="ReportsPage.submitReport(event)">
+                <input type="hidden" id="reportEditId">
+                <div class="form-group">
+                    <label for="reportType">Тип</label>
+                    <select id="reportType" class="form-control" required>
+                        <option value="expense">Витрата</option>
+                        <option value="income">Дохід</option>
+                    </select>
                 </div>
-                <div class="rep-type-option expense" data-type="expense" onclick="ReportsPage.selectType('expense')">
-                    📉 Витрата
+                <div class="form-group">
+                    <label for="reportAmount">Сума (грн)</label>
+                    <input type="number" id="reportAmount" class="form-control" min="0.01" step="0.01" required style="font-size:16px">
                 </div>
-            </div>
-
-            <div class="rep-modal-field">
-                <label class="rep-modal-label">Сума (₴)</label>
-                <input type="number" class="rep-modal-input" id="reportAmount" placeholder="0" min="0" step="0.01">
-            </div>
-
-            <div class="rep-modal-field">
-                <label class="rep-modal-label">Опис</label>
-                <input type="text" class="rep-modal-input" id="reportDescription" placeholder="Опис звіту...">
-            </div>
-
-            <div class="rep-modal-field">
-                <label class="rep-modal-label">Категорія</label>
-                <input type="text" class="rep-modal-input" id="reportCategory" placeholder="квест, кульки, оренда...">
-            </div>
-
-            <div class="rep-modal-field">
-                <label class="rep-modal-label">Хто подав</label>
-                <input type="text" class="rep-modal-input" id="reportSubmittedBy" placeholder="Ім'я">
-            </div>
-
-            <input type="hidden" id="reportEditId">
-
-            <div class="rep-modal-actions">
-                <button class="btn-page-secondary" onclick="ReportsPage.closeModal()">Скасувати</button>
-                <button class="btn-page-primary" onclick="ReportsPage.saveReport()">Зберегти</button>
-            </div>
+                <div class="form-group">
+                    <label for="reportDescription">Опис</label>
+                    <input type="text" id="reportDescription" class="form-control" placeholder="Що саме?" style="font-size:16px">
+                </div>
+                <div class="form-group">
+                    <label for="reportCategory">Категорія</label>
+                    <select id="reportCategory" class="form-control">
+                        <option value="">-- не вибрано --</option>
+                        <option value="реквізит">Реквізит</option>
+                        <option value="їжа">Їжа</option>
+                        <option value="оренда">Оренда</option>
+                        <option value="зарплата">Зарплата</option>
+                        <option value="квест">Квест</option>
+                        <option value="свято">Свято</option>
+                        <option value="інше">Інше</option>
+                    </select>
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+                    <button type="button" class="btn-page-secondary" onclick="ReportsPage.closeModal()">Скасувати</button>
+                    <button type="submit" class="btn-page-primary">Зберегти</button>
+                </div>
+            </form>
         </div>
     </div>
 
-    <!-- Photo preview modal -->
-    <div class="rep-photo-modal" id="photoModal" onclick="this.classList.remove('active')">
-        <img id="photoModalImg" src="" alt="Фото чеку">
+    <!-- Profile modal -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
     </div>
 
     <div id="notification" class="notification hidden">
@@ -941,12 +522,12 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/config.js?v=32.4.0"></script>
-    <script src="js/api.js?v=32.4.0"></script>
-    <script src="js/auth.js?v=32.4.0"></script>
-    <script src="js/components/sidebar.js?v=32.4.0"></script>
+    <script src="js/config.js?v=32.6.0"></script>
+    <script src="js/api.js?v=32.6.0"></script>
+    <script src="js/auth.js?v=32.6.0"></script>
+    <script src="js/components/sidebar.js?v=32.6.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/reports-page.js?v=32.4.0"></script>
-    <script src="js/role-panel.js?v=32.4.0"></script>
+    <script src="js/reports-page.js?v=32.6.0"></script>
+    <script src="js/role-panel.js?v=32.6.0"></script>
 </body>
 </html>

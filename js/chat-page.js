@@ -1023,7 +1023,15 @@
         { id: 'waves', label: 'Хвилі' },
         { id: 'gradient', label: 'Градієнт' },
         { id: 'stars', label: 'Зірки' },
-        { id: 'geometric', label: 'Геометрія' }
+        { id: 'geometric', label: 'Геометрія' },
+        { id: 'confetti', label: 'Конфетті' },
+        { id: 'sakura', label: 'Сакура' },
+        { id: 'ocean', label: 'Океан' },
+        { id: 'sunset', label: 'Захід' },
+        { id: 'forest', label: 'Ліс' },
+        { id: 'cosmos', label: 'Космос' },
+        { id: 'lavender', label: 'Лаванда' },
+        { id: 'grid', label: 'Сітка' }
     ];
     var _wallpaperBtn = document.getElementById('chatWallpaperBtn');
     var _wallpaperPopup = null;
@@ -1131,6 +1139,7 @@
                 var result = await _api('PUT', '/channels/' + _currentChannel.id + '/mute');
                 if (result) {
                     _muteBtn.classList.toggle('active', result.muted);
+                    _muteBtn.classList.toggle('muted-bell', result.muted);
                     _muteBtn.title = result.muted ? 'Увімкнути сповіщення' : 'Вимкнути сповіщення';
                 }
             } catch (err) {
@@ -2145,6 +2154,7 @@
         // Set mute button state from channel data
         if (_muteBtn) {
             _muteBtn.classList.toggle('active', !!channel.muted);
+            _muteBtn.classList.toggle('muted-bell', !!channel.muted);
             _muteBtn.title = channel.muted ? 'Увімкнути сповіщення' : 'Вимкнути сповіщення';
         }
 
@@ -2869,7 +2879,13 @@
             }
         }
 
-        container.appendChild(_createMessageEl(msg, isGrouped));
+        var msgEl = _createMessageEl(msg, isGrouped);
+        // v33.5: Impact animation for own just-sent messages
+        if (String(msg.userId) === _currentUserId) {
+            msgEl.classList.add('msg-just-sent');
+            setTimeout(function() { msgEl.classList.remove('msg-just-sent'); }, 600);
+        }
+        container.appendChild(msgEl);
         container.scrollTop = container.scrollHeight;
 
         // Trim old messages to prevent DOM bloat
@@ -3317,8 +3333,11 @@
         // Create quick time options
         var now = new Date();
         var options = [
+            { label: 'Через 5 хв', time: new Date(now.getTime() + 5 * 60000) },
+            { label: 'Через 10 хв', time: new Date(now.getTime() + 10 * 60000) },
             { label: 'Через 30 хв', time: new Date(now.getTime() + 30 * 60000) },
             { label: 'Через 1 год', time: new Date(now.getTime() + 60 * 60000) },
+            { label: 'Через 3 год', time: new Date(now.getTime() + 180 * 60000) },
             { label: 'Завтра о 9:00', time: _nextDayAt(9) },
             { label: 'Завтра о 12:00', time: _nextDayAt(12) }
         ];
@@ -3339,21 +3358,36 @@
             popup.appendChild(btn);
         });
 
-        // Custom datetime
-        var customBtn = document.createElement('button');
-        customBtn.className = 'chat-schedule-option';
-        customBtn.textContent = 'Обрати час...';
-        customBtn.addEventListener('click', function () {
-            var dateStr = prompt('Дата та час (РРРР-ММ-ДД ГГ:ХХ)');
-            if (dateStr) {
-                var date = new Date(dateStr.replace(' ', 'T'));
-                if (!isNaN(date.getTime())) {
-                    _scheduleMessage(content, date.toISOString());
-                }
+        // Custom datetime — inline input instead of prompt()
+        var customDiv = document.createElement('div');
+        customDiv.style.cssText = 'padding:6px 12px;border-top:1px solid var(--border-color,#e5e7eb);margin-top:4px;';
+        customDiv.innerHTML = '<label style="font-size:11px;color:var(--gray-400);display:block;margin-bottom:4px;">Свій час:</label>' +
+            '<div style="display:flex;gap:6px;align-items:center;">' +
+                '<input type="datetime-local" id="_schedCustomTime" style="flex:1;padding:6px 8px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:13px;font-family:Nunito,sans-serif;">' +
+                '<button id="_schedCustomSend" style="padding:6px 12px;background:var(--primary,#6366f1);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">OK</button>' +
+            '</div>';
+        popup.appendChild(customDiv);
+        setTimeout(function() {
+            var dtInput = popup.querySelector('#_schedCustomTime');
+            var sendBtn = popup.querySelector('#_schedCustomSend');
+            if (dtInput) {
+                var minDate = new Date(now.getTime() + 60000);
+                dtInput.min = minDate.toISOString().slice(0, 16);
+                dtInput.value = new Date(now.getTime() + 3600000).toISOString().slice(0, 16);
             }
-            popup.remove();
-        });
-        popup.appendChild(customBtn);
+            if (sendBtn) {
+                sendBtn.addEventListener('click', function() {
+                    var val = dtInput ? dtInput.value : '';
+                    if (val) {
+                        var date = new Date(val);
+                        if (!isNaN(date.getTime())) {
+                            _scheduleMessage(content, date.toISOString());
+                            popup.remove();
+                        }
+                    }
+                });
+            }
+        }, 0);
 
         // Position near button
         var inputArea = document.querySelector('.chat-input-area');

@@ -103,7 +103,7 @@ async function trackUsage(service, model, promptTokens, completionTokens, totalT
 async function getChannelMessages(channelId, hoursBack) {
     hoursBack = hoursBack || 24;
     const { rows } = await pool.query(
-        `SELECT m.id, m.content, m.created_at, u.display_name as author
+        `SELECT m.id, m.content, m.created_at, COALESCE(u.name, u.username) as author
          FROM chat_messages m
          JOIN users u ON u.id = m.user_id
          WHERE m.channel_id = $1

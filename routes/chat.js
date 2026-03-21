@@ -624,7 +624,12 @@ router.post('/dm', async (req, res) => {
 router.post('/channels/:id/members', async (req, res) => {
     try {
         const channelId = parseInt(req.params.id, 10);
-        const { userId: targetUserId } = req.body;
+        let targetUserId = req.body.userId;
+        // Support adding by username (e.g., guardian invite)
+        if (!targetUserId && req.body.username) {
+            const userLookup = await require('../db').pool.query('SELECT id FROM users WHERE username = $1', [req.body.username]);
+            if (userLookup.rows.length > 0) targetUserId = userLookup.rows[0].id;
+        }
         if (isNaN(channelId) || !targetUserId) {
             return res.status(400).json({ error: 'Invalid channel or user ID' });
         }

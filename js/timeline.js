@@ -396,7 +396,7 @@ async function renderTimeline() {
         // Show error to user so we can diagnose
         const container = document.getElementById('timelineLines');
         if (container) {
-            container.innerHTML = '<div style="padding:20px;color:#ef4444;font-weight:600">⚠️ Помилка завантаження таймлайну: ' + (outerErr.message || outerErr) + '</div>';
+            container.innerHTML = '<div style="padding:20px;color:#ef4444;font-weight:600">⚠️ Помилка завантаження таймлайну</div>';
         }
     }
 }

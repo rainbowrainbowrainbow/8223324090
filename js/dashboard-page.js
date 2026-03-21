@@ -317,7 +317,7 @@ const DashboardPage = (() => {
 
     function renderWeather(data, container) {
         if (data.error) {
-            container.innerHTML = `<div class="widget-empty">${data.error}</div>`;
+            container.innerHTML = `<div class="widget-empty">${escapeHtml(data.error)}</div>`;
             return;
         }
 
@@ -342,7 +342,7 @@ const DashboardPage = (() => {
 
     function renderCurrency(data, container) {
         if (data.error) {
-            container.innerHTML = `<div class="widget-empty">${data.error}</div>`;
+            container.innerHTML = `<div class="widget-empty">${escapeHtml(data.error)}</div>`;
             return;
         }
 

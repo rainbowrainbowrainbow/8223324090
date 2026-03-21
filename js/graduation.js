@@ -217,7 +217,7 @@
             }
         } catch (err) {
             console.error('[Graduation] loadAll error:', err);
-            if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#e74c3c">Помилка завантаження даних: ' + (err.message || 'невідома помилка') + '</div>';
+            if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#e74c3c">Помилка завантаження даних</div>';
             showNotification('Помилка завантаження даних', 'error');
         }
     }

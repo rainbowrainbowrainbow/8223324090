@@ -783,13 +783,15 @@ function attachProfileListeners() {
             const item = myInventory.find(i => i.itemId === itemId);
             if (!item) return;
 
-            if (item.isEquipped) {
-                await apiPut('/profile/unequip', { slot: equipSlot });
-            } else {
-                await apiPut('/profile/equip', { item_id: itemId, slot: equipSlot });
-            }
-            await loadProfileData(currentUserId);
-            renderProfile();
+            try {
+                if (item.isEquipped) {
+                    await apiPut('/profile/unequip', { slot: equipSlot });
+                } else {
+                    await apiPut('/profile/equip', { item_id: itemId, slot: equipSlot });
+                }
+                await loadProfileData(currentUserId);
+                renderProfile();
+            } catch (e) { showNotification('Помилка екіпірування', 'error'); }
         });
     });
 

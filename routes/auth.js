@@ -585,9 +585,8 @@ router.patch('/tasks/:id/quick-status', authenticateToken, async (req, res) => {
         if (!canChange) return res.status(403).json({ error: 'Недостатньо прав' });
 
         const oldStatus = t.status;
-        const completedAt = status === 'done' ? 'NOW()' : 'NULL';
         await pool.query(
-            `UPDATE tasks SET status = $1, completed_at = ${completedAt}, updated_at = NOW() WHERE id = $2`,
+            `UPDATE tasks SET status = $1, completed_at = CASE WHEN $1 = 'done' THEN NOW() ELSE NULL END, updated_at = NOW() WHERE id = $2`,
             [status, parseInt(id)]
         );
         // Log the change

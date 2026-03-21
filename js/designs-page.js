@@ -589,17 +589,19 @@ function setupCollections() {
         const name = document.getElementById('newCollectionName').value.trim();
         if (!name) return;
         const color = document.getElementById('newCollectionColor').value;
-        const res = await apiFetch(`${API}/collections`, {
-            method: 'POST',
-            body: JSON.stringify({ name, color })
-        });
-        if (res && res.ok) {
-            document.getElementById('newCollectionName').value = '';
-            await loadCollections();
-            renderCollections();
-            updateCollectionFilters();
-            showNotification('Колекцію створено');
-        }
+        try {
+            const res = await apiFetch(`${API}/collections`, {
+                method: 'POST',
+                body: JSON.stringify({ name, color })
+            });
+            if (res && res.ok) {
+                document.getElementById('newCollectionName').value = '';
+                await loadCollections();
+                renderCollections();
+                updateCollectionFilters();
+                showNotification('Колекцію створено');
+            }
+        } catch (e) { showNotification('Помилка створення колекції', 'error'); }
     });
 }
 

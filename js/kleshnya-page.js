@@ -299,11 +299,13 @@
         } else if (action === 'clear') {
             const doClear = await confirmModal('Очистити всі повідомлення цього чату?', { type: 'danger', okText: 'Очистити' });
             if (doClear) {
+                try {
                 var token = getToken();
                 await fetch(API_BASE + '/kleshnya/sessions/' + sid + '/messages', {
                     method: 'DELETE',
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
+                } catch (e) { showNotification('Помилка очищення чату', 'error'); return; }
                 var s = sessions.find(function (s) { return s.id === sid; });
                 if (s) { s.last_message = null; s.message_count = 0; }
                 if (sid === activeSessionId) {
@@ -365,7 +367,9 @@
     document.getElementById('klRenameSave').addEventListener('click', async function () {
         if (!renameSessionId) return;
         var newTitle = $renameInput.value.trim() || 'Новий чат';
+        try {
         await apiUpdateKleshnyaSession(renameSessionId, { title: newTitle, emoji: renameEmoji });
+        } catch (e) { showNotification('Помилка перейменування', 'error'); return; }
 
         var session = sessions.find(function (s) { return s.id === renameSessionId; });
         if (session) {

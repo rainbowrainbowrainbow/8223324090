@@ -240,10 +240,8 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const taskStatus = VALID_STATUSES.includes(status) ? status : 'todo';
         const taskPriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
         const taskCategory = VALID_CATEGORIES.includes(category) ? category : undefined;
-        const completedAt = taskStatus === 'done' ? 'NOW()' : 'NULL';
-
         const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
-            'assigned_to=$6', 'owner=$7', `updated_at=NOW()`, `completed_at=${completedAt}`,
+            'assigned_to=$6', 'owner=$7', `updated_at=NOW()`, `completed_at=CASE WHEN $4='done' THEN NOW() ELSE NULL END`,
             'version=COALESCE(version,1)+1'];
         const values = [title.trim(), description || null, date || null, taskStatus, taskPriority,
                         assigned_to || null, owner || null];

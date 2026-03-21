@@ -242,13 +242,18 @@ router.put('/jobs/:id/status', async (req, res) => {
         }
 
         let setClause = 'status = $1';
+        const params = [status];
         if (status === 'printing') setClause += ', started_at = NOW()';
         if (status === 'completed') setClause += ', completed_at = NOW()';
-        if (error) setClause += `, error = '${error.replace(/'/g, "''")}'`;
+        if (error) {
+            params.push(error);
+            setClause += `, error = $${params.length}`;
+        }
+        params.push(req.params.id);
 
         const result = await pool.query(
-            `UPDATE print_jobs SET ${setClause} WHERE id = $2 RETURNING *`,
-            [status, req.params.id]
+            `UPDATE print_jobs SET ${setClause} WHERE id = $${params.length} RETURNING *`,
+            params
         );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Завдання друку не знайдено' });

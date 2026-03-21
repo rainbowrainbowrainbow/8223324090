@@ -51,19 +51,15 @@
             </div>
             <nav class="sidebar-links" id="sidebarLinks"></nav>
         </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <header class="header">
-            <button class="hamburger" id="hamburgerBtn" aria-label="Меню">
-                <span></span><span></span><span></span>
-            </button>
-            <div class="header-logo">Event Genix</div>
-            <nav class="header-nav">
-                <a href="/" class="header-nav-link">Таймлайн</a>
-                <a href="/art" class="header-nav-link">Арт</a>
-            </nav>
-            <div class="user-panel">
-                <span id="userName" class="user-name"></span>
-                <button id="logoutBtn" class="logout-btn" title="Вийти">Вийти</button>
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
             </div>
         </header>
 

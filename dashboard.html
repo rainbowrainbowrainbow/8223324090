@@ -64,18 +64,11 @@
                 <!-- Populated by sidebar.js -->
             </nav>
         </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <header class="header">
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
-                <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                </div>
-                <nav class="header-nav">
-                    <a href="/dashboard" class="nav-link active"><span class="nav-icon">🏠</span> <span class="nav-text">Дашборд</span></a>
-                    <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                    <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
-                </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name" role="button" tabindex="0" title="Особистий кабінет"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
@@ -101,9 +94,6 @@
             </div>
         </main>
     </div>
-
-    <!-- Sidebar overlay -->
-    <div id="sidebarOverlay" class="sidebar-overlay hidden"></div>
 
     <!-- Toast container -->
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>

@@ -177,7 +177,7 @@ router.post('/channels/:id/messages', async (req, res) => {
         const channelId = parseInt(req.params.id, 10);
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
 
-        const { content, replyTo, clientMessageId } = req.body;
+        const { content, replyTo, clientMessageId, metadata } = req.body;
         if (!content || !content.trim()) {
             return res.status(400).json({ error: 'Message content is required' });
         }
@@ -210,7 +210,8 @@ router.post('/channels/:id/messages', async (req, res) => {
         const { message, mentionedUserIds } = await chat.sendMessage(channelId, userId, {
             content: content.trim(),
             replyTo: replyTo || null,
-            clientMessageId: clientMessageId || null
+            clientMessageId: clientMessageId || null,
+            metadata: metadata || null
         });
 
         // Track activity stats (fire-and-forget)

@@ -169,7 +169,7 @@ async function getChannelMessages(channelId, userId, { before, limit = 50 } = {}
 /**
  * Send a message in a channel. Uses transaction for seq atomicity.
  */
-async function sendMessage(channelId, userId, { content, replyTo, clientMessageId }) {
+async function sendMessage(channelId, userId, { content, replyTo, clientMessageId, metadata }) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -203,10 +203,10 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
 
         // Insert message
         const msgResult = await client.query(`
-            INSERT INTO chat_messages (channel_id, user_id, seq, content, reply_to, client_message_id)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO chat_messages (channel_id, user_id, seq, content, reply_to, client_message_id, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
-        `, [channelId, userId, seq, content, replyTo || null, clientMessageId || null]);
+        `, [channelId, userId, seq, content, replyTo || null, clientMessageId || null, metadata ? JSON.stringify(metadata) : null]);
         const msg = msgResult.rows[0];
 
         // Parse @mentions

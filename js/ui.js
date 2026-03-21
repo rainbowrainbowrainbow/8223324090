@@ -225,13 +225,14 @@ function confirmModal(message, options = {}) {
         const { okText = 'Підтвердити', cancelText = 'Скасувати', type = 'warning' } = options;
         const icons = { danger: '🗑️', success: '✅', warning: '⚠️' };
         const icon = icons[type] || '❓';
+        const safeMsg = String(message).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/\n/g,'<br>');
 
         const overlay = document.createElement('div');
         overlay.className = 'confirm-overlay';
         overlay.innerHTML = `
             <div class="confirm-dialog ${type}">
                 <div class="confirm-icon">${icon}</div>
-                <div class="confirm-message">${message}</div>
+                <div class="confirm-message">${safeMsg}</div>
                 <div class="confirm-actions">
                     <button class="confirm-btn confirm-cancel">${cancelText}</button>
                     <button class="confirm-btn confirm-ok ${type}">${okText}</button>

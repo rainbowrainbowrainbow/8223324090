@@ -7,6 +7,11 @@
 (function () {
     'use strict';
 
+    function _esc(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     let services = [];
     let packages = [];
     let quotes = [];
@@ -342,10 +347,10 @@
         for (const svc of services) {
             if (!selectedServiceIds.has(svc.id)) continue;
             if (svc.minKids > 0 && kids < svc.minKids) {
-                warnings.push(`"${svc.name}" — мінімум ${svc.minKids} дітей`);
+                warnings.push(`"${_esc(svc.name)}" — мінімум ${svc.minKids} дітей`);
             }
             if (svc.maxKids > 0 && kids > svc.maxKids) {
-                warnings.push(`"${svc.name}" — максимум ${svc.maxKids} дітей`);
+                warnings.push(`"${_esc(svc.name)}" — максимум ${svc.maxKids} дітей`);
             }
         }
         return warnings;
@@ -492,7 +497,7 @@
             <div class="grad-rec-items">
                 ${recommendations.map(svc => `
                 <button class="grad-rec-btn" onclick="GradPage.toggleService(${svc.id})">
-                    ${getServiceIcon(svc)} ${svc.name} <span class="grad-rec-price">${formatPrice(getEffectivePrice(svc))}</span>
+                    ${getServiceIcon(svc)} ${_esc(svc.name)} <span class="grad-rec-price">${formatPrice(getEffectivePrice(svc))}</span>
                 </button>`).join('')}
             </div>
         </div>` : ''}
@@ -582,8 +587,8 @@
                     const pct = (svc.durationMin / totalMin * 100).toFixed(1);
                     const colors = CATEGORY_COLORS[svc.category] || CATEGORY_COLORS.main;
                     return `<div class="grad-timeline-segment" style="width:${pct}%;background:${colors.border}"
-                        title="${svc.name}: ${svc.durationMin} хв">
-                        ${pct > 12 ? `<span class="grad-tl-label">${svc.name.split(' ')[0]}</span>` : ''}
+                        title="${_esc(svc.name)}: ${svc.durationMin} хв">
+                        ${pct > 12 ? `<span class="grad-tl-label">${_esc(svc.name.split(' ')[0])}</span>` : ''}
                     </div>`;
                 }).join('')}
             </div>
@@ -592,7 +597,7 @@
                     const colors = CATEGORY_COLORS[svc.category] || CATEGORY_COLORS.main;
                     return `<span class="grad-tl-legend-item">
                         <span class="grad-tl-dot" style="background:${colors.border}"></span>
-                        ${svc.name} — ${svc.durationMin} хв
+                        ${_esc(svc.name)} — ${svc.durationMin} хв
                     </span>`;
                 }).join('')}
             </div>
@@ -631,7 +636,7 @@
             </div>
             <div class="grad-service-icon">${icon}</div>
             <div class="grad-service-info">
-                <div class="grad-service-name">${svc.name} ${badge}</div>
+                <div class="grad-service-name">${_esc(svc.name)} ${badge}</div>
                 <div class="grad-service-meta">
                     ${svc.durationMin ? `<span>${svc.durationMin} хв</span>` : ''}
                     <span class="grad-price-badge ${isFormula ? 'grad-formula' : 'grad-fixed'}">
@@ -723,7 +728,7 @@
                     ${getPackageImageHtml(pkg.slug, pkg.name, 'grad-pkg-thumb', pkg.imageUrl)}
                 </div>
                 <div class="grad-package-header">
-                    <div class="grad-package-name">${pkg.name}</div>
+                    <div class="grad-package-name">${_esc(pkg.name)}</div>
                     <label class="grad-compare-check" title="Порівняти" onclick="event.stopPropagation()">
                         <input type="checkbox" ${isComparing ? 'checked' : ''}
                             onchange="GradPage.toggleCompare('${pkg.slug}')">
@@ -831,7 +836,7 @@
         // Hero image or placeholder
         const imgSrc = pkg.imageUrl || `images/catalogs/graduation/${pkg.slug}.png`;
         const heroHtml = `
-            <img class="catalog-hero-img" src="${imgSrc}" alt="${pkg.name}"
+            <img class="catalog-hero-img" src="${imgSrc}" alt="${_esc(pkg.name)}"
                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
             <div class="catalog-hero-placeholder" style="background:${theme.heroGradient};display:none">
                 <span class="catalog-hero-emoji">${theme.emoji}</span>
@@ -839,7 +844,7 @@
 
         // Services list (uppercase names)
         const servicesHtml = rows.map(r =>
-            `<li>${r.name.toUpperCase()}</li>`
+            `<li>${_esc(r.name.toUpperCase())}</li>`
         ).join('');
 
         // Service descriptions (catalog_description or fallback to description)
@@ -849,7 +854,7 @@
         }).map(r => {
             const svc = services.find(s => s.name === r.name);
             const desc = svc.catalogDescription || svc.description || '';
-            return `<div class="catalog-desc-item"><strong>${r.name.toUpperCase()}</strong> — ${desc}</div>`;
+            return `<div class="catalog-desc-item"><strong>${_esc(r.name.toUpperCase())}</strong> — ${_esc(desc)}</div>`;
         }).join('');
 
         // Create or reuse viewer
@@ -882,7 +887,7 @@
                     <!-- Info Card -->
                     <div class="catalog-info-card">
                         <div class="catalog-pkg-label">ВИПУСКНИЙ</div>
-                        <div class="catalog-pkg-title">${pkg.name.toUpperCase()}</div>
+                        <div class="catalog-pkg-title">${_esc(pkg.name.toUpperCase())}</div>
                         <div class="catalog-info-row">
                             <div class="catalog-info-item">
                                 <span class="catalog-info-icon">⏱</span>
@@ -1022,7 +1027,7 @@
                 const item = pkg.services.find(i => i.serviceId === svc.id);
                 return item ? '✅' : '—';
             });
-            return `<tr><td>${getServiceIcon(svc)} ${svc.name}</td>${cells.map(c => `<td style="text-align:center">${c}</td>`).join('')}</tr>`;
+            return `<tr><td>${getServiceIcon(svc)} ${_esc(svc.name)}</td>${cells.map(c => `<td style="text-align:center">${c}</td>`).join('')}</tr>`;
         });
 
         // Totals row
@@ -1047,7 +1052,7 @@
         <div class="grad-modal-body" style="overflow-x:auto">
             <table class="grad-compare-table">
                 <thead>
-                    <tr><th>Послуга</th>${pkgs.map(p => `<th>${p.name}</th>`).join('')}</tr>
+                    <tr><th>Послуга</th>${pkgs.map(p => `<th>${_esc(p.name)}</th>`).join('')}</tr>
                 </thead>
                 <tbody>
                     ${rows.join('')}
@@ -1193,7 +1198,7 @@
             <div class="grad-settings-grid">
                 ${Object.entries(settings).map(([key, s]) => `
                 <div class="grad-setting-item">
-                    <label>${s.label || key}</label>
+                    <label>${_esc(s.label || key)}</label>
                     <input type="number" value="${s.value}" step="0.01"
                         data-key="${key}" onchange="GradPage.saveSetting(this)" style="font-size:16px">
                 </div>`).join('')}
@@ -1210,8 +1215,8 @@
                 </div>
                 ${services.map(svc => `
                 <div class="grad-table-row">
-                    <span>${svc.name}</span>
-                    <span class="grad-price-badge ${svc.priceType === 'formula' ? 'grad-formula' : 'grad-fixed'}">${svc.priceType}</span>
+                    <span>${_esc(svc.name)}</span>
+                    <span class="grad-price-badge ${svc.priceType === 'formula' ? 'grad-formula' : 'grad-fixed'}">${_esc(svc.priceType)}</span>
                     <span>${svc.pricePark || '—'}</span>
                     <span><strong>${getEffectivePrice(svc)} ₴</strong></span>
                     <span>${CATEGORY_LABELS[svc.category] || svc.category}</span>
@@ -1379,9 +1384,9 @@
                     return;
                 }
                 results.innerHTML = customers.map(c => `
-                    <div class="grad-customer-option" data-id="${c.id}" data-name="${(c.name || '').replace(/"/g, '&quot;')}" data-phone="${(c.phone || '').replace(/"/g, '&quot;')}">
-                        <span class="grad-customer-name">${c.name || 'Без імені'}</span>
-                        <span class="grad-customer-phone">${c.phone || ''}</span>
+                    <div class="grad-customer-option" data-id="${c.id}" data-name="${_esc(c.name)}" data-phone="${_esc(c.phone)}">
+                        <span class="grad-customer-name">${_esc(c.name) || 'Без імені'}</span>
+                        <span class="grad-customer-phone">${_esc(c.phone)}</span>
                     </div>`).join('');
                 results.querySelectorAll('.grad-customer-option').forEach(el => {
                     el.addEventListener('click', () => GradPage.selectCustomer(
@@ -1536,11 +1541,11 @@
 
         modalContent2.innerHTML = `
         <div class="grad-modal-header">
-            <h3 style="color:${colors.text}">${getServiceIcon(svc)} ${svc.name}</h3>
+            <h3 style="color:${colors.text}">${getServiceIcon(svc)} ${_esc(svc.name)}</h3>
             <button class="grad-modal-close" onclick="document.getElementById('gradInfoModal').style.display='none'">&times;</button>
         </div>
         <div class="grad-modal-body">
-            <p class="grad-modal-desc">${svc.description || 'Без опису'}</p>
+            <p class="grad-modal-desc">${_esc(svc.description) || 'Без опису'}</p>
             <div class="grad-modal-details">
                 <div class="grad-modal-row"><span>⏱️ Тривалість:</span><span>${svc.durationMin || 0} хв</span></div>
                 <div class="grad-modal-row"><span>💰 Ціна за дитину:</span><span>${formatPrice(price)}</span></div>

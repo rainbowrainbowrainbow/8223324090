@@ -373,7 +373,7 @@ const CopilotPage = (() => {
         list.innerHTML = (obj.responses || []).map(r => `
             <div class="accordion-item">
                 <div class="accordion-header" onclick="CopilotPage.toggleAccordion(this)">
-                    <span>📌 ${r.label}</span>
+                    <span>📌 ${escHtml(r.label)}</span>
                     <span class="accordion-chevron">▾</span>
                 </div>
                 <div class="accordion-body">
@@ -1034,7 +1034,7 @@ const CopilotPage = (() => {
                 <div class="alert-item ${cls}">
                     <div>
                         <div style="font-weight:600;color:#fff;">${escHtml(a.client_name)}</div>
-                        <div style="font-size:12px;color:var(--text-muted);">${a.manager_name || '—'} • ${a.status}</div>
+                        <div style="font-size:12px;color:var(--text-muted);">${escHtml(a.manager_name) || '—'} • ${escHtml(a.status)}</div>
                     </div>
                     <div style="text-align:right;">
                         <div style="font-size:13px;font-weight:600;color:${days>=7?'var(--danger-color)':'var(--warning-color)'};">${days} днів без контакту</div>

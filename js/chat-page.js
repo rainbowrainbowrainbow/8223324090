@@ -4772,7 +4772,7 @@
                 '</div>';
 
             // Format summary — allow safe HTML tags
-            var summary = report.summary || 'Немає даних';
+            var summary = _esc(report.summary || 'Немає даних');
             // Restore safe HTML tags from guardian reports
             summary = summary.replace(/&lt;b&gt;/g, '<b>').replace(/&lt;\/b&gt;/g, '</b>');
             summary = summary.replace(/&lt;i&gt;/g, '<i>').replace(/&lt;\/i&gt;/g, '</i>');

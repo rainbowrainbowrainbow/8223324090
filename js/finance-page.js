@@ -311,8 +311,8 @@ function renderCatSection(elId, data, color) {
     const maxTotal = Math.max(...data.map(d => d.total), 1);
     el.innerHTML = data.map(d => `
         <div class="fin-cat-row">
-            <span class="fin-cat-icon">${d.icon || '📋'}</span>
-            <span class="fin-cat-name">${d.name}</span>
+            <span class="fin-cat-icon">${escapeHtml(d.icon) || '📋'}</span>
+            <span class="fin-cat-name">${escapeHtml(d.name)}</span>
             <div class="fin-cat-bar">
                 <div class="fin-cat-bar-fill" style="width:${Math.round(d.total / maxTotal * 100)}%;background:${d.color || color}"></div>
             </div>
@@ -432,9 +432,9 @@ function renderSalaryReport(data) {
 
     tbody.innerHTML = data.staff.map(s => `
         <tr>
-            <td style="font-weight:600">${s.name}</td>
-            <td>${DEPT_LABELS[s.department] || s.department}</td>
-            <td>${s.position}</td>
+            <td style="font-weight:600">${escapeHtml(s.name)}</td>
+            <td>${DEPT_LABELS[s.department] || escapeHtml(s.department)}</td>
+            <td>${escapeHtml(s.position)}</td>
             <td>${s.hourlyRate} ₴</td>
             <td>${s.totalHours} год</td>
             <td class="fin-amount-expense">${formatMoney(s.estimatedSalary)}</td>
@@ -1103,8 +1103,8 @@ async function loadPnlReport() {
         if (data.revenue.length > 0) {
             const maxInc = Math.max(...data.revenue.map(r => r.total), 1);
             html += data.revenue.map(r => `<div class="fin-cat-row">
-                <span class="fin-cat-icon">${r.icon || '📋'}</span>
-                <span class="fin-cat-name">${r.name}</span>
+                <span class="fin-cat-icon">${escapeHtml(r.icon) || '📋'}</span>
+                <span class="fin-cat-name">${escapeHtml(r.name)}</span>
                 <div class="fin-cat-bar"><div class="fin-cat-bar-fill" style="width:${Math.round(r.total / maxInc * 100)}%;background:#10B981"></div></div>
                 <span class="fin-cat-amount" style="color:#10B981">${formatMoney(r.total)}</span>
             </div>`).join('');
@@ -1115,8 +1115,8 @@ async function loadPnlReport() {
         if (data.expenses.length > 0) {
             const maxExp = Math.max(...data.expenses.map(r => r.total), 1);
             html += data.expenses.map(r => `<div class="fin-cat-row">
-                <span class="fin-cat-icon">${r.icon || '📋'}</span>
-                <span class="fin-cat-name">${r.name}</span>
+                <span class="fin-cat-icon">${escapeHtml(r.icon) || '📋'}</span>
+                <span class="fin-cat-name">${escapeHtml(r.name)}</span>
                 <div class="fin-cat-bar"><div class="fin-cat-bar-fill" style="width:${Math.round(r.total / maxExp * 100)}%;background:#EF4444"></div></div>
                 <span class="fin-cat-amount" style="color:#EF4444">${formatMoney(r.total)}</span>
             </div>`).join('');

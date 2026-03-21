@@ -2,6 +2,11 @@
  * settings.js - Історія, каталог програм, лінії/аніматори, Telegram, налаштування
  */
 
+function _escS(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ==========================================
 // ПОКАЗ ІСТОРІЇ
 // ==========================================
@@ -175,7 +180,7 @@ async function showProgramsCatalog() {
             html += `
                 <div class="catalog-program-card ${cat}${inactiveClass}" data-product-id="${p.id}">
                     <div class="catalog-program-header">
-                        <span class="catalog-icon">${p.icon}</span>
+                        <span class="catalog-icon">${_escS(p.icon)}</span>
                         <div class="catalog-program-info">
                             <span class="catalog-program-name">${escapeHtml(p.name)}${p.isActive === false ? ' <span class="catalog-badge-inactive">неактивна</span>' : ''}</span>
                             <span class="catalog-program-meta">${priceText}${infoItems ? ' · ' + infoItems : ''}</span>
@@ -2309,7 +2314,7 @@ async function renderContractors() {
     container.innerHTML = contractors.map(c => {
         const specs = (c.specialty || []).join(', ') || '—';
         const connected = c.telegram_chat_id ? '🟢' : '🔴';
-        const tgInfo = c.telegram_username ? `@${c.telegram_username}` : (c.telegram_chat_id ? `ID: ${c.telegram_chat_id}` : 'не підключено');
+        const tgInfo = c.telegram_username ? `@${_escS(c.telegram_username)}` : (c.telegram_chat_id ? `ID: ${c.telegram_chat_id}` : 'не підключено');
         const activeClass = c.is_active ? '' : ' rule-inactive';
         return `
         <div class="automation-rule${activeClass}" data-id="${c.id}">
@@ -2560,7 +2565,7 @@ async function loadCertificates() {
         const issuedDate = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('uk-UA') : '—';
         return `<div class="cert-card cert-status-${cert.status}" onclick="showCertDetail(${cert.id})" data-cert-id="${cert.id}">
             <div class="cert-card-header">
-                <span class="cert-code">${cert.certCode}</span>
+                <span class="cert-code">${_escS(cert.certCode)}</span>
                 ${statusBadge}
             </div>
             <div class="cert-card-body">

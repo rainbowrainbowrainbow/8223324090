@@ -8,6 +8,7 @@
  *   AchievementPopup.showStreakMilestone(days, coins);
  */
 const AchievementPopup = (() => {
+    function _esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     const queue = [];
     let isShowing = false;
 
@@ -70,7 +71,7 @@ const AchievementPopup = (() => {
     function showQuestComplete(questTitle, coins) {
         const toast = document.createElement('div');
         toast.className = 'quest-complete-toast';
-        toast.innerHTML = `✅ Квест виконано: <strong>${questTitle}</strong> — +${coins} 🪙`;
+        toast.innerHTML = `✅ Квест виконано: <strong>${_esc(questTitle)}</strong> — +${coins} 🪙`;
         document.body.appendChild(toast);
         requestAnimationFrame(() => toast.classList.add('quest-toast-visible'));
         setTimeout(() => {

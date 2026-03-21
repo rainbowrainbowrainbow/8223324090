@@ -671,7 +671,7 @@ async function loadMailing() {
                 <td>${escapeHtml(m.name || m.lead_name || '—')}</td>
                 <td>${escapeHtml(m.phone || '—')}</td>
                 <td>${escapeHtml(m.email || '—')}</td>
-                <td>${SOURCE_MAP[m.source_channel] || m.source_channel || '—'}</td>
+                <td>${SOURCE_MAP[m.source_channel] || escapeHtml(m.source_channel) || '—'}</td>
                 <td>${escapeHtml(m.notes || '—')}</td>
                 <td><button class="btn-delete" onclick="deleteMailingEntry(${m.id})">✕</button></td>
             </tr>`).join('')}

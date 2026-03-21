@@ -308,9 +308,9 @@ function renderWeekdayChart(weekday) {
         const h = Math.max((w.count / maxCnt) * 100, 2);
         return `<div class="an-bar-group">
             <div class="an-bar-pair" style="height:100px">
-                <div class="an-bar purple" style="height:${h}px" title="${w.name}: ${w.count} бронювань, ${fmtMoney(w.revenue)}"></div>
+                <div class="an-bar purple" style="height:${h}px" title="${escapeHtml(w.name)}: ${w.count} бронювань, ${fmtMoney(w.revenue)}"></div>
             </div>
-            <div class="an-bar-label">${w.name}</div>
+            <div class="an-bar-label">${escapeHtml(w.name)}</div>
         </div>`;
     }).join('');
 }

@@ -2,6 +2,11 @@
  * booking.js - Панель бронювання, форма, деталі, видалення, перенос часу
  */
 
+function _escB(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ==========================================
 // ПАНЕЛЬ БРОНЮВАННЯ
 // ==========================================
@@ -277,8 +282,8 @@ async function renderProgramIcons() {
                 : '';
             icon.innerHTML = `
                 ${durationBadge}
-                <span class="icon-circle"><span class="icon">${p.icon}</span></span>
-                <span class="name">${p.code}</span>
+                <span class="icon-circle"><span class="icon">${_escB(p.icon)}</span></span>
+                <span class="name">${_escB(p.code)}</span>
             `;
             icon.addEventListener('click', () => selectProgram(p.id));
             grid.appendChild(icon);
@@ -469,7 +474,7 @@ function showAgeRecommendations() {
     const container = document.getElementById('ageRecoPrograms');
     container.innerHTML = matching.length
         ? matching.map(p => `<button type="button" class="age-reco-btn" onclick="selectProgram(${typeof p.id === 'number' ? p.id : "'" + p.id + "'"})">
-            ${p.icon || '🎯'} ${p.label || p.name}
+            ${_escB(p.icon) || '🎯'} ${_escB(p.label || p.name)}
           </button>`).join('')
         : recs.map(r => `<span class="age-reco-tag">${r}</span>`).join('');
 
@@ -500,7 +505,7 @@ async function initScriptsQuickAccess() {
 
         const tabs = document.getElementById('scriptsTabs');
         tabs.innerHTML = categories.map((cat, i) =>
-            `<button type="button" class="scripts-tab-btn${i === 0 ? ' active' : ''}" data-cat="${cat}">${cat}</button>`
+            `<button type="button" class="scripts-tab-btn${i === 0 ? ' active' : ''}" data-cat="${_escB(cat)}">${_escB(cat)}</button>`
         ).join('');
 
         tabs.addEventListener('click', (e) => {
@@ -522,8 +527,8 @@ function renderScriptCategory(category) {
     const scripts = _cachedScripts[category];
     content.innerHTML = scripts.map(s => `
         <div style="margin-bottom:8px">
-            ${s.trigger_phrase ? `<div class="scripts-trigger">${s.trigger_phrase}</div>` : ''}
-            <div style="font-size:12px;line-height:1.5">${s.response_text}</div>
+            ${s.trigger_phrase ? `<div class="scripts-trigger">${_escB(s.trigger_phrase)}</div>` : ''}
+            <div style="font-size:12px;line-height:1.5">${_escB(s.response_text)}</div>
             <button type="button" class="scripts-copy-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim());this.textContent='Скопійовано ✓';setTimeout(()=>this.textContent='Копіювати',1500)">Копіювати</button>
         </div>
     `).join('<hr style="border:none;border-top:1px solid var(--gray-200);margin:6px 0">');

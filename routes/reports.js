@@ -1,8 +1,8 @@
 /**
- * routes/reports.js — Reports module API (v32.4)
+ * routes/reports.js — Reports module API (v32.7)
  *
  * CRUD for financial reports, summary/analytics, accountant management.
- * Accepts data from Telegram bot, web UI, or manual entry.
+ * Hashtag-based grouping and filtering. Accepts data from Telegram bot, web UI, or manual entry.
  */
 
 const router = require('express').Router();
@@ -18,6 +18,12 @@ router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager',
 // ==========================================
 // HELPERS
 // ==========================================
+
+function parseHashtags(val) {
+    if (Array.isArray(val)) return val;
+    if (!val) return [];
+    try { return JSON.parse(val); } catch { return []; }
+}
 
 function mapReportRow(r) {
     return {
@@ -39,6 +45,8 @@ function mapReportRow(r) {
         processedAt: r.processed_at,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
+        hashtags: parseHashtags(r.hashtags),
+        hashtagActive: r.hashtag_active !== false && r.hashtag_active !== 0,
         // joined fields
         accountantName: r.accountant_name || null
     };
@@ -62,36 +70,49 @@ function mapAccountantRow(r) {
 // ==========================================
 router.get('/', async (req, res) => {
     try {
-        const { type, status, submittedBy, dateFrom, dateTo, limit = 100, offset = 0 } = req.query;
+        const { type, status, submittedBy, category, hashtag, dateFrom, dateTo, limit = 100, offset = 0 } = req.query;
+
+        function buildWhere(params) {
+            let where = '';
+            if (type && ['income', 'expense'].includes(type)) {
+                params.push(type);
+                where += ` AND r.type = $${params.length}`;
+            }
+            if (status) {
+                params.push(status);
+                where += ` AND r.status = $${params.length}`;
+            }
+            if (submittedBy) {
+                params.push(`%${submittedBy}%`);
+                where += ` AND r.submitted_by ILIKE $${params.length}`;
+            }
+            if (category) {
+                params.push(category);
+                where += ` AND r.category = $${params.length}`;
+            }
+            if (hashtag) {
+                params.push(`%"${hashtag}"%`);
+                where += ` AND r.hashtags LIKE $${params.length}`;
+            }
+            if (dateFrom) {
+                params.push(dateFrom);
+                where += ` AND r.created_at >= $${params.length}::date`;
+            }
+            if (dateTo) {
+                params.push(dateTo);
+                where += ` AND r.created_at < ($${params.length}::date + interval '1 day')`;
+            }
+            return where;
+        }
+
+        const params = [];
         let sql = `
             SELECT r.*, a.name AS accountant_name
             FROM reports r
             LEFT JOIN accountants a ON a.id = r.assigned_to
             WHERE 1=1
         `;
-        const params = [];
-
-        if (type && ['income', 'expense'].includes(type)) {
-            params.push(type);
-            sql += ` AND r.type = $${params.length}`;
-        }
-        if (status) {
-            params.push(status);
-            sql += ` AND r.status = $${params.length}`;
-        }
-        if (submittedBy) {
-            params.push(`%${submittedBy}%`);
-            sql += ` AND r.submitted_by ILIKE $${params.length}`;
-        }
-        if (dateFrom) {
-            params.push(dateFrom);
-            sql += ` AND r.created_at >= $${params.length}::date`;
-        }
-        if (dateTo) {
-            params.push(dateTo);
-            sql += ` AND r.created_at < ($${params.length}::date + interval '1 day')`;
-        }
-
+        sql += buildWhere(params);
         sql += ` ORDER BY r.created_at DESC`;
         params.push(parseInt(limit));
         sql += ` LIMIT $${params.length}`;
@@ -100,29 +121,9 @@ router.get('/', async (req, res) => {
 
         const result = await pool.query(sql, params);
 
-        // Total count for pagination
-        let countSql = `SELECT COUNT(*) FROM reports r WHERE 1=1`;
         const countParams = [];
-        if (type && ['income', 'expense'].includes(type)) {
-            countParams.push(type);
-            countSql += ` AND r.type = $${countParams.length}`;
-        }
-        if (status) {
-            countParams.push(status);
-            countSql += ` AND r.status = $${countParams.length}`;
-        }
-        if (submittedBy) {
-            countParams.push(`%${submittedBy}%`);
-            countSql += ` AND r.submitted_by ILIKE $${countParams.length}`;
-        }
-        if (dateFrom) {
-            countParams.push(dateFrom);
-            countSql += ` AND r.created_at >= $${countParams.length}::date`;
-        }
-        if (dateTo) {
-            countParams.push(dateTo);
-            countSql += ` AND r.created_at < ($${countParams.length}::date + interval '1 day')`;
-        }
+        let countSql = `SELECT COUNT(*) FROM reports r WHERE 1=1`;
+        countSql += buildWhere(countParams);
         const countResult = await pool.query(countSql, countParams);
 
         res.json({
@@ -162,7 +163,7 @@ router.get('/summary', async (req, res) => {
             toDate = now.toISOString().slice(0, 10);
         }
 
-        // Totals
+        // Totals (only hashtag_active reports)
         const totalsResult = await pool.query(`
             SELECT
                 type,
@@ -170,6 +171,7 @@ router.get('/summary', async (req, res) => {
                 COALESCE(SUM(amount), 0) as total
             FROM reports
             WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+              AND hashtag_active IS NOT FALSE
             GROUP BY type
         `, [fromDate, toDate]);
 
@@ -272,6 +274,38 @@ router.get('/accountants', async (req, res) => {
 });
 
 // ==========================================
+// GET /api/reports/hashtags — hashtag stats
+// ==========================================
+router.get('/hashtags', async (req, res) => {
+    try {
+        const result = await pool.query(
+            "SELECT hashtags, amount, hashtag_active, type FROM reports WHERE status IN ('done', 'new', 'processing')"
+        );
+
+        const stats = {};
+        for (const row of result.rows) {
+            const tags = parseHashtags(row.hashtags);
+            for (const tag of tags) {
+                if (!stats[tag]) stats[tag] = { hashtag: tag, total: 0, count: 0, activeCount: 0, inactiveCount: 0 };
+                const isActive = row.hashtag_active !== false && row.hashtag_active !== 0;
+                stats[tag].count += 1;
+                if (isActive) {
+                    stats[tag].total += parseFloat(row.amount) || 0;
+                    stats[tag].activeCount += 1;
+                } else {
+                    stats[tag].inactiveCount += 1;
+                }
+            }
+        }
+
+        res.json(Object.values(stats).sort((a, b) => b.total - a.total));
+    } catch (err) {
+        log.error('GET /reports/hashtags error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+// ==========================================
 // GET /api/reports/:id — single report
 // ==========================================
 router.get('/:id', async (req, res) => {
@@ -299,7 +333,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const {
-            type, amount, description, category,
+            type, amount, description, category, hashtags,
             submittedBy, submittedById, submittedVia = 'web',
             photoUrl, ocrText, voiceTranscript, rawData
         } = req.body;
@@ -310,8 +344,8 @@ router.post('/', async (req, res) => {
 
         const result = await pool.query(`
             INSERT INTO reports (type, amount, description, category, submitted_by, submitted_by_id,
-                submitted_via, photo_url, ocr_text, voice_transcript, raw_data)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                submitted_via, photo_url, ocr_text, voice_transcript, raw_data, hashtags)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING *
         `, [
             type,
@@ -324,7 +358,8 @@ router.post('/', async (req, res) => {
             photoUrl || null,
             ocrText || null,
             voiceTranscript || null,
-            rawData ? JSON.stringify(rawData) : '{}'
+            rawData ? JSON.stringify(rawData) : '{}',
+            JSON.stringify(Array.isArray(hashtags) ? hashtags : [])
         ]);
 
         const report = mapReportRow(result.rows[0]);
@@ -358,7 +393,8 @@ router.put('/:id', async (req, res) => {
         const { id } = req.params;
         const {
             type, amount, description, category,
-            status, photoUrl, ocrText
+            status, photoUrl, ocrText,
+            hashtags, hashtagActive
         } = req.body;
 
         const existing = await pool.query('SELECT * FROM reports WHERE id = $1', [id]);
@@ -380,6 +416,8 @@ router.put('/:id', async (req, res) => {
         }
         if (photoUrl !== undefined) { params.push(photoUrl); updates.push(`photo_url = $${params.length}`); }
         if (ocrText !== undefined) { params.push(ocrText); updates.push(`ocr_text = $${params.length}`); }
+        if (hashtags !== undefined) { params.push(JSON.stringify(Array.isArray(hashtags) ? hashtags : [])); updates.push(`hashtags = $${params.length}`); }
+        if (hashtagActive !== undefined) { params.push(!!hashtagActive); updates.push(`hashtag_active = $${params.length}`); }
 
         if (updates.length === 0) {
             return res.status(400).json({ error: 'No fields to update' });

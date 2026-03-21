@@ -7,13 +7,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=32.6.0">
-    <link rel="stylesheet" href="css/layout.css?v=32.6.0">
-    <link rel="stylesheet" href="css/pages.css?v=32.6.0">
-    <link rel="stylesheet" href="css/modals.css?v=32.6.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=32.6.0">
-    <link rel="stylesheet" href="css/responsive.css?v=32.6.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=32.6.0">
+    <link rel="stylesheet" href="css/base.css?v=32.7.0">
+    <link rel="stylesheet" href="css/layout.css?v=32.7.0">
+    <link rel="stylesheet" href="css/pages.css?v=32.7.0">
+    <link rel="stylesheet" href="css/modals.css?v=32.7.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=32.7.0">
+    <link rel="stylesheet" href="css/responsive.css?v=32.7.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=32.7.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -273,6 +273,115 @@
             color: var(--gray-600);
         }
 
+        /* Hashtag badges */
+        .rpt-hashtag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            background: rgba(99,102,241,0.1);
+            color: #6366F1;
+            margin: 1px 2px;
+            white-space: nowrap;
+        }
+        .rpt-hashtag-input {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .rpt-hashtag-input .rpt-hashtag {
+            cursor: pointer;
+        }
+        .rpt-hashtag-input .rpt-hashtag:hover {
+            background: rgba(239,68,68,0.15);
+            color: #EF4444;
+        }
+        .rpt-hashtag-add-btn {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            background: var(--gray-100);
+            color: var(--gray-500);
+            border: 1px dashed var(--gray-300);
+            cursor: pointer;
+            min-height: 24px;
+        }
+        .rpt-hashtag-add-btn:hover { background: var(--gray-200); }
+
+        /* Hashtag dashboard cards */
+        .rpt-hashtag-dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .rpt-hashtag-card {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 16px;
+            cursor: pointer;
+            transition: box-shadow 0.15s, border-color 0.15s;
+        }
+        .rpt-hashtag-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 2px 8px rgba(99,102,241,0.15);
+        }
+        .rpt-hashtag-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .rpt-hashtag-card-name {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--primary);
+        }
+        .rpt-hashtag-toggle {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            cursor: pointer;
+        }
+        .rpt-hashtag-toggle input { display: none; }
+        .rpt-hashtag-toggle-slider {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--gray-300);
+            border-radius: 10px;
+            transition: background 0.2s;
+        }
+        .rpt-hashtag-toggle-slider::after {
+            content: '';
+            position: absolute;
+            width: 16px; height: 16px;
+            left: 2px; bottom: 2px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+        .rpt-hashtag-toggle input:checked + .rpt-hashtag-toggle-slider {
+            background: #10B981;
+        }
+        .rpt-hashtag-toggle input:checked + .rpt-hashtag-toggle-slider::after {
+            transform: translateX(16px);
+        }
+        .rpt-hashtag-card-stats {
+            font-size: 12px;
+            color: var(--gray-500);
+        }
+        .rpt-hashtag-card-amount {
+            font-size: 20px;
+            font-weight: 900;
+            color: var(--gray-700);
+            margin: 4px 0;
+        }
+
         /* Lightbox */
         .rpt-lightbox {
             position: fixed;
@@ -367,6 +476,9 @@
                 </div>
             </div>
 
+            <!-- Hashtag dashboard cards -->
+            <div class="rpt-hashtag-dashboard" id="hashtagDashboard"></div>
+
             <!-- On-duty accountants -->
             <div class="rpt-on-duty" id="onDutyBlock">
                 <h4>На зміні сьогодні</h4>
@@ -385,6 +497,9 @@
                 </select>
                 <input type="date" id="dateFromFilter" class="rpt-filter-date" style="display:none" title="Від">
                 <input type="date" id="dateToFilter" class="rpt-filter-date" style="display:none" title="До">
+                <select id="hashtagFilter" class="rpt-filter-select">
+                    <option value="">Всі хештеги</option>
+                </select>
                 <select id="typeFilter" class="rpt-filter-select">
                     <option value="">Всі типи</option>
                     <option value="income">Доходи</option>
@@ -402,13 +517,17 @@
                 </select>
                 <select id="categoryFilter" class="rpt-filter-select">
                     <option value="">Всі категорії</option>
-                    <option value="реквізит">Реквізит</option>
-                    <option value="їжа">Їжа</option>
-                    <option value="оренда">Оренда</option>
-                    <option value="зарплата">Зарплата</option>
-                    <option value="квест">Квест</option>
-                    <option value="свято">Свято</option>
-                    <option value="інше">Інше</option>
+                    <option value="Афіша">Афіша</option>
+                    <option value="ЗП">ЗП</option>
+                    <option value="Майстер-класи">Майстер-класи</option>
+                    <option value="ДАР">ДАР</option>
+                    <option value="Костюми">Костюми</option>
+                    <option value="Квести">Квести</option>
+                    <option value="Реквізит">Реквізит</option>
+                    <option value="Аквагрим">Аквагрим</option>
+                    <option value="Декорації">Декорації</option>
+                    <option value="Офіс">Офіс</option>
+                    <option value="Інше">Інше</option>
                 </select>
                 <button id="filterBtn" class="rpt-filter-btn primary" onclick="ReportsPage.applyFilters()">Фільтрувати</button>
                 <button class="rpt-filter-btn secondary" onclick="ReportsPage.resetFilters()">Скинути</button>
@@ -485,14 +604,35 @@
                     <label for="reportCategory">Категорія</label>
                     <select id="reportCategory" class="form-control">
                         <option value="">-- не вибрано --</option>
-                        <option value="реквізит">Реквізит</option>
-                        <option value="їжа">Їжа</option>
-                        <option value="оренда">Оренда</option>
-                        <option value="зарплата">Зарплата</option>
-                        <option value="квест">Квест</option>
-                        <option value="свято">Свято</option>
-                        <option value="інше">Інше</option>
+                        <option value="Афіша">Афіша</option>
+                        <option value="ЗП">ЗП</option>
+                        <option value="Майстер-класи">Майстер-класи</option>
+                        <option value="ДАР">ДАР</option>
+                        <option value="Костюми">Костюми</option>
+                        <option value="Квести">Квести</option>
+                        <option value="Реквізит">Реквізит</option>
+                        <option value="Аквагрим">Аквагрим</option>
+                        <option value="Декорації">Декорації</option>
+                        <option value="Офіс">Офіс</option>
+                        <option value="Інше">Інше</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label>Хештеги</label>
+                    <div class="rpt-hashtag-input" id="reportHashtagsInput"></div>
+                    <div style="display:flex;gap:4px;margin-top:6px">
+                        <select id="reportHashtagSelect" class="form-control" style="flex:1;font-size:14px">
+                            <option value="">Обрати хештег...</option>
+                            <option value="СШ-Парк">СШ-Парк</option>
+                            <option value="СШ-Особистий">СШ-Особистий</option>
+                            <option value="ДАР">ДАР</option>
+                        </select>
+                        <button type="button" class="btn-page-secondary" onclick="ReportsPage.addHashtagFromSelect()" style="white-space:nowrap">+ Додати</button>
+                    </div>
+                    <div style="display:flex;gap:4px;margin-top:4px">
+                        <input type="text" id="reportHashtagNew" class="form-control" placeholder="Новий хештег..." style="flex:1;font-size:16px">
+                        <button type="button" class="btn-page-secondary" onclick="ReportsPage.addHashtagCustom()" style="white-space:nowrap">+ Створити</button>
+                    </div>
                 </div>
                 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
                     <button type="button" class="btn-page-secondary" onclick="ReportsPage.closeModal()">Скасувати</button>
@@ -522,12 +662,12 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/config.js?v=32.6.0"></script>
-    <script src="js/api.js?v=32.6.0"></script>
-    <script src="js/auth.js?v=32.6.0"></script>
-    <script src="js/components/sidebar.js?v=32.6.0"></script>
+    <script src="js/config.js?v=32.7.0"></script>
+    <script src="js/api.js?v=32.7.0"></script>
+    <script src="js/auth.js?v=32.7.0"></script>
+    <script src="js/components/sidebar.js?v=32.7.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/reports-page.js?v=32.6.0"></script>
-    <script src="js/role-panel.js?v=32.6.0"></script>
+    <script src="js/reports-page.js?v=32.7.0"></script>
+    <script src="js/role-panel.js?v=32.7.0"></script>
 </body>
 </html>

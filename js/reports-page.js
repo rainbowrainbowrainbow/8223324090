@@ -1,8 +1,8 @@
 /**
- * js/reports-page.js — Reports page frontend (v32.6)
+ * js/reports-page.js — Reports page frontend (v32.7)
  *
  * Summary cards, filters, table with sorting/pagination, Chart.js charts,
- * on-duty accountants, add/edit modal.
+ * on-duty accountants, hashtag dashboard, add/edit modal with hashtag support.
  */
 
 /* global apiVerifyToken, initDarkMode, Chart */
@@ -10,6 +10,7 @@
 const ReportsPage = (() => {
     let _reports = [];
     let _summary = null;
+    let _hashtagStats = [];
     let _total = 0;
     let _page = 1;
     const _limit = 20;
@@ -17,11 +18,15 @@ const ReportsPage = (() => {
     let _sortDir = 'desc';
     let _expandedRow = null;
     let _editingId = null;
+    let _modalHashtags = [];
 
     // Chart instances
     let _barChart = null;
     let _pieChart = null;
     let _lineChart = null;
+
+    const EXPENSE_CATEGORIES = ['Афіша', 'ЗП', 'Майстер-класи', 'ДАР', 'Костюми', 'Квести', 'Реквізит', 'Аквагрим', 'Декорації', 'Офіс', 'Інше'];
+    const DEFAULT_HASHTAGS = ['СШ-Парк', 'СШ-Особистий', 'ДАР'];
 
     // ==========================================
     // HELPERS
@@ -58,12 +63,6 @@ const ReportsPage = (() => {
         el.className = `notification ${type}`;
         el.classList.remove('hidden');
         setTimeout(() => el.classList.add('hidden'), 3000);
-    }
-
-    function formatDate(dateStr) {
-        if (!dateStr) return '—';
-        const d = new Date(dateStr);
-        return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
     }
 
     function formatDateTime(dateStr) {
@@ -108,15 +107,12 @@ const ReportsPage = (() => {
                 dateTo: document.getElementById('dateToFilter')?.value || ''
             };
         }
-        if (period === 'today') {
-            return { dateFrom: today, dateTo: today };
-        }
+        if (period === 'today') return { dateFrom: today, dateTo: today };
         if (period === 'week') {
             const weekAgo = new Date(now);
             weekAgo.setDate(weekAgo.getDate() - 7);
             return { dateFrom: weekAgo.toISOString().slice(0, 10), dateTo: today };
         }
-        // month
         const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
         return { dateFrom: monthStart, dateTo: today };
     }
@@ -131,7 +127,6 @@ const ReportsPage = (() => {
         } catch { return; }
         if (typeof initDarkMode === 'function') initDarkMode();
 
-        // Period filter toggle
         const periodFilter = document.getElementById('periodFilter');
         if (periodFilter) {
             periodFilter.addEventListener('change', () => {
@@ -141,10 +136,8 @@ const ReportsPage = (() => {
             });
         }
 
-        // Add report button
         document.getElementById('addReportBtn')?.addEventListener('click', () => openModal());
 
-        // Modal overlay close
         document.getElementById('reportModal')?.addEventListener('click', e => {
             if (e.target === e.currentTarget) closeModal();
         });
@@ -153,7 +146,8 @@ const ReportsPage = (() => {
             loadSummary(),
             loadReports(),
             loadOnDuty(),
-            loadSubmitters()
+            loadSubmitters(),
+            loadHashtags()
         ]);
     }
 
@@ -188,11 +182,13 @@ const ReportsPage = (() => {
             const status = document.getElementById('statusFilter')?.value;
             const submittedBy = document.getElementById('submittedByFilter')?.value;
             const category = document.getElementById('categoryFilter')?.value;
+            const hashtag = document.getElementById('hashtagFilter')?.value;
 
             if (type) params.set('type', type);
             if (status) params.set('status', status);
             if (submittedBy) params.set('submittedBy', submittedBy);
             if (category) params.set('category', category);
+            if (hashtag) params.set('hashtag', hashtag);
 
             params.set('limit', _limit);
             params.set('offset', (_page - 1) * _limit);
@@ -201,14 +197,13 @@ const ReportsPage = (() => {
             _reports = data.reports || [];
             _total = data.total || 0;
 
-            // Client-side sort
             sortReports();
             renderTable();
             renderPagination();
         } catch (err) {
             console.error('Load reports error:', err);
             const tbody = document.getElementById('reportsTableBody');
-            if (tbody) tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#EF4444">Помилка завантаження</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#EF4444">Помилка завантаження</td></tr>';
         }
     }
 
@@ -245,6 +240,16 @@ const ReportsPage = (() => {
             });
         } catch (err) {
             console.error('Load submitters error:', err);
+        }
+    }
+
+    async function loadHashtags() {
+        try {
+            _hashtagStats = await apiRequest('GET', '/api/reports/hashtags');
+            renderHashtagDashboard();
+            populateHashtagFilter();
+        } catch (err) {
+            console.error('Load hashtags error:', err);
         }
     }
 
@@ -294,12 +299,88 @@ const ReportsPage = (() => {
         const { today } = _summary;
         const inc = today?.income || 0;
         const exp = today?.expense || 0;
-        const profit = inc - exp;
 
         document.getElementById('sumIncome').textContent = formatAmount(inc);
         document.getElementById('sumExpense').textContent = formatAmount(exp);
-        document.getElementById('sumProfit').textContent = formatAmount(profit);
+        document.getElementById('sumProfit').textContent = formatAmount(inc - exp);
         document.getElementById('sumPending').textContent = today?.newReports || _summary.statuses?.new || 0;
+    }
+
+    // ==========================================
+    // RENDER: Hashtag Dashboard
+    // ==========================================
+
+    function renderHashtagDashboard() {
+        const container = document.getElementById('hashtagDashboard');
+        if (!container) return;
+
+        if (_hashtagStats.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = _hashtagStats.map(h => {
+            const isActive = h.inactiveCount === 0;
+            return `
+                <div class="rpt-hashtag-card" onclick="ReportsPage.filterByHashtag('${esc(h.hashtag)}')">
+                    <div class="rpt-hashtag-card-header">
+                        <span class="rpt-hashtag-card-name">#${esc(h.hashtag)}</span>
+                        <label class="rpt-hashtag-toggle" onclick="event.stopPropagation()">
+                            <input type="checkbox" ${isActive ? 'checked' : ''}
+                                onchange="ReportsPage.toggleHashtagActive('${esc(h.hashtag)}', this.checked)">
+                            <span class="rpt-hashtag-toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="rpt-hashtag-card-amount">${formatAmount(h.total)}</div>
+                    <div class="rpt-hashtag-card-stats">Звітів: ${h.count} (активних: ${h.activeCount})</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function populateHashtagFilter() {
+        const select = document.getElementById('hashtagFilter');
+        if (!select) return;
+
+        // Keep first option, remove rest
+        while (select.options.length > 1) select.remove(1);
+
+        // Add from stats
+        const tags = _hashtagStats.map(h => h.hashtag);
+        // Also add default tags if not present
+        DEFAULT_HASHTAGS.forEach(t => { if (!tags.includes(t)) tags.push(t); });
+
+        tags.forEach(tag => {
+            const opt = document.createElement('option');
+            opt.value = tag;
+            opt.textContent = '#' + tag;
+            select.appendChild(opt);
+        });
+    }
+
+    function filterByHashtag(tag) {
+        const select = document.getElementById('hashtagFilter');
+        if (select) select.value = tag;
+        _page = 1;
+        loadReports();
+    }
+
+    async function toggleHashtagActive(hashtag, active) {
+        try {
+            // Get all reports with this hashtag
+            const data = await apiRequest('GET', `/api/reports?hashtag=${encodeURIComponent(hashtag)}&limit=1000`);
+            const reports = data.reports || [];
+
+            // Update each report
+            await Promise.all(reports.map(r =>
+                apiRequest('PUT', `/api/reports/${r.id}`, { hashtagActive: active })
+            ));
+
+            showNotification(active ? `#${hashtag} увімкнено` : `#${hashtag} вимкнено з підрахунків`);
+            await Promise.all([loadHashtags(), loadSummary()]);
+        } catch (err) {
+            showNotification('Помилка: ' + err.message, 'error');
+        }
     }
 
     // ==========================================
@@ -311,7 +392,7 @@ const ReportsPage = (() => {
         if (!tbody) return;
 
         if (_reports.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--gray-400)">Немає звітів за обраний період</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--gray-400)">Немає звітів за обраний період</td></tr>';
             return;
         }
 
@@ -322,14 +403,16 @@ const ReportsPage = (() => {
             const photoBtn = r.photoUrl
                 ? `<button class="rpt-photo-btn" onclick="event.stopPropagation();ReportsPage.showPhoto('${esc(r.photoUrl)}')" title="Переглянути фото">📸</button>`
                 : '—';
+            const tags = (r.hashtags || []).map(t => `<span class="rpt-hashtag">#${esc(t)}</span>`).join('');
+            const inactiveClass = r.hashtagActive === false ? ' style="opacity:0.5"' : '';
 
             return `
-                <tr onclick="ReportsPage.toggleDetail(${r.id})" data-id="${r.id}">
+                <tr onclick="ReportsPage.toggleDetail(${r.id})" data-id="${r.id}"${inactiveClass}>
                     <td>${r.id}</td>
                     <td>${formatDateTime(r.createdAt)}</td>
                     <td><span class="rpt-type-badge ${typeClass}">${typeLabel}</span></td>
                     <td><span class="rpt-amount-${typeClass}">${formatAmount(r.amount)}</span></td>
-                    <td>${esc(r.description) || '—'}</td>
+                    <td>${esc(r.description) || '—'}${tags ? '<br>' + tags : ''}</td>
                     <td>${esc(r.category) || '—'}</td>
                     <td>${esc(r.submittedBy) || '—'}</td>
                     <td>${photoBtn}</td>
@@ -355,7 +438,6 @@ const ReportsPage = (() => {
             return;
         }
 
-        // Remove previous expanded
         document.querySelectorAll('.rpt-detail-row').forEach(el => el.remove());
 
         const report = _reports.find(r => r.id === id);
@@ -365,18 +447,22 @@ const ReportsPage = (() => {
         const row = document.querySelector(`tr[data-id="${id}"]`);
         if (!row) return;
 
+        const tags = (report.hashtags || []).map(t => `<span class="rpt-hashtag">#${esc(t)}</span>`).join(' ');
+
         const detailRow = document.createElement('tr');
         detailRow.className = 'rpt-detail-row';
         detailRow.dataset.detail = id;
         detailRow.innerHTML = `
-            <td colspan="10">
+            <td colspan="11">
                 <div class="rpt-detail-content">
+                    ${tags ? `<p><strong>Хештеги:</strong> ${tags}</p>` : ''}
                     ${report.ocrText ? `<p><strong>OCR текст:</strong> ${esc(report.ocrText)}</p>` : ''}
                     ${report.voiceTranscript ? `<p><strong>Голосовий:</strong> ${esc(report.voiceTranscript)}</p>` : ''}
                     <p><strong>Канал:</strong> ${esc(report.submittedVia) || 'web'}</p>
                     ${report.accountantName ? `<p><strong>Бухгалтер:</strong> ${esc(report.accountantName)}</p>` : ''}
                     ${report.processedAt ? `<p><strong>Опрацьовано:</strong> ${formatDateTime(report.processedAt)}</p>` : ''}
                     <p><strong>Створено:</strong> ${formatDateTime(report.createdAt)}</p>
+                    <p><strong>Враховується в підсумках:</strong> ${report.hashtagActive !== false ? '✅ Так' : '❌ Ні'}</p>
                 </div>
             </td>
         `;
@@ -569,14 +655,14 @@ const ReportsPage = (() => {
         try {
             await apiRequest('DELETE', `/api/reports/${id}`);
             showNotification('Звіт видалено');
-            await Promise.all([loadReports(), loadSummary()]);
+            await Promise.all([loadReports(), loadSummary(), loadHashtags()]);
         } catch (err) {
             showNotification('Помилка: ' + err.message, 'error');
         }
     }
 
     // ==========================================
-    // MODAL
+    // MODAL (with hashtag support)
     // ==========================================
 
     function openModal(report) {
@@ -584,12 +670,16 @@ const ReportsPage = (() => {
         if (!modal) return;
 
         _editingId = report?.id || null;
+        _modalHashtags = report?.hashtags ? [...report.hashtags] : [];
+
         document.getElementById('reportModalTitle').textContent = _editingId ? 'Редагувати звіт' : 'Додати звіт вручну';
         document.getElementById('reportType').value = report?.type || 'expense';
         document.getElementById('reportAmount').value = report?.amount || '';
         document.getElementById('reportDescription').value = report?.description || '';
         document.getElementById('reportCategory').value = report?.category || '';
         document.getElementById('reportEditId').value = _editingId || '';
+
+        renderModalHashtags();
 
         modal.classList.remove('hidden');
         modal.classList.add('active');
@@ -602,6 +692,40 @@ const ReportsPage = (() => {
             modal.classList.add('hidden');
         }
         _editingId = null;
+        _modalHashtags = [];
+    }
+
+    function renderModalHashtags() {
+        const container = document.getElementById('reportHashtagsInput');
+        if (!container) return;
+        container.innerHTML = _modalHashtags.map(tag =>
+            `<span class="rpt-hashtag" onclick="ReportsPage.removeModalHashtag('${esc(tag)}')" title="Клік щоб видалити">#${esc(tag)} ×</span>`
+        ).join('');
+    }
+
+    function addHashtagFromSelect() {
+        const select = document.getElementById('reportHashtagSelect');
+        const val = select?.value;
+        if (val && !_modalHashtags.includes(val)) {
+            _modalHashtags.push(val);
+            renderModalHashtags();
+        }
+        if (select) select.value = '';
+    }
+
+    function addHashtagCustom() {
+        const input = document.getElementById('reportHashtagNew');
+        const val = input?.value?.trim();
+        if (val && !_modalHashtags.includes(val)) {
+            _modalHashtags.push(val);
+            renderModalHashtags();
+        }
+        if (input) input.value = '';
+    }
+
+    function removeModalHashtag(tag) {
+        _modalHashtags = _modalHashtags.filter(t => t !== tag);
+        renderModalHashtags();
     }
 
     async function submitReport(event) {
@@ -623,7 +747,8 @@ const ReportsPage = (() => {
                     type,
                     amount: parseFloat(amount),
                     description,
-                    category
+                    category,
+                    hashtags: _modalHashtags
                 });
                 showNotification('Звіт оновлено');
             } else {
@@ -632,12 +757,13 @@ const ReportsPage = (() => {
                     amount: parseFloat(amount),
                     description,
                     category,
+                    hashtags: _modalHashtags,
                     submittedVia: 'web'
                 });
                 showNotification('Звіт створено');
             }
             closeModal();
-            await Promise.all([loadReports(), loadSummary()]);
+            await Promise.all([loadReports(), loadSummary(), loadHashtags()]);
         } catch (err) {
             showNotification('Помилка: ' + err.message, 'error');
         }
@@ -668,6 +794,7 @@ const ReportsPage = (() => {
         document.getElementById('statusFilter').value = '';
         document.getElementById('submittedByFilter').value = '';
         document.getElementById('categoryFilter').value = '';
+        document.getElementById('hashtagFilter').value = '';
         _page = 1;
         loadReports();
         loadSummary();
@@ -691,6 +818,11 @@ const ReportsPage = (() => {
         deleteReport,
         editReport,
         closeModal,
-        submitReport
+        submitReport,
+        filterByHashtag,
+        toggleHashtagActive,
+        addHashtagFromSelect,
+        addHashtagCustom,
+        removeModalHashtag
     };
 })();

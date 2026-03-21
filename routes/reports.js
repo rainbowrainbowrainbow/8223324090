@@ -196,6 +196,7 @@ router.get('/summary', async (req, res) => {
                 COALESCE(SUM(amount), 0) as total
             FROM reports
             WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+              AND hashtag_active IS NOT FALSE
             GROUP BY day, type
             ORDER BY day
         `, [fromDate, toDate]);
@@ -208,6 +209,7 @@ router.get('/summary', async (req, res) => {
                 COALESCE(SUM(amount), 0) as total
             FROM reports
             WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+              AND hashtag_active IS NOT FALSE
             GROUP BY category, type
             ORDER BY total DESC
         `, [fromDate, toDate]);
@@ -217,6 +219,7 @@ router.get('/summary', async (req, res) => {
             SELECT status, COUNT(*) as count
             FROM reports
             WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+              AND hashtag_active IS NOT FALSE
             GROUP BY status
         `, [fromDate, toDate]);
 
@@ -229,6 +232,7 @@ router.get('/summary', async (req, res) => {
                 COALESCE(SUM(amount), 0) as total
             FROM reports
             WHERE created_at::date = $1::date
+              AND hashtag_active IS NOT FALSE
             GROUP BY type
         `, [today]);
 

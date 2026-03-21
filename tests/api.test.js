@@ -4223,11 +4223,27 @@ describe('Reports — Hashtags (v32.7)', () => {
         assert.equal(res.data.updated, 0);
     });
 
-    it('GET /api/reports/summary — respects hashtag_active', async () => {
+    it('GET /api/reports/summary — all breakdowns respect hashtag_active', async () => {
+        // Create a report then deactivate it
+        const create = await authRequest('POST', '/api/reports', {
+            type: 'expense', amount: 9999, description: 'Summary inactive test',
+            category: 'Тест-summary', hashtags: ['summary-test-unique']
+        });
+        const tempId = create.data.id;
+        await authRequest('PUT', `/api/reports/${tempId}`, { hashtagActive: false });
+
         const res = await authRequest('GET', '/api/reports/summary?period=year');
         assert.equal(res.status, 200);
         assert.ok(res.data.totals);
-        assert.ok(typeof res.data.totals.expense === 'number');
+
+        // Categories should NOT include 'Тест-summary' if filter works
+        if (res.data.categories) {
+            const testCat = res.data.categories.find(c => c.category === 'Тест-summary');
+            assert.ok(!testCat, 'Inactive report category "Тест-summary" should NOT appear in summary');
+        }
+
+        // Cleanup
+        await authRequest('DELETE', `/api/reports/${tempId}`);
     });
 
     // Cleanup

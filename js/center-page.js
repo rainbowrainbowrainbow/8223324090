@@ -715,8 +715,8 @@ function renderReport(report) {
 
 function renderCharts(statsData) {
     if (!statsData || typeof Chart === 'undefined') {
-        document.getElementById('chartsSection').querySelector('.charts-grid').innerHTML =
-            '<div class="center-empty">Дані для графіків недоступні</div>';
+        const chartsGrid = document.getElementById('chartsSection')?.querySelector('.charts-grid');
+        if (chartsGrid) chartsGrid.innerHTML = '<div class="center-empty">Дані для графіків недоступні</div>';
         return;
     }
 

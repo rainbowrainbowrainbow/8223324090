@@ -143,7 +143,7 @@ async function gatherContext(username, dateStr) {
             [dateStr]
         );
         ctx.bookingsCount = parseInt(bookingsRes.rows[0].cnt);
-        ctx.totalRevenue = parseInt(bookingsRes.rows[0].revenue);
+        ctx.totalRevenue = parseFloat(bookingsRes.rows[0].revenue) || 0;
 
         // Preliminary bookings
         const prelimRes = await pool.query(

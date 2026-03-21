@@ -231,8 +231,10 @@ function closeBookingPanel() {
     if (AppState.editingBookingId) {
         AppState.editingBookingId = null;
         AppState.editingBookingUpdatedAt = null; // Clear optimistic lock
-        document.querySelector('#bookingPanel .panel-header h3').textContent = 'Нове бронювання';
-        document.querySelector('#bookingForm .btn-submit').textContent = 'Додати бронювання';
+        const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
+        const btnSubmit = document.querySelector('#bookingForm .btn-submit');
+        if (panelH3) panelH3.textContent = 'Нове бронювання';
+        if (btnSubmit) btnSubmit.textContent = 'Додати бронювання';
     }
 }
 
@@ -1355,8 +1357,10 @@ async function editBooking(bookingId) {
     await openBookingPanel(booking.time, booking.lineId);
 
     // Змінити заголовок і кнопку
-    document.querySelector('#bookingPanel .panel-header h3').textContent = 'Редагувати бронювання';
-    document.querySelector('#bookingForm .btn-submit').textContent = 'Зберегти зміни';
+    const editH3 = document.querySelector('#bookingPanel .panel-header h3');
+    const editBtn = document.querySelector('#bookingForm .btn-submit');
+    if (editH3) editH3.textContent = 'Редагувати бронювання';
+    if (editBtn) editBtn.textContent = 'Зберегти зміни';
 
     // Заповнити форму
     document.getElementById('roomSelect').value = booking.room || '';
@@ -1460,7 +1464,8 @@ async function duplicateBooking(bookingId) {
     await openBookingPanel(booking.time, booking.lineId);
 
     // Заголовок для дублювання
-    document.querySelector('#bookingPanel .panel-header h3').textContent = 'Повторити бронювання';
+    const dupH3 = document.querySelector('#bookingPanel .panel-header h3');
+    if (dupH3) dupH3.textContent = 'Повторити бронювання';
     document.querySelector('#bookingForm .btn-submit').textContent = 'Створити копію';
 
     // Pre-fill форму (ідентично editBooking)

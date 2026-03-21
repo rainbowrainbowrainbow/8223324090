@@ -432,7 +432,7 @@ function openFillWeekModal() {
 
     select.innerHTML = '<option value="all">Всі видимі працівники</option>';
     for (const emp of filtered) {
-        select.innerHTML += `<option value="${emp.id}">${emp.name} — ${emp.position}</option>`;
+        select.innerHTML += `<option value="${emp.id}">${escapeHtml(emp.name)} — ${escapeHtml(emp.position)}</option>`;
     }
 
     document.getElementById('fillStatus').value = 'working';

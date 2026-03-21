@@ -684,7 +684,8 @@ const TOXIC_KEYWORDS_BASE = [
     'закладка', 'закладки'
 ];
 
-// Dynamic toxic words loaded from DB
+// Dynamic toxic words loaded from DB (max 500 to prevent unbounded memory growth)
+const MAX_DYNAMIC_TOXIC_WORDS = 500;
 let _dynamicToxicWords = [];
 let _toxicWordsLoaded = false;
 
@@ -1123,7 +1124,7 @@ async function aiLearnToxicWords(content, username) {
                         'INSERT INTO guardian_toxic_words (word, added_by, source) VALUES ($1, $2, $3) ON CONFLICT (word) DO NOTHING',
                         [lower, 'guardian-ai', 'llm-detected']
                     );
-                    _dynamicToxicWords.push(lower);
+                    if (_dynamicToxicWords.length < MAX_DYNAMIC_TOXIC_WORDS) _dynamicToxicWords.push(lower);
                     log.info(`AI learned new toxic word: "${lower}" from ${username}`);
                 } catch (e) { /* duplicate or error, ignore */ }
             }
@@ -1179,7 +1180,7 @@ async function flushLearnBatch() {
                         'INSERT INTO guardian_toxic_words (word, added_by, source) VALUES ($1, $2, $3) ON CONFLICT (word) DO NOTHING',
                         [lower, 'guardian-ai', 'llm-detected']
                     );
-                    _dynamicToxicWords.push(lower);
+                    if (_dynamicToxicWords.length < MAX_DYNAMIC_TOXIC_WORDS) _dynamicToxicWords.push(lower);
                     log.info(`AI batch-learned toxic word: "${lower}"`);
                 } catch (e) { /* duplicate or error, ignore */ }
             }
@@ -1540,7 +1541,7 @@ async function _learnWordsFromLLM(words) {
                     `INSERT INTO guardian_toxic_words (word, added_by, source) VALUES ($1, 'guardian', 'llm-realtime') ON CONFLICT DO NOTHING`,
                     [word]
                 );
-                _dynamicToxicWords.push(word);
+                if (_dynamicToxicWords.length < MAX_DYNAMIC_TOXIC_WORDS) _dynamicToxicWords.push(word);
                 _fuzzyRegexes.push({ word, regex: buildFuzzyRegex(word) });
                 log.info(`Learned new toxic word from LLM: "${word}"`);
             } catch (err) {
@@ -2605,7 +2606,7 @@ async function cmdLearn(args) {
                 `INSERT INTO guardian_toxic_words (word) VALUES ($1) ON CONFLICT DO NOTHING`,
                 [word]
             );
-            _dynamicToxicWords.push(word);
+            if (_dynamicToxicWords.length < MAX_DYNAMIC_TOXIC_WORDS) _dynamicToxicWords.push(word);
             added.push(word);
         } catch {
             skipped.push(word);

@@ -930,14 +930,16 @@
         // Touch swipe
         const page = document.getElementById('catalogPage');
         if (!page) return;
-        page.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; }, { passive: true });
-        page.addEventListener('touchend', (e) => {
+        viewer._touchStartHandler = (e) => { touchStartX = e.touches[0].clientX; };
+        viewer._touchEndHandler = (e) => {
             const dx = e.changedTouches[0].clientX - touchStartX;
             if (Math.abs(dx) > 60) {
                 if (dx > 0 && catalogViewerIndex > 0) catalogNav(-1);
                 else if (dx < 0 && catalogViewerIndex < packages.length - 1) catalogNav(1);
             }
-        }, { passive: true });
+        };
+        page.addEventListener('touchstart', viewer._touchStartHandler, { passive: true });
+        page.addEventListener('touchend', viewer._touchEndHandler, { passive: true });
 
         // Keyboard nav
         viewer._keyHandler = (e) => {
@@ -959,6 +961,11 @@
         const viewer = document.getElementById('catalogViewer');
         if (viewer) {
             if (viewer._keyHandler) document.removeEventListener('keydown', viewer._keyHandler);
+            const page = document.getElementById('catalogPage');
+            if (page) {
+                if (viewer._touchStartHandler) page.removeEventListener('touchstart', viewer._touchStartHandler);
+                if (viewer._touchEndHandler) page.removeEventListener('touchend', viewer._touchEndHandler);
+            }
             viewer.remove();
         }
         document.body.style.overflow = '';

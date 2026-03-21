@@ -261,10 +261,15 @@ router.get('/knowledge-base', async (req, res) => {
         }
 
         const staffId = req.user?.id || null;
+        let staffSelect = '';
+        if (staffId) {
+            params.push(staffId);
+            staffSelect = `, (SELECT completed_at FROM knowledge_base_progress kbp WHERE kbp.article_id = kb.id AND kbp.staff_id = $${params.length}) as user_completed_at`;
+        }
         const result = await pool.query(
             `SELECT kb.*,
                     (SELECT COUNT(*) FROM training_tests t WHERE t.article_id = kb.id AND t.is_active = true) as test_count
-             ${staffId ? `, (SELECT completed_at FROM knowledge_base_progress kbp WHERE kbp.article_id = kb.id AND kbp.staff_id = ${parseInt(staffId)}) as user_completed_at` : ''}
+             ${staffSelect}
              FROM knowledge_base kb ${where}
              ORDER BY kb.sort_order, kb.created_at DESC`,
             params
@@ -347,16 +352,23 @@ router.get('/tests/:articleId', async (req, res) => {
 router.get('/tests-list', async (req, res) => {
     try {
         const staffId = req.user?.id;
+        const staffParams = [];
+        let staffSelect = '';
+        if (staffId) {
+            staffParams.push(staffId);
+            staffSelect = `, (SELECT MAX(score) FROM training_test_results WHERE test_id = t.id AND staff_id = $1) as best_score,
+                (SELECT passed FROM training_test_results WHERE test_id = t.id AND staff_id = $1 ORDER BY completed_at DESC LIMIT 1) as last_passed`;
+        }
         const result = await pool.query(
             `SELECT t.id, t.article_id, t.title, t.description, t.passing_score, t.time_limit_seconds,
                     kb.title as article_title, kb.icon as article_icon, kb.category, kb.role,
                     jsonb_array_length(t.questions) as question_count
-             ${staffId ? `, (SELECT MAX(score) FROM training_test_results WHERE test_id = t.id AND staff_id = ${parseInt(staffId)}) as best_score,
-                (SELECT passed FROM training_test_results WHERE test_id = t.id AND staff_id = ${parseInt(staffId)} ORDER BY completed_at DESC LIMIT 1) as last_passed` : ''}
+             ${staffSelect}
              FROM training_tests t
              JOIN knowledge_base kb ON kb.id = t.article_id
              WHERE t.is_active = true AND kb.is_active = true
-             ORDER BY kb.sort_order, t.id`
+             ORDER BY kb.sort_order, t.id`,
+            staffParams
         );
 
         const tests = result.rows;

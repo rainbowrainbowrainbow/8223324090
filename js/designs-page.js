@@ -626,7 +626,8 @@ function filterCollection(id) {
     // Switch to gallery tab filtered by collection
     document.getElementById('collectionFilter').value = id;
     document.querySelectorAll('.design-tab').forEach(t => t.classList.remove('active'));
-    document.querySelector('[data-tab="gallery"]').classList.add('active');
+    const galleryTab = document.querySelector('[data-tab="gallery"]');
+    if (galleryTab) galleryTab.classList.add('active');
     activeTab = 'gallery';
     document.getElementById('tabGallery').style.display = '';
     document.getElementById('tabCollections').style.display = 'none';

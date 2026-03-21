@@ -887,7 +887,9 @@ async function initArtDirectorPage() {
     if (!authed) return;
 
     if (!isAdminUser) {
-        document.querySelector('.artdir-page').innerHTML = `
+        const artdirPage = document.querySelector('.artdir-page');
+        if (!artdirPage) return;
+        artdirPage.innerHTML = `
             <div class="artdir-empty" style="padding:60px">
                 <span style="font-size:48px">🔒</span>
                 <h2>Доступ обмежено</h2>

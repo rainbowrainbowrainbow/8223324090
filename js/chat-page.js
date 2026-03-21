@@ -1338,7 +1338,18 @@
         var overlay = document.getElementById('chatForwardOverlay');
         var list = document.getElementById('chatForwardChannelList');
         var cancelBtn = document.getElementById('chatForwardCancel');
+        var preview = document.getElementById('chatForwardPreview');
         if (!overlay || !list) return;
+
+        // Show preview of original message
+        if (preview) {
+            var preContentEl = _contextMsg.el.querySelector('.chat-bubble-content');
+            var preUserEl = _contextMsg.el.querySelector('.chat-bubble-username');
+            preview.innerHTML =
+                '<div style="font-size:11px;color:var(--gray-400);margin-bottom:4px;">Переслати повідомлення від <b>' + _esc(preUserEl ? preUserEl.textContent : '?') + '</b>:</div>' +
+                '<div style="padding:8px 12px;background:var(--glass-bg);border-left:3px solid var(--primary);border-radius:0 8px 8px 0;font-size:13px;max-height:80px;overflow:hidden;">' +
+                _esc(preContentEl ? preContentEl.textContent.slice(0, 200) : '') + '</div>';
+        }
 
         // Load channels
         var channels = await _api('GET', '/channels');
@@ -1347,20 +1358,29 @@
             if (ch.id === (_currentChannel ? _currentChannel.id : -1)) return;
             var item = document.createElement('button');
             item.className = 'chat-forward-item';
-            item.textContent = (ch.isDm ? '💬 ' : '# ') + ch.name;
+            item.innerHTML = (ch.isDm ? '💬 ' : '# ') + _esc(ch.name.replace(/^#/, ''));
             item.addEventListener('click', async function () {
                 var contentEl = _contextMsg.el.querySelector('.chat-bubble-content');
                 var usernameEl = _contextMsg.el.querySelector('.chat-bubble-username');
-                var fwdContent = '↪ Переслано від ' + (usernameEl ? usernameEl.textContent : '?') + ':\n' +
-                    (contentEl ? contentEl.textContent : '');
+                var fromName = usernameEl ? usernameEl.textContent : '?';
+                var origText = contentEl ? contentEl.textContent : '';
                 try {
                     await _api('POST', '/channels/' + ch.id + '/messages', {
-                        content: fwdContent,
-                        metadata: { forwarded: { fromChannel: _currentChannel.id, fromMessageId: _contextMsg.id } }
+                        content: origText,
+                        metadata: {
+                            forwarded: {
+                                fromChannelId: _currentChannel ? _currentChannel.id : null,
+                                fromChannelName: _currentChannel ? _currentChannel.name : null,
+                                fromMessageId: _contextMsg.id,
+                                fromUsername: fromName
+                            }
+                        }
                     });
                     overlay.style.display = 'none';
+                    if (typeof showNotification === 'function') showNotification('✅ Переслано в ' + ch.name, 'success');
                 } catch (err) {
                     console.error('[Chat] Forward error:', err);
+                    if (typeof showNotification === 'function') showNotification('Помилка пересилання', 'error');
                 }
             });
             list.appendChild(item);
@@ -1627,7 +1647,7 @@
             } else {
                 if (_pinBtn) _pinBtn.classList.remove('active');
                 _infoBtn.classList.add('active');
-                document.getElementById('chatInfoPanelTitle').textContent = 'Учасники';
+                document.getElementById('chatInfoPanelTitle').textContent = _currentChannel ? _currentChannel.name : 'Канал';
                 _renderInfoPanel();
                 _infoPanel.classList.add('open');
             }
@@ -1645,15 +1665,50 @@
         var body = document.getElementById('chatInfoPanelBody');
         if (!body || !_currentChannel) return;
         body.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Завантаження...</div>';
+
+        // Get current user role from localStorage
+        var savedUser = localStorage.getItem('pzp_current_user');
+        var myRole = '';
+        try { myRole = JSON.parse(savedUser).role || ''; } catch(e) {}
+        var isAdmin = myRole === 'admin' || myRole === 'creator' || myRole === 'director';
+        var isDm = _currentChannel.isDm;
+
         try {
             var members = await _api('GET', '/channels/' + _currentChannel.id + '/members');
             _channelMembers = members || [];
         } catch (err) {
             _channelMembers = _chatUsers;
         }
+
+        var html = '';
+
+        // ─── Edit section (admin only, not DM) ───
+        if (isAdmin && !isDm) {
+            html += '<div class="chat-info-edit-section">' +
+                '<div class="chat-info-field"><label>Назва</label>' +
+                    '<input type="text" id="_infoPanelName" value="' + _esc((_currentChannel.name || '').replace(/^#/, '')) + '" maxlength="40">' +
+                '</div>' +
+                '<div class="chat-info-field"><label>Опис</label>' +
+                    '<input type="text" id="_infoPanelDesc" value="' + _esc(_currentChannel.description || '') + '" maxlength="200">' +
+                '</div>' +
+                '<button class="chat-info-save-btn" id="_infoPanelSave">💾 Зберегти</button>' +
+            '</div>';
+        }
+
+        // ─── Mute toggle ───
+        var isMuted = _currentChannel.muted || false;
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border-color);">' +
+            '<span style="font-size:14px;">🔔 Сповіщення</span>' +
+            '<label class="chat-mute-toggle">' +
+                '<input type="checkbox" id="_infoPanelMute"' + (isMuted ? ' checked' : '') + '>' +
+                '<span class="chat-mute-slider"></span>' +
+            '</label>' +
+        '</div>';
+
+        // ─── Members ───
         var count = _channelMembers.length;
-        var html = '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px 8px">' +
-            '<div class="chat-info-section-label" style="padding:0">' + count + ' ' + _pluralize(count, 'учасник', 'учасники', 'учасників') + '</div>' +
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px">' +
+            '<div class="chat-info-section-label" style="padding:0;font-weight:600">' + count + ' ' + _pluralize(count, 'учасник', 'учасники', 'учасників') + '</div>' +
             '<button class="chat-sidebar-action-btn" id="chatAddMemberBtn" title="Додати учасника"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>' +
             '</div>';
         var hasGuardian = _channelMembers.some(function (u) { return u.username === 'guardian'; });
@@ -1664,15 +1719,19 @@
             var colorClass = isGuardianUser ? '' : 'chat-avatar-color-' + _colorIdx(u.id || 0);
             var avatarStyle = isGuardianUser ? 'background:linear-gradient(135deg,#6366F1,#8B5CF6);color:white;' : isOpenclawUser ? 'background:linear-gradient(135deg,#10B981,#059669);color:white;' : '';
             var badgeHtml = isGuardianUser ? '<span class="chat-bot-badge guardian-badge" style="margin-left:6px;font-size:8px">GUARD</span>' : isOpenclawUser ? '<span class="chat-bot-badge" style="margin-left:6px;font-size:8px">BOT</span>' : '';
-            html += '<div class="chat-info-member" data-user-id="' + u.id + '" style="cursor:pointer">' +
+            var removeBtn = isAdmin && String(u.id || u.userId) !== _currentUserId && !isGuardianUser && !isOpenclawUser
+                ? '<button class="chat-info-member-remove" data-remove-uid="' + (u.id || u.userId) + '" title="Видалити">✕</button>'
+                : '';
+            html += '<div class="chat-info-member" data-user-id="' + (u.id || u.userId) + '" style="cursor:pointer;padding:4px 16px;">' +
                 '<div class="chat-info-member-avatar ' + colorClass + '"' + (avatarStyle ? ' style="' + avatarStyle + '"' : '') + '>' + initial + '</div>' +
-                '<div>' +
+                '<div style="flex:1">' +
                     '<div class="chat-info-member-name">' + _esc(u.displayName || u.username) + badgeHtml + '</div>' +
                     '<div class="chat-info-member-role">@' + _esc(u.username) + ' · ' + _esc(_roleLabel(u.role)) + '</div>' +
                 '</div>' +
+                removeBtn +
             '</div>';
         });
-        // Add Guardian invite button if not in channel
+        // Guardian invite
         if (!hasGuardian) {
             html += '<div class="chat-guardian-invite" id="chatGuardianInvite">' +
                 '<button class="chat-guardian-invite-btn">' +
@@ -1681,13 +1740,70 @@
                 '</button>' +
             '</div>';
         }
+
+        // ─── Danger zone (admin only, not DM) ───
+        if (isAdmin && !isDm) {
+            html += '<div class="chat-info-danger">' +
+                '<button class="chat-info-danger-btn" id="_infoPanelArchive">📦 Архівувати канал</button>' +
+                '<button class="chat-info-danger-btn chat-info-danger-btn--red" id="_infoPanelDelete">🗑️ Видалити канал</button>' +
+            '</div>';
+        }
+
         body.innerHTML = html;
+
+        // ─── Event listeners ───
+        // Save channel
+        var saveBtn = body.querySelector('#_infoPanelSave');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async function() {
+                var newName = (body.querySelector('#_infoPanelName') || {}).value || '';
+                var newDesc = (body.querySelector('#_infoPanelDesc') || {}).value || '';
+                if (!newName.trim()) return;
+                try {
+                    await _api('PATCH', '/channels/' + _currentChannel.id, {
+                        name: '#' + newName.trim(),
+                        description: newDesc.trim()
+                    });
+                    _currentChannel.name = '#' + newName.trim();
+                    _currentChannel.description = newDesc.trim();
+                    document.getElementById('chatHeaderName').textContent = '#' + newName.trim();
+                    document.getElementById('chatHeaderDesc').textContent = newDesc.trim();
+                    document.getElementById('chatInfoPanelTitle').textContent = '#' + newName.trim();
+                    _loadChannels();
+                    if (typeof showNotification === 'function') showNotification('✅ Канал оновлено', 'success');
+                } catch(e) { if (typeof showNotification === 'function') showNotification('Помилка збереження', 'error'); }
+            });
+        }
+
+        // Mute toggle
+        var muteEl = body.querySelector('#_infoPanelMute');
+        if (muteEl) {
+            muteEl.addEventListener('change', async function() {
+                try {
+                    var result = await _api('PUT', '/channels/' + _currentChannel.id + '/mute', { muted: muteEl.checked });
+                    _currentChannel.muted = result.muted;
+                } catch(e) { console.error('[Chat] Mute error:', e); }
+            });
+        }
 
         // Add member button
         var addBtn = body.querySelector('#chatAddMemberBtn');
         if (addBtn) {
             addBtn.addEventListener('click', function () { _openAddMemberModal(); });
         }
+
+        // Remove member buttons
+        body.querySelectorAll('.chat-info-member-remove').forEach(function(btn) {
+            btn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                var uid = btn.dataset.removeUid;
+                if (!confirm('Видалити учасника з каналу?')) return;
+                try {
+                    await _api('DELETE', '/channels/' + _currentChannel.id + '/members/' + uid);
+                    _renderInfoPanel();
+                } catch(e2) { if (typeof showNotification === 'function') showNotification('Помилка видалення', 'error'); }
+            });
+        });
 
         // Guardian invite button
         var guardianInvite = body.querySelector('#chatGuardianInvite');
@@ -1704,9 +1820,38 @@
             });
         }
 
+        // Archive channel
+        var archiveBtn = body.querySelector('#_infoPanelArchive');
+        if (archiveBtn) {
+            archiveBtn.addEventListener('click', async function() {
+                if (!confirm('Архівувати канал "' + _currentChannel.name + '"?')) return;
+                try {
+                    await _api('PATCH', '/channels/' + _currentChannel.id, { isArchived: true });
+                    _infoPanel.classList.remove('open');
+                    _loadChannels();
+                    if (typeof showNotification === 'function') showNotification('📦 Канал архівовано', 'success');
+                } catch(e) { if (typeof showNotification === 'function') showNotification('Помилка архівування', 'error'); }
+            });
+        }
+
+        // Delete channel
+        var deleteBtn = body.querySelector('#_infoPanelDelete');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', async function() {
+                if (!confirm('Видалити канал "' + _currentChannel.name + '"? Це незворотньо!')) return;
+                try {
+                    await _api('DELETE', '/channels/' + _currentChannel.id);
+                    _infoPanel.classList.remove('open');
+                    _loadChannels();
+                    if (typeof showNotification === 'function') showNotification('🗑️ Канал видалено', 'success');
+                } catch(e) { if (typeof showNotification === 'function') showNotification('Помилка видалення', 'error'); }
+            });
+        }
+
         // Click member → profile
         body.querySelectorAll('.chat-info-member[data-user-id]').forEach(function (el) {
-            el.addEventListener('click', function () {
+            el.addEventListener('click', function (ev) {
+                if (ev.target.closest('.chat-info-member-remove')) return;
                 _showUserProfile(parseInt(el.dataset.userId, 10));
             });
         });
@@ -2197,6 +2342,7 @@
                     '<span class="chat-bubble-time">' + time + readCheckHtml + '</span>' +
                 '</div>' +
                 replyHtml +
+                _renderForwardedBadge(msg) +
                 _renderFileAttachment(msg) +
                 '<div class="chat-bubble-content">' + content + '</div>' +
                 _renderLinkPreview(msg) +
@@ -2385,10 +2531,22 @@
                 '<img src="' + _esc(f.url) + '" alt="' + _esc(f.name) + '" class="chat-attached-image" loading="lazy" style="cursor:zoom-in">' +
             '</div>';
         }
-        // Audio/voice message
-        if (/\.(webm|ogg|mp3|wav)$/i.test(f.name)) {
-            return '<div class="chat-voice-player">' +
-                '<audio controls preload="metadata" class="chat-audio-element"><source src="' + _esc(f.url) + '" type="' + _esc(f.mimeType || 'audio/webm') + '"></audio>' +
+        // Audio/voice message — Telegram-style player
+        if (/\.(webm|ogg|mp3|wav|m4a)$/i.test(f.name)) {
+            var vmId = msg.id;
+            var vmDuration = (msg.metadata && msg.metadata.duration) ? msg.metadata.duration : ((meta.file && meta.file.duration) ? meta.file.duration : 0);
+            var vmDurStr = vmDuration > 0
+                ? Math.floor(vmDuration / 60) + ':' + String(vmDuration % 60).padStart(2, '0')
+                : '0:00';
+            var vmBars = '';
+            for (var bi = 0; bi < 20; bi++) {
+                var bh = 4 + Math.floor(Math.abs(Math.sin(bi * 1.7 + vmId)) * 20);
+                vmBars += '<div class="chat-voice-bar" style="height:' + bh + 'px" data-bar="' + bi + '"></div>';
+            }
+            return '<div class="chat-voice-player" data-voice-url="' + _esc(f.url) + '" data-voice-duration="' + vmDuration + '" data-voice-id="' + vmId + '" onclick="_handleVoiceClick(this)">' +
+                '<button class="chat-voice-play-btn" data-voice-id="' + vmId + '"></button>' +
+                '<div class="chat-voice-waveform-bars">' + vmBars + '</div>' +
+                '<span class="chat-voice-duration">' + _esc(vmDurStr) + '</span>' +
             '</div>';
         }
         // File attachment
@@ -3526,6 +3684,7 @@
             var formData = new FormData();
             formData.append('file', file);
             formData.append('caption', '🎙 Голосове (' + duration + 'с)');
+            formData.append('duration', String(duration));
 
             try {
                 var token = localStorage.getItem('pzp_token');
@@ -4596,6 +4755,76 @@
         textarea.style.height = 'auto';
         textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
     }
+
+    // ── Forwarded Badge (v33.5) ──────────────────────
+    function _renderForwardedBadge(msg) {
+        if (!msg.metadata || !msg.metadata.forwarded) return '';
+        var fwd = msg.metadata.forwarded;
+        return '<div class="chat-forwarded-badge">↪ Переслано' +
+            (fwd.fromUsername ? ' від <b>' + _esc(fwd.fromUsername) + '</b>' : '') +
+            (fwd.fromChannelName ? ' з <b>' + _esc(fwd.fromChannelName) + '</b>' : '') +
+            '</div>';
+    }
+
+    // ── Voice Player (v33.5) ─────────────────────────
+    var _voicePlayers = {};
+    window._handleVoiceClick = function(playerEl) {
+        var url      = playerEl.dataset.voiceUrl;
+        var msgId    = playerEl.dataset.voiceId;
+        var duration = parseInt(playerEl.dataset.voiceDuration) || 0;
+        var playBtn  = playerEl.querySelector('.chat-voice-play-btn');
+        var bars     = playerEl.querySelectorAll('.chat-voice-bar');
+        var durationEl = playerEl.querySelector('.chat-voice-duration');
+
+        // Stop all other players
+        Object.keys(_voicePlayers).forEach(function(id) {
+            if (id !== msgId && _voicePlayers[id]) {
+                _voicePlayers[id].audio.pause();
+                _voicePlayers[id].audio.currentTime = 0;
+                clearInterval(_voicePlayers[id].interval);
+                var otherBtn = document.querySelector('[data-voice-id="' + id + '"].chat-voice-play-btn');
+                if (otherBtn) otherBtn.classList.remove('playing');
+                document.querySelectorAll('[data-voice-id="' + id + '"] .chat-voice-bar').forEach(function(b) { b.classList.remove('active'); });
+            }
+        });
+
+        var player = _voicePlayers[msgId];
+        if (!player) {
+            var audio = new Audio(url);
+            player = { audio: audio, isPlaying: false, interval: null };
+            _voicePlayers[msgId] = player;
+            audio.addEventListener('ended', function() {
+                playBtn.classList.remove('playing');
+                clearInterval(player.interval);
+                bars.forEach(function(b) { b.classList.remove('active'); });
+                if (durationEl && duration > 0) {
+                    durationEl.textContent = Math.floor(duration / 60) + ':' + String(duration % 60).padStart(2, '0');
+                }
+                player.isPlaying = false;
+            });
+        }
+
+        if (player.isPlaying) {
+            player.audio.pause();
+            clearInterval(player.interval);
+            playBtn.classList.remove('playing');
+            player.isPlaying = false;
+        } else {
+            player.audio.play().catch(function(e) { console.warn('Voice play error:', e); });
+            playBtn.classList.add('playing');
+            player.isPlaying = true;
+            player.interval = setInterval(function() {
+                var progress = player.audio.currentTime / (player.audio.duration || 1);
+                bars.forEach(function(b, i) {
+                    b.classList.toggle('active', i / bars.length <= progress);
+                });
+                if (durationEl) {
+                    var remaining = Math.max(0, (player.audio.duration || duration) - player.audio.currentTime);
+                    durationEl.textContent = Math.floor(remaining / 60) + ':' + String(Math.floor(remaining % 60)).padStart(2, '0');
+                }
+            }, 100);
+        }
+    };
 
     function _esc(str) {
         if (!str) return '';

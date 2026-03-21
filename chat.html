@@ -475,13 +475,14 @@
         <!-- Forward message modal -->
         <div class="chat-modal-overlay" id="chatForwardOverlay" style="display:none">
             <div class="chat-modal">
-                <h3 class="chat-modal-title">Переслати повідомлення</h3>
+                <h3 class="chat-modal-title">↪ Переслати повідомлення</h3>
+                <div id="chatForwardPreview" style="margin-bottom:12px;"></div>
                 <div class="chat-modal-field">
-                    <label>Оберіть канал</label>
-                    <div id="chatForwardChannelList" class="chat-forward-list"></div>
+                    <label>Оберіть канал:</label>
+                    <div id="chatForwardChannelList" class="chat-forward-list" style="max-height:240px;overflow-y:auto;"></div>
                 </div>
                 <div class="chat-modal-actions">
-                    <button class="chat-modal-cancel" id="chatForwardCancel">Скасувати</button>
+                    <button class="chat-modal-btn chat-modal-btn-cancel" id="chatForwardCancel">Скасувати</button>
                 </div>
             </div>
         </div>

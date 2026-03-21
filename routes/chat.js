@@ -277,8 +277,9 @@ router.post('/channels/:id/upload', chatUpload.single('file'), async (req, res) 
 
         const file = req.file;
         const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.originalname);
+        const isAudio = /\.(webm|ogg|mp3|wav|m4a)$/i.test(file.originalname);
         const fileUrl = '/uploads/chat/' + file.filename;
-        const contentType = isImage ? 'image' : 'file';
+        const contentType = isImage ? 'image' : (isAudio ? 'voice' : 'file');
         const caption = req.body.caption || '';
 
         const metadata = {
@@ -287,8 +288,10 @@ router.post('/channels/:id/upload', chatUpload.single('file'), async (req, res) 
                 name: file.originalname,
                 size: file.size,
                 mimeType: file.mimetype,
-                type: contentType
-            }
+                type: contentType,
+                duration: parseInt(req.body.duration) || 0
+            },
+            duration: parseInt(req.body.duration) || 0
         };
 
         // Send as message with file metadata
@@ -694,7 +697,12 @@ router.patch('/channels/:id', async (req, res) => {
     try {
         const channelId = parseInt(req.params.id, 10);
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
-        const { name, description } = req.body;
+        const { name, description, isArchived } = req.body;
+        // Archive via dedicated method if requested
+        if (isArchived === true) {
+            await chat.archiveChannel(channelId);
+            return res.json({ success: true });
+        }
         const updated = await chat.updateChannel(channelId, { name, description });
         if (!updated) return res.status(404).json({ error: 'Channel not found' });
         res.json(updated);

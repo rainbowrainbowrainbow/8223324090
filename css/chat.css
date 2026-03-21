@@ -1756,12 +1756,54 @@ body.dark-mode .chat-theme-select {
     background: rgba(16,185,129,0.2);
 }
 .chat-voice-player {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--glass-bg, rgba(255,255,255,0.1));
+    border-radius: 18px;
+    min-width: 200px;
+    max-width: 280px;
+    cursor: pointer;
     margin: 4px 0;
 }
-.chat-audio-element {
-    max-width: 260px;
-    height: 36px;
-    border-radius: 18px;
+.chat-voice-play-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--primary, #6366f1);
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.15s, opacity 0.15s;
+    color: #fff; font-size: 14px;
+}
+.chat-voice-play-btn:hover { transform: scale(1.08); opacity: 0.9; }
+.chat-voice-play-btn.playing::before { content: '⏸'; }
+.chat-voice-play-btn:not(.playing)::before { content: '▶'; }
+.chat-voice-waveform-bars {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 28px;
+    overflow: hidden;
+}
+.chat-voice-bar {
+    width: 3px;
+    border-radius: 2px;
+    background: var(--primary, #6366f1);
+    opacity: 0.4;
+    transition: opacity 0.1s;
+    flex-shrink: 0;
+}
+.chat-voice-bar.active { opacity: 1; }
+.chat-voice-duration {
+    font-size: 11px;
+    color: var(--gray-400);
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-width: 32px;
+    text-align: right;
 }
 
 /* Slash command popup */
@@ -7490,3 +7532,70 @@ body.dark-mode .guardian-digest-generate-btn {
 .sound-toggle-switch input:checked + .sound-toggle-slider::before {
     transform: translateX(16px);
 }
+
+/* ── Forwarded Badge (v33.5) ──────────── */
+.chat-forwarded-badge {
+    font-size: 11px;
+    color: var(--primary, #6366f1);
+    border-left: 2px solid var(--primary, #6366f1);
+    padding: 2px 6px;
+    margin-bottom: 4px;
+    opacity: 0.85;
+}
+
+/* ── Channel Info Panel — Edit/Manage (v33.5) ── */
+.chat-info-edit-section {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+.chat-info-field { margin-bottom: 10px; }
+.chat-info-field label { font-size: 11px; color: var(--gray-400); display: block; margin-bottom: 4px; }
+.chat-info-field input {
+    width: 100%; padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px; font-size: 13px;
+    background: var(--input-bg, #fff);
+    box-sizing: border-box;
+}
+.chat-info-save-btn {
+    width: 100%; padding: 8px; margin-top: 4px;
+    background: var(--primary, #6366f1); color: #fff;
+    border: none; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-weight: 600;
+    transition: opacity 0.2s;
+}
+.chat-info-save-btn:hover { opacity: 0.9; }
+/* Mute toggle */
+.chat-mute-toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+.chat-mute-toggle input { display: none; }
+.chat-mute-slider {
+    position: absolute; inset: 0; border-radius: 10px;
+    background: var(--gray-200); cursor: pointer; transition: background 0.2s;
+}
+.chat-mute-toggle input:checked + .chat-mute-slider { background: var(--primary); }
+.chat-mute-slider::after {
+    content: ''; position: absolute;
+    width: 16px; height: 16px; border-radius: 50%;
+    top: 2px; left: 2px; background: #fff;
+    transition: transform 0.2s;
+}
+.chat-mute-toggle input:checked + .chat-mute-slider::after { transform: translateX(16px); }
+/* Danger zone */
+.chat-info-danger { padding: 12px 16px; background: rgba(239,68,68,0.03); }
+.chat-info-danger-btn {
+    width: 100%; padding: 8px; border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: none; cursor: pointer; font-size: 13px;
+    margin-bottom: 6px; text-align: left;
+    transition: background 0.2s;
+}
+.chat-info-danger-btn:hover { background: var(--gray-100); }
+.chat-info-danger-btn--red { color: #ef4444; border-color: rgba(239,68,68,0.3); }
+.chat-info-danger-btn--red:hover { background: rgba(239,68,68,0.07); }
+.chat-info-member-remove {
+    background: none; border: none; cursor: pointer;
+    color: var(--gray-300); font-size: 14px;
+    padding: 2px 4px; border-radius: 4px;
+    transition: color 0.2s; margin-left: auto;
+}
+.chat-info-member-remove:hover { color: #ef4444; }

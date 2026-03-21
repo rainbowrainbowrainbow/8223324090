@@ -18,6 +18,7 @@ const DashboardPage = (() => {
         currency:       { icon: '💱', title: 'Курси валют', minRole: 'manager' },
         announcements:  { icon: '📢', title: 'Оголошення', minRole: null },
         reports_today:  { icon: '📋', title: 'Звіти сьогодні', minRole: 'senior_manager' },
+        catalogs:       { icon: '🗂️', title: 'Каталоги', minRole: 'admin' },
     };
 
     let _config = { widgets: [], layout: {}, theme: 'default' };
@@ -201,6 +202,9 @@ const DashboardPage = (() => {
                 break;
             case 'reports_today':
                 renderReportsToday(data, container);
+                break;
+            case 'catalogs':
+                renderCatalogs(data, container);
                 break;
             default:
                 container.innerHTML = '<div class="widget-empty">Невідомий віджет</div>';
@@ -467,6 +471,39 @@ const DashboardPage = (() => {
                 Відкрити звіти →
             </a>
         `;
+    }
+
+    function renderCatalogs(data, container) {
+        const items = data.recentItems || [];
+        const defs = data.definitions || [];
+        let html = '';
+        if (defs.length) {
+            html += '<div class="catalog-defs-row">';
+            defs.forEach(d => {
+                html += `<span class="catalog-def-badge" title="${escapeHtml(d.name)}">${d.emoji} ${escapeHtml(d.name)} <small>(${d.count || 0})</small></span> `;
+            });
+            html += '</div>';
+        }
+        if (items.length) {
+            html += '<div class="catalog-mini-list">';
+            items.forEach(it => {
+                html += `<div class="catalog-mini-item">
+                    <div class="catalog-mini-thumb">${it.image_url ? '<img src="' + escapeHtml(it.image_url) + '" loading="lazy" alt="">' : '<span>' + (it.catalog_emoji || '🗂️') + '</span>'}</div>
+                    <div class="catalog-mini-info">
+                        <span class="catalog-mini-name">${escapeHtml(it.name)}</span>
+                        <span class="catalog-mini-meta">${escapeHtml(it.catalog_name || '')}${it.price ? ' · ' + it.price + ' грн' : ''}</span>
+                    </div>
+                </div>`;
+            });
+            html += '</div>';
+        } else {
+            html += '<div class="widget-empty">Позицій ще немає</div>';
+        }
+        html += `<div style="display:flex;gap:8px;margin-top:8px;justify-content:center">
+            <button class="btn-primary btn-sm" onclick="openAddCatalogItem()">+ Додати позицію</button>
+            <a href="/designs" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none;line-height:32px">Каталоги →</a>
+        </div>`;
+        container.innerHTML = html;
     }
 
     // Onboarding wizard

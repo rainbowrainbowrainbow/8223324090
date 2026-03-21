@@ -61,8 +61,8 @@ const ROLE_DEPARTMENTS = {
 // v24.3.0: Default dashboard widgets per role (all 24 roles)
 const DEFAULT_WIDGETS = {
     // Executive — full overview
-    creator:        ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'weather', 'currency', 'announcements'],
-    director:       ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'weather', 'currency', 'announcements'],
+    creator:        ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'catalogs', 'weather', 'currency', 'announcements'],
+    director:       ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'catalogs', 'weather', 'currency', 'announcements'],
     vice_director:  ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'finance_today', 'weather', 'announcements'],
     // Management
     senior_manager: ['quick_stats', 'tasks', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements'],

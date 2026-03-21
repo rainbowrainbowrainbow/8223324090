@@ -2933,6 +2933,11 @@ input:checked + .toggle-slider-sm::after { transform: translateX(12px); }
 .form-hint { font-size: 12px; color: var(--text-secondary, #888); margin-top: 4px; }
 .form-error { font-size: 12px; color: var(--danger, #E74C3C); margin-top: 4px; }
 
+.catalog-defs-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.catalog-def-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: var(--bg-secondary, #f5f5f5); border-radius: 12px; font-size: 12px; font-weight: 600; }
+.catalog-def-badge small { font-weight: 400; opacity: 0.7; }
+.catalog-mini-list { display: flex; flex-direction: column; }
+
 /* Dark mode catalog */
 .dark-mode .catalog-mini-thumb { background: rgba(255,255,255,0.06); }
 .dark-mode .catalog-mini-item { border-bottom-color: rgba(255,255,255,0.06); }

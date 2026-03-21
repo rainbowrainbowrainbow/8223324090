@@ -226,6 +226,15 @@ router.get('/widgets/:type', async (req, res) => {
                 break;
             }
 
+            case 'catalogs': {
+                const [catDefs, catItems] = await Promise.all([
+                    pool.query("SELECT cd.id, cd.name, cd.emoji, COUNT(ci.id)::int AS count FROM catalog_definitions cd LEFT JOIN catalog_items ci ON ci.catalog_id = cd.id AND ci.status = 'active' WHERE cd.is_active = true GROUP BY cd.id, cd.name, cd.emoji, cd.sort_order ORDER BY cd.sort_order").catch(() => ({ rows: [] })),
+                    pool.query("SELECT ci.id, ci.name, ci.price, ci.image_url, ci.catalog_id, cd.name AS catalog_name, cd.emoji AS catalog_emoji FROM catalog_items ci JOIN catalog_definitions cd ON cd.id = ci.catalog_id WHERE ci.status = 'active' ORDER BY ci.created_at DESC LIMIT 5").catch(() => ({ rows: [] })),
+                ]);
+                data = { definitions: catDefs.rows, recentItems: catItems.rows };
+                break;
+            }
+
             default:
                 return res.status(400).json({ error: 'Unknown widget type' });
         }

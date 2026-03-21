@@ -117,6 +117,11 @@ window.BookingForm = {
         document.getElementById('selectedProgram').value = '';
         document.getElementById('bookingNotes').value = '';
 
+        // v33.3: Reset tags and payment method
+        document.querySelectorAll('.booking-tag-option.active').forEach(t => t.classList.remove('active'));
+        const pmSel = document.getElementById('bookingPaymentMethod');
+        if (pmSel) pmSel.value = '';
+
         const groupInput = document.getElementById('bookingGroupName');
         if (groupInput) groupInput.value = '';
 

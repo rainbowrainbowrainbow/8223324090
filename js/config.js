@@ -181,10 +181,27 @@ function initDarkMode() {
         const autoEnd = parseInt(localStorage.getItem('pzp_night_end') || '7', 10);
         isDark = (autoStart > autoEnd) ? (hour >= autoStart || hour < autoEnd) : (hour >= autoStart && hour < autoEnd);
     } else {
-        isDark = false;
+        // v33.3: Fallback to system preference
+        isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
     document.body.classList.toggle('dark-mode', isDark);
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+
+    // v33.3: Listen for system theme changes (only if no manual override)
+    if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+            const manualSaved = localStorage.getItem('pzp_dark_mode');
+            if (manualSaved !== null) return; // User set it manually, don't override
+            const sysDark = e.matches;
+            document.body.classList.toggle('dark-mode', sysDark);
+            document.documentElement.setAttribute('data-theme', sysDark ? 'dark' : 'light');
+            const icon = document.getElementById('darkModeIcon');
+            if (icon) icon.textContent = sysDark ? '☀️' : '🌙';
+            const toggle = document.getElementById('darkModeToggle');
+            if (toggle) toggle.checked = sysDark;
+        });
+    }
+
     return isDark;
 }
 

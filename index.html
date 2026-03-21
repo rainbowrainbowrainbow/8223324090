@@ -15,19 +15,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=33.3.0">
-    <link rel="stylesheet" href="css/auth.css?v=33.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=33.3.0">
-    <link rel="stylesheet" href="css/timeline.css?v=33.3.0">
-    <link rel="stylesheet" href="css/panel.css?v=33.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=33.3.0">
-    <link rel="stylesheet" href="css/controls.css?v=33.3.0">
-    <link rel="stylesheet" href="css/features.css?v=33.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=33.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=33.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=33.3.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=33.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=33.3.0">
+    <link rel="stylesheet" href="css/base.css?v=33.4.0">
+    <link rel="stylesheet" href="css/auth.css?v=33.4.0">
+    <link rel="stylesheet" href="css/layout.css?v=33.4.0">
+    <link rel="stylesheet" href="css/timeline.css?v=33.4.0">
+    <link rel="stylesheet" href="css/panel.css?v=33.4.0">
+    <link rel="stylesheet" href="css/modals.css?v=33.4.0">
+    <link rel="stylesheet" href="css/controls.css?v=33.4.0">
+    <link rel="stylesheet" href="css/features.css?v=33.4.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=33.4.0">
+    <link rel="stylesheet" href="css/responsive.css?v=33.4.0">
+    <link rel="stylesheet" href="css/pages.css?v=33.4.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=33.4.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=33.4.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -44,9 +44,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v33.3.0 — System Analysis</p>
+                <p class="tagline">AI First CRM v33.4.0 — Test Build</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v33.3.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v33.4.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -427,7 +427,30 @@
                 <!-- Примітки -->
                 <div class="form-section">
                     <label>Примітки (опційно)</label>
-                    <input type="text" id="bookingNotes" placeholder="Додаткова інформація...">
+                    <textarea id="bookingNotes" rows="2" placeholder="Особливі побажання, алергії..." style="font-size:16px;width:100%;resize:vertical"></textarea>
+                </div>
+
+                <!-- v33.3: Теги бронювання -->
+                <div class="form-section">
+                    <label>Теги</label>
+                    <div class="booking-tag-selector" id="bookingTags">
+                        <span class="booking-tag-option" data-value="vip" onclick="toggleBookingTag(this)">⭐ VIP</span>
+                        <span class="booking-tag-option" data-value="allergy" onclick="toggleBookingTag(this)">⚠️ Алергія</span>
+                        <span class="booking-tag-option" data-value="difficult" onclick="toggleBookingTag(this)">🔴 Складний</span>
+                        <span class="booking-tag-option" data-value="corporate" onclick="toggleBookingTag(this)">🏢 Корпоратив</span>
+                    </div>
+                </div>
+
+                <!-- v33.3: Спосіб оплати -->
+                <div class="form-section">
+                    <label>Оплата</label>
+                    <select id="bookingPaymentMethod" style="font-size:16px">
+                        <option value="">— не вказано —</option>
+                        <option value="cash">💵 Готівка</option>
+                        <option value="card">💳 Картка</option>
+                        <option value="transfer">🏦 Переказ</option>
+                        <option value="prepaid">✅ Передоплата</option>
+                    </select>
                 </div>
 
                 <!-- v5.10: Група/Банкет -->
@@ -1207,11 +1230,28 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v33.3.0 — System Analysis (Claude Code, 21.03.2026)</h4>
+                    <h4>v33.4.0 — Test Build (Claude Code, 21.03.2026)</h4>
                     <ul>
-                        <li><b>Аналіз</b> — повний аудит архітектури: 46 routes, 21 service, 40 таблиць, 66K+ рядків JS</li>
-                        <li><b>Синхронізація</b> — мерж актуальної v33.2.0 з гілки claude/continue-event-genix-crm-1yeY8</li>
-                        <li><b>Версія</b> — бамп v33.2.0 → v33.3.0, cache busting на всіх CSS/JS ресурсах</li>
+                        <li><b>Тест</b> — тестова збірка для перевірки деплою та версіонування</li>
+                        <li><b>Мерж</b> — синхронізація з v33.3.0 CRM Audit Fixes</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.3.0 — CRM Audit Fixes (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>Tasks</b> — архівовано 1448 дублікатів, захист від нових дублів (409), bulk-дії (archive/done/assign/priority)</li>
+                        <li><b>Analytics</b> — реалізовано /bookings (totals, byProgram, byDay, byWeekday) та /revenue (totals, byCategory, monthly)</li>
+                        <li><b>Bookings</b> — paymentMethod зберігається в UPDATE, перевірка конфліктів аніматорів, occupancy endpoint</li>
+                        <li><b>Finance UI</b> — кнопка «💸 Витрата» для швидкого додавання витрат</li>
+                        <li><b>Leads</b> — source_channel додано в PATCH whitelist</li>
+                        <li><b>Customers</b> — search з live агрегацією totalBookings/totalSpent через JOIN</li>
+                        <li><b>Форма бронювання</b> — textarea для нотаток, теги (VIP/Алергія/Складний/Корпоратив), select оплати</li>
+                        <li><b>Staff</b> — payroll endpoint: агрегація подій × ставка за місяць</li>
+                        <li><b>Прайс</b> — таблиця price_history, GET /prices/:code/history, автозапис змін</li>
+                        <li><b>Settings</b> — PUT /settings/language (uk/en)</li>
+                        <li><b>Dark mode</b> — автоперемикання по prefers-color-scheme системи</li>
+                        <li><b>Afisha</b> — API генерації зображень через Kie.ai (POST/GET generate-image)</li>
+                        <li><b>Mobile</b> — timeline scroll, forms 1col, tables overflow, header compact</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -1785,7 +1825,7 @@
                         <li><b>Version Sync</b> — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG</li>
                         <li><b>Landing Carousel</b> — команда з каруселлю, Anli Lektor, swipe/dots/arrows [kleshnya]</li>
                         <li><b>Manager Guide</b> — нова сторінка для менеджерів з продажу [kleshnya]</li>
-                        <li><b>Cache Busting</b> — ?v=33.3.0 на всіх CSS/JS ресурсах (25 файлів)</li>
+                        <li><b>Cache Busting</b> — ?v=33.4.0 на всіх CSS/JS ресурсах (25 файлів)</li>
                         <li><b>Swagger API</b> — оновлена версія OpenAPI spec до v23.0.0</li>
                     </ul>
                 </div>
@@ -4541,27 +4581,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=33.3.0"></script>
-    <script src="js/api.js?v=33.3.0"></script>
-    <script src="js/ui.js?v=33.3.0"></script>
-    <script src="js/auth.js?v=33.3.0"></script>
-    <script src="js/timeline.js?v=33.3.0"></script>
-    <script src="js/booking.js?v=33.3.0"></script>
-    <script src="js/settings.js?v=33.3.0"></script>
-    <script src="js/booking-form.js?v=33.3.0"></script>
-    <script src="js/booking-linked.js?v=33.3.0"></script>
-    <script src="js/settings-dashboard.js?v=33.3.0"></script>
-    <script src="js/settings-history.js?v=33.3.0"></script>
-    <script src="js/settings-afisha.js?v=33.3.0"></script>
-    <script src="js/settings-certificates.js?v=33.3.0"></script>
-    <script src="js/offline.js?v=33.3.0"></script>
-    <script src="js/search.js?v=33.3.0"></script>
-    <script src="js/ws.js?v=33.3.0"></script>
-    <script src="js/app.js?v=33.3.0"></script>
-    <script src="js/achievement-popup.js?v=33.3.0"></script>
-    <script src="js/kleshnya-widget.js?v=33.3.0"></script>
-    <script src="js/components/sidebar.js?v=33.3.0"></script>
+    <script src="js/config.js?v=33.4.0"></script>
+    <script src="js/api.js?v=33.4.0"></script>
+    <script src="js/ui.js?v=33.4.0"></script>
+    <script src="js/auth.js?v=33.4.0"></script>
+    <script src="js/timeline.js?v=33.4.0"></script>
+    <script src="js/booking.js?v=33.4.0"></script>
+    <script src="js/settings.js?v=33.4.0"></script>
+    <script src="js/booking-form.js?v=33.4.0"></script>
+    <script src="js/booking-linked.js?v=33.4.0"></script>
+    <script src="js/settings-dashboard.js?v=33.4.0"></script>
+    <script src="js/settings-history.js?v=33.4.0"></script>
+    <script src="js/settings-afisha.js?v=33.4.0"></script>
+    <script src="js/settings-certificates.js?v=33.4.0"></script>
+    <script src="js/offline.js?v=33.4.0"></script>
+    <script src="js/search.js?v=33.4.0"></script>
+    <script src="js/ws.js?v=33.4.0"></script>
+    <script src="js/app.js?v=33.4.0"></script>
+    <script src="js/achievement-popup.js?v=33.4.0"></script>
+    <script src="js/kleshnya-widget.js?v=33.4.0"></script>
+    <script src="js/components/sidebar.js?v=33.4.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=33.3.0"></script>
+    <script src="js/role-panel.js?v=33.4.0"></script>
 </body>
 </html>

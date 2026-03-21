@@ -544,4 +544,50 @@ router.get('/checkins', async (req, res) => {
     }
 });
 
+// v33.3: GET /api/staff/payroll — Monthly payroll aggregation
+router.get('/payroll', async (req, res) => {
+    try {
+        const month = req.query.month || new Date().toISOString().slice(0, 7);
+        const mFrom = req.query.from || `${month}-01`;
+        const mTo = req.query.to || `${month}-31`;
+
+        const staff = await pool.query('SELECT * FROM staff WHERE is_active = true ORDER BY department, name');
+        const payroll = [];
+
+        for (const s of staff.rows) {
+            // Count bookings where staff is assigned as host or second animator
+            const events = await pool.query(`
+                SELECT COUNT(*)::int AS count, COALESCE(SUM(duration), 0)::int AS total_minutes
+                FROM bookings
+                WHERE (hosts = $1 OR second_animator = $1::text)
+                  AND date >= $2 AND date <= $3
+                  AND status != 'cancelled'
+            `, [s.id, mFrom, mTo]);
+
+            const e = events.rows[0];
+            const hoursWorked = Math.round(e.total_minutes / 60 * 10) / 10;
+            const hourlyRate = parseFloat(s.hourly_rate) || 0;
+            const salary = Math.round(hoursWorked * hourlyRate);
+
+            payroll.push({
+                staffId: s.id,
+                name: s.name,
+                department: s.department,
+                position: s.position,
+                eventsCount: e.count,
+                hoursWorked,
+                hourlyRate,
+                salary,
+                avgRating: parseFloat(s.avg_rating) || 0
+            });
+        }
+
+        const totalFOP = payroll.reduce((sum, p) => sum + p.salary, 0);
+        res.json({ month, from: mFrom, to: mTo, payroll, totalFOP });
+    } catch (err) {
+        log.error('GET /staff/payroll error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

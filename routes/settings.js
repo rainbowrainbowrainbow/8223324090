@@ -72,6 +72,24 @@ router.post('/settings', requireRole('creator', 'director'), async (req, res) =>
     }
 });
 
+// v33.3: PUT /api/settings/language — dedicated language endpoint
+router.put('/settings/language', requireRole('creator', 'director', 'admin', 'user'), async (req, res) => {
+    try {
+        const { value } = req.body;
+        if (!['uk', 'en'].includes(value)) {
+            return res.status(400).json({ error: 'value must be uk or en' });
+        }
+        await pool.query(
+            `INSERT INTO settings (key, value) VALUES ('language', $1) ON CONFLICT (key) DO UPDATE SET value = $1`,
+            [value]
+        );
+        settingsCache.invalidate('language');
+        res.json({ success: true, value });
+    } catch (err) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Free rooms
 router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
     try {

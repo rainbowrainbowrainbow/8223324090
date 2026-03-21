@@ -1681,8 +1681,29 @@ async function checkStaleCatalogImages() {
              LIMIT 10`
         );
         if (!stale.rowCount) return;
+        const https = require('https');
         const KIE_KEY = '5dabed41ea307ecc6ca17010eaaf90b0';
         const DEFAULT_STYLE = 'colorful illustration, white background, no text';
+
+        function kieHttpRequest(method, path, postBody) {
+            return new Promise((resolve, reject) => {
+                const opts = {
+                    hostname: 'api.kie.ai', path, method,
+                    headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json' }
+                };
+                if (postBody) opts.headers['Content-Length'] = Buffer.byteLength(postBody);
+                const req = https.request(opts, res => {
+                    let d = '';
+                    res.on('data', c => d += c);
+                    res.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve(null); } });
+                });
+                req.on('error', reject);
+                req.setTimeout(30000, () => { req.destroy(); reject(new Error('timeout')); });
+                if (postBody) req.write(postBody);
+                req.end();
+            });
+        }
+
         let refreshed = 0;
         for (const item of stale.rows) {
             try {
@@ -1690,24 +1711,13 @@ async function checkStaleCatalogImages() {
                 const themeCtx = [item.name, item.subcategory].filter(Boolean).join(', ');
                 const prompt = `${style}. Product: "${themeCtx}". Ukrainian children's park.`;
                 const body = JSON.stringify({ model: 'google/nano-banana', input: { prompt, image_size: '1:1' } });
-                const taskData = await new Promise((resolve, reject) => {
-                    const req = require('https').request({
-                        hostname: 'api.kie.ai', path: '/api/v1/jobs/createTask', method: 'POST',
-                        headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-                    }, res => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(JSON.parse(d))); });
-                    req.on('error', reject); req.write(body); req.end();
-                });
+                const taskData = await kieHttpRequest('POST', '/api/v1/jobs/createTask', body);
                 if (!taskData?.data?.taskId) continue;
                 await new Promise(r => setTimeout(r, 20000));
-                const pollData = await new Promise((resolve, reject) => {
-                    const req = require('https').request({
-                        hostname: 'api.kie.ai', path: `/api/v1/jobs/recordInfo?taskId=${taskData.data.taskId}`, method: 'GET',
-                        headers: { 'Authorization': `Bearer ${KIE_KEY}` }
-                    }, res => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(JSON.parse(d))); });
-                    req.on('error', reject); req.end();
-                });
+                const pollData = await kieHttpRequest('GET', `/api/v1/jobs/recordInfo?taskId=${taskData.data.taskId}`);
                 const rj = pollData?.data?.resultJson;
-                const url = rj ? JSON.parse(typeof rj === 'string' ? rj : '{}')?.resultUrls?.[0] : null;
+                let url = null;
+                try { url = rj ? JSON.parse(typeof rj === 'string' ? rj : '{}')?.resultUrls?.[0] : null; } catch { /* ignore */ }
                 if (url) {
                     await pool.query('UPDATE catalog_items SET image_url = $1, updated_at = NOW() WHERE id = $2', [url, item.id]);
                     refreshed++;

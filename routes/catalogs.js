@@ -50,7 +50,7 @@ function parseKieImageUrl(data) {
 }
 
 // ─── Catalog definitions ─────────────────────────────────────
-router.get('/definitions', async (req, res) => {
+router.get('/definitions', requireRole('admin', 'user'), async (req, res) => {
     try {
         const defs = await pool.query(
             'SELECT * FROM catalog_definitions WHERE is_active = true ORDER BY sort_order'
@@ -113,7 +113,8 @@ router.get('/items', async (req, res) => {
         const conds  = [];
         const params = [];
         let idx = 1;
-        if (!includeArchived) { conds.push(`ci.status = $${idx++}`); params.push(status || 'active'); }
+        if (!includeArchived) { conds.push(`ci.status = $${idx++}`); params.push('active'); }
+        else if (status) { conds.push(`ci.status = $${idx++}`); params.push(status); }
         if (catalogId)   { conds.push(`ci.catalog_id = $${idx++}`);  params.push(catalogId); }
         if (subcategory) { conds.push(`ci.subcategory = $${idx++}`); params.push(subcategory); }
         const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
@@ -312,7 +313,7 @@ router.post('/apply-image', requireRole('admin', 'user'), async (req, res) => {
     }
 });
 
-router.get('/kie-balance', async (req, res) => {
+router.get('/kie-balance', requireRole('admin', 'user'), async (req, res) => {
     try {
         const r = await kieRequest('GET', '/api/v1/chat/credit');
         res.json({ success: true, balance: r?.data || 0 });
@@ -344,7 +345,7 @@ router.post('/items/:id/telegram', requireRole('admin', 'user'), async (req, res
 });
 
 // ─── Price suggestion ────────────────────────────────────────
-router.post('/suggest-price', async (req, res) => {
+router.post('/suggest-price', requireRole('admin', 'user'), async (req, res) => {
     try {
         const { catalogId, subcategory, complexity } = req.body;
         const conds  = ["catalog_id = $1", "status = 'active'", "price > 0"];
@@ -427,7 +428,7 @@ router.post('/publish', requireRole('admin', 'user'), async (req, res) => {
 });
 
 // ─── Demand stats ────────────────────────────────────────────
-router.get('/demand-stats', async (req, res) => {
+router.get('/demand-stats', requireRole('admin', 'user'), async (req, res) => {
     try {
         const { catalogId } = req.query;
         let query, params = [];

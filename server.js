@@ -266,6 +266,9 @@ app.get('/programs', (req, res) => {
 app.get('/staff', (req, res) => {
     res.sendFile(path.join(__dirname, 'staff.html'));
 });
+app.get('/copilot', (req, res) => {
+    res.sendFile(path.join(__dirname, 'copilot.html'));
+});
 app.get('/kleshnya', (req, res) => {
     res.redirect('/chat');
 });

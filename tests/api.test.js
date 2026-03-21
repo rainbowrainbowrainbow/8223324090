@@ -4253,3 +4253,115 @@ describe('Reports — Hashtags (v32.7)', () => {
         assert.equal(res.status, 200);
     });
 });
+
+// ==========================================
+// Finance Accounts (v33.5)
+// ==========================================
+describe('Finance Accounts', () => {
+    let createdAccountId;
+
+    it('GET /api/finance/accounts — list active accounts', async () => {
+        const res = await authRequest('GET', '/api/finance/accounts');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.ok(Array.isArray(res.data.accounts));
+        assert.ok(res.data.accounts.length >= 4, 'Should have at least 4 seeded accounts');
+        const kasa = res.data.accounts.find(a => a.type === 'cash');
+        assert.ok(kasa, 'Should have cash account');
+        assert.ok(kasa.name, 'Account should have name');
+        assert.ok(kasa.emoji, 'Account should have emoji');
+    });
+
+    it('POST /api/finance/accounts — validation: name required', async () => {
+        const res = await authRequest('POST', '/api/finance/accounts', {});
+        assert.equal(res.status, 400);
+        assert.ok(res.data.error.includes('name'));
+    });
+
+    it('POST /api/finance/accounts — validation: invalid type', async () => {
+        const res = await authRequest('POST', '/api/finance/accounts', {
+            name: 'Bad type test', type: 'crypto'
+        });
+        assert.equal(res.status, 400);
+        assert.ok(res.data.error.includes('type'));
+    });
+
+    it('POST /api/finance/accounts — create account', async () => {
+        const res = await authRequest('POST', '/api/finance/accounts', {
+            name: 'Test Account ' + Date.now(),
+            emoji: '🧪',
+            type: 'card',
+            description: 'Test account'
+        });
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+        assert.ok(res.data.success);
+        assert.ok(res.data.account.id);
+        assert.equal(res.data.account.emoji, '🧪');
+        assert.equal(res.data.account.type, 'card');
+        createdAccountId = res.data.account.id;
+    });
+
+    it('PATCH /api/finance/accounts/:id — update account', async () => {
+        assert.ok(createdAccountId, 'Need account ID from create step');
+        const res = await authRequest('PATCH', `/api/finance/accounts/${createdAccountId}`, {
+            name: 'Updated Test Account',
+            sortOrder: 50
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        assert.equal(res.data.account.name, 'Updated Test Account');
+        assert.equal(res.data.account.sort_order, 50);
+    });
+
+    it('PATCH /api/finance/accounts/:id — boolean coercion for isActive', async () => {
+        assert.ok(createdAccountId, 'Need account ID');
+        const res = await authRequest('PATCH', `/api/finance/accounts/${createdAccountId}`, {
+            isActive: false
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.account.is_active, false, 'isActive=false should deactivate');
+        // Re-activate
+        const res2 = await authRequest('PATCH', `/api/finance/accounts/${createdAccountId}`, {
+            isActive: true
+        });
+        assert.equal(res2.status, 200);
+        assert.equal(res2.data.account.is_active, true);
+    });
+
+    it('PATCH /api/finance/accounts/:id — validation: nothing to update', async () => {
+        assert.ok(createdAccountId, 'Need account ID');
+        const res = await authRequest('PATCH', `/api/finance/accounts/${createdAccountId}`, {});
+        assert.equal(res.status, 400);
+    });
+
+    it('PATCH /api/finance/accounts/999999 — not found', async () => {
+        const res = await authRequest('PATCH', '/api/finance/accounts/999999', { name: 'x' });
+        assert.equal(res.status, 404);
+    });
+
+    it('PATCH /api/finance/accounts/abc — invalid ID', async () => {
+        const res = await authRequest('PATCH', '/api/finance/accounts/abc', { name: 'x' });
+        assert.equal(res.status, 400);
+    });
+
+    it('DELETE /api/finance/accounts/:id — soft delete', async () => {
+        assert.ok(createdAccountId, 'Need account ID');
+        const res = await authRequest('DELETE', `/api/finance/accounts/${createdAccountId}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success);
+        // Verify not in active list
+        const list = await authRequest('GET', '/api/finance/accounts');
+        const found = list.data.accounts.find(a => a.id === createdAccountId);
+        assert.ok(!found, 'Deleted account should not appear in active list');
+    });
+
+    it('DELETE /api/finance/accounts/999999 — not found', async () => {
+        const res = await authRequest('DELETE', '/api/finance/accounts/999999');
+        assert.equal(res.status, 404);
+    });
+
+    it('DELETE /api/finance/accounts/abc — invalid ID', async () => {
+        const res = await authRequest('DELETE', '/api/finance/accounts/abc');
+        assert.equal(res.status, 400);
+    });
+});

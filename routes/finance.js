@@ -1449,6 +1449,8 @@ router.get('/advanced-dashboard', async (req, res) => {
 });
 
 // ─── Finance Accounts (v33.5) ────────────────────────────────
+const ACCOUNT_TYPES = ['cash', 'card', 'bank'];
+
 router.get('/accounts', async (req, res) => {
     try {
         const result = await pool.query(
@@ -1456,7 +1458,8 @@ router.get('/accounts', async (req, res) => {
         );
         res.json({ success: true, accounts: result.rows });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        log.error('GET /accounts error', err);
+        res.status(500).json({ success: false, error: 'Database error' });
     }
 });
 
@@ -1464,30 +1467,36 @@ router.post('/accounts', requireRole('admin', 'senior_manager'), async (req, res
     try {
         const { name, emoji, description, type, sortOrder } = req.body;
         if (!name?.trim()) return res.status(400).json({ error: 'name required' });
+        if (type && !ACCOUNT_TYPES.includes(type)) {
+            return res.status(400).json({ error: 'Invalid type (cash|card|bank)' });
+        }
         const r = await pool.query(
             `INSERT INTO finance_accounts (name, emoji, description, type, sort_order, created_by)
              VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-            [name.trim(), emoji || '💳', description || null,
+            [name.trim(), emoji || '💳', description?.trim() || null,
              type || 'cash', sortOrder || 99, req.user.username]
         );
         res.json({ success: true, account: r.rows[0] });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        log.error('POST /accounts error', err);
+        res.status(500).json({ success: false, error: 'Database error' });
     }
 });
 
 router.patch('/accounts/:id', requireRole('admin', 'senior_manager'), async (req, res) => {
     try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ error: 'Invalid account ID' });
         const { name, emoji, description, isActive, sortOrder } = req.body;
         const sets = [], vals = [];
         let idx = 1;
-        if (name !== undefined)        { sets.push(`name = $${idx++}`);        vals.push(name); }
-        if (emoji !== undefined)       { sets.push(`emoji = $${idx++}`);       vals.push(emoji); }
-        if (description !== undefined) { sets.push(`description = $${idx++}`); vals.push(description); }
-        if (isActive !== undefined)    { sets.push(`is_active = $${idx++}`);   vals.push(isActive); }
-        if (sortOrder !== undefined)   { sets.push(`sort_order = $${idx++}`);  vals.push(sortOrder); }
+        if (name !== undefined)        { sets.push(`name = $${idx++}`);        vals.push(String(name).trim()); }
+        if (emoji !== undefined)       { sets.push(`emoji = $${idx++}`);       vals.push(String(emoji).slice(0, 10)); }
+        if (description !== undefined) { sets.push(`description = $${idx++}`); vals.push(description?.trim() || null); }
+        if (isActive !== undefined)    { sets.push(`is_active = $${idx++}`);   vals.push(isActive === true || isActive === 'true'); }
+        if (sortOrder !== undefined)   { sets.push(`sort_order = $${idx++}`);  vals.push(parseInt(sortOrder, 10) || 0); }
         if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
-        vals.push(req.params.id);
+        vals.push(id);
         const r = await pool.query(
             `UPDATE finance_accounts SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
             vals
@@ -1495,16 +1504,21 @@ router.patch('/accounts/:id', requireRole('admin', 'senior_manager'), async (req
         if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
         res.json({ success: true, account: r.rows[0] });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        log.error('PATCH /accounts error', err);
+        res.status(500).json({ success: false, error: 'Database error' });
     }
 });
 
 router.delete('/accounts/:id', requireRole('admin'), async (req, res) => {
     try {
-        await pool.query('UPDATE finance_accounts SET is_active = false WHERE id = $1', [req.params.id]);
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ error: 'Invalid account ID' });
+        const r = await pool.query('UPDATE finance_accounts SET is_active = false WHERE id = $1', [id]);
+        if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        log.error('DELETE /accounts error', err);
+        res.status(500).json({ success: false, error: 'Database error' });
     }
 });
 

@@ -123,6 +123,13 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
             return res.status(400).json({ error: 'Amount must be > 0' });
         }
 
+        // Validate account_id if provided
+        const accountIdInt = account_id ? parseInt(account_id, 10) : null;
+        if (account_id && isNaN(accountIdInt)) {
+            return res.status(400).json({ error: 'Invalid account_id (must be integer)' });
+        }
+        const accName = account_name ? String(account_name).slice(0, 100) : null;
+
         // submitted_by_id from bot is Telegram chat_id, not staff.id
         // Store chat_id in raw_data, leave submitted_by_id null to avoid FK violation
         const botRawData = raw_data || {};
@@ -148,8 +155,8 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
             voice_transcript || null,
             JSON.stringify(botRawData),
             status,
-            account_id || null,
-            account_name || null
+            accountIdInt,
+            accName
         ]);
 
         const report = result.rows[0];

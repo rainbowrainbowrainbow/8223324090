@@ -297,6 +297,13 @@ function showMainApp() {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProfileModal(); }
         });
     }
+
+    // v32.8: Auto-open settings if navigated from sidebar (?settings=open)
+    if (window.location.search.includes('settings=open') && typeof showSettings === 'function') {
+        setTimeout(() => showSettings(), 300);
+        // Clean URL without reload
+        history.replaceState(null, '', '/');
+    }
 }
 
 // v10.6: Personal cabinet — full rebuild with tabs, achievements, shift, inbox, progress ring

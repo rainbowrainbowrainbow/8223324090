@@ -39,11 +39,10 @@ const Sidebar = (() => {
         // BLOCK 4: System
         { type: 'divider' },
         { type: 'section', label: 'Система' },
-        { href: '/kleshnya',  icon: '🦞', label: 'Клешня',        access: 'all' },
         { href: '/status',    icon: '🔦', label: 'Статус',        access: 'all' },
         { href: '/game',      icon: '🎮', label: 'Гра',           access: 'all' },
         { href: '/demo',      icon: '🎬', label: 'Demo',          access: 'demo' },
-        { href: '#settings',  icon: '⚙️', label: 'Налаштування', access: 'settings', action: 'showSettings' },
+        { href: '/?settings=open', icon: '⚙️', label: 'Налаштування', access: 'settings' },
     ];
 
     // ═══ SIDEBAR_ACCESS matrix — role → visible pages ═══
@@ -241,7 +240,8 @@ const Sidebar = (() => {
             }
 
             const isActive = currentPath === item.href ||
-                (item.href !== '/' && item.href !== '#settings' && currentPath.startsWith(item.href));
+                (item.href === '/?settings=open' && window.location.search.includes('settings=open')) ||
+                (item.href !== '/' && !item.href.startsWith('/?') && currentPath.startsWith(item.href));
 
             const actionAttr = item.action
                 ? ` data-action="${item.action}" onclick="event.preventDefault(); if(typeof ${item.action}==='function') ${item.action}();"`

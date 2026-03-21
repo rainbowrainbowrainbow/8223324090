@@ -81,7 +81,7 @@ function renderShop() {
             ${item.isReal ? `<div class="shop-card-real">Реальний приз: ${escapeHtml(item.realValue)}</div>` : ''}
             ${owned
                 ? '<button class="shop-buy-btn" disabled>✅ У вас є</button>'
-                : `<button class="shop-buy-btn" ${!canAfford ? 'disabled' : ''} onclick="buyItem(${item.id}, '${escapeHtml(item.name)}')">${canAfford ? '🛒 Купити' : '🔒 Замало монет'}</button>`
+                : `<button class="shop-buy-btn" ${!canAfford ? 'disabled' : ''} onclick="buyItem(${item.id}, this.dataset.name)" data-name="${escapeHtml(item.name)}">${canAfford ? '🛒 Купити' : '🔒 Замало монет'}</button>`
             }
         </div>`;
     }).join('');

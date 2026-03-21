@@ -64,7 +64,11 @@ async function queueNotification(text, bookingId, notificationType) {
  * Ensure a periodic flush timer is active
  */
 function ensureFlushTimer(mode) {
-    if (_flushTimer) return;
+    // Clear existing timer when mode changes
+    if (_flushTimer) {
+        clearInterval(_flushTimer);
+        _flushTimer = null;
+    }
 
     const interval = DIGEST_INTERVALS[mode];
     if (!interval) return;

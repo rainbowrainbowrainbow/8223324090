@@ -629,12 +629,21 @@ async function addProcItem() {
 }
 
 async function toggleProcItem(listId, itemId, checked) {
-    await apiUpdateProcurementItem(listId, itemId, { isPurchased: checked });
+    try {
+        await apiUpdateProcurementItem(listId, itemId, { isPurchased: checked });
+    } catch (e) {
+        alert('Помилка оновлення: ' + e.message);
+        await openProcDetail(listId);
+    }
 }
 
 async function removeProcItem(listId, itemId) {
-    await apiDeleteProcurementItem(listId, itemId);
-    await openProcDetail(listId);
+    try {
+        await apiDeleteProcurementItem(listId, itemId);
+        await openProcDetail(listId);
+    } catch (e) {
+        alert('Помилка видалення: ' + e.message);
+    }
 }
 
 async function completeProcList() {

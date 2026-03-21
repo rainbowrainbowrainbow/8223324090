@@ -310,16 +310,16 @@
     background: rgba(0,0,0,0.5);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    z-index: 999;
-    animation: overlayFadeIn 0.25s var(--ease-smooth);
+    z-index: 1001;
+    opacity: 1;
+    transition: opacity 0.25s var(--ease-smooth);
 }
 
-@keyframes overlayFadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+.sidebar-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+    display: none;
 }
-
-.sidebar-overlay.hidden { display: none; }
 
 .sidebar-toggle {
     display: none;

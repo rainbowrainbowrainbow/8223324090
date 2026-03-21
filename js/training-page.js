@@ -145,10 +145,12 @@
 
             overlay.classList.add('active');
 
-            modal.querySelector('#closeReadModal').addEventListener('click', () => overlay.classList.remove('active'));
+            const closeBtn = modal.querySelector('#closeReadModal');
+            if (closeBtn) closeBtn.addEventListener('click', () => overlay.classList.remove('active'));
             overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('active'); });
 
-            modal.querySelector('.btn-mark-read').addEventListener('click', async function() {
+            const markReadBtn = modal.querySelector('.btn-mark-read');
+            if (markReadBtn) markReadBtn.addEventListener('click', async function() {
                 try {
                     await fetch(API + '/api/training/knowledge-base/' + article.id + '/mark-read', { method: 'POST', headers });
                     this.textContent = '✓ Готово!';

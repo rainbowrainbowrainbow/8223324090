@@ -412,7 +412,7 @@ const CopilotPage = (() => {
                 ${data.nextStep ? `<div class="ai-meta-item" style="margin-top:10px;"><span class="label">➡️</span><span class="content"><b>Наступний крок:</b> ${escHtml(data.nextStep)}</span></div>` : ''}
             </div>`;
         } catch (e) {
-            result.innerHTML = `<div style="color:var(--danger-color);padding:10px;">Помилка: ${e.message}</div>`;
+            result.innerHTML = `<div style="color:var(--danger-color);padding:10px;">Помилка: ${escHtml(e.message)}</div>`;
         }
     }
 
@@ -903,7 +903,7 @@ const CopilotPage = (() => {
                 <div style="font-size:14px;line-height:1.7;color:#fff;white-space:pre-line;">${escHtml(data.answer)}</div>
             </div>`;
         } catch (e) {
-            result.innerHTML = `<div style="color:var(--danger-color);">Помилка: ${e.message}</div>`;
+            result.innerHTML = `<div style="color:var(--danger-color);">Помилка: ${escHtml(e.message)}</div>`;
         }
     }
 
@@ -1013,7 +1013,7 @@ const CopilotPage = (() => {
                 </div>
             `).join('');
         } catch (e) {
-            list.innerHTML = `<div style="color:var(--danger-color);padding:20px;">Помилка: ${e.message}</div>`;
+            list.innerHTML = `<div style="color:var(--danger-color);padding:20px;">Помилка: ${escHtml(e.message)}</div>`;
         }
     }
 
@@ -1042,7 +1042,7 @@ const CopilotPage = (() => {
                 </div>`;
             }).join('') || '<div style="color:var(--text-muted);padding:20px;text-align:center;">Всі ліди в нормі ✅</div>';
         } catch (e) {
-            list.innerHTML = `<div style="color:var(--danger-color);">Помилка: ${e.message}</div>`;
+            list.innerHTML = `<div style="color:var(--danger-color);">Помилка: ${escHtml(e.message)}</div>`;
         }
     }
 
@@ -1353,7 +1353,7 @@ const CopilotPage = (() => {
             };
         } catch (e) {
             const board = document.getElementById('pipelineBoard');
-            if (board) board.innerHTML = `<div style="color:var(--danger-color);padding:20px;">Помилка: ${e.message}</div>`;
+            if (board) board.innerHTML = `<div style="color:var(--danger-color);padding:20px;">Помилка: ${escHtml(e.message)}</div>`;
         }
     }
 

@@ -38,17 +38,11 @@
                 <!-- Populated by sidebar.js -->
             </nav>
         </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <header class="header">
             <div class="header-content">
-                <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                </div>
-                <nav class="header-nav">
-                    <a href="/" class="nav-link"><span class="nav-icon">T</span> <span class="nav-text">Таймлайн</span></a>
-                    <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
-                    <a href="/chat" class="nav-link active"><span class="nav-icon">Чт</span> <span class="nav-text">Чат</span></a>
-                </nav>
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name" role="button" tabindex="0"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>

@@ -505,20 +505,11 @@
                 <!-- Populated by sidebar.js -->
             </nav>
         </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <header class="header">
             <div class="header-content">
-                <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                </div>
-                <nav class="header-nav">
-                    <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                    <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
-                    <a href="/staff" class="nav-link"><span class="nav-icon">Г</span> <span class="nav-text">Графік</span></a>
-                    <a href="/warehouse" class="nav-link active"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
-                    <a href="/customers" class="nav-link"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
-                    <a href="/finance" class="nav-link"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
-                </nav>
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>

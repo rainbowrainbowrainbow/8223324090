@@ -188,6 +188,27 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date' });
 
+        // v33.3: Duplicate protection for manual tasks (same title + same date)
+        const srcType = source_type || 'manual';
+        const force = b.force === true || b.force === 'true';
+        if (srcType === 'manual' && !force && date) {
+            const dupCheck = await pool.query(
+                `SELECT id, status FROM tasks WHERE title = $1 AND date = $2 AND source_type = 'manual'
+                 AND status NOT IN ('done','archived','cancelled') ORDER BY id DESC LIMIT 1`,
+                [title.trim(), date]
+            );
+            if (dupCheck.rows.length > 0) {
+                const dup = dupCheck.rows[0];
+                return res.status(409).json({
+                    error: 'duplicate',
+                    message: `Задача "${title}" вже існує`,
+                    existingId: dup.id,
+                    existingStatus: dup.status,
+                    hint: 'Передай force=true щоб все одно створити'
+                });
+            }
+        }
+
         const username = req.user?.username || 'system';
         const kleshnya = getKleshnya();
 
@@ -241,11 +262,11 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const taskPriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
         const taskCategory = VALID_CATEGORIES.includes(category) ? category : undefined;
         const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
-            'assigned_to=$6', 'owner=$7', `updated_at=NOW()`, `completed_at=CASE WHEN $4='done' THEN NOW() ELSE NULL END`,
+            'assigned_to=$6', 'owner=$7', `updated_at=NOW()`, `completed_at=CASE WHEN $8='done' THEN NOW() ELSE NULL END`,
             'version=COALESCE(version,1)+1'];
         const values = [title.trim(), description || null, date || null, taskStatus, taskPriority,
-                        assigned_to || null, owner || null];
-        let paramIdx = 8;
+                        assigned_to || null, owner || null, taskStatus];
+        let paramIdx = 9;
 
         if (taskCategory) {
             setClauses.push(`category=$${paramIdx++}`);
@@ -408,6 +429,48 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         log.error('Delete error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// v33.3: POST /api/tasks/bulk — bulk actions on multiple tasks
+router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const { ids, action, assignTo, priority } = req.body;
+        if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids required' });
+        if (!action) return res.status(400).json({ error: 'action required' });
+
+        const intIds = ids.map(id => parseInt(id)).filter(id => !isNaN(id));
+        if (intIds.length === 0) return res.status(400).json({ error: 'No valid ids' });
+
+        let result;
+        if (action === 'archive') {
+            result = await pool.query(
+                `UPDATE tasks SET status = 'archived', updated_at = NOW() WHERE id = ANY($1::int[]) AND status NOT IN ('archived')`,
+                [intIds]
+            );
+        } else if (action === 'done') {
+            result = await pool.query(
+                `UPDATE tasks SET status = 'done', completed_at = NOW(), updated_at = NOW() WHERE id = ANY($1::int[]) AND status NOT IN ('done','archived')`,
+                [intIds]
+            );
+        } else if (action === 'assign' && assignTo) {
+            result = await pool.query(
+                `UPDATE tasks SET assigned_to = $1, updated_at = NOW() WHERE id = ANY($2::int[])`,
+                [assignTo, intIds]
+            );
+        } else if (action === 'priority' && priority) {
+            if (!VALID_PRIORITIES.includes(priority)) return res.status(400).json({ error: 'Invalid priority' });
+            result = await pool.query(
+                `UPDATE tasks SET priority = $1, updated_at = NOW() WHERE id = ANY($2::int[])`,
+                [priority, intIds]
+            );
+        } else {
+            return res.status(400).json({ error: `Unknown action: ${action}` });
+        }
+        res.json({ success: true, affected: result.rowCount });
+    } catch (err) {
+        log.error('Bulk action error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

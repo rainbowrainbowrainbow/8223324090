@@ -217,7 +217,7 @@ router.post('/', async (req, res) => {
 // PATCH /api/leads/:id — update lead
 router.patch('/:id', async (req, res) => {
     try {
-        const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, event_date, children_count, child_age, program_id, pipeline_stage, milestone_tags, lead_type, quality_category } = req.body;
+        const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, source_channel, event_date, children_count, child_age, program_id, pipeline_stage, milestone_tags, lead_type, quality_category, potential_value } = req.body;
         const updates = [];
         const params = [];
 
@@ -250,6 +250,7 @@ router.patch('/:id', async (req, res) => {
         if (milestone_tags !== undefined) { params.push(milestone_tags); updates.push(`milestone_tags = $${params.length}`); }
         if (lead_type !== undefined) { params.push(lead_type); updates.push(`lead_type = $${params.length}`); }
         if (quality_category !== undefined) { params.push(quality_category || null); updates.push(`quality_category = $${params.length}`); }
+        if (source_channel !== undefined) { params.push(source_channel || null); updates.push(`source_channel = $${params.length}`); }
         if (last_contact_at) {
             params.push(last_contact_at);
             updates.push(`last_contact_at = $${params.length}`);

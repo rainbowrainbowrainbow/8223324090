@@ -7,6 +7,11 @@ function _escB(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// v33.3: Toggle booking tag selection
+function toggleBookingTag(el) {
+    el.classList.toggle('active');
+}
+
 // ==========================================
 // ПАНЕЛЬ БРОНЮВАННЯ
 // ==========================================
@@ -711,8 +716,16 @@ function buildBookingObject(formData, program) {
         kidsCount: kidsCount || null,
         groupName: document.getElementById('bookingGroupName')?.value.trim() || null,
         extraData: buildExtraData(formData.programId),
-        skipNotification: document.getElementById('skipNotificationToggle')?.checked || false
+        skipNotification: document.getElementById('skipNotificationToggle')?.checked || false,
+        paymentMethod: document.getElementById('bookingPaymentMethod')?.value || null
     };
+
+    // v33.3: Include tags in extraData
+    const selectedTags = Array.from(document.querySelectorAll('.booking-tag-option.active')).map(t => t.dataset.value);
+    if (selectedTags.length > 0) {
+        if (!obj.extraData) obj.extraData = {};
+        obj.extraData.tags = selectedTags;
+    }
 
     // v20.9.14: Banquet fields
     if (program.category === 'banquet') {

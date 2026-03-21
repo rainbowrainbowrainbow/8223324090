@@ -44,14 +44,24 @@ router.get('/search', async (req, res) => {
             return res.json((data || []).map(mapCustomerRow));
         }
 
-        // Fallback: Railway DB
+        // Fallback: Railway DB — v33.3: live aggregation from bookings
         const pattern = `%${q}%`;
         const result = await pool.query(
-            `SELECT id, name, phone, instagram, child_name, total_bookings
-             FROM customers
-             WHERE name ILIKE $1 OR phone ILIKE $1 OR instagram ILIKE $1
-             ORDER BY last_visit DESC NULLS LAST
-             LIMIT 10`,
+            `SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.total_bookings,
+                    COALESCE(b_agg.booking_count, 0) AS real_total_bookings,
+                    COALESCE(b_agg.booking_spent, 0) AS real_total_spent,
+                    b_agg.real_last_visit
+             FROM customers c
+             LEFT JOIN (
+                 SELECT customer_id, COUNT(*) AS booking_count,
+                        COALESCE(SUM(price), 0) AS booking_spent,
+                        MAX(date) AS real_last_visit
+                 FROM bookings WHERE status != 'cancelled'
+                 GROUP BY customer_id
+             ) b_agg ON b_agg.customer_id = c.id
+             WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1
+             ORDER BY b_agg.real_last_visit DESC NULLS LAST
+             LIMIT 20`,
             [pattern]
         );
         res.json(result.rows.map(mapCustomerRow));
@@ -1162,10 +1172,11 @@ function mapCustomerRow(row) {
         childBirthday: row.child_birthday || null,
         source: row.source || null,
         notes: row.notes || null,
-        totalBookings: row.total_bookings || 0,
-        totalSpent: row.total_spent || 0,
-        firstVisit: row.first_visit || null,
-        lastVisit: row.last_visit || null,
+        // v33.3: Prefer live aggregation from bookings JOIN when available
+        totalBookings: row.real_total_bookings != null ? parseInt(row.real_total_bookings) : (row.total_bookings || 0),
+        totalSpent: row.real_total_spent != null ? parseInt(row.real_total_spent) : (row.total_spent || 0),
+        firstVisit: row.real_first_visit || row.first_visit || null,
+        lastVisit: row.real_last_visit || row.last_visit || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at
     };

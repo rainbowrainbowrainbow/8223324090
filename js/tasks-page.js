@@ -202,8 +202,28 @@ async function apiCreateTask(data) {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
+        // v33.3: Handle duplicate (409)
+        if (response.status === 409) {
+            const err = await response.json();
+            if (confirm(`⚠️ ${err.message || 'Задача вже існує'}\nВсе одно додати дубль?`)) {
+                return apiCreateTask({ ...data, force: true });
+            }
+            return null;
+        }
         return await response.json();
     } catch (err) { console.error('API createTask error:', err); return null; }
+}
+
+// v33.3: Bulk task actions
+async function apiBulkTasks(ids, action, extra = {}) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/bulk`, {
+            method: 'POST', headers: getAuthHeaders(),
+            body: JSON.stringify({ ids, action, ...extra })
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) { console.error('API bulkTasks error:', err); return null; }
 }
 
 async function apiPatchTaskStatus(id, status) {

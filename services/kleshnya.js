@@ -112,8 +112,8 @@ async function updateTaskStatus(taskId, newStatus, actor = 'system') {
 
     const currentVersion = task.version || 1;
     const updateResult = await pool.query(
-        `UPDATE tasks SET status=$1, updated_at=NOW(), completed_at=CASE WHEN $1='done' THEN NOW() ELSE NULL END, escalation_level=0, version=version+1 WHERE id=$2 AND version=$3`,
-        [newStatus, taskId, currentVersion]
+        `UPDATE tasks SET status=$1, updated_at=NOW(), completed_at=CASE WHEN $4='done' THEN NOW() ELSE NULL END, escalation_level=0, version=version+1 WHERE id=$2 AND version=$3`,
+        [newStatus, taskId, currentVersion, newStatus]
     );
 
     if (updateResult.rowCount === 0) {

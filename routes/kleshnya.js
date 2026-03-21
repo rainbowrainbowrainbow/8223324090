@@ -624,4 +624,39 @@ router.get('/skills', (req, res) => {
     res.json(skills);
 });
 
+// v33.3: POST /api/kleshnya/generate-image — AI image generation (Kie.ai)
+router.post('/generate-image', async (req, res) => {
+    try {
+        const { prompt, eventId, type } = req.body;
+        if (!prompt) return res.status(400).json({ error: 'prompt required' });
+
+        const KIE_API_KEY = process.env.KIE_API_KEY || '5dabed41ea307ecc6ca17010eaaf90b0';
+        const kieRes = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'google/nano-banana', input: { prompt, image_size: '9:16' } })
+        });
+        const task = await kieRes.json();
+        res.json({ taskId: task.data?.taskId || null, status: 'processing', eventId, type });
+    } catch (err) {
+        log.error('generate-image error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// v33.3: GET /api/kleshnya/generate-image/:taskId — poll image generation status
+router.get('/generate-image/:taskId', async (req, res) => {
+    try {
+        const KIE_API_KEY = process.env.KIE_API_KEY || '5dabed41ea307ecc6ca17010eaaf90b0';
+        const kieRes = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(req.params.taskId)}`, {
+            headers: { 'Authorization': `Bearer ${KIE_API_KEY}` }
+        });
+        const data = await kieRes.json();
+        res.json(data.data || data);
+    } catch (err) {
+        log.error('generate-image poll error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;

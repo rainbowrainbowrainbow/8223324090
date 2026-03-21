@@ -789,6 +789,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (MANAGE_ROLES.includes(user.role)) {
             const addBtn = document.getElementById('addTransactionBtn');
             if (addBtn) addBtn.style.display = '';
+            const addExpBtn = document.getElementById('addExpenseBtn');
+            if (addExpBtn) addExpBtn.style.display = '';
             const exportBtn = document.getElementById('exportCsvBtn');
             if (exportBtn) exportBtn.style.display = '';
             const xlsxBtn = document.getElementById('exportXlsxBtn');
@@ -841,8 +843,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
 
-    // Add transaction button
+    // Add transaction button (income by default)
     document.getElementById('addTransactionBtn')?.addEventListener('click', () => openTransModal());
+
+    // v33.3: Quick-add expense button
+    document.getElementById('addExpenseBtn')?.addEventListener('click', () => {
+        openTransModal();
+        document.getElementById('editType').value = 'expense';
+        updateCategoryOptions('expense');
+    });
 
     // Export CSV & XLSX
     document.getElementById('exportCsvBtn')?.addEventListener('click', exportCSV);

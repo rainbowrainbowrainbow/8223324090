@@ -913,6 +913,38 @@
     .form-section { margin-bottom: 12px; }
     .control-panel { padding: 8px 12px; gap: 8px; }
     .modal-content { max-height: 90vh; }
+
+    /* v33.3: Timeline — horizontal scroll on mobile */
+    .timeline-grid {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        min-width: 600px;
+    }
+
+    /* v33.3: Forms — 1 column on mobile */
+    .form-grid-2col,
+    .form-row-2col {
+        grid-template-columns: 1fr !important;
+        flex-direction: column !important;
+    }
+
+    /* v33.3: Button groups stack vertically */
+    .btn-group .btn,
+    .modal-footer .btn {
+        width: 100%;
+        margin-bottom: 6px;
+    }
+
+    /* v33.3: Table containers scroll horizontally */
+    .table-container,
+    .data-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* v33.3: Header compact on tiny screens */
+    .header-title { font-size: 16px !important; }
+    .header-actions .btn-text { display: none; }
 }
 
 /* ==========================================

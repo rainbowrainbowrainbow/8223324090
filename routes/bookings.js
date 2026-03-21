@@ -26,6 +26,39 @@ async function getLineName(lineId, date) {
     }
 }
 
+// v33.3: GET /api/bookings/occupancy — Line occupancy stats
+router.get('/occupancy', async (req, res) => {
+    try {
+        const from = req.query.from || new Date().toISOString().slice(0, 10);
+        const to = req.query.to || from;
+        const workdayHours = 10;
+
+        const result = await pool.query(`
+            SELECT line_id, COUNT(*)::int AS bookings_count,
+                   COALESCE(SUM(duration), 0)::int AS total_minutes
+            FROM bookings
+            WHERE date >= $1 AND date <= $2
+              AND status != 'cancelled' AND linked_to IS NULL
+            GROUP BY line_id
+        `, [from, to]);
+
+        const days = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000) + 1);
+        const maxMinutes = workdayHours * 60 * days;
+
+        const lines = result.rows.map(r => ({
+            lineId: r.line_id,
+            bookingsCount: r.bookings_count,
+            totalMinutes: r.total_minutes,
+            occupancyPercent: Math.min(100, Math.round((r.total_minutes / maxMinutes) * 100))
+        }));
+
+        res.json({ from, to, days, lines });
+    } catch (err) {
+        log.error('GET /bookings/occupancy error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Get bookings for a date
 router.get('/:date', async (req, res) => {
     try {
@@ -503,6 +536,34 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             }
         }
 
+        // v33.3: Animator conflict detection
+        if (b.hosts && !b.linkedTo) {
+            const animId = parseInt(b.hosts);
+            if (animId) {
+                const startMinutes = timeToMinutes(b.time);
+                const endMinutes = startMinutes + (parseInt(b.duration) || 0);
+                const animConflict = await client.query(`
+                    SELECT id, time, duration, label, program_code FROM bookings
+                    WHERE (hosts = $1 OR second_animator = $1::text)
+                      AND date = $2 AND id != $3
+                      AND status != 'cancelled' AND linked_to IS NULL
+                `, [animId, b.date, id]);
+
+                for (const ac of animConflict.rows) {
+                    const acStart = timeToMinutes(ac.time);
+                    const acEnd = acStart + (ac.duration || 0);
+                    if (startMinutes < acEnd && endMinutes > acStart) {
+                        await client.query('ROLLBACK');
+                        return res.status(409).json({
+                            success: false,
+                            error: `Аніматор вже зайнятий о ${ac.time} (${ac.label || ac.program_code})`,
+                            conflictBookingId: ac.id
+                        });
+                    }
+                }
+            }
+        }
+
         const newStatus = b.status || 'confirmed';
 
         // CRM: resolve customer_id for update
@@ -516,14 +577,15 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25,
+                 payment_method=$26
                  WHERE id=$23 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
                  b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null,
-                 id, clientUpdatedAt, updateCustomerId]
+                 id, clientUpdatedAt, updateCustomerId, b.paymentMethod || null]
             );
         } else {
             // Legacy: no optimistic locking (backward compatibility)
@@ -531,13 +593,15 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24,
+                 payment_method=$25
                  WHERE id=$23
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
-                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId]
+                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId,
+                 b.paymentMethod || null]
             );
         }
 

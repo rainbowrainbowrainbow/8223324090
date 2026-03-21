@@ -4058,3 +4058,182 @@ describe('HR — Auto-assign (v30.7)', () => {
         assert.ok(typeof res.data.total_available === 'number');
     });
 });
+
+// ==========================================
+// REPORTS — Hashtags (v32.7)
+// ==========================================
+
+describe('Reports — Hashtags (v32.7)', () => {
+    let reportId = null;
+
+    it('POST /api/reports — create report with hashtags', async () => {
+        const res = await authRequest('POST', '/api/reports', {
+            type: 'expense',
+            amount: 777,
+            description: 'Test hashtag report',
+            category: 'Реквізит',
+            hashtags: ['test-tag-A', 'test-tag-B']
+        });
+        assert.equal(res.status, 201);
+        assert.ok(res.data.id);
+        reportId = res.data.id;
+        assert.deepEqual(res.data.hashtags, ['test-tag-A', 'test-tag-B']);
+        assert.equal(res.data.hashtagActive, true);
+        assert.equal(res.data.category, 'Реквізит');
+    });
+
+    it('POST /api/reports — create report without hashtags defaults to empty array', async () => {
+        const res = await authRequest('POST', '/api/reports', {
+            type: 'expense',
+            amount: 100,
+            description: 'No tags'
+        });
+        assert.equal(res.status, 201);
+        assert.deepEqual(res.data.hashtags, []);
+    });
+
+    it('GET /api/reports — hashtags field present in every report', async () => {
+        const res = await authRequest('GET', '/api/reports?limit=5');
+        assert.equal(res.status, 200);
+        for (const r of res.data.reports) {
+            assert.ok(Array.isArray(r.hashtags), `Report #${r.id} hashtags should be array`);
+            assert.equal(typeof r.hashtagActive, 'boolean', `Report #${r.id} hashtagActive should be boolean`);
+        }
+    });
+
+    it('GET /api/reports?hashtag= — exact filter match', async () => {
+        const res = await authRequest('GET', '/api/reports?hashtag=test-tag-A');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.total >= 1, 'Should find at least 1 report with test-tag-A');
+        for (const r of res.data.reports) {
+            assert.ok(r.hashtags.includes('test-tag-A'), `Report #${r.id} should contain test-tag-A`);
+        }
+    });
+
+    it('GET /api/reports?hashtag= — partial name does NOT match', async () => {
+        const res = await authRequest('GET', '/api/reports?hashtag=test-tag');
+        assert.equal(res.status, 200);
+        assert.equal(res.data.total, 0, 'Partial hashtag "test-tag" should not match "test-tag-A"');
+    });
+
+    it('GET /api/reports?category= — filter by category', async () => {
+        const res = await authRequest('GET', '/api/reports?category=Реквізит');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.total >= 1);
+        for (const r of res.data.reports) {
+            assert.equal(r.category, 'Реквізит');
+        }
+    });
+
+    it('GET /api/reports?hashtag=&category= — stacked filters', async () => {
+        const res = await authRequest('GET', '/api/reports?hashtag=test-tag-A&category=Реквізит');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.total >= 1);
+        for (const r of res.data.reports) {
+            assert.ok(r.hashtags.includes('test-tag-A'));
+            assert.equal(r.category, 'Реквізит');
+        }
+    });
+
+    it('GET /api/reports/hashtags — returns stats per hashtag', async () => {
+        const res = await authRequest('GET', '/api/reports/hashtags');
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data));
+        const tagA = res.data.find(h => h.hashtag === 'test-tag-A');
+        assert.ok(tagA, 'Should find test-tag-A in stats');
+        assert.ok(tagA.total >= 777, 'Total should include our 777 report');
+        assert.ok(tagA.count >= 1);
+        assert.ok(typeof tagA.activeCount === 'number');
+        assert.ok(typeof tagA.inactiveCount === 'number');
+    });
+
+    it('PUT /api/reports/:id — update hashtags', async () => {
+        const res = await authRequest('PUT', `/api/reports/${reportId}`, {
+            hashtags: ['test-tag-A', 'test-tag-C']
+        });
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.data.hashtags, ['test-tag-A', 'test-tag-C']);
+        assert.ok(!res.data.hashtags.includes('test-tag-B'), 'test-tag-B should be removed');
+    });
+
+    it('PUT /api/reports/:id — hashtag sanitization (trim, dedupe, empty)', async () => {
+        const res = await authRequest('PUT', `/api/reports/${reportId}`, {
+            hashtags: ['  spaced  ', 'spaced', '', 'ok', 'ok']
+        });
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.data.hashtags, ['spaced', 'ok']);
+    });
+
+    it('PUT /api/reports/:id — set hashtagActive=false', async () => {
+        const res = await authRequest('PUT', `/api/reports/${reportId}`, {
+            hashtagActive: false
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.hashtagActive, false);
+    });
+
+    it('GET /api/reports/hashtags — inactive report excluded from totals', async () => {
+        // restore unique tags first
+        await authRequest('PUT', `/api/reports/${reportId}`, { hashtags: ['test-inactive-check'] });
+        await authRequest('PUT', `/api/reports/${reportId}`, { hashtagActive: false });
+        const res = await authRequest('GET', '/api/reports/hashtags');
+        assert.equal(res.status, 200);
+        const tag = res.data.find(h => h.hashtag === 'test-inactive-check');
+        assert.ok(tag, 'Should find test-inactive-check');
+        assert.equal(tag.total, 0, 'Inactive report should contribute 0 to total');
+        assert.equal(tag.inactiveCount, 1);
+    });
+
+    it('PATCH /api/reports/hashtags/toggle — bulk toggle ON', async () => {
+        await authRequest('PUT', `/api/reports/${reportId}`, { hashtags: ['test-bulk-toggle'], hashtagActive: false });
+        const res = await authRequest('PATCH', '/api/reports/hashtags/toggle', {
+            hashtag: 'test-bulk-toggle',
+            active: true
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.updated >= 1);
+        assert.equal(res.data.active, true);
+
+        // Verify the report is now active
+        const check = await authRequest('GET', `/api/reports/${reportId}`);
+        assert.equal(check.data.hashtagActive, true);
+    });
+
+    it('PATCH /api/reports/hashtags/toggle — bulk toggle OFF', async () => {
+        const res = await authRequest('PATCH', '/api/reports/hashtags/toggle', {
+            hashtag: 'test-bulk-toggle',
+            active: false
+        });
+        assert.equal(res.status, 200);
+        assert.ok(res.data.updated >= 1);
+        assert.equal(res.data.active, false);
+    });
+
+    it('PATCH /api/reports/hashtags/toggle — missing hashtag returns 400', async () => {
+        const res = await authRequest('PATCH', '/api/reports/hashtags/toggle', { active: true });
+        assert.equal(res.status, 400);
+    });
+
+    it('PATCH /api/reports/hashtags/toggle — nonexistent hashtag updates 0', async () => {
+        const res = await authRequest('PATCH', '/api/reports/hashtags/toggle', {
+            hashtag: 'nonexistent-tag-xyz-999',
+            active: false
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.updated, 0);
+    });
+
+    it('GET /api/reports/summary — respects hashtag_active', async () => {
+        const res = await authRequest('GET', '/api/reports/summary?period=year');
+        assert.equal(res.status, 200);
+        assert.ok(res.data.totals);
+        assert.ok(typeof res.data.totals.expense === 'number');
+    });
+
+    // Cleanup
+    it('DELETE /api/reports/:id — clean up test report', async () => {
+        if (!reportId) return;
+        const res = await authRequest('DELETE', `/api/reports/${reportId}`);
+        assert.equal(res.status, 200);
+    });
+});

@@ -588,7 +588,7 @@ async function linkPriceToProduct(code) {
         const products = data.products || data || [];
         if (!products.length) { showNotification('Немає програм для прив\'язки', 'error'); return; }
 
-        const select = products.map(p => `<option value="${p.id}">${p.name} (${p.id}) — ${p.price} ₴</option>`).join('');
+        const select = products.map(p => `<option value="${p.id}">${escapeHtml(p.name)} (${p.id}) — ${p.price} ₴</option>`).join('');
         const overlay = document.createElement('div');
         overlay.className = 'price-confirm-overlay';
         overlay.innerHTML = `
@@ -1087,7 +1087,7 @@ function showAddProposalForm() {
     // Build options for discount codes select
     const codeOptions = discountCodes
         .filter(d => d.is_active)
-        .map(d => `<option value="${d.id}">${d.code} — ${d.name}</option>`)
+        .map(d => `<option value="${d.id}">${escapeHtml(d.code)} — ${escapeHtml(d.name)}</option>`)
         .join('');
 
     const formHtml = `

@@ -6,6 +6,11 @@
 const API = '/api/designs';
 const PRODUCTS_API = '/api/products';
 
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // --- State ---
 let designs = [];
 let collections = [];
@@ -419,11 +424,11 @@ function updateCollectionFilters() {
     const select = document.getElementById('collectionFilter');
     const editSelect = document.getElementById('editCollection');
     const options = '<option value="">Всі колекції</option>' +
-        collections.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        collections.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
     select.innerHTML = options;
 
     const editOptions = '<option value="">— Без колекції —</option>' +
-        collections.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        collections.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
     editSelect.innerHTML = editOptions;
 }
 

@@ -3,6 +3,11 @@
  * v5.0: Server-side JWT authentication
  */
 
+function _escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ==========================================
 // АВТОРИЗАЦІЯ
 // ==========================================
@@ -675,7 +680,7 @@ function _profileTabStats(data, achDefs) {
             cert.recentList.slice(0, 5).map(c => {
                 const stCls = c.status === 'active' ? 'positive' : (c.status === 'used' ? '' : 'negative');
                 const stLabel = c.status === 'active' ? 'Активний' : (c.status === 'used' ? 'Використаний' : c.status);
-                return `<div class="profile-points-row"><span>${c.code} — ${c.name}</span><span class="profile-points-val ${stCls}">${stLabel}</span></div>`;
+                return `<div class="profile-points-row"><span>${_escHtml(c.code)} — ${_escHtml(c.name)}</span><span class="profile-points-val ${stCls}">${stLabel}</span></div>`;
             }).join('') : '';
         certsHTML = `<div class="prof-section"><h4>Сертифікати видані (${cert.total})</h4>
             ${cert.byStatus.active ? `<div class="profile-points-row"><span>Активних</span><span class="profile-points-val positive">${cert.byStatus.active}</span></div>` : ''}
@@ -1376,14 +1381,14 @@ const RoleSwitcher = (() => {
                 const roleName = ROLE_NAMES[u.role] || u.role;
                 const isActive = imp === u.username;
                 return `<button class="role-switcher-user-btn${isActive ? ' active' : ''}" data-user-id="${u.id}" data-username="${u.username}">
-                    <span class="role-switcher-user-name">${u.name}</span>
+                    <span class="role-switcher-user-name">${_escHtml(u.name)}</span>
                     <span class="role-switcher-user-role">${roleName}</span>
                     ${isActive ? '<span class="role-switcher-check">✓</span>' : ''}
                 </button>`;
             }).join('');
 
         if (imp) {
-            container.innerHTML += `<button class="role-switcher-user-btn reset" data-user-id="__reset__">Повернутись як ${AppState.currentUser.name}</button>`;
+            container.innerHTML += `<button class="role-switcher-user-btn reset" data-user-id="__reset__">Повернутись як ${_escHtml(AppState.currentUser.name)}</button>`;
         }
 
         container.addEventListener('click', async (e) => {

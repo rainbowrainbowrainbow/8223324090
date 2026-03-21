@@ -6,6 +6,11 @@
 
 /* global apiVerifyToken, initDarkMode */
 
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ==========================================
 // HELPERS — apiRequest & showNotification
 // ==========================================
@@ -288,7 +293,7 @@ function renderTopPrograms(programs) {
         const rankClass = i < 3 ? `rank-${i + 1}` : 'rank-n';
         return `<tr>
             <td style="width:40px"><span class="rank ${rankClass}">${i + 1}</span></td>
-            <td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name || '—'}</td>
+            <td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name) || '—'}</td>
             <td style="width:40px;text-align:center;font-size:12px;color:var(--gray-400)">${p.count}x</td>
             <td style="text-align:right;font-weight:700;color:#10B981">${fmtMoney(p.revenue)}</td>
         </tr>`;
@@ -316,7 +321,7 @@ function renderFinCategories(cats) {
     const maxTotal = Math.max(...cats.map(c => c.total), 1);
     el.innerHTML = cats.slice(0, 8).map(c => `
         <div class="an-hbar-row">
-            <span class="an-hbar-label">${c.icon || ''} ${c.name}</span>
+            <span class="an-hbar-label">${escapeHtml(c.icon) || ''} ${escapeHtml(c.name)}</span>
             <div class="an-hbar-track">
                 <div class="an-hbar-fill" style="width:${Math.round(c.total / maxTotal * 100)}%;background:${c.color || '#6366F1'}"></div>
             </div>

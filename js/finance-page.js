@@ -494,7 +494,7 @@ function updateCategoryOptions(type) {
     const sel = document.getElementById('editCategory');
     const filtered = FinState.categories.filter(c => c.type === type);
     sel.innerHTML = '<option value="">Без категорії</option>' +
-        filtered.map(c => `<option value="${c.id}">${c.icon || ''} ${c.name}</option>`).join('');
+        filtered.map(c => `<option value="${c.id}">${escapeHtml(c.icon) || ''} ${escapeHtml(c.name)}</option>`).join('');
 }
 
 // Global functions for onclick
@@ -520,7 +520,7 @@ function populateCategoryFilter() {
     const sel = document.getElementById('categoryFilter');
     if (!sel) return;
     sel.innerHTML = '<option value="">Всі категорії</option>' +
-        FinState.categories.map(c => `<option value="${c.id}">${c.icon || ''} ${c.name}</option>`).join('');
+        FinState.categories.map(c => `<option value="${c.id}">${escapeHtml(c.icon) || ''} ${escapeHtml(c.name)}</option>`).join('');
 }
 
 function populateYearFilter() {

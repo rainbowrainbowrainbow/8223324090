@@ -588,8 +588,8 @@ body.dark-mode .btn-reset-auto {
     color: var(--gray-500);
     border-radius: var(--radius-sm);
     line-height: 1;
-    min-width: 28px;
-    min-height: 28px;
+    min-width: 36px;
+    min-height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;

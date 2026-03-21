@@ -929,6 +929,7 @@
 
         // Touch swipe
         const page = document.getElementById('catalogPage');
+        if (!page) return;
         page.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; }, { passive: true });
         page.addEventListener('touchend', (e) => {
             const dx = e.changedTouches[0].clientX - touchStartX;
@@ -1029,7 +1030,9 @@
 
         const modal = document.getElementById('gradInfoModal');
         if (!modal) return;
-        modal.querySelector('.grad-modal-content').innerHTML = `
+        const modalContent = modal.querySelector('.grad-modal-content');
+        if (!modalContent) return;
+        modalContent.innerHTML = `
         <div class="grad-modal-header">
             <h3>📊 Порівняння пакетів</h3>
             <button class="grad-modal-close" onclick="document.getElementById('gradInfoModal').style.display='none'">&times;</button>
@@ -1369,10 +1372,15 @@
                     return;
                 }
                 results.innerHTML = customers.map(c => `
-                    <div class="grad-customer-option" onclick="GradPage.selectCustomer(${c.id}, '${(c.name || '').replace(/'/g, "\\'")}', '${(c.phone || '').replace(/'/g, "\\'")}')">
+                    <div class="grad-customer-option" data-id="${c.id}" data-name="${(c.name || '').replace(/"/g, '&quot;')}" data-phone="${(c.phone || '').replace(/"/g, '&quot;')}">
                         <span class="grad-customer-name">${c.name || 'Без імені'}</span>
                         <span class="grad-customer-phone">${c.phone || ''}</span>
                     </div>`).join('');
+                results.querySelectorAll('.grad-customer-option').forEach(el => {
+                    el.addEventListener('click', () => GradPage.selectCustomer(
+                        parseInt(el.dataset.id), el.dataset.name, el.dataset.phone
+                    ));
+                });
                 results.style.display = 'block';
             } catch (err) {
                 results.style.display = 'none';
@@ -1516,8 +1524,10 @@
 
         const modal = document.getElementById('gradInfoModal');
         if (!modal) return;
+        const modalContent2 = modal.querySelector('.grad-modal-content');
+        if (!modalContent2) return;
 
-        modal.querySelector('.grad-modal-content').innerHTML = `
+        modalContent2.innerHTML = `
         <div class="grad-modal-header">
             <h3 style="color:${colors.text}">${getServiceIcon(svc)} ${svc.name}</h3>
             <button class="grad-modal-close" onclick="document.getElementById('gradInfoModal').style.display='none'">&times;</button>

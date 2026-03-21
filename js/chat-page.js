@@ -3625,7 +3625,7 @@
         if (!content) return;
         _api('POST', '/templates', { shortcut: shortcut, content: content }).then(function () {
             _loadTemplates();
-        });
+        }).catch(function (err) { console.error('Template save error:', err); });
     }
 
     function _handleMentionInput(input) {

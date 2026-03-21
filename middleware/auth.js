@@ -100,9 +100,19 @@ function authenticateToken(req, res, next) {
         if (user.id) {
             const cacheKey = `activity_${user.id}`;
             const now = Date.now();
-            if (!authenticateToken._activityCache) authenticateToken._activityCache = {};
-            if (!authenticateToken._activityCache[cacheKey] || now - authenticateToken._activityCache[cacheKey] > 60000) {
-                authenticateToken._activityCache[cacheKey] = now;
+            if (!authenticateToken._activityCache) {
+                authenticateToken._activityCache = new Map();
+                // Cleanup stale entries every 10 minutes
+                authenticateToken._activityCleanup = setInterval(() => {
+                    const cutoff = Date.now() - 120000;
+                    for (const [k, v] of authenticateToken._activityCache) {
+                        if (v < cutoff) authenticateToken._activityCache.delete(k);
+                    }
+                }, 600000);
+                if (authenticateToken._activityCleanup.unref) authenticateToken._activityCleanup.unref();
+            }
+            if (!authenticateToken._activityCache.has(cacheKey) || now - authenticateToken._activityCache.get(cacheKey) > 60000) {
+                authenticateToken._activityCache.set(cacheKey, now);
                 pool.query(
                     'UPDATE employee_profiles SET last_activity_at = NOW() WHERE user_id = $1',
                     [user.id]

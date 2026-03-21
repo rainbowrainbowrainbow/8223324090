@@ -260,7 +260,7 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
         // Retry once on unique violation (seq race condition)
         if (err.code === '23505' && err.constraint === 'chat_messages_channel_id_seq_key') {
             log.warn('Seq collision, retrying sendMessage');
-            return sendMessage(channelId, userId, { content, replyTo });
+            return sendMessage(channelId, userId, { content, replyTo, clientMessageId });
         }
         throw err;
     } finally {

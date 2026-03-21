@@ -13,7 +13,6 @@ const Sidebar = (() => {
         { href: '/',          icon: '📅', label: 'Таймлайн івентів',  access: 'timeline' },
         { href: '/tasks',     icon: '✅', label: 'Задачі',            access: 'all' },
         { href: '/chat',      icon: '💬', label: 'Чат',               access: 'all' },
-        { href: '/staff',     icon: '🗓️', label: 'Графік',            access: 'schedule_daily' },
         { href: '/warehouse', icon: '📦', label: 'Склад',             access: 'all' },
         { href: '/training',  icon: '🎓', label: 'Навчання',          access: 'all' },
 

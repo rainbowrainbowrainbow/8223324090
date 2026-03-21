@@ -48,8 +48,11 @@ const CopilotPage = (() => {
 
     function waitForAuth() {
         return new Promise(resolve => {
+            let attempts = 0;
             const check = () => {
                 if (AppState?.currentUser) { resolve(); return; }
+                attempts++;
+                if (attempts > 50) { resolve(); return; } // 5s timeout — show access denied
                 setTimeout(check, 100);
             };
             check();

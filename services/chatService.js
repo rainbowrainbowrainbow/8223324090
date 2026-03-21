@@ -416,13 +416,20 @@ async function ensureDefaultMemberships(userId) {
  */
 async function getChatUsers() {
     const result = await pool.query(
-        "SELECT id, username, name AS display_name, role FROM users WHERE is_active = true ORDER BY username"
+        `SELECT id, username, name AS display_name, role,
+                CASE WHEN chat_status_until IS NOT NULL AND chat_status_until < NOW()
+                     THEN NULL ELSE chat_status END AS chat_status,
+                CASE WHEN chat_status_until IS NOT NULL AND chat_status_until < NOW()
+                     THEN NULL ELSE chat_status_emoji END AS chat_status_emoji
+         FROM users WHERE is_active = true ORDER BY username`
     );
     return result.rows.map(r => ({
         id: r.id,
         username: r.username,
         displayName: r.display_name || r.username,
-        role: r.role
+        role: r.role,
+        chatStatus: r.chat_status || null,
+        chatStatusEmoji: r.chat_status_emoji || null
     }));
 }
 

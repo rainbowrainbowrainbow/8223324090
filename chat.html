@@ -6,15 +6,15 @@
     <title>Event Genix | Командний чат</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=33.6.0">
-    <link rel="stylesheet" href="css/layout.css?v=33.6.0">
-    <link rel="stylesheet" href="css/pages.css?v=33.6.0">
-    <link rel="stylesheet" href="css/modals.css?v=33.6.0">
-    <link rel="stylesheet" href="css/chat.css?v=33.6.0">
-    <link rel="stylesheet" href="css/agents.css?v=33.6.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=33.6.0">
-    <link rel="stylesheet" href="css/responsive.css?v=33.6.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=33.6.0">
+    <link rel="stylesheet" href="css/base.css?v=33.7.0">
+    <link rel="stylesheet" href="css/layout.css?v=33.7.0">
+    <link rel="stylesheet" href="css/pages.css?v=33.7.0">
+    <link rel="stylesheet" href="css/modals.css?v=33.7.0">
+    <link rel="stylesheet" href="css/chat.css?v=33.7.0">
+    <link rel="stylesheet" href="css/agents.css?v=33.7.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=33.7.0">
+    <link rel="stylesheet" href="css/responsive.css?v=33.7.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=33.7.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -73,6 +73,21 @@
                     </div>
                     <div class="chat-channels-list" id="chatChannelsList"></div>
                     <div class="chat-sidebar-footer">
+                        <div class="chat-status-area">
+                            <button class="chat-theme-btn" id="chatStatusBtn" title="Встановити статус">
+                                <span id="chatMyStatusEmoji">😊</span>
+                                <span id="chatMyStatus" style="font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+                            </button>
+                            <div id="chatStatusPicker" style="display:none;position:absolute;bottom:60px;left:8px;background:var(--card-bg,#fff);border:1px solid var(--border-color);border-radius:12px;padding:8px;z-index:100;min-width:200px;box-shadow:0 4px 20px rgba(0,0,0,0.15)">
+                                <div style="font-size:11px;color:var(--gray-400);padding:4px 8px;margin-bottom:4px">Встановити статус</div>
+                                <button class="chat-theme-btn" onclick="_setUserStatus('🎉','На святі')" style="width:100%;text-align:left">🎉 На святі</button>
+                                <button class="chat-theme-btn" onclick="_setUserStatus('☕','Перерва')" style="width:100%;text-align:left">☕ Перерва</button>
+                                <button class="chat-theme-btn" onclick="_setUserStatus('🎨','Готую декорації')" style="width:100%;text-align:left">🎨 Готую декорації</button>
+                                <button class="chat-theme-btn" onclick="_setUserStatus('📞','На дзвінку')" style="width:100%;text-align:left">📞 На дзвінку</button>
+                                <button class="chat-theme-btn" onclick="_setUserStatus('🚫','Не турбувати')" style="width:100%;text-align:left">🚫 Не турбувати</button>
+                                <button class="chat-theme-btn" onclick="_setUserStatus('',null)" style="width:100%;text-align:left;color:var(--gray-400)">✕ Очистити статус</button>
+                            </div>
+                        </div>
                         <div class="chat-theme-toggle">
                             <button class="chat-theme-btn" id="chatThemeBtn" title="Переключити тему">
                                 <span id="chatThemeIcon">🌙</span> <span id="chatThemeLabel">Тема</span>
@@ -460,6 +475,14 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
                 Зберегти
             </button>
+            <button class="chat-context-item" data-action="remind">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Нагадати
+            </button>
+            <button class="chat-context-item" data-action="mark-important" id="ctxMarkImportant" style="display:none">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                ❗ Важливо
+            </button>
             <div class="chat-context-divider"></div>
             <button class="chat-context-item" data-action="create-task">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -537,17 +560,17 @@
         </div>
     </div>
 
-    <script src="js/config.js?v=33.6.0"></script>
-    <script src="js/api.js?v=33.6.0"></script>
-    <script src="js/auth.js?v=33.6.0"></script>
-    <script src="js/components/sidebar.js?v=33.6.0"></script>
+    <script src="js/config.js?v=33.7.0"></script>
+    <script src="js/api.js?v=33.7.0"></script>
+    <script src="js/auth.js?v=33.7.0"></script>
+    <script src="js/components/sidebar.js?v=33.7.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=33.6.0"></script>
-    <script src="js/sound-engine.js?v=33.6.0"></script>
-    <script src="js/chat-page.js?v=33.6.0"></script>
-    <script src="js/ui.js?v=33.6.0"></script>
-    <script src="js/agents-panel.js?v=33.6.0"></script>
-    <script src="js/role-panel.js?v=33.6.0"></script>
+    <script src="js/ws.js?v=33.7.0"></script>
+    <script src="js/sound-engine.js?v=33.7.0"></script>
+    <script src="js/chat-page.js?v=33.7.0"></script>
+    <script src="js/ui.js?v=33.7.0"></script>
+    <script src="js/agents-panel.js?v=33.7.0"></script>
+    <script src="js/role-panel.js?v=33.7.0"></script>
     <script>
     // Sound Settings Panel — v28.0.0
     (function () {

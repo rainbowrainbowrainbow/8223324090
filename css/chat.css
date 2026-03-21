@@ -7755,3 +7755,135 @@ body.dark-mode .guardian-digest-generate-btn {
     border-radius: 1px;
     pointer-events: none;
 }
+
+/* ==========================================
+ * v33.7.0: Booking Preview Card
+ * ========================================== */
+.chat-booking-preview {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: var(--bg-secondary, #f8f9fa);
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-left: 3px solid var(--primary, #6c5ce7);
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.chat-booking-preview:hover {
+    background: var(--bg-tertiary, #eef0f4);
+}
+.chat-bp-header {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: var(--primary, #6c5ce7);
+}
+.chat-bp-row {
+    padding: 1px 0;
+    color: var(--text-secondary, #666);
+}
+.chat-bp-price {
+    margin-top: 4px;
+    font-weight: 600;
+    color: var(--success, #00b894);
+}
+
+/* ==========================================
+ * v33.7.0: Checklist in Messages
+ * ========================================== */
+.chat-check-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    cursor: pointer;
+    user-select: none;
+}
+.chat-check-item input[type=checkbox] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary, #6c5ce7);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.chat-check-text {
+    font-size: 13px;
+}
+.chat-check-done {
+    text-decoration: line-through;
+    color: var(--gray-400, #999);
+}
+
+/* ==========================================
+ * v33.7.0: Important Messages
+ * ========================================== */
+.chat-message.important .chat-bubble {
+    border-left: 3px solid #f39c12;
+    background: rgba(243, 156, 18, 0.06);
+}
+.chat-important-badge {
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+/* ==========================================
+ * v33.7.0: Status Area
+ * ========================================== */
+.chat-status-area {
+    position: relative;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+}
+.chat-peer-status {
+    font-size: 11px;
+    color: var(--gray-400, #999);
+    margin-left: 4px;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ==========================================
+ * v33.7.0: Remind Picker Modal Buttons
+ * ========================================== */
+.chat-modal-btn {
+    padding: 8px 14px;
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 8px;
+    background: var(--bg-secondary, #f8f9fa);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s;
+    text-align: left;
+}
+.chat-modal-btn:hover {
+    background: var(--bg-tertiary, #eef0f4);
+}
+.chat-modal-btn-primary {
+    background: var(--primary, #6c5ce7);
+    color: #fff;
+    border-color: var(--primary, #6c5ce7);
+}
+.chat-modal-btn-primary:hover {
+    background: var(--primary-dark, #5a4bd1);
+}
+
+/* Dark mode overrides */
+.dark-mode .chat-booking-preview {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.1);
+}
+.dark-mode .chat-message.important .chat-bubble {
+    background: rgba(243, 156, 18, 0.1);
+}
+.dark-mode .chat-modal-btn {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.15);
+    color: var(--text-primary, #eee);
+}
+.dark-mode .chat-modal-btn:hover {
+    background: rgba(255,255,255,0.12);
+}

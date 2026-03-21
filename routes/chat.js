@@ -195,6 +195,16 @@ router.post('/channels/:id/messages', async (req, res) => {
             return res.status(403).json({ error: 'Not a member of this channel' });
         }
 
+        // v33.7.0: Announce mode — only admins can write
+        const pool = require('../db').pool;
+        const chAnnounce = await pool.query('SELECT is_announce FROM chat_channels WHERE id = $1', [channelId]);
+        if (chAnnounce.rows[0]?.is_announce === true) {
+            const canWrite = ['admin', 'director', 'senior_manager'].includes(req.user.role);
+            if (!canWrite) {
+                return res.status(403).json({ error: '📢 Цей канал тільки для оголошень. Тільки адміністратори можуть писати.' });
+            }
+        }
+
         // Guardian: pre-check BEFORE saving (mute + keyword + LLM profanity)
         const username = req.user.username || req.user.name || 'unknown';
         const preCheck = await guardian.preCheckMessage({
@@ -223,6 +233,34 @@ router.post('/channels/:id/messages', async (req, res) => {
             channelId,
             message
         }, String(userId));
+
+        // v33.7.0: BK preview — fire-and-forget
+        const _bkMatch = content.match(/\bBK-\d{4}-\d{4,}\b/i);
+        if (_bkMatch) {
+            const _bkId = _bkMatch[0].toUpperCase();
+            const _msgId = message.id;
+            setImmediate(async () => {
+                try {
+                    const bkData = await pool.query(
+                        'SELECT id, date, time, program_name, label, status, price FROM bookings WHERE id = $1',
+                        [_bkId]
+                    );
+                    if (!bkData.rowCount) return;
+                    const b = bkData.rows[0];
+                    const preview = {
+                        id: b.id, date: b.date, time: String(b.time).slice(0, 5),
+                        programName: b.program_name, label: b.label, status: b.status, price: b.price
+                    };
+                    await pool.query(
+                        `UPDATE chat_messages SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb WHERE id = $2`,
+                        [JSON.stringify({ bookingPreview: preview }), _msgId]
+                    );
+                    broadcastToChannel(channelId, 'chat:booking-preview', {
+                        channelId, messageId: _msgId, bookingPreview: preview
+                    });
+                } catch (e) { /* silent */ }
+            });
+        }
 
         // Send mention notifications to specific users
         for (const mentionedId of mentionedUserIds) {
@@ -1741,6 +1779,283 @@ router.post('/kleshnya', async (req, res) => {
             success: true,
             reply: '🦞 Клешня зараз зайнята. Спробуй ще раз або пиши в Telegram.'
         });
+    }
+});
+
+// ==========================================
+// v33.7.0: CRM SLASH COMMANDS
+// ==========================================
+
+// POST /api/chat/slash — CRM slash commands (/вільно, /броні, /задачі, /склад)
+router.post('/slash', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const { command, args } = req.body;
+        if (!command) return res.status(400).json({ error: 'command required' });
+        const cmd = command.toLowerCase().trim();
+
+        function parseArgsDate(arg) {
+            if (!arg || ['сьогодні', 'today', 'зараз'].includes(arg.toLowerCase()))
+                return new Date().toISOString().slice(0, 10);
+            const dm = arg.match(/^(\d{1,2})\.(\d{1,2})$/);
+            if (dm) return `${new Date().getFullYear()}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`;
+            const dmy = arg.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+            if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+            return arg;
+        }
+
+        let reply = null;
+        switch (cmd) {
+            case 'вільно':
+            case 'free': {
+                const date = parseArgsDate(args);
+                const bk = await pool.query(
+                    `SELECT SUBSTRING(time, 1, 5) AS t FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time`,
+                    [date]
+                );
+                const busy = bk.rows.map(r => r.t);
+                const slots = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'];
+                const free = slots.filter(s => !busy.includes(s));
+                reply = free.length
+                    ? `📅 Вільно ${date}:\n${free.join(' · ')}`
+                    : `📅 ${date}: всі слоти зайняті (${busy.length} бронювань)`;
+                break;
+            }
+            case 'броні':
+            case 'bookings': {
+                const date = parseArgsDate(args);
+                const rows = await pool.query(
+                    `SELECT SUBSTRING(time,1,5) AS t, program_name, label FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time LIMIT 20`,
+                    [date]
+                );
+                reply = rows.rowCount
+                    ? `📋 Бронювання ${date} (${rows.rowCount}):\n` + rows.rows.map(r => `${r.t} — ${r.program_name} | ${r.label}`).join('\n')
+                    : `📋 ${date}: бронювань немає`;
+                break;
+            }
+            case 'задачі':
+            case 'tasks': {
+                const rows = await pool.query(
+                    `SELECT title, priority, deadline FROM tasks
+                     WHERE (assigned_to = $1 OR created_by = $1) AND status IN ('todo', 'in_progress')
+                     ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, deadline NULLS LAST
+                     LIMIT 5`,
+                    [req.user.username]
+                );
+                reply = rows.rowCount
+                    ? `✅ Задачі (${rows.rowCount}):\n` + rows.rows.map(t =>
+                        `• ${t.title.slice(0, 50)}` + (t.deadline ? ` 📅${String(t.deadline).slice(5, 10)}` : '')
+                    ).join('\n')
+                    : '✅ Немає активних задач!';
+                break;
+            }
+            case 'склад': {
+                const search = args ? `%${args}%` : '%';
+                const rows = await pool.query(
+                    `SELECT name, quantity, min_quantity, unit FROM warehouse_stock
+                     WHERE name ILIKE $1 AND is_active = true ORDER BY name LIMIT 5`,
+                    [search]
+                );
+                reply = rows.rowCount
+                    ? `📦 Склад:\n` + rows.rows.map(s =>
+                        `${s.quantity <= s.min_quantity ? '⚠️' : '✅'} ${s.name}: ${s.quantity} ${s.unit}` +
+                        (s.quantity <= s.min_quantity ? ` (мін: ${s.min_quantity})` : '')
+                    ).join('\n')
+                    : '📦 Нічого не знайдено на складі';
+                break;
+            }
+            default:
+                return res.status(404).json({ error: `Невідома команда: /${command}` });
+        }
+        res.json({ success: true, reply, command: cmd, args: args || '' });
+    } catch (err) {
+        log.error('[Slash] Error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// v33.7.0: BOOKING-LINKED CHAT CHANNELS
+// ==========================================
+
+// POST /api/chat/booking-channel
+router.post('/booking-channel', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const { bookingId } = req.body;
+        if (!bookingId || typeof bookingId !== 'string') return res.status(400).json({ error: 'bookingId required' });
+
+        const existing = await pool.query(
+            'SELECT * FROM chat_channels WHERE linked_booking_id = $1', [bookingId]
+        );
+        if (existing.rowCount) return res.json({ success: true, channel: existing.rows[0], isNew: false });
+
+        const bk = await pool.query(
+            'SELECT id, date, program_name, label FROM bookings WHERE id = $1', [bookingId]
+        );
+        if (!bk.rowCount) return res.status(404).json({ error: 'Booking not found' });
+        const b = bk.rows[0];
+
+        const slugBase = 'bk-' + bookingId.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        const slug = slugBase + '-' + Date.now().toString(36);
+        const name = `🎉 ${b.date} ${b.program_name}`;
+        const userId = req.user.id || req.user.userId;
+
+        const r = await pool.query(
+            `INSERT INTO chat_channels (slug, name, description, type, linked_booking_id, created_by)
+             VALUES ($1, $2, $3, 'booking', $4, $5) RETURNING *`,
+            [slug, name, `Координація: ${b.label}`, bookingId, req.user.username]
+        );
+        const channel = r.rows[0];
+
+        await pool.query(
+            'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [channel.id, userId]
+        );
+
+        res.json({ success: true, channel, isNew: true });
+    } catch (err) {
+        log.error('[BookingChannel] Error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// GET /api/chat/booking-channel/:bookingId
+router.get('/booking-channel/:bookingId', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const r = await pool.query(
+            'SELECT * FROM chat_channels WHERE linked_booking_id = $1',
+            [req.params.bookingId]
+        );
+        res.json({ success: true, channel: r.rows[0] || null });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// v33.7.0: USER STATUS
+// ==========================================
+
+// PATCH /api/chat/users/me/status
+router.patch('/users/me/status', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const { status, emoji, until } = req.body;
+        const userId = req.user.id || req.user.userId;
+        const untilVal = until && new Date(until) > new Date() ? until : null;
+
+        await pool.query(
+            `UPDATE users SET chat_status = $1, chat_status_emoji = $2, chat_status_until = $3 WHERE id = $4`,
+            [status || null, emoji || null, untilVal, userId]
+        );
+
+        try {
+            const { broadcast } = require('../services/websocket');
+            broadcast('user:status', { userId: String(userId), status: status || null, emoji: emoji || null });
+        } catch (e) { /* silent */ }
+
+        res.json({ success: true });
+    } catch (err) {
+        log.error('[UserStatus] Error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// v33.7.0: MESSAGE REMINDERS
+// ==========================================
+
+// POST /api/chat/messages/:id/remind — MUST be BEFORE GET /messages/:id/thread
+router.post('/messages/:id/remind', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const messageId = parseInt(req.params.id, 10);
+        if (isNaN(messageId)) return res.status(400).json({ error: 'Invalid message ID' });
+
+        const { remindAt } = req.body;
+        if (!remindAt) return res.status(400).json({ error: 'remindAt required' });
+        const remindDate = new Date(remindAt);
+        if (isNaN(remindDate.getTime()) || remindDate <= new Date()) {
+            return res.status(400).json({ error: 'remindAt must be a future datetime' });
+        }
+
+        const msgRes = await pool.query(
+            'SELECT id, channel_id, content FROM chat_messages WHERE id = $1', [messageId]
+        );
+        if (!msgRes.rowCount) return res.status(404).json({ error: 'Message not found' });
+        const m = msgRes.rows[0];
+
+        // Create task via kleshnya service
+        let taskId = null;
+        try {
+            const kleshnya = require('../services/kleshnya');
+            const task = await kleshnya.createTask({
+                title: `⏰ Нагадування: "${m.content.slice(0, 80)}"`,
+                description: `Нагадування з чату (канал #${m.channel_id}, msg #${m.id})`,
+                deadline: remindAt,
+                priority: 'normal',
+                source_type: 'chat_reminder',
+                category: 'admin',
+                created_by: req.user.username
+            });
+            taskId = task.id;
+        } catch (e) {
+            // Fallback: insert task directly
+            const taskRes = await pool.query(
+                `INSERT INTO tasks (title, description, deadline, priority, status, created_by, category)
+                 VALUES ($1, $2, $3, 'normal', 'todo', $4, 'admin') RETURNING id`,
+                [
+                    `⏰ Нагадування: "${m.content.slice(0, 80)}"`,
+                    `Нагадування з чату (канал #${m.channel_id}, msg #${m.id})`,
+                    remindAt,
+                    req.user.username
+                ]
+            );
+            taskId = taskRes.rows[0].id;
+        }
+
+        log.info(`[Remind] Task #${taskId} created for msg #${messageId} at ${remindAt}`);
+        res.json({ success: true, taskId, remindAt });
+    } catch (err) {
+        log.error('[Remind] Error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// v33.7.0: ANNOUNCE MODE + IMPORTANT MESSAGES
+// ==========================================
+
+// PATCH /api/chat/messages/:id/important — toggle important
+router.patch('/messages/:id/important', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const messageId = parseInt(req.params.id, 10);
+        if (isNaN(messageId)) return res.status(400).json({ error: 'Invalid message ID' });
+
+        if (!['admin', 'director'].includes(req.user.role)) {
+            return res.status(403).json({ error: 'Тільки адміністратори можуть позначати важливі' });
+        }
+
+        const { important } = req.body;
+        const r = await pool.query(
+            `UPDATE chat_messages SET is_important = $1 WHERE id = $2 RETURNING channel_id`,
+            [important === true, messageId]
+        );
+        if (!r.rowCount) return res.status(404).json({ error: 'Message not found' });
+
+        broadcastToChannel(r.rows[0].channel_id, 'chat:important', {
+            channelId: r.rows[0].channel_id,
+            messageId,
+            important: important === true
+        });
+
+        res.json({ success: true });
+    } catch (err) {
+        log.error('[Important] Error', err);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 

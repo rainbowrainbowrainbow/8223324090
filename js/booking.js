@@ -228,6 +228,24 @@ async function showFreeRooms() {
     }
 }
 
+// v33.7.0: Open booking chat channel
+async function openBookingChat(bookingId) {
+    var token = localStorage.getItem('pzp_token');
+    try {
+        var r = await fetch('/api/chat/booking-channel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ bookingId: bookingId })
+        });
+        var data = await r.json();
+        if (data.success && data.channel) {
+            window.open('/chat.html?channelId=' + data.channel.id, '_blank');
+        } else {
+            if (typeof showToast === 'function') showToast('Не вдалось відкрити чат', 'error');
+        }
+    } catch (e) { console.error('openBookingChat:', e); }
+}
+
 function closeBookingPanel() {
     document.getElementById('bookingPanel').classList.add('hidden');
     document.querySelector('.main-content').classList.remove('panel-open');
@@ -1194,6 +1212,7 @@ async function showBookingDetails(bookingId) {
             <button onclick="editBooking('${escapeHtml(booking.id)}')" class="btn-edit-booking">✏️ Редагувати</button>
             <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">📋 Повторити</button>
             <button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="btn-recurring-booking">🔄 Повторюване</button>
+            <button onclick="openBookingChat('${escapeHtml(booking.id)}')" class="btn-secondary btn-sm">💬 Чат команди</button>
             <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Видалити</button>
         </div>
     `;

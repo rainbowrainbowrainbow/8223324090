@@ -1730,6 +1730,53 @@ async function checkStaleCatalogImages() {
     }
 }
 
+// v33.7.0: Daily chat digest (20:00 Kyiv)
+async function checkChatDailyDigest() {
+    try {
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '20:00') return;
+        const today = getKyivDateStr();
+        const last = await getLastSent('chat_daily_digest');
+        if (last === today) return;
+        await setLastSent('chat_daily_digest', today);
+
+        const stats = await pool.query(`
+            SELECT
+                cc.name AS channel_name,
+                COUNT(cm.id)::int AS msg_count,
+                COUNT(DISTINCT cm.user_id)::int AS active_users
+            FROM chat_channels cc
+            LEFT JOIN chat_messages cm
+                ON cm.channel_id = cc.id
+                AND cm.created_at >= $1::date
+                AND cm.deleted_at IS NULL
+                AND (cm.is_bot IS NULL OR cm.is_bot = false)
+            WHERE (cc.is_archived IS NULL OR cc.is_archived = false)
+            GROUP BY cc.id, cc.name
+            HAVING COUNT(cm.id) > 0
+            ORDER BY msg_count DESC`, [today]);
+
+        if (!stats.rowCount) return;
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        const totalMsgs = stats.rows.reduce((s, r) => s + r.msg_count, 0);
+        let text = `💬 <b>Чат — зведення ${today}</b>\n${totalMsgs} повід.\n\n`;
+        stats.rows.forEach(r => {
+            text += `<b>${r.channel_name}</b>: ${r.msg_count}`;
+            if (r.active_users > 1) text += ` (${r.active_users} уч.)`;
+            text += '\n';
+        });
+
+        await sendTelegramMessage(chatId, text);
+        log.info(`[ChatDigest] Sent for ${today}`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('[ChatDigest] Error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
@@ -1748,7 +1795,8 @@ module.exports = {
     checkAutoOrdering,
     checkBookingPushReminders,
     checkCertExpiryReminders,
-    checkStaleCatalogImages
+    checkStaleCatalogImages,
+    checkChatDailyDigest
 };
 
 // v22.18: Auto-ordering — check stock levels and create order requests

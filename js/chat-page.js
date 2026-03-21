@@ -186,6 +186,7 @@
                 var parsed = JSON.parse(savedUser);
                 _currentUserId = String(parsed.id || parsed.userId);
                 _currentUsername = parsed.username;
+                window._chatUserRole = parsed.role || '';
                 var userEl = document.getElementById('currentUser');
                 if (userEl) userEl.textContent = parsed.name || parsed.username || '';
             } catch (e) {
@@ -1174,6 +1175,13 @@
         var dmItem = _contextMenu.querySelector('[data-action="dm"]');
         if (dmItem) dmItem.style.display = isOwn ? 'none' : 'flex';
 
+        // v33.7.0: Show mark-important only for admin/director
+        var impItem = _contextMenu.querySelector('[data-action="mark-important"]');
+        if (impItem) {
+            var userRole = window._chatUserRole || '';
+            impItem.style.display = (userRole === 'admin' || userRole === 'director') ? 'flex' : 'none';
+        }
+
         // Position context menu
         var x = e.clientX;
         var y = e.clientY;
@@ -1234,6 +1242,12 @@
                     break;
                 case 'create-task':
                     _createTaskFromMessage();
+                    break;
+                case 'remind':
+                    _remindFromContext();
+                    break;
+                case 'mark-important':
+                    _markImportant();
                     break;
             }
             _contextMenu.style.display = 'none';
@@ -1420,6 +1434,71 @@
             }
         } catch (err) {
             console.error('[Chat] Bookmark error:', err);
+        }
+    }
+
+    // v33.7.0: Remind from context menu
+    function _remindFromContext() {
+        if (!_contextMsg) return;
+        var old = document.getElementById('chatRemindPicker');
+        if (old) old.remove();
+        var picker = document.createElement('div');
+        picker.id = 'chatRemindPicker';
+        picker.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:10000';
+        picker.innerHTML =
+            '<div style="background:var(--card-bg,#fff);border-radius:16px;padding:20px;min-width:280px;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.18)">' +
+            '<h4 style="margin:0 0 14px;font-size:15px">⏰ Нагадати про повідомлення</h4>' +
+            '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">' +
+            '<button class="chat-modal-btn" onclick="_doRemind(\'1h\')">Через 1 годину</button>' +
+            '<button class="chat-modal-btn" onclick="_doRemind(\'3h\')">Через 3 години</button>' +
+            '<button class="chat-modal-btn" onclick="_doRemind(\'tomorrow\')">Завтра вранці (9:00)</button>' +
+            '<button class="chat-modal-btn" onclick="_doRemind(\'week\')">За тиждень</button>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">' +
+            '<input type="datetime-local" id="remindCustomTime" style="flex:1;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:13px">' +
+            '<button class="chat-modal-btn chat-modal-btn-primary" onclick="_doRemind(\'custom\')">✓</button>' +
+            '</div>' +
+            '<button onclick="document.getElementById(\'chatRemindPicker\').remove()" style="width:100%;padding:7px;border:1px solid var(--border-color);border-radius:8px;background:none;cursor:pointer;font-size:13px">Скасувати</button>' +
+            '</div>';
+        document.body.appendChild(picker);
+        picker.addEventListener('click', function(e) { if (e.target === picker) picker.remove(); });
+        window._remindMsgId = _contextMsg.id;
+    }
+
+    window._doRemind = async function(type) {
+        var remindAt;
+        var now = new Date();
+        if (type === '1h') remindAt = new Date(now.getTime() + 3600000);
+        else if (type === '3h') remindAt = new Date(now.getTime() + 10800000);
+        else if (type === 'tomorrow') {
+            var t = new Date(now); t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0); remindAt = t;
+        }
+        else if (type === 'week') remindAt = new Date(now.getTime() + 7 * 86400000);
+        else if (type === 'custom') {
+            var val = document.getElementById('remindCustomTime')?.value;
+            if (!val) { if (typeof showNotification === 'function') showNotification('Оберіть час', 'error'); return; }
+            remindAt = new Date(val);
+        }
+        if (!remindAt || isNaN(remindAt.getTime())) return;
+        try {
+            await _api('POST', '/messages/' + window._remindMsgId + '/remind', { remindAt: remindAt.toISOString() });
+            var picker = document.getElementById('chatRemindPicker');
+            if (picker) picker.remove();
+            if (typeof showNotification === 'function') showNotification('⏰ ' + remindAt.toLocaleString('uk-UA', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }), 'success');
+        } catch (e) {
+            if (typeof showNotification === 'function') showNotification('Помилка: ' + e.message, 'error');
+        }
+    };
+
+    // v33.7.0: Mark message as important
+    async function _markImportant() {
+        if (!_contextMsg) return;
+        var isCurrentlyImportant = _contextMsg.el.classList.contains('important');
+        try {
+            await _api('PATCH', '/messages/' + _contextMsg.id + '/important', { important: !isCurrentlyImportant });
+            _contextMsg.el.classList.toggle('important', !isCurrentlyImportant);
+        } catch (e) {
+            if (typeof showNotification === 'function') showNotification('Помилка', 'error');
         }
     }
 
@@ -1981,6 +2060,29 @@
         });
     }
 
+    // v33.7.0: Status picker
+    var _statusBtn = document.getElementById('chatStatusBtn');
+    if (_statusBtn) {
+        _statusBtn.addEventListener('click', function() {
+            var picker = document.getElementById('chatStatusPicker');
+            if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+        });
+    }
+    window._setUserStatus = async function(emoji, text) {
+        try {
+            await _api('PATCH', '/users/me/status', { status: text || null, emoji: emoji || null, until: null });
+            var picker = document.getElementById('chatStatusPicker');
+            if (picker) picker.style.display = 'none';
+            var indicator = document.getElementById('chatMyStatus');
+            if (indicator) indicator.textContent = text ? (emoji + ' ' + text) : '';
+            var emojiEl = document.getElementById('chatMyStatusEmoji');
+            if (emojiEl) emojiEl.textContent = emoji || '😊';
+            if (typeof showNotification === 'function') showNotification(text ? (emoji + ' ' + text + ' встановлено') : 'Статус очищено', 'success');
+        } catch (e) {
+            if (typeof showNotification === 'function') showNotification('Помилка: ' + e.message, 'error');
+        }
+    };
+
     // Night time settings
     var _nightStartSel = document.getElementById('chatNightStart');
     var _nightEndSel = document.getElementById('chatNightEnd');
@@ -2067,6 +2169,12 @@
         try {
             _channels = await _api('GET', '/channels') || [];
             _renderChannels();
+            // v33.7.0: Open channel from URL param
+            var urlChId = parseInt(new URLSearchParams(window.location.search).get('channelId') || '0', 10);
+            if (urlChId) {
+                var target = _channels.find(function(c) { return c.id === urlChId; });
+                if (target) _selectChannel(target);
+            }
         } catch (err) {
             console.error('[Chat] Load channels error:', err);
         }
@@ -2342,12 +2450,33 @@
         // Feature 1: Online dot
         var onlineDotHtml = '<span class="chat-online-dot" data-user-id="' + msg.userId + '"></span>';
 
+        // v33.7.0: Booking preview card
+        var bookingPreviewHtml = '';
+        if (msg.metadata && msg.metadata.bookingPreview && !msg.deletedAt) {
+            var bk = msg.metadata.bookingPreview;
+            var bkSt = bk.status === 'confirmed' ? '✅' : bk.status === 'cancelled' ? '❌' : '⏳';
+            bookingPreviewHtml =
+                '<div class="chat-booking-preview">' +
+                '<div class="chat-bp-header">' + bkSt + ' ' + _esc(bk.id) + '</div>' +
+                '<div class="chat-bp-row">📅 ' + _esc(bk.date) + ' о ' + _esc(bk.time || '') + '</div>' +
+                '<div class="chat-bp-row">🎭 ' + _esc(bk.programName || '') + '</div>' +
+                '<div class="chat-bp-row">👥 ' + _esc(bk.label || '') + '</div>' +
+                (bk.price ? '<div class="chat-bp-price">💰 ' + bk.price + ' ₴</div>' : '') +
+                '</div>';
+        }
+
+        // v33.7.0: Important message class
+        var importantClass = msg.isImportant ? ' important' : '';
+
+        el.className += importantClass;
+
         el.innerHTML =
             '<div class="chat-avatar ' + avatarColorClass + '">' + initial + onlineDotHtml + '</div>' +
             '<div class="chat-bubble">' +
                 '<div class="chat-bubble-header">' +
                     '<span class="chat-bubble-username ' + usernameColorClass + roleUsernameClass + '">' + _esc(msg.displayName || msg.username) + '</span>' +
                     (isGuardian ? '<span class="chat-bot-badge guardian-badge">GUARD</span>' : (isBot ? '<span class="chat-bot-badge">BOT</span>' : roleBadgeHtml)) +
+                    (msg.isImportant ? '<span class="chat-important-badge">❗</span>' : '') +
                     editedHtml +
                     '<span class="chat-bubble-time">' + time + readCheckHtml + '</span>' +
                 '</div>' +
@@ -2355,6 +2484,7 @@
                 _renderForwardedBadge(msg) +
                 _renderFileAttachment(msg) +
                 '<div class="chat-bubble-content">' + content + '</div>' +
+                bookingPreviewHtml +
                 _renderLinkPreview(msg) +
                 _renderGuardianActions(msg) +
                 (msg.threadReplyCount > 0 ? '<button class="chat-thread-badge" data-thread-id="' + msg.id + '">' + msg.threadReplyCount + ' відп.</button>' : '') +
@@ -2491,34 +2621,71 @@
     }
 
     function _formatContent(text) {
-        var safe = _esc(text);
+        // v33.7.0: Extract checklist items BEFORE escaping
+        var _clMap = {};
+        var _clIdx = 0;
+        var _processed = text.replace(/^(- \[[ xXхХ]\] .+)$/gm, function(line) {
+            var checked = /\[[xXхХ]\]/.test(line);
+            var itemRaw = line.replace(/^- \[[ xXхХ]\] /, '');
+            var ph = '___CL' + (_clIdx++) + '___';
+            _clMap[ph] =
+                '<label class="chat-check-item" onclick="event.stopPropagation()">' +
+                '<input type="checkbox"' + (checked ? ' checked' : '') +
+                ' onchange="window._chatToggleCheck(this)">' +
+                '<span class="chat-check-text' + (checked ? ' chat-check-done' : '') + '">' +
+                _esc(itemRaw) + '</span></label>';
+            return ph;
+        });
+
+        var safe = _esc(_processed);
 
         // --- Markdown formatting ---
-        // Code blocks (```) — must be before inline code
         safe = safe.replace(/```(\w*)\n?([\s\S]*?)```/g, function(_, lang, code) {
             return '<pre class="chat-codeblock" data-lang="' + (lang || '') + '"><code>' + code.replace(/\n$/, '') + '</code></pre>';
         });
-        // Inline code (`)
         safe = safe.replace(/`([^`\n]+)`/g, '<code class="chat-inline-code">$1</code>');
-        // Bold (**text**)
         safe = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        // Italic (*text*)
         safe = safe.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        // Strikethrough (~~text~~)
         safe = safe.replace(/~~(.+?)~~/g, '<del>$1</del>');
-        // Blockquote (> text) — at line start
         safe = safe.replace(/(?:^|(?<=\n))&gt; ?(.+)/g, '<blockquote class="chat-blockquote">$1</blockquote>');
-
-        // Format @mentions
         safe = safe.replace(/\B@(\w+)/g, '<span class="chat-mention">@$1</span>');
-        // Format URLs
         safe = safe.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary-dark);text-decoration:underline">$1</a>');
-        // Newlines to <br> (outside of pre blocks)
         safe = safe.replace(/\n/g, '<br>');
-        // Wrap emojis with animated span for hover wobble
         safe = safe.replace(/([\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2702}-\u{27B0}\u{2764}\u{2728}\u{2705}\u{274C}\u{2B50}][\u{FE0F}\u{200D}]?)/gu, '<span class="chat-animated-emoji">$1</span>');
+
+        // Restore checklist placeholders
+        Object.keys(_clMap).forEach(function(ph) {
+            safe = safe.split(ph).join(_clMap[ph]);
+        });
         return safe;
     }
+
+    // v33.7.0: Checklist toggle handler
+    window._chatToggleCheck = async function(checkbox) {
+        var msgEl = checkbox.closest('[data-message-id]');
+        if (!msgEl) return;
+        var msgId = msgEl.dataset.messageId;
+        if (!msgId) return;
+        var items = msgEl.querySelectorAll('.chat-check-item');
+        var lines = [];
+        items.forEach(function(item) {
+            var cb = item.querySelector('input[type=checkbox]');
+            var span = item.querySelector('.chat-check-text');
+            if (cb && span) lines.push('- [' + (cb.checked ? 'x' : ' ') + '] ' + span.textContent);
+        });
+        if (!lines.length) return;
+        try {
+            await _api('PUT', '/messages/' + msgId, { content: lines.join('\n') });
+            items.forEach(function(item) {
+                var cb = item.querySelector('input[type=checkbox]');
+                var span = item.querySelector('.chat-check-text');
+                if (cb && span) span.classList.toggle('chat-check-done', cb.checked);
+            });
+        } catch (e) {
+            checkbox.checked = !checkbox.checked;
+            if (typeof showNotification === 'function') showNotification('Помилка збереження', 'error');
+        }
+    };
 
     /** Render file/image attachment from metadata */
     function _renderFileAttachment(msg) {
@@ -2726,6 +2893,28 @@
             input.value = '';
             _autoGrow(input);
             _sendTaskFromChat(taskText);
+            return;
+        }
+
+        // v33.7.0: CRM slash commands (/вільно, /броні, /задачі, /склад)
+        var CRM_SLASH = ['вільно','free','броні','bookings','задачі','tasks','склад'];
+        var slashM = content.match(/^\/([а-яёіїєґa-z]+)\s*(.*)/iu);
+        if (slashM && CRM_SLASH.indexOf(slashM[1].toLowerCase()) !== -1) {
+            var slashCmd = slashM[1];
+            var slashArgs = slashM[2].trim();
+            input.value = '';
+            if (typeof _autoGrow === 'function') _autoGrow(input);
+            try {
+                var slashResp = await _api('POST', '/slash', { command: slashCmd, args: slashArgs });
+                if (slashResp && slashResp.reply && _currentChannel) {
+                    var slashMsg = await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
+                        content: slashResp.reply
+                    });
+                    if (slashMsg) _appendMessage(slashMsg);
+                }
+            } catch (slashErr) {
+                _appendSystemMessage('❌ ' + (slashErr.message || 'Помилка команди'));
+            }
             return;
         }
 
@@ -3963,6 +4152,36 @@
             case 'guardian:event':
                 _onGuardianEvent(payload);
                 break;
+            case 'user:status': {
+                document.querySelectorAll('[data-user-id="' + payload.userId + '"] .chat-peer-status').forEach(function(el) {
+                    el.textContent = payload.status ? ((payload.emoji || '') + ' ' + payload.status) : '';
+                });
+                break;
+            }
+            case 'chat:important': {
+                var impEl = document.querySelector('[data-message-id="' + payload.messageId + '"]');
+                if (impEl) impEl.classList.toggle('important', payload.important);
+                break;
+            }
+            case 'chat:booking-preview': {
+                var bpEl = document.querySelector('[data-message-id="' + payload.messageId + '"]');
+                if (bpEl && !bpEl.querySelector('.chat-booking-preview') && payload.bookingPreview) {
+                    var bubble = bpEl.querySelector('.chat-bubble-content');
+                    if (bubble) {
+                        var bk = payload.bookingPreview;
+                        var bkSt = bk.status === 'confirmed' ? '✅' : bk.status === 'cancelled' ? '❌' : '⏳';
+                        var html = '<div class="chat-booking-preview">' +
+                            '<div class="chat-bp-header">' + bkSt + ' ' + _esc(bk.id) + '</div>' +
+                            '<div class="chat-bp-row">📅 ' + _esc(bk.date) + ' о ' + _esc(bk.time || '') + '</div>' +
+                            '<div class="chat-bp-row">🎭 ' + _esc(bk.programName || '') + '</div>' +
+                            '<div class="chat-bp-row">👥 ' + _esc(bk.label || '') + '</div>' +
+                            (bk.price ? '<div class="chat-bp-price">💰 ' + bk.price + ' ₴</div>' : '') +
+                            '</div>';
+                        bubble.insertAdjacentHTML('afterend', html);
+                    }
+                }
+                break;
+            }
         }
     }
 

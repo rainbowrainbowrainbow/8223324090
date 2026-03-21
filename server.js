@@ -18,7 +18,7 @@ const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
 const { ensureReportBotWebhook, REPORT_BOT_TOKEN } = require('./services/report-bot');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkStaleCatalogImages } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkStaleCatalogImages, checkChatDailyDigest } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
@@ -523,6 +523,8 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkCertExpiryReminders', checkCertExpiryReminders, { dedup: 'daily' }), 60000));
         // v33.5: Stale catalog images refresh (daily at 03:00 Kyiv)
         schedulerIntervals.push(setInterval(guardScheduler('checkStaleCatalogImages', checkStaleCatalogImages, { dedup: 'daily' }), 60000));
+        // v33.7: Chat daily digest (20:00 Kyiv)
+        schedulerIntervals.push(setInterval(guardScheduler('checkChatDailyDigest', checkChatDailyDigest, { dedup: 'daily' }), 60000));
         // v20.4.0: Training prompts (Mon 09:00 Kyiv) + summary (Fri 17:00 Kyiv)
         async function checkTrainingPrompts() {
             const { getKyivTimeStr, getKyivDate } = require('./services/booking');

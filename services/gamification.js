@@ -276,8 +276,12 @@ async function checkAchievements(username, context = {}) {
                 break;
             }
             case 'booking_count': {
+                // v33.8.0: Count bookings where user is host OR creator
                 const { rows } = await pool.query(
-                    'SELECT COUNT(*) FROM bookings WHERE created_by = $1',
+                    `SELECT COUNT(*) FROM bookings
+                     WHERE (hosts ILIKE '%' || $1 || '%' OR second_animator ILIKE '%' || $1 || '%'
+                            OR created_by = $1)
+                       AND status != 'cancelled'`,
                     [username]
                 );
                 shouldUnlock = parseInt(rows[0].count) >= ach.condition_value;

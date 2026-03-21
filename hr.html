@@ -1047,6 +1047,7 @@
                 <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
                     <select id="salaryMonth" class="hr-team-select" style="min-width:160px;"></select>
                     <button id="btnAddAdjustment" class="btn-add">+ Бонус/Штраф</button>
+                    <button id="btnCommitSalary" class="btn-add" style="background:var(--success,#00b894);color:#fff" onclick="commitSalaries()">💰 Нарахувати зарплати</button>
                 </div>
                 <div id="salaryTotals" style="margin-bottom:16px;"></div>
                 <div class="hr-report-table-wrap">
@@ -1277,6 +1278,30 @@
         const picker = document.getElementById('shiftsMonthPicker');
         if (picker) { picker.value = new Date().toISOString().slice(0,7); loadShiftsSummary(); }
     });
+
+    // v33.8.0: Salary commit to finance
+    async function commitSalaries() {
+        var monthEl = document.getElementById('salaryMonth');
+        var month = monthEl ? monthEl.value : null;
+        if (!month) { if (typeof showToast === 'function') showToast('Оберіть місяць', 'error'); return; }
+        if (!confirm('Нарахувати зарплати за ' + month + '? Це запише транзакції у фінанси.')) return;
+        var token = localStorage.getItem('pzp_token');
+        try {
+            var resp = await fetch('/api/hr/salary/commit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ month: month })
+            });
+            var data = await resp.json();
+            if (resp.ok && data.success) {
+                if (typeof showToast === 'function') showToast('Нараховано ' + data.committed + ' зарплат за ' + month + '!', 'success');
+            } else {
+                if (typeof showToast === 'function') showToast(data.error || 'Помилка', 'error');
+            }
+        } catch (e) {
+            if (typeof showToast === 'function') showToast('Помилка: ' + e.message, 'error');
+        }
+    }
     </script>
 </body>
 </html>

@@ -69,7 +69,7 @@ router.get('/:date', async (req, res) => {
             `SELECT id, date, time, line_id, program_id, program_code, label, program_name,
                     category, duration, price, hosts, second_animator, pinata_filler, costume,
                     room, notes, created_by, created_at, linked_to, status, kids_count,
-                    updated_at, group_name, extra_data, skip_notification, customer_id, payment_method
+                    updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id
              FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time`,
             [date]
         );
@@ -164,11 +164,31 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             b.id = await generateBookingNumber(client);
         }
 
+        // v33.8.0 Integration 6: Certificate validation (INSIDE transaction)
+        let certificateId = null;
+        if (b.certificateCode) {
+            const certRow = await client.query(
+                `SELECT id, status, display_value FROM certificates WHERE cert_code = $1 FOR UPDATE`,
+                [String(b.certificateCode).toUpperCase()]
+            );
+            if (!certRow.rowCount) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Сертифікат не знайдено' });
+            }
+            const cert = certRow.rows[0];
+            if (cert.status !== 'active') {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: `Сертифікат недійсний (статус: ${cert.status})` });
+            }
+            certificateId = cert.id;
+            await client.query(`UPDATE certificates SET status = 'used', used_at = NOW() WHERE id = $1`, [certificateId]);
+        }
+
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
              RETURNING *`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId, b.paymentMethod || null]
+            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId, b.paymentMethod || null, certificateId]
         );
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
@@ -199,6 +219,20 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 );
             } catch (finErr) {
                 log.warn(`Finance auto-record failed (non-critical): ${finErr.message}`);
+            }
+        }
+
+        // v33.8.0 Integration 6: Certificate payment finance record
+        if (certificateId && b.price > 0) {
+            try {
+                await client.query(
+                    `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, certificate_id, created_by)
+                     VALUES ('income', (SELECT id FROM finance_categories WHERE name ILIKE '%сертифікат%' LIMIT 1),
+                             $1, $2, $3, 'certificate', $4, $5, 'system')`,
+                    [b.price, `Оплата сертифікатом для бронювання ${b.id}`, b.date, b.id, certificateId]
+                );
+            } catch (certFinErr) {
+                log.warn(`Certificate finance record failed (non-critical): ${certFinErr.message}`);
             }
         }
 
@@ -234,6 +268,121 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 kids_count: b.kidsCount, created_by: b.createdBy
             }, `booking_created_${b.id}`);
         }
+
+        // ==========================================
+        // v33.8.0: Post-commit integrations (all fire-and-forget)
+        // ==========================================
+
+        // Integration 1: Warehouse stock deduction
+        if (b.programId) {
+            setImmediate(async () => {
+                try {
+                    const reqs = await pool.query(
+                        `SELECT psr.stock_id, psr.quantity, ws.name, ws.quantity AS current_qty
+                         FROM product_stock_requirements psr
+                         JOIN warehouse_stock ws ON ws.id = psr.stock_id
+                         WHERE psr.product_id = $1 AND ws.is_active = true`,
+                        [b.programId]
+                    );
+                    for (const req of reqs.rows) {
+                        if (req.current_qty < req.quantity) {
+                            log.warn(`[StockDeduct] Low stock: ${req.name} (${req.current_qty} < ${req.quantity}) for booking ${insertResult.rows[0].id}`);
+                        }
+                        await pool.query(
+                            `UPDATE warehouse_stock SET quantity = GREATEST(0, quantity - $1), updated_at = NOW(), updated_by = 'booking' WHERE id = $2`,
+                            [req.quantity, req.stock_id]
+                        );
+                        await pool.query(
+                            `INSERT INTO warehouse_history (stock_id, change, reason, created_by, created_at) VALUES ($1, $2, $3, 'booking', NOW())`,
+                            [req.stock_id, -req.quantity, `Бронювання ${insertResult.rows[0].id}`]
+                        );
+                    }
+                } catch (e) { log.warn('[StockDeduct] Error:', e.message); }
+            });
+        }
+
+        // Integration 2: HR shift warning (no block)
+        if (b.hosts && b.date) {
+            setImmediate(async () => {
+                try {
+                    const hostName = String(b.hosts).split(',')[0].trim();
+                    const staffRow = await pool.query(
+                        `SELECT id, name FROM staff WHERE display_name ILIKE $1 AND is_active = true LIMIT 1`,
+                        [hostName]
+                    );
+                    if (!staffRow.rowCount) return;
+                    const shift = await pool.query(
+                        `SELECT id FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2`,
+                        [staffRow.rows[0].id, b.date]
+                    );
+                    if (!shift.rowCount) {
+                        const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
+                        const chatId = await getConfiguredChatId();
+                        if (chatId) {
+                            await sendTelegramMessage(chatId,
+                                `⚠️ Бронювання ${insertResult.rows[0].id} (${b.date} ${b.time}): ` +
+                                `для аніматора "${b.hosts}" не знайдено зміни в HR. Перевірте графік!`
+                            );
+                        }
+                    }
+                } catch (e) { /* silent */ }
+            });
+        }
+
+        // Integration 7: Loyalty tier auto-upgrade
+        if (customerId) {
+            setImmediate(async () => {
+                try {
+                    const cust = await pool.query(
+                        `SELECT c.id, c.name, c.total_bookings, c.total_spent,
+                                c.loyalty_tier_id, lt.name AS current_tier_name
+                         FROM customers c
+                         LEFT JOIN loyalty_tiers lt ON lt.id = c.loyalty_tier_id
+                         WHERE c.id = $1`,
+                        [customerId]
+                    );
+                    if (!cust.rowCount) return;
+                    const c = cust.rows[0];
+                    const tiers = await pool.query(
+                        `SELECT * FROM loyalty_tiers
+                         WHERE min_bookings <= $1 OR min_spent <= $2
+                         ORDER BY min_bookings DESC, min_spent DESC LIMIT 1`,
+                        [c.total_bookings, c.total_spent]
+                    );
+                    if (!tiers.rowCount) return;
+                    const newTier = tiers.rows[0];
+                    if (newTier.id !== c.loyalty_tier_id) {
+                        await pool.query('UPDATE customers SET loyalty_tier_id = $1 WHERE id = $2', [newTier.id, customerId]);
+                        const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
+                        const chatId = await getConfiguredChatId();
+                        if (chatId) {
+                            await sendTelegramMessage(chatId,
+                                `🏆 Клієнт <b>${c.name}</b> підвищено до tier <b>${newTier.name}</b>!\n` +
+                                `Бронювань: ${c.total_bookings} | Сума: ${c.total_spent} грн`
+                            );
+                        }
+                        log.info(`[Loyalty] Customer ${customerId} upgraded: ${c.current_tier_name || 'none'} → ${newTier.name}`);
+                    }
+                } catch (e) { log.warn('[Loyalty] Tier update error:', e.message); }
+            });
+        }
+
+        // Integration 10: Gamification achievements check
+        setImmediate(async () => {
+            try {
+                const { checkAchievements } = require('../services/gamification');
+                const hostUsername = b.hosts ? String(b.hosts).split(',')[0].trim() : null;
+                if (hostUsername) {
+                    const unlocked = await checkAchievements(hostUsername, { context: 'booking' });
+                    if (unlocked.length > 0) {
+                        log.info(`[Gamification] ${hostUsername} unlocked: ${unlocked.map(a => a.key).join(', ')}`);
+                    }
+                }
+                if (b.createdBy && b.createdBy !== 'system') {
+                    await checkAchievements(b.createdBy, { context: 'booking' }).catch(() => {});
+                }
+            } catch (e) { log.warn('[Gamification] Achievement check error:', e.message); }
+        });
 
         res.json({ success: true, booking });
     } catch (err) {

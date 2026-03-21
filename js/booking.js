@@ -228,6 +228,33 @@ async function showFreeRooms() {
     }
 }
 
+// v33.8.0: Validate certificate code
+async function validateCertificate() {
+    var code = document.getElementById('certCodeInput')?.value?.trim();
+    if (!code) return;
+    var resultEl = document.getElementById('certValidationResult');
+    if (!resultEl) return;
+    resultEl.style.display = 'block';
+    resultEl.textContent = '⏳ Перевіряю...';
+    resultEl.style.color = '';
+    try {
+        var resp = await fetch('/api/certificates/validate/' + encodeURIComponent(code), {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+        });
+        var data = await resp.json();
+        if (data.valid) {
+            resultEl.innerHTML = '✅ Сертифікат дійсний: <b>' + escapeHtml(data.certificate.display_value) + '</b> (' + escapeHtml(data.certificate.type_text || '') + ')';
+            resultEl.style.color = 'var(--success, green)';
+        } else {
+            resultEl.textContent = '❌ ' + (data.reason === 'expired' ? 'Прострочений' : data.reason === 'used' ? 'Вже використаний' : data.error || 'Недійсний');
+            resultEl.style.color = '#ef4444';
+        }
+    } catch (e) {
+        resultEl.textContent = '❌ Помилка перевірки';
+        resultEl.style.color = '#ef4444';
+    }
+}
+
 // v33.7.0: Open booking chat channel
 async function openBookingChat(bookingId) {
     var token = localStorage.getItem('pzp_token');
@@ -773,6 +800,10 @@ function buildBookingObject(formData, program) {
             }
         }
     }
+
+    // v33.8.0: Certificate code
+    const certCode = document.getElementById('certCodeInput')?.value?.trim();
+    if (certCode) obj.certificateCode = certCode;
 
     // Optimistic locking: include updatedAt from the booking being edited
     if (AppState.editingBookingId) {

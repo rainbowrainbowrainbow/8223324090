@@ -195,4 +195,59 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
     }
 });
 
+// ==========================================
+// v33.8.0: Product stock requirements (Integration 1)
+// ==========================================
+
+// GET /api/products/:id/stock-requirements
+router.get('/:id/stock-requirements', async (req, res) => {
+    try {
+        const r = await pool.query(
+            `SELECT psr.*, ws.name AS stock_name, ws.quantity AS current_qty, ws.unit
+             FROM product_stock_requirements psr
+             JOIN warehouse_stock ws ON ws.id = psr.stock_id
+             WHERE psr.product_id = $1`,
+            [req.params.id]
+        );
+        res.json({ success: true, requirements: r.rows });
+    } catch (err) {
+        log.error('Get stock requirements error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// POST /api/products/:id/stock-requirements
+router.post('/:id/stock-requirements', requireRole('admin', 'manager'), async (req, res) => {
+    try {
+        const { stockId, quantity } = req.body;
+        if (!stockId || !quantity || quantity < 1)
+            return res.status(400).json({ error: 'stockId і quantity (>0) required' });
+        const r = await pool.query(
+            `INSERT INTO product_stock_requirements (product_id, stock_id, quantity)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (product_id, stock_id) DO UPDATE SET quantity = $3
+             RETURNING *`,
+            [req.params.id, stockId, quantity]
+        );
+        res.json({ success: true, requirement: r.rows[0] });
+    } catch (err) {
+        log.error('Create stock requirement error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// DELETE /api/products/:id/stock-requirements/:stockId
+router.delete('/:id/stock-requirements/:stockId', requireRole('admin', 'manager'), async (req, res) => {
+    try {
+        await pool.query(
+            'DELETE FROM product_stock_requirements WHERE product_id = $1 AND stock_id = $2',
+            [req.params.id, parseInt(req.params.stockId)]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Delete stock requirement error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 module.exports = router;

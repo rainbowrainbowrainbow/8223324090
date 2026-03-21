@@ -273,6 +273,29 @@ router.patch('/:id', async (req, res) => {
 
         const updatedLead = result.rows[0];
 
+        // v33.8.0 Integration 8: Lead → Customer source link
+        const newStatus = updatedLead.status;
+        if (['completed', 'deal', 'closed'].includes(newStatus) && updatedLead.booking_id) {
+            setImmediate(async () => {
+                try {
+                    const bk = await pool.query('SELECT customer_id FROM bookings WHERE id = $1', [updatedLead.booking_id]);
+                    const custId = bk.rows[0]?.customer_id;
+                    if (!custId) return;
+                    await pool.query(
+                        `UPDATE customers
+                         SET source = COALESCE(NULLIF(source, ''), $1),
+                             lead_id = COALESCE(lead_id, $2),
+                             notes = CONCAT_WS(E'\n', notes, $3)
+                         WHERE id = $4 AND (source IS NULL OR source = '')`,
+                        [updatedLead.source || 'lead', updatedLead.id,
+                         `Конвертований з ліду #${updatedLead.id} (${updatedLead.source || 'невідоме джерело'})`,
+                         custId]
+                    );
+                    log.info(`[Lead→Customer] Lead ${updatedLead.id} → customer ${custId}, source: ${updatedLead.source}`);
+                } catch (e) { log.warn('[LeadConvert] Error:', e.message); }
+            });
+        }
+
         // v29.1: Pipeline stage hooks (fire-and-forget)
         if (pipeline_stage === 'deposit_received') {
             onDepositReceived(updatedLead, req.user).catch(e =>

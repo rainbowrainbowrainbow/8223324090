@@ -1021,6 +1021,22 @@ router.get('/:id', async (req, res) => {
             customer.tags = tags.rows;
         } catch { customer.tags = []; }
 
+        // v33.8.0 Integration 5: Reviews + average_rating
+        try {
+            const reviews = await pool.query(
+                `SELECT er.rating, er.comment, er.created_at, b.date, b.program_name
+                 FROM event_reviews er
+                 LEFT JOIN bookings b ON b.id = er.booking_id
+                 WHERE er.customer_id = $1
+                 ORDER BY er.created_at DESC LIMIT 10`,
+                [numId]
+            );
+            customer.reviews = reviews.rows.map(r => ({
+                rating: r.rating, comment: r.comment, createdAt: r.created_at,
+                date: r.date, programName: r.program_name
+            }));
+        } catch { customer.reviews = []; }
+
         // v30.4: LTV
         if (customer.totalBookings > 0) {
             const raw = { total_bookings: customer.totalBookings, total_spent: customer.totalSpent,

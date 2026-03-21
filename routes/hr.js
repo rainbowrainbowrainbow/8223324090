@@ -1613,4 +1613,85 @@ router.get('/shifts-summary', async (req, res) => {
     }
 });
 
+// ==========================================
+// v33.8.0 Integration 9: Salary commit to finance
+// ==========================================
+
+// POST /api/hr/salary/commit — record calculated salaries as finance transactions
+router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager'), async (req, res) => {
+    try {
+        const { month } = req.body;
+        if (!month || !/^\d{4}-\d{2}$/.test(month))
+            return res.status(400).json({ error: 'month required (YYYY-MM)' });
+
+        // Check if already committed
+        const already = await pool.query(
+            `SELECT COUNT(*)::int AS c FROM finance_transactions
+             WHERE payment_method = 'salary' AND date LIKE $1`,
+            [`${month}%`]
+        );
+        if (parseInt(already.rows[0].c) > 0) {
+            return res.status(409).json({ error: `Зарплати за ${month} вже нараховано (${already.rows[0].c} транзакцій)` });
+        }
+
+        // Calculate salaries based on time records
+        const salaryResp = await pool.query(
+            `SELECT
+                s.id AS staff_id, s.name, s.hourly_rate,
+                COALESCE(SUM(tr.total_worked_minutes), 0)::int AS total_minutes
+             FROM staff s
+             LEFT JOIN hr_time_records tr ON tr.staff_id = s.id
+                AND tr.record_date >= $1::date AND tr.record_date <= ($1::date + INTERVAL '1 month - 1 day')
+             WHERE s.is_active = true AND s.hourly_rate > 0
+             GROUP BY s.id, s.name, s.hourly_rate
+             HAVING COALESCE(SUM(tr.total_worked_minutes), 0) > 0`,
+            [`${month}-01`]
+        );
+
+        // Find salary expense category
+        const salCat = await pool.query(
+            `SELECT id FROM finance_categories WHERE name ILIKE '%зарплат%' AND type = 'expense' LIMIT 1`
+        );
+        const catId = salCat.rows[0]?.id || null;
+
+        const inserted = [];
+        for (const s of salaryResp.rows) {
+            const workedH = s.total_minutes / 60;
+            const baseSal = Math.round(workedH * parseFloat(s.hourly_rate));
+
+            // Bonuses/deductions from salary_adjustments
+            let bonuses = 0, deductions = 0;
+            try {
+                const adj = await pool.query(
+                    `SELECT type, SUM(amount)::int AS total
+                     FROM salary_adjustments WHERE staff_id = $1 AND month = $2 GROUP BY type`,
+                    [s.staff_id, month]
+                );
+                bonuses = adj.rows.filter(a => a.type === 'bonus').reduce((sum, a) => sum + a.total, 0);
+                deductions = adj.rows.filter(a => ['deduction', 'penalty'].includes(a.type)).reduce((sum, a) => sum + a.total, 0);
+            } catch { /* salary_adjustments may not have data */ }
+
+            const totalSal = baseSal + bonuses - deductions;
+            if (totalSal <= 0) continue;
+
+            const r = await pool.query(
+                `INSERT INTO finance_transactions
+                    (type, category_id, amount, description, date, payment_method, staff_id, created_by)
+                 VALUES ('expense', $1, $2, $3, $4, 'salary', $5, $6)
+                 RETURNING id`,
+                [catId, totalSal,
+                 `Зарплата ${s.name} за ${month} (${Math.round(workedH)}г * ${s.hourly_rate} грн/г)`,
+                 `${month}-28`, s.staff_id, req.user.username]
+            );
+            inserted.push({ staffId: s.staff_id, name: s.name, amount: totalSal, transactionId: r.rows[0].id });
+        }
+
+        log.info(`[SalaryCommit] Committed ${inserted.length} salaries for ${month}`);
+        res.json({ success: true, committed: inserted.length, transactions: inserted });
+    } catch (err) {
+        log.error('[SalaryCommit] Error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 module.exports = router;

@@ -367,17 +367,12 @@ const ReportsPage = (() => {
 
     async function toggleHashtagActive(hashtag, active) {
         try {
-            // Get all reports with this hashtag
-            const data = await apiRequest('GET', `/api/reports?hashtag=${encodeURIComponent(hashtag)}&limit=1000`);
-            const reports = data.reports || [];
-
-            // Update each report
-            await Promise.all(reports.map(r =>
-                apiRequest('PUT', `/api/reports/${r.id}`, { hashtagActive: active })
-            ));
-
-            showNotification(active ? `#${hashtag} увімкнено` : `#${hashtag} вимкнено з підрахунків`);
-            await Promise.all([loadHashtags(), loadSummary()]);
+            const result = await apiRequest('PATCH', '/api/reports/hashtags/toggle', { hashtag, active });
+            showNotification(active
+                ? `#${hashtag} увімкнено (${result.updated} звітів)`
+                : `#${hashtag} вимкнено з підрахунків (${result.updated} звітів)`
+            );
+            await Promise.all([loadHashtags(), loadSummary(), loadReports()]);
         } catch (err) {
             showNotification('Помилка: ' + err.message, 'error');
         }

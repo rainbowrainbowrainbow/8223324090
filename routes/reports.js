@@ -20,9 +20,19 @@ router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager',
 // ==========================================
 
 function parseHashtags(val) {
-    if (Array.isArray(val)) return val;
+    if (Array.isArray(val)) return val.map(String).map(s => s.trim()).filter(Boolean);
     if (!val) return [];
-    try { return JSON.parse(val); } catch { return []; }
+    try {
+        const parsed = typeof val === 'string' ? JSON.parse(val) : val;
+        return Array.isArray(parsed) ? parsed.map(String).map(s => s.trim()).filter(Boolean) : [];
+    } catch { return []; }
+}
+
+function sanitizeHashtags(tags) {
+    if (!Array.isArray(tags)) return [];
+    return [...new Set(
+        tags.map(t => String(t).trim().slice(0, 50)).filter(Boolean)
+    )];
 }
 
 function mapReportRow(r) {
@@ -91,8 +101,8 @@ router.get('/', async (req, res) => {
                 where += ` AND r.category = $${params.length}`;
             }
             if (hashtag) {
-                params.push(`%"${hashtag}"%`);
-                where += ` AND r.hashtags LIKE $${params.length}`;
+                params.push(JSON.stringify([hashtag]));
+                where += ` AND r.hashtags @> $${params.length}::jsonb`;
             }
             if (dateFrom) {
                 params.push(dateFrom);
@@ -306,6 +316,30 @@ router.get('/hashtags', async (req, res) => {
 });
 
 // ==========================================
+// PATCH /api/reports/hashtags/toggle — bulk toggle hashtagActive for all reports with a given hashtag
+// ==========================================
+router.patch('/hashtags/toggle', async (req, res) => {
+    try {
+        const { hashtag, active } = req.body;
+        if (!hashtag || typeof hashtag !== 'string') {
+            return res.status(400).json({ error: 'hashtag (string) required' });
+        }
+        const isActive = active !== false && active !== 0;
+        const result = await pool.query(
+            `UPDATE reports SET hashtag_active = $1, updated_at = NOW()
+             WHERE hashtags @> $2::jsonb
+             RETURNING id`,
+            [isActive, JSON.stringify([hashtag])]
+        );
+        log.info(`Hashtag toggle: #${hashtag} → ${isActive ? 'ON' : 'OFF'} (${result.rowCount} reports)`);
+        res.json({ updated: result.rowCount, active: isActive });
+    } catch (err) {
+        log.error('PATCH /reports/hashtags/toggle error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+// ==========================================
 // GET /api/reports/:id — single report
 // ==========================================
 router.get('/:id', async (req, res) => {
@@ -359,7 +393,7 @@ router.post('/', async (req, res) => {
             ocrText || null,
             voiceTranscript || null,
             rawData ? JSON.stringify(rawData) : '{}',
-            JSON.stringify(Array.isArray(hashtags) ? hashtags : [])
+            JSON.stringify(sanitizeHashtags(hashtags || []))
         ]);
 
         const report = mapReportRow(result.rows[0]);
@@ -416,7 +450,7 @@ router.put('/:id', async (req, res) => {
         }
         if (photoUrl !== undefined) { params.push(photoUrl); updates.push(`photo_url = $${params.length}`); }
         if (ocrText !== undefined) { params.push(ocrText); updates.push(`ocr_text = $${params.length}`); }
-        if (hashtags !== undefined) { params.push(JSON.stringify(Array.isArray(hashtags) ? hashtags : [])); updates.push(`hashtags = $${params.length}`); }
+        if (hashtags !== undefined) { params.push(JSON.stringify(sanitizeHashtags(hashtags))); updates.push(`hashtags = $${params.length}`); }
         if (hashtagActive !== undefined) { params.push(!!hashtagActive); updates.push(`hashtag_active = $${params.length}`); }
 
         if (updates.length === 0) {

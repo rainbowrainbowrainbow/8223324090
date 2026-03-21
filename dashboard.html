@@ -7,15 +7,15 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=33.2.0">
-    <link rel="stylesheet" href="css/auth.css?v=33.2.0">
-    <link rel="stylesheet" href="css/layout.css?v=33.2.0">
-    <link rel="stylesheet" href="css/pages.css?v=33.2.0">
-    <link rel="stylesheet" href="css/modals.css?v=33.2.0">
-    <link rel="stylesheet" href="css/dashboard.css?v=33.2.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=33.2.0">
-    <link rel="stylesheet" href="css/responsive.css?v=33.2.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=33.2.0">
+    <link rel="stylesheet" href="css/base.css?v=33.5.0">
+    <link rel="stylesheet" href="css/auth.css?v=33.5.0">
+    <link rel="stylesheet" href="css/layout.css?v=33.5.0">
+    <link rel="stylesheet" href="css/pages.css?v=33.5.0">
+    <link rel="stylesheet" href="css/modals.css?v=33.5.0">
+    <link rel="stylesheet" href="css/dashboard.css?v=33.5.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=33.5.0">
+    <link rel="stylesheet" href="css/responsive.css?v=33.5.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=33.5.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -106,14 +106,82 @@
         </div>
     </div>
 
+    <!-- Catalog modal -->
+    <div id="addCatalogModal" class="modal" style="display:none" role="dialog" aria-modal="true" aria-label="Додати позицію каталогу">
+        <div class="modal-content modal-wide">
+            <span class="modal-close" onclick="closeModal('addCatalogModal')">&times;</span>
+            <h2>Додати позицію каталогу</h2>
+            <div class="form-group">
+                <label>Каталог</label>
+                <select id="catCatalogId" onchange="onCatalogChange()" required>
+                    <option value="">— завантаження... —</option>
+                </select>
+            </div>
+            <div class="form-group" id="subcategoryGroup" style="display:none">
+                <label>Підкатегорія</label>
+                <select id="catSubcategory">
+                    <option value="">— без підкатегорії —</option>
+                </select>
+            </div>
+            <div class="form-group" id="sizeGroup" style="display:none">
+                <label>Розмір</label>
+                <select id="catSize">
+                    <option value="">— без розміру —</option>
+                    <option value="S">S</option>
+                    <option value="M">M</option>
+                    <option value="L">L</option>
+                    <option value="XL">XL</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Назва</label>
+                <input type="text" id="catName" placeholder="Назва позиції" required>
+            </div>
+            <div class="form-group">
+                <label>Опис</label>
+                <textarea id="catDescription" rows="2" placeholder="Короткий опис"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Ціна (грн) <button type="button" class="btn-ghost btn-xs" onclick="suggestCatalogPrice()">Підказати ціну</button></label>
+                <input type="number" id="catPrice" min="0" step="50" placeholder="0">
+                <div id="priceSuggestion" class="form-hint" style="display:none"></div>
+            </div>
+            <div class="form-group">
+                <label>Зображення (AI)</label>
+                <button type="button" id="genImageBtn" class="btn-primary btn-sm" onclick="generateCatalogImage()">Згенерувати</button>
+                <div id="imageGenStatus" class="catalog-gen-status" style="display:none">
+                    <span class="spinner-sm"></span> Генерація...
+                </div>
+                <div id="imagePreview" class="catalog-img-preview" style="display:none">
+                    <img id="previewImg" alt="Preview">
+                    <div class="catalog-img-actions">
+                        <button type="button" class="btn-ghost btn-sm" onclick="acceptCatalogImage()">Підтвердити</button>
+                        <button type="button" id="regenBtn" class="btn-ghost btn-sm" style="display:none" onclick="regenerateCatalogImage()">Перегенерувати</button>
+                    </div>
+                </div>
+                <div id="imageError" class="form-error" style="display:none"></div>
+            </div>
+            <div class="form-group catalog-dist-options">
+                <label><input type="checkbox" id="distPrice" checked> Додати ціну в прайс</label>
+                <label><input type="checkbox" id="distTask" checked> Створити задачу на друк</label>
+            </div>
+            <div class="form-actions">
+                <button type="button" id="publishBtn" class="btn-primary" onclick="publishCatalogItem()" disabled>Додати в каталог</button>
+                <button type="button" class="btn-ghost" onclick="closeModal('addCatalogModal')">Скасувати</button>
+                <span id="kieBalanceBadge" class="badge badge-info" style="display:none"></span>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
-    <script src="js/config.js?v=33.2.0"></script>
-    <script src="js/api.js?v=33.2.0"></script>
-    <script src="js/auth.js?v=33.2.0"></script>
-    <script src="js/components/sidebar.js?v=33.2.0"></script>
+    <script src="js/config.js?v=33.5.0"></script>
+    <script src="js/api.js?v=33.5.0"></script>
+    <script src="js/auth.js?v=33.5.0"></script>
+    <script src="js/components/sidebar.js?v=33.5.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/dashboard-page.js?v=33.2.0"></script>
-    <script src="js/ui.js?v=33.2.0"></script>
+    <script src="js/dashboard-page.js?v=33.5.0"></script>
+    <script src="js/ui.js?v=33.5.0"></script>
+    <script src="js/catalogs.js?v=33.5.0"></script>
     <script>
     // Login handler
     document.getElementById('loginForm').addEventListener('submit', async () => {
@@ -153,6 +221,6 @@
         window.location.href = '/';
     })();
     </script>
-    <script src="js/role-panel.js?v=33.2.0"></script>
+    <script src="js/role-panel.js?v=33.5.0"></script>
 </body>
 </html>

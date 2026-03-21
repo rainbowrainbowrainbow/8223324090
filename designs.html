@@ -17,13 +17,13 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=33.2.0">
-    <link rel="stylesheet" href="css/layout.css?v=33.2.0">
-    <link rel="stylesheet" href="css/pages.css?v=33.2.0">
-    <link rel="stylesheet" href="css/modals.css?v=33.2.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=33.2.0">
-    <link rel="stylesheet" href="css/responsive.css?v=33.2.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=33.2.0">
+    <link rel="stylesheet" href="css/base.css?v=33.5.0">
+    <link rel="stylesheet" href="css/layout.css?v=33.5.0">
+    <link rel="stylesheet" href="css/pages.css?v=33.5.0">
+    <link rel="stylesheet" href="css/modals.css?v=33.5.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=33.5.0">
+    <link rel="stylesheet" href="css/responsive.css?v=33.5.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=33.5.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -952,6 +952,7 @@
             <div id="tabCatalogs" style="display:none">
                 <!-- Catalog list -->
                 <div class="catalog-list" id="catalogList">
+                    <!-- Graduation card (static — has own /graduation route) -->
                     <div class="catalog-card" data-catalog="graduation">
                         <div class="catalog-cover">
                             <div class="catalog-cover-placeholder">
@@ -969,6 +970,8 @@
                             <button class="btn-catalog btn-catalog-print" onclick="printCatalog('graduation')">Друк</button>
                         </div>
                     </div>
+                    <!-- Dynamic catalogs loaded here -->
+                    <div id="dynamicCatalogCards"></div>
                 </div>
 
                 <!-- Fullscreen catalog viewer -->
@@ -1038,12 +1041,107 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=33.2.0"></script>
-    <script src="js/api.js?v=33.2.0"></script>
-    <script src="js/auth.js?v=33.2.0"></script>
-    <script src="js/components/sidebar.js?v=33.2.0"></script>
+    <script src="js/config.js?v=33.5.0"></script>
+    <script src="js/api.js?v=33.5.0"></script>
+    <script src="js/auth.js?v=33.5.0"></script>
+    <script src="js/components/sidebar.js?v=33.5.0"></script>
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
-    <script src="js/designs-page.js?v=33.2.0"></script>
-    <script src="js/role-panel.js?v=33.2.0"></script>
+    <script src="js/designs-page.js?v=33.5.0"></script>
+    <script src="js/role-panel.js?v=33.5.0"></script>
+    <script>
+    // v33.5: Dynamic catalog cards from catalog_definitions
+    (async function loadDynamicCatalogCards() {
+        const container = document.getElementById('dynamicCatalogCards');
+        if (!container) return;
+        try {
+            const r = await apiFetch('/api/catalogs/definitions');
+            const { catalogs = [] } = await r.json();
+            const itemsR = await apiFetch('/api/catalogs/items');
+            const { items: allItems = [] } = await itemsR.json();
+            const countMap = {};
+            allItems.forEach(it => { countMap[it.catalog_id] = (countMap[it.catalog_id] || 0) + 1; });
+            container.innerHTML = catalogs.map(c => `
+                <div class="catalog-card" data-catalog="${c.id}">
+                    <div class="catalog-cover">
+                        <div class="catalog-cover-placeholder">
+                            <span class="catalog-cover-icon">${c.emoji}</span>
+                        </div>
+                    </div>
+                    <div class="catalog-info">
+                        <h3>${c.name}</h3>
+                        <span class="catalog-meta">${countMap[c.id] || 0} позицій</span>
+                    </div>
+                    <div class="catalog-actions">
+                        <button class="btn-catalog" onclick="openCatalogView('${c.id}')">Переглянути</button>
+                        <button class="btn-catalog btn-catalog-print" onclick="printCatalogItems('${c.id}')">Друк</button>
+                        <label class="toggle-inline" title="Автокаталог">
+                            <input type="checkbox" class="auto-cat-cb" data-catalog="${c.id}"
+                                   onchange="toggleAutoCatalog('${c.id}', this.checked)">
+                            <span class="toggle-slider-sm"></span>
+                            <span class="toggle-label-sm">AI</span>
+                        </label>
+                    </div>
+                </div>`).join('');
+            // Load toggle states
+            for (const cb of container.querySelectorAll('.auto-cat-cb')) {
+                try {
+                    const sr = await apiFetch('/api/catalogs/settings/' + cb.dataset.catalog);
+                    const { settings } = await sr.json();
+                    cb.checked = !!settings?.auto_enabled;
+                } catch { /* silent */ }
+            }
+        } catch (e) { console.error('loadDynamicCatalogCards:', e); }
+    })();
+    async function openCatalogView(catalogId) {
+        try {
+            const r = await apiFetch('/api/catalogs/items?catalogId=' + catalogId);
+            const { items = [] } = await r.json();
+            const viewer = document.getElementById('catalogPages');
+            if (!viewer) return;
+            if (!items.length) { viewer.innerHTML = '<p style="text-align:center;padding:2rem">Позицій ще немає</p>'; }
+            else {
+                viewer.innerHTML = items.map(it => `
+                    <div class="catalog-item-card">
+                        <div class="catalog-item-img">${it.image_url ? '<img src="' + it.image_url + '" loading="lazy" alt="">' : '<span class="catalog-cover-icon">' + (it.catalog_emoji || '🗂️') + '</span>'}</div>
+                        <div class="catalog-item-info">
+                            <strong>${it.name}</strong>
+                            ${it.subcategory ? '<span class="catalog-meta">' + it.subcategory + '</span>' : ''}
+                            ${it.price ? '<span class="catalog-price">' + it.price + ' грн</span>' : ''}
+                        </div>
+                    </div>`).join('');
+            }
+            document.getElementById('catalogList').style.display   = 'none';
+            document.getElementById('catalogViewer').style.display = 'block';
+        } catch (e) { showNotification(e.message); }
+    }
+    async function toggleAutoCatalog(catalogId, enabled) {
+        try {
+            await apiFetch('/api/catalogs/settings/' + catalogId, {
+                method: 'PUT', body: JSON.stringify({ autoEnabled: enabled })
+            });
+            showNotification(enabled ? 'Автокаталог ON' : 'Автокаталог OFF');
+        } catch (e) { showNotification(e.message); }
+    }
+    async function printCatalogItems(catalogId) {
+        try {
+            const r = await apiFetch('/api/catalogs/items?catalogId=' + catalogId);
+            const { items = [] } = await r.json();
+            if (!items.length) { showNotification('Немає позицій для друку'); return; }
+            const w = window.open('', '_blank');
+            w.document.write('<html><head><title>Каталог</title><style>body{font-family:Nunito,sans-serif;padding:20px}.item{display:inline-block;width:200px;margin:10px;text-align:center;border:1px solid #eee;border-radius:8px;padding:10px}.item img{max-width:180px;border-radius:6px}.price{font-weight:bold;color:#e91e63}</style></head><body>');
+            items.forEach(it => {
+                w.document.write('<div class="item">' +
+                    (it.image_url ? '<img src="' + it.image_url + '">' : '<div style="font-size:3rem">' + (it.catalog_emoji || '🗂️') + '</div>') +
+                    '<h3>' + it.name + '</h3>' +
+                    (it.subcategory ? '<p>' + it.subcategory + '</p>' : '') +
+                    (it.price ? '<p class="price">' + it.price + ' грн</p>' : '') +
+                    '</div>');
+            });
+            w.document.write('</body></html>');
+            w.document.close();
+            w.print();
+        } catch (e) { showNotification(e.message); }
+    }
+    </script>
 </body>
 </html>

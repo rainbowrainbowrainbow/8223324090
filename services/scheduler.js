@@ -1662,6 +1662,64 @@ async function checkTeamPulseReminder() {
     }
 }
 
+// v33.5: Refresh stale catalog images (daily at 03:00 Kyiv)
+async function checkStaleCatalogImages() {
+    try {
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '03:00') return;
+        const last = await getLastSent('stale_catalog_images');
+        const today = getKyivDateStr();
+        if (last === today) return;
+        await setLastSent('stale_catalog_images', today);
+        const stale = await pool.query(
+            `SELECT ci.id, ci.name, ci.subcategory, ci.catalog_id, cd.ai_style
+             FROM catalog_items ci
+             JOIN catalog_definitions cd ON cd.id = ci.catalog_id
+             WHERE ci.status = 'active'
+               AND ci.image_url IS NOT NULL
+               AND ci.updated_at < NOW() - INTERVAL '6 days'
+             LIMIT 10`
+        );
+        if (!stale.rowCount) return;
+        const KIE_KEY = '5dabed41ea307ecc6ca17010eaaf90b0';
+        const DEFAULT_STYLE = 'colorful illustration, white background, no text';
+        let refreshed = 0;
+        for (const item of stale.rows) {
+            try {
+                const style = item.ai_style || DEFAULT_STYLE;
+                const themeCtx = [item.name, item.subcategory].filter(Boolean).join(', ');
+                const prompt = `${style}. Product: "${themeCtx}". Ukrainian children's park.`;
+                const body = JSON.stringify({ model: 'google/nano-banana', input: { prompt, image_size: '1:1' } });
+                const taskData = await new Promise((resolve, reject) => {
+                    const req = require('https').request({
+                        hostname: 'api.kie.ai', path: '/api/v1/jobs/createTask', method: 'POST',
+                        headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+                    }, res => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(JSON.parse(d))); });
+                    req.on('error', reject); req.write(body); req.end();
+                });
+                if (!taskData?.data?.taskId) continue;
+                await new Promise(r => setTimeout(r, 20000));
+                const pollData = await new Promise((resolve, reject) => {
+                    const req = require('https').request({
+                        hostname: 'api.kie.ai', path: `/api/v1/jobs/recordInfo?taskId=${taskData.data.taskId}`, method: 'GET',
+                        headers: { 'Authorization': `Bearer ${KIE_KEY}` }
+                    }, res => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(JSON.parse(d))); });
+                    req.on('error', reject); req.end();
+                });
+                const rj = pollData?.data?.resultJson;
+                const url = rj ? JSON.parse(typeof rj === 'string' ? rj : '{}')?.resultUrls?.[0] : null;
+                if (url) {
+                    await pool.query('UPDATE catalog_items SET image_url = $1, updated_at = NOW() WHERE id = $2', [url, item.id]);
+                    refreshed++;
+                }
+            } catch (e) { log.warn(`Stale refresh failed item ${item.id}: ${e.message}`); }
+        }
+        if (refreshed > 0) log.info(`Stale catalog images refreshed: ${refreshed}/${stale.rowCount}`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) log.error('checkStaleCatalogImages error', err);
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
@@ -1679,7 +1737,8 @@ module.exports = {
     checkTeamPulseReminder,
     checkAutoOrdering,
     checkBookingPushReminders,
-    checkCertExpiryReminders
+    checkCertExpiryReminders,
+    checkStaleCatalogImages
 };
 
 // v22.18: Auto-ordering — check stock levels and create order requests

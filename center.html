@@ -872,12 +872,17 @@
                 <div class="center-tabs" id="centerTabs">
                     <button class="center-tab-btn active" data-tab="overview">Огляд</button>
                     <button class="center-tab-btn" data-tab="finance">Фінанси</button>
+                    <button class="center-tab-btn" data-tab="reports">Звіти</button>
                     <button class="center-tab-btn" data-tab="analytics">Аналітика</button>
                 </div>
 
                 <!-- Tab: Finance (embedded iframe) -->
                 <div class="center-tab-panel hidden" id="tabFinance">
                     <iframe src="/finance?embed=1" class="center-embed-frame" title="Фінанси"></iframe>
+                </div>
+                <!-- Tab: Reports (embedded iframe) -->
+                <div class="center-tab-panel hidden" id="tabReports">
+                    <iframe src="/reports?embed=1" class="center-embed-frame" title="Звіти"></iframe>
                 </div>
                 <!-- Tab: Analytics (embedded iframe) -->
                 <div class="center-tab-panel hidden" id="tabAnalytics">
@@ -1214,14 +1219,16 @@
             // Show/hide sections
             const overviewSections = document.querySelectorAll('.center-section');
             const financePanel = document.getElementById('tabFinance');
+            const reportsPanel = document.getElementById('tabReports');
             const analyticsPanel = document.getElementById('tabAnalytics');
 
             overviewSections.forEach(s => s.style.display = tab === 'overview' ? '' : 'none');
             if (financePanel) financePanel.classList.toggle('hidden', tab !== 'finance');
+            if (reportsPanel) reportsPanel.classList.toggle('hidden', tab !== 'reports');
             if (analyticsPanel) analyticsPanel.classList.toggle('hidden', tab !== 'analytics');
         }
 
-        if (urlTab && ['finance', 'analytics'].includes(urlTab)) {
+        if (urlTab && ['finance', 'analytics', 'reports'].includes(urlTab)) {
             switchCenterTab(urlTab);
         }
     })();

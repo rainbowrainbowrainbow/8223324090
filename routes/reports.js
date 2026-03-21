@@ -468,7 +468,42 @@ router.put('/:id', async (req, res) => {
             UPDATE reports SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *
         `, params);
 
-        res.json(mapReportRow(result.rows[0]));
+        const updatedReport = result.rows[0];
+
+        // v33.8.0: When report is marked as done, create finance transaction (fire-and-forget)
+        if (status === 'done' && updatedReport.amount > 0) {
+            setImmediate(async () => {
+                try {
+                    // Check if already recorded
+                    const exists = await pool.query(
+                        `SELECT id FROM finance_transactions WHERE description LIKE $1 LIMIT 1`,
+                        [`%звіт #${id}%`]
+                    );
+                    if (exists.rowCount) return;
+
+                    const finType = updatedReport.type === 'expense' ? 'expense' : 'income';
+                    const catQuery = await pool.query(
+                        `SELECT id FROM finance_categories WHERE name ILIKE $1 AND type = $2 LIMIT 1`,
+                        [`%${updatedReport.category || 'Інше'}%`, finType]
+                    );
+                    const catId = catQuery.rows[0]?.id || null;
+
+                    await pool.query(
+                        `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, created_by)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                        [finType, catId, Math.round(updatedReport.amount),
+                         `${updatedReport.description || 'Звіт'} (звіт #${id})`,
+                         updatedReport.report_date || new Date().toISOString().slice(0, 10),
+                         'report', updatedReport.submitted_by || req.user?.username || 'system']
+                    );
+                    log.info(`[ReportFinance] Report #${id} → finance transaction (${finType} ${updatedReport.amount})`);
+                } catch (e) {
+                    log.warn(`[ReportFinance] Error: ${e.message}`);
+                }
+            });
+        }
+
+        res.json(mapReportRow(updatedReport));
     } catch (err) {
         log.error('PUT /reports/:id error', err);
         res.status(500).json({ error: 'Database error' });

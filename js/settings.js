@@ -728,6 +728,28 @@ async function showSettings() {
     const autoDelHours = document.getElementById('settingsAutoDeleteHours');
     if (autoDelHours) autoDelHours.value = autoDeleteHours || '10';
 
+    // v33.4: Load language setting
+    const lang = await apiGetSetting('language');
+    const langSelect = document.getElementById('settingsLanguage');
+    if (langSelect) langSelect.value = lang || 'uk';
+    const saveLangBtn = document.getElementById('saveLanguageBtn');
+    if (saveLangBtn) {
+        saveLangBtn.onclick = async () => {
+            const val = document.getElementById('settingsLanguage')?.value || 'uk';
+            try {
+                const res = await fetch(`${API_BASE}/settings/language`, {
+                    method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify({ value: val })
+                });
+                if (res.ok) {
+                    localStorage.setItem('crm_lang', val);
+                    showToast('✅ Мову збережено. Перезавантажте сторінку для повної зміни.');
+                } else {
+                    showToast('❌ Помилка збереження мови', 'error');
+                }
+            } catch (e) { showToast('❌ ' + e.message, 'error'); }
+        };
+    }
+
     // v12.6: Load contractors
     const contractorsSection = document.getElementById('settingsContractorsSection');
     if (contractorsSection) {

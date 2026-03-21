@@ -75,10 +75,26 @@
             padding: 2px 8px; font-size: 11px; font-weight: 700;
         }
 
+        /* v33.4: Bulk toolbar */
+        .bulk-toolbar-tasks {
+            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+            background: #1565C0; color: #fff; border-radius: 10px; margin-bottom: 8px;
+            font-size: 13px; font-weight: 600;
+        }
+        .bulk-toolbar-tasks button {
+            background: rgba(255,255,255,0.2); color: #fff; border: none;
+            padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
+        }
+        .bulk-toolbar-tasks button:hover { background: rgba(255,255,255,0.35); }
+        .task-checkbox-wrap {
+            position: absolute; left: -4px; top: 50%; transform: translateY(-50%);
+            width: 20px; height: 20px; z-index: 2; cursor: pointer; display: flex; align-items: center;
+        }
+        .task-bulk-cb { width: 16px; height: 16px; cursor: pointer; accent-color: #1565C0; }
         /* Task cards */
         .task-card {
             background: rgba(255,255,255,0.5); border-radius: 12px;
-            padding: 10px 12px; margin-bottom: 8px; border-left: 4px solid var(--gray-300);
+            padding: 10px 12px 10px 24px; margin-bottom: 8px; border-left: 4px solid var(--gray-300);
             backdrop-filter: blur(20px); transition: all 0.15s;
             cursor: pointer; position: relative;
         }
@@ -272,6 +288,14 @@
                 </select>
                 <input type="time" id="taskDeadlineTime" title="Дедлайн (час)" style="width:100px">
                 <button id="addTaskBtn">+ Додати</button>
+            </div>
+
+            <!-- v33.4: Bulk toolbar -->
+            <div id="bulkToolbar" class="bulk-toolbar-tasks" style="display:none">
+                <span id="bulkCount">0 обрано</span>
+                <button onclick="bulkAction('done')">✅ Виконати</button>
+                <button onclick="bulkAction('archive')">📦 Архів</button>
+                <button onclick="clearBulkSelection()">✕ Скинути</button>
             </div>
 
             <!-- Task board content -->

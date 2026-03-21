@@ -1019,6 +1019,14 @@
                 </div>
                 <div class="tag-autocomplete" id="tagAutocomplete"></div>
             </div>
+            <!-- v33.4: AI Image Generation -->
+            <div class="form-field">
+                <label>🎨 Генерація зображення (AI)</label>
+                <textarea id="genPrompt" rows="2" placeholder="Опишіть зображення: яскравий дитячий постер для свята..."></textarea>
+                <button type="button" id="genImageBtn" style="width:100%;margin-top:6px;padding:10px;background:#E3F2FD;color:#1565C0;border:1px solid #90CAF9;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px" onclick="generateDesignImage()">🎨 Згенерувати зображення</button>
+                <div id="genProgress" style="display:none;margin-top:8px;text-align:center;color:#888;font-size:13px">⏳ Генеруємо зображення...</div>
+                <img id="genPreview" style="display:none;margin-top:8px;max-width:100%;border-radius:8px;border:1px solid #ddd" alt="Preview">
+            </div>
             <div class="edit-actions">
                 <button class="btn-cancel" id="editCancel">Скасувати</button>
                 <button class="btn-save" id="editSave">Зберегти</button>

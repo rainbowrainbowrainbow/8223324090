@@ -587,6 +587,80 @@ async function saveEdit() {
 }
 
 // ==========================================
+// v33.4: AI IMAGE GENERATION
+// ==========================================
+
+let genPollingTimer = null;
+
+async function generateDesignImage() {
+    const prompt = document.getElementById('genPrompt')?.value?.trim();
+    if (!prompt) { showNotification('Введіть опис зображення', 'error'); return; }
+
+    const title = document.getElementById('editTitle')?.value || '';
+    const fullPrompt = `Festive event poster for Ukrainian children's park. ${prompt}. Title: "${title}". Colorful, joyful, bright cartoon style.`;
+
+    document.getElementById('genProgress').style.display = 'block';
+    document.getElementById('genImageBtn').disabled = true;
+    document.getElementById('genPreview').style.display = 'none';
+
+    try {
+        const res = await apiFetch(`${location.origin}/api/kleshnya/generate-image`, {
+            method: 'POST',
+            body: JSON.stringify({ prompt: fullPrompt, eventId: editingDesignId, type: 'design' })
+        });
+        if (!res || !res.ok) {
+            showNotification('Помилка генерації', 'error');
+            document.getElementById('genProgress').style.display = 'none';
+            document.getElementById('genImageBtn').disabled = false;
+            return;
+        }
+        const data = await res.json();
+        if (data.taskId) {
+            showNotification('Генерація розпочата...');
+            pollImageStatus(data.taskId);
+        } else {
+            showNotification('Не вдалося створити задачу генерації', 'error');
+            document.getElementById('genProgress').style.display = 'none';
+            document.getElementById('genImageBtn').disabled = false;
+        }
+    } catch (e) {
+        showNotification('Помилка: ' + e.message, 'error');
+        document.getElementById('genProgress').style.display = 'none';
+        document.getElementById('genImageBtn').disabled = false;
+    }
+}
+window.generateDesignImage = generateDesignImage;
+
+function pollImageStatus(taskId, attempt) {
+    attempt = attempt || 0;
+    if (attempt > 30) {
+        document.getElementById('genProgress').textContent = 'Таймаут генерації. Спробуйте знову.';
+        document.getElementById('genImageBtn').disabled = false;
+        return;
+    }
+    genPollingTimer = setTimeout(async () => {
+        try {
+            const res = await apiFetch(`${location.origin}/api/kleshnya/generate-image/${taskId}`);
+            if (!res || !res.ok) { pollImageStatus(taskId, attempt + 1); return; }
+            const data = await res.json();
+            if (data.status === 'completed' || data.output?.image_url) {
+                const imgUrl = data.output?.image_url || data.imageUrl || '';
+                document.getElementById('genProgress').style.display = 'none';
+                document.getElementById('genImageBtn').disabled = false;
+                if (imgUrl) {
+                    document.getElementById('genPreview').src = imgUrl;
+                    document.getElementById('genPreview').style.display = 'block';
+                }
+                showNotification('Зображення згенеровано!');
+            } else {
+                document.getElementById('genProgress').textContent = `⏳ Генеруємо... (${attempt + 1}/30)`;
+                pollImageStatus(taskId, attempt + 1);
+            }
+        } catch (e) { pollImageStatus(taskId, attempt + 1); }
+    }, 3000);
+}
+
+// ==========================================
 // COLLECTIONS
 // ==========================================
 function setupCollections() {

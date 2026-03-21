@@ -513,7 +513,10 @@ function renderTaskCard(t) {
     const ownerHtml = (t.owner && t.owner !== t.assigned_to) ? `<span class="task-card-owner">${escapeHtml(t.owner)}</span>` : '';
 
     return `
-    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''}">
+    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''}" data-task-id="${t.id}">
+        <label class="task-checkbox-wrap" onclick="event.stopPropagation()">
+            <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" onchange="updateBulkSelection()">
+        </label>
         <div class="task-card-title">${escHtml}${priorityIcon ? priorityIcon + ' ' : ''}${escapeHtml(t.title)}</div>
         <div class="task-card-meta">
             ${typeBadge}
@@ -672,6 +675,49 @@ async function deleteTemplate(templateId) {
         showNotification('Помилка видалення', 'error');
     }
 }
+
+// ==========================================
+// v33.4: BULK SELECTION
+// ==========================================
+
+function getSelectedTaskIds() {
+    return Array.from(document.querySelectorAll('.task-bulk-cb:checked')).map(cb => parseInt(cb.dataset.id));
+}
+
+function updateBulkSelection() {
+    const ids = getSelectedTaskIds();
+    const toolbar = document.getElementById('bulkToolbar');
+    if (!toolbar) return;
+    if (ids.length > 0) {
+        toolbar.style.display = 'flex';
+        document.getElementById('bulkCount').textContent = ids.length + ' обрано';
+    } else {
+        toolbar.style.display = 'none';
+    }
+}
+window.updateBulkSelection = updateBulkSelection;
+
+async function bulkAction(action) {
+    const ids = getSelectedTaskIds();
+    if (!ids.length) return;
+    const labels = { done: 'Виконати', archive: 'Архівувати' };
+    if (!confirm(`${labels[action] || action} ${ids.length} задач?`)) return;
+    const result = await apiBulkTasks(ids, action);
+    if (result && result.success) {
+        showNotification(`${labels[action] || action}: ${result.affected || ids.length} задач`, 'success');
+        clearBulkSelection();
+        await loadAndRender();
+    } else {
+        showNotification('Помилка bulk операції', 'error');
+    }
+}
+window.bulkAction = bulkAction;
+
+function clearBulkSelection() {
+    document.querySelectorAll('.task-bulk-cb:checked').forEach(cb => { cb.checked = false; });
+    updateBulkSelection();
+}
+window.clearBulkSelection = clearBulkSelection;
 
 // ==========================================
 // START

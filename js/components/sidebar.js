@@ -330,6 +330,19 @@ const Sidebar = (() => {
             });
         }
 
+        // Close sidebar on mobile when clicking a nav link (prevents "stuck" tab)
+        if (sidebar) {
+            sidebar.addEventListener('click', (e) => {
+                const link = e.target.closest('.nav-link');
+                if (!link) return;
+                // On mobile (<= 768px), close sidebar before navigation
+                if (window.innerWidth <= 768 && overlay) {
+                    sidebar.classList.remove('open');
+                    overlay.classList.remove('active');
+                }
+            });
+        }
+
         // Collapse button
         const collapseBtn = document.getElementById('sidebarCollapseBtn');
         if (collapseBtn && sidebar) {

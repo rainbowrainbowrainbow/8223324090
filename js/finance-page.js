@@ -336,11 +336,11 @@ function renderTransactionTable() {
         <tr onclick="editTransaction(${t.id})" title="Натисніть для редагування">
             <td>${formatDate(t.date)}</td>
             <td><span class="fin-type-badge ${t.type}">${t.type === 'income' ? 'Дохід' : 'Витрата'}</span></td>
-            <td>${t.categoryIcon || ''} ${t.categoryName || '—'}</td>
-            <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.description || '—'}</td>
+            <td>${escapeHtml(t.categoryIcon) || ''} ${escapeHtml(t.categoryName) || '—'}</td>
+            <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.description) || '—'}</td>
             <td class="fin-amount-${t.type}">${t.type === 'income' ? '+' : '-'}${formatMoney(t.amount)}</td>
-            <td>${t.paymentMethod ? `<span class="fin-payment-badge">${PAYMENT_LABELS[t.paymentMethod] || t.paymentMethod}</span>` : '—'}</td>
-            <td>${t.createdBy || '—'}</td>
+            <td>${t.paymentMethod ? `<span class="fin-payment-badge">${PAYMENT_LABELS[t.paymentMethod] || escapeHtml(t.paymentMethod)}</span>` : '—'}</td>
+            <td>${escapeHtml(t.createdBy) || '—'}</td>
         </tr>
     `).join('');
 }

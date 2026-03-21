@@ -759,7 +759,7 @@ const DashboardPage = (() => {
             const users = await resp.json();
             select.innerHTML = '<option value="">— Обрати юзера —</option>' +
                 users.filter(u => u.username !== AppState.currentUser.username)
-                    .map(u => `<option value="${u.id}">${u.name} (${ROLE_NAMES[u.role] || u.role})</option>`)
+                    .map(u => `<option value="${u.id}">${escapeHtml(u.name)} (${ROLE_NAMES[u.role] || escapeHtml(u.role)})</option>`)
                     .join('');
         } catch {
             select.innerHTML = '<option value="">Помилка</option>';

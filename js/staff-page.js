@@ -318,7 +318,7 @@ function renderSchedule() {
                 bodyHtml += `<td>
                     <div class="sch-cell status-${status} ${isToday ? 'today-col' : ''}"
                          data-staff="${emp.id}" data-date="${ds}"
-                         title="${emp.name} — ${ds}">
+                         title="${escapeHtml(emp.name)} — ${ds}">
                         ${cellContent}
                     </div>
                 </td>`;

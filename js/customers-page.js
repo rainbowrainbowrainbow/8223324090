@@ -349,7 +349,7 @@ async function showCustomerDetail(id) {
                     </div>
                     <div class="detail-field">
                         <div class="field-label">Джерело</div>
-                        <div class="field-value">${SOURCE_LABELS[customer.source] || customer.source || '—'}</div>
+                        <div class="field-value">${SOURCE_LABELS[customer.source] || escapeHtml(customer.source) || '—'}</div>
                     </div>
                     <div class="detail-field">
                         <div class="field-label">Клієнт з</div>

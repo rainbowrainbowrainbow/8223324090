@@ -322,10 +322,10 @@ function renderWorkers(workers) {
         return `
         <div class="worker-card" data-worker-id="${w.id}" onclick="toggleWorkerDetails(this)">
             <div class="worker-card-header">
-                <div class="worker-card-name">${workerEmoji} ${w.displayName}</div>
-                <div class="worker-card-status">${w.emoji} ${w.label}</div>
+                <div class="worker-card-name">${workerEmoji} ${escapeHtml(w.displayName)}</div>
+                <div class="worker-card-status">${w.emoji} ${escapeHtml(w.label)}</div>
             </div>
-            <div class="worker-card-purpose">${w.purpose ? w.purpose.substring(0, 60) + (w.purpose.length > 60 ? '...' : '') : ''}</div>
+            <div class="worker-card-purpose">${w.purpose ? escapeHtml(w.purpose.substring(0, 60)) + (w.purpose.length > 60 ? '...' : '') : ''}</div>
             <div class="worker-card-activity">Остання дія: ${timeAgo(w.lastActivity)}</div>
             <div class="worker-card-details">
                 <div class="worker-detail-row">
@@ -378,7 +378,7 @@ function renderKPI(kpi, period) {
         </div>
         <div class="kpi-card">
             <div class="kpi-card-label">Топ програма</div>
-            <div class="kpi-card-value" style="font-size:13px">${data.topProgram}</div>
+            <div class="kpi-card-value" style="font-size:13px">${escapeHtml(data.topProgram)}</div>
         </div>
     `;
 }
@@ -413,7 +413,7 @@ function renderPrices(prices) {
 
     for (const p of prices) {
         const updatedInfo = p.updated_by
-            ? `${p.updated_by}, ${new Date(p.updated_at).toLocaleDateString('uk-UA')}`
+            ? `${escapeHtml(p.updated_by)}, ${new Date(p.updated_at).toLocaleDateString('uk-UA')}`
             : '';
         const linkedBadge = p.product_id
             ? `<span class="price-linked-badge" title="Прив'язано до ${p.product_id}">🔗 ${p.product_id}</span>`

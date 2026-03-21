@@ -1528,4 +1528,89 @@ router.put('/availability/:staffId', async (req, res) => {
     }
 });
 
+// ─── Staff Shifts by display_name (v33.5) ────────────────────
+// GET /api/hr/staff/:id/shifts?month=2026-03
+router.get('/staff/:id/shifts', async (req, res) => {
+    try {
+        const staffRow = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);
+        if (!staffRow.rowCount) return res.status(404).json({ error: 'Staff not found' });
+        const s           = staffRow.rows[0];
+        const displayName = s.display_name || s.name;
+        if (!displayName?.trim()) return res.json({ success: true, shifts: [], total: 0, displayName: null });
+        const month    = req.query.month || new Date().toISOString().slice(0, 7);
+        const [yr, mo] = month.split('-').map(Number);
+        const dateFrom = `${month}-01`;
+        const dateTo   = new Date(yr, mo, 0).toISOString().slice(0, 10);
+        const result = await pool.query(
+            `SELECT id, date, time, program_name, label,
+                    CASE
+                        WHEN hosts ILIKE '%' || $1 || '%' THEN 'host'
+                        WHEN second_animator ILIKE '%' || $1 || '%' THEN 'second'
+                    END AS role
+             FROM bookings
+             WHERE (hosts ILIKE '%' || $1 || '%' OR second_animator ILIKE '%' || $1 || '%')
+               AND date >= $2 AND date <= $3
+               AND status != 'cancelled'
+             ORDER BY date, time`,
+            [displayName.trim(), dateFrom, dateTo]
+        );
+        res.json({
+            success: true,
+            shifts: result.rows,
+            total:    result.rowCount,
+            asHost:   result.rows.filter(r => r.role === 'host').length,
+            asSecond: result.rows.filter(r => r.role === 'second').length,
+            displayName,
+            period: { from: dateFrom, to: dateTo }
+        });
+    } catch (err) {
+        log.error('GET /staff/:id/shifts', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// GET /api/hr/shifts-summary?month=2026-03
+router.get('/shifts-summary', async (req, res) => {
+    try {
+        const month    = req.query.month || new Date().toISOString().slice(0, 7);
+        const [yr, mo] = month.split('-').map(Number);
+        const dateFrom = `${month}-01`;
+        const dateTo   = new Date(yr, mo, 0).toISOString().slice(0, 10);
+        const staffList = await pool.query(
+            `SELECT id, name, display_name FROM staff
+             WHERE display_name IS NOT NULL AND display_name != '' AND is_active = true`
+        );
+        if (!staffList.rowCount) return res.json({ success: true, summary: [], period: { from: dateFrom, to: dateTo } });
+        const summary = [];
+        for (const s of staffList.rows) {
+            const dn = s.display_name.trim();
+            const r  = await pool.query(
+                `SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN hosts ILIKE '%'||$1||'%' THEN 1 ELSE 0 END) AS as_host,
+                    SUM(CASE WHEN second_animator ILIKE '%'||$1||'%' THEN 1 ELSE 0 END) AS as_second
+                 FROM bookings
+                 WHERE (hosts ILIKE '%'||$1||'%' OR second_animator ILIKE '%'||$1||'%')
+                   AND date >= $2 AND date <= $3
+                   AND status != 'cancelled'`,
+                [dn, dateFrom, dateTo]
+            );
+            summary.push({
+                id: s.id, name: s.name, displayName: dn,
+                total: parseInt(r.rows[0].total),
+                asHost: parseInt(r.rows[0].as_host),
+                asSecond: parseInt(r.rows[0].as_second)
+            });
+        }
+        res.json({
+            success: true,
+            summary: summary.sort((a, b) => b.total - a.total),
+            period: { from: dateFrom, to: dateTo }
+        });
+    } catch (err) {
+        log.error('GET /shifts-summary', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 module.exports = router;

@@ -510,18 +510,21 @@
         <header class="header">
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <button class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel()" title="Алерти">🔔<span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
+        <div class="alerts-panel" id="alertsPanel"></div>
 
         <main id="main-content" class="page-container">
             <!-- v17.0: Page-level tabs -->
             <div class="wh-page-tabs">
                 <button class="wh-page-tab active" data-page-tab="stock" onclick="switchPageTab('stock')">Склад</button>
                 <button class="wh-page-tab" data-page-tab="procurement" onclick="switchPageTab('procurement')">Закупки</button>
+                <button class="wh-page-tab" data-page-tab="pinata" onclick="switchPageTab('pinata');loadPinataTab()">🪅 Піньяти</button>
             </div>
 
             <!-- ============ STOCK TAB ============ -->
@@ -755,6 +758,27 @@
         </div>
     </div>
 
+    <!-- ============ PINATA TAB (v33.5) ============ -->
+    <div id="pinataTab" style="display:none">
+      <div id="pinataAlertBanner" style="display:none; padding:12px 16px; border-radius:10px; margin-bottom:16px; background:rgba(239,68,68,0.1); border:1px solid #ef4444; color:#ef4444; font-weight:600;"></div>
+      <h4 style="margin:0 0 12px">📦 Матеріали</h4>
+      <div id="pinataStockGrid" style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:24px;"></div>
+      <h4 style="margin:0 0 12px">📅 Замовлення (14 днів)</h4>
+      <div id="pinataUpcomingList" style="margin-bottom:24px;"></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+        <h4 style="margin:0">🖼️ Дизайни картинок</h4>
+        <button class="btn-page-primary" onclick="openAddDesignForm()">+ Дизайн</button>
+      </div>
+      <div id="pinataDesignsList"></div>
+      <div id="addDesignForm" style="display:none; background:var(--glass-bg); border:1px solid var(--border-color); border-radius:12px; padding:16px; margin-top:12px;">
+        <input type="text" id="newDesignName" placeholder="Назва дизайну" style="margin-bottom:8px; width:100%; padding:10px; border:1px solid var(--border-color); border-radius:8px; font-size:16px;">
+        <div style="display:flex; gap:8px;">
+          <button class="btn-page-primary" onclick="saveNewDesign()">💾 Зберегти</button>
+          <button class="btn-page-secondary" onclick="document.getElementById('addDesignForm').style.display='none'">Скасувати</button>
+        </div>
+      </div>
+    </div>
+
     <div id="notification" class="notification hidden">
         <span id="notificationText"></span>
     </div>
@@ -765,6 +789,87 @@
     <script src="js/components/sidebar.js?v=33.5.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/warehouse-page.js?v=33.5.0"></script>
+    <script src="js/alerts.js?v=33.5.0"></script>
     <script src="js/role-panel.js?v=33.5.0"></script>
+    <script>
+    // ─── Pinata Tab (v33.5) ──────────────────
+    async function loadPinataTab() {
+        try {
+            const token = localStorage.getItem('pzp_token');
+            const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+            const res  = await fetch('/api/warehouse/pinata-status', { headers });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error);
+            const { stock, upcomingCount, upcomingList, designs, alert: hasAlert, hasEnough } = data;
+            const alertEl = document.getElementById('pinataAlertBanner');
+            if (hasAlert) {
+                alertEl.style.display = 'block';
+                alertEl.textContent = hasEnough
+                    ? '⚠️ Деякі позиції нижче мінімального залишку — поповніть запаси!'
+                    : `🔴 Матеріалів не вистачить! Потрібно ${upcomingCount} піньят, а залишок менший.`;
+            } else { alertEl.style.display = 'none'; }
+            document.getElementById('pinataStockGrid').innerHTML = stock.map(s => {
+                const isLow = s.quantity <= s.min_quantity;
+                return `<div style="flex:1; min-width:140px; background:var(--glass-bg); border:1px solid ${isLow ? '#ef4444' : 'var(--border-color)'}; border-radius:12px; padding:16px; text-align:center;">
+                    <div style="font-size:13px; color:var(--gray-500); margin-bottom:4px;">${s.name}</div>
+                    <div style="font-size:32px; font-weight:800; color:${isLow ? '#ef4444' : 'inherit'};">${s.quantity}</div>
+                    <div style="font-size:12px; color:var(--gray-400);">${s.unit} (мін: ${s.min_quantity})</div>
+                    <div style="display:flex; gap:6px; justify-content:center; margin-top:10px;">
+                        <button class="wh-btn danger" onclick="pinataAdjust(${s.id},'use')">−</button>
+                        <button class="wh-btn restock" onclick="pinataAdjust(${s.id},'restock')">+</button>
+                    </div>
+                </div>`;
+            }).join('');
+            document.getElementById('pinataUpcomingList').innerHTML = upcomingList.length
+                ? `<table class="data-table" style="width:100%">
+                     <thead><tr><th>Дата</th><th>Час</th><th>Піньята</th><th>Група</th></tr></thead>
+                     <tbody>${upcomingList.map(b => `<tr><td>${b.date}</td><td>${b.time}</td><td>${b.pinata_filler}</td><td>${b.group_name || '—'}</td></tr>`).join('')}</tbody>
+                   </table>`
+                : '<p style="color:var(--gray-400); font-size:13px;">Немає замовлень з піньятами в найближчі 14 днів</p>';
+            document.getElementById('pinataDesignsList').innerHTML = designs.length
+                ? designs.map(d => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border-color);">
+                        <span>${d.name}</span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <button class="wh-btn danger" onclick="designAdjust(${d.id},-1)">−</button>
+                            <span style="font-weight:700; min-width:30px; text-align:center; color:${d.prints_qty<=2?'#ef4444':'inherit'}">${d.prints_qty}</span>
+                            <button class="wh-btn restock" onclick="designAdjust(${d.id},1)">+</button>
+                            <span style="font-size:12px; color:var(--gray-400);">шт</span>
+                        </div>
+                    </div>`).join('')
+                : '<p style="color:var(--gray-400); font-size:13px;">Дизайни відсутні — додайте перший</p>';
+        } catch (e) { console.error('loadPinataTab:', e); }
+    }
+    function pinataAdjust(id, mode) {
+        if (mode === 'use') openUseModal(id); else openRestockModal(id);
+    }
+    async function designAdjust(id, delta) {
+        const token = localStorage.getItem('pzp_token');
+        const btn = document.querySelector(`[onclick="designAdjust(${id},-1)"]`);
+        const current = btn?.nextElementSibling?.textContent?.trim();
+        const newQty = Math.max(0, parseInt(current || 0) + delta);
+        await fetch(`/api/warehouse/pinata-designs/${id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ printsQty: newQty })
+        });
+        loadPinataTab();
+    }
+    function openAddDesignForm() {
+        document.getElementById('addDesignForm').style.display = 'block';
+        document.getElementById('newDesignName').focus();
+    }
+    async function saveNewDesign() {
+        const name = document.getElementById('newDesignName').value?.trim();
+        if (!name) return;
+        const token = localStorage.getItem('pzp_token');
+        await fetch('/api/warehouse/pinata-designs', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ name })
+        });
+        document.getElementById('addDesignForm').style.display = 'none';
+        document.getElementById('newDesignName').value = '';
+        loadPinataTab();
+    }
+    </script>
 </body>
 </html>

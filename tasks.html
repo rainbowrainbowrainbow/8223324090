@@ -230,12 +230,14 @@
         <header class="header">
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <button class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel()" title="Алерти">🔔<span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
                     <button id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
+        <div class="alerts-panel" id="alertsPanel"></div>
 
         <main id="main-content" class="page-container">
             <!-- v10.0: Points bar -->
@@ -360,6 +362,7 @@
         if(o&&s){o.addEventListener('click',function(){s.classList.remove('open');o.classList.add('hidden')})}
     })();
     </script>
+    <script src="js/alerts.js?v=33.5.0"></script>
     <script src="js/role-panel.js?v=33.5.0"></script>
 </body>
 </html>

@@ -357,6 +357,7 @@ function selectProgram(programId) {
     if (program.hasFiller) {
         document.getElementById('pinataFillerSection').classList.remove('hidden');
         document.getElementById('pinataFillerSelect').value = '';
+        _loadPinataStockBadge();
     } else {
         document.getElementById('pinataFillerSection').classList.add('hidden');
     }
@@ -1975,3 +1976,23 @@ const BulkOps = {
 };
 
 window.BulkOps = BulkOps;
+
+// ─── Pinata Stock Badge (v33.5) ──────────
+async function _loadPinataStockBadge() {
+    const badge = document.getElementById('pinataStockBadge');
+    if (!badge) return;
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res  = await fetch('/api/warehouse/pinata-status', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!data.success) return;
+        const osnovy = data.stock.find(s => s.name.includes('Основи'));
+        if (osnovy) {
+            badge.textContent = `📦 Основи: ${osnovy.quantity} шт ${osnovy.quantity <= 3 ? '⚠️' : '✅'}`;
+            badge.style.display = 'inline-block';
+            badge.style.color   = osnovy.quantity <= 3 ? '#ef4444' : 'var(--gray-500)';
+        }
+    } catch { /* silent */ }
+}

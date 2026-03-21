@@ -10,6 +10,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
 const { requireRole } = require('../middleware/auth');
+const { publish } = require('../services/eventBus');
 const log = createLogger('Finance');
 
 // RBAC: Finance access — creator, director, accountant only
@@ -236,6 +237,16 @@ router.post('/transactions', async (req, res) => {
         );
 
         const r = result.rows[0];
+
+        // Publish income event for chat notifications
+        if (r.type === 'income') {
+            publish('finance.income', {
+                amount: r.amount,
+                description: r.description || '',
+                category: ''
+            }).catch(e => log.warn('eventBus publish income:', e.message));
+        }
+
         res.status(201).json({
             id: r.id, type: r.type, categoryId: r.category_id, amount: r.amount,
             description: r.description, date: r.date, paymentMethod: r.payment_method,

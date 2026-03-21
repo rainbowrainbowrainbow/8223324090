@@ -4303,13 +4303,14 @@ describe('Finance Accounts', () => {
 
     it('PATCH /api/finance/accounts/:id — update account', async () => {
         assert.ok(createdAccountId, 'Need account ID from create step');
+        const updatedName = 'Updated Test Account ' + Date.now();
         const res = await authRequest('PATCH', `/api/finance/accounts/${createdAccountId}`, {
-            name: 'Updated Test Account',
+            name: updatedName,
             sortOrder: 50
         });
-        assert.equal(res.status, 200);
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
         assert.ok(res.data.success);
-        assert.equal(res.data.account.name, 'Updated Test Account');
+        assert.equal(res.data.account.name, updatedName);
         assert.equal(res.data.account.sort_order, 50);
     });
 

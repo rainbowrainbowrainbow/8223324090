@@ -179,6 +179,40 @@ async function executeAction(action, payload, event) {
             break;
         }
 
+        case 'chat_message': {
+            const channelId = action.channel_id
+                || (action.channel_name
+                    ? (await pool.query(`SELECT id FROM chat_channels WHERE name ILIKE $1 LIMIT 1`,
+                                        [`%${action.channel_name}%`])).rows[0]?.id
+                    : null);
+            if (!channelId) { log.warn('chat_message: channel not found'); break; }
+            const sysRes = await pool.query(`SELECT id FROM users WHERE username = 'system' LIMIT 1`);
+            const sysUserId = sysRes.rows[0]?.id;
+            if (!sysUserId) { log.warn('chat_message: system user not found'); break; }
+            const message = interpolate(action.template || action.message || '', payload);
+            if (!message.trim()) break;
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                await client.query('SELECT id FROM chat_channels WHERE id = $1 FOR UPDATE', [channelId]);
+                const seqRes = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
+                const seq    = seqRes.rows[0].seq;
+                await client.query(
+                    `INSERT INTO chat_messages (channel_id, user_id, seq, content, created_at)
+                     VALUES ($1, $2, $3, $4, NOW())`,
+                    [channelId, sysUserId, seq, message]
+                );
+                await client.query('COMMIT');
+                log.info(`chat_message: #${channelId} seq=${seq} "${message.slice(0, 50)}"`);
+            } catch (e) {
+                await client.query('ROLLBACK');
+                log.error(`chat_message insert failed: ${e.message}`);
+            } finally {
+                client.release();
+            }
+            break;
+        }
+
         default:
             log.warn(`Unknown action type: ${type}`);
     }

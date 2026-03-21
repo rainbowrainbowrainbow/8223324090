@@ -140,23 +140,42 @@ router.get('/widgets/:type', async (req, res) => {
             }
 
             case 'alerts': {
-                // System alerts: overdue tasks, unconfirmed bookings, low stock
                 const alertToday = getKyivDateStr();
-                const [overdue, unconfirmed] = await Promise.all([
-                    pool.query(`
-                        SELECT COUNT(*) as count FROM tasks
-                        WHERE deadline < NOW() AND status NOT IN ('done', 'cancelled')
-                    `),
-                    pool.query(`
-                        SELECT COUNT(*) as count FROM bookings
-                        WHERE date = $1 AND status = 'preliminary'
-                    `, [alertToday]),
+                const [overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
+                    pool.query(`SELECT COUNT(*) as count FROM tasks
+                                WHERE deadline < NOW() AND status NOT IN ('done', 'cancelled')`),
+                    pool.query(`SELECT COUNT(*) as count FROM bookings
+                                WHERE date = $1 AND status = 'preliminary'`, [alertToday]),
+                    pool.query(`SELECT name, quantity, min_quantity, unit
+                                FROM warehouse_stock
+                                WHERE quantity <= min_quantity AND is_active = true LIMIT 5`),
+                    pool.query(`SELECT COUNT(*) as count FROM leads
+                                WHERE status = 'new' AND created_at < NOW() - INTERVAL '48 hours'`),
+                    pool.query(`SELECT
+                                  (SELECT COUNT(*) FROM cash_register_shifts WHERE status = 'open') AS open_shifts,
+                                  (SELECT COUNT(*) FROM bookings WHERE date = $1 AND status = 'confirmed') AS today_bookings`,
+                                [alertToday])
                 ]);
                 const alerts = [];
-                const overdueCount = parseInt(overdue.rows[0].count);
+                const overdueCount     = parseInt(overdue.rows[0].count);
                 const unconfirmedCount = parseInt(unconfirmed.rows[0].count);
-                if (overdueCount > 0) alerts.push({ type: 'warning', title: `${overdueCount} протерм. задач`, icon: '⚠️' });
-                if (unconfirmedCount > 0) alerts.push({ type: 'info', title: `${unconfirmedCount} непідтв. бронювань`, icon: '📋' });
+                const coldLeadsCount   = parseInt(coldLeads.rows[0].count);
+                const openShifts       = parseInt(shiftCheck.rows[0].open_shifts);
+                const todayBookings    = parseInt(shiftCheck.rows[0].today_bookings);
+                if (overdueCount > 0)
+                    alerts.push({ id:'overdue', type:'warning', level:'warning', title:`${overdueCount} прострочених задач`, icon:'⚠️', link:'/tasks.html' });
+                if (unconfirmedCount > 0)
+                    alerts.push({ id:'unconfirmed', type:'info', level:'info', title:`${unconfirmedCount} непідтв. бронювань`, icon:'📋', link:'/index.html' });
+                lowStock.rows.forEach((s, i) =>
+                    alerts.push({ id:`stock_${i}`, type:'warning', level:'warning',
+                                  title:`📦 Мало: ${s.name}`, message:`${s.quantity} ${s.unit} (мін: ${s.min_quantity})`,
+                                  icon:'📦', link:'/warehouse.html' }));
+                if (coldLeadsCount > 0)
+                    alerts.push({ id:'cold_leads', type:'warning', level:'warning',
+                                  title:`${coldLeadsCount} лідів без відповіді >48год`, icon:'🥶', link:'/leads.html' });
+                if (openShifts === 0 && todayBookings > 0)
+                    alerts.push({ id:'no_shift', type:'critical', level:'critical',
+                                  title:`🔴 Каса не відкрита! (${todayBookings} броні)`, icon:'💰', link:'/finance.html' });
                 data = { alerts };
                 break;
             }
@@ -349,5 +368,32 @@ async function fetchCurrency() {
         return { error: 'Currency fetch failed' };
     }
 }
+
+// GET /api/dashboard/alerts — standalone endpoint for alert bell
+router.get('/alerts', async (req, res) => {
+    try {
+        const today = getKyivDateStr();
+        const [overdue, lowStock, coldLeads, shiftCheck] = await Promise.all([
+            pool.query(`SELECT COUNT(*) as c FROM tasks WHERE deadline < NOW() AND status NOT IN ('done','cancelled')`),
+            pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true LIMIT 5`),
+            pool.query(`SELECT COUNT(*) as c FROM leads WHERE status='new' AND created_at < NOW() - INTERVAL '48 hours'`),
+            pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts WHERE status='open') AS open_shifts,
+                               (SELECT COUNT(*) FROM bookings WHERE date=$1 AND status='confirmed') AS today_bk`, [today])
+        ]);
+        const alerts = [];
+        const oc = parseInt(overdue.rows[0].c);
+        const cl = parseInt(coldLeads.rows[0].c);
+        const os = parseInt(shiftCheck.rows[0].open_shifts);
+        const tb = parseInt(shiftCheck.rows[0].today_bk);
+        if (oc > 0) alerts.push({ id:'overdue', level:'warning', title:`⚠️ ${oc} прострочених задач`, link:'/tasks.html' });
+        lowStock.rows.forEach((s,i) =>
+            alerts.push({ id:`stock_${i}`, level:'warning', title:`📦 Мало: ${s.name} (${s.quantity} ${s.unit})`, link:'/warehouse.html' }));
+        if (cl > 0) alerts.push({ id:'cold_leads', level:'warning', title:`🥶 ${cl} лідів без відповіді >48год`, link:'/leads.html' });
+        if (os === 0 && tb > 0) alerts.push({ id:'no_shift', level:'critical', title:`🔴 Каса не відкрита! (${tb} броні)`, link:'/finance.html' });
+        res.json({ success: true, alerts, count: alerts.length });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 module.exports = router;

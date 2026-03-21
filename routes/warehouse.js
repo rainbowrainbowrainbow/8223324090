@@ -149,6 +149,89 @@ router.get('/history', async (req, res) => {
     }
 });
 
+// ─── Pinata Status & Designs (v33.5) ─────────────────────────
+// GET /api/warehouse/pinata-status
+router.get('/pinata-status', async (req, res) => {
+    try {
+        const [stock, upcoming, designs] = await Promise.all([
+            pool.query(
+                `SELECT id, name, quantity, min_quantity, unit
+                 FROM warehouse_stock
+                 WHERE linked_product_type = 'pinata_filler' AND is_active = true
+                 ORDER BY name`
+            ),
+            pool.query(
+                `SELECT id, date, time, pinata_filler, group_name
+                 FROM bookings
+                 WHERE pinata_filler IS NOT NULL
+                   AND pinata_filler != ''
+                   AND date >= CURRENT_DATE
+                   AND date <= CURRENT_DATE + INTERVAL '14 days'
+                   AND status != 'cancelled'
+                 ORDER BY date, time`
+            ),
+            pool.query('SELECT * FROM pinata_designs WHERE is_active = true ORDER BY name')
+        ]);
+        const needed   = upcoming.rowCount;
+        const minStock = stock.rows.length
+            ? Math.min(...stock.rows.map(s => s.quantity))
+            : 0;
+        const hasEnough = minStock >= needed;
+        res.json({
+            success: true,
+            stock: stock.rows,
+            upcomingCount: needed,
+            upcomingList: upcoming.rows,
+            designs: designs.rows,
+            hasEnough,
+            alert: !hasEnough || stock.rows.some(s => s.quantity <= s.min_quantity)
+        });
+    } catch (err) {
+        log.error('GET /pinata-status', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// GET /api/warehouse/pinata-designs
+router.get('/pinata-designs', async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM pinata_designs WHERE is_active = true ORDER BY name');
+        res.json({ success: true, designs: r.rows });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// POST /api/warehouse/pinata-designs
+router.post('/pinata-designs', requireRole('admin', 'manager'), async (req, res) => {
+    try {
+        const { name, printsQty, imageUrl } = req.body;
+        if (!name?.trim()) return res.status(400).json({ error: 'name required' });
+        const r = await pool.query(
+            `INSERT INTO pinata_designs (name, prints_qty, image_url) VALUES ($1, $2, $3) RETURNING *`,
+            [name.trim(), printsQty || 0, imageUrl || null]
+        );
+        res.json({ success: true, design: r.rows[0] });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// PATCH /api/warehouse/pinata-designs/:id
+router.patch('/pinata-designs/:id', requireRole('admin', 'manager'), async (req, res) => {
+    try {
+        const { printsQty, name, imageUrl, isActive } = req.body;
+        const sets = ['updated_at = NOW()'], vals = [];
+        let idx = 1;
+        if (name !== undefined)      { sets.push(`name = $${idx++}`);       vals.push(name); }
+        if (printsQty !== undefined) { sets.push(`prints_qty = $${idx++}`); vals.push(printsQty); }
+        if (imageUrl !== undefined)  { sets.push(`image_url = $${idx++}`);  vals.push(imageUrl); }
+        if (isActive !== undefined)  { sets.push(`is_active = $${idx++}`);  vals.push(isActive === true || isActive === 'true'); }
+        vals.push(req.params.id);
+        const r = await pool.query(
+            `UPDATE pinata_designs SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, vals
+        );
+        if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
+        res.json({ success: true, design: r.rows[0] });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 // GET /api/warehouse/:id — Get single stock item with recent history
 router.get('/:id', async (req, res) => {
     try {

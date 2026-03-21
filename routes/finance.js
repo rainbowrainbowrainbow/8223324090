@@ -1448,4 +1448,64 @@ router.get('/advanced-dashboard', async (req, res) => {
     }
 });
 
+// ─── Finance Accounts (v33.5) ────────────────────────────────
+router.get('/accounts', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM finance_accounts WHERE is_active = true ORDER BY sort_order'
+        );
+        res.json({ success: true, accounts: result.rows });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.post('/accounts', requireRole('admin', 'senior_manager'), async (req, res) => {
+    try {
+        const { name, emoji, description, type, sortOrder } = req.body;
+        if (!name?.trim()) return res.status(400).json({ error: 'name required' });
+        const r = await pool.query(
+            `INSERT INTO finance_accounts (name, emoji, description, type, sort_order, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [name.trim(), emoji || '💳', description || null,
+             type || 'cash', sortOrder || 99, req.user.username]
+        );
+        res.json({ success: true, account: r.rows[0] });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.patch('/accounts/:id', requireRole('admin', 'senior_manager'), async (req, res) => {
+    try {
+        const { name, emoji, description, isActive, sortOrder } = req.body;
+        const sets = [], vals = [];
+        let idx = 1;
+        if (name !== undefined)        { sets.push(`name = $${idx++}`);        vals.push(name); }
+        if (emoji !== undefined)       { sets.push(`emoji = $${idx++}`);       vals.push(emoji); }
+        if (description !== undefined) { sets.push(`description = $${idx++}`); vals.push(description); }
+        if (isActive !== undefined)    { sets.push(`is_active = $${idx++}`);   vals.push(isActive); }
+        if (sortOrder !== undefined)   { sets.push(`sort_order = $${idx++}`);  vals.push(sortOrder); }
+        if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
+        vals.push(req.params.id);
+        const r = await pool.query(
+            `UPDATE finance_accounts SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+            vals
+        );
+        if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
+        res.json({ success: true, account: r.rows[0] });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.delete('/accounts/:id', requireRole('admin'), async (req, res) => {
+    try {
+        await pool.query('UPDATE finance_accounts SET is_active = false WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 module.exports = router;

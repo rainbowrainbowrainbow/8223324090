@@ -547,7 +547,7 @@ function switchTab(tabName) {
 
     // Show/hide tab panels
     const tabs = ['tabDashboard','tabTransactions','tabMonthly','tabSalary','tabBudget',
-                  'tabShift','tabForecast','tabPnl','tabDebts','tabAdvanced'];
+                  'tabShift','tabForecast','tabPnl','tabDebts','tabAdvanced','tabAccounts'];
     tabs.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -556,7 +556,7 @@ function switchTab(tabName) {
         dashboard: 'tabDashboard', transactions: 'tabTransactions',
         monthly: 'tabMonthly', salary: 'tabSalary', budget: 'tabBudget',
         shift: 'tabShift', forecast: 'tabForecast', pnl: 'tabPnl',
-        debts: 'tabDebts', advanced: 'tabAdvanced'
+        debts: 'tabDebts', advanced: 'tabAdvanced', accounts: 'tabAccounts'
     }[tabName]);
     if (activePanel) activePanel.style.display = '';
 
@@ -571,6 +571,7 @@ function switchTab(tabName) {
     if (tabName === 'pnl') loadPnlReport();
     if (tabName === 'debts') loadDebts();
     if (tabName === 'advanced') loadAdvancedDashboard();
+    if (tabName === 'accounts') loadAccounts();
 }
 
 // ==========================================
@@ -1334,5 +1335,72 @@ async function convertCurrency() {
         }
     } catch (err) {
         showNotification(err.message || 'Помилка конвертації', 'error');
+    }
+}
+
+// ==========================================
+// FINANCE ACCOUNTS (v33.5)
+// ==========================================
+
+async function loadAccounts() {
+    const container = document.getElementById('accountsList');
+    if (!container) return;
+    try {
+        const data = await apiRequest('GET', '/api/finance/accounts');
+        const accounts = data.accounts || [];
+        if (!accounts.length) {
+            container.innerHTML = '<p style="color:var(--gray-400);text-align:center;padding:24px">Рахунків ще немає</p>';
+            return;
+        }
+        container.innerHTML = accounts.map(a => {
+            const typeLabel = { cash: 'Готівка', card: 'Карта', bank: 'Банк' }[a.type] || a.type;
+            return `<div class="fin-stat-card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;border-left:3px solid ${a.type === 'cash' ? '#10B981' : a.type === 'card' ? '#6366F1' : '#F59E0B'}">
+                <span style="font-size:24px">${escapeHtml(a.emoji)}</span>
+                <div style="flex:1">
+                    <div style="font-weight:700">${escapeHtml(a.name)}</div>
+                    <div style="font-size:12px;color:var(--gray-400)">${typeLabel}${a.description ? ' · ' + escapeHtml(a.description) : ''}</div>
+                </div>
+                <button class="btn-page-ghost" onclick="toggleAccount(${parseInt(a.id, 10)}, false)" title="Деактивувати" style="font-size:16px">🗑️</button>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        container.innerHTML = '<p style="color:#EF4444;text-align:center">Помилка завантаження</p>';
+    }
+}
+
+function openAddAccountModal() {
+    document.getElementById('accName').value = '';
+    document.getElementById('accEmoji').value = '💳';
+    document.getElementById('accType').value = 'cash';
+    document.getElementById('accDescription').value = '';
+    document.getElementById('addAccountModal').classList.remove('hidden');
+}
+
+async function saveAccount() {
+    const name = document.getElementById('accName').value?.trim();
+    if (!name) { showNotification('Введи назву', 'error'); return; }
+    try {
+        await apiRequest('POST', '/api/finance/accounts', {
+            name,
+            emoji: document.getElementById('accEmoji').value || '💳',
+            type: document.getElementById('accType').value,
+            description: document.getElementById('accDescription').value?.trim() || null
+        });
+        document.getElementById('addAccountModal').classList.add('hidden');
+        showNotification('Рахунок додано!');
+        loadAccounts();
+    } catch (err) {
+        showNotification(err.message || 'Помилка', 'error');
+    }
+}
+
+async function toggleAccount(id, active) {
+    try {
+        if (!active && !confirm('Деактивувати рахунок?')) return;
+        await apiRequest('PATCH', `/api/finance/accounts/${id}`, { isActive: active });
+        showNotification(active ? 'Рахунок активовано' : 'Рахунок деактивовано');
+        loadAccounts();
+    } catch (err) {
+        showNotification(err.message || 'Помилка', 'error');
     }
 }

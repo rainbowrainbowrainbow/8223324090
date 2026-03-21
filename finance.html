@@ -513,6 +513,7 @@
                 <button class="fin-tab" data-tab="salary">Зарплати</button>
                 <button class="fin-tab" data-tab="budget">Бюджет</button>
                 <button class="fin-tab" data-tab="advanced">Аналітика</button>
+                <button class="fin-tab" data-tab="accounts">Рахунки</button>
             </div>
 
             <!-- Dashboard tab -->
@@ -712,6 +713,15 @@
                 <div id="advancedContent"></div>
             </div>
 
+            <!-- Accounts tab (v33.5) -->
+            <div id="tabAccounts" style="display:none">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <h3 style="font-weight:800;margin:0">Рахунки</h3>
+                    <button class="btn-page-primary" onclick="openAddAccountModal()">+ Новий рахунок</button>
+                </div>
+                <div id="accountsList"></div>
+            </div>
+
             <!-- Budget tab (v17.0) -->
             <div id="tabBudget" style="display:none">
                 <div class="fin-filters" style="margin-bottom:16px">
@@ -806,6 +816,40 @@
             <h3>Особистий кабінет</h3>
             <div id="profileContent" class="profile-content">
                 <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account modal (v33.5) -->
+    <div id="addAccountModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Новий рахунок">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Новий рахунок</h3>
+            <div class="form-group">
+                <label>Назва *</label>
+                <input type="text" id="accName" placeholder="Каса, Privat...">
+            </div>
+            <div style="display:flex;gap:12px">
+                <div class="form-group" style="flex:1">
+                    <label>Emoji</label>
+                    <input type="text" id="accEmoji" placeholder="💳" maxlength="4" value="💳" style="font-size:20px;width:60px;text-align:center">
+                </div>
+                <div class="form-group" style="flex:2">
+                    <label>Тип</label>
+                    <select id="accType">
+                        <option value="cash">Готівка</option>
+                        <option value="card">Карта</option>
+                        <option value="bank">Банк/рахунок</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Опис</label>
+                <input type="text" id="accDescription" placeholder="Опціонально">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+                <button class="btn-page-secondary" onclick="document.getElementById('addAccountModal').classList.add('hidden')">Скасувати</button>
+                <button class="btn-page-primary" onclick="saveAccount()">Зберегти</button>
             </div>
         </div>
     </div>

@@ -112,7 +112,8 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
         const {
             type, amount, description, category,
             submitted_by, submitted_by_id, submitted_via = 'bot',
-            photo_url, ocr_text, voice_transcript, raw_data, status = 'new'
+            photo_url, ocr_text, voice_transcript, raw_data, status = 'new',
+            account_id, account_name
         } = req.body;
 
         if (!type || !['income', 'expense'].includes(type)) {
@@ -131,8 +132,9 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
 
         const result = await pool.query(`
             INSERT INTO reports (type, amount, description, category, submitted_by,
-                submitted_via, photo_url, ocr_text, voice_transcript, raw_data, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                submitted_via, photo_url, ocr_text, voice_transcript, raw_data, status,
+                account_id, account_name)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING *
         `, [
             type,
@@ -145,7 +147,9 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
             ocr_text || null,
             voice_transcript || null,
             JSON.stringify(botRawData),
-            status
+            status,
+            account_id || null,
+            account_name || null
         ]);
 
         const report = result.rows[0];
@@ -236,6 +240,21 @@ router.get('/summary', requireBotApiKey, async (req, res) => {
         });
     } catch (err) {
         log.error('GET /report-bot/summary error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+// ==========================================
+// GET /api/report-bot/accounts — Finance accounts for bot sync (x-api-key)
+// ==========================================
+router.get('/accounts', requireBotApiKey, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT id, name, emoji, description, type, sort_order FROM finance_accounts WHERE is_active = true ORDER BY sort_order'
+        );
+        res.json({ success: true, accounts: result.rows });
+    } catch (err) {
+        log.error('GET /report-bot/accounts error', err);
         res.status(500).json({ error: 'Database error' });
     }
 });

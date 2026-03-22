@@ -405,18 +405,19 @@ body.dark-mode .btn-reset-auto {
     cursor: pointer;
     font-family: inherit;
     color: var(--gray-500);
-    transition: all var(--speed-fast) var(--ease-smooth);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .status-filter-btn.active {
-    background: var(--primary);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: var(--white);
-    box-shadow: 0 1px 3px rgba(16,185,129,0.3);
+    box-shadow: 0 2px 8px rgba(16,185,129,0.3);
 }
 
 .status-filter-btn:hover:not(.active) {
-    background: rgba(16,185,129,0.08);
+    background: rgba(16,185,129,0.1);
     color: var(--gray-700);
+    transform: translateY(-1px);
 }
 
 /* Hide filtered-out booking blocks */
@@ -447,14 +448,15 @@ body.dark-mode .btn-reset-auto {
     background: transparent;
     color: var(--gray-500);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     font-family: inherit;
     white-space: nowrap;
 }
 
 .period-btn:hover:not(.active) {
-    background: rgba(16,185,129,0.08);
+    background: rgba(16,185,129,0.1);
     color: var(--gray-700);
+    transform: translateY(-1px);
 }
 
 .period-btn.active {

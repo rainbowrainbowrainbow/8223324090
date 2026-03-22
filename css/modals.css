@@ -903,11 +903,14 @@ body.dark-mode .confirm-cancel:hover {
     border-radius: var(--radius-sm);
     padding: 14px;
     border-left: 4px solid var(--gray-400);
-    transition: box-shadow var(--speed-fast);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 
 .catalog-program-card:hover {
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    transform: translateX(4px);
+    background: var(--white);
 }
 
 .catalog-program-card.animation { border-left-color: var(--animation); }
@@ -994,16 +997,16 @@ body.dark-mode .confirm-cancel:hover {
 
 .btn-catalog-edit,
 .btn-catalog-delete {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border: none;
-    border-radius: var(--radius-xs);
+    border-radius: 8px;
     cursor: pointer;
     font-size: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all var(--speed-fast) var(--ease-smooth);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     background: var(--gray-100);
     color: var(--gray-600);
 }
@@ -1011,11 +1014,15 @@ body.dark-mode .confirm-cancel:hover {
 .btn-catalog-edit:hover {
     background: #DBEAFE;
     color: #2563EB;
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(37,99,235,0.2);
 }
 
 .btn-catalog-delete:hover {
     background: #FEE2E2;
     color: #DC2626;
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(220,38,38,0.2);
 }
 
 .catalog-inactive {

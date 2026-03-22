@@ -376,12 +376,12 @@ router.get('/pipeline/stats', async (req, res) => {
         const leads = await pool.query(`
             SELECT
                 l.id, l.client_name, l.phone, l.status, l.notes,
-                l.created_at, l.updated_at,
-                u.full_name as manager_name
+                l.created_at, l.last_contact_at,
+                u.name as manager_name
             FROM leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             ${whereClause}
-            ORDER BY l.updated_at DESC NULLS LAST
+            ORDER BY l.last_contact_at DESC NULLS LAST, l.created_at DESC
         `, params);
 
         const stats = await pool.query(`
@@ -482,7 +482,7 @@ router.get('/interactions', async (req, res) => {
                 l.client_name as lead_name,
                 l.phone as lead_phone,
                 l.status as lead_status,
-                u.full_name as manager_name
+                u.name as manager_name
             FROM lead_interactions li
             LEFT JOIN leads l ON li.lead_id = l.id
             LEFT JOIN users u ON li.user_id = u.id
@@ -505,7 +505,7 @@ router.get('/interactions/lead/:id', async (req, res) => {
         const result = await pool.query(`
             SELECT
                 li.*,
-                u.full_name as manager_name
+                u.name as manager_name
             FROM lead_interactions li
             LEFT JOIN users u ON li.user_id = u.id
             WHERE li.lead_id = $1
@@ -566,7 +566,7 @@ router.get('/interactions/alerts', async (req, res) => {
         const result = await pool.query(`
             SELECT
                 l.id, l.client_name, l.phone, l.status,
-                u.full_name as manager_name,
+                u.name as manager_name,
                 MAX(li.created_at) as last_interaction,
                 EXTRACT(EPOCH FROM (NOW() - MAX(li.created_at)))/86400 as days_ago
             FROM leads l
@@ -574,7 +574,7 @@ router.get('/interactions/alerts', async (req, res) => {
             LEFT JOIN users u ON l.assigned_to = u.id
             WHERE l.status NOT IN ('closed', 'lost')
             ${!isDirector ? 'AND l.assigned_to = $1' : ''}
-            GROUP BY l.id, l.client_name, l.phone, l.status, u.full_name
+            GROUP BY l.id, l.client_name, l.phone, l.status, u.name
             HAVING MAX(li.created_at) < NOW() - INTERVAL '3 days'
               OR MAX(li.created_at) IS NULL
             ORDER BY days_ago DESC NULLS LAST
@@ -596,7 +596,7 @@ router.get('/interactions/stats', async (req, res) => {
 
         const result = await pool.query(`
             SELECT
-                u.full_name as manager_name,
+                u.name as manager_name,
                 u.id as manager_id,
                 COUNT(li.id)::int as total_interactions,
                 COUNT(CASE WHEN li.type = 'call' THEN 1 END)::int as calls,
@@ -606,7 +606,7 @@ router.get('/interactions/stats', async (req, res) => {
             LEFT JOIN lead_interactions li ON u.id = li.user_id
                 AND li.created_at >= NOW() - INTERVAL '${interval}'
             WHERE u.role IN ('manager', 'senior_manager', 'director')
-            GROUP BY u.id, u.full_name
+            GROUP BY u.id, u.name
             ORDER BY total_interactions DESC
         `);
 

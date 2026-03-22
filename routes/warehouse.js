@@ -233,6 +233,19 @@ router.patch('/pinata-designs/:id', requireRole('admin', 'manager'), async (req,
     } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// GET /api/warehouse/categories — List unique categories
+router.get('/categories', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT DISTINCT category FROM warehouse_stock WHERE category IS NOT NULL ORDER BY category`
+        );
+        res.json(result.rows.map(r => r.category));
+    } catch (err) {
+        logger.error('[Warehouse] Get categories error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // GET /api/warehouse/:id — Get single stock item with recent history
 router.get('/:id', async (req, res) => {
     try {

@@ -1172,6 +1172,24 @@ function initProfileHandler() {
 document.addEventListener('DOMContentLoaded', () => {
     // Delay slightly to let page-specific JS set username first
     setTimeout(initProfileHandler, 100);
+
+    // v37.4: Auto-fill #currentUser and AppState from localStorage on sub-pages
+    // Many page-specific JS files never set these, causing "?" in header/sidebar
+    setTimeout(() => {
+        const el = document.getElementById('currentUser');
+        if (el && !el.textContent.trim()) {
+            try {
+                const saved = localStorage.getItem('pzp_current_user');
+                if (saved) {
+                    const user = JSON.parse(saved);
+                    el.textContent = user.name || user.username || '';
+                    if (typeof AppState !== 'undefined' && !AppState.currentUser) {
+                        AppState.currentUser = user;
+                    }
+                }
+            } catch {}
+        }
+    }, 200);
 });
 
 // ==========================================

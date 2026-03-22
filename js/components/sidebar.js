@@ -245,7 +245,14 @@ const Sidebar = (() => {
 
     // ═══ USER CARD ═══
     function initUserCard() {
-        const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+        let user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+        // Fallback: read from localStorage if AppState not populated yet
+        if (!user) {
+            try {
+                const saved = localStorage.getItem('pzp_current_user');
+                if (saved) user = JSON.parse(saved);
+            } catch {}
+        }
         if (!user) return;
         const avatarEl = document.getElementById('sidebarUserAvatar');
         const nameEl = document.getElementById('sidebarUserName');

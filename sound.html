@@ -21,19 +21,15 @@
 <body data-page-group="creative">
     <script>(function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();</script>
 
-    <div id="loginScreen" class="login-screen hidden">
-        <div class="login-container">
-            <h1>Event Genix</h1>
-            <form id="loginForm" class="login-form">
-                <input type="text" id="username" placeholder="Логін" required>
-                <input type="password" id="password" placeholder="Пароль" required>
-                <button type="submit" class="btn-login">Увійти</button>
-                <p id="loginError" class="error-message"></p>
-            </form>
-        </div>
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <!-- Login overlay -->
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
     </div>
 
-    <div id="mainApp" class="main-app hidden">
+    <div id="mainApp">
+        <!-- Бокове меню -->
         <aside class="sidebar-nav" id="sidebarNav">
             <div class="sidebar-header" id="sidebarHeader">
                 <div class="sidebar-brand">
@@ -51,24 +47,27 @@
                     </div>
                     <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
                 </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
             </div>
             <nav class="sidebar-links" id="sidebarLinks"></nav>
-            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
-                <span class="collapse-icon">◀</span>
-                <span class="collapse-text">Згорнути</span>
-            </button>
+        <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+            <span class="collapse-icon">◀</span>
+            <span class="collapse-text">Згорнути</span>
+        </button>
         </aside>
         <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <header class="header">
-            <button id="sidebarToggle" class="sidebar-toggle">☰</button>
-            <div class="header-right">
-                <span id="currentUser" class="user-name" role="button" tabindex="0"></span>
-                <button id="logoutBtn" class="btn-logout" title="Вийти">Вийти</button>
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
             </div>
         </header>
 
-        <main class="main-content">
+        <main id="main-content" class="page-container">
             <div class="sound-page">
                 <div class="sound-header">
                     <div>
@@ -168,14 +167,13 @@
             const user = await apiVerifyToken();
             if (user) {
                 AppState.currentUser = user;
-                document.getElementById('loginScreen')?.classList.add('hidden');
-                document.getElementById('mainApp')?.classList.remove('hidden');
+                document.getElementById('loginOverlay')?.classList.add('hidden');
                 var ue = document.getElementById('currentUser'); if (ue) ue.textContent = user.name;
                 if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
                 return;
             }
         }
-        window.location.href = '/';
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
     })();
     </script>
     <script src="js/sound-page.js?v=38.1.1"></script>

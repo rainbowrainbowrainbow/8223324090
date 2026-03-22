@@ -606,6 +606,38 @@ body.dark-mode .sidebar-group-header .nav-icon { background: transparent !import
     color: var(--gray-800);
 }
 
+/* Theme toggle button */
+.sidebar-theme-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    margin: 0 8px;
+    color: var(--gray-500);
+    background: none;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background var(--speed-fast) var(--ease-smooth),
+                color var(--speed-fast) var(--ease-smooth);
+    width: calc(100% - 16px);
+    text-align: left;
+}
+.sidebar-theme-btn:hover {
+    background: var(--gray-50);
+    color: var(--gray-700);
+}
+.sidebar-nav.collapsed .sidebar-theme-btn {
+    justify-content: center;
+    padding: 8px;
+    gap: 0;
+}
+.sidebar-nav.collapsed .sidebar-theme-btn .nav-text { display: none; }
+body.dark-mode .sidebar-theme-btn:hover { background: rgba(255,255,255,0.05); }
+
 /* Sidebar collapse button (desktop) */
 .sidebar-collapse-btn {
     display: flex;

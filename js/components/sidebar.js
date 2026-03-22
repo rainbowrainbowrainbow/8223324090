@@ -284,6 +284,9 @@ const Sidebar = (() => {
                 if (window.innerWidth <= 768 && overlay) { sidebar.classList.remove('open'); overlay.classList.remove('active'); }
             });
         }
+        // Theme toggle — inject before collapse button
+        _initThemeToggle(sidebar);
+
         // Collapse button — graceful (може не бути на всіх сторінках)
         const collapseBtn = document.getElementById('sidebarCollapseBtn');
         if (collapseBtn && sidebar) {
@@ -294,6 +297,35 @@ const Sidebar = (() => {
                 localStorage.setItem('pzp_sidebar_collapsed', sidebar.classList.contains('collapsed'));
             });
         }
+    }
+
+    function _initThemeToggle(sidebar) {
+        if (!sidebar) return;
+        // Don't duplicate
+        if (sidebar.querySelector('.sidebar-theme-btn')) return;
+        const collapseBtn = sidebar.querySelector('#sidebarCollapseBtn');
+        if (!collapseBtn) return;
+
+        const isDark = document.body.classList.contains('dark-mode');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sidebar-theme-btn';
+        btn.title = 'Змінити тему';
+        btn.innerHTML = `<span class="nav-icon">${isDark ? '☀️' : '🌙'}</span><span class="nav-text">${isDark ? 'Світла тема' : 'Темна тема'}</span>`;
+
+        btn.addEventListener('click', () => {
+            const nowDark = document.body.classList.toggle('dark-mode');
+            localStorage.setItem('pzp_dark_mode', String(nowDark));
+            document.documentElement.setAttribute('data-theme', nowDark ? 'dark' : 'light');
+            btn.querySelector('.nav-icon').textContent = nowDark ? '☀️' : '🌙';
+            btn.querySelector('.nav-text').textContent = nowDark ? 'Світла тема' : 'Темна тема';
+            // Sync hidden checkbox if exists (for app.js compatibility)
+            const cb = document.getElementById('darkModeToggle');
+            if (cb) cb.checked = nowDark;
+            if (typeof AppState !== 'undefined') AppState.darkMode = nowDark;
+        });
+
+        collapseBtn.parentNode.insertBefore(btn, collapseBtn);
     }
 
     function checkPageAccess() {

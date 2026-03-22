@@ -35,6 +35,7 @@ const Sidebar = (() => {
         { href: '/designer',     icon: '📐', label: 'Дизайнер',       access: 'art',            group: 'creative' },
         { href: '/sound',        icon: '🔊', label: 'Звук',           access: 'art',            group: 'creative' },
         { href: '/graduation',   icon: '🎓', label: 'Випускний',      access: 'graduation',     group: 'creative' },
+        { href: '/art',          icon: '📂', label: 'Каталоги',       access: 'art',            group: 'creative', noActive: true },
         // E4/E5 FIX: Афіша і Сертифікати — action-links
         { href: '#afisha',       icon: '🎭', label: 'Афіша',          access: 'all',            group: 'creative',
           action: 'sidebarOpenAfisha',       isHashLink: true },

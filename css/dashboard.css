@@ -251,12 +251,6 @@
     white-space: nowrap;
 }
 
-.widget-task-deadline {
-    font-size: 11px;
-    color: var(--gray-500, #a0aec0);
-    white-space: nowrap;
-}
-
 /* Booking widget */
 .widget-booking-item {
     display: flex;
@@ -527,90 +521,6 @@
     font-weight: 700;
 }
 
-/* Test panel */
-.test-panel-fab {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: #805AD5;
-    color: #fff;
-    border: none;
-    font-size: 22px;
-    cursor: pointer;
-    z-index: var(--z-sidebar);
-    box-shadow: 0 4px 12px rgba(128, 90, 213, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.15s;
-}
-
-.test-panel-fab:hover {
-    transform: scale(1.1);
-}
-
-.test-panel {
-    position: fixed;
-    bottom: 80px;
-    right: 20px;
-    width: 280px;
-    background: #fff;
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-    z-index: var(--z-sidebar);
-    padding: 16px;
-    display: none;
-}
-
-.test-panel.open {
-    display: block;
-}
-
-.test-panel h4 {
-    font-size: 14px;
-    font-weight: 800;
-    margin: 0 0 12px 0;
-}
-
-.test-panel select {
-    width: 100%;
-    padding: 10px 12px;
-    border: 2px solid rgba(0,0,0,0.08);
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 10px;
-    min-height: 44px;
-}
-
-.test-panel-actions {
-    display: flex;
-    gap: 8px;
-}
-
-.test-panel-actions button {
-    flex: 1;
-    padding: 10px;
-    border: none;
-    border-radius: 8px;
-    font-weight: 700;
-    font-size: 13px;
-    cursor: pointer;
-    min-height: 44px;
-}
-
-.test-panel-actions .btn-switch {
-    background: #805AD5;
-    color: #fff;
-}
-
-.test-panel-actions .btn-reset {
-    background: rgba(0,0,0,0.06);
-}
-
 .test-mode-badge {
     position: fixed;
     top: 8px;
@@ -820,17 +730,10 @@
     color: #A0AEC0;
 }
 
-.dark-mode .test-panel,
 .dark-mode .onboarding-modal {
     background: #252540;
     color: #e2e8f0;
     border: 1px solid rgba(255,255,255,0.1);
-}
-
-.dark-mode .test-panel select {
-    background: #333350;
-    color: #e2e8f0;
-    border-color: rgba(255,255,255,0.12);
 }
 
 .dark-mode .onboarding-widget-option {

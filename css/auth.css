@@ -270,18 +270,6 @@
     background: rgba(201,168,76,0.08);
 }
 
-/* v6.0: Test mode hint */
-.test-mode-hint {
-    text-align: center;
-    margin-top: 12px;
-    padding: 8px 12px;
-    background: rgba(201,168,76,0.1);
-    color: #C9A84C;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 700;
-}
-
 .error-message {
     color: #ef4444;
     text-align: center;

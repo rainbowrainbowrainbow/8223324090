@@ -9,7 +9,7 @@ const logger = createLogger('Decisions');
 const DIRECTOR_ROLES = ['creator', 'director', 'vice_director'];
 
 // GET /api/decisions/pending
-router.get('/pending', requireRole(...DIRECTOR_ROLES), async (req, res) => {
+router.get('/pending', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT * FROM decisions
@@ -64,7 +64,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/decisions/:id/:action (approve/reject/defer)
-router.put('/:id/:action', requireRole(...DIRECTOR_ROLES), async (req, res) => {
+router.put('/:id/:action', async (req, res) => {
     const { id, action } = req.params;
     const { note } = req.body || {};
     const statusMap = { approve: 'approved', reject: 'rejected', defer: 'deferred' };
@@ -98,7 +98,7 @@ router.put('/:id/:action', requireRole(...DIRECTOR_ROLES), async (req, res) => {
 });
 
 // GET /api/decisions/history
-router.get('/history', requireRole(...DIRECTOR_ROLES), async (req, res) => {
+router.get('/history', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT * FROM decisions WHERE status != 'pending'

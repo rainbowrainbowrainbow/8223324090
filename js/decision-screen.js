@@ -41,8 +41,7 @@ const DecisionScreen = (() => {
         if (_initialized) return;
         _initialized = true;
 
-        const role = AppState?.currentUser?.role;
-        if (!['creator', 'director', 'vice_director'].includes(role)) return;
+        if (!AppState?.currentUser) return;
 
         await _loadAndRender();
     }

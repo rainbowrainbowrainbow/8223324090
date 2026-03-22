@@ -508,6 +508,7 @@ router.post('/:id/send-image', requireRole('admin', 'user'), async (req, res) =>
 });
 
 // v33.8.0 Integration 6: Validate certificate without using it
+router.get('/validate/', (req, res) => res.json({ valid: false, error: 'Код не вказано' }));
 router.get('/validate/:code', async (req, res) => {
     try {
         const r = await pool.query(

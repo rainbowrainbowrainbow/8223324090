@@ -46,10 +46,13 @@ body.dark-mode {
 
 /* Sidebar */
 body.dark-mode .sidebar-nav {
-    background: #1a1a2e;
+    background: linear-gradient(180deg, #1a1a2e 0%, #161625 100%);
     border-right-color: var(--gray-200);
-    box-shadow: 1px 0 8px rgba(0,0,0,0.2);
+    box-shadow: 1px 0 12px rgba(0,0,0,0.3);
 }
+body.dark-mode .sidebar-header { background: linear-gradient(135deg, rgba(16,185,129,0.04) 0%, rgba(99,102,241,0.04) 100%); }
+body.dark-mode .sidebar-user-card { background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(99,102,241,0.06) 100%); border-color: rgba(16,185,129,0.12); }
+body.dark-mode .sidebar-user-card:hover { background: linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(99,102,241,0.1) 100%); border-color: rgba(16,185,129,0.2); }
 
 body.dark-mode .sidebar-logo {
     border-bottom-color: var(--gray-200);
@@ -69,14 +72,18 @@ body.dark-mode .sidebar-links .nav-link:hover {
 }
 
 body.dark-mode .sidebar-links .nav-link.active {
-    background: rgba(16,185,129,0.1);
+    background: linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.08) 100%);
     color: #10B981;
+    box-shadow: 0 1px 4px rgba(16,185,129,0.1);
 }
+body.dark-mode .sidebar-links .nav-link:hover { transform: translateX(2px); }
 
-/* Nav icon — dark mode (emoji = transparent bg) */
+/* Nav icon — dark mode */
 body.dark-mode .nav-icon {
-    background: transparent;
+    background: rgba(255,255,255,0.06);
 }
+body.dark-mode .nav-link:hover .nav-icon { background: rgba(255,255,255,0.1); }
+body.dark-mode .nav-link.active .nav-icon { background: rgba(16,185,129,0.2); }
 
 body.dark-mode .nav-icon--kleshnya {
     background: rgba(225,29,72,0.15);

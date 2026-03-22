@@ -4,60 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Event Genix | Звук</title>
-    <meta name="description" content="Event Genix — Бібліотека звуків">
+    <meta name="description" content="Event Genix — Звуковий модуль">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=37.8.0">
-    <link rel="stylesheet" href="css/layout.css?v=37.8.0">
-    <link rel="stylesheet" href="css/pages.css?v=37.8.0">
-    <link rel="stylesheet" href="css/modals.css?v=37.8.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=37.8.0">
-    <link rel="stylesheet" href="css/responsive.css?v=37.8.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=37.8.0">
+    <link rel="stylesheet" href="css/base.css?v=38.0.0">
+    <link rel="stylesheet" href="css/auth.css?v=38.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.0.0">
+    <link rel="stylesheet" href="css/sound.css?v=38.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.0.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <style>
-        .sound-page { padding: 20px 24px; min-height: 100vh; }
-        .sound-header { margin-bottom: 24px; }
-        .sound-header h1 { font-size: 28px; font-weight: 800; margin: 0 0 4px; }
-        .sound-header .subtitle { font-size: 14px; color: var(--gray-500); }
-        .sound-tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--gray-50); border-radius: 10px; padding: 4px; }
-        .sound-tab { padding: 8px 16px; border: none; background: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--gray-500); transition: all 0.15s; }
-        .sound-tab.active { background: var(--white); color: var(--gray-900); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .sound-tab:hover:not(.active) { color: var(--gray-700); }
-        .sound-tab-content { display: none; }
-        .sound-tab-content.active { display: block; }
-        .sound-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-        .sound-card { background: var(--white); border: 1px solid var(--gray-100); border-radius: 12px; padding: 16px; transition: box-shadow 0.15s; }
-        .sound-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        .sound-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-        .sound-card-name { font-size: 15px; font-weight: 700; }
-        .sound-card-cat { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; background: var(--primary-50); color: var(--primary-dark); }
-        .sound-card-meta { font-size: 12px; color: var(--gray-400); }
-        .sound-card-actions { display: flex; gap: 8px; margin-top: 10px; }
-        .sound-card-actions button { padding: 6px 12px; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
-        .btn-play { background: var(--primary-50); color: var(--primary-dark); }
-        .btn-play:hover { background: var(--primary); color: #fff; }
-        .btn-delete { background: #FEE2E2; color: #DC2626; }
-        .btn-delete:hover { background: #DC2626; color: #fff; }
-        .sound-empty { text-align: center; padding: 60px 20px; color: var(--gray-400); }
-        .sound-empty-icon { font-size: 48px; margin-bottom: 12px; }
-        .upload-form { max-width: 500px; }
-        .upload-form .form-group { margin-bottom: 16px; }
-        .upload-form label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--gray-700); }
-        .upload-form input, .upload-form select { width: 100%; padding: 10px 12px; border: 1px solid var(--gray-200); border-radius: 8px; font-size: 14px; font-family: inherit; }
-        .upload-form .btn-upload { padding: 10px 24px; background: var(--primary); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
-        .upload-form .btn-upload:hover { background: var(--primary-dark); }
-        /* Filter */
-        .sound-filter { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
-        .sound-filter-btn { padding: 6px 14px; border: 1px solid var(--gray-200); background: var(--white); border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s; }
-        .sound-filter-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
-        /* Dark mode */
-        body.dark-mode .sound-tabs { background: rgba(255,255,255,0.04); }
-        body.dark-mode .sound-tab.active { background: rgba(255,255,255,0.08); color: #E2E8F0; }
-        body.dark-mode .sound-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.06); }
-        body.dark-mode .sound-filter-btn { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); color: var(--gray-400); }
-        body.dark-mode .sound-filter-btn.active { background: var(--primary); color: #fff; }
-    </style>
 </head>
 <body data-page-group="creative">
     <script>(function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();</script>
@@ -112,82 +71,105 @@
         <main class="main-content">
             <div class="sound-page">
                 <div class="sound-header">
-                    <h1>🔊 Звук</h1>
-                    <p class="subtitle">Бібліотека звуків, проекти та завантаження</p>
+                    <div>
+                        <h1>🔊 Звук</h1>
+                        <p class="subtitle">Оголошення, бібліотека звуків, плейлисти</p>
+                    </div>
+                    <div class="sound-header-actions">
+                        <button class="btn-create" onclick="SoundPage.newAnn()">+ Оголошення</button>
+                    </div>
                 </div>
 
                 <div class="sound-tabs">
-                    <button class="sound-tab active" data-tab="library">🎵 Бібліотека</button>
-                    <button class="sound-tab" data-tab="projects">🎯 Проекти</button>
-                    <button class="sound-tab" data-tab="upload">➕ Завантажити</button>
+                    <button class="sound-tab active" data-tab="announcements">📢 Оголошення</button>
+                    <button class="sound-tab" data-tab="library">🎵 Бібліотека</button>
+                    <button class="sound-tab" data-tab="playlists">📋 Плейлисти</button>
+                    <button class="sound-tab" data-tab="log">📊 Лог</button>
                 </div>
 
-                <div id="tabLibrary" class="sound-tab-content active">
+                <!-- Tab: Announcements -->
+                <div id="tab-announcements" class="sound-tab-content active">
+                    <div class="sound-status-filter">
+                        <button class="ann-status-btn sound-filter-btn active" data-status="">Всі</button>
+                        <button class="ann-status-btn sound-filter-btn" data-status="draft">Чернетки</button>
+                        <button class="ann-status-btn sound-filter-btn" data-status="active">Активні</button>
+                        <button class="ann-status-btn sound-filter-btn" data-status="scheduled">Заплановані</button>
+                    </div>
+                    <div id="announcementsGrid" class="sound-grid">
+                        <div class="sound-empty"><div class="sound-empty-icon">📢</div><p>Завантаження...</p></div>
+                    </div>
+                </div>
+
+                <!-- Tab: Library -->
+                <div id="tab-library" class="sound-tab-content">
                     <div class="sound-filter">
-                        <button class="sound-filter-btn active" data-cat="">Всі</button>
-                        <button class="sound-filter-btn" data-cat="quest">Квести</button>
-                        <button class="sound-filter-btn" data-cat="atmosphere">Атмосфера</button>
-                        <button class="sound-filter-btn" data-cat="effects">Ефекти</button>
-                        <button class="sound-filter-btn" data-cat="music">Музика</button>
+                        <button class="lib-filter-btn sound-filter-btn active" data-cat="">Всі</button>
+                        <button class="lib-filter-btn sound-filter-btn" data-cat="quest">🎯 Квести</button>
+                        <button class="lib-filter-btn sound-filter-btn" data-cat="atmosphere">🌙 Атмосфера</button>
+                        <button class="lib-filter-btn sound-filter-btn" data-cat="effects">💥 Ефекти</button>
+                        <button class="lib-filter-btn sound-filter-btn" data-cat="music">🎵 Музика</button>
+                        <button class="lib-filter-btn sound-filter-btn" data-cat="announcement">📢 Оголошення</button>
                     </div>
-                    <div id="soundGrid" class="sound-grid">
-                        <div class="sound-empty">
-                            <div class="sound-empty-icon">🎵</div>
-                            <p>Бібліотека порожня</p>
-                            <p style="font-size:12px">Завантажте перший звуковий файл</p>
-                        </div>
+                    <div id="libraryGrid" class="sound-grid">
+                        <div class="sound-empty"><div class="sound-empty-icon">🎵</div><p>Бібліотека порожня</p></div>
                     </div>
-                </div>
 
-                <div id="tabProjects" class="sound-tab-content">
-                    <div class="sound-empty">
-                        <div class="sound-empty-icon">🎯</div>
-                        <p>Ще немає звукових проектів</p>
-                    </div>
-                </div>
-
-                <div id="tabUpload" class="sound-tab-content">
-                    <form class="upload-form" id="uploadForm">
+                    <h3 style="margin-top:32px;font-size:16px;font-weight:700;">📤 Завантажити звук</h3>
+                    <form class="upload-form" id="uploadForm" style="margin-top:12px;">
                         <div class="form-group">
-                            <label>Назва</label>
-                            <input type="text" id="soundName" placeholder="Назва звуку" required>
+                            <label for="soundName">Назва</label>
+                            <input type="text" id="soundName" placeholder="Назва звуку">
                         </div>
                         <div class="form-group">
-                            <label>Категорія</label>
+                            <label for="soundCategory">Категорія</label>
                             <select id="soundCategory">
                                 <option value="general">Загальне</option>
                                 <option value="quest">Квест</option>
                                 <option value="atmosphere">Атмосфера</option>
                                 <option value="effects">Ефекти</option>
                                 <option value="music">Музика</option>
+                                <option value="announcement">Оголошення</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Файл (.mp3, .wav, .ogg)</label>
-                            <input type="file" id="soundFile" accept=".mp3,.wav,.ogg,.m4a,.aac">
+                            <label for="soundFile">Файл (.mp3, .wav, .ogg, .m4a)</label>
+                            <input type="file" id="soundFile" accept=".mp3,.wav,.ogg,.m4a,.aac" required>
                         </div>
-                        <button type="submit" class="btn-upload">Завантажити</button>
+                        <button type="submit" class="btn-create">📤 Завантажити</button>
                     </form>
+                </div>
+
+                <!-- Tab: Playlists -->
+                <div id="tab-playlists" class="sound-tab-content">
+                    <div id="playlistsContainer">
+                        <div class="sound-empty"><div class="sound-empty-icon">📋</div><p>Немає плейлистів</p></div>
+                    </div>
+                </div>
+
+                <!-- Tab: Log -->
+                <div id="tab-log" class="sound-tab-content">
+                    <div id="logContainer">
+                        <div class="sound-empty"><div class="sound-empty-icon">📊</div><p>Лог порожній</p></div>
+                    </div>
                 </div>
             </div>
         </main>
     </div>
 
-    <script src="js/config.js?v=37.8.0"></script>
-    <script src="js/api.js?v=37.8.0"></script>
-    <script src="js/auth.js?v=37.8.0"></script>
-    <script src="js/components/sidebar.js?v=37.8.0"></script>
+    <script src="js/config.js?v=38.0.0"></script>
+    <script src="js/api.js?v=38.0.0"></script>
+    <script src="js/auth.js?v=38.0.0"></script>
+    <script src="js/components/sidebar.js?v=38.0.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script>
-    // Auth check — unhide mainApp
     (async function() {
         const token = localStorage.getItem('pzp_token');
         if (token) {
             const user = await apiVerifyToken();
             if (user) {
                 AppState.currentUser = user;
-                var ls = document.getElementById('loginScreen'); if (ls) ls.classList.add('hidden');
-                document.getElementById('mainApp').classList.remove('hidden');
+                document.getElementById('loginScreen')?.classList.add('hidden');
+                document.getElementById('mainApp')?.classList.remove('hidden');
                 var ue = document.getElementById('currentUser'); if (ue) ue.textContent = user.name;
                 if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
                 return;
@@ -196,24 +178,7 @@
         window.location.href = '/';
     })();
     </script>
-    <script>
-    // Tabs
-    document.querySelectorAll('.sound-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.sound-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.sound-tab-content').forEach(c => c.classList.remove('active'));
-            tab.classList.add('active');
-            document.getElementById('tab' + tab.dataset.tab.charAt(0).toUpperCase() + tab.dataset.tab.slice(1))?.classList.add('active');
-        });
-    });
-    // Filter
-    document.querySelectorAll('.sound-filter-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.sound-filter-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-        });
-    });
-    </script>
-    <script src="js/role-panel.js?v=37.8.0"></script>
+    <script src="js/sound-page.js?v=38.0.0"></script>
+    <script src="js/role-panel.js?v=38.0.0"></script>
 </body>
 </html>

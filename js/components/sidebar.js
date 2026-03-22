@@ -35,7 +35,7 @@ const Sidebar = (() => {
         { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'creative' },
         { href: '/art',          icon: '🎨', label: 'Art Director',   access: 'art',            group: 'creative' },
         { href: '/designer',     icon: '📐', label: 'Дизайнер',       access: 'art',            group: 'creative' },
-        { href: '/sound',        icon: '🔊', label: 'Звук',           access: 'art',            group: 'creative' },
+        { href: '/sound',        icon: '🔊', label: 'Звук',           access: 'sound',          group: 'creative' },
         { href: '/graduation',   icon: '🎓', label: 'Випускний',      access: 'graduation',     group: 'creative' },
         { href: '/art',          icon: '📂', label: 'Каталоги',       access: 'art',            group: 'creative', noActive: true },
         // E4/E5 FIX: Афіша і Сертифікати — action-links
@@ -71,6 +71,7 @@ const Sidebar = (() => {
         center:         ['creator','director','vice_director','senior_manager','manager','admin','accountant'],
         graduation:     ['creator','director','vice_director','senior_manager','manager','admin','art_director','marketer'],
         art:            ['creator','director','vice_director','senior_manager','manager','art_director','marketer'],
+        sound:          ['creator','director','vice_director','senior_manager','manager','art_director'],
         demo:           ['creator','director','vice_director'],
         settings:       ['creator','director'],
         schedule_daily: ['creator','director','vice_director','senior_manager','manager','admin','senior_instructor','instructor','hr','it_specialist'],

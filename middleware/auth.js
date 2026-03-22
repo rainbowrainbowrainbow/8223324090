@@ -70,6 +70,7 @@ const PAGE_ACCESS = {
     '/finance':   ['creator', 'director', 'accountant'],
     '/analytics': MANAGER_UP,
     '/status':    MANAGER_UP,
+    '/sound':     [...MANAGER_UP, 'art_director'],
 };
 
 // v22.0.0: Action permissions matrix for timeline

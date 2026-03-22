@@ -1,0 +1,13 @@
+Sound Module Proof — 2026-03-22
+================================
+
+✅ GET /api/music/announcements → HTTP 200, 3 announcements
+✅ POST /api/music/announcements → id: 4 (title: "Тест звукового модуля")
+✅ POST /announcements/4/play → ok:true, delivery: {success:true, mode:'telegram'}
+✅ GET /api/music/log → 1 log entry (action: play, ann_id: 4)
+✅ GET /api/music/library → HTTP 200, 0 sounds (before upload)
+✅ POST /api/music/library/upload → id: 1, file: uploads/sounds/1774204503937-test-sound.mp3
+✅ GET /api/music/library → 1 sound (name: "Тестовий звук", category: "effects")
+✅ GET /sound → HTTP 200 (page loads)
+✅ Migration 122_sound_upgrades applied
+✅ All 346 API tests pass

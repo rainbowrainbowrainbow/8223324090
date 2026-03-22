@@ -4,10 +4,29 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const { createLogger } = require('../utils/logger');
 const { deliverAnnouncement } = require('../services/music-delivery');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const log = createLogger('Music');
+
+// File upload for sound library
+const uploadSound = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => {
+            const dir = path.join(__dirname, '../uploads/sounds');
+            fs.mkdirSync(dir, { recursive: true });
+            cb(null, dir);
+        },
+        filename: (req, file, cb) =>
+            cb(null, Date.now() + '-' + file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_'))
+    }),
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: (req, file, cb) =>
+        cb(null, /\.(mp3|wav|ogg|m4a|aac)$/i.test(path.extname(file.originalname)))
+});
 
 // All music routes require authentication
 router.use(authenticateToken);
@@ -218,6 +237,127 @@ router.get('/log', async (req, res) => {
              ORDER BY ml.created_at DESC LIMIT $1`, [limit]
         );
         res.json({ success: true, log: r.rows });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============================================
+// TTS Generation via Kie.ai
+// ============================================
+
+router.post('/announcements/:id/generate-tts', requireRole('admin', 'director', 'art_director'), async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+        const ann = await pool.query('SELECT * FROM announcements WHERE id = $1', [id]);
+        if (!ann.rows.length) return res.status(404).json({ error: 'Не знайдено' });
+        const KIE_KEY = process.env.KIE_API_KEY;
+        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY не налаштовано' });
+
+        const payload = JSON.stringify({
+            model: 'elevenlabs/text-to-speech-multilingual-v2',
+            text: ann.rows[0].text_content,
+            voice: 'Rachel', language: 'uk'
+        });
+        const kieRes = await new Promise((resolve, reject) => {
+            const r = require('https').request({
+                hostname: 'api.kie.ai', path: '/api/v1/audio/speech', method: 'POST',
+                headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+            }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ error: d }); } }); });
+            r.on('error', reject); r.write(payload); r.end();
+        });
+
+        if (!kieRes.taskId && !kieRes.url)
+            return res.status(502).json({ error: 'TTS failed', detail: kieRes });
+
+        if (kieRes.url) {
+            await pool.query(
+                'UPDATE announcements SET voice_url=$1, voice_provider=$2, tts_generated=true WHERE id=$3',
+                [kieRes.url, 'elevenlabs', id]
+            );
+            return res.json({ ok: true, voiceUrl: kieRes.url, status: 'ready' });
+        }
+        res.json({ ok: true, taskId: kieRes.taskId, status: 'generating' });
+    } catch (err) {
+        log.error('POST /generate-tts error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ============================================
+// Sound Library CRUD (uses sounds table)
+// ============================================
+
+router.get('/library', async (req, res) => {
+    try {
+        const { category } = req.query;
+        const q = category
+            ? 'SELECT * FROM sounds WHERE category=$1 ORDER BY created_at DESC'
+            : 'SELECT * FROM sounds ORDER BY created_at DESC';
+        const r = await pool.query(q, category ? [category] : []);
+        res.json({ sounds: r.rows });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/library/upload', uploadSound.single('file'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'Файл не обрано' });
+    try {
+        const r = await pool.query(
+            `INSERT INTO sounds (name, filename, file_path, category, file_size, uploaded_by)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [req.body.name || req.file.originalname, req.file.filename,
+             `/uploads/sounds/${req.file.filename}`, req.body.category || 'general',
+             req.file.size, req.user?.username || null]
+        );
+        res.json({ ok: true, id: r.rows[0].id, filename: req.file.filename });
+    } catch (err) { log.error('Upload sound error', err); res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/library/:id', requireRole('admin', 'director'), async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM sounds WHERE id=$1', [req.params.id]);
+        if (!r.rows.length) return res.status(404).json({ error: 'Не знайдено' });
+        if (r.rows[0].filename) {
+            const fp = path.join(__dirname, '../uploads/sounds', r.rows[0].filename);
+            if (fs.existsSync(fp)) fs.unlinkSync(fp);
+        }
+        await pool.query('DELETE FROM sounds WHERE id=$1', [req.params.id]);
+        res.json({ ok: true });
+    } catch (err) { log.error('Delete sound error', err); res.status(500).json({ error: err.message }); }
+});
+
+// ============================================
+// Sound Projects CRUD
+// ============================================
+
+router.get('/projects', async (req, res) => {
+    try {
+        const projects = await pool.query('SELECT * FROM sound_projects ORDER BY created_at DESC');
+        const result = [];
+        for (const p of projects.rows) {
+            const tracks = await pool.query(
+                `SELECT s.* FROM sounds s JOIN sound_project_tracks t ON t.sound_id = s.id
+                 WHERE t.project_id = $1 ORDER BY t.sort_order`, [p.id]);
+            result.push({ ...p, tracks: tracks.rows });
+        }
+        res.json({ projects: result });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/projects', async (req, res) => {
+    const { name, type = 'quest', description } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Назва обов\'язкова' });
+    try {
+        const r = await pool.query(
+            'INSERT INTO sound_projects (name, type, description) VALUES ($1,$2,$3) RETURNING *',
+            [name.trim(), type, description || null]);
+        res.json({ ok: true, project: r.rows[0] });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/projects/:id', requireRole('admin', 'director'), async (req, res) => {
+    try {
+        const r = await pool.query('DELETE FROM sound_projects WHERE id=$1 RETURNING id', [req.params.id]);
+        if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
+        res.json({ ok: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

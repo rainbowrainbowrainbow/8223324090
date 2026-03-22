@@ -13,20 +13,22 @@ const Sidebar = (() => {
         { href: '/chat',         icon: '💬', label: 'Чат',            access: 'all',            group: 'crm' },
         { href: '/warehouse',    icon: '📦', label: 'Склад',          access: 'all',            group: 'crm' },
         { href: '/center',       icon: '💲', label: 'Центр цін',      access: 'center',         group: 'crm' },
-        { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'all',            group: 'crm' },
 
         // ─── GROUP: Управління ───────────────────────────────────
         { type: 'group', key: 'mgmt', label: 'Управління', icon: '👔', defaultOpen: false },
         { href: '/customers',    icon: '👥', label: 'Клієнти',        access: 'management',     group: 'mgmt' },
         { href: '/sales-funnel', icon: '🔥', label: 'Ліди',          access: 'leads',          group: 'mgmt' },
-        // E7 FIX: /staff двічі → перший активний, другий ні
-        { href: '/staff',        icon: '🗓️', label: 'Графік',         access: 'schedule_daily', group: 'mgmt', staffView: 'schedule' },
-        { href: '/staff',        icon: '📋', label: 'Команда',        access: 'staff',          group: 'mgmt', staffView: 'team', noActive: true },
-        { href: '/hr',           icon: '🤝', label: 'Кадри',          access: 'hr',             group: 'mgmt' },
         { href: '/finance',      icon: '💰', label: 'Фінанси',        access: 'finance',        group: 'mgmt' },
         { href: '/analytics',    icon: '📊', label: 'Аналітика',      access: 'analytics',      group: 'mgmt' },
         { href: '/reports',      icon: '📋', label: 'Звіти',          access: 'reports',        group: 'mgmt' },
         { href: '/copilot',      icon: '🤖', label: 'Менеджер AI',    access: 'copilot',        group: 'mgmt' },
+
+        // ─── GROUP: HR ───────────────────────────────────────────
+        { type: 'group', key: 'hr', label: 'HR', icon: '🤝', defaultOpen: false },
+        { href: '/staff',        icon: '🗓️', label: 'Графік',         access: 'schedule_daily', group: 'hr', staffView: 'schedule' },
+        { href: '/staff',        icon: '📋', label: 'Команда',        access: 'staff',          group: 'hr', staffView: 'team', noActive: true },
+        { href: '/hr',           icon: '🤝', label: 'Кадри',          access: 'hr_page',        group: 'hr' },
+        { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'all',            group: 'hr' },
 
         // ─── GROUP: Творче ───────────────────────────────────────
         { type: 'group', key: 'creative', label: 'Творче', icon: '🎨', defaultOpen: false },
@@ -61,6 +63,7 @@ const Sidebar = (() => {
         copilot:        ['creator','director','senior_manager','manager'],
         staff:          ['creator','director','vice_director','senior_manager','manager','admin','hr','senior_instructor','instructor','it_specialist'],
         hr:             ['creator','director','vice_director','senior_manager','manager','hr'],
+        hr_page:        ['creator','director','vice_director','senior_manager','manager','hr'],
         finance:        ['creator','director','vice_director','accountant','senior_manager','manager'],
         analytics:      ['creator','director','vice_director','senior_manager','manager','accountant','marketer','it_specialist'],
         reports:        ['creator','director','vice_director','senior_manager','manager','admin','accountant'],

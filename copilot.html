@@ -17,17 +17,21 @@
 <div id="sidebarOverlay" class="sidebar-overlay"></div>
 <div class="app-wrapper">
     <!-- CRM sidebar -->
-    <nav id="sidebarNav" class="sidebar">
+    <aside class="sidebar-nav" id="sidebarNav">
         <div class="sidebar-header">
             <button id="sidebarToggle" class="sidebar-toggle">☰</button>
-            <span class="sidebar-logo">EG</span>
+            <div class="sidebar-logo">
+                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small" onerror="this.style.display='none'">
+                <span class="em-logo-title">Event Genix</span>
+            </div>
         </div>
-        <ul id="sidebarLinks" class="sidebar-links"></ul>
+        <nav class="sidebar-links" id="sidebarLinks"></nav>
         <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
             <span class="collapse-icon">◀</span>
             <span class="collapse-text">Згорнути</span>
         </button>
-    </nav>
+    </aside>
+    <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
     <main class="main-content" style="padding:0; overflow:hidden;">
         <!-- Access denied overlay (shown if no access) -->
@@ -112,7 +116,7 @@
 <script src="js/config.js?v=33.15.0"></script>
 <script src="js/api.js?v=33.15.0"></script>
 <script src="js/auth.js?v=33.15.0"></script>
-<script src="js/components/sidebar.js?v=35.5.0"></script>
+<script src="js/components/sidebar.js?v=35.8.0"></script>
 <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
 <script src="js/copilot-page.js?v=33.15.0"></script>
 <script src="js/ui.js?v=33.15.0"></script>

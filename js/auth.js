@@ -78,9 +78,7 @@ function showLoginScreen() {
     document.getElementById('mainApp').classList.add('hidden');
     // Hide floating buttons that are outside mainApp
     const sidebarToggle = document.getElementById('sidebarToggle');
-    const improvementFab = document.getElementById('improvementFab');
     if (sidebarToggle) sidebarToggle.classList.add('hidden');
-    if (improvementFab) improvementFab.classList.add('hidden');
 }
 
 // v22.0.0: Role hierarchy — 25 roles (higher index = more permissions)
@@ -291,9 +289,6 @@ function showMainApp() {
 
     // v9.1: Connect WebSocket for live-sync
     if (typeof ParkWS !== 'undefined') ParkWS.connect();
-
-    // v8.0: Show improvement suggestion FAB
-    if (typeof showImprovementFab === 'function') showImprovementFab();
 
     // v20.2.0: Initialize floating command panel
     if (typeof CommandPanel !== 'undefined') CommandPanel.init();

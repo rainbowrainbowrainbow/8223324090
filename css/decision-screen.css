@@ -242,6 +242,11 @@ body.dark-mode .ds-footer { border-top-color: rgba(255, 255, 255, 0.06); }
     }
 }
 
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    #decisionScreen, .ds-inner, .ds-card { animation: none !important; transition: none !important; }
+}
+
 @media (max-height: 500px) and (orientation: landscape) {
     #decisionScreen { align-items: flex-start; padding: 12px; }
     .ds-inner { max-height: 96svh; border-radius: var(--radius, 16px); }

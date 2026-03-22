@@ -40,7 +40,6 @@ const DecisionScreen = (() => {
     async function init() {
         if (_initialized) return;
         _initialized = true;
-        console.log('[DecisionScreen] init, user:', AppState?.currentUser?.name, 'role:', AppState?.currentUser?.role);
 
         if (!AppState?.currentUser) {
             console.warn('[DecisionScreen] no user, skipping');
@@ -80,7 +79,6 @@ const DecisionScreen = (() => {
         try {
             const data = await apiCall('GET', '/api/decisions/pending');
             _pending = data?.decisions || [];
-            console.log('[DecisionScreen] loaded', _pending.length, 'pending decisions');
         } catch (err) {
             console.warn('[DecisionScreen] load failed:', err);
             _pending = [];
@@ -88,10 +86,8 @@ const DecisionScreen = (() => {
 
         _render();
         if (_pending.length > 0) {
-            console.log('[DecisionScreen] showing overlay');
             _show();
         } else {
-            console.log('[DecisionScreen] no pending decisions, not showing');
         }
     }
 

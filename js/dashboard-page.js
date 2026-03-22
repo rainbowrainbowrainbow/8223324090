@@ -54,7 +54,6 @@ const DashboardPage = (() => {
         if (el) el.textContent = verified.name;
 
         // Decision Screen — before dashboard loads
-        console.log('[Dashboard] DecisionScreen available:', typeof DecisionScreen !== 'undefined');
         if (typeof DecisionScreen !== 'undefined') {
             try { await DecisionScreen.init(); } catch(e) { console.error('[Dashboard] DecisionScreen.init failed:', e); }
         }

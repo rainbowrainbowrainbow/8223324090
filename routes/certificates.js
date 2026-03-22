@@ -96,6 +96,29 @@ router.get('/code/:code', async (req, res) => {
     }
 });
 
+// v33.8.0: Validate certificate (must be before /:id to avoid route conflict)
+router.get('/validate/', (req, res) => res.json({ valid: false, error: 'Код не вказано' }));
+router.get('/validate/:code', async (req, res) => {
+    try {
+        const r = await pool.query(
+            `SELECT id, cert_code, display_value, type_text, valid_until, status
+             FROM certificates WHERE cert_code = $1`,
+            [req.params.code.toUpperCase()]
+        );
+        if (!r.rowCount) return res.json({ valid: false, error: 'Сертифікат не знайдено' });
+        const c = r.rows[0];
+        const isExpired = c.valid_until && new Date(c.valid_until) < new Date();
+        res.json({
+            valid: c.status === 'active' && !isExpired,
+            certificate: c,
+            reason: c.status !== 'active' ? c.status : (isExpired ? 'expired' : null)
+        });
+    } catch (err) {
+        log.error('Certificate validate error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // GET /api/certificates/:id — Single certificate
 router.get('/:id', async (req, res) => {
     try {
@@ -504,29 +527,6 @@ router.post('/:id/send-image', requireRole('admin', 'user'), async (req, res) =>
     } catch (err) {
         log.error('Send image error', err);
         res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// v33.8.0 Integration 6: Validate certificate without using it
-router.get('/validate/', (req, res) => res.json({ valid: false, error: 'Код не вказано' }));
-router.get('/validate/:code', async (req, res) => {
-    try {
-        const r = await pool.query(
-            `SELECT id, cert_code, display_value, type_text, valid_until, status
-             FROM certificates WHERE cert_code = $1`,
-            [req.params.code.toUpperCase()]
-        );
-        if (!r.rowCount) return res.json({ valid: false, error: 'Сертифікат не знайдено' });
-        const c = r.rows[0];
-        const isExpired = c.valid_until && new Date(c.valid_until) < new Date();
-        res.json({
-            valid: c.status === 'active' && !isExpired,
-            certificate: c,
-            reason: c.status !== 'active' ? c.status : (isExpired ? 'expired' : null)
-        });
-    } catch (err) {
-        log.error('Certificate validate error', err);
-        res.status(500).json({ success: false, error: err.message });
     }
 });
 

@@ -18,7 +18,8 @@ const DashboardPage = (() => {
         currency:       { icon: '💱', title: 'Курси валют', minRole: 'manager' },
         announcements:  { icon: '📢', title: 'Оголошення', minRole: null },
         reports_today:  { icon: '📋', title: 'Звіти сьогодні', minRole: 'senior_manager' },
-        catalogs:       { icon: '🗂️', title: 'Каталоги', minRole: 'admin' },
+        // catalogs hidden v33.14.0 — moved to /designs page
+        // catalogs:       { icon: '🗂️', title: 'Каталоги', minRole: 'admin' },
     };
 
     let _config = { widgets: [], layout: {}, theme: 'default' };

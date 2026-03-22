@@ -22,7 +22,8 @@ const CopilotPage = (() => {
 
         const user = AppState?.currentUser;
         if (!user || !MANAGER_ROLES.includes(user.role)) {
-            document.getElementById('accessDenied')?.classList.remove('hidden');
+            var denied = document.getElementById('accessDenied');
+            if (denied) { denied.classList.remove('hidden'); denied.style.display = 'flex'; }
             document.getElementById('copilotApp')?.classList.add('hidden');
             return;
         }

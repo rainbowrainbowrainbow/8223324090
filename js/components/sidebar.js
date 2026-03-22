@@ -58,15 +58,15 @@ const Sidebar = (() => {
               { href: '/center', label: 'Центр цін', icon: '💲' }
           ]
         },
-        { href: '/copilot', icon: '🤖', label: 'Менеджер AI', access: 'copilot' },
-
         { type: 'divider' },
         { type: 'section', label: 'Продукт' },
         { href: '/programs', icon: '🎪', label: 'Програми', access: 'programs' },
         { href: '/art', icon: '🎨', label: 'Art Director', access: 'art' },
+        { href: '/game', icon: '🎮', label: 'Гра', access: 'all' },
 
         { type: 'divider' },
-        { href: '/game', icon: '🎮', label: 'Гра', access: 'all' },
+        { type: 'section', label: 'Тестове' },
+        { href: '/copilot', icon: '🤖', label: 'Менеджер AI', access: 'copilot' },
         { href: '/?settings=open', icon: '⚙️', label: 'Налаштування', access: 'settings', action: 'showSettings' },
     ];
 

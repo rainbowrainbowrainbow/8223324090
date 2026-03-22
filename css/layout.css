@@ -1031,19 +1031,6 @@ input[type="date"] {
     box-shadow: none;
 }
 
-/* Invite button */
-.btn-invite {
-    background: linear-gradient(135deg, #10B981 0%, #059669 100%) !important;
-    color: #FFFFFF !important;
-    border: none !important;
-    box-shadow: 0 2px 8px rgba(16,185,129,0.3);
-}
-
-.btn-invite:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(16,185,129,0.4) !important;
-}
-
 /* ==========================================
    ADMIN DROPDOWN MENU (v5.8)
    ========================================== */

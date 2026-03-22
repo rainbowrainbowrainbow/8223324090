@@ -279,7 +279,7 @@ async function checkAchievements(username, context = {}) {
                 // v33.8.0: Count bookings where user is host OR creator
                 const { rows } = await pool.query(
                     `SELECT COUNT(*) FROM bookings
-                     WHERE (hosts ILIKE '%' || $1 || '%' OR second_animator ILIKE '%' || $1 || '%'
+                     WHERE (hosts::text ILIKE '%' || $1 || '%' OR second_animator::text ILIKE '%' || $1 || '%'
                             OR created_by = $1)
                        AND status != 'cancelled'`,
                     [username]

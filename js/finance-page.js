@@ -783,6 +783,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const user = await apiVerifyToken();
         if (!user) throw new Error('Invalid token');
 
+        AppState.currentUser = user;
         document.getElementById('currentUser').textContent = user.name || user.username;
 
         // Role-based visibility

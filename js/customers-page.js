@@ -964,6 +964,7 @@ async function initPage() {
         return;
     }
 
+    AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];

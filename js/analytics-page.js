@@ -448,6 +448,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const user = await apiVerifyToken();
         if (!user) throw new Error('Invalid token');
+        AppState.currentUser = user;
         document.getElementById('currentUser').textContent = user.name || user.username;
     } catch {
         document.getElementById('loginOverlay').classList.remove('hidden');

@@ -346,22 +346,37 @@ const Sidebar = (() => {
         _retryUserCard();
     }
 
-    function _retryUserCard() {
+    async function _retryUserCard() {
         initUserCard();
-        // Check if avatar still shows "?" — means user data wasn't available yet
         const avatarEl = document.getElementById('sidebarUserAvatar');
         const stillDefault = !avatarEl || avatarEl.textContent.trim() === '?';
-        if (stillDefault) {
-            // Retry with increasing delays up to ~15s total
-            // Many page-specific JS files set AppState.currentUser asynchronously
-            // after apiVerifyToken() resolves, so we need patient polling
-            if (!_retryUserCard._attempt) _retryUserCard._attempt = 0;
-            _retryUserCard._attempt++;
-            const delays = [100, 250, 500, 800, 1200, 2000, 3000, 5000];
-            if (_retryUserCard._attempt <= delays.length) {
-                setTimeout(_retryUserCard, delays[_retryUserCard._attempt - 1]);
-            }
+        if (!stillDefault) return; // Already showing real initial
+
+        // Try polling AppState/localStorage a few times (page JS may set it async)
+        if (!_retryUserCard._attempt) _retryUserCard._attempt = 0;
+        _retryUserCard._attempt++;
+        const delays = [100, 300, 600, 1000, 2000];
+        if (_retryUserCard._attempt <= delays.length) {
+            setTimeout(_retryUserCard, delays[_retryUserCard._attempt - 1]);
+            return;
         }
+
+        // Last resort: fetch user from server directly
+        try {
+            const token = localStorage.getItem('pzp_token');
+            if (!token) return;
+            const res = await fetch('/api/auth/verify', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            const user = data.user || data;
+            if (user && user.name) {
+                if (typeof AppState !== 'undefined') AppState.currentUser = user;
+                localStorage.setItem('pzp_current_user', JSON.stringify(user));
+                initUserCard();
+            }
+        } catch {}
     }
 
     window.addEventListener('roleSwitched', () => {

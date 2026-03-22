@@ -65,6 +65,7 @@ let editTags = [];
         if (!res.ok) throw new Error('Token invalid');
         const data = await res.json();
         const user = data.user || data;
+        AppState.currentUser = user;
         document.getElementById('currentUser').textContent = user.name || user.username;
     } catch {
         if (isEmbedded) {

@@ -123,7 +123,10 @@ const ReportsPage = (() => {
 
     async function init() {
         try {
-            if (typeof apiVerifyToken === 'function') await apiVerifyToken();
+            if (typeof apiVerifyToken === 'function') {
+                const user = await apiVerifyToken();
+                if (user) AppState.currentUser = user;
+            }
         } catch { return; }
         if (typeof initDarkMode === 'function') initDarkMode();
 

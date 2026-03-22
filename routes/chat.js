@@ -11,7 +11,12 @@ const guardian = require('../services/guardian');
 const linkPreview = require('../services/linkPreview');
 const { createLogger } = require('../utils/logger');
 
+const { authenticateToken } = require('../middleware/auth');
+
 const log = createLogger('ChatAPI');
+
+// All chat routes require authentication
+router.use(authenticateToken);
 
 // Chat message rate limiter: max 1 msg per 500ms per user, 60 msgs/min per channel
 const _chatRateLimits = new Map(); // userId → { lastSent, channelCounts: Map<channelId, {count, resetAt}> }

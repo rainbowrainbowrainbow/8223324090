@@ -7,6 +7,10 @@ const { validateDate, validateTime, timeToMinutes, minutesToTime, getKyivDateStr
 const { generateTasksForEvent } = require('../services/taskTemplates');
 const { ensureRecurringAfishaForDate } = require('../services/scheduler');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
+
+// All afisha routes require authentication
+router.use(authenticateToken);
 
 /**
  * Check if a recurring template should create an event for a given date.

@@ -6,7 +6,11 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { deliverAnnouncement } = require('../services/music-delivery');
+const { authenticateToken } = require('../middleware/auth');
 const log = createLogger('Music');
+
+// All music routes require authentication
+router.use(authenticateToken);
 
 // ============================================
 // Announcements — CRUD

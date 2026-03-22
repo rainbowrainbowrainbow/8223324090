@@ -24,8 +24,12 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('Leads');
+
+// All leads routes require authentication
+router.use(authenticateToken);
 
 // Auto-sync status when pipeline_stage changes
 const STAGE_TO_STATUS = {

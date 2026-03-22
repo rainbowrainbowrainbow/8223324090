@@ -5,8 +5,12 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('Workers');
+
+// All worker routes require authentication
+router.use(authenticateToken);
 
 // GET /api/workers — list all worker roles
 router.get('/', async (req, res) => {

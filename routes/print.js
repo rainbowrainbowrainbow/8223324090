@@ -5,8 +5,12 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('Print');
+
+// All print routes require authentication
+router.use(authenticateToken);
 
 // ============================================
 // Print Templates

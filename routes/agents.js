@@ -7,7 +7,12 @@ const router = express.Router();
 const { logActivity, getActivityFeed, getAgentStatus, generateSummary, getLastSummary, parseGitLog } = require('../services/agentTracker');
 const { createLogger } = require('../utils/logger');
 
+const { authenticateToken } = require('../middleware/auth');
+
 const log = createLogger('AgentsRoute');
+
+// All agent routes require authentication
+router.use(authenticateToken);
 
 /**
  * GET /api/agents/activity

@@ -15,7 +15,12 @@ const {
     alertDirectorTelegram
 } = require('../services/guardian');
 
+const { authenticateToken } = require('../middleware/auth');
+
 const log = createLogger('GuardianRoute');
+
+// All guardian routes require authentication
+router.use(authenticateToken);
 
 // Phase 3 functions — optional, may not be available yet
 let handleGuardianCommand, calculateChannelHealth, getChannelMoodSummary, getUserMoodProfile, generateWeeklyReport, getActivityHeatmap, getTrustScore, updateTrustScore, checkEscalation;

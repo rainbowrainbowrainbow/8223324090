@@ -5,8 +5,12 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { publish: publishEvent, processEventRules } = require('../services/eventBus');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('EventQueue');
+
+// All event-queue routes require authentication
+router.use(authenticateToken);
 
 // ============================================
 // Event Queue

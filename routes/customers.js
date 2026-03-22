@@ -9,8 +9,12 @@ const { pool } = require('../db');
 const { getSupabase } = require('../db/supabase');
 const { createLogger } = require('../utils/logger');
 const { exportLimiter } = require('../middleware/rateLimit');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('Customers');
+
+// All customer routes require authentication
+router.use(authenticateToken);
 
 // v30.4: Predefined tag templates
 const PREDEFINED_TAGS = [

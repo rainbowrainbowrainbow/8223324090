@@ -4,8 +4,12 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('History');
+
+// All history routes require authentication
+router.use(authenticateToken);
 
 router.get('/', async (req, res) => {
     try {

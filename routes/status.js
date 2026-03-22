@@ -5,6 +5,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('Status');
 
@@ -63,8 +64,8 @@ router.get('/public', async (req, res) => {
 // Admin endpoints (require auth)
 // ============================================
 
-// GET /api/status/components — all components (admin)
-router.get('/components', async (req, res) => {
+// GET /api/status/components — all components (admin, auth required)
+router.get('/components', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM system_components ORDER BY sort_order');
         res.json(result.rows);
@@ -75,7 +76,7 @@ router.get('/components', async (req, res) => {
 });
 
 // PUT /api/status/components/:code — update component status
-router.put('/components/:code', async (req, res) => {
+router.put('/components/:code', authenticateToken, async (req, res) => {
     try {
         const { status } = req.body;
         const validStatuses = ['operational', 'degraded', 'partial_outage', 'major_outage', 'maintenance'];
@@ -101,7 +102,7 @@ router.put('/components/:code', async (req, res) => {
 });
 
 // POST /api/status/incidents — create incident
-router.post('/incidents', async (req, res) => {
+router.post('/incidents', authenticateToken, async (req, res) => {
     try {
         const { title, description, severity, affected_components } = req.body;
         if (!title || !title.trim()) {
@@ -144,7 +145,7 @@ router.post('/incidents', async (req, res) => {
 });
 
 // POST /api/status/incidents/:id/update — add incident update
-router.post('/incidents/:id/update', async (req, res) => {
+router.post('/incidents/:id/update', authenticateToken, async (req, res) => {
     try {
         const { status, message } = req.body;
         const validStatuses = ['investigating', 'identified', 'monitoring', 'resolved'];

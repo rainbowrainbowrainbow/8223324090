@@ -28,8 +28,12 @@ const {
 } = require('../services/recurring');
 const { mapBookingRow, getKyivDateStr } = require('../services/booking');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('RecurringAPI');
+
+// All recurring routes require authentication
+router.use(authenticateToken);
 
 // Valid patterns for recurrence
 const VALID_PATTERNS = ['weekly', 'biweekly', 'monthly', 'custom', 'weekdays', 'weekends'];

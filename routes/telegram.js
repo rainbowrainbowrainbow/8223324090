@@ -15,6 +15,7 @@ const { handleBotCommand, handleCertUse, resolveActorName } = require('../servic
 const { handleContractorCallback } = require('../services/bookingAutomation');
 const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('TelegramRoute');
 
@@ -24,7 +25,7 @@ function safeParseInt(str) {
     return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-router.get('/chats', async (req, res) => {
+router.get('/chats', authenticateToken, async (req, res) => {
     try {
         const chats = await getTelegramChatId();
         res.json({ chats });
@@ -33,7 +34,7 @@ router.get('/chats', async (req, res) => {
     }
 });
 
-router.get('/threads', async (req, res) => {
+router.get('/threads', authenticateToken, async (req, res) => {
     try {
         const chatId = req.query.chat_id || await getConfiguredChatId();
         const result = await pool.query(
@@ -46,7 +47,7 @@ router.get('/threads', async (req, res) => {
     }
 });
 
-router.post('/notify', async (req, res) => {
+router.post('/notify', authenticateToken, async (req, res) => {
     try {
         const { text } = req.body;
         if (!text) {
@@ -75,7 +76,7 @@ router.post('/notify', async (req, res) => {
     }
 });
 
-router.get('/digest/:date', async (req, res) => {
+router.get('/digest/:date', authenticateToken, async (req, res) => {
     try {
         const { date } = req.params;
         const result = await buildAndSendDigest(date);
@@ -86,7 +87,7 @@ router.get('/digest/:date', async (req, res) => {
     }
 });
 
-router.get('/reminder/:date', async (req, res) => {
+router.get('/reminder/:date', authenticateToken, async (req, res) => {
     try {
         const { date } = req.params;
         const result = await sendTomorrowReminder(date);
@@ -97,7 +98,7 @@ router.get('/reminder/:date', async (req, res) => {
     }
 });
 
-router.post('/ask-animator', async (req, res) => {
+router.post('/ask-animator', authenticateToken, async (req, res) => {
     try {
         const { date, note } = req.body;
         const chatId = await getConfiguredChatId();
@@ -157,7 +158,7 @@ router.post('/ask-animator', async (req, res) => {
     }
 });
 
-router.get('/animator-status/:id', async (req, res) => {
+router.get('/animator-status/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
         const result = await pool.query('SELECT status FROM pending_animators WHERE id = $1', [id]);

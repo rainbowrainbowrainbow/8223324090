@@ -135,6 +135,15 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             }
         }
 
+        // Validate price (prevent negative/NaN amounts)
+        if (b.price != null) {
+            b.price = parseFloat(b.price);
+            if (!Number.isFinite(b.price) || b.price < 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Ціна не може бути від\'ємною або некоректною' });
+            }
+        }
+
         // CRM: resolve or create customer (v30.4: auto-link by phone)
         let customerId = b.customerId ? parseInt(b.customerId) : null;
         if (b.customer && b.customer.name && !customerId) {

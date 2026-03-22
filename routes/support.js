@@ -4,7 +4,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireMinRole } = require('../middleware/auth');
 
 const log = createLogger('Support');
 
@@ -230,23 +230,48 @@ router.get('/retention', async (req, res) => {
     }
 });
 
-// POST /api/support/retention/run — execute retention cleanup
-router.post('/retention/run', async (req, res) => {
+// Whitelist of tables/columns allowed for retention cleanup (prevent SQL injection)
+const RETENTION_ALLOWED_TABLES = new Set([
+    'history', 'event_queue', 'support_tickets', 'notifications',
+    'chat_messages', 'kleshnya_messages', 'agent_activity',
+    'task_audit_log', 'booking_audit_log'
+]);
+const RETENTION_ALLOWED_COLUMNS = new Set([
+    'created_at', 'updated_at', 'resolved_at', 'deleted_at', 'sent_at'
+]);
+
+// POST /api/support/retention/run — execute retention cleanup (requires manager+)
+router.post('/retention/run', requireMinRole('manager'), async (req, res) => {
     try {
         const policies = await pool.query('SELECT * FROM retention_policies WHERE is_active = true');
         const results = [];
 
         for (const policy of policies.rows) {
             try {
+                // Validate table and column names against whitelist
+                if (!RETENTION_ALLOWED_TABLES.has(policy.table_name)) {
+                    results.push({ table: policy.table_name, error: 'Table not in retention whitelist' });
+                    continue;
+                }
+                if (!RETENTION_ALLOWED_COLUMNS.has(policy.condition_column)) {
+                    results.push({ table: policy.table_name, error: 'Column not in retention whitelist' });
+                    continue;
+                }
+                const days = parseInt(policy.retention_days);
+                if (!Number.isFinite(days) || days < 1) {
+                    results.push({ table: policy.table_name, error: 'Invalid retention_days' });
+                    continue;
+                }
+                // Use pg-format style identifier quoting (double quotes) for table/column
                 const deleteResult = await pool.query(
-                    `DELETE FROM ${policy.table_name} WHERE ${policy.condition_column} < NOW() - INTERVAL '${policy.retention_days} days'`
+                    `DELETE FROM "${policy.table_name}" WHERE "${policy.condition_column}" < NOW() - INTERVAL '${days} days'`
                 );
                 const deleted = deleteResult.rowCount;
                 await pool.query(
                     'UPDATE retention_policies SET last_cleanup_at = NOW(), rows_deleted_last = $1 WHERE id = $2',
                     [deleted, policy.id]
                 );
-                results.push({ table: policy.table_name, deleted, retention_days: policy.retention_days });
+                results.push({ table: policy.table_name, deleted, retention_days: days });
                 if (deleted > 0) log.info(`Retention: ${policy.table_name} — ${deleted} rows deleted`);
             } catch (tableErr) {
                 results.push({ table: policy.table_name, error: tableErr.message });

@@ -43,7 +43,7 @@ router.post('/login', async (req, res) => {
 
         const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) {
-            log.warn(`Login failed: wrong password for "${username}" (hash starts: ${user.password_hash.substring(0, 10)}...)`);
+            log.warn(`Login failed: wrong password for "${username}"`);
             return res.status(401).json({ error: 'Невірний пароль' });
         }
 

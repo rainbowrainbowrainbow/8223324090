@@ -35,7 +35,6 @@ const Sidebar = (() => {
         { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'creative' },
         { href: '/art',          icon: '🎨', label: 'Арт директор',   access: 'art',            group: 'creative' },
         { href: '/designer',     icon: '📐', label: 'Дизайнер',       access: 'art',            group: 'creative' },
-        { href: '/sound',        icon: '🔊', label: 'Звук',           access: 'sound',          group: 'creative' },
         { href: '/graduation',   icon: '🎓', label: 'Випускний',      access: 'graduation',     group: 'creative' },
         { href: '/art',          icon: '📂', label: 'Каталоги',       access: 'art',            group: 'creative', noActive: true },
         // E4/E5 FIX: Афіша і Сертифікати — action-links
@@ -43,6 +42,10 @@ const Sidebar = (() => {
           action: 'sidebarOpenAfisha',       isHashLink: true },
         { href: '#certificates', icon: '🎫', label: 'Сертифікати',    access: 'all',            group: 'creative',
           action: 'sidebarOpenCertificates', isHashLink: true },
+
+        // ─── GROUP: Звук ────────────────────────────────────────
+        { type: 'group', key: 'sound', label: 'Звук', icon: '🔊', defaultOpen: true },
+        { href: '/sound',        icon: '🔊', label: 'Звук',           access: 'sound',          group: 'sound' },
 
         // ─── GROUP: Система ──────────────────────────────────────
         { type: 'group', key: 'system', label: 'Система', icon: '⚙️', defaultOpen: true },

@@ -42,7 +42,7 @@
 .sound-log-entry:hover { background: var(--gray-50); }
 .sound-log-time { font-size: 12px; font-weight: 600; color: var(--gray-400); font-variant-numeric: tabular-nums; min-width: 64px; padding-top: 2px; }
 .sound-log-icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; padding-top: 2px; }
-.sound-log-body { flex: 1; min-width: 0; }
+.sound-log-body { flex: 1; min-width: 0; overflow-wrap: break-word; word-break: break-word; }
 .sound-log-main { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .sound-log-label { font-size: 13px; font-weight: 700; color: var(--gray-800); }
 .sound-log-title { font-size: 13px; color: var(--gray-600); }
@@ -60,6 +60,11 @@
 .sound-log-action-update .sound-log-label { color: var(--warning, #D97706); }
 .sound-log-action-upload .sound-log-label { color: var(--info, #0891B2); }
 .sound-log-action-schedule .sound-log-label { color: var(--purple, #7C3AED); }
+
+/* Delivery status colors (CSS classes instead of inline styles) */
+.sound-delivery-ok { color: var(--success, #10b981); }
+.sound-delivery-pending { color: var(--warning, #f59e0b); }
+.sound-delivery-fail { color: var(--danger, #ef4444); }
 
 /* Empty state */
 .sound-empty { text-align: center; padding: 60px 20px; color: var(--gray-400); }
@@ -86,6 +91,11 @@ body.dark-mode .sound-log-date-filter input[type="date"] { background: rgba(255,
 body.dark-mode .btn-outline { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: var(--gray-400); }
 body.dark-mode .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
 body.dark-mode .sound-empty { color: var(--gray-500); }
+body.dark-mode .sound-log-sep { color: var(--gray-600); }
+body.dark-mode .sound-log-tag { color: var(--gray-500); }
+body.dark-mode .sound-delivery-ok { color: #34d399; }
+body.dark-mode .sound-delivery-pending { color: #fbbf24; }
+body.dark-mode .sound-delivery-fail { color: #f87171; }
 
 /* ═══ Mobile ═══ */
 @media (max-width: 640px) {

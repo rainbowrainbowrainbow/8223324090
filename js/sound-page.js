@@ -27,10 +27,10 @@
         schedule: 'Планування',
     };
 
-    const DELIVERY_COLORS = {
-        delivered: '#10b981',
-        pending:   '#f59e0b',
-        failed:    '#ef4444',
+    const DELIVERY_CLASSES = {
+        delivered: 'sound-delivery-ok',
+        pending:   'sound-delivery-pending',
+        failed:    'sound-delivery-fail',
     };
 
     const TRIGGER_LABELS = {
@@ -110,7 +110,7 @@
         const annType = l.announcement_type || '';
         const trigger = TRIGGER_LABELS[l.triggered_by] || l.triggered_by || '';
         const delivery = l.delivery_status || '';
-        const deliveryColor = DELIVERY_COLORS[delivery] || '#94a3b8';
+        const deliveryCls = DELIVERY_CLASSES[delivery] || '';
 
         // Parse details
         let detailsHtml = '';
@@ -147,7 +147,7 @@
                 ${detailsHtml ? `<div class="sound-log-details">${detailsHtml}</div>` : ''}
                 <div class="sound-log-tags">
                     ${trigger ? `<span class="sound-log-tag">${trigger}</span>` : ''}
-                    ${delivery ? `<span class="sound-log-tag" style="color:${deliveryColor}">${delivery === 'delivered' ? '✅ Доставлено' : delivery === 'failed' ? '❌ Помилка' : '⏳ Очікує'}</span>` : ''}
+                    ${delivery ? `<span class="sound-log-tag ${deliveryCls}">${delivery === 'delivered' ? '✅ Доставлено' : delivery === 'failed' ? '❌ Помилка' : '⏳ Очікує'}</span>` : ''}
                     ${l.delivery_mode ? `<span class="sound-log-tag">📡 ${_esc(l.delivery_mode)}</span>` : ''}
                 </div>
             </div>
@@ -186,10 +186,10 @@
             html += `<div class="sound-stat-card"><div class="sound-stat-num">${icon} ${count}</div><div class="sound-stat-label">${label}</div></div>`;
         }
         if (delivered > 0) {
-            html += `<div class="sound-stat-card"><div class="sound-stat-num" style="color:#10b981">✅ ${delivered}</div><div class="sound-stat-label">Доставлено</div></div>`;
+            html += `<div class="sound-stat-card"><div class="sound-stat-num sound-delivery-ok">✅ ${delivered}</div><div class="sound-stat-label">Доставлено</div></div>`;
         }
         if (failed > 0) {
-            html += `<div class="sound-stat-card"><div class="sound-stat-num" style="color:#ef4444">❌ ${failed}</div><div class="sound-stat-label">Помилок</div></div>`;
+            html += `<div class="sound-stat-card"><div class="sound-stat-num sound-delivery-fail">❌ ${failed}</div><div class="sound-stat-label">Помилок</div></div>`;
         }
 
         el.innerHTML = html;

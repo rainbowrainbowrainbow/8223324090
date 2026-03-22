@@ -39,7 +39,7 @@
         const grid = document.getElementById('announcementsGrid');
         if (!grid) return;
         try {
-            const data = await apiCall('/api/music/announcements' + (_annStatusFilter ? `?status=${_annStatusFilter}` : ''));
+            const data = await apiCall('GET', '/music/announcements' + (_annStatusFilter ? `?status=${_annStatusFilter}` : ''));
             const items = data.announcements || [];
             if (!items.length) {
                 grid.innerHTML = '<div class="sound-empty"><div class="sound-empty-icon">📢</div><p>Немає оголошень</p></div>';
@@ -88,7 +88,7 @@
     async function playAnnouncement(id, btn) {
         if (btn) btn.disabled = true;
         try {
-            await apiCall(`/api/music/announcements/${id}/play`, 'POST');
+            await apiCall('POST', `/music/announcements/${id}/play`);
             // Update count in UI
             const card = document.querySelector(`.announcement-card[data-id="${id}"]`);
             if (card) {
@@ -108,7 +108,7 @@
     async function generateTTS(id) {
         if (!confirm('Згенерувати озвучку через TTS (~$0.03)?')) return;
         try {
-            const res = await apiCall(`/api/music/announcements/${id}/generate-tts`, 'POST');
+            const res = await apiCall('POST', `/music/announcements/${id}/generate-tts`);
             if (res.status === 'ready') {
                 alert('TTS готовий!');
                 loadAnnouncements();
@@ -188,9 +188,9 @@
             body.duration_seconds = parseInt(body.duration_seconds) || 30;
             try {
                 if (id) {
-                    await apiCall(`/api/music/announcements/${id}`, 'PUT', body);
+                    await apiCall('PUT', `/music/announcements/${id}`, body);
                 } else {
-                    await apiCall('/api/music/announcements', 'POST', body);
+                    await apiCall('POST', '/music/announcements', body);
                 }
                 div.remove();
                 loadAnnouncements();
@@ -202,7 +202,7 @@
 
     async function editAnnouncement(id) {
         try {
-            const data = await apiCall('/api/music/announcements');
+            const data = await apiCall('GET', '/music/announcements');
             const ann = (data.announcements || []).find(a => a.id === id);
             if (ann) showAnnModal(ann);
         } catch (err) { alert('Помилка'); }
@@ -211,7 +211,7 @@
     async function deleteAnnouncement(id) {
         if (!confirm('Видалити оголошення?')) return;
         try {
-            await apiCall(`/api/music/announcements/${id}`, 'DELETE');
+            await apiCall('DELETE', `/music/announcements/${id}`);
             loadAnnouncements();
         } catch (err) { alert('Помилка: ' + (err.message || err)); }
     }
@@ -225,7 +225,7 @@
         const grid = document.getElementById('libraryGrid');
         if (!grid) return;
         try {
-            const data = await apiCall('/api/music/library' + (_libFilter ? `?category=${_libFilter}` : ''));
+            const data = await apiCall('GET', '/music/library' + (_libFilter ? `?category=${_libFilter}` : ''));
             const items = data.sounds || [];
             if (!items.length) {
                 grid.innerHTML = '<div class="sound-empty"><div class="sound-empty-icon">🎵</div><p>Бібліотека порожня</p><p style="font-size:12px">Завантажте перший звуковий файл</p></div>';
@@ -288,7 +288,7 @@
     async function deleteSound(id) {
         if (!confirm('Видалити звук?')) return;
         try {
-            await apiCall(`/api/music/library/${id}`, 'DELETE');
+            await apiCall('DELETE', `/music/library/${id}`);
             loadLibrary();
         } catch (err) { alert('Помилка: ' + (err.message || err)); }
     }
@@ -300,7 +300,7 @@
         const container = document.getElementById('playlistsContainer');
         if (!container) return;
         try {
-            const data = await apiCall('/api/music/playlists');
+            const data = await apiCall('GET', '/music/playlists');
             const items = data.playlists || [];
             if (!items.length) {
                 container.innerHTML = '<div class="sound-empty"><div class="sound-empty-icon">📋</div><p>Немає плейлистів</p></div>';
@@ -327,7 +327,7 @@
         const container = document.getElementById('logContainer');
         if (!container) return;
         try {
-            const data = await apiCall('/api/music/log?limit=50');
+            const data = await apiCall('GET', '/music/log?limit=50');
             const items = data.log || [];
             if (!items.length) {
                 container.innerHTML = '<div class="sound-empty"><div class="sound-empty-icon">📊</div><p>Лог порожній</p></div>';

@@ -569,7 +569,7 @@ button:focus-visible, .btn:focus-visible, a:focus-visible {
     display: block;
     flex-shrink: 0;
 }
-.alert-bell-btn:hover { background: rgba(16,185,129,0.08); color: var(--primary, #10B981); transform: scale(1.08); }
+.alert-bell-btn:hover { background: rgba(16,185,129,0.08); color: var(--primary, #10B981); }
 .alert-badge {
     position: absolute; top: -2px; right: -2px;
     background: #ef4444; color: #fff;

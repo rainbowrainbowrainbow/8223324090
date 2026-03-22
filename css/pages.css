@@ -73,12 +73,12 @@
     border-radius: var(--radius);
     padding: 20px;
     transition: all var(--speed-normal) var(--ease-smooth);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    box-shadow: var(--shadow-sm);
     animation: fadeInUp 0.35s var(--ease-out-expo) both;
 }
 
 .card:hover {
-    box-shadow: 0 8px 25px rgba(0,0,0,0.08), 0 4px 10px rgba(0,0,0,0.05);
+    box-shadow: var(--shadow-md);
     transform: translateY(-3px);
     border-color: rgba(16,185,129,0.15);
 }
@@ -189,7 +189,6 @@
     outline: none;
     border-color: var(--primary);
     box-shadow: 0 0 0 4px rgba(16,185,129,0.12), inset 0 1px 2px rgba(0,0,0,0.04);
-    background: #FAFFFE;
 }
 
 .btn-page-primary {
@@ -365,20 +364,7 @@
    EMPTY STATE
    ========================================== */
 
-.empty-state {
-    text-align: center;
-    padding: 60px 20px;
-    color: var(--gray-400);
-    background: linear-gradient(135deg, rgba(16,185,129,0.02) 0%, rgba(139,92,246,0.02) 100%);
-    border-radius: var(--radius);
-    border: 1px dashed var(--gray-200);
-}
-
-.empty-state-icon {
-    font-size: 48px;
-    margin-bottom: 12px;
-    filter: grayscale(0.3);
-}
+/* empty-state base styles defined in base.css */
 
 .empty-state-img {
     width: 200px;

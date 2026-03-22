@@ -24,7 +24,8 @@ function mapStockRow(row) {
         isActive: row.is_active,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        updatedBy: row.updated_by
+        updatedBy: row.updated_by,
+        owner: row.owner || 'park'
     };
 }
 
@@ -266,14 +267,14 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
 
         const {
             name, category = 'consumable', quantity = 0,
-            minQuantity = 0, unit = 'шт', notes = null
+            minQuantity = 0, unit = 'шт', notes = null, owner = 'park'
         } = req.body;
 
         const result = await pool.query(
-            `INSERT INTO warehouse_stock (name, category, quantity, min_quantity, unit, notes, updated_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO warehouse_stock (name, category, quantity, min_quantity, unit, notes, updated_by, owner)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING *`,
-            [name.trim(), category, quantity, minQuantity, unit, notes, req.user.username]
+            [name.trim(), category, quantity, minQuantity, unit, notes, req.user.username, owner]
         );
 
         log.info(`Stock created: "${name}" by ${req.user.username}`);
@@ -300,15 +301,15 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
 
         const {
             name, category = 'consumable', minQuantity = 0,
-            unit = 'шт', notes = null
+            unit = 'шт', notes = null, owner = 'park'
         } = req.body;
 
         const result = await pool.query(
             `UPDATE warehouse_stock SET
                 name = $1, category = $2, min_quantity = $3,
-                unit = $4, notes = $5, updated_at = NOW(), updated_by = $6
-             WHERE id = $7 RETURNING *`,
-            [name.trim(), category, minQuantity, unit, notes, req.user.username, id]
+                unit = $4, notes = $5, updated_at = NOW(), updated_by = $6, owner = $7
+             WHERE id = $8 RETURNING *`,
+            [name.trim(), category, minQuantity, unit, notes, req.user.username, owner, id]
         );
 
         log.info(`Stock updated: #${id} by ${req.user.username}`);

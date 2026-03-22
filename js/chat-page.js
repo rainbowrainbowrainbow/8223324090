@@ -614,12 +614,75 @@
     var _newChannelName = document.getElementById('chatNewChannelName');
     var _newChannelDesc = document.getElementById('chatNewChannelDesc');
 
+    // v33.10.0: Member selection for new channel
+    var _newChanSelectedMembers = [];
+    var _newChanAllUsers = null;
+
+    async function _loadNewChanUsers() {
+        if (_newChanAllUsers) return;
+        try { _newChanAllUsers = await _api('GET', '/users') || []; } catch { _newChanAllUsers = []; }
+    }
+
+    function _renderNewChanMemberSearch(filter) {
+        var list = document.getElementById('chatNewChannelMemberList');
+        if (!list || !_newChanAllUsers) return;
+        list.innerHTML = '';
+        var f = (filter || '').toLowerCase();
+        _newChanAllUsers.filter(function(u) {
+            return (!f || u.username.toLowerCase().includes(f) || (u.displayName || '').toLowerCase().includes(f))
+                && _newChanSelectedMembers.indexOf(u.id) === -1;
+        }).slice(0, 8).forEach(function(u) {
+            var item = document.createElement('div');
+            item.style.cssText = 'padding:6px 8px;cursor:pointer;border-radius:6px;font-size:13px;display:flex;align-items:center;gap:6px';
+            item.innerHTML = '<span style="width:24px;height:24px;border-radius:50%;background:var(--primary-50);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">' + (u.displayName || u.username).charAt(0).toUpperCase() + '</span>' + _esc(u.displayName || u.username);
+            item.onmouseenter = function() { item.style.background = 'var(--gray-50)'; };
+            item.onmouseleave = function() { item.style.background = ''; };
+            item.onclick = function() {
+                _newChanSelectedMembers.push(u.id);
+                _renderNewChanSelectedBadges();
+                _renderNewChanMemberSearch(document.getElementById('chatNewChannelMemberSearch')?.value);
+            };
+            list.appendChild(item);
+        });
+    }
+
+    function _renderNewChanSelectedBadges() {
+        var container = document.getElementById('chatNewChannelMembers');
+        if (!container) return;
+        container.innerHTML = '';
+        _newChanSelectedMembers.forEach(function(uid) {
+            var u = _newChanAllUsers?.find(function(x) { return x.id === uid; });
+            if (!u) return;
+            var badge = document.createElement('span');
+            badge.style.cssText = 'background:var(--primary-50);color:var(--primary-dark);padding:2px 8px;border-radius:12px;font-size:12px;display:inline-flex;align-items:center;gap:4px';
+            badge.innerHTML = _esc(u.displayName || u.username) + ' <span style="cursor:pointer;font-size:14px" onclick="this.parentElement.remove()">×</span>';
+            badge.querySelector('span').onclick = function() {
+                _newChanSelectedMembers = _newChanSelectedMembers.filter(function(id) { return id !== uid; });
+                _renderNewChanSelectedBadges();
+                _renderNewChanMemberSearch(document.getElementById('chatNewChannelMemberSearch')?.value);
+            };
+            container.appendChild(badge);
+        });
+    }
+
     if (_newChannelBtn) {
-        _newChannelBtn.addEventListener('click', function () {
+        _newChannelBtn.addEventListener('click', async function () {
             _newChannelOverlay.style.display = 'flex';
             _newChannelName.value = '';
             _newChannelDesc.value = '';
+            _newChanSelectedMembers = [];
+            _renderNewChanSelectedBadges();
+            var searchInput = document.getElementById('chatNewChannelMemberSearch');
+            if (searchInput) searchInput.value = '';
+            await _loadNewChanUsers();
+            _renderNewChanMemberSearch('');
             _newChannelName.focus();
+        });
+    }
+    var _newChanMemberSearchInput = document.getElementById('chatNewChannelMemberSearch');
+    if (_newChanMemberSearchInput) {
+        _newChanMemberSearchInput.addEventListener('input', function() {
+            _renderNewChanMemberSearch(this.value);
         });
     }
     if (_newChannelCancel) {
@@ -639,13 +702,20 @@
             try {
                 var channel = await _api('POST', '/channels', { name: name, description: _newChannelDesc.value.trim() });
                 if (channel) {
+                    // Add selected members
+                    for (var i = 0; i < _newChanSelectedMembers.length; i++) {
+                        try {
+                            var u = _newChanAllUsers?.find(function(x) { return x.id === _newChanSelectedMembers[i]; });
+                            if (u) await _api('POST', '/channels/' + channel.id + '/members', { username: u.username });
+                        } catch (e) { /* skip */ }
+                    }
                     _channels.unshift(channel);
                     _renderChannels();
                     _selectChannel(channel);
                     _newChannelOverlay.style.display = 'none';
                 }
             } catch (err) {
-                showNotification(err.message || 'Помилка створення каналу', 'error');
+                if (typeof showNotification === 'function') showNotification(err.message || 'Помилка створення каналу', 'error');
             }
         });
     }

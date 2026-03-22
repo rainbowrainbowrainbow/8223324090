@@ -269,6 +269,8 @@ function openItemForm(itemId = null) {
         document.getElementById('wf-min').value = item.minQuantity || 0;
         document.getElementById('wf-unit').value = item.unit || 'шт';
         document.getElementById('wf-notes').value = item.notes || '';
+        var ownerEl = document.getElementById('wf-owner');
+        if (ownerEl) ownerEl.value = item.owner || 'park';
         // Disable quantity field for edit (use +/- buttons instead)
         document.getElementById('wf-quantity').disabled = true;
     } else {
@@ -297,7 +299,8 @@ async function saveItem() {
         quantity: parseInt(document.getElementById('wf-quantity').value) || 0,
         minQuantity: parseInt(document.getElementById('wf-min').value) || 0,
         unit: document.getElementById('wf-unit').value,
-        notes: document.getElementById('wf-notes').value.trim() || null
+        notes: document.getElementById('wf-notes').value.trim() || null,
+        owner: document.getElementById('wf-owner')?.value || 'park'
     };
 
     if (!item.name) {
@@ -442,6 +445,8 @@ function switchPageTab(tab) {
     document.querySelectorAll('.wh-page-tab').forEach(t => t.classList.toggle('active', t.dataset.pageTab === tab));
     document.getElementById('stockTab').style.display = tab === 'stock' ? '' : 'none';
     document.getElementById('procurementTab').style.display = tab === 'procurement' ? '' : 'none';
+    var pinataEl = document.getElementById('pinataTab');
+    if (pinataEl) pinataEl.style.display = tab === 'pinata' ? '' : 'none';
     if (tab === 'procurement' && procLists.length === 0) loadProcLists();
 }
 

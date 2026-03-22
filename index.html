@@ -15,19 +15,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=33.9.0">
-    <link rel="stylesheet" href="css/auth.css?v=33.9.0">
-    <link rel="stylesheet" href="css/layout.css?v=33.9.0">
-    <link rel="stylesheet" href="css/timeline.css?v=33.9.0">
-    <link rel="stylesheet" href="css/panel.css?v=33.9.0">
-    <link rel="stylesheet" href="css/modals.css?v=33.9.0">
-    <link rel="stylesheet" href="css/controls.css?v=33.9.0">
-    <link rel="stylesheet" href="css/features.css?v=33.9.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=33.9.0">
-    <link rel="stylesheet" href="css/responsive.css?v=33.9.0">
-    <link rel="stylesheet" href="css/pages.css?v=33.9.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=33.9.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=33.9.0">
+    <link rel="stylesheet" href="css/base.css?v=33.10.0">
+    <link rel="stylesheet" href="css/auth.css?v=33.10.0">
+    <link rel="stylesheet" href="css/layout.css?v=33.10.0">
+    <link rel="stylesheet" href="css/timeline.css?v=33.10.0">
+    <link rel="stylesheet" href="css/panel.css?v=33.10.0">
+    <link rel="stylesheet" href="css/modals.css?v=33.10.0">
+    <link rel="stylesheet" href="css/controls.css?v=33.10.0">
+    <link rel="stylesheet" href="css/features.css?v=33.10.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=33.10.0">
+    <link rel="stylesheet" href="css/responsive.css?v=33.10.0">
+    <link rel="stylesheet" href="css/pages.css?v=33.10.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=33.10.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=33.10.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -44,9 +44,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v33.9.0 — Chat Rooms</p>
+                <p class="tagline">AI First CRM v33.10.0 — Polish</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v33.9.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v33.10.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1252,6 +1252,16 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v33.10.0 — Polish (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Chat Members</b> — вибір учасників при створенні каналу (пошук + бейджі)</li>
+                        <li><b>Sound Panel</b> — виправлено позиціонування popup звуків (z-index fix)</li>
+                        <li><b>Warehouse Owner</b> — нове поле «Належить» (Парк/Дар/Спільне) при додаванні на склад</li>
+                        <li><b>Pinata Tab</b> — виправлено пусту вкладку Піньяти на складі</li>
+                        <li><b>Sidebar</b> — прибрано зайві бейджі та кнопку згорнути з навчання/лідів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v33.9.0 — Chat Rooms (Claude Code, 22.03.2026)</h4>
                     <ul>
                         <li><b>Room Channels</b> — кімнатні канали в чаті з хронологією бронювань</li>
@@ -1327,7 +1337,7 @@
                         <li><b>Scheduler</b> — виправлено "value too long for varchar(10)" для hourly schedulers (міграція 094)</li>
                         <li><b>Рахунки</b> — finance_accounts таблиця, CRUD API, report-bot sync, вкладка «Рахунки» у фінансах</li>
                         <li><b>Report Bot</b> — account_id/account_name в submit, GET /report-bot/accounts для синхронізації</li>
-                        <li><b>Cache Busting</b> — ?v=33.9.0 на всіх 25 HTML сторінках (321 оновлення)</li>
+                        <li><b>Cache Busting</b> — ?v=33.10.0 на всіх 25 HTML сторінках (321 оновлення)</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -1926,7 +1936,7 @@
                         <li><b>Version Sync</b> — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG</li>
                         <li><b>Landing Carousel</b> — команда з каруселлю, Anli Lektor, swipe/dots/arrows [kleshnya]</li>
                         <li><b>Manager Guide</b> — нова сторінка для менеджерів з продажу [kleshnya]</li>
-                        <li><b>Cache Busting</b> — ?v=33.9.0 на всіх CSS/JS ресурсах (25 файлів)</li>
+                        <li><b>Cache Busting</b> — ?v=33.10.0 на всіх CSS/JS ресурсах (25 файлів)</li>
                         <li><b>Swagger API</b> — оновлена версія OpenAPI spec до v23.0.0</li>
                     </ul>
                 </div>
@@ -4682,29 +4692,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/i18n.js?v=33.9.0"></script>
-    <script src="js/config.js?v=33.9.0"></script>
-    <script src="js/api.js?v=33.9.0"></script>
-    <script src="js/ui.js?v=33.9.0"></script>
-    <script src="js/auth.js?v=33.9.0"></script>
-    <script src="js/timeline.js?v=33.9.0"></script>
-    <script src="js/booking.js?v=33.9.0"></script>
-    <script src="js/settings.js?v=33.9.0"></script>
-    <script src="js/booking-form.js?v=33.9.0"></script>
-    <script src="js/booking-linked.js?v=33.9.0"></script>
-    <script src="js/settings-dashboard.js?v=33.9.0"></script>
-    <script src="js/settings-history.js?v=33.9.0"></script>
-    <script src="js/settings-afisha.js?v=33.9.0"></script>
-    <script src="js/settings-certificates.js?v=33.9.0"></script>
-    <script src="js/offline.js?v=33.9.0"></script>
-    <script src="js/search.js?v=33.9.0"></script>
-    <script src="js/ws.js?v=33.9.0"></script>
-    <script src="js/app.js?v=33.9.0"></script>
-    <script src="js/achievement-popup.js?v=33.9.0"></script>
-    <script src="js/kleshnya-widget.js?v=33.9.0"></script>
-    <script src="js/components/sidebar.js?v=33.9.0"></script>
+    <script src="js/i18n.js?v=33.10.0"></script>
+    <script src="js/config.js?v=33.10.0"></script>
+    <script src="js/api.js?v=33.10.0"></script>
+    <script src="js/ui.js?v=33.10.0"></script>
+    <script src="js/auth.js?v=33.10.0"></script>
+    <script src="js/timeline.js?v=33.10.0"></script>
+    <script src="js/booking.js?v=33.10.0"></script>
+    <script src="js/settings.js?v=33.10.0"></script>
+    <script src="js/booking-form.js?v=33.10.0"></script>
+    <script src="js/booking-linked.js?v=33.10.0"></script>
+    <script src="js/settings-dashboard.js?v=33.10.0"></script>
+    <script src="js/settings-history.js?v=33.10.0"></script>
+    <script src="js/settings-afisha.js?v=33.10.0"></script>
+    <script src="js/settings-certificates.js?v=33.10.0"></script>
+    <script src="js/offline.js?v=33.10.0"></script>
+    <script src="js/search.js?v=33.10.0"></script>
+    <script src="js/ws.js?v=33.10.0"></script>
+    <script src="js/app.js?v=33.10.0"></script>
+    <script src="js/achievement-popup.js?v=33.10.0"></script>
+    <script src="js/kleshnya-widget.js?v=33.10.0"></script>
+    <script src="js/components/sidebar.js?v=33.10.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=33.9.0"></script>
-    <script src="js/role-panel.js?v=33.9.0"></script>
+    <script src="js/alerts.js?v=33.10.0"></script>
+    <script src="js/role-panel.js?v=33.10.0"></script>
 </body>
 </html>

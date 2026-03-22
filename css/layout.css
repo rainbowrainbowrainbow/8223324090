@@ -1674,3 +1674,78 @@ input[type="date"] {
 }
 
 .btn-close-warning:hover { opacity: 1; }
+
+/* ══════════════════════════════════════
+   PAGE TRANSITIONS
+   ══════════════════════════════════════ */
+
+/* Entry keyframes — unique per sidebar group */
+@keyframes ptSlideInRight {
+    from { opacity: 0; transform: translateX(-20px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes ptFadeScale {
+    from { opacity: 0; transform: scale(0.97); }
+    to   { opacity: 1; transform: scale(1); }
+}
+@keyframes ptSlideInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes ptRotateIn {
+    from { opacity: 0; transform: perspective(800px) rotateY(-3deg) translateX(-10px); }
+    to   { opacity: 1; transform: perspective(800px) rotateY(0) translateX(0); }
+}
+@keyframes ptBounceIn {
+    0%   { opacity: 0; transform: scale(0.95); }
+    60%  { opacity: 1; transform: scale(1.02); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* Exit keyframe — universal fade-slide-down */
+@keyframes ptFadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(8px); }
+}
+
+/* CRM: slide in from left */
+body[data-page-group="crm"] .page-container,
+body[data-page-group="crm"] .main-content {
+    animation: ptSlideInRight 0.35s var(--ease-out-expo) both;
+}
+/* Управління: scale + fade */
+body[data-page-group="mgmt"] .page-container,
+body[data-page-group="mgmt"] .main-content {
+    animation: ptFadeScale 0.4s var(--ease-out-expo) both;
+}
+/* HR: slide up */
+body[data-page-group="hr"] .page-container,
+body[data-page-group="hr"] .main-content {
+    animation: ptSlideInUp 0.35s var(--ease-out-expo) both;
+}
+/* Творче: perspective rotate */
+body[data-page-group="creative"] .page-container,
+body[data-page-group="creative"] .main-content {
+    animation: ptRotateIn 0.4s var(--ease-out-expo) both;
+}
+/* Система: bounce */
+body[data-page-group="system"] .page-container,
+body[data-page-group="system"] .main-content {
+    animation: ptBounceIn 0.4s var(--ease-bounce) both;
+}
+
+/* Exit state — applied by JS before navigation */
+body.page-exiting .page-container,
+body.page-exiting .main-content {
+    animation: ptFadeOut 0.18s var(--ease-smooth) both !important;
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+    body[data-page-group] .page-container,
+    body[data-page-group] .main-content,
+    body.page-exiting .page-container,
+    body.page-exiting .main-content {
+        animation: none !important;
+    }
+}

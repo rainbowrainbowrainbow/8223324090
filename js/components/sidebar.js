@@ -342,8 +342,22 @@ const Sidebar = (() => {
     function init(containerSelector) {
         render(containerSelector);
         initToggle();
+        _initPageTransitions();
         // Fill user card immediately + keep retrying until avatar shows real initial
         _retryUserCard();
+    }
+
+    // ─── Page transition animations ────────────────────────────────
+    function _initPageTransitions() {
+        document.addEventListener('click', (e) => {
+            const link = e.target.closest('.sidebar-links .nav-link[href]');
+            if (!link || link.getAttribute('onclick')) return;
+            const href = link.getAttribute('href');
+            if (!href || href.startsWith('#') || href === window.location.pathname) return;
+            e.preventDefault();
+            document.body.classList.add('page-exiting');
+            setTimeout(() => { window.location.href = href; }, 180);
+        });
     }
 
     async function _retryUserCard() {

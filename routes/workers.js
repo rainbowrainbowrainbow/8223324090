@@ -5,7 +5,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireMinRole } = require('../middleware/auth');
 
 const log = createLogger('Workers');
 
@@ -45,8 +45,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/workers — create new worker role (admin only)
-router.post('/', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+router.post('/', requireMinRole('manager'), async (req, res) => {
     try {
         const { name, display_name, type, purpose, inputs, actions, limits, escalations, timers, logs, fallback, monitoring, owner, version } = req.body;
         if (!name || !display_name || !purpose) {
@@ -72,8 +71,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/workers/:id — update worker role (admin only)
-router.put('/:id', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+router.put('/:id', requireMinRole('manager'), async (req, res) => {
     try {
         const { display_name, type, purpose, inputs, actions, limits, escalations, timers, logs, fallback, monitoring, is_active, owner, version } = req.body;
         const result = await pool.query(
@@ -114,8 +112,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/workers/:id — delete worker role (admin only)
-router.delete('/:id', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+router.delete('/:id', requireMinRole('manager'), async (req, res) => {
     try {
         const result = await pool.query('DELETE FROM worker_roles WHERE id = $1 RETURNING name', [req.params.id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Worker not found' });

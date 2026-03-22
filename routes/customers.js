@@ -9,7 +9,7 @@ const { pool } = require('../db');
 const { getSupabase } = require('../db/supabase');
 const { createLogger } = require('../utils/logger');
 const { exportLimiter } = require('../middleware/rateLimit');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireMinRole } = require('../middleware/auth');
 
 const log = createLogger('Customers');
 
@@ -519,7 +519,7 @@ router.get('/duplicates', async (req, res) => {
     }
 });
 
-router.post('/:primaryId/merge', async (req, res) => {
+router.post('/:primaryId/merge', requireMinRole('manager'), async (req, res) => {
     const client = await pool.connect();
     try {
         const primaryId = parseInt(req.params.primaryId);
@@ -782,7 +782,7 @@ router.post('/import-vcf', async (req, res) => {
 // v30.4: BULK MESSAGING
 // ==========================================
 
-router.post('/bulk-message', async (req, res) => {
+router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
     try {
         const { filters, template, dryRun } = req.body;
         if (!template) return res.status(400).json({ error: 'Шаблон повідомлення обовʼязковий' });
@@ -1124,7 +1124,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete customer
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireMinRole('manager'), async (req, res) => {
     try {
         const { id } = req.params;
         const numId = parseInt(id);
@@ -1152,7 +1152,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // v20.9.12: Migration endpoint — copy customers from Railway to Supabase
-router.post('/migrate-to-supabase', async (req, res) => {
+router.post('/migrate-to-supabase', requireMinRole('director'), async (req, res) => {
     try {
         const sb = getSupabase();
         if (!sb) return res.status(400).json({ error: 'Supabase not configured' });

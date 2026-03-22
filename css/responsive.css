@@ -110,7 +110,7 @@
 
     /* Sidebar accordion: fit 200px width */
     .sidebar-group-label {
-        font-size: 9px !important;
+        font-size: 11px !important;
         letter-spacing: 0.5px !important;
     }
     .sidebar-links .nav-link {
@@ -536,7 +536,7 @@
     }
 
     .program-icon .name {
-        font-size: 9px;
+        font-size: 11px;
     }
 
     .btn-submit {
@@ -720,7 +720,7 @@
     .program-icon { min-height: 68px; padding: 10px 4px; }
     .program-icon .icon-circle { width: 34px; height: 34px; margin-bottom: 3px; }
     .program-icon .icon { font-size: 17px; }
-    .program-icon .name { font-size: 9px; }
+    .program-icon .name { font-size: 11px; }
     .program-duration { font-size: 8px; padding: 1px 4px; }
 
     /* v7.8.3: Ultra-compact toolbar */
@@ -755,9 +755,9 @@
     .modal-catalog { max-width: 100%; max-height: 100vh; border-radius: 0; }
 
     /* v19.3: WCAG touch targets — keep 44px minimum */
-    .status-filter-btn { font-size: 9px; padding: 5px 3px; min-width: 0; min-height: 44px; }
-    .period-btn { font-size: 9px; padding: 5px 6px; min-height: 44px; }
-    .zoom-controls .zoom-btn { padding: 5px 7px; font-size: 9px; min-height: 44px; }
+    .status-filter-btn { font-size: 11px; padding: 5px 3px; min-width: 0; min-height: 44px; }
+    .period-btn { font-size: 11px; padding: 5px 6px; min-height: 44px; }
+    .zoom-controls .zoom-btn { padding: 5px 7px; font-size: 11px; min-height: 44px; }
     .toggle-mini { padding: 4px 5px; min-height: 44px; font-size: 12px; }
     .btn-today { padding: 5px 8px; font-size: 10px; min-height: 44px; }
     .date-controls .btn-nav { width: 44px; height: 44px; min-width: 44px; }
@@ -799,7 +799,7 @@
     /* v9.0: Dashboard enhanced — mobile */
     .dash-weekday-chart { height: 80px; gap: 4px; }
     .dash-weekday-label { font-size: 10px; }
-    .dash-weekday-count { font-size: 9px; }
+    .dash-weekday-count { font-size: 11px; }
     .dash-daily-chart { height: 100px; }
     .dash-daily-label { font-size: 8px; }
     .dash-period-tabs { flex-wrap: wrap; }
@@ -857,9 +857,9 @@
     }
 
     /* v7.8.8: WCAG compromise — min 34px on extra small */
-    .status-filter-btn { font-size: 9px; padding: 4px 2px; min-height: 34px; }
-    .period-btn { font-size: 9px; padding: 4px 5px; min-height: 34px; }
-    .zoom-controls .zoom-btn { padding: 4px 6px; font-size: 9px; min-height: 34px; }
+    .status-filter-btn { font-size: 11px; padding: 4px 2px; min-height: 34px; }
+    .period-btn { font-size: 11px; padding: 4px 5px; min-height: 34px; }
+    .zoom-controls .zoom-btn { padding: 4px 6px; font-size: 11px; min-height: 34px; }
     .toggle-mini { padding: 4px 5px; min-height: 34px; font-size: 12px; }
 
     /* Timeline: narrower headers */
@@ -881,7 +881,7 @@
     .header-content { padding: 4px 6px; }
     .logo-img-small { width: 24px; height: 24px; }
     .nav-link { padding: 3px 8px; font-size: 13px; }
-    .btn-logout { padding: 3px 6px; font-size: 9px; }
+    .btn-logout { padding: 3px 6px; font-size: 11px; }
 
     .control-panel { gap: 2px; padding: 4px; }
     .date-controls { gap: 2px; }
@@ -889,7 +889,7 @@
 
     .time-scale { margin-left: 50px; }
     .line-header { width: 50px; min-width: 50px; }
-    .line-name { font-size: 9px; }
+    .line-name { font-size: 11px; }
 
     .status-filter-btn { font-size: 8px; min-height: 32px; }
     .period-btn { font-size: 8px; min-height: 32px; }

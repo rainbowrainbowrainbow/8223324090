@@ -24,7 +24,7 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireMinRole } = require('../middleware/auth');
 
 const log = createLogger('Leads');
 
@@ -421,7 +421,7 @@ router.delete('/mailing/:id', async (req, res) => {
 });
 
 // DELETE /api/leads/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireMinRole('manager'), async (req, res) => {
     try {
         const result = await pool.query('DELETE FROM leads WHERE id = $1 RETURNING id', [req.params.id]);
         if (result.rows.length === 0) {

@@ -24,7 +24,7 @@
     width: 220px;
     background: linear-gradient(180deg, #FFFFFF 0%, #FAFBFC 100%);
     border-right: 1px solid var(--gray-200);
-    z-index: 1000;
+    z-index: var(--z-sidebar);
     display: flex;
     flex-direction: column;
     overflow-y: auto;
@@ -771,7 +771,7 @@ body.dark-mode .sidebar-theme-btn:hover { background: rgba(255,255,255,0.05); }
     background: rgba(0,0,0,0.5);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    z-index: 1001;
+    z-index: var(--z-sidebar-overlay);
     opacity: 1;
     transition: opacity 0.25s var(--ease-smooth);
 }

@@ -1547,7 +1547,7 @@ body.dark-mode .chat-theme-select {
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.5);
-    z-index: 1000;
+    z-index: var(--z-modal);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3408,7 +3408,7 @@ body.dark-mode .chat-theme-select {
     border-radius: 10px;
     font-size: 13px;
     font-weight: 600;
-    z-index: 999;
+    z-index: var(--z-notification);
     animation: toastIn 0.3s ease, toastOut 0.3s ease 2.5s forwards;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }

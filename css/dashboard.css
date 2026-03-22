@@ -465,7 +465,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.5);
-    z-index: 1000;
+    z-index: var(--z-modal);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -540,7 +540,7 @@
     border: none;
     font-size: 22px;
     cursor: pointer;
-    z-index: 999;
+    z-index: var(--z-sidebar);
     box-shadow: 0 4px 12px rgba(128, 90, 213, 0.4);
     display: flex;
     align-items: center;
@@ -560,7 +560,7 @@
     background: #fff;
     border-radius: 16px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-    z-index: 999;
+    z-index: var(--z-sidebar);
     padding: 16px;
     display: none;
 }
@@ -622,7 +622,7 @@
     border-radius: 20px;
     font-size: 12px;
     font-weight: 700;
-    z-index: 1000;
+    z-index: var(--z-sidebar);
     box-shadow: 0 2px 8px rgba(128, 90, 213, 0.3);
 }
 

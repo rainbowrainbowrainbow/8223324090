@@ -2078,3 +2078,17 @@ body.dark-mode .category-tab.active { background: linear-gradient(135deg, var(--
 body.dark-mode .stat-item { background: linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(139,92,246,0.06) 100%); border-color: rgba(255,255,255,0.05); }
 body.dark-mode .widget-action-btn:hover { background: rgba(16,185,129,0.15); color: #6EE7B7; }
 body.dark-mode .catalog-program-card:hover { background: var(--gray-200); }
+
+/* v37.10: Dark mode gap fixes — banners, bulk actions, test panels */
+body.dark-mode .offline-banner { background: linear-gradient(135deg, #B45309, #92400E); color: #FEF3C7; }
+body.dark-mode .global-error-banner { background: linear-gradient(135deg, #B91C1C, #991B1B); color: #FEE2E2; }
+body.dark-mode .bulk-action-bar { background: #1E293B; border: 1px solid #334155; }
+body.dark-mode .test-panel { background: #1E293B; border: 1px solid #334155; color: #E2E8F0; }
+body.dark-mode .test-panel-fab { background: #6D28D9; }
+body.dark-mode .test-mode-badge { background: #6D28D9; }
+body.dark-mode .occupancy-bar { background: #1E293B; border: 1px solid #334155; }
+body.dark-mode .occupancy-fill { background: linear-gradient(90deg, var(--primary-dark), var(--primary)); }
+body.dark-mode .occupancy-label { color: #E2E8F0; }
+body.dark-mode .chat-toast { background: #334155; color: #F1F5F9; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+body.dark-mode .automation-rule { background: #1E293B; border-color: #334155; border-left-color: #8B5CF6; color: #E2E8F0; }
+body.dark-mode .automation-rule.rule-inactive { opacity: 0.5; border-left-color: #475569; }

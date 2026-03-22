@@ -1139,11 +1139,7 @@ body.dark-mode .confirm-cancel:hover {
    ENHANCED EMPTY STATES
    ========================================== */
 
-.empty-state {
-    text-align: center;
-    padding: 48px 24px;
-    color: var(--gray-400);
-}
+/* .empty-state defined in base.css — removed duplicate */
 
 .empty-state-icon {
     width: 80px;

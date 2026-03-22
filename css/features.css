@@ -2053,7 +2053,7 @@ body.dark-mode .search-group-label {
     background: var(--white);
     border-left: 1px solid var(--gray-200);
     box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
-    z-index: 1000;
+    z-index: var(--z-modal);
     display: flex;
     flex-direction: column;
     transform: translateX(100%);

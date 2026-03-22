@@ -147,8 +147,10 @@
     /* Z-index scale */
     --z-base: 1;
     --z-dropdown: 50;
-    --z-sticky: 100;
     --z-panel: 90;
+    --z-sticky: 100;
+    --z-sidebar: 900;
+    --z-sidebar-overlay: 950;
     --z-modal: 1000;
     --z-modal-confirm: 1050;
     --z-notification: 1100;
@@ -386,14 +388,6 @@ body {
 /* Stagger entrance utility — use with animation-delay */
 .anim-fade-in {
     animation: fadeInUp 0.4s var(--ease-out-expo) both;
-}
-
-/* Skeleton loader placeholder */
-.skeleton {
-    background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-50) 50%, var(--gray-100) 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.5s ease infinite;
-    border-radius: var(--radius-md);
 }
 
 /* ==========================================

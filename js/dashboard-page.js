@@ -388,15 +388,18 @@ const DashboardPage = (() => {
 
     function renderAlerts(data, container) {
         if (!data.alerts || data.alerts.length === 0) {
-            container.innerHTML = '<div class="widget-empty">Все в порядку</div>';
+            container.innerHTML = '<div class="widget-empty">✅ Все в порядку</div>';
             return;
         }
+        const DEFAULT_LINKS = { warning: '/tasks', info: '/', critical: '/finance' };
         const items = data.alerts.map(a => {
-            const typeCls = a.type === 'warning' ? 'alert-warning' : 'alert-info';
-            return `<div class="alert-item ${typeCls}">
-                <span class="alert-icon">${a.icon || '🔔'}</span>
-                <span class="alert-text">${escapeHtml(a.title)}</span>
-            </div>`;
+            const typeCls = a.level === 'critical' ? 'alert-critical' : a.level === 'warning' ? 'alert-warning' : 'alert-info';
+            const link = a.link || DEFAULT_LINKS[a.level] || '/dashboard';
+            return `<a href="${link}" class="dash-alert-item ${typeCls}" title="Перейти →">
+                <span class="dash-alert-icon">${a.icon || '🔔'}</span>
+                <span class="dash-alert-text">${escapeHtml(a.title)}</span>
+                <span class="dash-alert-arrow">›</span>
+            </a>`;
         }).join('');
         container.innerHTML = items;
     }

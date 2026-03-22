@@ -47,17 +47,25 @@ const CopilotPage = (() => {
         switchModule('coach');
     }
 
-    function waitForAuth() {
-        return new Promise(resolve => {
-            let attempts = 0;
-            const check = () => {
-                if (AppState?.currentUser) { resolve(); return; }
-                attempts++;
-                if (attempts > 50) { resolve(); return; } // 5s timeout — show access denied
-                setTimeout(check, 100);
-            };
-            check();
-        });
+    async function waitForAuth() {
+        // If already authenticated, return immediately
+        if (AppState?.currentUser) return;
+
+        // Try to restore from localStorage
+        const token = localStorage.getItem('pzp_token');
+        if (!token) { window.location.href = '/'; return; }
+
+        const savedUser = localStorage.getItem('pzp_current_user');
+        if (savedUser) {
+            try { AppState.currentUser = JSON.parse(savedUser); } catch {}
+        }
+
+        // Verify with server
+        if (typeof apiVerifyToken === 'function') {
+            const verified = await apiVerifyToken();
+            if (!verified) { window.location.href = '/'; return; }
+            AppState.currentUser = verified;
+        }
     }
 
     async function loadAllData() {

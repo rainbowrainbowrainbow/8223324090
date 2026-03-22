@@ -4,6 +4,48 @@
 
 ---
 
+## v35.0.0 — Sidebar Full Rebuild (2026-03-22)
+
+### Sidebar Accordion Groups [claude-code]
+- **Accordion Navigation** — 4 групи (CRM, Управління, Творче, Система) з CSS grid-template-rows анімацією
+- **Unified Nav** — однакове sidebar меню на всіх 24 сторінках замість різних hub-dropdown
+- **Collapse Button** — `sidebarCollapseBtn` додано на всі 23 standalone сторінки
+- **Nav Icons** — збільшено emoji розмір (15px → 17px collapsed), scale(1.08) анімація при hover
+
+### Cross-Page Actions [claude-code]
+- **Афіша/Сертифікати/Налаштування** — кнопки працюють з будь-якої сторінки через `?open=` auto-open
+- **`sidebarOpen*` helpers** — якщо на таймлайні → модалка, якщо на іншій сторінці → redirect `/?open=`
+- **`_checkAutoOpen()`** — app.js читає `?open=` параметр і відкриває панель після ініціалізації
+
+### New Routes [claude-code]
+- **`/afisha`** → redirect 302 → `/?open=afisha`
+- **`/certificates`** → redirect 302 → `/?open=certificates`
+- **`/designer`** → sendFile або redirect → `/art`
+- **`/sound`** → sendFile або redirect → `/`
+- **PAGE_ACCESS** — додано `/designer`, `/sound`, `/afisha`, `/certificates`
+
+### Bugfixes (E1-E11) [claude-code]
+- **E1** — `sidebar-group-inner { min-height: 0 }` для grid collapse анімації
+- **E2/E6** — `#sidebarActions` приховано `display:none` (не видалено — app.js/auth.js мають обробники)
+- **E3** — collapse button на всіх сторінках
+- **E4/E5** — `showAfishaModal` / `openCertificatesPanel` graceful з redirect
+- **E7** — `/staff` двічі → `noActive: true` на "Команді" запобігає подвійному підсвічуванню
+- **E8** — collapsed sidebar: `.sidebar-group-items { display: none }`
+- **E9** — спрощений onclick без зайвого `window.X` дублювання
+- **E10** — collapsed nav-link padding override
+- **E11** — `toggleGroup` додано в `return {}`
+
+### Dark Mode [claude-code]
+- Accordion стилі: border, hover, arrow, group icon, vertical track
+- Nav icon active: `box-shadow: 0 2px 8px rgba(16,185,129,0.25)`
+
+### Infrastructure [claude-code]
+- **8 unclosed `<div>` tags** — виправлено в changelog секції index.html (v20.0.0 → v12.3.0)
+- **346/346 тестів pass**, 0 fail
+- **31 файл змінено**, 654 insertions, 310 deletions
+
+---
+
 ## v32.0.0 — Premium Каталог Випускних (2026-03-16)
 - **Premium Catalog Redesign** — повний редизайн каталогу випускних на рівні друкованих каталогів 2025 [claude-code]
 - **Geometric Mosaic** — CSS полігональний фон з унікальною пастельною палітрою для кожного з 7 пакетів [claude-code]

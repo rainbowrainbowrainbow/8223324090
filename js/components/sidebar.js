@@ -30,8 +30,8 @@ const Sidebar = (() => {
         { href: '/hr',           icon: '🤝', label: 'Кадри',          access: 'hr_page',        group: 'hr' },
         { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'all',            group: 'hr' },
 
-        // ─── GROUP: Творче ───────────────────────────────────────
-        { type: 'group', key: 'creative', label: 'Арт директор', icon: '🎨', defaultOpen: true },
+        // ─── GROUP: Продукт ──────────────────────────────────────
+        { type: 'group', key: 'creative', label: 'Продукт', icon: '🎨', defaultOpen: true },
         { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'creative' },
         { href: '/art',          icon: '🎨', label: 'Арт директор',   access: 'art',            group: 'creative' },
         { href: '/designer',     icon: '📐', label: 'Дизайнер',       access: 'art',            group: 'creative' },

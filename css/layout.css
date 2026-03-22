@@ -642,6 +642,14 @@
 @media (prefers-reduced-motion: reduce) {
     .sidebar-group-items { transition: none; }
     .sidebar-group-items.open .nav-link { animation: none; }
+    .sidebar-links .nav-link { transition: none; }
+    .sidebar-links .nav-link:hover { transform: none; }
+    .sidebar-links .nav-link:active { transform: none; }
+    .sidebar-user-card { transition: none; }
+    .sidebar-user-avatar { transition: none; }
+    .sidebar-user-card:hover .sidebar-user-avatar { transform: none; }
+    .nav-icon { transition: none; }
+    .nav-link:hover .nav-icon { transform: none; }
 }
 
 /* Dark mode accordion */

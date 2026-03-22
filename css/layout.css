@@ -269,6 +269,23 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    padding: 10px 12px;
+    color: var(--gray-600);
+    text-decoration: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    background: none;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    transition: all 0.15s;
+}
+
+.sidebar-actions .nav-link:hover {
+    background: var(--gray-50);
+    color: var(--gray-800);
 }
 
 /* Sidebar collapse button (desktop) */

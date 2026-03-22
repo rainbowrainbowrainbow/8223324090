@@ -276,11 +276,12 @@ async function checkAchievements(username, context = {}) {
                 break;
             }
             case 'booking_count': {
-                // v33.8.0: Count bookings where user is host OR creator
+                // v33.8.0: Count bookings where user is animator or creator
+                // Note: bookings.hosts is INTEGER (animator count), not name
+                // Use second_animator (VARCHAR) and created_by for matching
                 const { rows } = await pool.query(
                     `SELECT COUNT(*) FROM bookings
-                     WHERE (hosts::text ILIKE '%' || $1 || '%' OR second_animator::text ILIKE '%' || $1 || '%'
-                            OR created_by = $1)
+                     WHERE (second_animator ILIKE '%' || $1 || '%' OR created_by = $1)
                        AND status != 'cancelled'`,
                     [username]
                 );

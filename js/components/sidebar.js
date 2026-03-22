@@ -193,7 +193,9 @@ const Sidebar = (() => {
     }
 
     // Apply badges to already-rendered nav links
+    // v33.8.0: Badges temporarily disabled
     function applyBadges() {
+        return;
         document.querySelectorAll('.nav-link[data-page-access]').forEach(link => {
             const path = link.getAttribute('data-page-access');
             const status = _pageStatuses[path];

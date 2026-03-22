@@ -711,6 +711,9 @@ const DashboardPage = (() => {
 
     // Test panel for creator
     function initTestPanel() {
+        // v33.8.0: Dev Tools hidden temporarily
+        return;
+
         if (!AppState.currentUser || AppState.currentUser.role !== 'creator') return;
 
         // v24.0.0: Dev Tools section on dashboard (replaces old FAB test panel)

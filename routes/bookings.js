@@ -302,13 +302,14 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         // Integration 2: HR shift warning (no block)
-        if (b.hosts && b.date) {
+        // Note: bookings.hosts is INTEGER (animator count). Use second_animator for name matching.
+        if (b.secondAnimator && b.date) {
             setImmediate(async () => {
                 try {
-                    const hostName = String(b.hosts).split(',')[0].trim();
+                    const animName = String(b.secondAnimator).split(',')[0].trim();
                     const staffRow = await pool.query(
-                        `SELECT id, name FROM staff WHERE display_name ILIKE $1 AND is_active = true LIMIT 1`,
-                        [hostName]
+                        `SELECT id, name FROM staff WHERE (display_name ILIKE $1 OR name ILIKE $1) AND is_active = true LIMIT 1`,
+                        [animName]
                     );
                     if (!staffRow.rowCount) return;
                     const shift = await pool.query(
@@ -321,7 +322,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                         if (chatId) {
                             await sendTelegramMessage(chatId,
                                 `⚠️ Бронювання ${insertResult.rows[0].id} (${b.date} ${b.time}): ` +
-                                `для аніматора "${b.hosts}" не знайдено зміни в HR. Перевірте графік!`
+                                `для аніматора "${b.secondAnimator}" не знайдено зміни в HR. Перевірте графік!`
                             );
                         }
                     }
@@ -345,7 +346,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                     const c = cust.rows[0];
                     const tiers = await pool.query(
                         `SELECT * FROM loyalty_tiers
-                         WHERE min_bookings <= $1 OR min_spent <= $2
+                         WHERE min_bookings <= $1 AND min_spent <= $2
                          ORDER BY min_bookings DESC, min_spent DESC LIMIT 1`,
                         [c.total_bookings, c.total_spent]
                     );

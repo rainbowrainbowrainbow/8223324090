@@ -552,8 +552,17 @@ button:focus-visible, .btn:focus-visible, a:focus-visible {
     position: relative;
     background: none; border: none;
     cursor: pointer; font-size: 20px;
-    padding: 4px 8px; border-radius: 8px;
+    padding: 6px 8px; border-radius: 8px;
     transition: background 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gray-500, #6B7280);
+    line-height: 1;
+}
+.alert-bell-btn svg {
+    display: block;
+    flex-shrink: 0;
 }
 .alert-bell-btn:hover { background: var(--gray-100, rgba(0,0,0,0.05)); }
 .alert-badge {

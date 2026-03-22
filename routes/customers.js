@@ -1123,31 +1123,39 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// Delete customer
+// Delete customer (transactional)
 router.delete('/:id', requireMinRole('manager'), async (req, res) => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
         const numId = parseInt(id);
 
-        // Unlink bookings and certificates in Railway
-        await pool.query('UPDATE bookings SET customer_id = NULL WHERE customer_id = $1', [numId]);
+        await client.query('BEGIN');
+
+        // Unlink bookings and certificates within transaction
+        await client.query('UPDATE bookings SET customer_id = NULL WHERE customer_id = $1', [numId]);
         try {
-            await pool.query('UPDATE certificates SET customer_id = NULL WHERE customer_id = $1', [numId]);
+            await client.query('UPDATE certificates SET customer_id = NULL WHERE customer_id = $1', [numId]);
         } catch { /* certificates may not have customer_id yet */ }
 
         const sb = getSupabase();
         if (sb) {
             const { error } = await sb.from('customers').delete().eq('id', numId);
-            if (error) throw error;
+            if (error) { await client.query('ROLLBACK'); throw error; }
+            await client.query('COMMIT');
             return res.json({ success: true });
         }
 
-        const result = await pool.query('DELETE FROM customers WHERE id = $1 RETURNING id', [numId]);
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
+        const result = await client.query('DELETE FROM customers WHERE id = $1 RETURNING id', [numId]);
+        if (result.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Клієнта не знайдено' }); }
+        await client.query('COMMIT');
         res.json({ success: true });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('Customer delete error', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 

@@ -213,7 +213,7 @@ function initDarkMode() {
 const CACHE_TTL = 10000;
 
 const AppState = {
-    currentUser: null,
+    _currentUser: null,
     selectedDate: new Date(),
     selectedCell: null,
     selectedLineId: null,
@@ -238,6 +238,19 @@ const AppState = {
     products: null,             // Array of products from API (or null = not loaded)
     productsLoadedAt: 0         // Timestamp when products were loaded
 };
+
+// Auto-update sidebar avatar when currentUser changes
+Object.defineProperty(AppState, 'currentUser', {
+    get() { return this._currentUser; },
+    set(user) {
+        this._currentUser = user;
+        if (user && typeof Sidebar !== 'undefined' && Sidebar.initUserCard) {
+            Sidebar.initUserCard();
+        }
+    },
+    enumerable: true,
+    configurable: true
+});
 
 // v7.0: Products cache TTL (5 minutes)
 const PRODUCTS_CACHE_TTL = 5 * 60 * 1000;

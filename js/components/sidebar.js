@@ -98,6 +98,12 @@ const Sidebar = (() => {
         return key in s ? s[key] : (defaultOpen !== false);
     }
 
+    // Get the first hash for a given base path (e.g. '/sound' → 'library')
+    function _getDefaultHash(basePath) {
+        const first = NAV_ITEMS.find(i => i.href && i.href.includes('#') && i.href.split('#')[0] === basePath);
+        return first ? first.href.split('#')[1] : '';
+    }
+
     // ═══ RENDER ═══════════════════════════════════════════════════
     function render(containerSelector) {
         const container = document.querySelector(containerSelector || '#sidebarNav .sidebar-links');
@@ -155,9 +161,11 @@ const Sidebar = (() => {
             const itemBase = item.href.split('#')[0];
             const itemHash = item.href.includes('#') ? item.href.split('#')[1] : '';
             const currentHash = location.hash.replace('#', '');
+            // For hash-based items on the same page, default first hash item as active when no hash set
+            const effectiveHash = currentHash || (currentPath === itemBase && itemHash ? _getDefaultHash(itemBase) : '');
             const isActive = !item.noActive && !item.isHashLink && (
                 itemHash
-                    ? (currentPath === itemBase || currentPath.startsWith(itemBase)) && currentHash === itemHash
+                    ? (currentPath === itemBase || currentPath.startsWith(itemBase)) && effectiveHash === itemHash
                     : (currentPath === item.href || (item.href !== '/' && !item.href.startsWith('#') && currentPath.startsWith(item.href)))
             );
 
@@ -366,6 +374,29 @@ const Sidebar = (() => {
             if (!link || link.getAttribute('onclick')) return;
             const href = link.getAttribute('href');
             if (!href || href.startsWith('#') || href === window.location.pathname) return;
+
+            // Same-page hash navigation (e.g. /sound#library → /sound#announcements)
+            const hrefBase = href.split('#')[0];
+            const hrefHash = href.includes('#') ? href.split('#')[1] : '';
+            const currentBase = window.location.pathname;
+            if (hrefBase === currentBase && hrefHash) {
+                e.preventDefault();
+                window.location.hash = '#' + hrefHash;
+                // Update active states in sidebar
+                const container = link.closest('.sidebar-links');
+                if (container) {
+                    container.querySelectorAll('.nav-link').forEach(l => {
+                        const lHref = l.getAttribute('href') || '';
+                        const lBase = lHref.split('#')[0];
+                        const lHash = lHref.includes('#') ? lHref.split('#')[1] : '';
+                        if (lBase === hrefBase) {
+                            l.classList.toggle('active', lHash === hrefHash);
+                        }
+                    });
+                }
+                return;
+            }
+
             e.preventDefault();
             document.body.classList.add('page-exiting');
             setTimeout(() => { window.location.href = href; }, 180);

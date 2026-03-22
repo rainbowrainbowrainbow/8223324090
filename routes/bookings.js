@@ -581,6 +581,34 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
 
         await client.query('COMMIT');
 
+        // v33.8.0: Restore stock and certificate on cancel (fire-and-forget)
+        if (booking.program_id) {
+            setImmediate(async () => {
+                try {
+                    const reqs = await pool.query(
+                        `SELECT psr.stock_id, psr.quantity, ws.name FROM product_stock_requirements psr
+                         JOIN warehouse_stock ws ON ws.id = psr.stock_id WHERE psr.product_id = $1`,
+                        [booking.program_id]
+                    );
+                    for (const r of reqs.rows) {
+                        await pool.query('UPDATE warehouse_stock SET quantity = quantity + $1, updated_at = NOW() WHERE id = $2', [r.quantity, r.stock_id]);
+                        await pool.query(
+                            'INSERT INTO warehouse_history (stock_id, change, reason, created_by, created_at) VALUES ($1, $2, $3, $4, NOW())',
+                            [r.stock_id, r.quantity, `Скасування ${id}`, req.user?.username || 'system']
+                        );
+                    }
+                } catch (e) { log.warn('[StockRestore] Error:', e.message); }
+            });
+        }
+        if (booking.certificate_id) {
+            setImmediate(async () => {
+                try {
+                    await pool.query("UPDATE certificates SET status = 'active', used_at = NULL WHERE id = $1 AND status = 'used'", [booking.certificate_id]);
+                    log.info(`[CertRestore] Certificate ${booking.certificate_id} restored for cancelled booking ${id}`);
+                } catch (e) { log.warn('[CertRestore] Error:', e.message); }
+            });
+        }
+
         getLineName(booking.line_id, booking.date).then(lineName =>
             notifyTelegram('delete', booking, { username: req.user?.username, lineName }))
             .catch(err => log.error(`Telegram notify failed (delete): ${err.message}`));

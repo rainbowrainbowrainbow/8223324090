@@ -493,7 +493,7 @@ router.put('/:id', async (req, res) => {
                          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                         [finType, catId, Math.round(updatedReport.amount),
                          `${updatedReport.description || 'Звіт'} (звіт #${id})`,
-                         updatedReport.report_date || new Date().toISOString().slice(0, 10),
+                         updatedReport.created_at ? new Date(updatedReport.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
                          'report', updatedReport.submitted_by || req.user?.username || 'system']
                     );
                     log.info(`[ReportFinance] Report #${id} → finance transaction (${finType} ${updatedReport.amount})`);

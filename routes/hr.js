@@ -1681,7 +1681,7 @@ router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager')
                  RETURNING id`,
                 [catId, totalSal,
                  `Зарплата ${s.name} за ${month} (${Math.round(workedH)}г * ${s.hourly_rate} грн/г)`,
-                 `${month}-28`, s.staff_id, req.user.username]
+                 new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0).toISOString().slice(0, 10), s.staff_id, req.user.username]
             );
             inserted.push({ staffId: s.staff_id, name: s.name, amount: totalSal, transactionId: r.rows[0].id });
         }

@@ -73,21 +73,9 @@ body.dark-mode .sidebar-links .nav-link.active {
     color: #10B981;
 }
 
-/* Nav icon — dark mode */
+/* Nav icon — dark mode (emoji = transparent bg) */
 body.dark-mode .nav-icon {
-    background: rgba(255,255,255,0.08);
-    color: var(--gray-400);
-}
-
-body.dark-mode .nav-link:hover .nav-icon {
-    background: rgba(16,185,129,0.15);
-    color: #10B981;
-}
-
-body.dark-mode .nav-link.active .nav-icon {
-    background: #10B981;
-    color: #FFFFFF;
-    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+    background: transparent;
 }
 
 body.dark-mode .nav-icon--kleshnya {

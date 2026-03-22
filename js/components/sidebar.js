@@ -25,6 +25,7 @@ const Sidebar = (() => {
         { href: '/hr',           icon: '🤝', label: 'Кадри',          access: 'hr',             group: 'mgmt' },
         { href: '/finance',      icon: '💰', label: 'Фінанси',        access: 'finance',        group: 'mgmt' },
         { href: '/analytics',    icon: '📊', label: 'Аналітика',      access: 'analytics',      group: 'mgmt' },
+        { href: '/reports',      icon: '📋', label: 'Звіти',          access: 'reports',        group: 'mgmt' },
         { href: '/copilot',      icon: '🤖', label: 'Менеджер AI',    access: 'copilot',        group: 'mgmt' },
 
         // ─── GROUP: Творче ───────────────────────────────────────
@@ -61,6 +62,7 @@ const Sidebar = (() => {
         hr:             ['creator','director','vice_director','senior_manager','manager','hr'],
         finance:        ['creator','director','vice_director','accountant','senior_manager','manager'],
         analytics:      ['creator','director','vice_director','senior_manager','manager','accountant','marketer','it_specialist'],
+        reports:        ['creator','director','vice_director','senior_manager','manager','admin','accountant'],
         programs:       ['creator','director','vice_director','senior_manager','manager','admin','senior_instructor','instructor','art_director'],
         center:         ['creator','director','vice_director','senior_manager','manager','admin','accountant'],
         graduation:     ['creator','director','vice_director','senior_manager','manager','admin','art_director','marketer'],

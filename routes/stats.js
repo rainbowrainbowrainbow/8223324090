@@ -414,17 +414,17 @@ router.get('/load', async (req, res) => {
             d.setDate(d.getDate() + 1);
         }
 
-        // Animator workload
+        // Animator workload — group by line_id only, pick latest name
         const animatorResult = await pool.query(`
             SELECT b.line_id,
-                l.name AS animator_name,
-                COUNT(*)::int AS booking_count,
+                MAX(l.name) AS animator_name,
+                COUNT(DISTINCT b.id)::int AS booking_count,
                 COALESCE(SUM(b.duration), 0)::int AS total_minutes
             FROM bookings b
-            JOIN lines_by_date l ON b.line_id = l.line_id AND b.date = l.date
+            LEFT JOIN lines_by_date l ON b.line_id = l.line_id AND b.date = l.date
             WHERE b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL AND b.status = 'confirmed'
-            GROUP BY b.line_id, l.name
+            GROUP BY b.line_id
             ORDER BY booking_count DESC
         `, [from, to]);
 

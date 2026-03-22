@@ -1258,31 +1258,62 @@ async function checkScheduledAnnouncements() {
 async function checkTaskOverdue() {
     try {
         const todayStr = getKyivDateStr();
+
+        // 1. Mark overdue tasks
         const result = await pool.query(
             `UPDATE tasks SET status = 'overdue'
              WHERE date < $1 AND status NOT IN ('done', 'overdue', 'cancelled')
              RETURNING id, title, date, priority, assigned_to`,
             [todayStr]
         );
+
         if (result.rows.length > 0) {
+            // Publish events
             try {
                 const { publish } = require('./eventBus');
                 for (const task of result.rows) {
                     await publish('task.overdue', {
-                        task_id: task.id,
-                        title: task.title,
-                        date: task.date,
-                        priority: task.priority,
+                        task_id: task.id, title: task.title,
+                        date: task.date, priority: task.priority,
                         assigned_to: task.assigned_to
                     }, `task_overdue_${task.id}_${todayStr}`);
                 }
-                log.info(`Task overdue: ${result.rows.length} task(s) marked overdue`);
-            } catch (e) {
-                // eventBus may not exist yet, that's ok
-            }
+            } catch (e) { /* eventBus may not exist */ }
+
+            // v33.10.0: Gamification penalty for overdue tasks
+            try {
+                const { spendCoins } = require('./gamification');
+                for (const task of result.rows) {
+                    if (task.assigned_to) {
+                        const penalty = task.priority === 'high' ? 10 : task.priority === 'normal' ? 5 : 2;
+                        await spendCoins(task.assigned_to, penalty,
+                            `Протерміноване завдання: ${(task.title || '').slice(0, 50)}`,
+                            'penalty', task.id
+                        ).catch(() => {});
+                    }
+                }
+            } catch (e) { /* gamification not ready */ }
+
+            log.info(`Task overdue: ${result.rows.length} task(s) marked overdue`);
         }
+
+        // 2. v33.10.0: Auto-close tasks linked to past events (deadline passed 3+ days ago)
+        try {
+            const closed = await pool.query(
+                `UPDATE tasks SET status = 'cancelled', updated_at = NOW()
+                 WHERE status = 'overdue'
+                   AND deadline IS NOT NULL
+                   AND deadline::date < ($1::date - INTERVAL '3 days')
+                 RETURNING id, title, assigned_to`,
+                [todayStr]
+            );
+            if (closed.rowCount > 0) {
+                log.info(`Task auto-closed: ${closed.rowCount} overdue task(s) cancelled after 3 days`);
+            }
+        } catch (e) { /* deadline column may not exist in older schemas */ }
+
     } catch (err) {
-        if (!err.message.includes('does not exist')) {
+        if (!err.message?.includes('does not exist')) {
             log.error('checkTaskOverdue error', err);
         }
     }

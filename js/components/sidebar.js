@@ -14,6 +14,7 @@ const Sidebar = (() => {
         { href: '/tasks',     icon: '✅', label: 'Задачі',            access: 'all' },
         { href: '/chat',      icon: '💬', label: 'Чат',               access: 'all' },
         { href: '/warehouse', icon: '📦', label: 'Склад',             access: 'all' },
+        { href: '/center',    icon: '💲', label: 'Центр цін',         access: 'center' },
         { href: '/training',  icon: '🎓', label: 'Навчання',          access: 'all' },
 
         // BLOCK 2: Management
@@ -32,7 +33,6 @@ const Sidebar = (() => {
         { type: 'divider' },
         { type: 'section', label: 'Продукт' },
         { href: '/programs',    icon: '🎪', label: 'Програми',    access: 'programs' },
-        { href: '/center',      icon: '💲', label: 'Центр цін',   access: 'center' },
         { href: '/art',         icon: '🎨', label: 'Арт',         access: 'art' },
 
         // BLOCK 4: System

@@ -22,3 +22,11 @@ CREATE TABLE IF NOT EXISTS decisions (
 
 CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status);
 CREATE INDEX IF NOT EXISTS idx_decisions_pending_priority ON decisions(priority, created_at) WHERE status = 'pending';
+
+-- Seed: тестові рішення для першого запуску
+INSERT INTO decisions (title, description, priority, source, created_by, context_url)
+VALUES
+    ('Закупівля браслетів', 'Залишок 12 шт. Потрібно 500. Ціна 2 400 грн.', 'critical', 'kleshnya', 'Клешня', '/warehouse'),
+    ('Оновити програму Квест-Піратів', 'Додати нові загадки та реквізит для квесту', 'important', 'manual', 'Іра'),
+    ('Замовити нові футболки для команди', 'Розміри: S×5, M×10, L×8, XL×3', 'normal', 'system', 'Система')
+ON CONFLICT DO NOTHING;

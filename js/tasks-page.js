@@ -104,6 +104,7 @@ async function initPage() {
 
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     document.getElementById('logoutBtn').addEventListener('click', () => {
         localStorage.removeItem('pzp_token');

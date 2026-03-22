@@ -40,6 +40,7 @@ const DashboardPage = (() => {
                 AppState.currentUser = user;
                 const el = document.getElementById('currentUser');
                 if (el) el.textContent = user.name;
+                if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
             } catch {}
         }
 

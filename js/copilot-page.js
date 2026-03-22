@@ -65,6 +65,7 @@ const CopilotPage = (() => {
             const verified = await apiVerifyToken();
             if (!verified) { window.location.href = '/'; return; }
             AppState.currentUser = verified;
+            if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
         }
     }
 

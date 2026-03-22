@@ -68,6 +68,7 @@ async function initPage() {
 
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     // v20.8.0: Embedded mode — read-only (no edit/delete/add)
     const isEmbedded = isEmbeddedEarly;

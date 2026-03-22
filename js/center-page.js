@@ -2325,6 +2325,7 @@ async function initAuth() {
     }
 
     AppState.currentUser = user;
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     isAdminUser = ADMIN_ROLES.includes(user.role);
 

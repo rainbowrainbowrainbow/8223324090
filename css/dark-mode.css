@@ -2072,3 +2072,14 @@ body.dark-mode .skeleton {
 body.dark-mode .empty-state { color: #6B7280; background: linear-gradient(135deg, rgba(16,185,129,0.03) 0%, rgba(139,92,246,0.03) 100%); border-color: #374151; }
 body.dark-mode .empty-state-text { color: #9CA3AF; }
 body.dark-mode .empty-state-hint { color: #6B7280; }
+
+/* v37.8.0: Dark mode for Visual Polish */
+body.dark-mode .form-section select:focus,
+body.dark-mode .form-section input:focus { background: #1E1E3A; }
+body.dark-mode .inline-form input:focus,
+body.dark-mode .inline-form select:focus,
+body.dark-mode .inline-form textarea:focus { background: #1E1E3A; }
+body.dark-mode .card:hover { border-color: rgba(16,185,129,0.2); }
+body.dark-mode .category-tab.active { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); border-color: transparent; }
+body.dark-mode .stat-item { background: linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(139,92,246,0.06) 100%); border-color: rgba(255,255,255,0.05); }
+body.dark-mode .booking-tooltip { background: linear-gradient(135deg, #252540 0%, #1a1a35 100%); }

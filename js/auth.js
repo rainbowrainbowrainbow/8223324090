@@ -1173,19 +1173,35 @@ document.addEventListener('DOMContentLoaded', () => {
     // Delay slightly to let page-specific JS set username first
     setTimeout(initProfileHandler, 100);
 
-    // v37.4: Auto-fill #currentUser, AppState, and sidebar avatar from localStorage
-    // Many page-specific JS files never set these, causing "?" in header/sidebar
+    // v37.5: Auto-fill sidebar avatar from AppState OR localStorage
+    // Page-specific JS files set AppState.currentUser after apiVerifyToken()
+    // but never call Sidebar.initUserCard() or save to localStorage
     function _autoFillUser() {
         try {
-            const saved = localStorage.getItem('pzp_current_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
-            if (!user || !user.name) return;
+            let user = null;
 
-            // Fill AppState
-            if (typeof AppState !== 'undefined' && !AppState.currentUser) {
-                AppState.currentUser = user;
+            // Priority 1: AppState (set by page-specific initPage after apiVerifyToken)
+            if (typeof AppState !== 'undefined' && AppState.currentUser) {
+                user = AppState.currentUser;
+                // Sync to localStorage so other mechanisms can find it
+                const saved = localStorage.getItem('pzp_current_user');
+                if (!saved) {
+                    localStorage.setItem('pzp_current_user', JSON.stringify(user));
+                }
             }
+
+            // Priority 2: localStorage (set by login() in auth.js)
+            if (!user) {
+                const saved = localStorage.getItem('pzp_current_user');
+                if (!saved) return;
+                user = JSON.parse(saved);
+                if (!user || !user.name) return;
+                // Fill AppState from localStorage
+                if (typeof AppState !== 'undefined' && !AppState.currentUser) {
+                    AppState.currentUser = user;
+                }
+            }
+
             // Fill header #currentUser
             const el = document.getElementById('currentUser');
             if (el && !el.textContent.trim()) {
@@ -1198,8 +1214,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch {}
     }
     setTimeout(_autoFillUser, 200);
-    setTimeout(_autoFillUser, 800);
+    setTimeout(_autoFillUser, 500);
+    setTimeout(_autoFillUser, 1000);
     setTimeout(_autoFillUser, 2000);
+    setTimeout(_autoFillUser, 4000);
 });
 
 // ==========================================

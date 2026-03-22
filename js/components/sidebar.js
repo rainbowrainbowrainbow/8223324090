@@ -352,11 +352,14 @@ const Sidebar = (() => {
         const avatarEl = document.getElementById('sidebarUserAvatar');
         const stillDefault = !avatarEl || avatarEl.textContent.trim() === '?';
         if (stillDefault) {
-            // Retry with increasing delays: 150, 400, 800, 1500, 3000ms
+            // Retry with increasing delays up to ~15s total
+            // Many page-specific JS files set AppState.currentUser asynchronously
+            // after apiVerifyToken() resolves, so we need patient polling
             if (!_retryUserCard._attempt) _retryUserCard._attempt = 0;
             _retryUserCard._attempt++;
-            if (_retryUserCard._attempt <= 5) {
-                setTimeout(_retryUserCard, [150, 400, 800, 1500, 3000][_retryUserCard._attempt - 1]);
+            const delays = [100, 250, 500, 800, 1200, 2000, 3000, 5000];
+            if (_retryUserCard._attempt <= delays.length) {
+                setTimeout(_retryUserCard, delays[_retryUserCard._attempt - 1]);
             }
         }
     }

@@ -1792,7 +1792,7 @@ router.post('/slash', async (req, res) => {
         const pool = require('../db').pool;
         const { command, args } = req.body;
         if (!command) return res.status(400).json({ error: 'command required' });
-        const cmd = command.toLowerCase().trim();
+        const cmd = command.toLowerCase().trim().replace(/^\/+/, '');
 
         function parseArgsDate(arg) {
             if (!arg || ['сьогодні', 'today', 'зараз'].includes(arg.toLowerCase()))

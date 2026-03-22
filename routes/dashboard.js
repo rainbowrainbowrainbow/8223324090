@@ -399,23 +399,48 @@ async function fetchCurrency() {
 router.get('/alerts', async (req, res) => {
     try {
         const today = getKyivDateStr();
-        const [overdue, lowStock, coldLeads, shiftCheck] = await Promise.all([
-            pool.query(`SELECT COUNT(*) as c FROM tasks WHERE deadline < NOW() AND status NOT IN ('done','cancelled')`),
-            pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true LIMIT 5`),
+        const [overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
+            pool.query(`SELECT id, title, deadline FROM tasks WHERE deadline < NOW() AND status NOT IN ('done','cancelled') ORDER BY deadline ASC LIMIT 5`),
+            pool.query(`SELECT id, label, time FROM bookings WHERE date = $1 AND status = 'preliminary' ORDER BY time LIMIT 5`, [today]),
+            pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true LIMIT 3`),
             pool.query(`SELECT COUNT(*) as c FROM leads WHERE status='new' AND created_at < NOW() - INTERVAL '48 hours'`),
             pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts WHERE status='open') AS open_shifts,
                                (SELECT COUNT(*) FROM bookings WHERE date=$1 AND status='confirmed') AS today_bk`, [today])
         ]);
         const alerts = [];
-        const oc = parseInt(overdue.rows[0].c);
+        overdue.rows.forEach(t => {
+            alerts.push({ id: `overdue_${t.id}`, level: 'warning', icon: '⚠️',
+                title: `Прострочена: "${(t.title || '').slice(0, 40)}"`, link: '/tasks',
+                action: { label: '📋 Задача', prompt: `Задача прострочена: "${t.title}". Що робимо?` }
+            });
+        });
+        unconfirmed.rows.forEach(b => {
+            alerts.push({ id: `unconfirmed_${b.id}`, level: 'info', icon: '📋',
+                title: `Непідтверджене: ${(b.time || '').slice(0, 5)} ${b.label || ''}`, link: '/',
+                action: { label: '✅ Підтвердити', prompt: `Бронювання ${b.id} очікує підтвердження.` }
+            });
+        });
+        lowStock.rows.forEach((s, i) => {
+            alerts.push({ id: `stock_${i}`, level: 'warning', icon: '📦',
+                title: `Мало: ${s.name} (${s.quantity} ${s.unit})`, link: '/warehouse',
+                action: { label: '📋 Замовити', prompt: `На складі мало: ${s.name} (${s.quantity}/${s.min_quantity}). Замовити.` }
+            });
+        });
         const cl = parseInt(coldLeads.rows[0].c);
+        if (cl > 0) {
+            alerts.push({ id: 'cold_leads', level: 'warning', icon: '🥶',
+                title: `${cl} лідів без відповіді >48год`, link: '/sales-funnel',
+                action: { label: '📋 Обдзвін', prompt: `${cl} лідів без відповіді. Задача менеджеру.` }
+            });
+        }
         const os = parseInt(shiftCheck.rows[0].open_shifts);
         const tb = parseInt(shiftCheck.rows[0].today_bk);
-        if (oc > 0) alerts.push({ id:'overdue', level:'warning', title:`⚠️ ${oc} прострочених задач`, link:'/tasks.html' });
-        lowStock.rows.forEach((s,i) =>
-            alerts.push({ id:`stock_${i}`, level:'warning', title:`📦 Мало: ${s.name} (${s.quantity} ${s.unit})`, link:'/warehouse.html' }));
-        if (cl > 0) alerts.push({ id:'cold_leads', level:'warning', title:`🥶 ${cl} лідів без відповіді >48год`, link:'/leads.html' });
-        if (os === 0 && tb > 0) alerts.push({ id:'no_shift', level:'critical', title:`🔴 Каса не відкрита! (${tb} броні)`, link:'/finance.html' });
+        if (os === 0 && tb > 0) {
+            alerts.push({ id: 'no_shift', level: 'critical', icon: '🔴',
+                title: `Каса не відкрита! (${tb} броні)`, link: '/finance',
+                action: { label: '💰 Відкрити', prompt: 'Каса не відкрита. Нагадати.' }
+            });
+        }
         res.json({ success: true, alerts, count: alerts.length });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });

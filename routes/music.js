@@ -230,11 +230,32 @@ router.get('/overview', async (req, res) => {
 
 router.get('/log', async (req, res) => {
     try {
-        const limit = Math.min(parseInt(req.query.limit || '100'), 500);
+        const limit = Math.min(parseInt(req.query.limit || '200'), 500);
+        const conditions = [];
+        const params = [];
+        let idx = 1;
+
+        if (req.query.action) {
+            conditions.push(`ml.action = $${idx++}`);
+            params.push(req.query.action);
+        }
+        if (req.query.from) {
+            conditions.push(`ml.created_at >= $${idx++}::date`);
+            params.push(req.query.from);
+        }
+        if (req.query.to) {
+            conditions.push(`ml.created_at < ($${idx++}::date + INTERVAL '1 day')`);
+            params.push(req.query.to);
+        }
+
+        const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+        params.push(limit);
+
         const r = await pool.query(
             `SELECT ml.*, a.title AS announcement_title, a.announcement_type
              FROM music_log ml LEFT JOIN announcements a ON ml.announcement_id = a.id
-             ORDER BY ml.created_at DESC LIMIT $1`, [limit]
+             ${where}
+             ORDER BY ml.created_at DESC LIMIT $${idx}`, params
         );
         res.json({ success: true, log: r.rows });
     } catch (err) { res.status(500).json({ error: err.message }); }

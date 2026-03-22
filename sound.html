@@ -71,85 +71,38 @@
             <div class="sound-page">
                 <div class="sound-header">
                     <div>
-                        <h1>🔊 Звук</h1>
-                        <p class="subtitle">Оголошення, бібліотека звуків, плейлисти</p>
+                        <h1>🔊 Звук — Лог подій</h1>
+                        <p class="subtitle">Історія всіх звукових подій: оголошення, програвання, TTS</p>
                     </div>
                     <div class="sound-header-actions">
-                        <button class="btn-create" onclick="SoundPage.newAnn()">+ Оголошення</button>
+                        <button class="btn-outline" id="logRefreshBtn" title="Оновити">🔄 Оновити</button>
                     </div>
                 </div>
 
-                <div class="sound-tabs">
-                    <button class="sound-tab active" data-tab="announcements">📢 Оголошення</button>
-                    <button class="sound-tab" data-tab="library">🎵 Бібліотека</button>
-                    <button class="sound-tab" data-tab="playlists">📋 Плейлисти</button>
-                    <button class="sound-tab" data-tab="log">📊 Лог</button>
-                </div>
-
-                <!-- Tab: Announcements -->
-                <div id="tab-announcements" class="sound-tab-content active">
-                    <div class="sound-status-filter">
-                        <button class="ann-status-btn sound-filter-btn active" data-status="">Всі</button>
-                        <button class="ann-status-btn sound-filter-btn" data-status="draft">Чернетки</button>
-                        <button class="ann-status-btn sound-filter-btn" data-status="active">Активні</button>
-                        <button class="ann-status-btn sound-filter-btn" data-status="scheduled">Заплановані</button>
-                    </div>
-                    <div id="announcementsGrid" class="sound-grid">
-                        <div class="sound-empty"><div class="sound-empty-icon">📢</div><p>Завантаження...</p></div>
-                    </div>
-                </div>
-
-                <!-- Tab: Library -->
-                <div id="tab-library" class="sound-tab-content">
+                <!-- Filters -->
+                <div class="sound-log-filters">
                     <div class="sound-filter">
-                        <button class="lib-filter-btn sound-filter-btn active" data-cat="">Всі</button>
-                        <button class="lib-filter-btn sound-filter-btn" data-cat="quest">🎯 Квести</button>
-                        <button class="lib-filter-btn sound-filter-btn" data-cat="atmosphere">🌙 Атмосфера</button>
-                        <button class="lib-filter-btn sound-filter-btn" data-cat="effects">💥 Ефекти</button>
-                        <button class="lib-filter-btn sound-filter-btn" data-cat="music">🎵 Музика</button>
-                        <button class="lib-filter-btn sound-filter-btn" data-cat="announcement">📢 Оголошення</button>
+                        <button class="log-action-btn sound-filter-btn active" data-action="">Всі</button>
+                        <button class="log-action-btn sound-filter-btn" data-action="play">▶ Програвання</button>
+                        <button class="log-action-btn sound-filter-btn" data-action="tts">🎙️ TTS</button>
+                        <button class="log-action-btn sound-filter-btn" data-action="create">➕ Створення</button>
+                        <button class="log-action-btn sound-filter-btn" data-action="update">✏️ Зміни</button>
+                        <button class="log-action-btn sound-filter-btn" data-action="delete">🗑️ Видалення</button>
                     </div>
-                    <div id="libraryGrid" class="sound-grid">
-                        <div class="sound-empty"><div class="sound-empty-icon">🎵</div><p>Бібліотека порожня</p></div>
-                    </div>
-
-                    <h3 style="margin-top:32px;font-size:16px;font-weight:700;">📤 Завантажити звук</h3>
-                    <form class="upload-form" id="uploadForm" style="margin-top:12px;">
-                        <div class="form-group">
-                            <label for="soundName">Назва</label>
-                            <input type="text" id="soundName" placeholder="Назва звуку">
-                        </div>
-                        <div class="form-group">
-                            <label for="soundCategory">Категорія</label>
-                            <select id="soundCategory">
-                                <option value="general">Загальне</option>
-                                <option value="quest">Квест</option>
-                                <option value="atmosphere">Атмосфера</option>
-                                <option value="effects">Ефекти</option>
-                                <option value="music">Музика</option>
-                                <option value="announcement">Оголошення</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="soundFile">Файл (.mp3, .wav, .ogg, .m4a)</label>
-                            <input type="file" id="soundFile" accept=".mp3,.wav,.ogg,.m4a,.aac" required>
-                        </div>
-                        <button type="submit" class="btn-create">📤 Завантажити</button>
-                    </form>
-                </div>
-
-                <!-- Tab: Playlists -->
-                <div id="tab-playlists" class="sound-tab-content">
-                    <div id="playlistsContainer">
-                        <div class="sound-empty"><div class="sound-empty-icon">📋</div><p>Немає плейлистів</p></div>
+                    <div class="sound-log-date-filter">
+                        <label>Від:</label>
+                        <input type="date" id="logDateFrom">
+                        <label>До:</label>
+                        <input type="date" id="logDateTo">
                     </div>
                 </div>
 
-                <!-- Tab: Log -->
-                <div id="tab-log" class="sound-tab-content">
-                    <div id="logContainer">
-                        <div class="sound-empty"><div class="sound-empty-icon">📊</div><p>Лог порожній</p></div>
-                    </div>
+                <!-- Stats summary -->
+                <div class="sound-log-stats" id="logStats"></div>
+
+                <!-- Log table -->
+                <div id="logContainer" class="sound-log-wrap">
+                    <div class="sound-empty"><div class="sound-empty-icon">📊</div><p>Завантаження...</p></div>
                 </div>
             </div>
         </main>

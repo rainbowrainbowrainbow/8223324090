@@ -1904,12 +1904,12 @@ router.post('/booking-channel', async (req, res) => {
         const r = await pool.query(
             `INSERT INTO chat_channels (slug, name, description, type, linked_booking_id, created_by)
              VALUES ($1, $2, $3, 'booking', $4, $5) RETURNING *`,
-            [slug, name, `Координація: ${b.label}`, bookingId, req.user.username]
+            [slug, name, `Координація: ${b.label}`, bookingId, userId]
         );
         const channel = r.rows[0];
 
         await pool.query(
-            'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT (channel_id, user_id) DO NOTHING',
             [channel.id, userId]
         );
 

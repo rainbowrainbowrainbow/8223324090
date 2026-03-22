@@ -7889,6 +7889,30 @@ body.dark-mode .guardian-digest-generate-btn {
 }
 
 /* ==========================================
+ * v33.12.0: Info Panel Tabs
+ * ========================================== */
+.chat-info-tabs {
+    display: flex; gap: 0;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    padding: 0 8px;
+}
+.chat-info-tab {
+    padding: 8px 12px; font-size: 14px; background: none; border: none;
+    cursor: pointer; border-bottom: 2px solid transparent;
+    color: var(--gray-400); transition: color 0.15s;
+}
+.chat-info-tab.active { color: var(--primary, #6366f1); border-bottom-color: var(--primary, #6366f1); }
+.chat-info-tab:hover { color: var(--gray-600); }
+
+/* AI Task Form in message */
+.msg-ai-task-form {
+    margin-top: 8px; padding: 10px;
+    background: var(--bg-secondary, #f8f9fa);
+    border: 1px solid var(--primary, #6366f1);
+    border-radius: 10px;
+}
+
+/* ==========================================
  * v33.9.0: ANIMATED WALLPAPERS
  * ========================================== */
 

@@ -1311,7 +1311,7 @@
                     _bookmarkFromContext();
                     break;
                 case 'create-task':
-                    _createTaskFromMessage();
+                    if (_contextMsg) _createAITaskFromMsg(_contextMsg, _contextMsg.el);
                     break;
                 case 'remind':
                     _remindFromContext();
@@ -1606,6 +1606,47 @@
                 setTimeout(function () { toast.remove(); }, 3000);
             }
         }).catch(function () {});
+    }
+
+    // v33.12.0: AI task from message (inline form instead of window.prompt)
+    function _createAITaskFromMsg(msg, el) {
+        var contentEl = el ? el.querySelector('.chat-bubble-content') : null;
+        var usernameEl = el ? el.querySelector('.chat-bubble-username') : null;
+        var msgText = contentEl ? contentEl.textContent.trim() : (msg.content || '');
+        var author = usernameEl ? usernameEl.textContent.trim() : (msg.displayName || msg.username || '');
+        var existing = el ? el.querySelector('.msg-ai-task-form') : null;
+        if (existing) { existing.remove(); return; }
+        var form = document.createElement('div');
+        form.className = 'msg-ai-task-form';
+        form.innerHTML =
+            '<div style="font-size:11px;color:var(--gray-400);margin-bottom:6px">📋 Поставити задачу</div>' +
+            '<div style="font-size:12px;color:var(--gray-500);margin-bottom:6px;padding:6px;background:rgba(0,0,0,0.03);border-radius:6px;border-left:2px solid var(--primary,#6366f1)"><b>@' + _esc(author) + ':</b> ' + _esc(msgText.slice(0, 100)) + '</div>' +
+            '<textarea placeholder="Що треба зробити?" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;resize:none;height:50px;box-sizing:border-box;margin-bottom:6px"></textarea>' +
+            '<div style="display:flex;gap:6px"><button class="ai-task-submit" style="flex:1;padding:6px;background:var(--primary,#6366f1);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">📋 Створити задачу</button>' +
+            '<button onclick="this.closest(\'.msg-ai-task-form\').remove()" style="padding:6px 10px;border:1px solid var(--border-color);border-radius:6px;background:none;cursor:pointer;font-size:12px">✕</button></div>';
+        var bubble = el ? el.querySelector('.chat-bubble') : null;
+        if (bubble) bubble.appendChild(form);
+        var textarea = form.querySelector('textarea');
+        if (textarea) textarea.focus();
+        var submitBtn = form.querySelector('.ai-task-submit');
+        if (submitBtn) {
+            submitBtn.addEventListener('click', async function() {
+                var text = textarea.value.trim();
+                if (!text) { textarea.focus(); return; }
+                submitBtn.disabled = true;
+                submitBtn.textContent = '⏳...';
+                try {
+                    var resp = await fetch('/api/tasks', {
+                        method: 'POST', headers: _headers(),
+                        body: JSON.stringify({ title: text.slice(0, 100), description: 'З чату від @' + author + ':\n' + msgText + '\n\nЗадача: ' + text, priority: 'normal', sourceType: 'chat' })
+                    });
+                    if (resp.ok) {
+                        form.innerHTML = '<div style="color:var(--success,green);font-size:12px;padding:4px">✅ Задачу створено!</div>';
+                        setTimeout(function() { form.remove(); }, 2000);
+                    } else { throw new Error('Failed'); }
+                } catch (e) { submitBtn.disabled = false; submitBtn.textContent = '📋 Створити задачу'; }
+            });
+        }
     }
 
     function _startEdit() {
@@ -2282,6 +2323,75 @@
     // Load preferences on init
     setTimeout(_loadMyPreferences, 500);
 
+    // v33.12.0: Info panel tabs (members/pinned/notes)
+    window._switchInfoTab = function(tabName) {
+        document.querySelectorAll('.chat-info-tab').forEach(function(t) {
+            t.classList.toggle('active', t.dataset.tab === tabName);
+        });
+        document.querySelectorAll('.chat-info-tab-content').forEach(function(c) {
+            c.style.display = c.id === 'infoTab-' + tabName ? '' : 'none';
+        });
+        if (tabName === 'notes') _loadNotes();
+        if (tabName === 'pinned') _loadPinnedInPanel();
+    };
+
+    window._saveNote = async function() {
+        var text = document.getElementById('newNoteText')?.value?.trim();
+        if (!text) return;
+        var vis = document.getElementById('newNoteVisibility')?.value || 'private';
+        try {
+            await _api('POST', '../../api/notes', {
+                title: '', content: text,
+                is_shared: vis === 'shared',
+                channel_id: _currentChannel?.id || null
+            });
+            document.getElementById('newNoteText').value = '';
+            _loadNotes();
+        } catch (e) { if (typeof showNotification === 'function') showNotification('Помилка', 'error'); }
+    };
+
+    async function _loadNotes() {
+        var container = document.getElementById('notesList');
+        if (!container) return;
+        container.innerHTML = '<p style="color:var(--gray-400);font-size:12px;padding:8px">Завантаження...</p>';
+        try {
+            var token = localStorage.getItem('pzp_token');
+            var resp = await fetch('/api/notes', { headers: { 'Authorization': 'Bearer ' + token } });
+            var notes = await resp.json();
+            if (!Array.isArray(notes)) notes = notes.notes || notes || [];
+            if (!notes.length) { container.innerHTML = '<p style="color:var(--gray-400);font-size:12px;padding:8px">Нотаток немає</p>'; return; }
+            container.innerHTML = notes.map(function(n) {
+                var visLabel = n.isShared ? '🌐' : '🔒';
+                return '<div style="padding:8px;border-bottom:1px solid var(--border-color,#e5e7eb)">' +
+                    '<div style="font-size:13px;margin-bottom:4px">' + _esc(n.content || n.title || '') + '</div>' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center">' +
+                    '<span style="font-size:10px;color:var(--gray-400)">' + visLabel + '</span>' +
+                    '<button onclick="_deleteNote(' + n.id + ')" style="background:none;border:none;cursor:pointer;color:var(--gray-300);font-size:12px">✕</button>' +
+                    '</div></div>';
+            }).join('');
+        } catch { container.innerHTML = '<p style="color:#ef4444;font-size:12px;padding:8px">Помилка</p>'; }
+    }
+
+    window._deleteNote = async function(id) {
+        var token = localStorage.getItem('pzp_token');
+        await fetch('/api/notes/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+        _loadNotes();
+    };
+
+    async function _loadPinnedInPanel() {
+        var container = document.getElementById('chatPinnedList');
+        if (!container || !_currentChannel) return;
+        try {
+            var pinned = await _api('GET', '/channels/' + _currentChannel.id + '/pinned');
+            if (!pinned?.length) { container.innerHTML = '<p style="color:var(--gray-400);font-size:12px">Немає закріплених</p>'; return; }
+            container.innerHTML = pinned.map(function(m) {
+                return '<div style="padding:6px;border-bottom:1px solid var(--border-color)">' +
+                    '<div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">@' + _esc(m.username || '') + '</div>' +
+                    '<div style="font-size:13px">' + _esc((m.content || '').slice(0, 80)) + '</div></div>';
+            }).join('');
+        } catch { container.innerHTML = '<p style="color:var(--gray-400);font-size:12px">Помилка</p>'; }
+    }
+
     // Night time settings
     var _nightStartSel = document.getElementById('chatNightStart');
     var _nightEndSel = document.getElementById('chatNightEnd');
@@ -2719,7 +2829,7 @@
                 '<div class="chat-msg-actions">' +
                     '<button class="chat-msg-action-btn" data-action="reply" title="Відповісти">↩</button>' +
                     '<button class="chat-msg-action-btn" data-action="react" title="Реакція">😊</button>' +
-                    '<button class="chat-msg-action-btn" data-action="translate" title="Перекласти">🌐</button>' +
+                    '<button class="chat-msg-action-btn" data-action="ai-task" title="Задача через Клешню">📋</button>' +
                 '</div>' +
             '</div>' +
             '<span class="chat-swipe-reply-icon">↩</span>';
@@ -2738,10 +2848,10 @@
             });
         }
 
-        var translateBtn = el.querySelector('[data-action="translate"]');
-        if (translateBtn) {
-            translateBtn.addEventListener('click', function () {
-                _translateMessage(msg, el);
+        var aiTaskBtn = el.querySelector('[data-action="ai-task"]');
+        if (aiTaskBtn) {
+            aiTaskBtn.addEventListener('click', function () {
+                _createAITaskFromMsg(msg, el);
             });
         }
 

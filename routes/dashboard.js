@@ -126,15 +126,28 @@ router.get('/widgets/:type', async (req, res) => {
 
             case 'quick_stats': {
                 const today = getKyivDateStr();
-                const [bookings, tasks, revenue] = await Promise.all([
+                const [bookings, tasks, revenue, overdueQS, unconfirmedQS, lowStockQS, coldLeadsQS] = await Promise.all([
                     pool.query("SELECT COUNT(*) as count FROM bookings WHERE date = $1 AND status != 'cancelled'", [today]),
                     pool.query("SELECT COUNT(*) as count FROM tasks WHERE status = 'in_progress'"),
                     pool.query("SELECT COALESCE(SUM(price), 0) as total FROM bookings WHERE date = $1 AND status = 'confirmed'", [today]),
+                    pool.query("SELECT COUNT(*) as count FROM tasks WHERE deadline < NOW() AND status NOT IN ('done','cancelled')"),
+                    pool.query("SELECT COUNT(*) as count FROM bookings WHERE date = $1 AND status = 'preliminary'", [today]),
+                    pool.query("SELECT COUNT(*) as count FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true"),
+                    pool.query("SELECT COUNT(*) as count FROM leads WHERE status = 'new' AND created_at < NOW() - INTERVAL '48 hours'")
                 ]);
+                const ov = parseInt(overdueQS.rows[0].count);
+                const uc = parseInt(unconfirmedQS.rows[0].count);
+                const ls = parseInt(lowStockQS.rows[0].count);
+                const cl = parseInt(coldLeadsQS.rows[0].count);
                 data = {
                     bookingsToday: parseInt(bookings.rows[0].count),
                     activeTasks: parseInt(tasks.rows[0].count),
                     revenueToday: parseFloat(revenue.rows[0].total),
+                    needsAttention: ov + uc + ls + cl,
+                    overdueTasks: ov,
+                    unconfirmedBookings: uc,
+                    lowStockItems: ls,
+                    coldLeads: cl
                 };
                 break;
             }
@@ -142,41 +155,54 @@ router.get('/widgets/:type', async (req, res) => {
             case 'alerts': {
                 const alertToday = getKyivDateStr();
                 const [overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
-                    pool.query(`SELECT COUNT(*) as count FROM tasks
-                                WHERE deadline < NOW() AND status NOT IN ('done', 'cancelled')`),
-                    pool.query(`SELECT COUNT(*) as count FROM bookings
-                                WHERE date = $1 AND status = 'preliminary'`, [alertToday]),
-                    pool.query(`SELECT name, quantity, min_quantity, unit
-                                FROM warehouse_stock
-                                WHERE quantity <= min_quantity AND is_active = true LIMIT 5`),
-                    pool.query(`SELECT COUNT(*) as count FROM leads
+                    pool.query(`SELECT id, title, deadline FROM tasks
+                                WHERE deadline < NOW() AND status NOT IN ('done','cancelled')
+                                ORDER BY deadline ASC LIMIT 5`),
+                    pool.query(`SELECT id, label, time FROM bookings
+                                WHERE date = $1 AND status = 'preliminary' ORDER BY time LIMIT 5`, [alertToday]),
+                    pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock
+                                WHERE quantity <= min_quantity AND is_active = true LIMIT 3`),
+                    pool.query(`SELECT COUNT(*) as c FROM leads
                                 WHERE status = 'new' AND created_at < NOW() - INTERVAL '48 hours'`),
                     pool.query(`SELECT
                                   (SELECT COUNT(*) FROM cash_register_shifts WHERE status = 'open') AS open_shifts,
-                                  (SELECT COUNT(*) FROM bookings WHERE date = $1 AND status = 'confirmed') AS today_bookings`,
+                                  (SELECT COUNT(*) FROM bookings WHERE date = $1 AND status = 'confirmed') AS today_bk`,
                                 [alertToday])
                 ]);
                 const alerts = [];
-                const overdueCount     = parseInt(overdue.rows[0].count);
-                const unconfirmedCount = parseInt(unconfirmed.rows[0].count);
-                const coldLeadsCount   = parseInt(coldLeads.rows[0].count);
-                const openShifts       = parseInt(shiftCheck.rows[0].open_shifts);
-                const todayBookings    = parseInt(shiftCheck.rows[0].today_bookings);
-                if (overdueCount > 0)
-                    alerts.push({ id:'overdue', type:'warning', level:'warning', title:`${overdueCount} прострочених задач`, icon:'⚠️', link:'/tasks.html' });
-                if (unconfirmedCount > 0)
-                    alerts.push({ id:'unconfirmed', type:'info', level:'info', title:`${unconfirmedCount} непідтв. бронювань`, icon:'📋', link:'/index.html' });
-                lowStock.rows.forEach((s, i) =>
-                    alerts.push({ id:`stock_${i}`, type:'warning', level:'warning',
-                                  title:`📦 Мало: ${s.name}`, message:`${s.quantity} ${s.unit} (мін: ${s.min_quantity})`,
-                                  icon:'📦', link:'/warehouse.html' }));
-                if (coldLeadsCount > 0)
-                    alerts.push({ id:'cold_leads', type:'warning', level:'warning',
-                                  title:`${coldLeadsCount} лідів без відповіді >48год`, icon:'🥶', link:'/leads.html' });
-                if (openShifts === 0 && todayBookings > 0)
-                    alerts.push({ id:'no_shift', type:'critical', level:'critical',
-                                  title:`🔴 Каса не відкрита! (${todayBookings} броні)`, icon:'💰', link:'/finance.html' });
-                data = { alerts };
+                overdue.rows.forEach(t => {
+                    alerts.push({ id: `overdue_${t.id}`, type: 'warning', level: 'warning', icon: '⚠️',
+                        title: `Прострочена: "${(t.title || '').slice(0, 40)}"`, link: '/tasks',
+                        action: { label: '📋 Задача', prompt: `Задача прострочена: "${t.title}". Що робимо?` }
+                    });
+                });
+                unconfirmed.rows.forEach(b => {
+                    alerts.push({ id: `unconfirmed_${b.id}`, type: 'info', level: 'info', icon: '📋',
+                        title: `Непідтверджене: ${(b.time || '').slice(0, 5)} ${b.label || ''}`, link: '/',
+                        action: { label: '✅ Підтвердити', prompt: `Бронювання ${b.id} очікує підтвердження.` }
+                    });
+                });
+                lowStock.rows.forEach((s, i) => {
+                    alerts.push({ id: `stock_${i}`, type: 'warning', level: 'warning', icon: '📦',
+                        title: `Мало: ${s.name} (${s.quantity} ${s.unit})`, link: '/warehouse',
+                        action: { label: '📋 Замовити', prompt: `На складі мало: ${s.name} (${s.quantity}/${s.min_quantity}). Замовити.` }
+                    });
+                });
+                const coldCount = parseInt(coldLeads.rows[0].c);
+                if (coldCount > 0) {
+                    alerts.push({ id: 'cold_leads', type: 'warning', level: 'warning', icon: '🥶',
+                        title: `${coldCount} лідів без відповіді >48год`, link: '/sales-funnel',
+                        action: { label: '📋 Обдзвін', prompt: `${coldCount} лідів без відповіді. Задача менеджеру.` }
+                    });
+                }
+                const { open_shifts, today_bk } = shiftCheck.rows[0];
+                if (parseInt(open_shifts) === 0 && parseInt(today_bk) > 0) {
+                    alerts.push({ id: 'no_shift', type: 'critical', level: 'critical', icon: '🔴',
+                        title: `Каса не відкрита! (${today_bk} броні)`, link: '/finance',
+                        action: { label: '💰 Відкрити', prompt: 'Каса не відкрита. Нагадати.' }
+                    });
+                }
+                data = { alerts, count: alerts.length };
                 break;
             }
 

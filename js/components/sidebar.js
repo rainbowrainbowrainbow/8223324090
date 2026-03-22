@@ -8,7 +8,7 @@ const Sidebar = (() => {
     // ═══ NAV_ITEMS — 4 logical blocks ═══
     const NAV_ITEMS = [
         // BLOCK 1: Daily (all roles)
-        { type: 'section', label: 'Щоденне' },
+        { type: 'section', label: 'CRM' },
         { href: '/dashboard', icon: '🏠', label: 'Дашборд',          access: 'all' },
         { href: '/',          icon: '📅', label: 'Таймлайн івентів',  access: 'timeline' },
         { href: '/tasks',     icon: '✅', label: 'Задачі',            access: 'all' },
@@ -38,7 +38,6 @@ const Sidebar = (() => {
         // BLOCK 4: System
         { type: 'divider' },
         { type: 'section', label: 'Система' },
-        { href: '/status',    icon: '🔦', label: 'Статус',        access: 'all' },
         { href: '/game',      icon: '🎮', label: 'Гра',           access: 'all' },
         { href: '/demo',      icon: '🎬', label: 'Demo',          access: 'demo' },
         { href: '/?settings=open', icon: '⚙️', label: 'Налаштування', access: 'settings' },

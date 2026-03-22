@@ -6,15 +6,15 @@
     <title>Event Genix | Командний чат</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=33.11.0">
-    <link rel="stylesheet" href="css/layout.css?v=33.11.0">
-    <link rel="stylesheet" href="css/pages.css?v=33.11.0">
-    <link rel="stylesheet" href="css/modals.css?v=33.11.0">
-    <link rel="stylesheet" href="css/chat.css?v=33.11.0">
-    <link rel="stylesheet" href="css/agents.css?v=33.11.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=33.11.0">
-    <link rel="stylesheet" href="css/responsive.css?v=33.11.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=33.11.0">
+    <link rel="stylesheet" href="css/base.css?v=33.12.0">
+    <link rel="stylesheet" href="css/layout.css?v=33.12.0">
+    <link rel="stylesheet" href="css/pages.css?v=33.12.0">
+    <link rel="stylesheet" href="css/modals.css?v=33.12.0">
+    <link rel="stylesheet" href="css/chat.css?v=33.12.0">
+    <link rel="stylesheet" href="css/agents.css?v=33.12.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=33.12.0">
+    <link rel="stylesheet" href="css/responsive.css?v=33.12.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=33.12.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -437,11 +437,31 @@
 
                 <!-- Right panel (info / pinned / profile) -->
                 <div class="chat-info-panel" id="chatInfoPanel">
-                    <div class="chat-info-panel-header">
-                        <h3 class="chat-info-panel-title" id="chatInfoPanelTitle">Учасники</h3>
-                        <button class="chat-info-panel-close" id="chatInfoPanelClose">&times;</button>
+                    <div class="chat-info-tabs">
+                        <button class="chat-info-tab active" data-tab="members" onclick="_switchInfoTab('members')">👥</button>
+                        <button class="chat-info-tab" data-tab="pinned" onclick="_switchInfoTab('pinned')">📌</button>
+                        <button class="chat-info-tab" data-tab="notes" onclick="_switchInfoTab('notes')">📝</button>
+                        <button class="chat-info-panel-close" id="chatInfoPanelClose" style="margin-left:auto">&times;</button>
                     </div>
-                    <div class="chat-info-panel-body" id="chatInfoPanelBody"></div>
+                    <div class="chat-info-tab-content" id="infoTab-members">
+                        <div class="chat-info-panel-body" id="chatInfoPanelBody"></div>
+                    </div>
+                    <div class="chat-info-tab-content" id="infoTab-pinned" style="display:none">
+                        <div id="chatPinnedList" style="padding:8px"></div>
+                    </div>
+                    <div class="chat-info-tab-content" id="infoTab-notes" style="display:none">
+                        <div style="padding:10px;border-bottom:1px solid var(--border-color)">
+                            <textarea id="newNoteText" rows="2" placeholder="Нова нотатка..." style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:8px;font-size:13px;resize:none;box-sizing:border-box"></textarea>
+                            <div style="display:flex;gap:6px;margin-top:6px">
+                                <select id="newNoteVisibility" style="flex:1;padding:5px;border:1px solid var(--border-color);border-radius:6px;font-size:12px">
+                                    <option value="private">🔒 Тільки я</option>
+                                    <option value="shared">🌐 Всі</option>
+                                </select>
+                                <button onclick="_saveNote()" class="chat-modal-btn chat-modal-btn-primary" style="font-size:12px;padding:5px 10px">+ Додати</button>
+                            </div>
+                        </div>
+                        <div id="notesList" style="overflow-y:auto;max-height:calc(100vh - 280px);padding:8px"></div>
+                    </div>
                 </div>
 
                 <!-- Thread panel (slides from right) -->
@@ -591,17 +611,17 @@
         </div>
     </div>
 
-    <script src="js/config.js?v=33.11.0"></script>
-    <script src="js/api.js?v=33.11.0"></script>
-    <script src="js/auth.js?v=33.11.0"></script>
-    <script src="js/components/sidebar.js?v=33.11.0"></script>
+    <script src="js/config.js?v=33.12.0"></script>
+    <script src="js/api.js?v=33.12.0"></script>
+    <script src="js/auth.js?v=33.12.0"></script>
+    <script src="js/components/sidebar.js?v=33.12.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=33.11.0"></script>
-    <script src="js/sound-engine.js?v=33.11.0"></script>
-    <script src="js/chat-page.js?v=33.11.0"></script>
-    <script src="js/ui.js?v=33.11.0"></script>
-    <script src="js/agents-panel.js?v=33.11.0"></script>
-    <script src="js/role-panel.js?v=33.11.0"></script>
+    <script src="js/ws.js?v=33.12.0"></script>
+    <script src="js/sound-engine.js?v=33.12.0"></script>
+    <script src="js/chat-page.js?v=33.12.0"></script>
+    <script src="js/ui.js?v=33.12.0"></script>
+    <script src="js/agents-panel.js?v=33.12.0"></script>
+    <script src="js/role-panel.js?v=33.12.0"></script>
     <script>
     // Sound Settings Panel — v28.0.0
     (function () {

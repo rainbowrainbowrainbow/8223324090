@@ -604,3 +604,10 @@ button:focus-visible, .btn:focus-visible, a:focus-visible {
 .alert-item.info     { border-color:var(--primary,#6366f1); background:var(--glass-bg); }
 .alerts-empty { text-align:center; padding:20px; color:var(--gray-400); font-size:13px; }
 @keyframes slideInAlert { from{transform:translateX(16px);opacity:0} to{transform:none;opacity:1} }
+.alert-action-btn {
+    display: inline-block; margin-top: 6px; padding: 4px 10px;
+    font-size: 11px; border: 1px solid var(--primary, #6366f1);
+    color: var(--primary, #6366f1); background: rgba(99,102,241,0.06);
+    border-radius: 6px; cursor: pointer; transition: background 0.15s;
+}
+.alert-action-btn:hover { background: rgba(99,102,241,0.14); }

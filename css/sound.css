@@ -15,9 +15,9 @@
 .sound-tab:hover { color: var(--gray-700); }
 .sound-tab.active { background: var(--white, #fff); color: var(--gray-900); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 
-/* Tab content */
-.tab-content { display: none; }
-.tab-content.active { display: block; }
+/* Tab content panels */
+.sound-tab-panel { display: none; }
+.sound-tab-panel.active { display: block; }
 
 /* ═══ Toolbar ═══ */
 .sound-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }

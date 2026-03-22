@@ -23,7 +23,7 @@
             document.querySelectorAll('.sound-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
 
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.sound-tab-panel').forEach(c => c.classList.remove('active'));
             const targetId = 'tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1);
             const target = document.getElementById(targetId);
             if (target) target.classList.add('active');

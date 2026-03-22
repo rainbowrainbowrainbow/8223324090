@@ -106,6 +106,8 @@ router.post('/webhook', async (req, res) => {
 
 // ==========================================
 // POST /api/report-bot/submit — Bot sends report to CRM (snake_case)
+// Routes: object_name === 'Особисте' → personal_account_transactions
+//         otherwise → finance_transactions + reports (legacy)
 // ==========================================
 router.post('/submit', requireBotApiKey, async (req, res) => {
     try {
@@ -113,7 +115,7 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
             type, amount, description, category,
             submitted_by, submitted_by_id, submitted_via = 'bot',
             photo_url, ocr_text, voice_transcript, raw_data, status = 'new',
-            account_id, account_name
+            account_id, account_name, object_name
         } = req.body;
 
         if (!type || !['income', 'expense'].includes(type)) {
@@ -123,70 +125,112 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
             return res.status(400).json({ error: 'Amount must be > 0' });
         }
 
-        // Validate account_id if provided
+        const amountInt = Math.round(parseFloat(amount));
+        const today = new Date().toISOString().slice(0, 10);
+        const tgId = submitted_by_id ? parseInt(submitted_by_id, 10) : null;
+
+        // 1. Save to submissions queue
+        const sub = await pool.query(`
+            INSERT INTO report_bot_submissions
+                (raw_type, amount, description, category, account_name, object_name,
+                 submitted_by, submitted_by_id, photo_url, ocr_text, voice_transcript)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            RETURNING id
+        `, [type, amountInt, description || null, category || null,
+            account_name || null, object_name || null,
+            submitted_by || null, tgId,
+            photo_url || null, ocr_text || null, voice_transcript || null]);
+        const subId = sub.rows[0].id;
+
+        // 2. Personal → personal_account_transactions (isolated from company P&L)
+        if (object_name === 'Особисте') {
+            const accRow = await pool.query(`
+                SELECT id FROM finance_accounts
+                WHERE owner_telegram_id = $1
+                AND (name = $2 OR $2 IS NULL)
+                AND is_personal = true AND is_active = true
+                ORDER BY created_at DESC LIMIT 1
+            `, [tgId, account_name || null]);
+
+            let personalTxId = null;
+            if (accRow.rows.length) {
+                const r = await pool.query(`
+                    INSERT INTO personal_account_transactions
+                        (account_id, type, amount, description, category,
+                         date, source, submitted_by_telegram)
+                    VALUES ($1,$2,$3,$4,$5,$6,'report_bot',$7)
+                    RETURNING id
+                `, [accRow.rows[0].id, type, amountInt, description || null,
+                    category || null, today, tgId]);
+                personalTxId = r.rows[0].id;
+            }
+
+            await pool.query(
+                `UPDATE report_bot_submissions SET status='personal', personal_tx_id=$1 WHERE id=$2`,
+                [personalTxId, subId]
+            );
+
+            log.info(`Bot report #${subId} → personal (txId: ${personalTxId})`);
+            return res.status(201).json({
+                ok: true, id: subId, routed: 'personal', personalTxId
+            });
+        }
+
+        // 3. Corporate → finance_transactions
+        // Map category via report_bot_category_map
+        let categoryId = null;
+        if (category) {
+            const map = await pool.query(
+                'SELECT finance_category_id FROM report_bot_category_map WHERE bot_category = $1',
+                [category.toLowerCase()]
+            );
+            categoryId = map.rows[0]?.finance_category_id || null;
+        }
+
+        const payMethod = (account_name || '').toLowerCase().includes('готівка')
+            || (account_name || '').toLowerCase().includes('каса') ? 'cash' : 'card';
+
+        const ft = await pool.query(`
+            INSERT INTO finance_transactions
+                (type, category_id, amount, description, date, payment_method,
+                 object_name, account_name, source, created_by)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'report_bot',$9)
+            RETURNING id
+        `, [type, categoryId, amountInt, description || null, today, payMethod,
+            object_name || null, account_name || null, submitted_by || null]);
+
+        await pool.query(
+            `UPDATE report_bot_submissions SET status='processed', finance_transaction_id=$1 WHERE id=$2`,
+            [ft.rows[0].id, subId]
+        );
+
+        // Also save to reports table (legacy compatibility)
         const accountIdInt = account_id ? parseInt(account_id, 10) : null;
-        if (account_id && isNaN(accountIdInt)) {
-            return res.status(400).json({ error: 'Invalid account_id (must be integer)' });
-        }
-        const accName = account_name ? String(account_name).slice(0, 100) : null;
-
-        // submitted_by_id from bot is Telegram chat_id, not staff.id
-        // Store chat_id in raw_data, leave submitted_by_id null to avoid FK violation
         const botRawData = raw_data || {};
-        if (submitted_by_id) {
-            botRawData.telegram_chat_id = submitted_by_id;
-        }
+        if (submitted_by_id) botRawData.telegram_chat_id = submitted_by_id;
 
-        const result = await pool.query(`
+        const reportResult = await pool.query(`
             INSERT INTO reports (type, amount, description, category, submitted_by,
                 submitted_via, photo_url, ocr_text, voice_transcript, raw_data, status,
                 account_id, account_name)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING *
-        `, [
-            type,
-            parseFloat(amount),
-            description || null,
-            category || null,
-            submitted_by || 'Bot',
-            submitted_via,
-            photo_url || null,
-            ocr_text || null,
-            voice_transcript || null,
-            JSON.stringify(botRawData),
-            status,
-            accountIdInt,
-            accName
-        ]);
+            RETURNING id
+        `, [type, parseFloat(amount), description || null, category || null,
+            submitted_by || 'Bot', submitted_via,
+            photo_url || null, ocr_text || null, voice_transcript || null,
+            JSON.stringify(botRawData), status,
+            accountIdInt, account_name || null]);
 
-        const report = result.rows[0];
-
-        // Auto-assign to on-duty accountant
-        const duty = await pool.query(
-            'SELECT id, name FROM accountants WHERE is_on_duty = true LIMIT 1'
-        );
-        if (duty.rows.length > 0) {
-            await pool.query(
-                'UPDATE reports SET assigned_to = $1, assigned_at = NOW() WHERE id = $2',
-                [duty.rows[0].id, report.id]
-            );
-            report.assigned_to = duty.rows[0].id;
-            report.accountant_name = duty.rows[0].name;
-        }
-
-        log.info(`Bot report #${report.id}: ${type} ${amount} by ${submitted_by}`);
+        log.info(`Bot report #${subId} → finance_transactions #${ft.rows[0].id}`);
         res.status(201).json({
-            id: report.id,
-            type: report.type,
-            amount: parseFloat(report.amount),
-            status: report.status,
-            assigned_to: report.assigned_to || null,
-            accountant_name: report.accountant_name || null,
-            created_at: report.created_at
+            ok: true, id: subId,
+            transactionId: ft.rows[0].id,
+            reportId: reportResult.rows[0].id,
+            routed: 'finance'
         });
     } catch (err) {
         log.error('POST /report-bot/submit error', err);
-        res.status(500).json({ error: 'Database error' });
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -218,36 +262,43 @@ router.get('/on-duty', requireBotApiKey, async (req, res) => {
 router.get('/summary', requireBotApiKey, async (req, res) => {
     try {
         const today = new Date().toISOString().slice(0, 10);
-        const result = await pool.query(`
-            SELECT
-                type,
-                COUNT(*) as count,
-                COALESCE(SUM(amount), 0) as total
-            FROM reports
-            WHERE created_at::date = $1
-            GROUP BY type
-        `, [today]);
-
-        const income = result.rows.find(r => r.type === 'income');
-        const expense = result.rows.find(r => r.type === 'expense');
-
-        const pending = await pool.query(
-            "SELECT COUNT(*) FROM reports WHERE status = 'new'"
-        );
+        const [todayStats, pendingCount, weekByObject] = await Promise.all([
+            pool.query(`
+                SELECT
+                    COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income_total,
+                    COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense_total,
+                    COALESCE(SUM(CASE WHEN type='income'  THEN amount
+                                      WHEN type='expense' THEN -amount ELSE 0 END),0) AS profit
+                FROM finance_transactions
+                WHERE date = $1 AND source = 'report_bot'
+            `, [today]),
+            pool.query(`SELECT COUNT(*) AS count FROM report_bot_submissions WHERE status='new'`),
+            pool.query(`
+                SELECT object_name,
+                    COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income,
+                    COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense
+                FROM finance_transactions
+                WHERE date >= CURRENT_DATE - INTERVAL '7 days'
+                AND source = 'report_bot' AND object_name IS NOT NULL
+                GROUP BY object_name ORDER BY (
+                    SUM(CASE WHEN type='income' THEN amount ELSE 0 END) -
+                    SUM(CASE WHEN type='expense' THEN amount ELSE 0 END)
+                ) DESC
+            `)
+        ]);
 
         res.json({
             today: {
-                income_total: parseFloat(income?.total || 0),
-                income_count: parseInt(income?.count || 0),
-                expense_total: parseFloat(expense?.total || 0),
-                expense_count: parseInt(expense?.count || 0),
-                profit: parseFloat(income?.total || 0) - parseFloat(expense?.total || 0)
+                income_total:  parseInt(todayStats.rows[0].income_total),
+                expense_total: parseInt(todayStats.rows[0].expense_total),
+                profit:        parseInt(todayStats.rows[0].profit)
             },
-            pending_count: parseInt(pending.rows[0].count)
+            pending_count: parseInt(pendingCount.rows[0].count),
+            week_by_object: weekByObject.rows
         });
     } catch (err) {
         log.error('GET /report-bot/summary error', err);
-        res.status(500).json({ error: 'Database error' });
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -257,12 +308,40 @@ router.get('/summary', requireBotApiKey, async (req, res) => {
 router.get('/accounts', requireBotApiKey, async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id, name, emoji, description, type, sort_order FROM finance_accounts WHERE is_active = true ORDER BY sort_order'
+            'SELECT id, name, emoji, description, type, sort_order FROM finance_accounts WHERE is_active = true AND is_personal = false ORDER BY sort_order'
         );
         res.json({ success: true, accounts: result.rows });
     } catch (err) {
         log.error('GET /report-bot/accounts error', err);
-        res.status(500).json({ error: 'Database error' });
+        // Fallback if columns not yet migrated
+        res.json({ success: true, accounts: [
+            { id: 1, name: 'Каса (готівка)',     emoji: '💵', type: 'cash' },
+            { id: 2, name: 'Privat (безготівка)', emoji: '💳', type: 'card' },
+            { id: 3, name: 'Mono (безготівка)',   emoji: '🖤', type: 'card' },
+            { id: 4, name: 'Інший рахунок',       emoji: '🏦', type: 'bank' }
+        ]});
+    }
+});
+
+// ==========================================
+// GET /api/report-bot/submissions — Submission queue for UI or bot
+// ==========================================
+router.get('/submissions', requireBotApiKey, async (req, res) => {
+    try {
+        const { object, status, from, to } = req.query;
+        let q = 'SELECT * FROM report_bot_submissions WHERE 1=1';
+        const params = [];
+        let i = 1;
+        if (object) { q += ` AND object_name = $${i++}`; params.push(object); }
+        if (status) { q += ` AND status = $${i++}`; params.push(status); }
+        if (from)   { q += ` AND created_at >= $${i++}`; params.push(from); }
+        if (to)     { q += ` AND created_at < $${i++}::date + INTERVAL '1 day'`; params.push(to); }
+        q += ` ORDER BY created_at DESC LIMIT 100`;
+        const result = await pool.query(q, params);
+        res.json({ submissions: result.rows, count: result.rowCount });
+    } catch (err) {
+        log.error('GET /report-bot/submissions error', err);
+        res.status(500).json({ error: err.message });
     }
 });
 

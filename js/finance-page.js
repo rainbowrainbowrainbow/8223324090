@@ -547,7 +547,7 @@ function switchTab(tabName) {
 
     // Show/hide tab panels
     const tabs = ['tabDashboard','tabTransactions','tabMonthly','tabSalary','tabBudget',
-                  'tabShift','tabForecast','tabPnl','tabDebts','tabAdvanced','tabAccounts'];
+                  'tabShift','tabForecast','tabPnl','tabDebts','tabAdvanced','tabAccounts','tabPersonal'];
     tabs.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -556,7 +556,8 @@ function switchTab(tabName) {
         dashboard: 'tabDashboard', transactions: 'tabTransactions',
         monthly: 'tabMonthly', salary: 'tabSalary', budget: 'tabBudget',
         shift: 'tabShift', forecast: 'tabForecast', pnl: 'tabPnl',
-        debts: 'tabDebts', advanced: 'tabAdvanced', accounts: 'tabAccounts'
+        debts: 'tabDebts', advanced: 'tabAdvanced', accounts: 'tabAccounts',
+        personal: 'tabPersonal'
     }[tabName]);
     if (activePanel) activePanel.style.display = '';
 
@@ -572,6 +573,7 @@ function switchTab(tabName) {
     if (tabName === 'debts') loadDebts();
     if (tabName === 'advanced') loadAdvancedDashboard();
     if (tabName === 'accounts') loadAccounts();
+    if (tabName === 'personal') loadPersonalAccounts();
 }
 
 // ==========================================
@@ -1403,5 +1405,96 @@ async function toggleAccount(id, active) {
         loadAccounts();
     } catch (err) {
         showNotification(err.message || 'Помилка', 'error');
+    }
+}
+
+// ==========================================
+// PERSONAL ACCOUNTS (v37.9)
+// ==========================================
+
+async function loadPersonalAccounts() {
+    const container = document.getElementById('personalAccountsList');
+    if (!container) return;
+
+    const tgId = AppState.currentUser?.telegram_chat_id;
+    if (!tgId) {
+        container.innerHTML = '<p style="opacity:.5;font-size:13px;grid-column:1/-1">Прив\'яжіть Telegram у профілі щоб бачити особисті рахунки</p>';
+        return;
+    }
+
+    container.innerHTML = '<p style="opacity:.5;font-size:13px;grid-column:1/-1">Завантаження...</p>';
+
+    try {
+        const data = await apiRequest('GET', `/api/personal-accounts/my?telegram_id=${tgId}`);
+        const accounts = data.accounts || [];
+
+        if (!accounts.length) {
+            container.innerHTML = '<p style="opacity:.5;font-size:13px;grid-column:1/-1">Ще немає особистих рахунків.<br>Створи через бота: /new_account Назва</p>';
+            return;
+        }
+
+        container.innerHTML = accounts.map(a => `
+            <div class="fin-personal-card" onclick="loadPersonalTx(${a.id}, '${escapeHtml(a.name)}')">
+                <div style="font-size:28px;margin-bottom:8px">${escapeHtml(a.emoji || '💳')}</div>
+                <div style="font-weight:700;font-size:14px">${escapeHtml(a.name)}</div>
+                <div style="font-size:11px;color:var(--gray-400);margin-top:4px">
+                    ${a.role === 'owner' ? '🔑 Власний' : '👥 Спільний доступ'}
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = '<p style="opacity:.5;font-size:13px;grid-column:1/-1">Помилка завантаження</p>';
+    }
+}
+
+async function loadPersonalTx(accountId, name) {
+    const section = document.getElementById('personalTxSection');
+    const titleEl = document.getElementById('personalTxTitle');
+    const listEl  = document.getElementById('personalTxList');
+    if (!section || !titleEl || !listEl) return;
+
+    section.style.display = 'block';
+    titleEl.textContent = `📋 ${name}`;
+    listEl.innerHTML = '<p style="opacity:.5;font-size:13px">Завантаження...</p>';
+
+    try {
+        const data = await apiRequest('GET', `/api/personal-accounts/${accountId}/transactions`);
+        const transactions = data.transactions || [];
+
+        if (!transactions.length) {
+            listEl.innerHTML = '<p style="opacity:.5;font-size:13px">Транзакцій ще немає</p>';
+            return;
+        }
+
+        const inc = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+        const exp = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+        listEl.innerHTML = `
+            <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+                <div style="padding:8px 16px;background:#D1FAE5;border-radius:8px;font-size:13px">
+                    💰 Дохід: <b>${inc.toLocaleString('uk-UA')} ₴</b>
+                </div>
+                <div style="padding:8px 16px;background:#FEE2E2;border-radius:8px;font-size:13px">
+                    💸 Витрати: <b>${exp.toLocaleString('uk-UA')} ₴</b>
+                </div>
+            </div>
+            <div class="fin-table-wrap">
+            <table class="fin-table">
+                <thead><tr>
+                    <th>Дата</th><th>Тип</th><th>Сума</th><th>Опис</th><th>Категорія</th>
+                </tr></thead>
+                <tbody>
+                ${transactions.map(t => `<tr>
+                    <td>${new Date(t.date).toLocaleDateString('uk-UA')}</td>
+                    <td>${t.type === 'income' ? '💰 Дохід' : '💸 Витрата'}</td>
+                    <td><b>${t.amount.toLocaleString('uk-UA')} ₴</b></td>
+                    <td>${escapeHtml(t.description || '—')}</td>
+                    <td>${escapeHtml(t.category || '—')}</td>
+                </tr>`).join('')}
+                </tbody>
+            </table>
+            </div>`;
+    } catch (e) {
+        listEl.innerHTML = '<p style="opacity:.5;font-size:13px">Помилка завантаження</p>';
     }
 }

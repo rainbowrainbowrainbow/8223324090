@@ -427,6 +427,24 @@
         body.dark-mode .fin-type-badge.income { background: #064E3B; color: #6EE7B7; }
         body.dark-mode .fin-type-badge.expense { background: #7F1D1D; color: #FCA5A5; }
 
+        /* Personal account cards */
+        .fin-personal-card {
+            padding: 16px;
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: box-shadow 0.2s, transform 0.2s;
+        }
+        .fin-personal-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transform: translateY(-2px);
+        }
+        body.dark-mode .fin-personal-card {
+            background: #2A2A4A;
+            border-color: #3D3D5C;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .fin-stats {
@@ -529,6 +547,7 @@
                 <button class="fin-tab" data-tab="budget">Бюджет</button>
                 <button class="fin-tab" data-tab="advanced">Аналітика</button>
                 <button class="fin-tab" data-tab="accounts">Рахунки</button>
+                <button class="fin-tab" data-tab="personal">👤 Особисті</button>
             </div>
 
             <!-- Dashboard tab -->
@@ -735,6 +754,24 @@
                     <button class="btn-page-primary" onclick="openAddAccountModal()">+ Новий рахунок</button>
                 </div>
                 <div id="accountsList"></div>
+            </div>
+
+            <!-- Personal accounts tab (v37.9) -->
+            <div id="tabPersonal" style="display:none">
+                <div style="margin-bottom:16px;padding:12px 16px;background:rgba(139,92,246,.08);border-radius:12px;border:1px solid rgba(139,92,246,.2)">
+                    <p style="font-size:13px;color:var(--gray-600);margin:0">
+                        👤 <b>Особисті рахунки</b> — видимі тільки вам і людям з доступом.
+                        Не включаються в загальну аналітику компанії.
+                    </p>
+                </div>
+                <div id="personalAccountsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px"></div>
+                <button class="btn-page-secondary" onclick="window.open('https://t.me/EGen_Park_Report_bot', '_blank')" style="font-size:13px">
+                    ➕ Новий рахунок (через бота: /new_account)
+                </button>
+                <div id="personalTxSection" style="display:none;margin-top:24px">
+                    <h4 id="personalTxTitle" style="margin-bottom:12px;font-weight:800"></h4>
+                    <div id="personalTxList"></div>
+                </div>
             </div>
 
             <!-- Budget tab (v17.0) -->

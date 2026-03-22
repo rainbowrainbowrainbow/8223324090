@@ -6,7 +6,7 @@ const Sidebar = (() => {
     // ═══ NAV_ITEMS ════════════════════════════════════════════════
     const NAV_ITEMS = [
         // ─── GROUP: CRM ──────────────────────────────────────────
-        { type: 'group', key: 'crm', label: 'CRM', icon: '📋', defaultOpen: true },
+        { type: 'group', key: 'crm', label: 'CRM', icon: '📋', defaultOpen: false },
         { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'crm' },
         { href: '/',             icon: '📅', label: 'Таймлайн',       access: 'timeline',       group: 'crm' },
         { href: '/tasks',        icon: '✅', label: 'Задачі',         access: 'all',            group: 'crm' },
@@ -16,7 +16,7 @@ const Sidebar = (() => {
         { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'all',            group: 'crm' },
 
         // ─── GROUP: Управління ───────────────────────────────────
-        { type: 'group', key: 'mgmt', label: 'Управління', icon: '👔', defaultOpen: true },
+        { type: 'group', key: 'mgmt', label: 'Управління', icon: '👔', defaultOpen: false },
         { href: '/customers',    icon: '👥', label: 'Клієнти',        access: 'management',     group: 'mgmt' },
         { href: '/sales-funnel', icon: '🔥', label: 'Ліди',          access: 'leads',          group: 'mgmt' },
         // E7 FIX: /staff двічі → перший активний, другий ні
@@ -29,7 +29,7 @@ const Sidebar = (() => {
         { href: '/copilot',      icon: '🤖', label: 'Менеджер AI',    access: 'copilot',        group: 'mgmt' },
 
         // ─── GROUP: Творче ───────────────────────────────────────
-        { type: 'group', key: 'creative', label: 'Творче', icon: '🎨', defaultOpen: true },
+        { type: 'group', key: 'creative', label: 'Творче', icon: '🎨', defaultOpen: false },
         { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'creative' },
         { href: '/art',          icon: '🎨', label: 'Art Director',   access: 'art',            group: 'creative' },
         { href: '/designer',     icon: '📐', label: 'Дизайнер',       access: 'art',            group: 'creative' },
@@ -42,7 +42,7 @@ const Sidebar = (() => {
           action: 'sidebarOpenCertificates', isHashLink: true },
 
         // ─── GROUP: Система ──────────────────────────────────────
-        { type: 'group', key: 'system', label: 'Система', icon: '⚙️', defaultOpen: true },
+        { type: 'group', key: 'system', label: 'Система', icon: '⚙️', defaultOpen: false },
         { href: '/kleshnya',     icon: '🦞', label: 'Клешня',         access: 'all',            group: 'system' },
         { href: '/game',         icon: '🎮', label: 'Гра',            access: 'all',            group: 'system' },
         { href: '/demo',         icon: '🎬', label: 'Demo',           access: 'demo',           group: 'system' },

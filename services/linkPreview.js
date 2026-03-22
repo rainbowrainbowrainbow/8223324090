@@ -9,9 +9,19 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('LinkPreview');
 
-// Simple in-memory cache for OG data (TTL: 1 hour)
+// Simple in-memory cache for OG data (TTL: 1 hour, max 500 entries)
 const _ogCache = new Map();
 const OG_CACHE_TTL = 60 * 60 * 1000;
+const OG_CACHE_MAX = 500;
+
+// Prune stale entries every 10 minutes
+const _ogPruneInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of _ogCache) {
+        if (now - v.ts > OG_CACHE_TTL) _ogCache.delete(k);
+    }
+}, 10 * 60 * 1000);
+if (_ogPruneInterval.unref) _ogPruneInterval.unref();
 
 /**
  * Extract first URL from text.
@@ -111,7 +121,11 @@ async function fetchOgData(urlStr) {
             url: urlStr
         };
 
-        // Cache
+        // Cache (evict oldest if at capacity)
+        if (_ogCache.size >= OG_CACHE_MAX) {
+            const oldest = _ogCache.keys().next().value;
+            _ogCache.delete(oldest);
+        }
         _ogCache.set(urlStr, { data: result, ts: Date.now() });
 
         return result;

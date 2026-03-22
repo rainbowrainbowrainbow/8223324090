@@ -22,6 +22,7 @@ async function checkSession() {
         if (user) {
             AppState.currentUser = user;
             showMainApp();
+            if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) setTimeout(() => Sidebar.initUserCard(), 100);
             return;
         }
         // Token expired or invalid
@@ -37,6 +38,8 @@ async function login(username, password) {
         AppState.currentUser = data.user;
         localStorage.setItem('pzp_token', data.token);
         localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+        // v33.14.0: Init sidebar user card
+        if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
         // v24.3.0: Dashboard is the landing page for all roles
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
         if (currentPath !== '/dashboard') {

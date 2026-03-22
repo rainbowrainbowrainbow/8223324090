@@ -833,4 +833,12 @@ async function addToMailingIfNeeded(lead) {
     } catch (e) { /* dedup */ }
 }
 
+// GET /api/leads/new-count — count new leads (for sidebar badge)
+router.get('/new-count', async (req, res) => {
+    try {
+        const r = await pool.query("SELECT COUNT(*)::int AS count FROM leads WHERE status = 'new'");
+        res.json({ count: r.rows[0].count });
+    } catch (err) { res.json({ count: 0 }); }
+});
+
 module.exports = router;

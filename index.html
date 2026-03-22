@@ -15,19 +15,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=33.13.0">
-    <link rel="stylesheet" href="css/auth.css?v=33.13.0">
-    <link rel="stylesheet" href="css/layout.css?v=33.13.0">
-    <link rel="stylesheet" href="css/timeline.css?v=33.13.0">
-    <link rel="stylesheet" href="css/panel.css?v=33.13.0">
-    <link rel="stylesheet" href="css/modals.css?v=33.13.0">
-    <link rel="stylesheet" href="css/controls.css?v=33.13.0">
-    <link rel="stylesheet" href="css/features.css?v=33.13.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=33.13.0">
-    <link rel="stylesheet" href="css/responsive.css?v=33.13.0">
-    <link rel="stylesheet" href="css/pages.css?v=33.13.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=33.13.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=33.13.0">
+    <link rel="stylesheet" href="css/base.css?v=33.14.0">
+    <link rel="stylesheet" href="css/auth.css?v=33.14.0">
+    <link rel="stylesheet" href="css/layout.css?v=33.14.0">
+    <link rel="stylesheet" href="css/timeline.css?v=33.14.0">
+    <link rel="stylesheet" href="css/panel.css?v=33.14.0">
+    <link rel="stylesheet" href="css/modals.css?v=33.14.0">
+    <link rel="stylesheet" href="css/controls.css?v=33.14.0">
+    <link rel="stylesheet" href="css/features.css?v=33.14.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=33.14.0">
+    <link rel="stylesheet" href="css/responsive.css?v=33.14.0">
+    <link rel="stylesheet" href="css/pages.css?v=33.14.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=33.14.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=33.14.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -44,9 +44,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v33.13.0 — Sidebar Pro</p>
+                <p class="tagline">AI First CRM v33.14.0 — Hub Nav</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v33.13.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v33.14.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -68,16 +68,25 @@
     <div id="mainApp" class="main-app hidden">
         <!-- Бокове меню -->
         <aside class="sidebar-nav" id="sidebarNav">
-            <div class="sidebar-logo">
-                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                <div class="em-logo">
-                    <span class="em-logo-title">Event Genix</span>
-                    <span class="em-logo-sub">AI First CRM</span>
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
                 </div>
+                <div class="sidebar-user-card" id="sidebarUserCard" onclick="window.location.href='/profile'">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus" title="Онлайн">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
             </div>
-            <nav class="sidebar-links" id="sidebarLinks">
-                <!-- Populated by sidebar.js -->
-            </nav>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
             <!-- Timeline-specific action buttons -->
             <div class="sidebar-actions" id="sidebarActions">
                 <div class="sidebar-divider"></div>
@@ -1252,6 +1261,17 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v33.14.0 — Hub Nav (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Hub Navigation</b> — згруповані пункти (Клієнти·Ліди, Фінанси·Аналіт., Команда·HR, Склад·Ціни) з dropdown</li>
+                        <li><b>User Card</b> — аватар, ім'я, роль та статус в шапці sidebar</li>
+                        <li><b>Day Context</b> — мікро-інфо дня (кількість сповіщень) для менеджерів</li>
+                        <li><b>Live Badges</b> — лічильники алертів, лідів, чату на навігації</li>
+                        <li><b>Collapsed Tooltips</b> — підказки при наведенні на іконки в згорнутому режимі</li>
+                        <li><b>Animations</b> — stagger entrance, hub slide, badge pop, online pulse</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v33.13.0 — Sidebar Pro (Claude Code, 22.03.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — CRM анімується з назвою ролі, Управління → HR з анімацією «Твоя команда»</li>
@@ -1365,7 +1385,7 @@
                         <li><b>Scheduler</b> — виправлено "value too long for varchar(10)" для hourly schedulers (міграція 094)</li>
                         <li><b>Рахунки</b> — finance_accounts таблиця, CRUD API, report-bot sync, вкладка «Рахунки» у фінансах</li>
                         <li><b>Report Bot</b> — account_id/account_name в submit, GET /report-bot/accounts для синхронізації</li>
-                        <li><b>Cache Busting</b> — ?v=33.13.0 на всіх 25 HTML сторінках (321 оновлення)</li>
+                        <li><b>Cache Busting</b> — ?v=33.14.0 на всіх 25 HTML сторінках (321 оновлення)</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -1964,7 +1984,7 @@
                         <li><b>Version Sync</b> — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG</li>
                         <li><b>Landing Carousel</b> — команда з каруселлю, Anli Lektor, swipe/dots/arrows [kleshnya]</li>
                         <li><b>Manager Guide</b> — нова сторінка для менеджерів з продажу [kleshnya]</li>
-                        <li><b>Cache Busting</b> — ?v=33.13.0 на всіх CSS/JS ресурсах (25 файлів)</li>
+                        <li><b>Cache Busting</b> — ?v=33.14.0 на всіх CSS/JS ресурсах (25 файлів)</li>
                         <li><b>Swagger API</b> — оновлена версія OpenAPI spec до v23.0.0</li>
                     </ul>
                 </div>
@@ -4720,29 +4740,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/i18n.js?v=33.13.0"></script>
-    <script src="js/config.js?v=33.13.0"></script>
-    <script src="js/api.js?v=33.13.0"></script>
-    <script src="js/ui.js?v=33.13.0"></script>
-    <script src="js/auth.js?v=33.13.0"></script>
-    <script src="js/timeline.js?v=33.13.0"></script>
-    <script src="js/booking.js?v=33.13.0"></script>
-    <script src="js/settings.js?v=33.13.0"></script>
-    <script src="js/booking-form.js?v=33.13.0"></script>
-    <script src="js/booking-linked.js?v=33.13.0"></script>
-    <script src="js/settings-dashboard.js?v=33.13.0"></script>
-    <script src="js/settings-history.js?v=33.13.0"></script>
-    <script src="js/settings-afisha.js?v=33.13.0"></script>
-    <script src="js/settings-certificates.js?v=33.13.0"></script>
-    <script src="js/offline.js?v=33.13.0"></script>
-    <script src="js/search.js?v=33.13.0"></script>
-    <script src="js/ws.js?v=33.13.0"></script>
-    <script src="js/app.js?v=33.13.0"></script>
-    <script src="js/achievement-popup.js?v=33.13.0"></script>
-    <script src="js/kleshnya-widget.js?v=33.13.0"></script>
-    <script src="js/components/sidebar.js?v=33.13.0"></script>
+    <script src="js/i18n.js?v=33.14.0"></script>
+    <script src="js/config.js?v=33.14.0"></script>
+    <script src="js/api.js?v=33.14.0"></script>
+    <script src="js/ui.js?v=33.14.0"></script>
+    <script src="js/auth.js?v=33.14.0"></script>
+    <script src="js/timeline.js?v=33.14.0"></script>
+    <script src="js/booking.js?v=33.14.0"></script>
+    <script src="js/settings.js?v=33.14.0"></script>
+    <script src="js/booking-form.js?v=33.14.0"></script>
+    <script src="js/booking-linked.js?v=33.14.0"></script>
+    <script src="js/settings-dashboard.js?v=33.14.0"></script>
+    <script src="js/settings-history.js?v=33.14.0"></script>
+    <script src="js/settings-afisha.js?v=33.14.0"></script>
+    <script src="js/settings-certificates.js?v=33.14.0"></script>
+    <script src="js/offline.js?v=33.14.0"></script>
+    <script src="js/search.js?v=33.14.0"></script>
+    <script src="js/ws.js?v=33.14.0"></script>
+    <script src="js/app.js?v=33.14.0"></script>
+    <script src="js/achievement-popup.js?v=33.14.0"></script>
+    <script src="js/kleshnya-widget.js?v=33.14.0"></script>
+    <script src="js/components/sidebar.js?v=33.14.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=33.13.0"></script>
-    <script src="js/role-panel.js?v=33.13.0"></script>
+    <script src="js/alerts.js?v=33.14.0"></script>
+    <script src="js/role-panel.js?v=33.14.0"></script>
 </body>
 </html>

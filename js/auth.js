@@ -401,24 +401,49 @@ async function openProfileModal() {
     const rank = data.leaderboard.rank ? `#${data.leaderboard.rank}` : '—';
 
     // Build the shell: header + tabs + tab content
+    const streakVal = data.streak.current || 0;
+    const letter = data.user.name.charAt(0).toUpperCase();
+
     content.innerHTML = `
         <div class="profile-header">
-            <div class="profile-avatar">${data.user.name.charAt(0).toUpperCase()}</div>
+            <div class="profile-avatar-wrap">
+                <svg class="profile-avatar-ring" viewBox="0 0 64 64">
+                    <circle cx="32" cy="32" r="29" fill="none" stroke="var(--gray-200)" stroke-width="3"/>
+                    <circle cx="32" cy="32" r="29" fill="none" stroke="var(--primary)" stroke-width="3"
+                        stroke-dasharray="${2 * Math.PI * 29}" stroke-dashoffset="${2 * Math.PI * 29 * (1 - Math.min(streakVal, 7) / 7)}"
+                        stroke-linecap="round" transform="rotate(-90 32 32)"/>
+                </svg>
+                <div class="profile-avatar">${letter}</div>
+            </div>
             <div class="profile-info">
                 <div class="profile-name">${data.user.name}</div>
-                <div class="profile-role">${roleName}</div>
-                <div class="profile-tg-badge ${tgStatus ? 'connected' : ''}">${tgStatus ? 'TG' : 'TG —'}</div>
+                <div class="profile-meta">
+                    <span class="profile-role-badge">${roleName}</span>
+                    <span class="profile-tg-badge ${tgStatus ? 'connected' : ''}">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/></svg>
+                        ${tgStatus ? '' : ''}
+                    </span>
+                </div>
             </div>
             <div class="profile-header-stats">
-                <div class="prof-mini-stat"><span class="prof-mini-val">${data.points.permanentTotal}</span><span class="prof-mini-lbl">балів</span></div>
-                <div class="prof-mini-stat"><span class="prof-mini-val">${rank}</span><span class="prof-mini-lbl">ранг</span></div>
-                <div class="prof-mini-stat"><span class="prof-mini-val">${data.streak.current || 0}</span><span class="prof-mini-lbl">стрік</span></div>
+                <div class="prof-mini-stat">
+                    <span class="prof-mini-val prof-val-points">${data.points.permanentTotal}</span>
+                    <span class="prof-mini-lbl">балів</span>
+                </div>
+                <div class="prof-mini-stat">
+                    <span class="prof-mini-val prof-val-rank">${rank}</span>
+                    <span class="prof-mini-lbl">ранг</span>
+                </div>
+                <div class="prof-mini-stat">
+                    <span class="prof-mini-val prof-val-streak">${streakVal}</span>
+                    <span class="prof-mini-lbl">стрік</span>
+                </div>
             </div>
         </div>
 
         <div class="prof-tabs" role="tablist">
             <button class="prof-tab active" data-tab="today" role="tab">Сьогодні</button>
-            <button class="prof-tab" data-tab="game" role="tab">Профіль</button>
+            <button class="prof-tab" data-tab="game" role="tab">Гра</button>
             <button class="prof-tab" data-tab="tasks" role="tab">Задачі</button>
             <button class="prof-tab" data-tab="stats" role="tab">Стати</button>
             <button class="prof-tab" data-tab="settings" role="tab">Налашт.</button>
@@ -775,22 +800,15 @@ async function _profileTabGame(container, data) {
     _gameTabData = { profile, achievements, shop, leaderboard, username };
 
     if (!profile) {
-        // Fallback: show avatar and basic info even without gamification
-        const name = data.user.name || username;
-        const letter = (name || '?')[0].toUpperCase();
         container.innerHTML = `
-            <div class="prof-section" style="text-align:center;padding:24px 16px">
-                <div class="character-display" style="margin:0 auto 16px;width:120px;height:120px;position:relative">
-                    <div class="character-bg" style="font-size:60px;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0.2">🌳</div>
-                    <div class="character-avatar" style="width:80px;height:80px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)">${letter}</div>
+            <div class="prof-game-empty">
+                <div class="prof-game-empty-icon">🏆</div>
+                <div class="prof-game-empty-title">Система гейміфікації</div>
+                <div class="prof-game-empty-desc">Досягнення, рівні та нагороди скоро будуть доступні</div>
+                <div class="prof-game-empty-actions">
+                    <a href="/game" class="prof-game-btn prof-game-btn-primary">Міні-гра</a>
+                    <a href="/profile" class="prof-game-btn prof-game-btn-secondary">Повний профіль</a>
                 </div>
-                <h3 style="margin:0 0 4px;font-size:var(--font-lg)">${name}</h3>
-                <div style="color:var(--gray-500);margin-bottom:16px">${data.user.role || ''}</div>
-                <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-                    <a href="/game" class="game-start-btn" style="text-decoration:none;padding:10px 20px;font-size:var(--font-sm)">🎮 Міні-гра</a>
-                    <a href="/profile" class="game-start-btn" style="text-decoration:none;padding:10px 20px;font-size:var(--font-sm);background:var(--gray-200);color:var(--gray-700)">👤 Повний профіль</a>
-                </div>
-                <div style="margin-top:16px;color:var(--gray-400);font-size:var(--font-sm)">Система досягнень завантажується...</div>
             </div>`;
         return;
     }

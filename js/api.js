@@ -160,11 +160,11 @@ async function apiUpdateBooking(id, booking) {
 async function apiGetLines(date) {
     try {
         const response = await fetch(`${API_BASE}/lines/${date}`, { headers: getAuthHeaders(false) });
-        console.log('[apiGetLines] status=' + response.status + ' date=' + date);
+        // console.log('[apiGetLines] status=' + response.status + ' date=' + date);
         if (handleAuthError(response)) { console.warn('[apiGetLines] Auth error — returning null'); return null; }
         if (!response.ok) throw new Error('API error ' + response.status);
         const data = await response.json();
-        console.log('[apiGetLines] Got ' + (data ? data.length : 0) + ' lines');
+        // console.log('[apiGetLines] Got ' + (data ? data.length : 0) + ' lines');
         return data;
     } catch (err) {
         console.error('[apiGetLines] error:', err);

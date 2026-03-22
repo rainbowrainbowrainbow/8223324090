@@ -2,8 +2,11 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
+const { authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const logger = createLogger('SoundLibrary');
+
+router.use(authenticateToken);
 
 // GET /api/sound-library — all sounds
 router.get('/', async (req, res) => {

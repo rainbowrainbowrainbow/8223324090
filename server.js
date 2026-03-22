@@ -167,6 +167,7 @@ app.use('/api/sales', require('./routes/sales'));
 app.use('/api/page-statuses', require('./routes/page-statuses'));
 app.use('/api/leads', require('./routes/leads'));
 app.use('/api/copilot', require('./routes/copilot'));
+app.use('/api/decisions', require('./routes/decisions'));
 app.use('/api/landing', require('./routes/landing'));
 app.use('/api/scripts', require('./routes/scripts'));
 app.use('/api/chat', require('./routes/chat'));

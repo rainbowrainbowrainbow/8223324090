@@ -53,6 +53,9 @@ const DashboardPage = (() => {
         const el = document.getElementById('currentUser');
         if (el) el.textContent = verified.name;
 
+        // Decision Screen — before dashboard loads
+        if (typeof DecisionScreen !== 'undefined') await DecisionScreen.init();
+
         // Load config
         await loadConfig();
 

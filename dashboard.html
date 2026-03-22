@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="css/dark-mode.css?v=35.10.0">
     <link rel="stylesheet" href="css/responsive.css?v=35.10.0">
     <link rel="stylesheet" href="css/role-panel.css?v=35.10.0">
+    <link rel="stylesheet" href="css/decision-screen.css?v=35.11.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -237,6 +238,31 @@
     })();
     </script>
     <script src="js/alerts.js?v=35.10.0"></script>
+    <script src="js/decision-screen.js?v=35.11.0"></script>
     <script src="js/role-panel.js?v=35.10.0"></script>
+
+    <!-- Decision Screen overlay -->
+    <div id="decisionScreen" class="hidden"
+         role="dialog" aria-modal="true"
+         aria-label="Центр прийняття рішень" aria-hidden="true">
+        <div class="ds-inner">
+            <div class="ds-header">
+                <div class="ds-header-left">
+                    <span class="ds-icon" aria-hidden="true">⚡</span>
+                    <h2 class="ds-title-text">Центр прийняття рішень</h2>
+                </div>
+                <span class="ds-count-badge" id="dsCount" aria-live="polite"></span>
+            </div>
+            <div class="ds-list" id="dsDecisionList" role="list">
+                <div class="ds-empty">
+                    <div class="ds-empty-icon">⏳</div>
+                    <p class="ds-empty-text">Завантаження...</p>
+                </div>
+            </div>
+            <div class="ds-footer">
+                <p class="ds-hint">Прийміть всі рішення щоб продовжити роботу</p>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

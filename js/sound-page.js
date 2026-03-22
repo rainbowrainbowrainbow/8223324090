@@ -60,6 +60,11 @@
             if (_dateTo) params.set('to', _dateTo);
 
             const data = await apiCall('GET', '/music/log?' + params.toString());
+            if (!data || data.error) {
+                container.innerHTML = `<div class="sound-empty"><div class="sound-empty-icon">⚠️</div><p>${_esc(data?.error || 'Немає відповіді від сервера')}</p></div>`;
+                renderStats([]);
+                return;
+            }
             const items = data.log || [];
 
             renderStats(items);

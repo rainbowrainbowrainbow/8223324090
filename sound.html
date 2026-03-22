@@ -75,7 +75,7 @@
                         <p class="subtitle">Історія всіх звукових подій: оголошення, програвання, TTS</p>
                     </div>
                     <div class="sound-header-actions">
-                        <button class="btn-outline" id="logRefreshBtn" title="Оновити">🔄 Оновити</button>
+                        <button class="btn-outline" id="logRefreshBtn" title="Оновити" aria-label="Оновити лог">🔄 Оновити</button>
                     </div>
                 </div>
 
@@ -90,10 +90,10 @@
                         <button class="log-action-btn sound-filter-btn" data-action="delete">🗑️ Видалення</button>
                     </div>
                     <div class="sound-log-date-filter">
-                        <label>Від:</label>
-                        <input type="date" id="logDateFrom">
-                        <label>До:</label>
-                        <input type="date" id="logDateTo">
+                        <label for="logDateFrom">Від:</label>
+                        <input type="date" id="logDateFrom" aria-label="Дата початку">
+                        <label for="logDateTo">До:</label>
+                        <input type="date" id="logDateTo" aria-label="Дата кінця">
                     </div>
                 </div>
 
@@ -115,9 +115,17 @@
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script>
     (async function() {
-        const token = localStorage.getItem('pzp_token');
+        // Logout handler
+        var logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) logoutBtn.addEventListener('click', function() {
+            localStorage.removeItem('pzp_token');
+            localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
+            window.location.href = '/';
+        });
+
+        var token = localStorage.getItem('pzp_token');
         if (token) {
-            const user = await apiVerifyToken();
+            var user = await apiVerifyToken();
             if (user) {
                 AppState.currentUser = user;
                 document.getElementById('loginOverlay')?.classList.add('hidden');

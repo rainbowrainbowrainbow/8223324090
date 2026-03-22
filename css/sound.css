@@ -9,13 +9,7 @@
 .sound-header .subtitle { font-size: var(--font-base, 14px); color: var(--gray-500); margin-top: 4px; }
 .sound-header-actions { display: flex; gap: 8px; }
 
-/* ═══ Tabs ═══ */
-.sound-tabs { display: flex; gap: 4px; background: rgba(0,0,0,0.04); border-radius: 14px; padding: 4px; margin-bottom: 20px; overflow-x: auto; }
-.sound-tab { padding: 10px 20px; border-radius: 11px; cursor: pointer; background: transparent; border: none; color: var(--gray-500); font-size: var(--font-sm, 13px); font-weight: 700; font-family: inherit; transition: all 0.2s; white-space: nowrap; min-height: 44px; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-.sound-tab:hover { color: var(--gray-700); }
-.sound-tab.active { background: var(--white, #fff); color: var(--gray-900); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-
-/* Tab content panels */
+/* ═══ Panel visibility (hash navigation) ═══ */
 .sound-tab-panel { display: none; }
 .sound-tab-panel.active { display: block; }
 
@@ -141,10 +135,6 @@
 
 /* ═══ Dark mode ═══ */
 body.dark-mode .sound-header h1 { color: var(--gray-200, #E2E8F0); }
-body.dark-mode .sound-tabs { background: rgba(255,255,255,0.04); }
-body.dark-mode .sound-tab { color: var(--gray-500); }
-body.dark-mode .sound-tab:hover { color: var(--gray-300); }
-body.dark-mode .sound-tab.active { background: rgba(255,255,255,0.08); color: var(--gray-100); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
 body.dark-mode .sound-search { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--gray-200); }
 body.dark-mode .sound-search::placeholder { color: var(--gray-600); }
 body.dark-mode .sound-search:focus { border-color: var(--primary); }
@@ -196,9 +186,7 @@ body.dark-mode .sound-delivery-fail { color: #f87171; }
     .sound-page { padding: 16px; }
     .sound-header h1 { font-size: var(--font-xl, 20px); }
     .sound-header { flex-direction: column; align-items: flex-start; }
-    .sound-tabs { gap: 2px; padding: 3px; }
-    .sound-tab { padding: 8px 14px; font-size: var(--font-caption, 12px); }
-    .sound-toolbar { flex-direction: column; align-items: stretch; }
+.sound-toolbar { flex-direction: column; align-items: stretch; }
     .sound-search-wrap { max-width: 100%; }
     .sound-category-filter { gap: 4px; }
     .sound-cat-btn { padding: 8px 10px; font-size: var(--font-caption, 12px); }

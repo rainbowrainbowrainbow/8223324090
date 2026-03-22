@@ -8,31 +8,39 @@
     const _esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
     // ==========================================
-    // TABS
+    // HASH NAVIGATION (sidebar drives tabs)
     // ==========================================
     let _loadedTabs = { library: false, announcements: false, projects: false, log: false };
+    const TAB_MAP = { library: 'tabLibrary', announcements: 'tabAnnouncements', projects: 'tabProjects', log: 'tabLog' };
 
-    function initTabs() {
-        const tabsEl = document.getElementById('soundTabs');
-        if (!tabsEl) return;
-        tabsEl.addEventListener('click', e => {
-            const tab = e.target.closest('.sound-tab');
-            if (!tab) return;
-            const tabName = tab.dataset.tab;
+    function showPanel(tabName) {
+        if (!TAB_MAP[tabName]) tabName = 'library';
 
-            document.querySelectorAll('.sound-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
+        document.querySelectorAll('.sound-tab-panel').forEach(c => c.classList.remove('active'));
+        const target = document.getElementById(TAB_MAP[tabName]);
+        if (target) target.classList.add('active');
 
-            document.querySelectorAll('.sound-tab-panel').forEach(c => c.classList.remove('active'));
-            const targetId = 'tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1);
-            const target = document.getElementById(targetId);
-            if (target) target.classList.add('active');
+        // Update header
+        const titles = { library: '🎵 Бібліотека звуків', announcements: '📢 Оголошення', projects: '🎬 Звукові проєкти', log: '📊 Лог подій' };
+        const subtitles = { library: 'Звукові файли за категоріями', announcements: 'Оголошення для відвідувачів та TTS', projects: 'Звукові проєкти для програм та квестів', log: 'Історія всіх звукових подій' };
+        const h1 = document.getElementById('soundPageTitle');
+        const sub = document.getElementById('soundPageSubtitle');
+        if (h1) h1.textContent = titles[tabName] || titles.library;
+        if (sub) sub.textContent = subtitles[tabName] || subtitles.library;
 
-            // Lazy load
-            if (tabName === 'library' && !_loadedTabs.library) loadLibrary();
-            if (tabName === 'announcements' && !_loadedTabs.announcements) loadAnnouncements();
-            if (tabName === 'projects' && !_loadedTabs.projects) loadProjects();
-            if (tabName === 'log' && !_loadedTabs.log) { initLogFilters(); loadLog(); }
+        // Lazy load data
+        if (tabName === 'library' && !_loadedTabs.library) loadLibrary();
+        if (tabName === 'announcements' && !_loadedTabs.announcements) loadAnnouncements();
+        if (tabName === 'projects' && !_loadedTabs.projects) loadProjects();
+        if (tabName === 'log' && !_loadedTabs.log) { initLogFilters(); loadLog(); }
+    }
+
+    function initHashNav() {
+        const hash = (location.hash || '#library').replace('#', '');
+        showPanel(hash);
+        window.addEventListener('hashchange', () => {
+            const h = (location.hash || '#library').replace('#', '');
+            showPanel(h);
         });
     }
 
@@ -535,13 +543,10 @@
     // INIT
     // ==========================================
     function init() {
-        initTabs();
         initLibraryFilters();
         initAnnouncementModal();
         initProjectModal();
-
-        // Load first tab (library)
-        loadLibrary();
+        initHashNav();
     }
 
     document.addEventListener('DOMContentLoaded', init);

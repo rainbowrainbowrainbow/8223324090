@@ -45,7 +45,10 @@ const Sidebar = (() => {
 
         // ─── GROUP: Звук ────────────────────────────────────────
         { type: 'group', key: 'sound', label: 'Звук', icon: '🔊', defaultOpen: true },
-        { href: '/sound',        icon: '🔊', label: 'Звук',           access: 'sound',          group: 'sound' },
+        { href: '/sound#library',       icon: '🎵', label: 'Бібліотека',    access: 'sound',          group: 'sound' },
+        { href: '/sound#announcements', icon: '📢', label: 'Оголошення',    access: 'sound',          group: 'sound' },
+        { href: '/sound#projects',      icon: '🎬', label: 'Проєкти',       access: 'sound',          group: 'sound' },
+        { href: '/sound#log',           icon: '📊', label: 'Лог подій',     access: 'sound',          group: 'sound' },
 
         // ─── GROUP: Система ──────────────────────────────────────
         { type: 'group', key: 'system', label: 'Система', icon: '⚙️', defaultOpen: true },
@@ -121,10 +124,11 @@ const Sidebar = (() => {
                 if (!hasChildren) { currentGroupKey = '__skip__'; continue; }
 
                 // Force open if current page is in this group
-                const hasActive = NAV_ITEMS.some(c =>
-                    c.group === item.key && !c.noActive && !c.isHashLink &&
-                    (currentPath === c.href || (c.href !== '/' && !c.href.startsWith('#') && currentPath.startsWith(c.href)))
-                );
+                const hasActive = NAV_ITEMS.some(c => {
+                    if (c.group !== item.key || c.noActive || c.isHashLink) return false;
+                    const cBase = c.href.split('#')[0];
+                    return currentPath === cBase || (cBase !== '/' && currentPath.startsWith(cBase));
+                });
                 const finalOpen = hasActive || _isGroupOpen(item.key, item.defaultOpen);
 
                 html += `
@@ -148,9 +152,13 @@ const Sidebar = (() => {
             if (role && !hasAccess(item, role)) continue;
 
             // ── Render nav-link ───────────────────────────────────
+            const itemBase = item.href.split('#')[0];
+            const itemHash = item.href.includes('#') ? item.href.split('#')[1] : '';
+            const currentHash = location.hash.replace('#', '');
             const isActive = !item.noActive && !item.isHashLink && (
-                currentPath === item.href ||
-                (item.href !== '/' && !item.href.startsWith('#') && currentPath.startsWith(item.href))
+                itemHash
+                    ? (currentPath === itemBase || currentPath.startsWith(itemBase)) && currentHash === itemHash
+                    : (currentPath === item.href || (item.href !== '/' && !item.href.startsWith('#') && currentPath.startsWith(item.href)))
             );
 
             // E9 FIX: simplified onclick

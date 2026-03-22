@@ -4,7 +4,7 @@
 const rateLimitMap = new Map();
 const loginRateLimitMap = new Map();
 const RATE_LIMIT_WINDOW = 60000;
-const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX) || 120;
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX) || 300;
 const LOGIN_RATE_LIMIT_WINDOW = 60000;
 const LOGIN_RATE_LIMIT_MAX = parseInt(process.env.LOGIN_RATE_LIMIT_MAX || process.env.RATE_LIMIT_MAX) || 5;
 

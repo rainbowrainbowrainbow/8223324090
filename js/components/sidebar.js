@@ -235,7 +235,7 @@ const Sidebar = (() => {
         } catch {}
         const chatUnread = typeof ChatState !== 'undefined' ? (ChatState.totalUnread || 0) : 0;
         _setBadge('unread', chatUnread > 0 ? chatUnread : null);
-        setTimeout(_fetchLiveBadges, 120000);
+        setTimeout(_fetchLiveBadges, 300000); // 5 min
     }
 
     function _setBadge(type, value) {

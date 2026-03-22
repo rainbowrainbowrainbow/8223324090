@@ -29,7 +29,8 @@ async function loadAlertBell() {
     } catch { /* silent */ }
 }
 
-function toggleAlertsPanel() {
+function toggleAlertsPanel(e) {
+    if (e) e.stopPropagation();
     const p = document.getElementById('alertsPanel');
     if (!p) return;
     p.classList.toggle('open');

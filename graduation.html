@@ -42,12 +42,23 @@
 
     <div class="app-container">
         <aside class="sidebar-nav">
-            <div class="sidebar-logo">
-                <a href="/" class="logo-link">
-                    <img src="images/gear-logo.svg" alt="Event Genix" class="sidebar-logo-img"
-                         onerror="this.style.display='none'">
-                    <span class="sidebar-logo-text">Event Genix</span>
-                </a>
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
             </div>
             <nav class="sidebar-links" id="sidebarLinks"></nav>
         </aside>

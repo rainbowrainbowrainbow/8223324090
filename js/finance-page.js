@@ -1425,7 +1425,7 @@ async function loadPersonalAccounts() {
     container.innerHTML = '<p style="opacity:.5;font-size:13px;grid-column:1/-1">Завантаження...</p>';
 
     try {
-        const data = await apiRequest('GET', `/api/personal-accounts/my?telegram_id=${tgId}`);
+        const data = await apiRequest('GET', `/api/personal-accounts/my?telegram_id=${encodeURIComponent(tgId)}`);
         const accounts = data.accounts || [];
 
         if (!accounts.length) {
@@ -1443,6 +1443,7 @@ async function loadPersonalAccounts() {
             </div>
         `).join('');
     } catch (e) {
+        console.error('loadPersonalAccounts error:', e);
         container.innerHTML = '<p style="opacity:.5;font-size:13px;grid-column:1/-1">Помилка завантаження</p>';
     }
 }
@@ -1495,6 +1496,7 @@ async function loadPersonalTx(accountId, name) {
             </table>
             </div>`;
     } catch (e) {
+        console.error('loadPersonalTx error:', e);
         listEl.innerHTML = '<p style="opacity:.5;font-size:13px">Помилка завантаження</p>';
     }
 }

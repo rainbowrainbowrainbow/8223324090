@@ -1408,6 +1408,11 @@ body.dark-mode .prof-task-btn.start { color: #60A5FA; }
 body.dark-mode .prof-task-btn.start:hover { background: #3B82F6; }
 body.dark-mode .prof-blocked-lbl { color: #FBBF24; }
 body.dark-mode .profile-pwd-error { background: rgba(239,68,68,0.1); }
+body.dark-mode .profile-role-badge { background: rgba(16,185,129,0.15); color: #34D399; }
+body.dark-mode .profile-tg-badge { background: rgba(255,255,255,0.08); color: #94A3B8; }
+body.dark-mode .profile-tg-badge.connected { background: rgba(16,185,129,0.15); color: #34D399; }
+body.dark-mode .prof-game-empty-title { color: #E2E8F0; }
+body.dark-mode .prof-game-btn-secondary { background: rgba(255,255,255,0.08); color: #CBD5E1; }
 
 /* Standalone pages dark mode */
 body.dark-mode .badge-done { background: rgba(16,185,129,0.15); color: #34D399; }

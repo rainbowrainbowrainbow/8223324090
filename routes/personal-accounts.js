@@ -3,34 +3,100 @@
 /**
  * routes/personal-accounts.js — Personal accounts API
  *
+ * Auth: bot (x-api-key) OR JWT (authenticateToken from global middleware).
+ * All :id endpoints verify ownership or access permission.
+ *
  * Endpoints:
- *   POST /api/personal-accounts/sync          — Bot syncs new personal account
- *   GET  /api/personal-accounts/my             — Get user's personal accounts by telegram_id
- *   POST /api/personal-accounts/:id/grant      — Grant access to account
- *   DELETE /api/personal-accounts/:id/access/:tg_id — Revoke access
- *   POST /api/personal-accounts/:id/transactions   — Add transaction
- *   GET  /api/personal-accounts/:id/transactions    — List transactions
+ *   POST /api/personal-accounts/sync              — Bot syncs new personal account
+ *   GET  /api/personal-accounts/my                 — Get user's personal accounts
+ *   POST /api/personal-accounts/:id/grant          — Grant access (owner only)
+ *   DELETE /api/personal-accounts/:id/access/:tg_id — Revoke access (owner only)
+ *   POST /api/personal-accounts/:id/transactions   — Add transaction (owner or writer)
+ *   GET  /api/personal-accounts/:id/transactions    — List transactions (owner or viewer)
  */
 
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('PersonalAccounts');
 
 const BOT_KEY = process.env.REPORT_BOT_API_KEY || '';
 
-// Dual auth: x-api-key (bot) OR Authorization header (JWT, verified by global middleware)
-function dualAuth(req, res, next) {
-    if (BOT_KEY && req.headers['x-api-key'] === BOT_KEY) return next();
-    if (req.headers.authorization) return next();
-    return res.status(401).json({ error: 'Unauthorized' });
+// Bot auth check helper
+function isBotAuth(req) {
+    return BOT_KEY && req.headers['x-api-key'] === BOT_KEY;
+}
+
+// Middleware: try JWT if not bot-authenticated (sets req.user)
+function optionalJwt(req, res, next) {
+    if (isBotAuth(req)) return next();
+    if (!req.headers.authorization) return res.status(401).json({ error: 'Unauthorized' });
+    // Use global authenticateToken to properly verify JWT
+    authenticateToken(req, res, next);
+}
+
+// Get telegram_id from authenticated user (JWT sets req.user via global middleware)
+function getUserTgId(req) {
+    return req.user?.telegram_chat_id || req.user?.telegramChatId || null;
+}
+
+// Verify ownership of account. Returns account row or null.
+async function verifyOwnership(accId, req) {
+    const acc = await pool.query(
+        'SELECT id, owner_telegram_id FROM finance_accounts WHERE id = $1 AND is_personal = true',
+        [accId]
+    );
+    if (!acc.rows.length) return null;
+
+    // Bot always has access
+    if (isBotAuth(req)) return acc.rows[0];
+
+    const userTgId = getUserTgId(req);
+    if (!userTgId) return null;
+
+    // Only owner can manage access
+    if (String(acc.rows[0].owner_telegram_id) === String(userTgId)) return acc.rows[0];
+
+    return null; // not owner
+}
+
+// Verify read or write access (owner always has both)
+async function verifyAccess(accId, req, mode = 'view') {
+    const acc = await pool.query(
+        'SELECT id, owner_telegram_id FROM finance_accounts WHERE id = $1 AND is_personal = true AND is_active = true',
+        [accId]
+    );
+    if (!acc.rows.length) return { acc: null, allowed: false };
+
+    if (isBotAuth(req)) return { acc: acc.rows[0], allowed: true };
+
+    const userTgId = getUserTgId(req);
+    if (!userTgId) return { acc: acc.rows[0], allowed: false };
+
+    // Owner always has access
+    if (String(acc.rows[0].owner_telegram_id) === String(userTgId)) {
+        return { acc: acc.rows[0], allowed: true };
+    }
+
+    // Check finance_account_access
+    const col = mode === 'write' ? 'can_write' : 'can_view';
+    const access = await pool.query(
+        `SELECT ${col} FROM finance_account_access WHERE account_id = $1 AND telegram_id = $2`,
+        [accId, parseInt(userTgId, 10)]
+    );
+    const allowed = access.rows.length > 0 && access.rows[0][col] === true;
+    return { acc: acc.rows[0], allowed };
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // POST /api/personal-accounts/sync — Bot syncs a new personal account
+// Bot-only: requires x-api-key (no JWT needed)
 // ──────────────────────────────────────────────────────────────────────
-router.post('/sync', dualAuth, async (req, res) => {
+router.post('/sync', async (req, res) => {
+    if (!isBotAuth(req)) return res.status(403).json({ error: 'Bot API key required' });
+
     const { bot_account_id, name, emoji, owner_telegram_id, owner_name } = req.body;
 
     if (!name || !owner_telegram_id) {
@@ -82,11 +148,24 @@ router.post('/sync', dualAuth, async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────
-// GET /api/personal-accounts/my?telegram_id=XXX
+// GET /api/personal-accounts/my
+// Bot: ?telegram_id=XXX. JWT: uses req.user.telegram_chat_id
 // ──────────────────────────────────────────────────────────────────────
-router.get('/my', dualAuth, async (req, res) => {
-    const tgId = parseInt(req.query.telegram_id, 10);
-    if (!tgId) return res.status(400).json({ error: 'telegram_id required' });
+router.get('/my', optionalJwt, async (req, res) => {
+    let tgId;
+
+    if (isBotAuth(req)) {
+        tgId = parseInt(req.query.telegram_id, 10);
+        if (!tgId) return res.status(400).json({ error: 'telegram_id required' });
+    } else if (req.user) {
+        tgId = getUserTgId(req);
+        if (!tgId) {
+            return res.json({ accounts: [], message: 'Telegram not linked' });
+        }
+        tgId = parseInt(tgId, 10);
+    } else {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     try {
         const r = await pool.query(`
@@ -110,26 +189,23 @@ router.get('/my', dualAuth, async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────
-// POST /api/personal-accounts/:id/grant — Grant access
+// POST /api/personal-accounts/:id/grant — Grant access (owner or bot only)
 // ──────────────────────────────────────────────────────────────────────
-router.post('/:id/grant', dualAuth, async (req, res) => {
+router.post('/:id/grant', optionalJwt, async (req, res) => {
     const accId = parseInt(req.params.id, 10);
-    const { telegram_id, can_view = true, can_write = true } = req.body;
+    const { telegram_id, can_view, can_write } = req.body;
 
     if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' });
 
     try {
-        const acc = await pool.query(
-            'SELECT id FROM finance_accounts WHERE id = $1 AND is_personal = true',
-            [accId]
-        );
-        if (!acc.rows.length) return res.status(404).json({ error: 'Personal account not found' });
+        const acc = await verifyOwnership(accId, req);
+        if (!acc) return res.status(403).json({ error: 'Only account owner can grant access' });
 
         await pool.query(`
             INSERT INTO finance_account_access (account_id, telegram_id, can_view, can_write)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (account_id, telegram_id) DO UPDATE SET can_view = $3, can_write = $4
-        `, [accId, parseInt(telegram_id, 10), can_view, can_write]);
+        `, [accId, parseInt(telegram_id, 10), can_view === true, can_write === true]);
 
         res.json({ ok: true });
     } catch (err) {
@@ -139,13 +215,18 @@ router.post('/:id/grant', dualAuth, async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────
-// DELETE /api/personal-accounts/:id/access/:tg_id — Revoke access
+// DELETE /api/personal-accounts/:id/access/:tg_id — Revoke access (owner or bot only)
 // ──────────────────────────────────────────────────────────────────────
-router.delete('/:id/access/:tg_id', dualAuth, async (req, res) => {
+router.delete('/:id/access/:tg_id', optionalJwt, async (req, res) => {
+    const accId = parseInt(req.params.id, 10);
+
     try {
+        const acc = await verifyOwnership(accId, req);
+        if (!acc) return res.status(403).json({ error: 'Only account owner can revoke access' });
+
         await pool.query(
             'DELETE FROM finance_account_access WHERE account_id = $1 AND telegram_id = $2',
-            [parseInt(req.params.id, 10), parseInt(req.params.tg_id, 10)]
+            [accId, parseInt(req.params.tg_id, 10)]
         );
         res.json({ ok: true });
     } catch (err) {
@@ -155,9 +236,9 @@ router.delete('/:id/access/:tg_id', dualAuth, async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────
-// POST /api/personal-accounts/:id/transactions — Add transaction
+// POST /api/personal-accounts/:id/transactions — Add transaction (owner or writer)
 // ──────────────────────────────────────────────────────────────────────
-router.post('/:id/transactions', dualAuth, async (req, res) => {
+router.post('/:id/transactions', optionalJwt, async (req, res) => {
     const { type, amount, description, category, date, submitted_by_telegram } = req.body;
 
     if (!type || !['income', 'expense'].includes(type)) {
@@ -167,13 +248,12 @@ router.post('/:id/transactions', dualAuth, async (req, res) => {
         return res.status(400).json({ error: 'amount must be positive' });
     }
 
+    const accId = parseInt(req.params.id, 10);
+
     try {
-        const acc = await pool.query(
-            'SELECT id, is_personal FROM finance_accounts WHERE id = $1 AND is_active = true',
-            [parseInt(req.params.id, 10)]
-        );
-        if (!acc.rows.length) return res.status(404).json({ error: 'Account not found' });
-        if (!acc.rows[0].is_personal) return res.status(403).json({ error: 'Not a personal account' });
+        const { acc, allowed } = await verifyAccess(accId, req, 'write');
+        if (!acc) return res.status(404).json({ error: 'Account not found' });
+        if (!allowed) return res.status(403).json({ error: 'Access denied' });
 
         const r = await pool.query(`
             INSERT INTO personal_account_transactions
@@ -181,7 +261,7 @@ router.post('/:id/transactions', dualAuth, async (req, res) => {
                  source, submitted_by_telegram)
             VALUES ($1, $2, $3, $4, $5, $6, 'report_bot', $7)
             RETURNING id
-        `, [parseInt(req.params.id, 10), type, Math.round(parseFloat(amount)),
+        `, [accId, type, Math.round(parseFloat(amount)),
             description || null, category || null,
             date || new Date().toISOString().slice(0, 10),
             submitted_by_telegram ? parseInt(submitted_by_telegram, 10) : null]);
@@ -194,20 +274,26 @@ router.post('/:id/transactions', dualAuth, async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────
-// GET /api/personal-accounts/:id/transactions — List transactions
+// GET /api/personal-accounts/:id/transactions — List transactions (owner or viewer)
 // ──────────────────────────────────────────────────────────────────────
-router.get('/:id/transactions', dualAuth, async (req, res) => {
-    const { from, to, limit = 100 } = req.query;
-    const params = [parseInt(req.params.id, 10)];
-    let q = 'SELECT * FROM personal_account_transactions WHERE account_id = $1';
-    let i = 2;
-
-    if (from) { q += ` AND date >= $${i++}`; params.push(from); }
-    if (to)   { q += ` AND date <= $${i++}`; params.push(to); }
-    q += ` ORDER BY created_at DESC LIMIT $${i}`;
-    params.push(Math.min(parseInt(limit, 10) || 100, 500));
+router.get('/:id/transactions', optionalJwt, async (req, res) => {
+    const accId = parseInt(req.params.id, 10);
 
     try {
+        const { acc, allowed } = await verifyAccess(accId, req, 'view');
+        if (!acc) return res.status(404).json({ error: 'Account not found' });
+        if (!allowed) return res.status(403).json({ error: 'Access denied' });
+
+        const { from, to, limit = 100 } = req.query;
+        const params = [accId];
+        let q = 'SELECT * FROM personal_account_transactions WHERE account_id = $1';
+        let i = 2;
+
+        if (from) { q += ` AND date >= $${i++}`; params.push(from); }
+        if (to)   { q += ` AND date <= $${i++}`; params.push(to); }
+        q += ` ORDER BY created_at DESC LIMIT $${i}`;
+        params.push(Math.min(parseInt(limit, 10) || 100, 500));
+
         const r = await pool.query(q, params);
         res.json({ transactions: r.rows });
     } catch (err) {

@@ -1827,8 +1827,44 @@ module.exports = {
     checkBookingPushReminders,
     checkCertExpiryReminders,
     checkStaleCatalogImages,
-    checkChatDailyDigest
+    checkChatDailyDigest,
+    checkRecurringAnnouncements
 };
+
+// v33.15.0: Recurring announcements — play based on repeat_cron
+async function checkRecurringAnnouncements() {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM announcements
+             WHERE status = 'active' AND schedule_type = 'recurring'
+               AND repeat_cron IS NOT NULL AND deleted_at IS NULL`
+        );
+        if (!result.rows.length) return;
+        const { deliverAnnouncement, isCronDue } = require('./music-delivery');
+        const now = new Date();
+        for (const ann of result.rows) {
+            if (!isCronDue(ann.repeat_cron, now)) continue;
+            if (ann.last_played_at && (now - new Date(ann.last_played_at)) / 1000 < 55) continue;
+
+            const delivery = await deliverAnnouncement(ann, { triggeredBy: 'scheduler' });
+            await pool.query(
+                `UPDATE announcements SET played_count=played_count+1, last_played_at=NOW(),
+                 last_delivery_status=$1, last_delivery_mode=$2, last_delivery_detail=$3, last_delivery_at=NOW()
+                 WHERE id=$4`,
+                [delivery.success ? 'success' : 'failed', delivery.mode, delivery.detail, ann.id]
+            );
+            await pool.query(
+                `INSERT INTO music_log (action, announcement_id, delivery_status, delivery_mode, delivery_detail, triggered_by)
+                 VALUES ('play', $1, $2, $3, $4, 'scheduler')`,
+                [ann.id, delivery.success ? 'success' : 'failed', delivery.mode, delivery.detail]
+            );
+            log.info(`[RecurringAnn] #${ann.id} "${ann.title}" — ${delivery.success ? '✓' : '✗'} ${delivery.mode}`);
+        }
+    } catch (err) {
+        if (!err.message?.includes('does not exist'))
+            log.error('checkRecurringAnnouncements error', err);
+    }
+}
 
 // v22.18: Auto-ordering — check stock levels and create order requests
 async function checkAutoOrdering() {

@@ -406,6 +406,24 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             });
         }
 
+        // v33.15.0: Auto birthday announcement
+        if ((b.programName || '').toLowerCase().match(/день народж|birthday|дн\b/i) && b.date && b.time) {
+            setImmediate(async () => {
+                try {
+                    const eventTime = new Date(`${b.date}T${b.time}`);
+                    const annTime = new Date(eventTime.getTime() - 5 * 60000);
+                    if (annTime <= new Date()) return;
+                    const childName = (b.label || '').replace(/[^а-яА-ЯіІїЇєЄa-zA-Z\s]/g, '').trim().split(/\s+/)[0] || '';
+                    const text = `Шановні відвідувачі! Сьогодні у нас особливий гість${childName ? ' — ' + childName : ''}! Святкування починається о ${b.time.slice(0, 5)}. Бажаємо прекрасного свята! 🎉`;
+                    await pool.query(
+                        `INSERT INTO announcements (title, text_content, announcement_type, schedule_type, scheduled_at, status, priority, created_by)
+                         VALUES ($1, $2, 'birthday', 'once', $3, 'scheduled', 5, 'booking_auto')`,
+                        [`🎂 ДН: ${childName || b.label}`, text, annTime.toISOString()]
+                    );
+                } catch (e) { /* silent */ }
+            });
+        }
+
         res.json({ success: true, booking });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create)', rbErr));

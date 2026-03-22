@@ -342,15 +342,22 @@ const Sidebar = (() => {
     function init(containerSelector) {
         render(containerSelector);
         initToggle();
-        // Fill user card — retry until AppState.currentUser is set (auth may be async)
-        _retryUserCard(0);
+        // Fill user card immediately + keep retrying until avatar shows real initial
+        _retryUserCard();
     }
 
-    function _retryUserCard(attempt) {
+    function _retryUserCard() {
         initUserCard();
-        const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
-        if (!user && attempt < 5) {
-            setTimeout(() => _retryUserCard(attempt + 1), [100, 300, 600, 1000, 2000][attempt]);
+        // Check if avatar still shows "?" — means user data wasn't available yet
+        const avatarEl = document.getElementById('sidebarUserAvatar');
+        const stillDefault = !avatarEl || avatarEl.textContent.trim() === '?';
+        if (stillDefault) {
+            // Retry with increasing delays: 150, 400, 800, 1500, 3000ms
+            if (!_retryUserCard._attempt) _retryUserCard._attempt = 0;
+            _retryUserCard._attempt++;
+            if (_retryUserCard._attempt <= 5) {
+                setTimeout(_retryUserCard, [150, 400, 800, 1500, 3000][_retryUserCard._attempt - 1]);
+            }
         }
     }
 

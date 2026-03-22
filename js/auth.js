@@ -1173,23 +1173,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // Delay slightly to let page-specific JS set username first
     setTimeout(initProfileHandler, 100);
 
-    // v37.4: Auto-fill #currentUser and AppState from localStorage on sub-pages
+    // v37.4: Auto-fill #currentUser, AppState, and sidebar avatar from localStorage
     // Many page-specific JS files never set these, causing "?" in header/sidebar
-    setTimeout(() => {
-        const el = document.getElementById('currentUser');
-        if (el && !el.textContent.trim()) {
-            try {
-                const saved = localStorage.getItem('pzp_current_user');
-                if (saved) {
-                    const user = JSON.parse(saved);
-                    el.textContent = user.name || user.username || '';
-                    if (typeof AppState !== 'undefined' && !AppState.currentUser) {
-                        AppState.currentUser = user;
-                    }
-                }
-            } catch {}
-        }
-    }, 200);
+    function _autoFillUser() {
+        try {
+            const saved = localStorage.getItem('pzp_current_user');
+            if (!saved) return;
+            const user = JSON.parse(saved);
+            if (!user || !user.name) return;
+
+            // Fill AppState
+            if (typeof AppState !== 'undefined' && !AppState.currentUser) {
+                AppState.currentUser = user;
+            }
+            // Fill header #currentUser
+            const el = document.getElementById('currentUser');
+            if (el && !el.textContent.trim()) {
+                el.textContent = user.name || user.username || '';
+            }
+            // Fill sidebar avatar
+            if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) {
+                Sidebar.initUserCard();
+            }
+        } catch {}
+    }
+    setTimeout(_autoFillUser, 200);
+    setTimeout(_autoFillUser, 800);
+    setTimeout(_autoFillUser, 2000);
 });
 
 // ==========================================

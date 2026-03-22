@@ -436,9 +436,12 @@
     font-weight: 800;
     color: var(--gray-400);
     text-transform: uppercase;
-    letter-spacing: 1.2px;
+    letter-spacing: 0.8px;
     flex: 1;
     line-height: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     transition: color var(--speed-fast) var(--ease-smooth);
 }
 .sidebar-group-header:hover .sidebar-group-label { color: var(--gray-600); }

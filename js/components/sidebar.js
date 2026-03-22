@@ -5,29 +5,42 @@
  */
 
 const Sidebar = (() => {
+    // v33.13.0: Get role name for animated section label
+    function _getRoleName() {
+        try {
+            const saved = localStorage.getItem('pzp_user');
+            if (saved) {
+                const u = JSON.parse(saved);
+                const NAMES = { creator:'Творець', director:'Директор', admin:'Адмін', manager:'Менеджер',
+                    senior_manager:'Старший менеджер', animator:'Аніматор', hr:'HR', accountant:'Бухгалтер' };
+                return NAMES[u.role] || u.role || 'CRM';
+            }
+        } catch {} return 'CRM';
+    }
+
     // ═══ NAV_ITEMS — 4 logical blocks ═══
     const NAV_ITEMS = [
-        // BLOCK 1: Daily (all roles)
-        { type: 'section', label: 'CRM' },
+        // BLOCK 1: CRM (all roles)
+        { type: 'section', label: 'CRM', animate: true },
         { href: '/dashboard', icon: '🏠', label: 'Дашборд',          access: 'all' },
         { href: '/',          icon: '📅', label: 'Таймлайн івентів',  access: 'timeline' },
         { href: '/tasks',     icon: '✅', label: 'Задачі',            access: 'all' },
         { href: '/chat',      icon: '💬', label: 'Чат',               access: 'all' },
         { href: '/warehouse', icon: '📦', label: 'Склад',             access: 'all' },
         { href: '/center',    icon: '💲', label: 'Центр цін',         access: 'center' },
-        { href: '/training',  icon: '🎓', label: 'Навчання',          access: 'all' },
+        { href: '/customers', icon: '👥', label: 'Клієнти',           access: 'management' },
+        { href: '/sales-funnel', icon: '🔥', label: 'Ліди',           access: 'leads' },
+        { href: '/finance',   icon: '💰', label: 'Фінанси',           access: 'finance' },
+        { href: '/analytics', icon: '📊', label: 'Аналітика',         access: 'analytics' },
+        { href: '/reports',   icon: '📋', label: 'Звіти',             access: 'reports' },
 
-        // BLOCK 2: Management
+        // BLOCK 2: HR / Твоя команда
         { type: 'divider' },
-        { type: 'section', label: 'Управління' },
-        { href: '/customers', icon: '👥', label: 'Клієнти',    access: 'management' },
-        { href: '/sales-funnel', icon: '🔥', label: 'Ліди',     access: 'leads' },
-        { href: '/copilot',   icon: '🤖', label: 'Менеджер',   access: 'copilot' },
-        { href: '/staff',     icon: '📋', label: 'Команда',    access: 'staff' },
-        { href: '/hr',        icon: '🤝', label: 'Кадри',      access: 'hr' },
-        { href: '/finance',   icon: '💰', label: 'Фінанси',    access: 'finance' },
-        { href: '/analytics', icon: '📊', label: 'Аналітика',  access: 'analytics' },
-        { href: '/reports',   icon: '📋', label: 'Звіти',      access: 'reports' },
+        { type: 'section', label: 'HR', animate: 'Твоя команда' },
+        { href: '/staff',     icon: '📋', label: 'Команда',           access: 'staff' },
+        { href: '/hr',        icon: '🤝', label: 'Кадри',             access: 'hr' },
+        { href: '/training',  icon: '🎓', label: 'Навчання',          access: 'all' },
+        { href: '/copilot',   icon: '🤖', label: 'Менеджер',          access: 'copilot' },
 
         // BLOCK 3: Product / Creative
         { type: 'divider' },
@@ -235,7 +248,12 @@ const Sidebar = (() => {
                 continue;
             }
             if (item.type === 'section') {
-                html += `<span class="sidebar-section-label">${item.label}</span>`;
+                if (item.animate) {
+                    const altText = typeof item.animate === 'string' ? item.animate : _getRoleName();
+                    html += `<span class="sidebar-section-label sidebar-section-animated" data-label="${item.label}" data-alt="${altText}">${item.label}</span>`;
+                } else {
+                    html += `<span class="sidebar-section-label">${item.label}</span>`;
+                }
                 continue;
             }
 
@@ -257,6 +275,22 @@ const Sidebar = (() => {
 
         // Smooth render — prevent "jump" on page transitions
         container.classList.add('rendered');
+
+        // v33.13.0: Animate section labels (CRM ↔ role name, HR ↔ Твоя команда)
+        document.querySelectorAll('.sidebar-section-animated').forEach(el => {
+            const main = el.dataset.label;
+            const alt = el.dataset.alt;
+            if (!alt || alt === main) return;
+            let showAlt = false;
+            setInterval(() => {
+                showAlt = !showAlt;
+                el.style.opacity = '0';
+                setTimeout(() => {
+                    el.textContent = showAlt ? alt : main;
+                    el.style.opacity = '1';
+                }, 200);
+            }, showAlt ? 2000 : 5000);
+        });
 
         // Fetch and apply status badges
         fetchStatuses();

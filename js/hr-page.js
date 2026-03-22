@@ -11,7 +11,10 @@
 
 const ROLE_LABELS = {
     animator: 'Аніматор', host: 'Ведуча', technician: 'Технік',
-    admin: 'Адмін', cleaner: 'Прибиральник', manager: 'Менеджер', intern: 'Стажер'
+    admin: 'Адмін', cleaner: 'Прибиральник', manager: 'Менеджер', intern: 'Стажер',
+    trampoline_instructor: 'Інструктор батутів', waiter: 'Офіціант',
+    bartender: 'Бармен', cook: 'Повар', head_cook: 'Шеф-повар',
+    director: 'Директор', vice_director: 'Зам. директора', hr_manager: 'HR-менеджер'
 };
 
 const STATUS_LABELS = {
@@ -192,18 +195,16 @@ function initTabs() {
             document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
             const target = tab.dataset.tab;
-            document.getElementById(`tab-${target}`).classList.add('active');
-
-            if (target === 'today') loadToday();
-            if (target === 'schedule') loadSchedule();
-            if (target === 'team') loadTeam();
-            if (target === 'reports') loadReports();
-            if (target === 'ai-team') renderAITeam();
-            if (target === 'leaves') loadLeaves();
-            if (target === 'salary') loadSalary();
-            if (target === 'ratings') loadRatings();
-            if (target === 'onboarding') loadOnboarding();
-            if (target === 'costumes') loadCostumes();
+            const panel = document.getElementById(`tab-${target}`);
+            if (!panel) { console.error(`[HR] panel #tab-${target} not found`); return; }
+            panel.classList.add('active');
+            const loaders = {
+                today: loadToday, schedule: loadSchedule, team: loadTeam,
+                reports: loadReports, 'ai-team': renderAITeam, leaves: loadLeaves,
+                salary: loadSalary, ratings: loadRatings, onboarding: loadOnboarding,
+                costumes: loadCostumes, vacancies: loadVacancies
+            };
+            loaders[target]?.();
         });
     });
 }
@@ -665,17 +666,27 @@ async function copyWeek() {
 let teamStaff = [];
 
 async function loadTeam() {
-    const activeOnly = document.getElementById('teamActiveOnly').checked;
+    const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
+    const grid = document.getElementById('teamGrid');
+    if (grid) grid.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:32px">⏳ Завантаження...</div>';
     const data = await hrFetch(`/staff?active=${activeOnly}`);
-    if (data && data.success) {
-        teamStaff = data.data;
-        filterAndRenderTeam();
+    if (!data) {
+        if (grid) grid.innerHTML = '<div style="text-align:center;color:var(--danger);padding:32px">❌ Помилка завантаження. Оновіть сторінку.</div>';
+        return;
     }
-
-    // Attach filter listeners (idempotent — ok to re-attach)
-    document.getElementById('teamSearch').oninput = filterAndRenderTeam;
-    document.getElementById('teamRoleFilter').onchange = filterAndRenderTeam;
-    document.getElementById('teamActiveOnly').onchange = loadTeam;
+    if (!data.success) {
+        if (grid) grid.innerHTML = `<div style="text-align:center;color:var(--gray-400);padding:32px">${data.error || 'Помилка сервера'}</div>`;
+        return;
+    }
+    teamStaff = data.data || [];
+    filterAndRenderTeam();
+    // Attach filter listeners (idempotent)
+    const searchEl = document.getElementById('teamSearch');
+    const roleEl = document.getElementById('teamRoleFilter');
+    const activeEl = document.getElementById('teamActiveOnly');
+    if (searchEl) searchEl.oninput = filterAndRenderTeam;
+    if (roleEl) roleEl.onchange = filterAndRenderTeam;
+    if (activeEl) activeEl.onchange = loadTeam;
 }
 
 function filterAndRenderTeam() {
@@ -1492,6 +1503,174 @@ function initDarkMode() {
         document.body.classList.add('dark-mode');
     }
 }
+
+// ==========================================
+// VACANCIES
+// ==========================================
+
+let currentVacancyId = null;
+const VAC_STATUS_LABEL = {
+    open: '🟢 Відкрита', paused: '⏸ Призупинена',
+    filled: '✅ Заповнена', closed: '❌ Закрита'
+};
+const APP_STATUS_LABEL = {
+    new: '🆕 Новий', contacted: '📞 Зв\'язались', interview: '🎙️ Співбесіда',
+    offer: '📝 Оффер', hired: '✅ Найнятий', rejected: '❌ Відхилено'
+};
+const APP_STATUS_COLOR = {
+    new: '#64748B', contacted: '#3B82F6', interview: '#8B5CF6',
+    offer: '#F59E0B', hired: '#10B981', rejected: '#EF4444'
+};
+
+async function loadVacancies() {
+    const status = document.getElementById('vacStatusFilter')?.value || 'open';
+    const list = document.getElementById('vacanciesList');
+    if (list) list.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:24px">⏳</div>';
+    const sec = document.getElementById('candidatesSection');
+    if (sec) sec.style.display = 'none';
+
+    const data = await hrFetch(`/vacancies?status=${status}`);
+    if (!data?.success) {
+        if (list) list.innerHTML = '<div style="text-align:center;color:var(--danger);padding:24px">Помилка завантаження</div>';
+        return;
+    }
+    const vacancies = data.vacancies || [];
+
+    const urgent = vacancies.filter(v => v.priority === 'urgent' && v.status === 'open').length;
+    const open = vacancies.filter(v => v.status === 'open').length;
+    const totalC = vacancies.reduce((s, v) => s + (parseInt(v.active_candidates) || 0), 0);
+    const stats = document.getElementById('vacStats');
+    if (stats) stats.innerHTML = `
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+            <div class="vac-stat-card"><span class="vac-stat-num">${open}</span><span class="vac-stat-label">Відкритих</span></div>
+            ${urgent ? `<div class="vac-stat-card urgent"><span class="vac-stat-num">${urgent}</span><span class="vac-stat-label">🔴 Терміново</span></div>` : ''}
+            <div class="vac-stat-card"><span class="vac-stat-num">${totalC}</span><span class="vac-stat-label">Кандидатів</span></div>
+        </div>`;
+
+    if (!vacancies.length) {
+        if (list) list.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px">Вакансій немає. Натисни "+ Вакансія"</div>';
+        return;
+    }
+    if (list) list.innerHTML = vacancies.map(v => `
+        <div class="hr-vacancy-card" onclick="openCandidates(${v.id},'${escapeHtml(v.title).replace(/'/g,"\\'")}')">
+            <div class="vac-header">
+                ${v.priority === 'urgent' ? '<span class="vac-badge urgent">🔴 ТЕРМІНОВО</span>' : ''}
+                <span class="vac-badge">${VAC_STATUS_LABEL[v.status] || v.status}</span>
+                <span class="vac-apps" title="Кандидатів">👥 ${v.active_candidates || 0}</span>
+            </div>
+            <div class="vac-title">${escapeHtml(v.title)}</div>
+            <div class="vac-role">${ROLE_LABELS[v.role_type] || v.role_type}</div>
+            ${v.schedule ? `<div class="vac-meta">🕐 ${escapeHtml(v.schedule)}</div>` : ''}
+            ${v.salary_from || v.salary_to ? `<div class="vac-meta">💰 ${v.salary_from || '?'}–${v.salary_to || '?'} ₴</div>` : ''}
+            ${v.description ? `<div class="vac-desc">${escapeHtml(v.description.slice(0, 120))}${v.description.length > 120 ? '…' : ''}</div>` : ''}
+            <div class="vac-actions" onclick="event.stopPropagation()">
+                ${v.status === 'open' ? `<button class="btn-vac-action" onclick="patchVacancy(${v.id},'paused')">⏸</button>` : ''}
+                ${v.status !== 'filled' && v.status !== 'closed' ? `<button class="btn-vac-action filled" onclick="patchVacancy(${v.id},'filled')">✅ Заповнено</button>` : ''}
+                ${v.status === 'paused' ? `<button class="btn-vac-action" onclick="patchVacancy(${v.id},'open')">▶ Відкрити</button>` : ''}
+                <button class="btn-vac-action danger" onclick="patchVacancy(${v.id},'closed')">✕</button>
+            </div>
+        </div>
+    `).join('');
+    document.getElementById('vacStatusFilter').onchange = loadVacancies;
+}
+
+async function patchVacancy(id, status) {
+    await hrFetch(`/vacancies/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    loadVacancies();
+}
+
+async function openCandidates(vacancyId, title) {
+    currentVacancyId = vacancyId;
+    document.getElementById('candidatesTitle').textContent = `Кандидати: ${title}`;
+    document.getElementById('candidatesSection').style.display = 'block';
+    document.getElementById('candidatesSection').scrollIntoView({ behavior: 'smooth' });
+    await refreshCandidates();
+    document.getElementById('btnAddCandidate').onclick = () => addCandidatePrompt(vacancyId);
+}
+
+async function refreshCandidates() {
+    if (!currentVacancyId) return;
+    const data = await hrFetch(`/vacancies/${currentVacancyId}/applications`);
+    if (!data?.success) return;
+    const apps = data.applications || [];
+    const statuses = ['new', 'contacted', 'interview', 'offer'];
+    const kanban = document.getElementById('candidatesKanban');
+    if (!kanban) return;
+    kanban.innerHTML = statuses.map(s => `
+        <div class="kanban-col">
+            <div class="kanban-col-title" style="border-top:3px solid ${APP_STATUS_COLOR[s]}">
+                ${APP_STATUS_LABEL[s]} <span class="kanban-count">${apps.filter(a => a.status === s).length}</span>
+            </div>
+            <div class="kanban-cards">
+                ${apps.filter(a => a.status === s).map(a => `
+                    <div class="kanban-card">
+                        <div class="kc-name">${escapeHtml(a.name)}</div>
+                        ${a.phone ? `<div class="kc-meta">📞 ${escapeHtml(a.phone)}</div>` : ''}
+                        ${a.telegram_username ? `<div class="kc-meta">✈️ @${escapeHtml(a.telegram_username)}</div>` : ''}
+                        ${a.salary_expectation ? `<div class="kc-meta">💰 ${a.salary_expectation} ₴</div>` : ''}
+                        ${a.interview_date ? `<div class="kc-meta">📅 ${new Date(a.interview_date).toLocaleDateString('uk-UA')}</div>` : ''}
+                        <div class="kc-actions">
+                            ${s !== 'offer' ? `<button class="kc-btn" onclick="moveCandidate(${a.id},'${nextCandidateStatus(s)}')">→ ${APP_STATUS_LABEL[nextCandidateStatus(s)]}</button>` : ''}
+                            ${s === 'offer' ? `<button class="kc-btn success" onclick="hireCandidate(${a.id})">✅ Найняти</button>` : ''}
+                            <button class="kc-btn danger" onclick="moveCandidate(${a.id},'rejected')">✕</button>
+                        </div>
+                    </div>
+                `).join('') || '<div style="color:var(--gray-400);font-size:12px;padding:8px">Порожньо</div>'}
+            </div>
+        </div>
+    `).join('');
+}
+
+function nextCandidateStatus(s) {
+    const chain = ['new', 'contacted', 'interview', 'offer', 'hired'];
+    return chain[chain.indexOf(s) + 1] || 'hired';
+}
+
+async function moveCandidate(id, status) {
+    await hrFetch(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    refreshCandidates();
+}
+
+async function hireCandidate(id) {
+    if (!confirm('Найняти кандидата? Буде створений запис у команді.')) return;
+    const res = await hrFetch(`/applications/${id}/hire`, { method: 'POST', body: JSON.stringify({}) });
+    if (res?.success) {
+        alert(`✅ ${res.message}`);
+        loadVacancies();
+        refreshCandidates();
+    }
+}
+
+async function addCandidatePrompt(vacancyId) {
+    const name = prompt('Ім\'я кандидата *:');
+    if (!name?.trim()) return;
+    const phone = prompt('Телефон (або Enter щоб пропустити):');
+    const tg = prompt('Telegram username (або Enter):');
+    await hrFetch(`/vacancies/${vacancyId}/applications`, {
+        method: 'POST',
+        body: JSON.stringify({ name: name.trim(), phone: phone || null, telegram_username: tg || null })
+    });
+    refreshCandidates();
+}
+
+// Vacancy create button
+document.getElementById('btnAddVacancy')?.addEventListener('click', () => {
+    const title = prompt('Назва вакансії *:');
+    if (!title?.trim()) return;
+    const roleKeys = Object.keys(ROLE_LABELS);
+    const roleList = roleKeys.map((k, i) => `${i + 1}. ${ROLE_LABELS[k]}`).join('\n');
+    const roleNum = prompt(`Роль (введи номер):\n${roleList}`);
+    const roleKey = roleKeys[parseInt(roleNum) - 1];
+    if (!roleKey) return alert('Невірний номер ролі');
+    const salary_from = parseInt(prompt('Зарплата від (₴, або 0):')) || null;
+    const salary_to = parseInt(prompt('Зарплата до (₴, або 0):')) || null;
+    const schedule = prompt('Графік (або Enter):');
+    const priority = confirm('Терміново?') ? 'urgent' : 'normal';
+    hrFetch('/vacancies', {
+        method: 'POST',
+        body: JSON.stringify({ title: title.trim(), role_type: roleKey, salary_from, salary_to, schedule: schedule || null, priority })
+    }).then(r => { if (r?.success) loadVacancies(); });
+});
 
 // ==========================================
 // BOOT

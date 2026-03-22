@@ -1694,4 +1694,124 @@ router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager')
     }
 });
 
+// ══════════════════════════════════════════════════════
+// ВАКАНСІЇ — CRUD
+// ══════════════════════════════════════════════════════
+
+router.get('/vacancies', async (req, res) => {
+    try {
+        const { status = 'open', role_type } = req.query;
+        let q = `SELECT v.*, (SELECT COUNT(*) FROM job_applications a WHERE a.vacancy_id=v.id AND a.status!='rejected') as active_candidates FROM job_vacancies v`;
+        const conds = [], params = [];
+        if (status !== 'all') { conds.push(`v.status=$${params.length+1}`); params.push(status); }
+        if (role_type)        { conds.push(`v.role_type=$${params.length+1}`); params.push(role_type); }
+        if (conds.length) q += ' WHERE ' + conds.join(' AND ');
+        q += ` ORDER BY CASE v.priority WHEN 'urgent' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, v.created_at DESC`;
+        const r = await pool.query(q, params);
+        res.json({ success: true, vacancies: r.rows });
+    } catch (err) { log.error('GET /vacancies', err); res.status(500).json({ error: err.message }); }
+});
+
+router.post('/vacancies', async (req, res) => {
+    const { title, role_type, department = 'animators', description, requirements,
+            salary_from, salary_to, schedule, work_format = 'office',
+            status = 'open', priority = 'normal' } = req.body;
+    if (!title?.trim() || !role_type) return res.status(400).json({ error: 'title і role_type обов\'язкові' });
+    try {
+        const r = await pool.query(
+            `INSERT INTO job_vacancies (title,role_type,department,description,requirements,salary_from,salary_to,schedule,work_format,status,priority,created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+            [title.trim(), role_type, department, description||null, requirements||null,
+             salary_from||null, salary_to||null, schedule||null, work_format, status, priority, req.user?.username||null]);
+        res.json({ success: true, vacancy: r.rows[0] });
+    } catch (err) { log.error('POST /vacancies', err); res.status(500).json({ error: err.message }); }
+});
+
+router.patch('/vacancies/:id', async (req, res) => {
+    const { status, priority, description, requirements, salary_from, salary_to, schedule, title } = req.body;
+    const sets = [], vals = [];
+    let i = 1;
+    if (title !== undefined)       { sets.push(`title=$${i++}`);       vals.push(title); }
+    if (status)                    { sets.push(`status=$${i++}`);      vals.push(status); }
+    if (priority)                  { sets.push(`priority=$${i++}`);    vals.push(priority); }
+    if (description !== undefined) { sets.push(`description=$${i++}`); vals.push(description); }
+    if (requirements !== undefined){ sets.push(`requirements=$${i++}`); vals.push(requirements); }
+    if (salary_from !== undefined) { sets.push(`salary_from=$${i++}`); vals.push(salary_from); }
+    if (salary_to !== undefined)   { sets.push(`salary_to=$${i++}`);   vals.push(salary_to); }
+    if (schedule !== undefined)    { sets.push(`schedule=$${i++}`);    vals.push(schedule); }
+    if (['filled','closed'].includes(status)) sets.push('closed_at=NOW()');
+    if (!sets.length) return res.status(400).json({ error: 'Нічого оновлювати' });
+    vals.push(parseInt(req.params.id));
+    try {
+        await pool.query(`UPDATE job_vacancies SET ${sets.join(',')} WHERE id=$${i}`, vals);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/vacancies/:id', async (req, res) => {
+    try {
+        await pool.query(`UPDATE job_vacancies SET status='closed', closed_at=NOW() WHERE id=$1`, [req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// КАНДИДАТИ — CRUD
+// ══════════════════════════════════════════════════════
+
+router.get('/vacancies/:id/applications', async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM job_applications WHERE vacancy_id=$1 ORDER BY created_at DESC', [req.params.id]);
+        res.json({ success: true, applications: r.rows });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/vacancies/:id/applications', async (req, res) => {
+    const { name, phone, telegram_username, telegram_id, source = 'manual', notes, salary_expectation, cv_url } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'name обов\'язковий' });
+    try {
+        const r = await pool.query(
+            `INSERT INTO job_applications (vacancy_id,name,phone,telegram_username,telegram_id,source,notes,salary_expectation,cv_url,added_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+            [parseInt(req.params.id), name.trim(), phone||null, telegram_username||null, telegram_id||null,
+             source, notes||null, salary_expectation||null, cv_url||null, req.user?.username||null]);
+        res.json({ success: true, application: r.rows[0] });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.patch('/applications/:id', async (req, res) => {
+    const { status, notes, interview_date, salary_expectation } = req.body;
+    const sets = [], vals = [];
+    let i = 1;
+    if (status)              { sets.push(`status=$${i++}`); vals.push(status); }
+    if (notes !== undefined) { sets.push(`notes=$${i++}`);  vals.push(notes); }
+    if (interview_date)      { sets.push(`interview_date=$${i++}`); vals.push(interview_date); }
+    if (salary_expectation)  { sets.push(`salary_expectation=$${i++}`); vals.push(salary_expectation); }
+    sets.push('updated_at=NOW()');
+    vals.push(parseInt(req.params.id));
+    try {
+        await pool.query(`UPDATE job_applications SET ${sets.join(',')} WHERE id=$${i}`, vals);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/applications/:id/hire', async (req, res) => {
+    try {
+        const app = await pool.query(
+            `SELECT a.*, v.role_type, v.title as vac_title FROM job_applications a
+             JOIN job_vacancies v ON v.id=a.vacancy_id WHERE a.id=$1`, [req.params.id]);
+        if (!app.rows.length) return res.status(404).json({ error: 'Not found' });
+        const a = app.rows[0];
+        await pool.query("UPDATE job_applications SET status='hired', updated_at=NOW() WHERE id=$1", [req.params.id]);
+        await pool.query("UPDATE job_vacancies SET status='filled', closed_at=NOW() WHERE id=$1", [a.vacancy_id]);
+        const { department = 'animators', salary } = req.body;
+        const staffResult = await pool.query(
+            `INSERT INTO staff (name, department, position, phone, role_type, hire_date, telegram_username, telegram_id, hourly_rate, is_active)
+             VALUES ($1,$2,$3,$4,$5,CURRENT_DATE,$6,$7,$8,true) RETURNING id`,
+            [a.name, department, a.vac_title, a.phone||null, a.role_type,
+             a.telegram_username||null, a.telegram_id||null, salary||0]);
+        res.json({ success: true, staff_id: staffResult.rows[0].id, message: `${a.name} найнятий як ${a.role_type}` });
+    } catch (err) { log.error('POST /applications/:id/hire', err); res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

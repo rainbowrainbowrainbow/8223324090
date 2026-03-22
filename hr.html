@@ -891,6 +891,45 @@
         body.dark-mode .ai-worker-panel { background: #1E1E38; border-color: #3D3D5C; color: #9CA3AF; }
         body.dark-mode .ai-worker-panel h5 { color: #E2E8F0; }
         body.dark-mode .ai-task-form input { background: #1E1E38; border-color: #3D3D5C; color: #E2E8F0; }
+
+        /* Vacancies */
+        .hr-vacancy-card { background: var(--white); border: 1px solid var(--gray-100); border-radius: var(--radius-card, 12px); padding: 16px; margin-bottom: 10px; cursor: pointer; transition: box-shadow 0.2s; }
+        .hr-vacancy-card:hover { box-shadow: var(--shadow-sm, 0 4px 12px rgba(0,0,0,0.08)); }
+        .vac-header { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+        .vac-badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: var(--gray-100); color: var(--gray-600); font-weight: 600; }
+        .vac-badge.urgent { background: #FEE2E2; color: #DC2626; }
+        .vac-apps { font-size: 12px; color: var(--gray-400); margin-left: auto; }
+        .vac-title { font-weight: 700; font-size: 16px; margin-bottom: 2px; }
+        .vac-role { font-size: 13px; color: var(--gray-500); margin-bottom: 4px; }
+        .vac-meta { font-size: 12px; color: var(--gray-400); }
+        .vac-desc { font-size: 13px; color: var(--gray-600); margin-top: 6px; line-height: 1.4; }
+        .vac-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+        .btn-vac-action { padding: 4px 10px; border: 1px solid var(--gray-200); border-radius: 6px; font-size: 12px; cursor: pointer; background: var(--white); font-family: inherit; }
+        .btn-vac-action.filled { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .btn-vac-action.danger { color: #DC2626; border-color: #FCA5A5; }
+        .vac-stat-card { background: var(--white); border: 1px solid var(--gray-100); border-radius: 12px; padding: 10px 16px; display: flex; flex-direction: column; align-items: center; }
+        .vac-stat-card.urgent { border-color: #FCA5A5; background: #FEF2F2; }
+        .vac-stat-num { font-size: 24px; font-weight: 800; }
+        .vac-stat-label { font-size: 11px; color: var(--gray-500); }
+        /* Kanban */
+        .candidates-kanban { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+        .kanban-col { min-width: 200px; flex: 1; background: var(--gray-50); border-radius: 12px; padding: 10px; }
+        .kanban-col-title { font-weight: 700; font-size: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--gray-200); display: flex; justify-content: space-between; }
+        .kanban-count { background: var(--gray-200); border-radius: 20px; padding: 1px 6px; font-size: 11px; }
+        .kanban-card { background: var(--white); border: 1px solid var(--gray-100); border-radius: 8px; padding: 10px; margin-bottom: 8px; font-size: 13px; }
+        .kc-name { font-weight: 600; margin-bottom: 4px; }
+        .kc-meta { color: var(--gray-500); font-size: 12px; }
+        .kc-actions { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+        .kc-btn { padding: 3px 8px; border: 1px solid var(--gray-200); border-radius: 6px; font-size: 11px; cursor: pointer; background: var(--white); font-family: inherit; }
+        .kc-btn.success { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .kc-btn.danger { color: #DC2626; border-color: #FCA5A5; }
+        .btn-sm { font-size: 12px; padding: 4px 10px; }
+        /* Dark mode vacancies */
+        body.dark-mode .hr-vacancy-card, body.dark-mode .kanban-card, body.dark-mode .vac-stat-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+        body.dark-mode .kanban-col { background: rgba(255,255,255,0.03); }
+        body.dark-mode .vac-desc { color: var(--gray-400); }
+        body.dark-mode .btn-vac-action, body.dark-mode .kc-btn { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--gray-300); }
+        @media (max-width: 640px) { .candidates-kanban { flex-direction: column; } .kanban-col { min-width: auto; } }
     </style>
 </head>
 <body data-page-group="hr">
@@ -959,6 +998,7 @@
                 <button class="hr-tab" data-tab="ratings">Рейтинг</button>
                 <button class="hr-tab" data-tab="onboarding">Онбординг</button>
                 <button class="hr-tab" data-tab="costumes">Костюмерна</button>
+                <button class="hr-tab" data-tab="vacancies">💼 Вакансії</button>
             </div>
 
             <!-- TAB 1: TODAY -->
@@ -1001,13 +1041,29 @@
                     <input type="text" id="teamSearch" class="hr-team-search" aria-label="Пошук за ім'ям або телефоном..." placeholder="Пошук за ім'ям або телефоном...">
                     <select id="teamRoleFilter" class="hr-team-select">
                         <option value="">Всі ролі</option>
-                        <option value="animator">Аніматор</option>
-                        <option value="host">Ведуча</option>
-                        <option value="technician">Технік</option>
-                        <option value="admin">Адмін</option>
-                        <option value="cleaner">Прибиральник</option>
-                        <option value="manager">Менеджер</option>
-                        <option value="intern">Стажер</option>
+                        <optgroup label="Керівництво">
+                            <option value="director">Директор</option>
+                            <option value="vice_director">Зам. директора</option>
+                            <option value="manager">Менеджер</option>
+                            <option value="hr_manager">HR-менеджер</option>
+                            <option value="admin">Адмін</option>
+                        </optgroup>
+                        <optgroup label="Аніматори і ведучі">
+                            <option value="animator">Аніматор</option>
+                            <option value="host">Ведуча</option>
+                            <option value="trampoline_instructor">Інструктор батутів</option>
+                            <option value="intern">Стажер</option>
+                        </optgroup>
+                        <optgroup label="Кухня">
+                            <option value="head_cook">Шеф-повар</option>
+                            <option value="cook">Повар</option>
+                            <option value="bartender">Бармен</option>
+                            <option value="waiter">Офіціант</option>
+                        </optgroup>
+                        <optgroup label="Технічний персонал">
+                            <option value="technician">Технік</option>
+                            <option value="cleaner">Прибиральник</option>
+                        </optgroup>
                     </select>
                     <label style="font-size:var(--font-xs);display:flex;align-items:center;gap:6px;cursor:pointer;">
                         <input type="checkbox" id="teamActiveOnly" checked> Тільки активні
@@ -1092,6 +1148,32 @@
                 <div id="costumesList"></div>
             </div>
 
+            <!-- TAB 11: VACANCIES -->
+            <div id="tab-vacancies" class="hr-tab-content">
+                <div class="hr-team-filters" style="justify-content:space-between">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <select id="vacStatusFilter" class="hr-team-select">
+                            <option value="open">🟢 Відкриті</option>
+                            <option value="all">Всі</option>
+                            <option value="paused">⏸ Призупинені</option>
+                            <option value="filled">✅ Заповнені</option>
+                            <option value="closed">❌ Закриті</option>
+                        </select>
+                    </div>
+                    <button id="btnAddVacancy" class="btn-add">+ Вакансія</button>
+                </div>
+                <div id="vacStats" class="vacancy-stats"></div>
+                <div id="vacanciesList"></div>
+                <div id="candidatesSection" style="display:none;margin-top:24px">
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                        <h4 id="candidatesTitle" style="margin:0"></h4>
+                        <button id="btnAddCandidate" class="btn-add btn-sm">+ Кандидат</button>
+                        <button onclick="document.getElementById('candidatesSection').style.display='none'" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:18px">✕</button>
+                    </div>
+                    <div id="candidatesKanban" class="candidates-kanban"></div>
+                </div>
+            </div>
+
             <!-- ─── Shifts Summary (v33.5) ─── -->
             <div class="page-section" id="shiftsSummarySection">
               <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -1151,13 +1233,29 @@
             <div class="form-group">
                 <label>Посада / Роль</label>
                 <select id="editRoleType">
-                    <option value="animator">Аніматор</option>
-                    <option value="host">Ведуча</option>
-                    <option value="technician">Технік</option>
-                    <option value="admin">Адмін</option>
-                    <option value="cleaner">Прибиральник</option>
-                    <option value="manager">Менеджер</option>
-                    <option value="intern">Стажер</option>
+                    <optgroup label="Керівництво">
+                        <option value="director">Директор</option>
+                        <option value="vice_director">Зам. директора</option>
+                        <option value="manager">Менеджер</option>
+                        <option value="hr_manager">HR-менеджер</option>
+                        <option value="admin">Адмін</option>
+                    </optgroup>
+                    <optgroup label="Аніматори і ведучі">
+                        <option value="animator">Аніматор</option>
+                        <option value="host">Ведуча</option>
+                        <option value="trampoline_instructor">Інструктор батутів</option>
+                        <option value="intern">Стажер</option>
+                    </optgroup>
+                    <optgroup label="Кухня">
+                        <option value="head_cook">Шеф-повар</option>
+                        <option value="cook">Повар</option>
+                        <option value="bartender">Бармен</option>
+                        <option value="waiter">Офіціант</option>
+                    </optgroup>
+                    <optgroup label="Технічний персонал">
+                        <option value="technician">Технік</option>
+                        <option value="cleaner">Прибиральник</option>
+                    </optgroup>
                 </select>
             </div>
             <div class="form-group">

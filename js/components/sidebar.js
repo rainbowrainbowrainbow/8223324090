@@ -335,6 +335,16 @@ const Sidebar = (() => {
     function init(containerSelector) {
         render(containerSelector);
         initToggle();
+        // Fill user card — retry until AppState.currentUser is set (auth may be async)
+        _retryUserCard(0);
+    }
+
+    function _retryUserCard(attempt) {
+        initUserCard();
+        const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+        if (!user && attempt < 5) {
+            setTimeout(() => _retryUserCard(attempt + 1), [100, 300, 600, 1000, 2000][attempt]);
+        }
     }
 
     window.addEventListener('roleSwitched', () => {

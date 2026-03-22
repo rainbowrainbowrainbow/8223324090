@@ -316,23 +316,28 @@ body.dark-mode .btn-reset-auto {
 
 .booking-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 12px;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--border-color);
 }
 
 .booking-actions button,
 .booking-actions a {
-    flex: 1;
-    padding: 10px 16px;
+    flex: 1 1 auto;
+    min-width: 80px;
+    padding: 10px 12px;
     border-radius: var(--radius-sm);
-    font-weight: 700;
-    font-size: var(--font-sm);
+    font-weight: 600;
+    font-size: 13px;
     cursor: pointer;
     font-family: inherit;
     text-align: center;
     text-decoration: none;
     border: none;
     transition: all var(--speed-fast) var(--ease-smooth);
+    white-space: nowrap;
 }
 
 /* Button colors defined per-class in modals.css (v5.31) */

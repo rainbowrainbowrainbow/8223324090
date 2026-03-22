@@ -1177,9 +1177,11 @@ body.dark-mode .confirm-cancel:hover {
     background: var(--white);
     border-top: 1px solid var(--gray-100);
     display: flex;
-    gap: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
     z-index: 2;
     border-radius: 0 0 var(--radius) var(--radius);
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
 }
 
 /* ==========================================

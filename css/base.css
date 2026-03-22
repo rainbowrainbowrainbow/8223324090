@@ -611,3 +611,6 @@ button:focus-visible, .btn:focus-visible, a:focus-visible {
     border-radius: 6px; cursor: pointer; transition: background 0.15s;
 }
 .alert-action-btn:hover { background: rgba(99,102,241,0.14); }
+/* v33.12.0: Temporarily hide role switcher and test badge */
+#roleSwitcher { display: none !important; }
+.role-switcher-btn { display: none !important; }

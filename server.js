@@ -379,6 +379,25 @@ app.get('/omni', (req, res) => {
     res.sendFile(path.join(__dirname, 'omni.html'));
 });
 
+// v34.0.0: Sidebar action redirects (modals only in index.html)
+app.get('/afisha', (req, res) => res.redirect(302, '/?open=afisha'));
+app.get('/certificates', (req, res) => res.redirect(302, '/?open=certificates'));
+// Designer and Sound — sendFile or redirect to /art
+app.get('/designer', (req, res) => {
+    if (require('fs').existsSync(path.join(__dirname, 'designer.html'))) {
+        res.sendFile(path.join(__dirname, 'designer.html'));
+    } else {
+        res.redirect(302, '/art');
+    }
+});
+app.get('/sound', (req, res) => {
+    if (require('fs').existsSync(path.join(__dirname, 'sound.html'))) {
+        res.sendFile(path.join(__dirname, 'sound.html'));
+    } else {
+        res.redirect(302, '/');
+    }
+});
+
 // SPA fallback (must be last)
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));

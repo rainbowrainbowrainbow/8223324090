@@ -15,19 +15,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=33.17.0">
-    <link rel="stylesheet" href="css/auth.css?v=33.17.0">
-    <link rel="stylesheet" href="css/layout.css?v=33.17.0">
-    <link rel="stylesheet" href="css/timeline.css?v=33.17.0">
-    <link rel="stylesheet" href="css/panel.css?v=33.17.0">
-    <link rel="stylesheet" href="css/modals.css?v=33.17.0">
-    <link rel="stylesheet" href="css/controls.css?v=33.17.0">
-    <link rel="stylesheet" href="css/features.css?v=33.17.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=33.17.0">
-    <link rel="stylesheet" href="css/responsive.css?v=33.17.0">
-    <link rel="stylesheet" href="css/pages.css?v=33.17.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=33.17.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=33.17.0">
+    <link rel="stylesheet" href="css/base.css?v=34.0.0">
+    <link rel="stylesheet" href="css/auth.css?v=34.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=34.0.0">
+    <link rel="stylesheet" href="css/timeline.css?v=34.0.0">
+    <link rel="stylesheet" href="css/panel.css?v=34.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=34.0.0">
+    <link rel="stylesheet" href="css/controls.css?v=34.0.0">
+    <link rel="stylesheet" href="css/features.css?v=34.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=34.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=34.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=34.0.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=34.0.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=34.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -44,9 +44,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v33.17.0 — Test Build</p>
+                <p class="tagline">AI First CRM v34.0.0 — Sidebar Pro</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v33.17.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v34.0.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -88,7 +88,7 @@
             </div>
             <nav class="sidebar-links" id="sidebarLinks"></nav>
             <!-- Timeline-specific action buttons -->
-            <div class="sidebar-actions" id="sidebarActions">
+            <div class="sidebar-actions" id="sidebarActions" style="display:none">
                 <div class="sidebar-divider"></div>
                 <span class="sidebar-section-label">Дії</span>
                 <button type="button" id="sidebarHistoryBtn" class="nav-link sidebar-action sidebar-admin-only hidden" title="Історія змін бронювань"><span class="nav-icon">📜</span> <span class="nav-text">Історія</span></button>
@@ -1261,6 +1261,19 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v34.0.0 — Sidebar Pro (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Accordion Groups</b> — CRM, Управління, Творче, Система — згортаються/розгортаються з анімацією</li>
+                        <li><b>Unified Nav</b> — всі сторінки мають однакове меню з accordion замість hub-dropdown</li>
+                        <li><b>Афіша/Сертифікати</b> — кнопки працюють з будь-якої сторінки (?open= auto-open)</li>
+                        <li><b>Designer/Sound</b> — нові пункти в меню з graceful redirect</li>
+                        <li><b>Collapse Button</b> — додано на всі 23 standalone сторінки</li>
+                        <li><b>Nav Icons</b> — збільшено emoji розмір (15px/17px), scale анімація при hover</li>
+                        <li><b>Dark Mode</b> — повна підтримка accordion стилів</li>
+                        <li><b>8 багфіксів</b> — E1-E11: grid animation, hidden sidebarActions, PAGE_ACCESS, double active /staff</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v33.17.0 — Test Build (Claude Code, 22.03.2026)</h4>
                     <ul>
                         <li><b>Test Build</b> — тестова збірка для перевірки деплою та стабільності системи</li>
@@ -1408,7 +1421,7 @@
                         <li><b>Scheduler</b> — виправлено "value too long for varchar(10)" для hourly schedulers (міграція 094)</li>
                         <li><b>Рахунки</b> — finance_accounts таблиця, CRUD API, report-bot sync, вкладка «Рахунки» у фінансах</li>
                         <li><b>Report Bot</b> — account_id/account_name в submit, GET /report-bot/accounts для синхронізації</li>
-                        <li><b>Cache Busting</b> — ?v=33.17.0 на всіх 25 HTML сторінках (321 оновлення)</li>
+                        <li><b>Cache Busting</b> — ?v=34.0.0 на всіх 25 HTML сторінках (321 оновлення)</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -2007,7 +2020,7 @@
                         <li><b>Version Sync</b> — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG</li>
                         <li><b>Landing Carousel</b> — команда з каруселлю, Anli Lektor, swipe/dots/arrows [kleshnya]</li>
                         <li><b>Manager Guide</b> — нова сторінка для менеджерів з продажу [kleshnya]</li>
-                        <li><b>Cache Busting</b> — ?v=33.17.0 на всіх CSS/JS ресурсах (25 файлів)</li>
+                        <li><b>Cache Busting</b> — ?v=34.0.0 на всіх CSS/JS ресурсах (25 файлів)</li>
                         <li><b>Swagger API</b> — оновлена версія OpenAPI spec до v23.0.0</li>
                     </ul>
                 </div>
@@ -4771,29 +4784,29 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/i18n.js?v=33.17.0"></script>
-    <script src="js/config.js?v=33.17.0"></script>
-    <script src="js/api.js?v=33.17.0"></script>
-    <script src="js/ui.js?v=33.17.0"></script>
-    <script src="js/auth.js?v=33.17.0"></script>
-    <script src="js/timeline.js?v=33.17.0"></script>
-    <script src="js/booking.js?v=33.17.0"></script>
-    <script src="js/settings.js?v=33.17.0"></script>
-    <script src="js/booking-form.js?v=33.17.0"></script>
-    <script src="js/booking-linked.js?v=33.17.0"></script>
-    <script src="js/settings-dashboard.js?v=33.17.0"></script>
-    <script src="js/settings-history.js?v=33.17.0"></script>
-    <script src="js/settings-afisha.js?v=33.17.0"></script>
-    <script src="js/settings-certificates.js?v=33.17.0"></script>
-    <script src="js/offline.js?v=33.17.0"></script>
-    <script src="js/search.js?v=33.17.0"></script>
-    <script src="js/ws.js?v=33.17.0"></script>
-    <script src="js/app.js?v=33.17.0"></script>
-    <script src="js/achievement-popup.js?v=33.17.0"></script>
-    <script src="js/kleshnya-widget.js?v=33.17.0"></script>
-    <script src="js/components/sidebar.js?v=33.17.0"></script>
+    <script src="js/i18n.js?v=34.0.0"></script>
+    <script src="js/config.js?v=34.0.0"></script>
+    <script src="js/api.js?v=34.0.0"></script>
+    <script src="js/ui.js?v=34.0.0"></script>
+    <script src="js/auth.js?v=34.0.0"></script>
+    <script src="js/timeline.js?v=34.0.0"></script>
+    <script src="js/booking.js?v=34.0.0"></script>
+    <script src="js/settings.js?v=34.0.0"></script>
+    <script src="js/booking-form.js?v=34.0.0"></script>
+    <script src="js/booking-linked.js?v=34.0.0"></script>
+    <script src="js/settings-dashboard.js?v=34.0.0"></script>
+    <script src="js/settings-history.js?v=34.0.0"></script>
+    <script src="js/settings-afisha.js?v=34.0.0"></script>
+    <script src="js/settings-certificates.js?v=34.0.0"></script>
+    <script src="js/offline.js?v=34.0.0"></script>
+    <script src="js/search.js?v=34.0.0"></script>
+    <script src="js/ws.js?v=34.0.0"></script>
+    <script src="js/app.js?v=34.0.0"></script>
+    <script src="js/achievement-popup.js?v=34.0.0"></script>
+    <script src="js/kleshnya-widget.js?v=34.0.0"></script>
+    <script src="js/components/sidebar.js?v=34.0.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=33.17.0"></script>
-    <script src="js/role-panel.js?v=33.17.0"></script>
+    <script src="js/alerts.js?v=34.0.0"></script>
+    <script src="js/role-panel.js?v=34.0.0"></script>
 </body>
 </html>

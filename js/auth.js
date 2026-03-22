@@ -133,6 +133,10 @@ const PAGE_ACCESS = {
     '/analytics': _MANAGER_UP,
     '/status':    _MANAGER_UP,
     '/omni':      _MANAGER_UP,
+    '/designer':  [..._MANAGER_UP, 'art_director', 'marketer'],
+    '/sound':     [..._MANAGER_UP, 'art_director'],
+    '/afisha':    _ALL_STAFF,
+    '/certificates': _ALL_STAFF,
 };
 
 const ACTION_PERMISSIONS = {

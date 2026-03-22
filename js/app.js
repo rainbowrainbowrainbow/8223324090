@@ -93,6 +93,30 @@ function initializeApp() {
         if (typeof handleRedo === 'function') handleRedo();
     });
     AppState.nowLineInterval = setInterval(renderNowLine, 60000);
+    // v34.0.0: Auto-open panel/modal from URL ?open= parameter
+    _checkAutoOpen();
+}
+
+function _checkAutoOpen() {
+    const params = new URLSearchParams(window.location.search);
+    const open = params.get('open');
+    if (!open) return;
+    // Remove parameter from URL (prevent re-open on refresh)
+    history.replaceState(null, '', window.location.pathname);
+    // Open corresponding panel after full initialization
+    setTimeout(() => {
+        switch (open) {
+            case 'afisha':
+                if (typeof showAfishaModal === 'function') showAfishaModal();
+                break;
+            case 'certificates':
+                if (typeof openCertificatesPanel === 'function') openCertificatesPanel();
+                break;
+            case 'settings':
+                if (typeof showSettings === 'function') showSettings();
+                break;
+        }
+    }, 800);
 }
 
 function loadPreferences() {

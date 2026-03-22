@@ -1,208 +1,196 @@
 /**
- * js/components/sidebar.js — Sidebar Navigation v33.14.0
- * Hub navigation, live badges, user card, day context, collapsed tooltips
+ * js/components/sidebar.js — Sidebar Navigation v34.0.0
+ * Accordion groups, unified nav, all pages consistent
  */
-
 const Sidebar = (() => {
-    function _getRoleName() {
-        try {
-            const saved = localStorage.getItem('pzp_user');
-            if (saved) {
-                const u = JSON.parse(saved);
-                const NAMES = { creator:'Творець', director:'Директор', admin:'Адмін', manager:'Менеджер',
-                    senior_manager:'Ст. менеджер', animator:'Аніматор', hr:'HR', accountant:'Бухгалтер',
-                    art_director:'Арт директор', instructor:'Інструктор' };
-                return NAMES[u.role] || u.role || 'CRM';
-            }
-        } catch {} return 'CRM';
-    }
-
-    // ═══ NAV_ITEMS ═══
+    // ═══ NAV_ITEMS ════════════════════════════════════════════════
     const NAV_ITEMS = [
-        { type: 'section', label: 'CRM', animate: true },
-        { href: '/dashboard', icon: '🏠', label: 'Дашборд', access: 'all',
-          badge: { type: 'alerts', color: 'red' } },
-        { href: '/', icon: '📅', label: 'Таймлайн', access: 'timeline' },
-        { href: '/tasks', icon: '✅', label: 'Задачі', access: 'all',
-          badge: { type: 'tasks', color: 'purple' } },
-        { href: '/chat', icon: '💬', label: 'Чат', access: 'all',
-          badge: { type: 'unread', color: 'blue' } },
+        // ─── GROUP: CRM ──────────────────────────────────────────
+        { type: 'group', key: 'crm', label: 'CRM', icon: '📋', defaultOpen: true },
+        { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'crm' },
+        { href: '/',             icon: '📅', label: 'Таймлайн',       access: 'timeline',       group: 'crm' },
+        { href: '/tasks',        icon: '✅', label: 'Задачі',         access: 'all',            group: 'crm' },
+        { href: '/chat',         icon: '💬', label: 'Чат',            access: 'all',            group: 'crm' },
+        { href: '/warehouse',    icon: '📦', label: 'Склад',          access: 'all',            group: 'crm' },
+        { href: '/center',       icon: '💲', label: 'Центр цін',      access: 'center',         group: 'crm' },
+        { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'all',            group: 'crm' },
 
-        { type: 'divider' },
-        { type: 'section', label: 'Робота' },
-        { type: 'hub', icon: '👥', label: 'Клієнти · Ліди', access: 'management',
-          badge: { type: 'leads_new', color: 'green' },
-          children: [
-              { href: '/customers', label: 'Клієнти', icon: '👥' },
-              { href: '/sales-funnel', label: 'Ліди', icon: '🔥', badge: { type: 'leads_new', color: 'green' } }
-          ]
-        },
-        { type: 'hub', icon: '💰', label: 'Фінанси · Аналіт.', access: 'finance',
-          children: [
-              { href: '/finance', label: 'Фінанси', icon: '💰' },
-              { href: '/analytics', label: 'Аналітика', icon: '📊' },
-              { href: '/reports', label: 'Звіти', icon: '📋' }
-          ]
-        },
-        { type: 'hub', icon: '🗓️', label: 'Команда · HR', access: 'staff',
-          children: [
-              { href: '/staff', label: 'Графік', icon: '🗓️' },
-              { href: '/hr', label: 'Кадри', icon: '🤝' },
-              { href: '/training', label: 'Навчання', icon: '🎓' }
-          ]
-        },
-        { type: 'hub', icon: '📦', label: 'Склад · Ціни', access: 'all',
-          badge: { type: 'stock_low', color: 'yellow' },
-          children: [
-              { href: '/warehouse', label: 'Склад', icon: '📦', badge: { type: 'stock_low', color: 'yellow' } },
-              { href: '/center', label: 'Центр цін', icon: '💲' }
-          ]
-        },
-        { type: 'divider' },
-        { type: 'section', label: 'Продукт' },
-        { href: '/programs', icon: '🎪', label: 'Програми', access: 'programs' },
-        { href: '/art', icon: '🎨', label: 'Art Director', access: 'art' },
-        { href: '/game', icon: '🎮', label: 'Гра', access: 'all' },
+        // ─── GROUP: Управління ───────────────────────────────────
+        { type: 'group', key: 'mgmt', label: 'Управління', icon: '👔', defaultOpen: true },
+        { href: '/customers',    icon: '👥', label: 'Клієнти',        access: 'management',     group: 'mgmt' },
+        { href: '/sales-funnel', icon: '🔥', label: 'Ліди',          access: 'leads',          group: 'mgmt' },
+        // E7 FIX: /staff двічі → перший активний, другий ні
+        { href: '/staff',        icon: '🗓️', label: 'Графік',         access: 'schedule_daily', group: 'mgmt', staffView: 'schedule' },
+        { href: '/staff',        icon: '📋', label: 'Команда',        access: 'staff',          group: 'mgmt', staffView: 'team', noActive: true },
+        { href: '/hr',           icon: '🤝', label: 'Кадри',          access: 'hr',             group: 'mgmt' },
+        { href: '/finance',      icon: '💰', label: 'Фінанси',        access: 'finance',        group: 'mgmt' },
+        { href: '/analytics',    icon: '📊', label: 'Аналітика',      access: 'analytics',      group: 'mgmt' },
+        { href: '/copilot',      icon: '🤖', label: 'Менеджер AI',    access: 'copilot',        group: 'mgmt' },
 
-        { type: 'divider' },
-        { type: 'section', label: 'Тестове' },
-        { href: '/copilot', icon: '🤖', label: 'Менеджер AI', access: 'copilot' },
-        { href: '/?settings=open', icon: '⚙️', label: 'Налаштування', access: 'settings', action: 'showSettings' },
+        // ─── GROUP: Творче ───────────────────────────────────────
+        { type: 'group', key: 'creative', label: 'Творче', icon: '🎨', defaultOpen: true },
+        { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'creative' },
+        { href: '/art',          icon: '🎨', label: 'Art Director',   access: 'art',            group: 'creative' },
+        { href: '/designer',     icon: '📐', label: 'Дизайнер',       access: 'art',            group: 'creative' },
+        { href: '/sound',        icon: '🔊', label: 'Звук',           access: 'art',            group: 'creative' },
+        { href: '/graduation',   icon: '🎓', label: 'Випускний',      access: 'graduation',     group: 'creative' },
+        // E4/E5 FIX: Афіша і Сертифікати — action-links
+        { href: '#afisha',       icon: '🎭', label: 'Афіша',          access: 'all',            group: 'creative',
+          action: 'sidebarOpenAfisha',       isHashLink: true },
+        { href: '#certificates', icon: '🎫', label: 'Сертифікати',    access: 'all',            group: 'creative',
+          action: 'sidebarOpenCertificates', isHashLink: true },
+
+        // ─── GROUP: Система ──────────────────────────────────────
+        { type: 'group', key: 'system', label: 'Система', icon: '⚙️', defaultOpen: true },
+        { href: '/kleshnya',     icon: '🦞', label: 'Клешня',         access: 'all',            group: 'system' },
+        { href: '/game',         icon: '🎮', label: 'Гра',            access: 'all',            group: 'system' },
+        { href: '/demo',         icon: '🎬', label: 'Demo',           access: 'demo',           group: 'system' },
+        { href: '#settings',     icon: '⚙️', label: 'Налаштування',   access: 'settings',       group: 'system',
+          action: 'sidebarOpenSettings', isHashLink: true },
     ];
 
-    // ═══ ACCESS MATRIX ═══
+    // ═══ ACCESS MATRIX ════════════════════════════════════════════
     const ALL = true;
     const SIDEBAR_ACCESS = {
-        all: ALL,
-        timeline: ['creator','director','vice_director','senior_manager','manager','admin','senior_instructor','instructor','hr','accountant','it_specialist'],
-        management: ['creator','director','vice_director','senior_manager','manager','admin','marketer'],
-        leads: ['creator','director','vice_director','senior_manager','manager','marketer'],
-        copilot: ['creator','director','senior_manager','manager'],
-        staff: ['creator','director','vice_director','senior_manager','manager','admin','hr','senior_instructor','instructor','it_specialist'],
-        hr: ['creator','director','vice_director','senior_manager','manager','hr'],
-        finance: ['creator','director','vice_director','accountant','senior_manager','manager'],
-        analytics: ['creator','director','vice_director','senior_manager','manager','accountant','marketer','it_specialist'],
-        reports: ['creator','director','vice_director','senior_manager','manager','admin','accountant'],
-        programs: ['creator','director','vice_director','senior_manager','manager','admin','senior_instructor','instructor','art_director'],
-        center: ['creator','director','vice_director','senior_manager','manager','admin','accountant'],
-        art: ['creator','director','vice_director','senior_manager','manager','art_director','marketer'],
-        demo: ['creator','director','vice_director'],
-        settings: ['creator','director'],
+        all:            ALL,
+        timeline:       ['creator','director','vice_director','senior_manager','manager','admin','senior_instructor','instructor','hr','accountant','it_specialist'],
+        management:     ['creator','director','vice_director','senior_manager','manager','admin','marketer'],
+        leads:          ['creator','director','vice_director','senior_manager','manager','marketer'],
+        copilot:        ['creator','director','senior_manager','manager'],
+        staff:          ['creator','director','vice_director','senior_manager','manager','admin','hr','senior_instructor','instructor','it_specialist'],
+        hr:             ['creator','director','vice_director','senior_manager','manager','hr'],
+        finance:        ['creator','director','vice_director','accountant','senior_manager','manager'],
+        analytics:      ['creator','director','vice_director','senior_manager','manager','accountant','marketer','it_specialist'],
+        programs:       ['creator','director','vice_director','senior_manager','manager','admin','senior_instructor','instructor','art_director'],
+        center:         ['creator','director','vice_director','senior_manager','manager','admin','accountant'],
+        graduation:     ['creator','director','vice_director','senior_manager','manager','admin','art_director','marketer'],
+        art:            ['creator','director','vice_director','senior_manager','manager','art_director','marketer'],
+        demo:           ['creator','director','vice_director'],
+        settings:       ['creator','director'],
+        schedule_daily: ['creator','director','vice_director','senior_manager','manager','admin','senior_instructor','instructor','hr','it_specialist'],
     };
 
-    let _pageStatuses = {};
+    // ═══ ACCORDION STATE ══════════════════════════════════════════
+    function _getGroupState() {
+        try { return JSON.parse(localStorage.getItem('pzp_sidebar_groups') || '{}'); }
+        catch { return {}; }
+    }
+    function _setGroupState(key, open) {
+        const s = _getGroupState();
+        s[key] = open;
+        localStorage.setItem('pzp_sidebar_groups', JSON.stringify(s));
+    }
+    function _isGroupOpen(key, defaultOpen) {
+        const s = _getGroupState();
+        return key in s ? s[key] : (defaultOpen !== false);
+    }
 
+    // ═══ RENDER ═══════════════════════════════════════════════════
+    function render(containerSelector) {
+        const container = document.querySelector(containerSelector || '#sidebarNav .sidebar-links');
+        if (!container) return;
+        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+        const role = typeof getUserRole === 'function' ? getUserRole() : null;
+
+        let currentGroupKey = null;
+        let html = '';
+
+        for (const item of NAV_ITEMS) {
+            // ── Group header ──────────────────────────────────────
+            if (item.type === 'group') {
+                // Close previous group
+                if (currentGroupKey !== null) {
+                    html += '</div></div></div>'; // inner + items + group
+                }
+                currentGroupKey = item.key;
+
+                // Check if group has accessible children
+                const hasChildren = NAV_ITEMS.some(c =>
+                    c.group === item.key && (!role || hasAccess(c, role))
+                );
+                if (!hasChildren) { currentGroupKey = '__skip__'; continue; }
+
+                // Force open if current page is in this group
+                const hasActive = NAV_ITEMS.some(c =>
+                    c.group === item.key && !c.noActive && !c.isHashLink &&
+                    (currentPath === c.href || (c.href !== '/' && !c.href.startsWith('#') && currentPath.startsWith(c.href)))
+                );
+                const finalOpen = hasActive || _isGroupOpen(item.key, item.defaultOpen);
+
+                html += `
+<div class="sidebar-group" data-group-key="${item.key}">
+  <button class="sidebar-group-header${finalOpen ? ' open' : ''}"
+          onclick="Sidebar.toggleGroup('${item.key}', this)"
+          title="${item.label}">
+    <span class="nav-icon">${item.icon}</span>
+    <span class="nav-text sidebar-group-label">${item.label}</span>
+    <span class="sidebar-group-arrow"></span>
+  </button>
+  <div class="sidebar-group-items${finalOpen ? ' open' : ''}">
+    <div class="sidebar-group-inner">`;
+                continue;
+            }
+
+            // Skip if group is blocked
+            if (currentGroupKey === '__skip__') continue;
+
+            // ── Skip no access ────────────────────────────────────
+            if (role && !hasAccess(item, role)) continue;
+
+            // ── Render nav-link ───────────────────────────────────
+            const isActive = !item.noActive && !item.isHashLink && (
+                currentPath === item.href ||
+                (item.href !== '/' && !item.href.startsWith('#') && currentPath.startsWith(item.href))
+            );
+
+            // E9 FIX: simplified onclick
+            let onclickAttr = '';
+            if (item.action) {
+                onclickAttr = ` onclick="event.preventDefault();if(typeof ${item.action}==='function')${item.action}();"`;
+            }
+
+            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${onclickAttr}>
+  <span class="nav-icon">${item.icon}</span>
+  <span class="nav-text">${item.label}</span>
+</a>`;
+        }
+
+        // Close last group
+        if (currentGroupKey && currentGroupKey !== '__skip__') {
+            html += '</div></div></div>';
+        }
+
+        container.innerHTML = html;
+        container.classList.add('rendered');
+
+        _initCollapsedTooltips(container);
+        _fetchLiveBadges();
+    }
+
+    // ═══ TOGGLE GROUP ══════════════════════════════════════════════
+    function toggleGroup(key, btn) {
+        if (!btn) return;
+        const group = btn.closest('.sidebar-group');
+        if (!group) return;
+        const items = group.querySelector('.sidebar-group-items');
+        if (!items) return;
+        const isOpen = items.classList.contains('open');
+        items.classList.toggle('open', !isOpen);
+        btn.classList.toggle('open', !isOpen);
+        _setGroupState(key, !isOpen);
+    }
+
+    // ═══ ACCESS CHECK ══════════════════════════════════════════════
     function hasAccess(item, role) {
-        if (!item.access) return true;
         const access = SIDEBAR_ACCESS[item.access];
         if (access === true) return true;
         if (!access) return false;
         return access.includes(role);
     }
 
-    function _hasHubAccess(item, role) {
-        if (item.type !== 'hub') return hasAccess(item, role);
-        if (item.access && !hasAccess(item, role)) return false;
-        return item.children?.some(c => !c.access || hasAccess(c, role));
-    }
-
-    async function fetchStatuses() { /* disabled */ }
-
-    // ═══ RENDER ═══
-    function render(containerSelector) {
-        const container = document.querySelector(containerSelector || '#sidebarNav .sidebar-links');
-        if (!container) return;
-        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
-        const role = typeof getUserRole === 'function' ? getUserRole() : null;
-        const filtered = _filterItems(NAV_ITEMS, role);
-
-        let html = '';
-        for (const item of filtered) {
-            if (item.type === 'divider') { html += '<div class="sidebar-divider"></div>'; continue; }
-            if (item.type === 'section') {
-                const altText = item.animate ? (typeof item.animate === 'string' ? item.animate : _getRoleName()) : '';
-                html += altText
-                    ? `<span class="sidebar-section-label sidebar-section-animated" data-label="${item.label}" data-alt="${altText}">${item.label}</span>`
-                    : `<span class="sidebar-section-label">${item.label}</span>`;
-                continue;
-            }
-
-            // HUB
-            if (item.type === 'hub') {
-                const isActive = item.children?.some(c => currentPath === c.href || (c.href !== '/' && currentPath.startsWith(c.href)));
-                const badgeHtml = item.badge ? `<span class="nav-badge nav-badge--${item.badge.color}" data-badge-type="${item.badge.type}" style="display:none"></span>` : '';
-                const childrenHtml = (item.children || []).map(c => {
-                    const cBadge = c.badge ? `<span class="nav-badge nav-badge--${c.badge.color} nav-badge--sm" data-badge-type="${c.badge.type}" style="display:none"></span>` : '';
-                    const cActive = currentPath === c.href || (c.href !== '/' && currentPath.startsWith(c.href));
-                    return `<a href="${c.href}" class="nav-hub-child${cActive ? ' active' : ''}" data-page-access="${c.href}">
-                        <span class="nav-hub-child-icon">${c.icon}</span>
-                        <span class="nav-hub-child-label">${c.label}</span>${cBadge}
-                    </a>`;
-                }).join('');
-                html += `<div class="nav-hub${isActive ? ' active hub-open' : ''}">
-                    <div class="nav-hub-main">
-                        <span class="nav-icon">${item.icon}</span>
-                        <span class="nav-text">${item.label}</span>
-                        ${badgeHtml}
-                        <span class="nav-hub-arrow">›</span>
-                    </div>
-                    <div class="nav-hub-dropdown">${childrenHtml}</div>
-                </div>`;
-                continue;
-            }
-
-            // Regular link
-            const isActive = currentPath === item.href ||
-                (item.href === '/?settings=open' && window.location.search.includes('settings=open')) ||
-                (item.href !== '/' && !item.href.startsWith('/?') && currentPath.startsWith(item.href));
-            const actionAttr = item.action ? ` data-action="${item.action}" onclick="event.preventDefault(); if(typeof ${item.action}==='function') ${item.action}();"` : '';
-            const badgeHtml = item.badge ? `<span class="nav-badge nav-badge--${item.badge.color}" data-badge-type="${item.badge.type}" style="display:none"></span>` : '';
-            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${actionAttr}>
-                <span class="nav-icon">${item.icon}</span>
-                <span class="nav-text">${item.label}</span>${badgeHtml}
-            </a>`;
-        }
-
-        container.innerHTML = html;
-        container.classList.add('rendered');
-
-        // Animate section labels
-        document.querySelectorAll('.sidebar-section-animated').forEach(el => {
-            const main = el.dataset.label, alt = el.dataset.alt;
-            if (!alt || alt === main) return;
-            let showAlt = false;
-            setInterval(() => {
-                showAlt = !showAlt;
-                el.style.opacity = '0';
-                setTimeout(() => { el.textContent = showAlt ? alt : main; el.style.opacity = '1'; }, 200);
-            }, 5000);
-        });
-
-        _initHubHover(container);
-        _initCollapsedTooltips(container);
-        _fetchLiveBadges();
-    }
-
-    // ═══ HUB HOVER ═══
-    function _initHubHover(container) {
-        container.querySelectorAll('.nav-hub').forEach(hub => {
-            let closeTimer = null;
-            const open = () => { clearTimeout(closeTimer); hub.classList.add('hub-open'); };
-            const close = () => { closeTimer = setTimeout(() => hub.classList.remove('hub-open'), 200); };
-            hub.addEventListener('mouseenter', open);
-            hub.addEventListener('mouseleave', close);
-            hub.querySelector('.nav-hub-main')?.addEventListener('click', (e) => {
-                if (window.innerWidth <= 768 || document.getElementById('sidebarNav')?.classList.contains('collapsed')) {
-                    e.preventDefault();
-                    hub.classList.toggle('hub-open');
-                }
-            });
-        });
-    }
-
     // ═══ COLLAPSED TOOLTIPS ═══
     function _initCollapsedTooltips(container) {
-        container.querySelectorAll('.nav-link, .nav-hub-main').forEach(el => {
+        container.querySelectorAll('.nav-link').forEach(el => {
             const label = el.querySelector('.nav-text')?.textContent;
             if (!label) return;
             let tooltip = null;
@@ -235,7 +223,7 @@ const Sidebar = (() => {
         } catch {}
         const chatUnread = typeof ChatState !== 'undefined' ? (ChatState.totalUnread || 0) : 0;
         _setBadge('unread', chatUnread > 0 ? chatUnread : null);
-        setTimeout(_fetchLiveBadges, 300000); // 5 min
+        setTimeout(_fetchLiveBadges, 300000);
     }
 
     function _setBadge(type, value) {
@@ -267,60 +255,9 @@ const Sidebar = (() => {
         }
         if (nameEl) nameEl.textContent = user.name || user.username || '';
         if (roleEl) roleEl.textContent = LABELS[user.role] || user.role || '';
-        _initDayContext(user.role);
     }
 
-    async function _initDayContext(role) {
-        const ctx = document.getElementById('sidebarDayContext');
-        if (!ctx) return;
-        const mgmt = ['creator','director','vice_director','senior_manager','manager','admin','accountant'];
-        if (!mgmt.includes(role)) { ctx.style.display = 'none'; return; }
-        ctx.classList.add('loading');
-        try {
-            const token = localStorage.getItem('pzp_token');
-            const data = await fetch('/api/dashboard/alerts', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.json()).catch(() => null);
-            ctx.classList.remove('loading');
-            if (!data || !data.count) { ctx.style.display = 'none'; return; }
-            ctx.innerHTML = `<span class="sidebar-ctx-text">⚠️ ${data.count} сповіщень</span>`;
-            ctx.style.display = 'block';
-            ctx.style.cursor = 'pointer';
-            ctx.onclick = () => { window.location.href = '/dashboard'; };
-        } catch { ctx.classList.remove('loading'); ctx.style.display = 'none'; }
-    }
-
-    // ═══ FILTER ═══
-    function _filterItems(items, role) {
-        const tagged = items.map(item => {
-            if (item.type === 'divider' || item.type === 'section') return { ...item, _visible: true };
-            if (item.type === 'hub') return { ...item, _visible: _hasHubAccess(item, role) };
-            return { ...item, _visible: !role || hasAccess(item, role) };
-        });
-        const withVisible = tagged.filter(item => item._visible);
-        const result = [];
-        for (let i = 0; i < withVisible.length; i++) {
-            const item = withVisible[i];
-            if (item.type === 'section') {
-                let hasLinks = false;
-                for (let j = i + 1; j < withVisible.length; j++) {
-                    if (withVisible[j].type === 'divider' || withVisible[j].type === 'section') break;
-                    if (!withVisible[j].type || withVisible[j].type === 'hub') { hasLinks = true; break; }
-                }
-                if (!hasLinks) continue;
-            }
-            if (item.type === 'divider') {
-                let hasContent = false;
-                for (let j = i + 1; j < withVisible.length; j++) {
-                    if (!withVisible[j].type || withVisible[j].type === 'hub') { hasContent = true; break; }
-                    if (withVisible[j].type === 'divider') break;
-                }
-                if (!hasContent) continue;
-            }
-            result.push(item);
-        }
-        while (result.length && result[0].type === 'divider') result.shift();
-        return result;
-    }
-
+    // ═══ TOGGLE SIDEBAR (mobile/desktop) ══════════════════════════
     function initToggle() {
         const toggle = document.getElementById('sidebarToggle');
         const sidebar = document.getElementById('sidebarNav');
@@ -332,18 +269,23 @@ const Sidebar = (() => {
             });
         }
         if (overlay && sidebar) {
-            overlay.addEventListener('click', () => { sidebar.classList.remove('open'); overlay.classList.remove('active'); });
+            overlay.addEventListener('click', () => {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+            });
         }
         if (sidebar) {
             sidebar.addEventListener('click', (e) => {
-                const link = e.target.closest('.nav-link, .nav-hub-child');
+                const link = e.target.closest('.nav-link');
                 if (!link) return;
                 if (window.innerWidth <= 768 && overlay) { sidebar.classList.remove('open'); overlay.classList.remove('active'); }
             });
         }
+        // Collapse button — graceful (може не бути на всіх сторінках)
         const collapseBtn = document.getElementById('sidebarCollapseBtn');
         if (collapseBtn && sidebar) {
-            if (localStorage.getItem('pzp_sidebar_collapsed') === 'true') sidebar.classList.add('collapsed');
+            const collapsed = localStorage.getItem('pzp_sidebar_collapsed') === 'true';
+            if (collapsed) sidebar.classList.add('collapsed');
             collapseBtn.addEventListener('click', () => {
                 sidebar.classList.toggle('collapsed');
                 localStorage.setItem('pzp_sidebar_collapsed', sidebar.classList.contains('collapsed'));
@@ -353,7 +295,9 @@ const Sidebar = (() => {
 
     function checkPageAccess() {
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
-        if (typeof canAccessPage === 'function' && !canAccessPage(currentPath)) window.location.href = '/';
+        if (typeof canAccessPage === 'function' && !canAccessPage(currentPath)) {
+            window.location.href = '/';
+        }
     }
 
     function init(containerSelector) {
@@ -362,9 +306,34 @@ const Sidebar = (() => {
     }
 
     window.addEventListener('roleSwitched', () => {
-        const container = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
-        if (container) render('#' + container.id);
+        const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
+        if (c) render('#' + c.id);
     });
 
-    return { init, render, initToggle, checkPageAccess, initUserCard, NAV_ITEMS, SIDEBAR_ACCESS, hasAccess };
+    // ─── Sidebar action helpers ──────────────────────────────────
+    // On timeline (index.html) — open modal directly
+    // On other pages — redirect to / with ?open= parameter
+    window.sidebarOpenAfisha = function() {
+        if (typeof showAfishaModal === 'function') {
+            showAfishaModal();
+        } else {
+            window.location.href = '/?open=afisha';
+        }
+    };
+    window.sidebarOpenCertificates = function() {
+        if (typeof openCertificatesPanel === 'function') {
+            openCertificatesPanel();
+        } else {
+            window.location.href = '/?open=certificates';
+        }
+    };
+    window.sidebarOpenSettings = function() {
+        if (typeof showSettings === 'function') {
+            showSettings();
+        } else {
+            window.location.href = '/?open=settings';
+        }
+    };
+
+    return { init, render, initToggle, checkPageAccess, toggleGroup, initUserCard, NAV_ITEMS, SIDEBAR_ACCESS, hasAccess };
 })();

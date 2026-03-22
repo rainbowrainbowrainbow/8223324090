@@ -87,6 +87,7 @@ body.dark-mode .nav-link:hover .nav-icon {
 body.dark-mode .nav-link.active .nav-icon {
     background: #10B981;
     color: #FFFFFF;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
 }
 
 body.dark-mode .nav-icon--kleshnya {

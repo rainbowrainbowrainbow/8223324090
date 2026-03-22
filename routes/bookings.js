@@ -385,6 +385,27 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             } catch (e) { log.warn('[Gamification] Achievement check error:', e.message); }
         });
 
+        // v33.9.0: Post message to room channel
+        if (b.lineId) {
+            setImmediate(async () => {
+                try {
+                    const roomChan = await pool.query(
+                        "SELECT id FROM chat_channels WHERE line_id = $1 AND type = 'room' LIMIT 1", [b.lineId]
+                    );
+                    if (!roomChan.rowCount) return;
+                    const sysUser = await pool.query("SELECT id FROM users WHERE username = 'system' LIMIT 1");
+                    if (!sysUser.rowCount) return;
+                    const seqRes = await pool.query('SELECT next_chat_seq($1) AS seq', [roomChan.rows[0].id]);
+                    await pool.query(
+                        `INSERT INTO chat_messages (channel_id, user_id, seq, content, is_bot, created_at)
+                         VALUES ($1, $2, $3, $4, true, NOW())`,
+                        [roomChan.rows[0].id, sysUser.rows[0].id, seqRes.rows[0].seq,
+                         `📅 ${b.date} ${b.time} — ${b.programName || b.label}${b.kidsCount ? ' | 👶' + b.kidsCount : ''}`]
+                    );
+                } catch (e) { /* silent */ }
+            });
+        }
+
         res.json({ success: true, booking });
     } catch (err) {
         await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (create)', rbErr));

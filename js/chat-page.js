@@ -2083,6 +2083,112 @@
         }
     };
 
+    // ==========================================
+    // v33.9.0: WALLPAPERS, PREFERENCES, EFFECTS
+    // ==========================================
+    var _userPrefs = null;
+    var _WALLPAPERS = {
+        'default':  '',
+        'bubbles':  'radial-gradient(circle at 20% 80%, rgba(120,119,198,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255,119,115,0.15) 0%, transparent 50%)',
+        'waves':    'linear-gradient(135deg, rgba(99,102,241,0.06) 25%, transparent 25%), linear-gradient(225deg, rgba(99,102,241,0.06) 25%, transparent 25%)',
+        'aurora':   'linear-gradient(45deg, rgba(16,185,129,0.08), rgba(99,102,241,0.08), rgba(244,63,94,0.08))',
+        'park':     'linear-gradient(180deg, rgba(16,185,129,0.04) 0%, rgba(99,102,241,0.04) 100%)',
+        'midnight': 'linear-gradient(135deg, rgba(15,23,42,0.15) 0%, rgba(30,41,59,0.15) 100%)',
+        'sunset':   'linear-gradient(135deg, rgba(249,115,22,0.06) 0%, rgba(239,68,68,0.06) 100%)',
+        'candy':    'linear-gradient(135deg, rgba(236,72,153,0.06) 0%, rgba(168,85,247,0.06) 50%, rgba(59,130,246,0.06) 100%)'
+    };
+
+    async function _loadMyPreferences() {
+        try {
+            var data = await _api('GET', '/preferences');
+            _userPrefs = data.preferences || {};
+            _applyMyPreferences();
+        } catch (e) { /* silent */ }
+    }
+
+    function _applyMyPreferences() {
+        if (!_userPrefs) return;
+        if (_userPrefs.accent_color) {
+            document.documentElement.style.setProperty('--chat-accent', _userPrefs.accent_color);
+        }
+        var wp = _userPrefs.wallpaper || localStorage.getItem('chat_wallpaper') || 'default';
+        var chatArea = document.getElementById('chatMessages');
+        if (chatArea && _WALLPAPERS[wp]) {
+            chatArea.style.backgroundImage = _WALLPAPERS[wp];
+        }
+        var sigEl = document.getElementById('chatMySignature');
+        if (sigEl) sigEl.textContent = _userPrefs.chat_signature || '';
+        var moodEl = document.getElementById('chatMoodBtn');
+        if (moodEl && _userPrefs.mood_emoji && _userPrefs.mood_date === new Date().toISOString().slice(0, 10)) {
+            moodEl.textContent = _userPrefs.mood_emoji;
+        }
+    }
+
+    window._openWallpaperPicker = function() {
+        var picker = document.getElementById('chatWallpaperPicker');
+        if (!picker) return;
+        picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+        var grid = document.getElementById('wallpaperGrid');
+        if (!grid || grid.children.length > 0) return;
+        var LABELS = { 'default':'Без фону', 'bubbles':'Бульбашки', 'waves':'Хвилі',
+                       'aurora':'Аврора', 'park':'Парк', 'midnight':'Ніч', 'sunset':'Захід', 'candy':'Цукерки' };
+        Object.keys(_WALLPAPERS).forEach(function(key) {
+            var btn = document.createElement('div');
+            btn.style.cssText = 'width:44px;height:44px;border-radius:8px;cursor:pointer;border:2px solid transparent;' +
+                'background:' + (_WALLPAPERS[key] || 'var(--gray-100)') + ';transition:border-color 0.15s;';
+            btn.title = LABELS[key] || key;
+            btn.onclick = function() {
+                _api('PATCH', '/preferences', { wallpaper: key }).then(function() {
+                    localStorage.setItem('chat_wallpaper', key);
+                    if (_userPrefs) _userPrefs.wallpaper = key;
+                    _applyMyPreferences();
+                    picker.style.display = 'none';
+                }).catch(function() {});
+            };
+            grid.appendChild(btn);
+        });
+    };
+
+    window._setMood = async function(emoji) {
+        try {
+            await _api('PATCH', '/preferences', { moodEmoji: emoji || null });
+            var moodBtn = document.getElementById('chatMoodBtn');
+            if (moodBtn) moodBtn.textContent = emoji || '😊';
+            var moodPicker = document.getElementById('chatMoodPicker');
+            if (moodPicker) moodPicker.style.display = 'none';
+        } catch (e) { /* silent */ }
+    };
+
+    window._openMoodPicker = function() {
+        var p = document.getElementById('chatMoodPicker');
+        if (p) p.style.display = p.style.display === 'none' ? 'flex' : 'none';
+    };
+
+    // Send effects
+    var _selectedEffect = localStorage.getItem('chat_send_effect') || 'none';
+    function _triggerSendEffect(msgEl) {
+        if (!_selectedEffect || _selectedEffect === 'none' || !msgEl) return;
+        if (_selectedEffect === 'confetti') {
+            var rect = msgEl.getBoundingClientRect();
+            for (var i = 0; i < 12; i++) {
+                var dot = document.createElement('div');
+                dot.className = 'chat-confetti';
+                dot.style.left = (rect.left + Math.random() * rect.width) + 'px';
+                dot.style.top = rect.top + 'px';
+                dot.style.background = ['#6366f1','#ef4444','#f59e0b','#10b981','#ec4899'][Math.floor(Math.random() * 5)];
+                dot.style.animationDelay = (Math.random() * 0.2) + 's';
+                document.body.appendChild(dot);
+                setTimeout(function(d) { d.remove(); }, 1000, dot);
+            }
+        } else if (_selectedEffect === 'wave') {
+            msgEl.classList.add('chat-effect-wave');
+            setTimeout(function() { msgEl.classList.remove('chat-effect-wave'); }, 400);
+        }
+    }
+
+    // Load preferences on init
+    setTimeout(_loadMyPreferences, 500);
+
     // Night time settings
     var _nightStartSel = document.getElementById('chatNightStart');
     var _nightEndSel = document.getElementById('chatNightEnd');
@@ -2189,50 +2295,78 @@
         if (!list) return;
         list.innerHTML = '';
 
-        _channels.forEach(function (ch, idx) {
-            var el = document.createElement('div');
-            var isActive = _currentChannel && _currentChannel.id === ch.id;
-            var hasUnread = ch.unreadCount > 0;
-            el.className = 'chat-channel-item' + (isActive ? ' active' : '') + (hasUnread ? ' has-unread' : '');
-            el.dataset.channelId = ch.id;
+        // v33.9.0: Group channels by type
+        var regularChannels = _channels.filter(function(c) { return c.type !== 'room' && c.type !== 'booking' && !c.isDm; });
+        var roomChannels = _channels.filter(function(c) { return c.type === 'room'; });
+        var dmChannels = _channels.filter(function(c) { return c.isDm; });
+        var bookingChannels = _channels.filter(function(c) { return c.type === 'booking'; });
 
-            var isDm = ch.isDm || false;
-            var colorClass = isDm ? 'chat-avatar-color-' + _colorIdx(ch.dmOtherUserId || idx) : 'chat-channel-color-' + _channelColorIdx(idx);
-            var iconClass = isDm ? 'chat-channel-dm-icon' : 'chat-channel-icon';
-            var icon = isDm ? (ch.name || '?').charAt(0).toUpperCase() : ch.name.charAt(1).toUpperCase();
-            var preview = ch.lastMessageContent
-                ? (ch.lastMessageUsername ? ch.lastMessageUsername + ': ' : '') + ch.lastMessageContent
-                : ch.description || 'Ще немає повідомлень';
+        function addSection(label) {
+            var lbl = document.createElement('div');
+            lbl.className = 'chat-section-label';
+            lbl.textContent = label;
+            list.appendChild(lbl);
+        }
 
-            var timeStr = '';
-            if (ch.lastMessageAt) {
-                var d = new Date(ch.lastMessageAt);
-                var now = new Date();
-                timeStr = d.toDateString() === now.toDateString()
-                    ? d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
-                    : d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
-            }
+        if (regularChannels.length) {
+            addSection('КАНАЛИ');
+            regularChannels.forEach(function(ch, idx) { list.appendChild(_createChannelEl(ch, idx)); });
+        }
+        if (roomChannels.length) {
+            addSection('🏠 КІМНАТИ');
+            roomChannels.forEach(function(ch, idx) { list.appendChild(_createChannelEl(ch, idx)); });
+        }
+        if (bookingChannels.length) {
+            addSection('🎉 БРОНЮВАННЯ');
+            bookingChannels.forEach(function(ch, idx) { list.appendChild(_createChannelEl(ch, idx)); });
+        }
+        if (dmChannels.length) {
+            addSection('ОСОБИСТІ');
+            dmChannels.forEach(function(ch, idx) { list.appendChild(_createChannelEl(ch, idx)); });
+        }
+    }
 
-            var dmOnlineDot = isDm && ch.dmOtherUserId ? '<span class="chat-online-dot sidebar-dot" data-user-id="' + ch.dmOtherUserId + '"></span>' : '';
+    function _createChannelEl(ch, idx) {
+        var el = document.createElement('div');
+        var isActive = _currentChannel && _currentChannel.id === ch.id;
+        var hasUnread = ch.unreadCount > 0;
+        el.className = 'chat-channel-item' + (isActive ? ' active' : '') + (hasUnread ? ' has-unread' : '');
+        el.dataset.channelId = ch.id;
 
-            el.innerHTML =
-                '<div class="' + iconClass + ' ' + colorClass + '">' + icon + dmOnlineDot + '</div>' +
-                '<div class="chat-channel-info">' +
-                    '<div class="chat-channel-name-row">' +
-                        '<div class="chat-channel-name">' + _esc(ch.name) + '</div>' +
-                        (timeStr ? '<span class="chat-channel-time">' + timeStr + '</span>' : '') +
-                    '</div>' +
-                    '<div class="chat-channel-preview-row">' +
-                        '<div class="chat-channel-preview">' + _esc(_truncate(preview, 35)) + '</div>' +
-                        (hasUnread ? '<div class="chat-channel-badge">' + ch.unreadCount + '</div>' : '') +
-                    '</div>' +
-                '</div>';
+        var isDm = ch.isDm || false;
+        var colorClass = isDm ? 'chat-avatar-color-' + _colorIdx(ch.dmOtherUserId || idx) : 'chat-channel-color-' + _channelColorIdx(idx);
+        var iconClass = isDm ? 'chat-channel-dm-icon' : 'chat-channel-icon';
+        var icon = isDm ? (ch.name || '?').charAt(0).toUpperCase() : ch.name.charAt(1).toUpperCase();
+        var preview = ch.lastMessageContent
+            ? (ch.lastMessageUsername ? ch.lastMessageUsername + ': ' : '') + ch.lastMessageContent
+            : ch.description || 'Ще немає повідомлень';
 
-            el.addEventListener('click', function () {
-                _selectChannel(ch);
-            });
-            list.appendChild(el);
-        });
+        var timeStr = '';
+        if (ch.lastMessageAt) {
+            var d = new Date(ch.lastMessageAt);
+            var now = new Date();
+            timeStr = d.toDateString() === now.toDateString()
+                ? d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
+                : d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
+        }
+
+        var dmOnlineDot = isDm && ch.dmOtherUserId ? '<span class="chat-online-dot sidebar-dot" data-user-id="' + ch.dmOtherUserId + '"></span>' : '';
+
+        el.innerHTML =
+            '<div class="' + iconClass + ' ' + colorClass + '">' + icon + dmOnlineDot + '</div>' +
+            '<div class="chat-channel-info">' +
+                '<div class="chat-channel-name-row">' +
+                    '<div class="chat-channel-name">' + _esc(ch.name) + '</div>' +
+                    (timeStr ? '<span class="chat-channel-time">' + timeStr + '</span>' : '') +
+                '</div>' +
+                '<div class="chat-channel-preview-row">' +
+                    '<div class="chat-channel-preview">' + _esc(_truncate(preview, 35)) + '</div>' +
+                    (hasUnread ? '<div class="chat-channel-badge">' + ch.unreadCount + '</div>' : '') +
+                '</div>' +
+            '</div>';
+
+        el.addEventListener('click', function () { _selectChannel(ch); });
+        return el;
     }
 
     async function _selectChannel(channel) {
@@ -4179,6 +4313,20 @@
                             '</div>';
                         bubble.insertAdjacentHTML('afterend', html);
                     }
+                }
+                break;
+            }
+            case 'chat:super-reaction': {
+                var srEl = document.querySelector('[data-message-id="' + payload.messageId + '"]');
+                if (srEl) {
+                    var srRect = srEl.getBoundingClientRect();
+                    var floater = document.createElement('div');
+                    floater.className = 'chat-super-reaction-float';
+                    floater.textContent = payload.emoji;
+                    floater.style.left = (srRect.left + srRect.width / 2 - 18) + 'px';
+                    floater.style.top = srRect.top + 'px';
+                    document.body.appendChild(floater);
+                    setTimeout(function() { floater.remove(); }, 1200);
                 }
                 break;
             }

@@ -7887,3 +7887,56 @@ body.dark-mode .guardian-digest-generate-btn {
 .dark-mode .chat-modal-btn:hover {
     background: rgba(255,255,255,0.12);
 }
+
+/* ==========================================
+ * v33.9.0: Channel Section Labels
+ * ========================================== */
+.chat-section-label {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--gray-400, #9CA3AF);
+    letter-spacing: 0.5px;
+    padding: 12px 14px 4px;
+    text-transform: uppercase;
+}
+
+/* ==========================================
+ * v33.9.0: Send Effects
+ * ========================================== */
+@keyframes effectWave {
+    0%,100% { transform: translateX(0); }
+    25%     { transform: translateX(-3px); }
+    75%     { transform: translateX(3px); }
+}
+@keyframes confettiFall {
+    0%   { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(60px) rotate(720deg); opacity: 0; }
+}
+.chat-effect-wave { animation: effectWave 0.3s ease; }
+.chat-confetti {
+    position: fixed;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: confettiFall 0.8s ease-out forwards;
+    z-index: 10000;
+}
+
+/* ==========================================
+ * v33.9.0: Super Reaction Float
+ * ========================================== */
+@keyframes superReactionPop {
+    0%   { transform: scale(0) translateY(0); opacity: 0; }
+    30%  { transform: scale(1.8) translateY(-10px); opacity: 1; }
+    60%  { transform: scale(1.5) translateY(-20px); opacity: 0.9; }
+    100% { transform: scale(1) translateY(-40px); opacity: 0; }
+}
+.chat-super-reaction-float {
+    position: fixed;
+    font-size: 36px;
+    pointer-events: none;
+    animation: superReactionPop 1.2s ease-out forwards;
+    z-index: 10000;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    filter: drop-shadow(0 0 8px rgba(99,102,241,0.6));
+}

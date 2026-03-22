@@ -2059,4 +2059,166 @@ router.patch('/messages/:id/important', async (req, res) => {
     }
 });
 
+// ==========================================
+// v33.9.0: ROOM CHANNELS
+// ==========================================
+
+// POST /api/chat/room-channels/init — create channels for all rooms
+router.post('/room-channels/init', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        if (!['admin', 'director', 'creator'].includes(req.user.role)) {
+            return res.status(403).json({ error: 'Admin only' });
+        }
+        const rooms = await pool.query(
+            `SELECT DISTINCT line_id FROM bookings
+             WHERE line_id IS NOT NULL AND line_id != '' ORDER BY line_id`
+        );
+        const created = [];
+        for (const room of rooms.rows) {
+            const slug = 'room-' + room.line_id.toLowerCase().replace(/[^a-z0-9а-яіїєґ]/gi, '-').replace(/-+/g, '-');
+            const existing = await pool.query('SELECT id FROM chat_channels WHERE line_id = $1', [room.line_id]);
+            if (existing.rowCount) {
+                created.push({ lineId: room.line_id, channelId: existing.rows[0].id, isNew: false });
+                continue;
+            }
+            const userId = req.user.id || req.user.userId;
+            const r = await pool.query(
+                `INSERT INTO chat_channels (slug, name, type, line_id, description, created_by)
+                 VALUES ($1, $2, 'room', $3, $4, $5)
+                 ON CONFLICT (slug) DO NOTHING RETURNING id`,
+                [slug + '-' + Date.now().toString(36), `🏠 ${room.line_id}`, room.line_id, `Хронологія кімнати ${room.line_id}`, userId]
+            );
+            if (r.rowCount) created.push({ lineId: room.line_id, channelId: r.rows[0].id, isNew: true });
+        }
+        res.json({ success: true, channels: created });
+    } catch (err) {
+        log.error('[RoomChannels] Init error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// GET /api/chat/room-channels/:lineId/history — full room chronology
+router.get('/room-channels/:lineId/history', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const { lineId } = req.params;
+        const limit = Math.min(parseInt(req.query.limit || '50'), 200);
+
+        // Bookings in this room
+        const bookings = await pool.query(
+            `SELECT 'booking' AS source_type, id AS source_id,
+                    date || 'T' || SUBSTRING(time,1,5) AS event_time,
+                    program_name || ' | ' || COALESCE(group_name, label, '') AS content,
+                    status, kids_count, created_by
+             FROM bookings WHERE line_id = $1
+             ORDER BY date DESC, time DESC LIMIT $2`,
+            [lineId, limit]
+        );
+
+        // Chat messages in room channel
+        const chanRow = await pool.query('SELECT id FROM chat_channels WHERE line_id = $1 LIMIT 1', [lineId]);
+        let chatMsgs = { rows: [] };
+        if (chanRow.rowCount) {
+            chatMsgs = await pool.query(
+                `SELECT 'chat' AS source_type, cm.id::text AS source_id,
+                        cm.created_at AS event_time, cm.content, u.name AS author
+                 FROM chat_messages cm JOIN users u ON u.id = cm.user_id
+                 WHERE cm.channel_id = $1 AND cm.deleted_at IS NULL
+                 ORDER BY cm.created_at DESC LIMIT $2`,
+                [chanRow.rows[0].id, limit]
+            );
+        }
+
+        const all = [...bookings.rows, ...chatMsgs.rows]
+            .sort((a, b) => new Date(b.event_time) - new Date(a.event_time))
+            .slice(0, limit);
+
+        res.json({ success: true, history: all, lineId });
+    } catch (err) {
+        log.error('[RoomChannels] History error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// v33.9.0: CHAT PREFERENCES
+// ==========================================
+
+// GET /api/chat/preferences
+router.get('/preferences', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const userId = req.user.id || req.user.userId;
+        let prefs = await pool.query('SELECT * FROM chat_user_preferences WHERE user_id = $1', [userId]);
+        if (!prefs.rowCount) {
+            prefs = await pool.query('INSERT INTO chat_user_preferences (user_id) VALUES ($1) RETURNING *', [userId]);
+        }
+        res.json({ success: true, preferences: prefs.rows[0] });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// PATCH /api/chat/preferences
+router.patch('/preferences', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const userId = req.user.id || req.user.userId;
+        const { accentColor, messageFont, chatSignature, moodEmoji, notificationSound, channelSounds, wallpaper } = req.body;
+        const sets = ['updated_at = NOW()'], vals = [];
+        let idx = 1;
+        if (accentColor !== undefined)       { sets.push(`accent_color = $${idx++}`); vals.push(accentColor); }
+        if (messageFont !== undefined)       { sets.push(`message_font = $${idx++}`); vals.push(messageFont); }
+        if (chatSignature !== undefined)     { sets.push(`chat_signature = $${idx++}`); vals.push((chatSignature || '').slice(0, 80) || null); }
+        if (moodEmoji !== undefined)         { sets.push(`mood_emoji = $${idx++}`); sets.push('mood_date = CURRENT_DATE'); vals.push(moodEmoji || null); }
+        if (notificationSound !== undefined) { sets.push(`notification_sound = $${idx++}`); vals.push(notificationSound); }
+        if (channelSounds !== undefined)     { sets.push(`channel_sounds = $${idx++}`); vals.push(JSON.stringify(channelSounds)); }
+        if (wallpaper !== undefined)         { sets.push(`wallpaper = $${idx++}`); vals.push(wallpaper); }
+        vals.push(userId);
+        await pool.query('INSERT INTO chat_user_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [userId]);
+        await pool.query(`UPDATE chat_user_preferences SET ${sets.join(', ')} WHERE user_id = $${idx}`, vals);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// ==========================================
+// v33.9.0: SUPER REACTION
+// ==========================================
+
+router.post('/messages/:id/super-reaction', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const { emoji } = req.body;
+        if (!emoji) return res.status(400).json({ error: 'emoji required' });
+        const userId = req.user.id || req.user.userId;
+        const username = req.user.username;
+        const COST = 5;
+
+        const gamification = require('../services/gamification');
+        try {
+            await gamification.spendCoins(username, COST, 'super_reaction', `Супер-реакція ${emoji}`);
+        } catch (e) {
+            return res.status(402).json({ error: `Недостатньо монет (потрібно ${COST})` });
+        }
+
+        const msgRes = await pool.query('SELECT channel_id FROM chat_messages WHERE id = $1', [parseInt(req.params.id)]);
+        if (!msgRes.rowCount) return res.status(404).json({ error: 'Message not found' });
+
+        await pool.query(
+            `INSERT INTO chat_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, user_id, emoji) DO NOTHING`,
+            [parseInt(req.params.id), userId, emoji]
+        );
+
+        broadcastToChannel(msgRes.rows[0].channel_id, 'chat:super-reaction', {
+            channelId: msgRes.rows[0].channel_id,
+            messageId: parseInt(req.params.id),
+            emoji, username, fromUserId: String(userId)
+        });
+
+        res.json({ success: true, coinsSpent: COST });
+    } catch (err) {
+        log.error('[SuperReaction] Error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 module.exports = router;

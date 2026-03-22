@@ -6,15 +6,15 @@
     <title>Event Genix | Командний чат</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=33.7.0">
-    <link rel="stylesheet" href="css/layout.css?v=33.7.0">
-    <link rel="stylesheet" href="css/pages.css?v=33.7.0">
-    <link rel="stylesheet" href="css/modals.css?v=33.7.0">
-    <link rel="stylesheet" href="css/chat.css?v=33.7.0">
-    <link rel="stylesheet" href="css/agents.css?v=33.7.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=33.7.0">
-    <link rel="stylesheet" href="css/responsive.css?v=33.7.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=33.7.0">
+    <link rel="stylesheet" href="css/base.css?v=33.9.0">
+    <link rel="stylesheet" href="css/layout.css?v=33.9.0">
+    <link rel="stylesheet" href="css/pages.css?v=33.9.0">
+    <link rel="stylesheet" href="css/modals.css?v=33.9.0">
+    <link rel="stylesheet" href="css/chat.css?v=33.9.0">
+    <link rel="stylesheet" href="css/agents.css?v=33.9.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=33.9.0">
+    <link rel="stylesheet" href="css/responsive.css?v=33.9.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=33.9.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -106,6 +106,31 @@
                             <label class="chat-theme-setting-row">
                                 <input type="checkbox" id="chatAutoNight" checked> Авто нічна тема
                             </label>
+                        </div>
+                        <!-- v33.9.0: Mood + Wallpaper + Signature -->
+                        <div class="chat-my-info" style="padding:6px 12px;border-top:1px solid var(--border-color,#e5e7eb)">
+                            <div style="display:flex;align-items:center;gap:6px">
+                                <button id="chatMoodBtn" style="background:none;border:none;cursor:pointer;font-size:18px" title="Мій настрій" onclick="_openMoodPicker()">😊</button>
+                                <div style="flex:1;min-width:0">
+                                    <div id="chatMyName" style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+                                    <div id="chatMySignature" style="font-size:10px;color:var(--gray-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+                                </div>
+                                <button class="chat-theme-btn" onclick="_openWallpaperPicker()" title="Фон чату" style="font-size:14px">🎨</button>
+                            </div>
+                            <div id="chatMoodPicker" style="display:none;margin-top:6px;display:none;flex-wrap:wrap;gap:2px">
+                                <button onclick="_setMood('😊')" style="font-size:16px;background:none;border:none;cursor:pointer">😊</button>
+                                <button onclick="_setMood('🔥')" style="font-size:16px;background:none;border:none;cursor:pointer">🔥</button>
+                                <button onclick="_setMood('😴')" style="font-size:16px;background:none;border:none;cursor:pointer">😴</button>
+                                <button onclick="_setMood('🎉')" style="font-size:16px;background:none;border:none;cursor:pointer">🎉</button>
+                                <button onclick="_setMood('💪')" style="font-size:16px;background:none;border:none;cursor:pointer">💪</button>
+                                <button onclick="_setMood('☕')" style="font-size:16px;background:none;border:none;cursor:pointer">☕</button>
+                                <button onclick="_setMood('')" style="font-size:12px;background:none;border:none;cursor:pointer;color:var(--gray-400)">✕</button>
+                            </div>
+                        </div>
+                        <!-- Wallpaper picker -->
+                        <div id="chatWallpaperPicker" style="display:none;position:absolute;bottom:60px;left:8px;background:var(--card-bg,#fff);border:1px solid var(--border-color);border-radius:12px;padding:12px;z-index:200;width:240px;box-shadow:0 4px 20px rgba(0,0,0,0.15)">
+                            <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Фон чату</div>
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px" id="wallpaperGrid"></div>
                         </div>
                     </div>
                 </div>
@@ -560,17 +585,17 @@
         </div>
     </div>
 
-    <script src="js/config.js?v=33.7.0"></script>
-    <script src="js/api.js?v=33.7.0"></script>
-    <script src="js/auth.js?v=33.7.0"></script>
-    <script src="js/components/sidebar.js?v=33.7.0"></script>
+    <script src="js/config.js?v=33.9.0"></script>
+    <script src="js/api.js?v=33.9.0"></script>
+    <script src="js/auth.js?v=33.9.0"></script>
+    <script src="js/components/sidebar.js?v=33.9.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=33.7.0"></script>
-    <script src="js/sound-engine.js?v=33.7.0"></script>
-    <script src="js/chat-page.js?v=33.7.0"></script>
-    <script src="js/ui.js?v=33.7.0"></script>
-    <script src="js/agents-panel.js?v=33.7.0"></script>
-    <script src="js/role-panel.js?v=33.7.0"></script>
+    <script src="js/ws.js?v=33.9.0"></script>
+    <script src="js/sound-engine.js?v=33.9.0"></script>
+    <script src="js/chat-page.js?v=33.9.0"></script>
+    <script src="js/ui.js?v=33.9.0"></script>
+    <script src="js/agents-panel.js?v=33.9.0"></script>
+    <script src="js/role-panel.js?v=33.9.0"></script>
     <script>
     // Sound Settings Panel — v28.0.0
     (function () {

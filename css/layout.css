@@ -36,9 +36,65 @@
                 border-color var(--speed-theme) var(--ease-smooth);
 }
 
-/* Collapsed state (desktop) — icon-only */
+/* Collapsed state (desktop) — icon-only, expand on hover */
 .sidebar-nav.collapsed {
     width: 64px;
+    transition: width 0.25s var(--ease-smooth);
+}
+
+/* Auto-expand collapsed sidebar on hover */
+@media (min-width: 769px) {
+    .sidebar-nav.collapsed:hover {
+        width: 220px;
+        box-shadow: 4px 0 24px rgba(0,0,0,0.12);
+        z-index: 1010;
+    }
+    .sidebar-nav.collapsed:hover .nav-text,
+    .sidebar-nav.collapsed:hover .sidebar-section-label,
+    .sidebar-nav.collapsed:hover .em-logo,
+    .sidebar-nav.collapsed:hover .collapse-text {
+        display: block;
+    }
+    .sidebar-nav.collapsed:hover .sidebar-links .nav-link {
+        justify-content: flex-start;
+        padding: 7px 12px;
+        gap: 8px;
+    }
+    .sidebar-nav.collapsed:hover .nav-icon {
+        width: 24px !important;
+        height: 24px !important;
+        font-size: 16px !important;
+    }
+    .sidebar-nav.collapsed:hover .sidebar-logo {
+        justify-content: flex-start;
+        padding: 16px 16px 12px;
+    }
+    .sidebar-nav.collapsed:hover .sidebar-collapse-btn {
+        justify-content: flex-start;
+    }
+    .sidebar-nav.collapsed:hover .sidebar-collapse-btn .collapse-text {
+        display: block;
+    }
+    /* Restore accordion groups on hover */
+    .sidebar-nav.collapsed:hover .sidebar-group-items { display: grid; }
+    .sidebar-nav.collapsed:hover .sidebar-group-label { display: block !important; }
+    .sidebar-nav.collapsed:hover .sidebar-group-arrow { display: block; }
+    .sidebar-nav.collapsed:hover .sidebar-group-header {
+        justify-content: flex-start;
+        padding: 6px 12px 4px;
+        gap: 6px;
+    }
+    .sidebar-nav.collapsed:hover .sidebar-group-header .nav-icon {
+        width: 18px !important; height: 18px !important;
+        font-size: 12px !important; background: transparent !important;
+    }
+    .sidebar-nav.collapsed:hover .sidebar-group-inner .nav-link {
+        padding-left: 14px; justify-content: flex-start; gap: 8px;
+    }
+    .sidebar-nav.collapsed:hover .sidebar-theme-btn {
+        justify-content: flex-start; gap: 8px;
+    }
+    .sidebar-nav.collapsed:hover .sidebar-theme-btn .nav-text { display: block; }
 }
 
 .sidebar-nav.collapsed .nav-text,
@@ -641,8 +697,11 @@ body.dark-mode .sidebar-group-header .nav-icon { background: transparent !import
 .sidebar-nav.collapsed .sidebar-theme-btn .nav-text { display: none; }
 body.dark-mode .sidebar-theme-btn:hover { background: rgba(255,255,255,0.05); }
 
-/* Sidebar collapse button (desktop) */
+/* Sidebar collapse button — hidden v37.3 */
 .sidebar-collapse-btn {
+    display: none !important;
+}
+.sidebar-collapse-btn-legacy {
     display: flex;
     align-items: center;
     gap: 8px;

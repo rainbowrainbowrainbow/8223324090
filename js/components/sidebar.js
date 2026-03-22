@@ -6,7 +6,7 @@ const Sidebar = (() => {
     // ═══ NAV_ITEMS ════════════════════════════════════════════════
     const NAV_ITEMS = [
         // ─── GROUP: CRM ──────────────────────────────────────────
-        { type: 'group', key: 'crm', label: 'CRM', icon: '📋', defaultOpen: false },
+        { type: 'group', key: 'crm', label: 'CRM', icon: '📋', defaultOpen: true },
         { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'crm' },
         { href: '/',             icon: '📅', label: 'Таймлайн',       access: 'timeline',       group: 'crm' },
         { href: '/tasks',        icon: '✅', label: 'Задачі',         access: 'all',            group: 'crm' },
@@ -15,7 +15,7 @@ const Sidebar = (() => {
         { href: '/center',       icon: '💲', label: 'Центр цін',      access: 'center',         group: 'crm' },
 
         // ─── GROUP: Управління ───────────────────────────────────
-        { type: 'group', key: 'mgmt', label: 'Управління', icon: '👔', defaultOpen: false },
+        { type: 'group', key: 'mgmt', label: 'Управління', icon: '👔', defaultOpen: true },
         { href: '/customers',    icon: '👥', label: 'Клієнти',        access: 'management',     group: 'mgmt' },
         { href: '/sales-funnel', icon: '🔥', label: 'Ліди',          access: 'leads',          group: 'mgmt' },
         { href: '/finance',      icon: '💰', label: 'Фінанси',        access: 'finance',        group: 'mgmt' },
@@ -24,14 +24,14 @@ const Sidebar = (() => {
         { href: '/copilot',      icon: '🤖', label: 'Менеджер AI',    access: 'copilot',        group: 'mgmt' },
 
         // ─── GROUP: HR ───────────────────────────────────────────
-        { type: 'group', key: 'hr', label: 'HR', icon: '🤝', defaultOpen: false },
+        { type: 'group', key: 'hr', label: 'HR', icon: '🤝', defaultOpen: true },
         { href: '/staff',        icon: '🗓️', label: 'Графік',         access: 'schedule_daily', group: 'hr', staffView: 'schedule' },
         { href: '/staff',        icon: '📋', label: 'Команда',        access: 'staff',          group: 'hr', staffView: 'team', noActive: true },
         { href: '/hr',           icon: '🤝', label: 'Кадри',          access: 'hr_page',        group: 'hr' },
         { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'all',            group: 'hr' },
 
         // ─── GROUP: Творче ───────────────────────────────────────
-        { type: 'group', key: 'creative', label: 'Творче', icon: '🎨', defaultOpen: false },
+        { type: 'group', key: 'creative', label: 'Творче', icon: '🎨', defaultOpen: true },
         { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'creative' },
         { href: '/art',          icon: '🎨', label: 'Art Director',   access: 'art',            group: 'creative' },
         { href: '/designer',     icon: '📐', label: 'Дизайнер',       access: 'art',            group: 'creative' },
@@ -45,7 +45,7 @@ const Sidebar = (() => {
           action: 'sidebarOpenCertificates', isHashLink: true },
 
         // ─── GROUP: Система ──────────────────────────────────────
-        { type: 'group', key: 'system', label: 'Система', icon: '⚙️', defaultOpen: false },
+        { type: 'group', key: 'system', label: 'Система', icon: '⚙️', defaultOpen: true },
         { href: '/kleshnya',     icon: '🦞', label: 'Клешня',         access: 'all',            group: 'system' },
         { href: '/game',         icon: '🎮', label: 'Гра',            access: 'all',            group: 'system' },
         { href: '/demo',         icon: '🎬', label: 'Demo',           access: 'demo',           group: 'system' },
@@ -287,19 +287,13 @@ const Sidebar = (() => {
                 if (window.innerWidth <= 768 && overlay) { sidebar.classList.remove('open'); overlay.classList.remove('active'); }
             });
         }
-        // Theme toggle — inject before collapse button
+        // Theme toggle — inject at bottom of sidebar
         _initThemeToggle(sidebar);
 
-        // Collapse button — graceful (може не бути на всіх сторінках)
-        const collapseBtn = document.getElementById('sidebarCollapseBtn');
-        if (collapseBtn && sidebar) {
-            const collapsed = localStorage.getItem('pzp_sidebar_collapsed') === 'true';
-            if (collapsed) sidebar.classList.add('collapsed');
-            collapseBtn.addEventListener('click', () => {
-                sidebar.classList.toggle('collapsed');
-                localStorage.setItem('pzp_sidebar_collapsed', sidebar.classList.contains('collapsed'));
-            });
-        }
+        // v37.3: Collapse disabled — always expanded, all groups open
+        localStorage.removeItem('pzp_sidebar_collapsed');
+        localStorage.removeItem('pzp_sidebar_groups');
+        if (sidebar) sidebar.classList.remove('collapsed');
     }
 
     function _initThemeToggle(sidebar) {

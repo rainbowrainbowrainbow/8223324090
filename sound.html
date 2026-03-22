@@ -71,41 +71,165 @@
             <div class="sound-page">
                 <div class="sound-header">
                     <div>
-                        <h1>🔊 Звук — Лог подій</h1>
-                        <p class="subtitle">Історія всіх звукових подій: оголошення, програвання, TTS</p>
-                    </div>
-                    <div class="sound-header-actions">
-                        <button class="btn-outline" id="logRefreshBtn" title="Оновити" aria-label="Оновити лог">🔄 Оновити</button>
+                        <h1>🔊 Звук</h1>
+                        <p class="subtitle">Бібліотека звуків, оголошення, TTS та звукові проєкти</p>
                     </div>
                 </div>
 
-                <!-- Filters -->
-                <div class="sound-log-filters">
-                    <div class="sound-filter" role="group" aria-label="Фільтр за типом дії">
-                        <button class="log-action-btn sound-filter-btn active" data-action="" aria-pressed="true">Всі</button>
-                        <button class="log-action-btn sound-filter-btn" data-action="play" aria-pressed="false">▶ Програвання</button>
-                        <button class="log-action-btn sound-filter-btn" data-action="tts" aria-pressed="false">🎙️ TTS</button>
-                        <button class="log-action-btn sound-filter-btn" data-action="create" aria-pressed="false">➕ Створення</button>
-                        <button class="log-action-btn sound-filter-btn" data-action="update" aria-pressed="false">✏️ Зміни</button>
-                        <button class="log-action-btn sound-filter-btn" data-action="delete" aria-pressed="false">🗑️ Видалення</button>
+                <!-- Tabs -->
+                <div class="sound-tabs" id="soundTabs">
+                    <button class="sound-tab active" data-tab="library">🎵 Бібліотека</button>
+                    <button class="sound-tab" data-tab="announcements">📢 Оголошення</button>
+                    <button class="sound-tab" data-tab="projects">🎬 Проєкти</button>
+                    <button class="sound-tab" data-tab="log">📊 Лог подій</button>
+                </div>
+
+                <!-- ═══ TAB: Library ═══ -->
+                <div class="tab-content active" id="tabLibrary">
+                    <div class="sound-toolbar">
+                        <div class="sound-search-wrap">
+                            <input type="search" id="librarySearch" class="sound-search" placeholder="Пошук звуків..." aria-label="Пошук звуків">
+                        </div>
+                        <div class="sound-category-filter" id="libraryCategoryFilter">
+                            <button class="sound-cat-btn active" data-cat="">Всі</button>
+                            <button class="sound-cat-btn" data-cat="music">🎶 Музика</button>
+                            <button class="sound-cat-btn" data-cat="effects">💥 Ефекти</button>
+                            <button class="sound-cat-btn" data-cat="atmosphere">🌿 Атмосфера</button>
+                            <button class="sound-cat-btn" data-cat="quest">🧩 Квести</button>
+                            <button class="sound-cat-btn" data-cat="announcement">📢 Оголошення</button>
+                        </div>
                     </div>
-                    <div class="sound-log-date-filter">
-                        <label for="logDateFrom">Від:</label>
-                        <input type="date" id="logDateFrom" aria-label="Дата початку">
-                        <label for="logDateTo">До:</label>
-                        <input type="date" id="logDateTo" aria-label="Дата кінця">
+                    <div class="sound-stats-row" id="libraryStats"></div>
+                    <div id="libraryContainer" class="sound-grid">
+                        <div class="sound-empty"><div class="sound-empty-icon">🎵</div><p>Завантаження бібліотеки...</p></div>
                     </div>
                 </div>
 
-                <!-- Stats summary -->
-                <div class="sound-log-stats" id="logStats"></div>
+                <!-- ═══ TAB: Announcements ═══ -->
+                <div class="tab-content" id="tabAnnouncements">
+                    <div class="sound-toolbar">
+                        <div class="sound-header-actions">
+                            <button class="btn-primary-sm" id="createAnnouncementBtn">➕ Нове оголошення</button>
+                            <button class="btn-outline" id="announcementsRefreshBtn">🔄 Оновити</button>
+                        </div>
+                    </div>
+                    <div id="announcementsContainer">
+                        <div class="sound-empty"><div class="sound-empty-icon">📢</div><p>Завантаження оголошень...</p></div>
+                    </div>
+                </div>
 
-                <!-- Log table -->
-                <div id="logContainer" class="sound-log-wrap">
-                    <div class="sound-empty"><div class="sound-empty-icon">📊</div><p>Завантаження...</p></div>
+                <!-- ═══ TAB: Projects ═══ -->
+                <div class="tab-content" id="tabProjects">
+                    <div class="sound-toolbar">
+                        <div class="sound-header-actions">
+                            <button class="btn-primary-sm" id="createProjectBtn">➕ Новий проєкт</button>
+                            <button class="btn-outline" id="projectsRefreshBtn">🔄 Оновити</button>
+                        </div>
+                    </div>
+                    <div id="projectsContainer">
+                        <div class="sound-empty"><div class="sound-empty-icon">🎬</div><p>Завантаження проєктів...</p></div>
+                    </div>
+                </div>
+
+                <!-- ═══ TAB: Log ═══ -->
+                <div class="tab-content" id="tabLog">
+                    <div class="sound-log-filters">
+                        <div class="sound-filter" role="group" aria-label="Фільтр за типом дії">
+                            <button class="log-action-btn sound-filter-btn active" data-action="" aria-pressed="true">Всі</button>
+                            <button class="log-action-btn sound-filter-btn" data-action="play" aria-pressed="false">▶ Програвання</button>
+                            <button class="log-action-btn sound-filter-btn" data-action="tts" aria-pressed="false">🎙️ TTS</button>
+                            <button class="log-action-btn sound-filter-btn" data-action="create" aria-pressed="false">➕ Створення</button>
+                            <button class="log-action-btn sound-filter-btn" data-action="update" aria-pressed="false">✏️ Зміни</button>
+                            <button class="log-action-btn sound-filter-btn" data-action="delete" aria-pressed="false">🗑️ Видалення</button>
+                        </div>
+                        <div class="sound-log-date-filter">
+                            <label for="logDateFrom">Від:</label>
+                            <input type="date" id="logDateFrom" aria-label="Дата початку">
+                            <label for="logDateTo">До:</label>
+                            <input type="date" id="logDateTo" aria-label="Дата кінця">
+                        </div>
+                    </div>
+                    <div class="sound-log-stats" id="logStats"></div>
+                    <div id="logContainer" class="sound-log-wrap">
+                        <div class="sound-empty"><div class="sound-empty-icon">📊</div><p>Завантаження...</p></div>
+                    </div>
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Modal: Create Announcement -->
+    <div class="modal-overlay hidden" id="announcementModal">
+        <div class="modal-container" style="max-width:520px">
+            <div class="modal-header">
+                <h3 id="announcementModalTitle">Нове оголошення</h3>
+                <button class="modal-close" id="announcementModalClose" aria-label="Закрити">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="annTitle">Назва</label>
+                    <input type="text" id="annTitle" class="form-input" placeholder="Назва оголошення" required>
+                </div>
+                <div class="form-group">
+                    <label for="annText">Текст оголошення</label>
+                    <textarea id="annText" class="form-input" rows="3" placeholder="Текст для TTS або показу"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="annType">Тип</label>
+                    <select id="annType" class="form-input">
+                        <option value="general">Загальне</option>
+                        <option value="safety">Безпека</option>
+                        <option value="event">Подія</option>
+                        <option value="promo">Промо</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="annPriority">Пріоритет</label>
+                    <select id="annPriority" class="form-input">
+                        <option value="normal">Звичайний</option>
+                        <option value="high">Високий</option>
+                        <option value="urgent">Терміновий</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-outline" id="announcementModalCancel">Скасувати</button>
+                <button class="btn-primary-sm" id="announcementModalSave">Зберегти</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Create Project -->
+    <div class="modal-overlay hidden" id="projectModal">
+        <div class="modal-container" style="max-width:520px">
+            <div class="modal-header">
+                <h3 id="projectModalTitle">Новий звуковий проєкт</h3>
+                <button class="modal-close" id="projectModalClose" aria-label="Закрити">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="projName">Назва</label>
+                    <input type="text" id="projName" class="form-input" placeholder="Назва проєкту" required>
+                </div>
+                <div class="form-group">
+                    <label for="projType">Тип</label>
+                    <select id="projType" class="form-input">
+                        <option value="quest">Квест</option>
+                        <option value="program">Програма</option>
+                        <option value="event">Подія</option>
+                        <option value="background">Фон</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="projDesc">Опис</label>
+                    <textarea id="projDesc" class="form-input" rows="3" placeholder="Опис проєкту (необов'язково)"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-outline" id="projectModalCancel">Скасувати</button>
+                <button class="btn-primary-sm" id="projectModalSave">Зберегти</button>
+            </div>
+        </div>
     </div>
 
     <script src="js/config.js?v=38.1.1"></script>
@@ -115,7 +239,6 @@
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script>
     (async function() {
-        // Logout handler
         var logoutBtn = document.getElementById('logoutBtn');
         if (logoutBtn) logoutBtn.addEventListener('click', function() {
             localStorage.removeItem('pzp_token');

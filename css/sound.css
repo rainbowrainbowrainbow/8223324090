@@ -1,93 +1,93 @@
 /**
  * sound.css — Sound Log Page styles
- * v38.2.1: Log-only view with filters, stats, timeline entries
+ * v38.2.2: Design tokens, full dark mode, WCAG touch targets
  */
 
-.sound-page { padding: 20px 24px; min-height: 100vh; }
+.sound-page { padding: 24px; min-height: 100vh; }
 .sound-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-.sound-header h1 { font-size: 28px; font-weight: 800; margin: 0; color: var(--gray-900); }
-.sound-header .subtitle { font-size: 14px; color: var(--gray-500); margin-top: 2px; }
+.sound-header h1 { font-size: var(--font-2xl, 24px); font-weight: 800; margin: 0; color: var(--gray-900); }
+.sound-header .subtitle { font-size: var(--font-base, 14px); color: var(--gray-500); margin-top: 4px; }
 .sound-header-actions { display: flex; gap: 8px; }
 
 /* Outline button */
-.btn-outline { padding: 8px 16px; background: var(--white); color: var(--gray-700); border: 1px solid var(--gray-200); border-radius: var(--radius-card, 12px); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; min-height: 44px; transition: all 0.15s; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.btn-outline { padding: 8px 16px; background: var(--white); color: var(--gray-700); border: 1px solid var(--gray-200); border-radius: var(--radius-card, 12px); font-size: var(--font-sm, 13px); font-weight: 600; cursor: pointer; font-family: inherit; min-height: 44px; transition: all 0.15s; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
 
 /* Filter chips */
 .sound-log-filters { margin-bottom: 20px; }
-.sound-filter { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.sound-filter { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .sound-filter-btn { padding: 8px 16px; border: 1px solid var(--gray-200); background: var(--white); border-radius: var(--radius-full, 20px); font-size: var(--font-sm, 13px); font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s var(--ease-smooth, ease); -webkit-tap-highlight-color: transparent; touch-action: manipulation; min-height: 44px; }
-.sound-filter-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.sound-filter-btn.active { background: var(--primary); color: var(--white); border-color: var(--primary); }
 .sound-filter-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
 
 /* Date filter */
 .sound-log-date-filter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.sound-log-date-filter label { font-size: 13px; font-weight: 600; color: var(--gray-500); }
-.sound-log-date-filter input[type="date"] { padding: 8px 12px; border: 1px solid var(--gray-200); border-radius: var(--radius-card, 12px); font-size: 16px; font-family: inherit; min-height: 44px; background: var(--white); color: var(--gray-800); }
+.sound-log-date-filter label { font-size: var(--font-sm, 13px); font-weight: 600; color: var(--gray-500); }
+.sound-log-date-filter input[type="date"] { padding: 8px 12px; border: 1px solid var(--gray-200); border-radius: var(--radius-card, 12px); font-size: var(--font-input, 16px); font-family: inherit; min-height: 44px; background: var(--white); color: var(--gray-800); }
 
 /* Stats row */
-.sound-log-stats { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.sound-log-stats { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
 .sound-stat-card { background: var(--white); border: 1px solid var(--gray-100); border-radius: var(--radius-card, 12px); padding: 12px 16px; min-width: 100px; text-align: center; }
-.sound-stat-num { font-size: 18px; font-weight: 800; line-height: 1.2; color: var(--gray-800); }
-.sound-stat-label { font-size: 11px; font-weight: 600; color: var(--gray-400); margin-top: 2px; }
+.sound-stat-num { font-size: var(--font-lg, 17px); font-weight: 800; line-height: 1.2; color: var(--gray-800); }
+.sound-stat-label { font-size: var(--font-xs, 11px); font-weight: 600; color: var(--gray-400); margin-top: 4px; }
 
 /* Date group */
 .sound-log-date-group { margin-bottom: 24px; }
-.sound-log-date-header { font-size: 13px; font-weight: 700; color: var(--gray-500); text-transform: capitalize; padding: 8px 0; border-bottom: 1px solid var(--gray-100); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
-.sound-log-date-count { font-size: 11px; font-weight: 700; background: var(--gray-100); color: var(--gray-500); padding: 2px 8px; border-radius: var(--radius-full, 20px); }
+.sound-log-date-header { font-size: var(--font-sm, 13px); font-weight: 700; color: var(--gray-500); text-transform: capitalize; padding: 8px 0; border-bottom: 1px solid var(--gray-100); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.sound-log-date-count { font-size: var(--font-xs, 11px); font-weight: 700; background: var(--gray-100); color: var(--gray-500); padding: 2px 8px; border-radius: var(--radius-full, 20px); }
 
 /* Log entry — timeline-style */
-.sound-log-entries { display: flex; flex-direction: column; gap: 2px; }
-.sound-log-entry { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border-radius: var(--radius-card, 12px); transition: background 0.12s; }
+.sound-log-entries { display: flex; flex-direction: column; gap: 4px; }
+.sound-log-entry { display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; border-radius: var(--radius-card, 12px); transition: background 0.12s; }
 .sound-log-entry:hover { background: var(--gray-50); }
-.sound-log-time { font-size: 12px; font-weight: 600; color: var(--gray-400); font-variant-numeric: tabular-nums; min-width: 64px; padding-top: 2px; }
-.sound-log-icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; padding-top: 2px; }
+.sound-log-time { font-size: var(--font-caption, 12px); font-weight: 600; color: var(--gray-400); font-variant-numeric: tabular-nums; min-width: 64px; padding-top: 2px; }
+.sound-log-icon { font-size: var(--font-input, 16px); width: 24px; text-align: center; flex-shrink: 0; padding-top: 2px; }
 .sound-log-body { flex: 1; min-width: 0; overflow-wrap: break-word; word-break: break-word; }
-.sound-log-main { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.sound-log-label { font-size: 13px; font-weight: 700; color: var(--gray-800); }
-.sound-log-title { font-size: 13px; color: var(--gray-600); }
-.sound-log-type-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full, 20px); background: var(--gray-100); color: var(--gray-500); }
-.sound-log-details { font-size: 12px; color: var(--gray-400); margin-top: 4px; line-height: 1.4; }
-.sound-log-sep { color: var(--gray-300); margin: 0 2px; }
+.sound-log-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sound-log-label { font-size: var(--font-sm, 13px); font-weight: 700; color: var(--gray-800); }
+.sound-log-title { font-size: var(--font-sm, 13px); color: var(--gray-600); }
+.sound-log-type-badge { font-size: var(--font-2xs, 10px); font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full, 20px); background: var(--gray-100); color: var(--gray-500); }
+.sound-log-details { font-size: var(--font-caption, 12px); color: var(--gray-400); margin-top: 4px; line-height: 1.4; }
+.sound-log-sep { color: var(--gray-300); margin: 0 4px; }
 .sound-log-tags { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
-.sound-log-tag { font-size: 11px; font-weight: 600; color: var(--gray-400); }
+.sound-log-tag { font-size: var(--font-xs, 11px); font-weight: 600; color: var(--gray-400); }
 
 /* Action color accents */
-.sound-log-action-play .sound-log-label { color: var(--success, #059669); }
-.sound-log-action-tts .sound-log-label { color: var(--purple, #7C3AED); }
-.sound-log-action-create .sound-log-label { color: var(--info, #2563EB); }
-.sound-log-action-delete .sound-log-label { color: var(--danger, #DC2626); }
-.sound-log-action-update .sound-log-label { color: var(--warning, #D97706); }
-.sound-log-action-upload .sound-log-label { color: var(--info, #0891B2); }
-.sound-log-action-schedule .sound-log-label { color: var(--purple, #7C3AED); }
+.sound-log-action-play .sound-log-label { color: var(--primary-dark, #059669); }
+.sound-log-action-tts .sound-log-label { color: var(--quest-dark, #7C3AED); }
+.sound-log-action-create .sound-log-label { color: var(--animation-dark, #2563EB); }
+.sound-log-action-delete .sound-log-label { color: var(--danger-dark, #DC2626); }
+.sound-log-action-update .sound-log-label { color: var(--warning-dark, #D97706); }
+.sound-log-action-upload .sound-log-label { color: var(--photo-dark, #0891B2); }
+.sound-log-action-schedule .sound-log-label { color: var(--quest-dark, #7C3AED); }
 
 /* Delivery status colors (CSS classes instead of inline styles) */
-.sound-delivery-ok { color: var(--success, #10b981); }
-.sound-delivery-pending { color: var(--warning, #f59e0b); }
-.sound-delivery-fail { color: var(--danger, #ef4444); }
+.sound-delivery-ok { color: var(--primary-dark, #10b981); }
+.sound-delivery-pending { color: var(--warning-dark, #f59e0b); }
+.sound-delivery-fail { color: var(--danger-dark, #ef4444); }
 
 /* Empty state */
-.sound-empty { text-align: center; padding: 60px 20px; color: var(--gray-400); }
+.sound-empty { text-align: center; padding: 64px 24px; color: var(--gray-400); }
 .sound-empty-icon { font-size: 48px; margin-bottom: 12px; }
-.sound-empty-sub { font-size: 13px; color: var(--gray-400); margin-top: 4px; }
+.sound-empty-sub { font-size: var(--font-sm, 13px); color: var(--gray-400); margin-top: 4px; }
 
 /* ═══ Dark mode ═══ */
-body.dark-mode .sound-header h1 { color: #E2E8F0; }
+body.dark-mode .sound-header h1 { color: var(--gray-200, #E2E8F0); }
 body.dark-mode .sound-stat-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.06); }
-body.dark-mode .sound-stat-num { color: #E2E8F0; }
+body.dark-mode .sound-stat-num { color: var(--gray-200, #E2E8F0); }
 body.dark-mode .sound-stat-label { color: var(--gray-500); }
 body.dark-mode .sound-log-entry:hover { background: rgba(255,255,255,0.04); }
-body.dark-mode .sound-log-label { color: #E2E8F0; }
+body.dark-mode .sound-log-label { color: var(--gray-200, #E2E8F0); }
 body.dark-mode .sound-log-title { color: var(--gray-400); }
 body.dark-mode .sound-log-details { color: var(--gray-500); }
 body.dark-mode .sound-log-date-header { color: var(--gray-400); border-color: rgba(255,255,255,0.08); }
 body.dark-mode .sound-log-date-count { background: rgba(255,255,255,0.08); color: var(--gray-400); }
 body.dark-mode .sound-log-type-badge { background: rgba(255,255,255,0.08); color: var(--gray-400); }
 body.dark-mode .sound-filter-btn { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); color: var(--gray-400); }
-body.dark-mode .sound-filter-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+body.dark-mode .sound-filter-btn.active { background: var(--primary); color: var(--white); border-color: var(--primary); }
 body.dark-mode .sound-filter-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
 body.dark-mode .sound-log-date-filter label { color: var(--gray-400); }
-body.dark-mode .sound-log-date-filter input[type="date"] { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: #E2E8F0; color-scheme: dark; }
+body.dark-mode .sound-log-date-filter input[type="date"] { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--gray-200, #E2E8F0); color-scheme: dark; }
 body.dark-mode .btn-outline { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: var(--gray-400); }
 body.dark-mode .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
 body.dark-mode .sound-empty { color: var(--gray-500); }
@@ -100,14 +100,14 @@ body.dark-mode .sound-delivery-fail { color: #f87171; }
 /* ═══ Mobile ═══ */
 @media (max-width: 640px) {
     .sound-page { padding: 16px; }
-    .sound-header h1 { font-size: 22px; }
+    .sound-header h1 { font-size: var(--font-xl, 20px); }
     .sound-header { flex-direction: column; align-items: flex-start; }
-    .sound-log-stats { gap: 6px; }
-    .sound-stat-card { min-width: 80px; padding: 8px 10px; }
-    .sound-stat-num { font-size: 15px; }
-    .sound-log-entry { padding: 8px 8px; gap: 8px; }
-    .sound-log-time { min-width: 52px; font-size: 11px; }
-    .sound-log-date-filter { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .sound-log-stats { gap: 8px; }
+    .sound-stat-card { min-width: 80px; padding: 8px 12px; }
+    .sound-stat-num { font-size: var(--font-md, 15px); }
+    .sound-log-entry { padding: 8px; gap: 8px; }
+    .sound-log-time { min-width: 52px; font-size: var(--font-xs, 11px); }
+    .sound-log-date-filter { flex-direction: column; align-items: flex-start; gap: 8px; }
     .sound-filter { gap: 4px; }
-    .sound-filter-btn { padding: 6px 12px; font-size: 12px; }
+    .sound-filter-btn { padding: 8px 12px; font-size: var(--font-caption, 12px); }
 }

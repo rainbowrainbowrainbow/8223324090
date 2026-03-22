@@ -168,6 +168,7 @@ app.use('/api/page-statuses', require('./routes/page-statuses'));
 app.use('/api/leads', require('./routes/leads'));
 app.use('/api/copilot', require('./routes/copilot'));
 app.use('/api/decisions', require('./routes/decisions'));
+app.use('/api/sound-library', require('./routes/sound-library'));
 app.use('/api/landing', require('./routes/landing'));
 app.use('/api/scripts', require('./routes/scripts'));
 app.use('/api/chat', require('./routes/chat'));
@@ -385,18 +386,10 @@ app.get('/afisha', (req, res) => res.redirect(302, '/?open=afisha'));
 app.get('/certificates', (req, res) => res.redirect(302, '/?open=certificates'));
 // Designer and Sound — sendFile or redirect to /art
 app.get('/designer', (req, res) => {
-    if (require('fs').existsSync(path.join(__dirname, 'designer.html'))) {
-        res.sendFile(path.join(__dirname, 'designer.html'));
-    } else {
-        res.redirect(302, '/art');
-    }
+    res.sendFile(path.join(__dirname, 'designer.html'));
 });
 app.get('/sound', (req, res) => {
-    if (require('fs').existsSync(path.join(__dirname, 'sound.html'))) {
-        res.sendFile(path.join(__dirname, 'sound.html'));
-    } else {
-        res.redirect(302, '/');
-    }
+    res.sendFile(path.join(__dirname, 'sound.html'));
 });
 
 // SPA fallback (must be last)

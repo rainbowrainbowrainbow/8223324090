@@ -197,7 +197,8 @@ function isManagement() {
 function showMainApp() {
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('mainApp').classList.remove('hidden');
-    document.getElementById('currentUser').textContent = AppState.currentUser.name;
+    const _userEl = document.getElementById('currentUser');
+    if (_userEl && AppState.currentUser?.name) _userEl.textContent = AppState.currentUser.name;
     // Show floating buttons hidden during logout
     const sidebarToggle = document.getElementById('sidebarToggle');
     if (sidebarToggle) sidebarToggle.classList.remove('hidden');
@@ -224,11 +225,9 @@ function showMainApp() {
         certificatesBtn.classList.remove('hidden');
     }
 
-    // Дашборд (icon) — не для Animator
+    // v36.2: Dashboard/Statistics removed from dropdown — always hidden
     const dashboardBtn = document.getElementById('dashboardBtn');
-    if (dashboardBtn) {
-        dashboardBtn.classList.toggle('hidden', isViewer());
-    }
+    if (dashboardBtn) dashboardBtn.classList.add('hidden');
 
     // Показати кнопку "Розважальні програми"
     const programsTabBtn = document.getElementById('programsTabBtn');

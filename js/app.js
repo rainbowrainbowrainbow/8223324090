@@ -284,6 +284,12 @@ function initTimelineListeners() {
     const historyBtnEl = document.getElementById('historyBtn');
     if (historyBtnEl) historyBtnEl.addEventListener('click', showHistory);
 
+    // v36.2: Afisha top-bar button
+    const afishaTopBtn = document.getElementById('afishaTopBtn');
+    if (afishaTopBtn) afishaTopBtn.addEventListener('click', () => {
+        if (typeof showAfishaModal === 'function') showAfishaModal();
+    });
+
     // v20.10.0: History CSV export
     const historyExportBtn = document.getElementById('historyExportBtn');
     if (historyExportBtn) historyExportBtn.addEventListener('click', () => {

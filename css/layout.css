@@ -202,8 +202,11 @@
     color: #FFFFFF;
 }
 
-/* v20.6.0: Page status badges */
-.nav-status-badge {
+/* v20.6.0: Page status badges — temporarily hidden v33.8.0 */
+.nav-status-badge, .nav-status-pill {
+    display: none !important;
+}
+.nav-status-badge-visible {
     display: inline-block;
     width: 8px;
     height: 8px;

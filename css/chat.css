@@ -7889,6 +7889,180 @@ body.dark-mode .guardian-digest-generate-btn {
 }
 
 /* ==========================================
+ * v33.9.0: ANIMATED WALLPAPERS
+ * ========================================== */
+
+/* Bubbles — floating circles */
+.wp-bubbles {
+    background:
+        radial-gradient(circle at 20% 80%, rgba(167,139,250,0.18) 0%, transparent 40%),
+        radial-gradient(circle at 80% 20%, rgba(244,114,182,0.18) 0%, transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(99,102,241,0.08) 0%, transparent 60%);
+    animation: wpBubblesMove 20s ease-in-out infinite;
+}
+@keyframes wpBubblesMove {
+    0%,100% { background-position: 0% 0%, 100% 0%, 50% 50%; }
+    33%     { background-position: 10% 20%, 90% 30%, 40% 60%; }
+    66%     { background-position: 5% 10%, 95% 10%, 55% 45%; }
+}
+
+/* Aurora — moving gradient */
+.wp-aurora {
+    background: linear-gradient(-45deg, rgba(16,185,129,0.12), rgba(99,102,241,0.12), rgba(244,63,94,0.12), rgba(59,130,246,0.12));
+    background-size: 400% 400%;
+    animation: wpAurora 15s ease infinite;
+}
+@keyframes wpAurora {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Cosmos — deep space with twinkling */
+.wp-cosmos {
+    background:
+        radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.6) 0%, transparent 100%),
+        radial-gradient(1px 1px at 30% 60%, rgba(255,255,255,0.5) 0%, transparent 100%),
+        radial-gradient(1px 1px at 50% 30%, rgba(255,255,255,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 70% 70%, rgba(255,255,255,0.6) 0%, transparent 100%),
+        radial-gradient(1px 1px at 90% 10%, rgba(255,255,255,0.5) 0%, transparent 100%),
+        radial-gradient(2px 2px at 25% 85%, rgba(167,139,250,0.8) 0%, transparent 100%),
+        radial-gradient(2px 2px at 75% 45%, rgba(96,165,250,0.8) 0%, transparent 100%),
+        radial-gradient(circle at 30% 70%, rgba(99,102,241,0.15) 0%, transparent 50%),
+        radial-gradient(circle at 70% 30%, rgba(168,85,247,0.1) 0%, transparent 50%),
+        linear-gradient(180deg, #0f172a 0%, #1e1b4b 40%, #312e81 70%, #1e1b4b 100%);
+    animation: wpCosmosTwinkle 4s ease-in-out infinite alternate;
+}
+@keyframes wpCosmosTwinkle {
+    0%   { filter: brightness(1); }
+    100% { filter: brightness(1.05); }
+}
+.wp-cosmos .chat-bubble { color: #e2e8f0; }
+.wp-cosmos .chat-bubble-username { color: #a5b4fc !important; }
+.wp-cosmos .chat-bubble-time { color: #94a3b8 !important; }
+
+/* Ocean — waves */
+.wp-ocean {
+    background: linear-gradient(180deg,
+        rgba(14,165,233,0.08) 0%, rgba(6,182,212,0.12) 30%,
+        rgba(13,148,136,0.08) 60%, rgba(14,165,233,0.04) 100%);
+    background-size: 100% 200%;
+    animation: wpOcean 8s ease-in-out infinite;
+}
+@keyframes wpOcean {
+    0%,100% { background-position: 0% 0%; }
+    50%     { background-position: 0% 100%; }
+}
+
+/* Sunset — warm glow */
+.wp-sunset {
+    background: linear-gradient(-45deg,
+        rgba(249,115,22,0.1), rgba(239,68,68,0.1),
+        rgba(236,72,153,0.1), rgba(249,115,22,0.08));
+    background-size: 400% 400%;
+    animation: wpSunset 12s ease infinite;
+}
+@keyframes wpSunset {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Forest — depth layers */
+.wp-forest {
+    background:
+        linear-gradient(180deg, rgba(22,101,52,0.06) 0%, rgba(21,128,61,0.1) 50%, rgba(34,197,94,0.06) 100%),
+        radial-gradient(ellipse at 20% 80%, rgba(22,163,74,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(34,197,94,0.08) 0%, transparent 50%);
+    animation: wpForest 20s ease-in-out infinite;
+}
+@keyframes wpForest {
+    0%,100% { filter: brightness(1) saturate(1); }
+    50%     { filter: brightness(1.03) saturate(1.1); }
+}
+
+/* Candy — playful gradient */
+.wp-candy {
+    background: linear-gradient(-45deg,
+        rgba(236,72,153,0.1), rgba(168,85,247,0.1),
+        rgba(59,130,246,0.1), rgba(14,165,233,0.08));
+    background-size: 300% 300%;
+    animation: wpCandy 10s ease infinite;
+}
+@keyframes wpCandy {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Neon — cyberpunk glow */
+.wp-neon {
+    background:
+        radial-gradient(circle at 20% 50%, rgba(124,58,237,0.15) 0%, transparent 40%),
+        radial-gradient(circle at 80% 50%, rgba(6,182,212,0.15) 0%, transparent 40%),
+        radial-gradient(circle at 50% 80%, rgba(16,185,129,0.1) 0%, transparent 40%),
+        linear-gradient(180deg, rgba(15,23,42,0.05) 0%, rgba(30,41,59,0.05) 100%);
+    animation: wpNeon 6s ease-in-out infinite alternate;
+}
+@keyframes wpNeon {
+    0%   { filter: hue-rotate(0deg) brightness(1); }
+    100% { filter: hue-rotate(30deg) brightness(1.05); }
+}
+
+/* Snow — soft falling effect */
+.wp-snow {
+    background:
+        radial-gradient(2px 2px at 15% 20%, rgba(148,163,184,0.4) 0%, transparent 100%),
+        radial-gradient(2px 2px at 35% 50%, rgba(148,163,184,0.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 55% 30%, rgba(148,163,184,0.3) 0%, transparent 100%),
+        radial-gradient(2px 2px at 75% 70%, rgba(148,163,184,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 85% 15%, rgba(148,163,184,0.3) 0%, transparent 100%),
+        linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 50%, #f8fafc 100%);
+    background-size: 200px 200px, 300px 300px, 250px 250px, 150px 150px, 350px 350px, 100% 100%;
+    animation: wpSnowFall 10s linear infinite;
+}
+@keyframes wpSnowFall {
+    0%   { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
+    100% { background-position: 0 200px, 50px 300px, -30px 250px, 20px 150px, -10px 350px, 0 0; }
+}
+
+/* Dino / Park — themed */
+.wp-dino {
+    background:
+        radial-gradient(ellipse at 30% 80%, rgba(22,163,74,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 20%, rgba(202,138,4,0.1) 0%, transparent 50%),
+        linear-gradient(180deg, rgba(34,197,94,0.05) 0%, rgba(146,64,14,0.05) 100%);
+    animation: wpDino 15s ease-in-out infinite;
+}
+@keyframes wpDino {
+    0%,100% { filter: saturate(1); }
+    50%     { filter: saturate(1.15); }
+}
+
+/* Geometric — subtle grid pattern */
+.wp-geometric {
+    background:
+        linear-gradient(30deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(150deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(30deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(150deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(60deg, rgba(100,116,139,0.05) 25%, transparent 25.5%, transparent 75%, rgba(100,116,139,0.05) 75%);
+    background-size: 40px 70px;
+}
+
+/* Gradient — smooth animated */
+.wp-gradient {
+    background: linear-gradient(-45deg, rgba(99,102,241,0.1), rgba(168,85,247,0.1), rgba(236,72,153,0.1), rgba(59,130,246,0.1));
+    background-size: 400% 400%;
+    animation: wpGradient 8s ease infinite;
+}
+@keyframes wpGradient {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* ==========================================
  * v33.9.0: Channel Section Labels
  * ========================================== */
 .chat-section-label {

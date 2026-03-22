@@ -2087,15 +2087,21 @@
     // v33.9.0: WALLPAPERS, PREFERENCES, EFFECTS
     // ==========================================
     var _userPrefs = null;
+    // Wallpapers: 'class' means CSS class on #chatMessages, 'bg' means inline background
     var _WALLPAPERS = {
-        'default':  '',
-        'bubbles':  'radial-gradient(circle at 20% 80%, rgba(120,119,198,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255,119,115,0.15) 0%, transparent 50%)',
-        'waves':    'linear-gradient(135deg, rgba(99,102,241,0.06) 25%, transparent 25%), linear-gradient(225deg, rgba(99,102,241,0.06) 25%, transparent 25%)',
-        'aurora':   'linear-gradient(45deg, rgba(16,185,129,0.08), rgba(99,102,241,0.08), rgba(244,63,94,0.08))',
-        'park':     'linear-gradient(180deg, rgba(16,185,129,0.04) 0%, rgba(99,102,241,0.04) 100%)',
-        'midnight': 'linear-gradient(135deg, rgba(15,23,42,0.15) 0%, rgba(30,41,59,0.15) 100%)',
-        'sunset':   'linear-gradient(135deg, rgba(249,115,22,0.06) 0%, rgba(239,68,68,0.06) 100%)',
-        'candy':    'linear-gradient(135deg, rgba(236,72,153,0.06) 0%, rgba(168,85,247,0.06) 50%, rgba(59,130,246,0.06) 100%)'
+        'default':  { label: 'Без фону',     bg: '' },
+        'bubbles':  { label: 'Бульбашки',    cls: 'wp-bubbles' },
+        'aurora':   { label: 'Аврора',       cls: 'wp-aurora' },
+        'cosmos':   { label: 'Космос',       cls: 'wp-cosmos' },
+        'ocean':    { label: 'Океан',        cls: 'wp-ocean' },
+        'sunset':   { label: 'Захід',        cls: 'wp-sunset' },
+        'forest':   { label: 'Ліс',          cls: 'wp-forest' },
+        'candy':    { label: 'Цукерки',      cls: 'wp-candy' },
+        'neon':     { label: 'Неон',          cls: 'wp-neon' },
+        'snow':     { label: 'Сніг',          cls: 'wp-snow' },
+        'dino':     { label: 'Парк',          cls: 'wp-dino' },
+        'geometric':{ label: 'Геометрія',    cls: 'wp-geometric' },
+        'gradient': { label: 'Градієнт',     cls: 'wp-gradient' }
     };
 
     async function _loadMyPreferences() {
@@ -2113,8 +2119,13 @@
         }
         var wp = _userPrefs.wallpaper || localStorage.getItem('chat_wallpaper') || 'default';
         var chatArea = document.getElementById('chatMessages');
-        if (chatArea && _WALLPAPERS[wp]) {
-            chatArea.style.backgroundImage = _WALLPAPERS[wp];
+        if (chatArea) {
+            // Remove all wp- classes
+            chatArea.className = chatArea.className.replace(/\bwp-\S+/g, '').trim();
+            chatArea.style.backgroundImage = '';
+            var wpData = _WALLPAPERS[wp];
+            if (wpData && wpData.cls) chatArea.classList.add(wpData.cls);
+            else if (wpData && wpData.bg) chatArea.style.backgroundImage = wpData.bg;
         }
         var sigEl = document.getElementById('chatMySignature');
         if (sigEl) sigEl.textContent = _userPrefs.chat_signature || '';
@@ -2130,19 +2141,31 @@
         picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
         var grid = document.getElementById('wallpaperGrid');
         if (!grid || grid.children.length > 0) return;
-        var LABELS = { 'default':'Без фону', 'bubbles':'Бульбашки', 'waves':'Хвилі',
-                       'aurora':'Аврора', 'park':'Парк', 'midnight':'Ніч', 'sunset':'Захід', 'candy':'Цукерки' };
+        // Wallpaper preview colors for picker
+        var PREVIEW = {
+            'default':'#f8f9fa','bubbles':'linear-gradient(135deg,#a78bfa,#f472b6)',
+            'aurora':'linear-gradient(135deg,#10b981,#6366f1,#f43f5e)','cosmos':'linear-gradient(135deg,#0f172a,#312e81,#1e1b4b)',
+            'ocean':'linear-gradient(135deg,#0ea5e9,#06b6d4,#0d9488)','sunset':'linear-gradient(135deg,#f97316,#ef4444,#ec4899)',
+            'forest':'linear-gradient(135deg,#166534,#15803d,#22c55e)','candy':'linear-gradient(135deg,#ec4899,#a855f7,#3b82f6)',
+            'neon':'linear-gradient(135deg,#7c3aed,#06b6d4,#10b981)','snow':'linear-gradient(135deg,#e2e8f0,#cbd5e1,#f1f5f9)',
+            'dino':'linear-gradient(135deg,#16a34a,#ca8a04,#92400e)','geometric':'linear-gradient(135deg,#1e293b,#334155,#475569)',
+            'gradient':'linear-gradient(135deg,#6366f1,#a855f7,#ec4899)'
+        };
         Object.keys(_WALLPAPERS).forEach(function(key) {
+            var wpData = _WALLPAPERS[key];
             var btn = document.createElement('div');
             btn.style.cssText = 'width:44px;height:44px;border-radius:8px;cursor:pointer;border:2px solid transparent;' +
-                'background:' + (_WALLPAPERS[key] || 'var(--gray-100)') + ';transition:border-color 0.15s;';
-            btn.title = LABELS[key] || key;
+                'background:' + (PREVIEW[key] || '#f8f9fa') + ';transition:all 0.15s;';
+            btn.title = wpData.label || key;
+            btn.onmouseenter = function() { btn.style.transform = 'scale(1.1)'; btn.style.borderColor = '#6366f1'; };
+            btn.onmouseleave = function() { btn.style.transform = ''; btn.style.borderColor = 'transparent'; };
             btn.onclick = function() {
                 _api('PATCH', '/preferences', { wallpaper: key }).then(function() {
                     localStorage.setItem('chat_wallpaper', key);
                     if (_userPrefs) _userPrefs.wallpaper = key;
                     _applyMyPreferences();
                     picker.style.display = 'none';
+                    if (typeof showNotification === 'function') showNotification(wpData.label + ' встановлено', 'success');
                 }).catch(function() {});
             };
             grid.appendChild(btn);

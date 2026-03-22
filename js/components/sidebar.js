@@ -31,7 +31,7 @@ const Sidebar = (() => {
         { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'all',            group: 'hr' },
 
         // ─── GROUP: Творче ───────────────────────────────────────
-        { type: 'group', key: 'creative', label: 'Творче', icon: '🎨', defaultOpen: true },
+        { type: 'group', key: 'creative', label: 'Арт директор', icon: '🎨', defaultOpen: true },
         { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'creative' },
         { href: '/art',          icon: '🎨', label: 'Арт директор',   access: 'art',            group: 'creative' },
         { href: '/designer',     icon: '📐', label: 'Дизайнер',       access: 'art',            group: 'creative' },

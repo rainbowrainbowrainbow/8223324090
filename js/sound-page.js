@@ -5,7 +5,7 @@
 (function() {
     'use strict';
 
-    const _esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const _esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
     const ACTION_ICONS = {
         play:    '▶️',
@@ -119,7 +119,7 @@
             if (d && typeof d === 'object') {
                 const parts = [];
                 if (d.zone) parts.push(`📍 ${_esc(d.zone)}`);
-                if (d.duration) parts.push(`⏱ ${d.duration}с`);
+                if (d.duration) parts.push(`⏱ ${_esc(d.duration)}с`);
                 if (d.voice_engine) parts.push(`🔧 ${_esc(d.voice_engine)}`);
                 if (d.file_size) parts.push(`📁 ${(d.file_size / 1024 / 1024).toFixed(1)} MB`);
                 if (d.reason) parts.push(`💡 ${_esc(d.reason)}`);
@@ -202,8 +202,12 @@
         // Action filter
         document.querySelectorAll('.log-action-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.log-action-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.log-action-btn').forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-pressed', 'false');
+                });
                 btn.classList.add('active');
+                btn.setAttribute('aria-pressed', 'true');
                 _actionFilter = btn.dataset.action || '';
                 loadLog();
             });

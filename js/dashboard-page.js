@@ -12,6 +12,7 @@ const DashboardPage = (() => {
         my_schedule:    { icon: '🕐', title: 'Мій графік', minRole: null },
         team_online:    { icon: '👥', title: 'Команда онлайн', minRole: 'manager' },
         alerts:         { icon: '🔔', title: 'Сповіщення', minRole: null },
+        exceptions:     { icon: '🚨', title: 'Що потребує уваги', minRole: 'admin' },
         leads_new:      { icon: '🔥', title: 'Нові ліди', minRole: 'manager' },
         finance_today:  { icon: '💰', title: 'Фінанси сьогодні', minRole: 'senior_manager' },
         weather:        { icon: '🌤', title: 'Погода', minRole: null },
@@ -200,6 +201,9 @@ const DashboardPage = (() => {
                 break;
             case 'alerts':
                 renderAlerts(data, container);
+                break;
+            case 'exceptions':
+                renderExceptions(data, container);
                 break;
             case 'leads_new':
                 renderLeadsNew(data, container);
@@ -408,6 +412,36 @@ const DashboardPage = (() => {
             </a>`;
         }).join('');
         container.innerHTML = items;
+    }
+
+    function renderExceptions(data, container) {
+        if (!data.exceptions || data.exceptions.length === 0) {
+            container.innerHTML = '<div class="widget-empty">✅ Все під контролем — жодних виключень</div>';
+            return;
+        }
+        const catLabels = {
+            conflicts: '💥 Конфлікти', noAnimator: '🎭 Без аніматора',
+            overduePrep: '⏰ Підготовка', detractors: '😞 NPS',
+            cleaningSLA: '🧹 Прибирання', unconfirmedLate: '🔴 Не підтверджено'
+        };
+        // Category summary bar
+        const cats = data.categories || {};
+        const summaryParts = Object.entries(cats)
+            .filter(([, v]) => v > 0)
+            .map(([k, v]) => `<span class="exc-cat-badge" title="${catLabels[k] || k}">${(catLabels[k] || k).split(' ')[0]} ${v}</span>`)
+            .join('');
+        const summary = summaryParts ? `<div class="exc-summary">${summaryParts}</div>` : '';
+
+        const items = data.exceptions.slice(0, 8).map(e => {
+            const lvlCls = e.level === 'critical' ? 'alert-critical' : e.level === 'warning' ? 'alert-warning' : 'alert-info';
+            const link = e.link || '/';
+            return `<a href="${link}" class="dash-alert-item ${lvlCls}" title="${escapeHtml(e.action?.prompt || '')}">
+                <span class="dash-alert-icon">${e.icon || '⚠️'}</span>
+                <span class="dash-alert-text">${escapeHtml(e.title)}</span>
+                <span class="dash-alert-arrow">›</span>
+            </a>`;
+        }).join('');
+        container.innerHTML = summary + items;
     }
 
     function renderLeadsNew(data, container) {

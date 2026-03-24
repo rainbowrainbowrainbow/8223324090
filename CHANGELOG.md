@@ -4,6 +4,44 @@
 
 ---
 
+## v38.3.0 — Operations Intelligence (2026-03-24)
+
+### Exceptions Inbox [claude-code]
+- **Новий dashboard віджет "Що потребує уваги"** — агрегує 6 типів операційних проблем:
+  - 💥 Конфлікти кімнат (перекриття часу бронювань)
+  - 🎭 Бронювання без аніматора
+  - ⏰ Прострочена підготовка (event-задачі)
+  - 😞 NPS детрактори (оцінка 1-2/5 без follow-up)
+  - 🧹 Прибирання з перевищеним SLA
+  - 🔴 Непідтверджені бронювання за <2 години до старту
+- **Авто-додано** до дашбордів: creator, director, vice_director, senior_manager, manager, admin, reception
+
+### Event Pipeline [claude-code]
+- **Автоматичний lifecycle бронювання** через event bus:
+  - `booking.t24` — за 24 години до події (нагадування + задача підготовки)
+  - `booking.day_of` — в день події (чек-лист підготовки кімнати)
+  - `booking.completed` — після завершення (тригер для прибирання)
+- **booking_pipeline** таблиця — відстеження стадій кожного бронювання (idempotent)
+
+### NPS Follow-Up Automation [claude-code]
+- **Detractor follow-up** — при оцінці 1-2/5 автоматично:
+  - Створюється high-priority задача менеджеру
+  - Telegram-алерт директору
+- **Promoter referral** — при оцінці 5/5 автоматично:
+  - Telegram-повідомлення з пропозицією рекомендації
+- Нові поля event_reviews: `nps_score`, `follow_up_status`, `follow_up_task_id`
+
+### Cleaning Task Chain [claude-code]
+- **cleaning_tasks** таблиця — автоматичне створення задач прибирання після завершення подій
+- **SLA tracking** — дефолт 15 хвилин на прибирання, відстеження в exceptions inbox
+- Прив'язка до кімнати та бронювання
+
+### Event Bus Rules [claude-code]
+- 5 нових default правил: `booking_t24_reminder`, `nps_detractor_followup`, `nps_promoter_referral`, `booking_cleaning_auto`, `booking_day_prep`
+- Scheduler jobs: `checkEventPipeline` (5 хв), `checkNpsFollowUp` (hourly), `checkCleaningTasks` (5 хв)
+
+---
+
 ## v35.0.0 — Sidebar Full Rebuild (2026-03-22)
 
 ### Sidebar Accordion Groups [claude-code]

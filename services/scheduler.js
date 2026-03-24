@@ -1808,6 +1808,199 @@ async function checkChatDailyDigest() {
     }
 }
 
+// v38.3.0: Event Pipeline — auto-publish lifecycle events for bookings
+async function checkEventPipeline() {
+    try {
+        const { publish } = require('./eventBus');
+        const today = getKyivDateStr();
+        const tomorrow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
+        // T-24: bookings happening tomorrow that haven't had t24 event
+        const t24 = await pool.query(`
+            SELECT b.id, b.label, b.time, b.program_name, b.room, b.phone, b.customer_telegram_id
+            FROM bookings b
+            LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 't24_sent'
+            WHERE b.date = $1 AND b.status IN ('confirmed', 'preliminary')
+              AND bp.id IS NULL
+            LIMIT 20
+        `, [tomorrowStr]).catch(() => ({ rows: [] }));
+
+        for (const b of t24.rows) {
+            await publish('booking.t24', {
+                booking_id: b.id, label: b.label, time: b.time,
+                programName: b.program_name, room: b.room, phone: b.phone,
+                customer_telegram_id: b.customer_telegram_id
+            }, `t24_${b.id}_${tomorrowStr}`);
+            await pool.query(
+                'INSERT INTO booking_pipeline (booking_id, stage) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [b.id, 't24_sent']
+            ).catch(() => {});
+        }
+
+        // Day-of: bookings today that haven't had day_of event
+        const dayOf = await pool.query(`
+            SELECT b.id, b.label, b.time, b.program_name, b.room
+            FROM bookings b
+            LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 'day_of_prep'
+            WHERE b.date = $1 AND b.status IN ('confirmed', 'preliminary')
+              AND bp.id IS NULL
+            LIMIT 20
+        `, [today]).catch(() => ({ rows: [] }));
+
+        for (const b of dayOf.rows) {
+            await publish('booking.day_of', {
+                booking_id: b.id, label: b.label, time: b.time,
+                programName: b.program_name, room: b.room
+            }, `dayof_${b.id}_${today}`);
+            await pool.query(
+                'INSERT INTO booking_pipeline (booking_id, stage) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [b.id, 'day_of_prep']
+            ).catch(() => {});
+        }
+
+        // Completed: bookings that ended (time + duration < now) but no completion event
+        const completed = await pool.query(`
+            SELECT b.id, b.label, b.time, b.program_name, b.room, b.duration
+            FROM bookings b
+            LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 'completed'
+            WHERE b.date = $1 AND b.status = 'confirmed'
+              AND bp.id IS NULL
+              AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time
+                   + (COALESCE(b.duration, 120) || ' minutes')::interval) < NOW()
+            LIMIT 20
+        `, [today]).catch(() => ({ rows: [] }));
+
+        for (const b of completed.rows) {
+            await publish('booking.completed', {
+                booking_id: b.id, label: b.label, time: b.time,
+                programName: b.program_name, room: b.room
+            }, `completed_${b.id}_${today}`);
+            await pool.query(
+                'INSERT INTO booking_pipeline (booking_id, stage) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [b.id, 'completed']
+            ).catch(() => {});
+        }
+
+        const total = t24.rows.length + dayOf.rows.length + completed.rows.length;
+        if (total > 0) {
+            log.info(`Event pipeline: ${t24.rows.length} T-24, ${dayOf.rows.length} day-of, ${completed.rows.length} completed`);
+        }
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkEventPipeline error', err);
+        }
+    }
+}
+
+// v38.3.0: NPS follow-up — create tasks for detractors, referral for promoters
+async function checkNpsFollowUp() {
+    try {
+        const { publish } = require('./eventBus');
+
+        // Detractors: rating 1-2, no follow-up yet
+        const detractors = await pool.query(`
+            SELECT er.id, er.booking_id, er.rating, er.comment, er.customer_name, er.customer_phone,
+                   b.program_name, b.date
+            FROM event_reviews er
+            LEFT JOIN bookings b ON b.id = er.booking_id
+            WHERE er.rating <= 2
+              AND (er.follow_up_status IS NULL OR er.follow_up_status = 'none')
+              AND er.created_at > NOW() - INTERVAL '48 hours'
+            LIMIT 10
+        `).catch(() => ({ rows: [] }));
+
+        for (const d of detractors.rows) {
+            await publish('review.detractor', {
+                review_id: d.id, booking_id: d.booking_id, rating: d.rating,
+                comment: d.comment || '', customerName: d.customer_name || 'Клієнт',
+                programName: d.program_name || '', phone: d.customer_phone
+            }, `detractor_${d.id}`);
+            await pool.query(
+                "UPDATE event_reviews SET follow_up_status = 'pending', follow_up_at = NOW() WHERE id = $1",
+                [d.id]
+            ).catch(() => {});
+        }
+
+        // Promoters: rating 5, no follow-up yet
+        const promoters = await pool.query(`
+            SELECT er.id, er.booking_id, er.rating, er.customer_name, er.customer_telegram_id,
+                   b.program_name
+            FROM event_reviews er
+            LEFT JOIN bookings b ON b.id = er.booking_id
+            WHERE er.rating = 5
+              AND (er.follow_up_status IS NULL OR er.follow_up_status = 'none')
+              AND er.created_at > NOW() - INTERVAL '48 hours'
+              AND er.customer_telegram_id IS NOT NULL
+            LIMIT 10
+        `).catch(() => ({ rows: [] }));
+
+        for (const p of promoters.rows) {
+            await publish('review.promoter', {
+                review_id: p.id, booking_id: p.booking_id, rating: p.rating,
+                customerName: p.customer_name || 'Клієнт',
+                programName: p.program_name || '',
+                customer_telegram_id: p.customer_telegram_id
+            }, `promoter_${p.id}`);
+            await pool.query(
+                "UPDATE event_reviews SET follow_up_status = 'completed', follow_up_at = NOW() WHERE id = $1",
+                [p.id]
+            ).catch(() => {});
+        }
+
+        const total = detractors.rows.length + promoters.rows.length;
+        if (total > 0) {
+            log.info(`NPS follow-up: ${detractors.rows.length} detractors, ${promoters.rows.length} promoters`);
+        }
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkNpsFollowUp error', err);
+        }
+    }
+}
+
+// v38.3.0: Auto-create cleaning tasks for completed bookings
+async function checkCleaningTasks() {
+    try {
+        const today = getKyivDateStr();
+
+        // Find completed bookings that don't have cleaning tasks yet
+        const result = await pool.query(`
+            SELECT b.id, b.room, b.time, b.duration, b.program_name, b.label
+            FROM bookings b
+            LEFT JOIN cleaning_tasks ct ON ct.booking_id = b.id
+            WHERE b.date = $1 AND b.status = 'confirmed'
+              AND b.room IS NOT NULL AND b.room != ''
+              AND ct.id IS NULL
+              AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time
+                   + (COALESCE(b.duration, 120) || ' minutes')::interval) < NOW()
+            LIMIT 20
+        `, [today]).catch(() => ({ rows: [] }));
+
+        for (const b of result.rows) {
+            const endMinutes = (parseInt(b.time.slice(0,2)) * 60 + parseInt(b.time.slice(3,5))) + (b.duration || 120);
+            const endHour = Math.floor(endMinutes / 60);
+            const endMin = endMinutes % 60;
+            const scheduledAt = `${today} ${String(endHour).padStart(2,'0')}:${String(endMin).padStart(2,'0')}:00`;
+
+            await pool.query(`
+                INSERT INTO cleaning_tasks (booking_id, room, scheduled_at, sla_minutes)
+                VALUES ($1, $2, $3, 15)
+                ON CONFLICT DO NOTHING
+            `, [b.id, b.room, scheduledAt]).catch(() => {});
+        }
+
+        if (result.rows.length > 0) {
+            log.info(`Cleaning tasks: created ${result.rows.length} for completed bookings`);
+        }
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkCleaningTasks error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
@@ -1828,7 +2021,10 @@ module.exports = {
     checkCertExpiryReminders,
     checkStaleCatalogImages,
     checkChatDailyDigest,
-    checkRecurringAnnouncements
+    checkRecurringAnnouncements,
+    checkEventPipeline,
+    checkNpsFollowUp,
+    checkCleaningTasks
 };
 
 // v33.15.0: Recurring announcements — play based on repeat_cron

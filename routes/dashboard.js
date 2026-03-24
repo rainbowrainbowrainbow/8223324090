@@ -271,6 +271,124 @@ router.get('/widgets/:type', async (req, res) => {
                 break;
             }
 
+            case 'exceptions': {
+                const excToday = getKyivDateStr();
+                const [conflictsQ, noAnimatorQ, overduePrep, detractors, cleaningSLA, unconfirmedLate] = await Promise.all([
+                    // Resource conflicts: same room, overlapping times
+                    pool.query(`
+                        SELECT b1.id as booking1, b2.id as booking2, b1.room, b1.time as time1, b2.time as time2
+                        FROM bookings b1
+                        JOIN bookings b2 ON b1.room = b2.room AND b1.date = b2.date AND b1.id < b2.id
+                        WHERE b1.date = $1 AND b1.status != 'cancelled' AND b2.status != 'cancelled'
+                          AND b1.room IS NOT NULL AND b1.room != ''
+                          AND ABS(
+                            (SUBSTRING(b1.time FROM 1 FOR 2)::int * 60 + SUBSTRING(b1.time FROM 4 FOR 2)::int) -
+                            (SUBSTRING(b2.time FROM 1 FOR 2)::int * 60 + SUBSTRING(b2.time FROM 4 FOR 2)::int)
+                          ) < COALESCE(b1.duration, 120)
+                        LIMIT 5
+                    `, [excToday]).catch(() => ({ rows: [] })),
+                    // Bookings without assigned animator
+                    pool.query(`
+                        SELECT b.id, b.label, b.time, b.program_name, b.room
+                        FROM bookings b
+                        WHERE b.date = $1 AND b.status != 'cancelled'
+                          AND (b.line_id IS NULL OR b.line_id = 0)
+                        ORDER BY b.time LIMIT 5
+                    `, [excToday]).catch(() => ({ rows: [] })),
+                    // Overdue preparation tasks (event category, not done)
+                    pool.query(`
+                        SELECT id, title, deadline FROM tasks
+                        WHERE category = 'event' AND status NOT IN ('done','cancelled')
+                          AND deadline < NOW()
+                        ORDER BY deadline ASC LIMIT 5
+                    `).catch(() => ({ rows: [] })),
+                    // Recent NPS detractors (rating 1-2, last 7 days, no follow-up)
+                    pool.query(`
+                        SELECT er.id, er.booking_id, er.rating, er.comment, er.customer_name, er.created_at
+                        FROM event_reviews er
+                        WHERE er.rating <= 2 AND er.created_at > NOW() - INTERVAL '7 days'
+                          AND (er.follow_up_status IS NULL OR er.follow_up_status = 'none')
+                        ORDER BY er.created_at DESC LIMIT 5
+                    `).catch(() => ({ rows: [] })),
+                    // Cleaning SLA breaches
+                    pool.query(`
+                        SELECT id, room, scheduled_at, sla_minutes FROM cleaning_tasks
+                        WHERE status = 'pending'
+                          AND scheduled_at < NOW() - (sla_minutes || ' minutes')::interval
+                        ORDER BY scheduled_at ASC LIMIT 5
+                    `).catch(() => ({ rows: [] })),
+                    // Unconfirmed bookings close to start (< 2 hours)
+                    pool.query(`
+                        SELECT id, label, time, room FROM bookings
+                        WHERE date = $1 AND status = 'preliminary'
+                          AND (SUBSTRING(time FROM 1 FOR 2)::int * 60 + SUBSTRING(time FROM 4 FOR 2)::int)
+                              - EXTRACT(HOUR FROM NOW() AT TIME ZONE 'Europe/Kyiv')::int * 60
+                              - EXTRACT(MINUTE FROM NOW() AT TIME ZONE 'Europe/Kyiv')::int
+                              BETWEEN 0 AND 120
+                        ORDER BY time LIMIT 5
+                    `, [excToday]).catch(() => ({ rows: [] }))
+                ]);
+
+                const exceptions = [];
+
+                conflictsQ.rows.forEach(c => {
+                    exceptions.push({
+                        id: `conflict_${c.booking1}_${c.booking2}`, type: 'conflict', level: 'critical', icon: '💥',
+                        title: `Конфлікт кімнати ${c.room}: ${(c.time1 || '').slice(0,5)} vs ${(c.time2 || '').slice(0,5)}`,
+                        link: '/', action: { label: 'Вирішити', prompt: `Конфлікт: бронювання ${c.booking1} і ${c.booking2} в кімнаті ${c.room}` }
+                    });
+                });
+                noAnimatorQ.rows.forEach(b => {
+                    exceptions.push({
+                        id: `no_animator_${b.id}`, type: 'no_animator', level: 'warning', icon: '🎭',
+                        title: `Без аніматора: ${(b.time || '').slice(0,5)} ${b.label || b.program_name}`,
+                        link: '/', action: { label: 'Призначити', prompt: `Бронювання ${b.id} без аніматора` }
+                    });
+                });
+                overduePrep.rows.forEach(t => {
+                    exceptions.push({
+                        id: `prep_overdue_${t.id}`, type: 'prep_overdue', level: 'warning', icon: '⏰',
+                        title: `Прострочена підготовка: ${(t.title || '').slice(0,40)}`,
+                        link: '/tasks', action: { label: 'Виконати', prompt: `Задача підготовки ${t.id} прострочена` }
+                    });
+                });
+                detractors.rows.forEach(r => {
+                    exceptions.push({
+                        id: `detractor_${r.id}`, type: 'detractor', level: 'warning', icon: '😞',
+                        title: `Незадоволений: ${r.customer_name || 'Клієнт'} (${r.rating}/5)`,
+                        link: '/customers', action: { label: 'Зателефонувати', prompt: `Клієнт ${r.customer_name} поставив ${r.rating}/5. Коментар: ${r.comment}` }
+                    });
+                });
+                cleaningSLA.rows.forEach(c => {
+                    exceptions.push({
+                        id: `cleaning_sla_${c.id}`, type: 'cleaning_sla', level: 'info', icon: '🧹',
+                        title: `Прибирання просрочено: ${c.room}`,
+                        link: '/tasks', action: { label: 'Перевірити', prompt: `Прибирання кімнати ${c.room} перевищило SLA ${c.sla_minutes} хв` }
+                    });
+                });
+                unconfirmedLate.rows.forEach(b => {
+                    exceptions.push({
+                        id: `late_unconfirmed_${b.id}`, type: 'late_unconfirmed', level: 'critical', icon: '🔴',
+                        title: `Не підтверджено за <2год: ${(b.time || '').slice(0,5)} ${b.label || ''}`,
+                        link: '/', action: { label: 'Підтвердити', prompt: `Бронювання ${b.id} не підтверджене, початок менш ніж за 2 години!` }
+                    });
+                });
+
+                data = {
+                    exceptions,
+                    count: exceptions.length,
+                    categories: {
+                        conflicts: conflictsQ.rows.length,
+                        noAnimator: noAnimatorQ.rows.length,
+                        overduePrep: overduePrep.rows.length,
+                        detractors: detractors.rows.length,
+                        cleaningSLA: cleaningSLA.rows.length,
+                        unconfirmedLate: unconfirmedLate.rows.length
+                    }
+                };
+                break;
+            }
+
             case 'catalogs': {
                 const [catDefs, catItems] = await Promise.all([
                     pool.query("SELECT cd.id, cd.name, cd.emoji, COUNT(ci.id)::int AS count FROM catalog_definitions cd LEFT JOIN catalog_items ci ON ci.catalog_id = cd.id AND ci.status = 'active' WHERE cd.is_active = true GROUP BY cd.id, cd.name, cd.emoji, cd.sort_order ORDER BY cd.sort_order").catch(() => ({ rows: [] })),

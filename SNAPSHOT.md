@@ -3,18 +3,17 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v35.0.0**. Бранч `claude/continue-project-work-pdpKD` — запушений.
+Версія **v38.3.0**. Бранч `claude/continue-project-work-pdpKD` — запушений.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **package.json**: `"version": "35.0.0"`
+- **package.json**: `"version": "38.3.0"`
 - **Бранч**: `claude/continue-project-work-pdpKD` (pushed to origin)
-- **Попередній бранч**: `claude/continue-work-hqBJ1` (v33.16.0 — base)
 - **main**: v20.9.15 (відстає значно)
 
 ### Тести
-- **346 тестів**, 346 pass, 0 fail
+- **346+ тестів**, pass
 - Запуск: `PGUSER=postgres PGPASSWORD=postgres PGDATABASE=park_booking PGHOST=localhost RATE_LIMIT_MAX=5000 node --test tests/api.test.js`
 
 ### Сервер
@@ -25,37 +24,42 @@ PGUSER=postgres PGPASSWORD=postgres PGDATABASE=park_booking PGHOST=localhost RAT
 
 ## Що зроблено в цій сесії
 
-### v34.0.0 — Sidebar Full Rebuild
-- **Accordion Groups** — CRM, Управління, Творче, Система з CSS grid animation
-- **Unified Nav** — однаковий sidebar на всіх 24 сторінках
-- **Cross-Page Actions** — Афіша/Сертифікати/Налаштування працюють з будь-якої сторінки (`?open=` auto-open)
-- **sidebarCollapseBtn** — додано на всі 23 standalone сторінки
-- **Nav Icons** — emoji 15px/17px, scale hover animation
-- **New Routes** — /afisha, /certificates → redirect; /designer, /sound → fallback
-- **PAGE_ACCESS** — +4 сторінки (/designer, /sound, /afisha, /certificates)
-- **Dark Mode** — повна підтримка accordion стилів
-- **11 багфіксів (E1-E11)** — grid animation, sidebarActions hidden, double active /staff, toggleGroup export
+### v38.3.0 — Operations Intelligence (based on market research)
 
-### Hotfixes (v33.17.0)
-- **8 unclosed `<div>` tags** в changelog секції index.html виправлено (624/624 balanced)
-- **Test Build** — тестова збірка для перевірки деплою
+#### Exceptions Inbox
+- Новий dashboard widget `exceptions` — агрегує 6 типів операційних проблем
+- Конфлікти кімнат, без аніматора, прострочена підготовка, NPS detractors, cleaning SLA, непідтверджені бронювання
+- Додано до дашбордів: creator, director, vice_director, senior_manager, manager, admin, reception
 
-## Змінені файли (повний список)
+#### Event Pipeline
+- Автоматичний lifecycle бронювання: T-24, day_of, completed
+- Таблиця `booking_pipeline` для idempotent stage tracking
+- 3 scheduler jobs: checkEventPipeline, checkNpsFollowUp, checkCleaningTasks
+
+#### NPS Follow-Up
+- Detractor (1-2/5) → задача менеджеру + Telegram alert
+- Promoter (5/5) → referral пропозиція через Telegram
+- Нові поля event_reviews: nps_score, follow_up_status, follow_up_task_id
+
+#### Cleaning Task Chain
+- Таблиця `cleaning_tasks` з SLA tracking (15 хв default)
+- Автосоздание після завершення бронювання
+
+#### Event Bus Rules (5 нових)
+- booking_t24_reminder, nps_detractor_followup, nps_promoter_referral, booking_cleaning_auto, booking_day_prep
+
+## Змінені файли
 ```
-js/components/sidebar.js  — ПОВНА ЗАМІНА: accordion groups, NAV_ITEMS, toggleGroup, sidebarOpen* helpers
-js/app.js                 — _checkAutoOpen() з ?open= параметром
-js/auth.js                — PAGE_ACCESS: +/designer, /sound, /afisha, /certificates
-css/layout.css            — nav-icon 28px/15px, accordion CSS (groups, arrow, animation, dark mode)
-css/dark-mode.css         — nav-icon active box-shadow
-server.js                 — /afisha, /certificates redirect; /designer, /sound fallback routes
-index.html                — #sidebarActions hidden, version bump, changelog entry
-package.json              — version 35.0.0
-CHANGELOG.md              — v35.0.0 entry
-SNAPSHOT.md               — this file
-+ 23 standalone HTML      — sidebarCollapseBtn + sidebar.js?v=34.0.0
-  (dashboard, tasks, chat, warehouse, customers, analytics, finance, hr,
-   center, programs, staff, copilot, art-director, graduation, demo, designs,
-   game, leads, training, reports, report-agent, omni, shop)
+db/migrations/124_operations_intelligence.sql — нова міграція (таблиці + правила)
+routes/dashboard.js                           — exceptions widget endpoint
+services/scheduler.js                         — 3 нових scheduler jobs
+server.js                                     — реєстрація scheduler jobs
+config/roles.js                               — exceptions widget в default widgets
+js/dashboard-page.js                          — frontend widget definition + render
+css/dashboard.css                             — стилі exceptions summary badges
+package.json                                  — version 38.3.0
+CHANGELOG.md                                  — v38.3.0 entry
+SNAPSHOT.md                                   — this file
 ```
 
 ## Що готово (коротко, всі попередні версії)
@@ -76,20 +80,19 @@ SNAPSHOT.md               — this file
 - v28.0–v28.2: Rock Sound Engine, Manager AI Copilot, Guardian
 - v29.0–v30.0: Leads, Graduation, Chat improvements
 - v31.0–v33.16: Hub Nav, Sound System, Alerts, Sidebar Pro, Test Builds
-- **v34.0.0–v35.0.0: Sidebar Full Rebuild (ПОТОЧНА СЕСІЯ)**
+- v34.0.0–v35.0.0: Sidebar Full Rebuild
+- v38.0.0–v38.2.0: Testing, deep research prep
+- **v38.3.0: Operations Intelligence (ПОТОЧНА СЕСІЯ)**
 
 ## Незроблені баги з BUGFIX_TASKS.md
 - **BUG-001** — Тімур бот: зайвий текст при decline/other (`tymur-bot/bot.py`) — НЕ ЗРОБЛЕНО
 - **CRM-VAL-001** — Минула дата в бронюванні — НЕ ЗРОБЛЕНО (бекенд валідація)
-- **CRM-UI-001** — День тижня на таймлайні — ВЖЕ ПРАЦЮЄ
-- **CRM-UI-002** — Календар з Понеділка — ВЖЕ ПРАЦЮЄ
-- **CRM-BUG-002** — Кнопка "Афіша" в меню — ВИПРАВЛЕНО в v34.0.0 (тепер в sidebar як action-link)
 
 ## Архітектура
-- **24+ сторінок**, **40+ routes**, 18+ services, 5 middleware
-- **~95+ таблиць**, 80+ індексів, 35 міграцій
-- ~85 000+ рядків коду
-- 346 тестів (346 pass)
+- **25+ сторінок**, **73+ routes**, 41+ services, 6 middleware
+- **180+ таблиць**, 80+ індексів, 50+ міграцій
+- ~128 000+ рядків коду
+- 346+ тестів
 
 ## Відомі проблеми / пастки
 - **Dark mode gray inversion**: gray-800 = #F3F4F6 = БІЛИЙ в dark mode! Використовуй rgba(255,255,255,0.08)
@@ -97,12 +100,10 @@ SNAPSHOT.md               — this file
 - **center.html standalone**: Має inline `<style>` + dark-mode.css. Дублювати dark overrides
 - **Два системи нотифікацій**: templates.js (прямі) та eventBus.js (rule-based)
 - **Toast замість Notification**: `#notification` більше НЕМАЄ — тепер `#toastContainer` + `showNotification()` створює toast елементи
-- **_debug() у ws.js/offline.js**: Замінено console.log на `_debug()` (показує тільки при `localStorage.pzp_debug = 'true'`)
 - **Multi-agent**: Завжди git fetch + перевіряй чи хтось не змінив файли. Коміти з тегом `[claude-code]`
 - **gh CLI**: Немає GitHub токена — PR створювати вручну на GitHub
 - **Sidebar accordion**: `sidebar-group-inner { min-height: 0 }` — КРИТИЧНО для grid collapse
 - **#sidebarActions**: НЕ видаляти, тільки `display:none` — app.js/auth.js мають обробники
-- **showAfishaModal/openCertificatesPanel**: Існують ТІЛЬКИ в index.html — на інших сторінках `sidebarOpen*` робить redirect
 
 ## Деплой
 - `main` — staging (PR мерджаться сюди)
@@ -110,4 +111,4 @@ SNAPSHOT.md               — this file
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-22, v35.0.0, сесія claude-code*
+*Оновлено: 2026-03-24, v38.3.0, сесія claude-code*

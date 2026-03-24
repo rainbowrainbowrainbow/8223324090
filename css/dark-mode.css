@@ -2092,3 +2092,7 @@ body.dark-mode .occupancy-label { color: #E2E8F0; }
 body.dark-mode .chat-toast { background: #334155; color: #F1F5F9; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
 body.dark-mode .automation-rule { background: #1E293B; border-color: #334155; border-left-color: #8B5CF6; color: #E2E8F0; }
 body.dark-mode .automation-rule.rule-inactive { opacity: 0.5; border-left-color: #475569; }
+
+/* v38.3.0: Exceptions Inbox widget dark mode */
+body.dark-mode .exc-summary { border-bottom-color: rgba(255,255,255,0.08); }
+body.dark-mode .exc-cat-badge { background: rgba(255,255,255,0.08); color: #CBD5E1; }

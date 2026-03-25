@@ -4,6 +4,24 @@
 
 ---
 
+## v38.9.0 — Stability & Page Fixes (2026-03-25)
+
+### Critical Fixes [claude-code]
+- **art-director-page.js, center-page.js, demo-page.js** — відновлено оригінальні файли (помилковий "fix" ламав initPage функції → сторінки Арт, Центр, Демо не працювали)
+- **copilot-page.js** — додано `showAddInteractionForm` і `loadTrackerAlerts` до window.CopilotPage (кнопки в Менеджер AI не реагували)
+- **designs.html** — видалено misplaced `<script>` тег всередині JS функції + fix openCatalog() race condition
+- **server.js** — `/designs` тепер показує designs.html напряму (було 302 redirect на /art)
+
+### Sidebar & CSS [claude-code]
+- **Центр цін → Центр керування** 🎛️ (перейменовано в sidebar)
+- **embed-mode CSS** — ховає sidebar/header в iframe (фікс дублювання sidebar в Звіти tab)
+
+### Tooling [claude-code]
+- **tests/ui-check.js** — 106 автоматичних DOM/JS перевірок через jsdom (синтаксис, структура, exports)
+- **jsdom** додано як dev dependency
+
+---
+
 ## v38.8.0 — Авто-каталог Fix + Dashboard Widget (2026-03-25)
 
 ### Catalog Fixes [claude-code]

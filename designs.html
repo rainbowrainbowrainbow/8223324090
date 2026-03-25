@@ -1115,6 +1115,7 @@
             for (const cb of container.querySelectorAll('.auto-cat-cb')) {
                 try {
                     const sr = await apiFetch('/api/catalogs/settings/' + cb.dataset.catalog);
+                    if (!sr) continue;
                     const { settings } = await sr.json();
                     cb.checked = !!settings?.auto_enabled;
                 } catch { /* silent */ }

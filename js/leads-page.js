@@ -117,6 +117,7 @@ async function checkTestMode() {
     try {
         const res = await apiFetch('/api/version');
         if (res.ok) {
+        if (!res) return;
             const data = await res.json();
             if (data.testMode) {
                 const badge = document.getElementById('testModeBadge');
@@ -130,6 +131,7 @@ async function loadUsers() {
     try {
         const res = await apiFetch('/api/users');
         if (res.ok) {
+        if (!res) return;
             const data = await res.json();
             usersData = Array.isArray(data) ? data : (data.users || []);
         }
@@ -157,6 +159,7 @@ async function loadLeads() {
         params.set('limit', '200');
 
         const res = await apiFetch(`/api/leads?${params}`);
+        if (!res) return;
         const data = await res.json();
         leadsData = data.leads || [];
 
@@ -416,6 +419,7 @@ async function updateLeadStage(leadId, stage, extraFields = {}) {
     try {
         const body = { pipeline_stage: stage, ...extraFields };
         const res = await apiFetch(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(body) });
+        if (!res) return;
         const data = await res.json();
         if (data.success) {
             if (typeof showNotification === 'function') showNotification(`Етап змінено на: ${stage}`, 'success');
@@ -548,6 +552,7 @@ async function showCustomerCardModal(leadId) {
     // Load existing card if any
     try {
         const res = await apiFetch(`/api/leads/${leadId}/card`);
+        if (!res) return;
         const data = await res.json();
         if (data.card) {
             const c = data.card;
@@ -598,6 +603,7 @@ async function saveCustomerCard() {
 
     try {
         const res = await apiFetch(`/api/leads/${leadId}/card`, { method: 'POST', body: JSON.stringify(body) });
+        if (!res) return;
         const data = await res.json();
         if (data.success) {
             if (typeof showNotification === 'function') showNotification('Картка клієнта збережена', 'success');
@@ -655,6 +661,7 @@ async function loadMailing() {
 
     try {
         const res = await apiFetch('/api/leads/mailing');
+        if (!res) return;
         const data = await res.json();
         const list = data.list || [];
 

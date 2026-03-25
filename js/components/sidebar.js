@@ -168,8 +168,8 @@ const Sidebar = (() => {
             const effectiveHash = currentHash || (currentPath === itemBase && itemHash ? _getDefaultHash(itemBase) : '');
             const isActive = !item.noActive && !item.isHashLink && (
                 itemHash
-                    ? (currentPath === itemBase || currentPath.startsWith(itemBase)) && effectiveHash === itemHash
-                    : (currentPath === item.href || (item.href !== '/' && !item.href.startsWith('#') && currentPath.startsWith(item.href)))
+                    ? (currentPath === itemBase) && effectiveHash === itemHash
+                    : (currentPath === item.href)
                       && !currentHash // v38.9.0: non-hash item NOT active when URL has a hash
             );
 
@@ -402,9 +402,18 @@ const Sidebar = (() => {
             }
 
             e.preventDefault();
+            // Save scroll position before navigating
+            sessionStorage.setItem('sidebar_scroll_' + window.location.pathname, window.scrollY);
             document.body.classList.add('page-exiting');
             setTimeout(() => { window.location.href = href; }, 180);
         });
+
+        // v38.9.0: Restore scroll position after navigation
+        const savedScroll = sessionStorage.getItem('sidebar_scroll_' + window.location.pathname);
+        if (savedScroll) {
+            window.scrollTo(0, parseInt(savedScroll));
+            sessionStorage.removeItem('sidebar_scroll_' + window.location.pathname);
+        }
     }
 
     async function _retryUserCard() {

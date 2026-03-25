@@ -967,12 +967,15 @@
                 <div class="calendar-day-detail" id="calDetail" style="display:none"></div>
             </div>
 
-            <!-- ==================== CATALOGS TAB ==================== -->
+            <!-- ==================== CATALOGS TAB v38.10 ==================== -->
             <div id="tabCatalogs" style="display:none">
-                <!-- Catalog list -->
+                <!-- Section: Ready catalogs -->
+                <div class="catalog-section-header">
+                    <h3 style="margin:0;font-size:14px;font-weight:700;color:var(--gray-700)">✅ Готові каталоги</h3>
+                </div>
                 <div class="catalog-list" id="catalogList">
-                    <!-- Graduation card (static — has own /graduation route) -->
-                    <div class="catalog-card" data-catalog="graduation">
+                    <!-- Graduation card -->
+                    <div class="catalog-card" data-catalog="graduation" data-status="ready">
                         <div class="catalog-cover">
                             <div class="catalog-cover-placeholder">
                                 <span class="catalog-cover-icon">🎓</span>
@@ -981,16 +984,21 @@
                         </div>
                         <div class="catalog-info">
                             <h3>Випускні 2026</h3>
-                            <span class="catalog-meta">7 пакетів</span>
-                            <span class="catalog-meta catalog-updated" id="catalogUpdated"></span>
+                            <span class="catalog-meta">7 пакетів · <span id="catalogUpdated">—</span></span>
                         </div>
                         <div class="catalog-actions">
-                            <button type="button" class="btn-catalog" onclick="openCatalog('graduation')">Переглянути</button>
-                            <button type="button" class="btn-catalog btn-catalog-print" onclick="printCatalog('graduation')">Друк</button>
+                            <button type="button" class="btn-catalog" onclick="openCatalog('graduation')">👁 Переглянути</button>
+                            <button type="button" class="btn-catalog btn-catalog-print" onclick="printCatalog('graduation')">🖨 Друк</button>
                         </div>
                     </div>
-                    <!-- Dynamic catalogs loaded here -->
-                    <div id="dynamicCatalogCards"></div>
+                </div>
+
+                <!-- Section: Dynamic catalogs (from catalog_definitions) -->
+                <div class="catalog-section-header" style="margin-top:20px">
+                    <h3 style="margin:0;font-size:14px;font-weight:700;color:var(--gray-700)">📂 Каталоги товарів</h3>
+                </div>
+                <div class="catalog-list" id="dynamicCatalogCards">
+                    <div style="color:var(--gray-400);padding:12px;font-size:13px">Завантаження...</div>
                 </div>
 
                 <!-- Fullscreen catalog viewer -->

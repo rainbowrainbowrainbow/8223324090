@@ -920,4 +920,8 @@ async function initArtDirectorPage() {
     }
 }
 
+// v38.8.0: Fix missing closing braces for setupModals() and initArtDirectorPage()
+}
+}
+
 document.addEventListener('DOMContentLoaded', initArtDirectorPage);

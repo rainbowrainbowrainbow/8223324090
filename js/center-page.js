@@ -2455,4 +2455,8 @@ function restoreCollapsedState() {
     });
 }
 
+// v38.8.0: Fix missing closing braces
+}
+}
+
 document.addEventListener('DOMContentLoaded', initCenterPage);

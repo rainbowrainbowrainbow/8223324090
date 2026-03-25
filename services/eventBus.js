@@ -1,12 +1,28 @@
 /**
- * services/eventBus.js — Universal Event Publisher (v19.1)
+ * services/eventBus.js — Universal Event Publisher (v38.4.0)
  *
  * Bridge between application modules and the Event Queue.
  * Any module can publish events; the Rule Engine processes them.
  *
+ * v38.4.0: Added transactional outbox support — publishInTransaction()
+ *   allows writing events in the same DB transaction as business data,
+ *   preventing dual-write issues.
+ *
  * Usage:
- *   const { publish } = require('../services/eventBus');
+ *   const { publish, publishInTransaction } = require('../services/eventBus');
+ *
+ *   // Simple (existing behavior):
  *   await publish('booking.created', { booking_id: 'BK-2026-0001', room: 'VIP' });
+ *
+ *   // Transactional outbox (new, for critical paths):
+ *   const client = await pool.connect();
+ *   try {
+ *       await client.query('BEGIN');
+ *       await client.query('INSERT INTO bookings ...');
+ *       await publishInTransaction(client, 'booking.created', { booking_id: 'BK-2026-0001' }, 'booking', 'BK-2026-0001');
+ *       await client.query('COMMIT');
+ *   } catch (e) { await client.query('ROLLBACK'); throw e; }
+ *   finally { client.release(); }
  */
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
@@ -282,4 +298,124 @@ async function processFailedEvents() {
     }
 }
 
-module.exports = { publish, processEventRules, processFailedEvents };
+/**
+ * v38.4.0: Publish event within an existing DB transaction (outbox pattern).
+ * The event is written to outbox_events in the same transaction as business data.
+ * A relay worker (processOutbox) will later deliver it to the event queue.
+ *
+ * @param {import('pg').PoolClient} client - Active DB client with open transaction
+ * @param {string} eventType - Event type (e.g., 'booking.created')
+ * @param {object} payload - Event payload
+ * @param {string} aggregateType - Domain entity type (e.g., 'booking', 'review')
+ * @param {string} aggregateId - Entity ID (e.g., 'BK-2026-0001')
+ * @param {string} [idempotencyKey] - Optional dedup key
+ */
+async function publishInTransaction(client, eventType, payload, aggregateType, aggregateId, idempotencyKey) {
+    const key = idempotencyKey || `${eventType}_${aggregateId}_${Date.now()}`;
+    await client.query(
+        `INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload, idempotency_key)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (idempotency_key) DO NOTHING`,
+        [aggregateType, aggregateId, eventType, JSON.stringify(payload || {}), key]
+    );
+}
+
+/**
+ * v38.4.0: Outbox relay — pick unpublished events from outbox, publish to event queue.
+ * Should be called by scheduler every few seconds.
+ * Uses SELECT ... FOR UPDATE SKIP LOCKED for safe concurrent processing.
+ */
+async function processOutbox() {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const result = await client.query(
+            `SELECT id, event_type, payload, idempotency_key, aggregate_type, aggregate_id
+             FROM outbox_events
+             WHERE published_at IS NULL AND publish_attempts < 5
+             ORDER BY occurred_at ASC
+             LIMIT 20
+             FOR UPDATE SKIP LOCKED`
+        );
+
+        if (result.rows.length === 0) {
+            await client.query('COMMIT');
+            return 0;
+        }
+
+        let published = 0;
+        for (const row of result.rows) {
+            try {
+                // Publish to event_queue (the actual event store)
+                const eqResult = await client.query(
+                    `INSERT INTO event_queue (event_type, payload, idempotency_key)
+                     VALUES ($1, $2, $3)
+                     ON CONFLICT (idempotency_key) DO NOTHING
+                     RETURNING id`,
+                    [row.event_type, row.payload, row.idempotency_key]
+                );
+
+                // Mark as published
+                await client.query(
+                    'UPDATE outbox_events SET published_at = NOW() WHERE id = $1',
+                    [row.id]
+                );
+
+                // Fire-and-forget: process rules for the newly created event
+                if (eqResult.rows.length > 0) {
+                    const event = { id: eqResult.rows[0].id, event_type: row.event_type, payload: row.payload };
+                    setImmediate(() => {
+                        processEventRules(event).catch(err =>
+                            log.error(`Outbox rule processing failed for event ${event.id}: ${err.message}`)
+                        );
+                    });
+                }
+
+                published++;
+            } catch (err) {
+                await client.query(
+                    'UPDATE outbox_events SET publish_attempts = publish_attempts + 1, last_error = $1 WHERE id = $2',
+                    [err.message.slice(0, 500), row.id]
+                );
+                log.error(`Outbox relay failed for event ${row.id}: ${err.message}`);
+            }
+        }
+
+        await client.query('COMMIT');
+        if (published > 0) {
+            log.info(`Outbox relay: ${published}/${result.rows.length} events published`);
+        }
+        return published;
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('processOutbox error', err);
+        return 0;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * v38.4.0: Cleanup old published outbox events (retention: 7 days)
+ */
+async function cleanupOutbox() {
+    try {
+        const result = await pool.query(
+            `DELETE FROM outbox_events
+             WHERE published_at IS NOT NULL AND published_at < NOW() - INTERVAL '7 days'
+             RETURNING id`
+        );
+        if (result.rowCount > 0) {
+            log.info(`Outbox cleanup: ${result.rowCount} old events removed`);
+        }
+        return result.rowCount;
+    } catch (err) {
+        if (!err.message.includes('does not exist')) {
+            log.error('cleanupOutbox error', err);
+        }
+        return 0;
+    }
+}
+
+module.exports = { publish, publishInTransaction, processEventRules, processFailedEvents, processOutbox, cleanupOutbox };

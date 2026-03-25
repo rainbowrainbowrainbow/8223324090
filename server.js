@@ -590,7 +590,18 @@ initDatabase().then(() => {
         // Run initial sync on startup
         syncAgentActivities().catch(err => log.error('Initial agent sync error', err.message));
 
-        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn + agent-tracker');
+        // v38.4.0: Outbox relay — process transactional outbox events every 5 seconds
+        const { processOutbox, cleanupOutbox } = require('./services/eventBus');
+        schedulerIntervals.push(setInterval(async () => {
+            try { await processOutbox(); } catch (e) { log.error('Outbox relay error', e.message); }
+        }, 5000));
+
+        // v38.4.0: Outbox + refresh token cleanup (daily)
+        const { cleanupRefreshTokens } = require('./middleware/auth');
+        schedulerIntervals.push(setInterval(guardScheduler('cleanupOutbox', cleanupOutbox, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('cleanupRefreshTokens', cleanupRefreshTokens, { dedup: 'daily' }), 60000));
+
+        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn + agent-tracker + outbox + token-cleanup');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

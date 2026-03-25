@@ -3,12 +3,12 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v38.3.0**. Бранч `claude/continue-project-work-pdpKD` — запушений.
+Версія **v38.4.0**. Бранч `claude/continue-project-work-pdpKD` — запушений.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **package.json**: `"version": "38.3.0"`
+- **package.json**: `"version": "38.4.0"`
 - **Бранч**: `claude/continue-project-work-pdpKD` (pushed to origin)
 - **main**: v20.9.15 (відстає значно)
 
@@ -23,6 +23,29 @@ PGUSER=postgres PGPASSWORD=postgres PGDATABASE=park_booking PGHOST=localhost RAT
 Порт 3000. PostgreSQL 16.
 
 ## Що зроблено в цій сесії
+
+### v38.4.0 — Security & Reliability Hardening (based on deep tech audit)
+
+#### JWT Refresh Tokens
+- Access token 15m + refresh token 30d з rotation
+- Replay detection — повторне використання revoked token = revoke ALL sessions
+- Endpoints: /auth/refresh, /auth/logout, /auth/sessions
+- Backward compat — legacy 24h token залишився
+
+#### Transactional Outbox
+- `publishInTransaction()` — запис подій в тій самій транзакції що й бізнес-дані
+- Outbox relay — scheduler кожні 5 сек, FOR UPDATE SKIP LOCKED
+- Auto-cleanup published events (7 днів)
+
+#### pg_stat_statements + SQL Safety
+- pg_stat_statements enabled
+- utils/sqlSafe.js — safeOrderBy, safeTableName, safeSets
+- Аудит SQL injection — 12+ місць перевірені, всі використовують allowlists
+
+#### DB Migration 125
+- Таблиця `refresh_tokens` (з індексами)
+- Таблиця `outbox_events` (з індексами)
+- pg_stat_statements extension
 
 ### v38.3.0 — Operations Intelligence (based on market research)
 
@@ -50,15 +73,14 @@ PGUSER=postgres PGPASSWORD=postgres PGDATABASE=park_booking PGHOST=localhost RAT
 
 ## Змінені файли
 ```
-db/migrations/124_operations_intelligence.sql — нова міграція (таблиці + правила)
-routes/dashboard.js                           — exceptions widget endpoint
-services/scheduler.js                         — 3 нових scheduler jobs
-server.js                                     — реєстрація scheduler jobs
-config/roles.js                               — exceptions widget в default widgets
-js/dashboard-page.js                          — frontend widget definition + render
-css/dashboard.css                             — стилі exceptions summary badges
-package.json                                  — version 38.3.0
-CHANGELOG.md                                  — v38.3.0 entry
+db/migrations/125_security_hardening.sql      — refresh_tokens + outbox_events + pg_stat_statements
+middleware/auth.js                             — refresh token functions (create, rotate, revoke, cleanup)
+routes/auth.js                                — /refresh, /logout, /sessions endpoints
+services/eventBus.js                          — publishInTransaction + processOutbox + cleanupOutbox
+utils/sqlSafe.js                              — SQL safety utilities (NEW)
+server.js                                     — outbox relay + token cleanup schedulers
+package.json                                  — version 38.4.0
+CHANGELOG.md                                  — v38.4.0 entry
 SNAPSHOT.md                                   — this file
 ```
 
@@ -82,7 +104,8 @@ SNAPSHOT.md                                   — this file
 - v31.0–v33.16: Hub Nav, Sound System, Alerts, Sidebar Pro, Test Builds
 - v34.0.0–v35.0.0: Sidebar Full Rebuild
 - v38.0.0–v38.2.0: Testing, deep research prep
-- **v38.3.0: Operations Intelligence (ПОТОЧНА СЕСІЯ)**
+- v38.3.0: Operations Intelligence
+- **v38.4.0: Security & Reliability Hardening (ПОТОЧНА СЕСІЯ)**
 
 ## Незроблені баги з BUGFIX_TASKS.md
 - **BUG-001** — Тімур бот: зайвий текст при decline/other (`tymur-bot/bot.py`) — НЕ ЗРОБЛЕНО
@@ -111,4 +134,4 @@ SNAPSHOT.md                                   — this file
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-24, v38.3.0, сесія claude-code*
+*Оновлено: 2026-03-25, v38.4.0, сесія claude-code*

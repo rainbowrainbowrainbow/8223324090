@@ -4,6 +4,32 @@
 
 ---
 
+## v38.4.0 — Security & Reliability Hardening (2026-03-25)
+
+### JWT Refresh Tokens [claude-code]
+- **Refresh token rotation** — short-lived access tokens (15m) + long-lived refresh tokens (30d)
+- **Replay detection** — reuse of revoked token automatically revokes ALL user sessions
+- **Session management** — `/api/auth/sessions` endpoint to list active sessions
+- **Logout** — `/api/auth/logout` revokes refresh token; `allDevices: true` revokes all
+- **Backward compatible** — legacy 24h token still issued for existing clients
+- **Auto-cleanup** — scheduler job removes expired/revoked tokens weekly
+
+### Transactional Outbox [claude-code]
+- **Outbox pattern** — `publishInTransaction()` writes events in the same DB transaction as business data
+- **Outbox relay** — scheduler processes unpublished events every 5 seconds via `FOR UPDATE SKIP LOCKED`
+- **Dual-write prevention** — eliminates risk of event loss when DB commits but event publish fails
+- **Auto-cleanup** — published outbox events cleaned up after 7 days
+
+### pg_stat_statements [claude-code]
+- **Enabled** via migration — provides query performance statistics (planning time, execution time, calls)
+- **Migration 125** — `refresh_tokens` table, `outbox_events` table, pg_stat_statements extension
+
+### SQL Safety Utilities [claude-code]
+- **`utils/sqlSafe.js`** — `safeOrderBy()`, `safeTableName()`, `safeSets()` helpers
+- **Audit complete** — all 12+ dynamic SQL locations verified using allowlists (no actual injection vectors found)
+
+---
+
 ## v38.3.0 — Operations Intelligence (2026-03-24)
 
 ### Exceptions Inbox [claude-code]

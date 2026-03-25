@@ -246,8 +246,8 @@ router.get('/packages', async (req, res) => {
 
         const result = packages.rows.map(p => {
             const services = itemMap[p.id] || [];
-            const totalPerChild = services.reduce((sum, s) => sum + (s.pricePerChild || 0), 0);
-            const totalDuration = services.reduce((sum, s) => sum + (s.durationMin || 0), 0);
+            const totalPerChild = services.reduce((sum, s) => sum + parseFloat(s.pricePerChild || 0), 0);
+            const totalDuration = services.reduce((sum, s) => sum + parseInt(s.durationMin || 0), 0);
             return {
                 id: p.id,
                 name: p.name,

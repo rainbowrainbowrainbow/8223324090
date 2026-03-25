@@ -170,6 +170,7 @@ const Sidebar = (() => {
                 itemHash
                     ? (currentPath === itemBase || currentPath.startsWith(itemBase)) && effectiveHash === itemHash
                     : (currentPath === item.href || (item.href !== '/' && !item.href.startsWith('#') && currentPath.startsWith(item.href)))
+                      && !currentHash // v38.9.0: non-hash item NOT active when URL has a hash
             );
 
             // E9 FIX: simplified onclick

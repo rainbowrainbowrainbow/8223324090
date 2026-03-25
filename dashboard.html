@@ -201,7 +201,8 @@
     <script src="js/catalogs.js?v=38.7.0"></script>
     <script>
     // Login handler
-    document.getElementById('loginForm').addEventListener('submit', async () => {
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
         const errorEl = document.getElementById('loginError');

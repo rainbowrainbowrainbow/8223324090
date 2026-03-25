@@ -485,7 +485,7 @@ async function deleteContent(id) {
 function openCreateContent() {
     editingContentId = null;
     document.getElementById('contentModalTitle').textContent = 'Новий контент';
-    document.getElementById('contentForm')?.reset();
+    document.getElementById('contentForm').reset();
     document.getElementById('templateFieldsContainer').style.display = 'none';
     populateTemplateSelect();
     document.getElementById('contentModal')?.classList.remove('hidden');
@@ -556,13 +556,13 @@ function showTemplateFields(templateId, existingValues) {
 async function handleContentSubmit(e) {
     e.preventDefault();
 
-    const title = document.getElementById('contentTitle')?.value.trim();
-    const category = document.getElementById('contentCategory')?.value;
-    const priority = document.getElementById('contentPriority')?.value;
-    const template_id = document.getElementById('contentTemplate')?.value || null;
-    const due_date = document.getElementById('contentDueDate')?.value || null;
-    const assigned_to = document.getElementById('contentAssignee')?.value.trim() || null;
-    const notes = document.getElementById('contentNotes')?.value.trim() || null;
+    const title = document.getElementById('contentTitle').value.trim();
+    const category = document.getElementById('contentCategory').value;
+    const priority = document.getElementById('contentPriority').value;
+    const template_id = document.getElementById('contentTemplate').value || null;
+    const due_date = document.getElementById('contentDueDate').value || null;
+    const assigned_to = document.getElementById('contentAssignee').value.trim() || null;
+    const notes = document.getElementById('contentNotes').value.trim() || null;
 
     // Collect template field values
     const fieldValues = {};
@@ -643,7 +643,7 @@ function useTemplate(templateId) {
     if (!tpl) return;
 
     document.getElementById('contentModalTitle').textContent = `Новий: ${tpl.name}`;
-    document.getElementById('contentForm')?.reset();
+    document.getElementById('contentForm').reset();
     document.getElementById('contentCategory').value = tpl.category || 'poster';
 
     populateTemplateSelect();
@@ -733,16 +733,16 @@ async function deleteBrandItem(id) {
 async function handleBrandSubmit(e) {
     e.preventDefault();
 
-    const category = document.getElementById('brandCategory')?.value;
-    const title = document.getElementById('brandTitle')?.value.trim();
-    const value = document.getElementById('brandValue')?.value.trim();
-    const description = document.getElementById('brandDescription')?.value.trim() || null;
+    const category = document.getElementById('brandCategory').value;
+    const title = document.getElementById('brandTitle').value.trim();
+    const value = document.getElementById('brandValue').value.trim();
+    const description = document.getElementById('brandDescription').value.trim() || null;
 
     const result = await apiPost('/brand', { category, title, value, description });
     if (result.success) {
         showNotification('Правило додано', 'success');
         document.getElementById('brandModal')?.classList.add('hidden');
-        document.getElementById('brandForm')?.reset();
+        document.getElementById('brandForm').reset();
         loadBrand();
     } else {
         showNotification(result.error || 'Помилка', 'error');
@@ -773,13 +773,15 @@ async function initAuth() {
     const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
 
     if (!token || !savedUser) {
-        window.location.href = '/';
-        throw new Error('Unauthorized');
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
+        return false;
+    }
 
     const user = await apiVerifyToken();
     if (!user) {
-        window.location.href = '/';
-        throw new Error('Unauthorized');
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
+        return false;
+    }
 
     AppState.currentUser = user;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
@@ -918,10 +920,6 @@ async function initArtDirectorPage() {
     if (templatesData?.success) {
         templates = templatesData.templates || [];
     }
-}
-
-// v38.8.0: Fix missing closing braces for setupModals() and initArtDirectorPage()
-}
 }
 
 document.addEventListener('DOMContentLoaded', initArtDirectorPage);

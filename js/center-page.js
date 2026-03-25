@@ -609,7 +609,7 @@ async function linkPriceToProduct(code) {
 
         overlay.querySelector('.btn-confirm-cancel').addEventListener('click', () => overlay.remove());
         overlay.querySelector('.btn-confirm-save').addEventListener('click', async () => {
-            const productId = document.getElementById('linkProductSelect')?.value;
+            const productId = document.getElementById('linkProductSelect').value;
             if (!productId) { showNotification('Оберіть програму', 'error'); return; }
             const result = await apiUpdatePrice(code, { productId });
             overlay.remove();
@@ -627,11 +627,11 @@ async function linkPriceToProduct(code) {
 }
 
 async function addNewPrice() {
-    const code = document.getElementById('newPriceCode')?.value.trim();
-    const name = document.getElementById('newPriceName')?.value.trim();
-    const value = parseInt(document.getElementById('newPriceValue')?.value);
-    const unit = document.getElementById('newPriceUnit')?.value.trim();
-    const category = document.getElementById('newPriceCategory')?.value.trim();
+    const code = document.getElementById('newPriceCode').value.trim();
+    const name = document.getElementById('newPriceName').value.trim();
+    const value = parseInt(document.getElementById('newPriceValue').value);
+    const unit = document.getElementById('newPriceUnit').value.trim();
+    const category = document.getElementById('newPriceCategory').value.trim();
 
     if (!code || !name || isNaN(value)) {
         showNotification("Заповніть код, назву і ціну", 'error');
@@ -981,15 +981,15 @@ function showAddDiscountForm() {
 }
 
 async function submitNewDiscount() {
-    const code = document.getElementById('dcCode')?.value.trim();
-    const name = document.getElementById('dcName')?.value.trim();
-    const type = document.getElementById('dcType')?.value;
-    const value = parseInt(document.getElementById('dcValue')?.value);
-    const min_order = parseInt(document.getElementById('dcMinOrder')?.value) || 0;
-    const max_uses = parseInt(document.getElementById('dcMaxUses')?.value) || null;
-    const valid_from = document.getElementById('dcFrom')?.value || null;
-    const valid_until = document.getElementById('dcUntil')?.value || null;
-    const category = document.getElementById('dcCategory')?.value.trim() || null;
+    const code = document.getElementById('dcCode').value.trim();
+    const name = document.getElementById('dcName').value.trim();
+    const type = document.getElementById('dcType').value;
+    const value = parseInt(document.getElementById('dcValue').value);
+    const min_order = parseInt(document.getElementById('dcMinOrder').value) || 0;
+    const max_uses = parseInt(document.getElementById('dcMaxUses').value) || null;
+    const valid_from = document.getElementById('dcFrom').value || null;
+    const valid_until = document.getElementById('dcUntil').value || null;
+    const category = document.getElementById('dcCategory').value.trim() || null;
 
     if (!code || !name || isNaN(value)) {
         showNotification('Заповніть код, назву та значення', 'error');
@@ -1121,13 +1121,13 @@ function showAddProposalForm() {
 }
 
 async function submitNewProposal() {
-    const title = document.getElementById('propTitle')?.value.trim();
-    const description = document.getElementById('propDesc')?.value.trim() || null;
-    const discount_code_id = parseInt(document.getElementById('propCodeId')?.value) || null;
-    const target_segment = document.getElementById('propSegment')?.value;
-    const start_date = document.getElementById('propStart')?.value || null;
-    const end_date = document.getElementById('propEnd')?.value || null;
-    const banner_color = document.getElementById('propColor')?.value;
+    const title = document.getElementById('propTitle').value.trim();
+    const description = document.getElementById('propDesc').value.trim() || null;
+    const discount_code_id = parseInt(document.getElementById('propCodeId').value) || null;
+    const target_segment = document.getElementById('propSegment').value;
+    const start_date = document.getElementById('propStart').value || null;
+    const end_date = document.getElementById('propEnd').value || null;
+    const banner_color = document.getElementById('propColor').value;
 
     if (!title) {
         showNotification('Введіть назву пропозиції', 'error');
@@ -1326,10 +1326,10 @@ function showGoalsForm() {
 
 async function saveGoals() {
     const data = {
-        weeklyRevenue: parseInt(document.getElementById('goalWeekRev')?.value) || 0,
-        weeklyBookings: parseInt(document.getElementById('goalWeekBook')?.value) || 0,
-        monthlyRevenue: parseInt(document.getElementById('goalMonthRev')?.value) || 0,
-        monthlyBookings: parseInt(document.getElementById('goalMonthBook')?.value) || 0
+        weeklyRevenue: parseInt(document.getElementById('goalWeekRev').value) || 0,
+        weeklyBookings: parseInt(document.getElementById('goalWeekBook').value) || 0,
+        monthlyRevenue: parseInt(document.getElementById('goalMonthRev').value) || 0,
+        monthlyBookings: parseInt(document.getElementById('goalMonthBook').value) || 0
     };
     const result = await apiSaveGoals(data);
     if (result.success) {
@@ -2204,7 +2204,7 @@ async function loadHotLeads() {
                     </div>
                 </div>
                 <div class="hot-lead-actions">
-                    ${l.phone ? `<a href="tel:${escapeHtml(l.phone)}" class="btn-lead-action">📞</a>` : ''}
+                    ${l.phone ? `<a href="tel:${l.phone}" class="btn-lead-action">📞</a>` : ''}
                     <button class="btn-lead-action" onclick="updateLeadStatus(${l.id}, 'contacted')" title="Зв'язались">✅</button>
                     <button class="btn-lead-action" onclick="updateLeadStatus(${l.id}, 'lost')" title="Закрити">✖</button>
                 </div>
@@ -2313,14 +2313,16 @@ async function initAuth() {
     const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
 
     if (!token || !savedUser) {
-        window.location.href = '/';
-        throw new Error('Unauthorized');
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
+        return false;
+    }
 
     // Verify token
     const user = await apiVerifyToken();
     if (!user) {
-        window.location.href = '/';
-        throw new Error('Unauthorized');
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
+        return false;
+    }
 
     AppState.currentUser = user;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
@@ -2453,10 +2455,6 @@ function restoreCollapsedState() {
             if (!defaultOpen.includes(id)) section.classList.add('collapsed');
         }
     });
-}
-
-// v38.8.0: Fix missing closing braces
-}
 }
 
 document.addEventListener('DOMContentLoaded', initCenterPage);

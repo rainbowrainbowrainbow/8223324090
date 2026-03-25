@@ -431,12 +431,14 @@ async function initAuth() {
     const token = localStorage.getItem('pzp_token');
     const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
     if (!token || !savedUser) {
-        window.location.href = '/';
-        throw new Error('Unauthorized');
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
+        return false;
+    }
     const user = await apiVerifyToken();
     if (!user) {
-        window.location.href = '/';
-        throw new Error('Unauthorized');
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
+        return false;
+    }
     AppState.currentUser = user;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
@@ -495,10 +497,6 @@ async function initDemoPage() {
 
     // Load initial data
     await Promise.all([loadOverview(), loadScenarios()]);
-}
-
-// v38.8.0: Fix missing closing braces
-}
 }
 
 document.addEventListener('DOMContentLoaded', initDemoPage);

@@ -7,12 +7,12 @@
    ========================================== */
 
 [aria-invalid="true"] {
-    border-color: #EF4444 !important;
+    border-color: var(--danger, #EF4444) !important;
     box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
 }
 
 [aria-invalid="true"]:focus {
-    border-color: #EF4444 !important;
+    border-color: var(--danger, #EF4444) !important;
     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3);
 }
 
@@ -154,9 +154,9 @@ body.dark-mode .night-settings-select {
 }
 
 .btn-undo:hover {
-    background: #FFF7ED;
+    background: var(--orange-50, #FFF7ED);
     border-color: var(--warning);
-    color: #92400E;
+    color: var(--orange-900, #92400E);
 }
 
 /* ==========================================
@@ -552,8 +552,8 @@ body.dark-mode .night-settings-select {
 }
 
 .timeline-search-close:hover {
-    background: #FEE2E2;
-    color: #DC2626;
+    background: var(--red-50, #FEE2E2);
+    color: var(--red-700, #DC2626);
 }
 
 /* Search highlight on booking blocks */

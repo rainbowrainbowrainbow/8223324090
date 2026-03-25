@@ -408,13 +408,13 @@ function switchPeriod(period) {
     document.querySelectorAll('.an-period-tab').forEach(t => {
         t.classList.toggle('active', t.dataset.period === period);
     });
-    document.getElementById('customRange').classList.toggle('visible', period === 'custom');
+    document.getElementById('customRange')?.classList.toggle('visible', period === 'custom');
     if (period !== 'custom') refreshAll();
 }
 
 function applyCustomRange() {
-    const from = document.getElementById('customFrom').value;
-    const to = document.getElementById('customTo').value;
+    const from = document.getElementById('customFrom')?.value;
+    const to = document.getElementById('customTo')?.value;
     if (!from || !to) {
         showNotification('Оберіть обидві дати', 'error');
         return;
@@ -440,7 +440,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const token = localStorage.getItem('pzp_token');
     if (!token) {
         window.location.href = '/';
-        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('mainApp')?.style.display = 'none';
         return;
     }
 
@@ -448,10 +448,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const user = await apiVerifyToken();
         if (!user) throw new Error('Invalid token');
         AppState.currentUser = user;
-        document.getElementById('currentUser').textContent = user.name || user.username;
+        document.getElementById('currentUser')?.textContent = user.name || user.username;
     } catch {
         window.location.href = '/';
-        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('mainApp')?.style.display = 'none';
         return;
     }
 

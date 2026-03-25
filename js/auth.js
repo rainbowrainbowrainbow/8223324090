@@ -74,8 +74,8 @@ function showLoginScreen() {
         window.location.href = '/';
         return;
     }
-    document.getElementById('loginScreen').classList.remove('hidden');
-    document.getElementById('mainApp').classList.add('hidden');
+    document.getElementById('loginScreen')?.classList.remove('hidden');
+    document.getElementById('mainApp')?.classList.add('hidden');
     // Hide floating buttons that are outside mainApp
     const sidebarToggle = document.getElementById('sidebarToggle');
     if (sidebarToggle) sidebarToggle.classList.add('hidden');
@@ -205,8 +205,8 @@ function isManagement() {
 }
 
 function showMainApp() {
-    document.getElementById('loginScreen').classList.add('hidden');
-    document.getElementById('mainApp').classList.remove('hidden');
+    document.getElementById('loginScreen')?.classList.add('hidden');
+    document.getElementById('mainApp')?.classList.remove('hidden');
     const _userEl = document.getElementById('currentUser');
     if (_userEl && AppState.currentUser?.name) _userEl.textContent = AppState.currentUser.name;
     // Show floating buttons hidden during logout
@@ -1060,13 +1060,13 @@ function profileShowPasswordForm() {
     const form = document.getElementById('profilePasswordForm');
     if (form) {
         form.classList.remove('hidden');
-        document.getElementById('profileCurrentPwd').focus();
+        document.getElementById('profileCurrentPwd')?.focus();
     }
 }
 
 async function profileChangePassword() {
-    const current = document.getElementById('profileCurrentPwd').value;
-    const newPwd = document.getElementById('profileNewPwd').value;
+    const current = document.getElementById('profileCurrentPwd')?.value;
+    const newPwd = document.getElementById('profileNewPwd')?.value;
     const errEl = document.getElementById('profilePwdError');
     const okEl = document.getElementById('profilePwdSuccess');
     errEl.classList.add('hidden');
@@ -1087,10 +1087,10 @@ async function profileChangePassword() {
     if (result.success) {
         okEl.textContent = 'Пароль змінено!';
         okEl.classList.remove('hidden');
-        document.getElementById('profileCurrentPwd').value = '';
-        document.getElementById('profileNewPwd').value = '';
+        document.getElementById('profileCurrentPwd')?.value = '';
+        document.getElementById('profileNewPwd')?.value = '';
         setTimeout(() => {
-            document.getElementById('profilePasswordForm').classList.add('hidden');
+            document.getElementById('profilePasswordForm')?.classList.add('hidden');
             okEl.classList.add('hidden');
         }, 2000);
     } else {
@@ -1306,7 +1306,7 @@ const RoleSwitcher = (() => {
         _renderRoles();
 
         // Toggle dropdown
-        document.getElementById('roleSwitcherBtn').addEventListener('click', (e) => {
+        document.getElementById('roleSwitcherBtn')?.addEventListener('click', (e) => {
             e.stopPropagation();
             const dd = document.getElementById('roleSwitcherDropdown');
             dd.classList.toggle('hidden');
@@ -1382,7 +1382,7 @@ const RoleSwitcher = (() => {
         window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role, mode: 'role' } }));
 
         // Close dropdown
-        document.getElementById('roleSwitcherDropdown').classList.add('hidden');
+        document.getElementById('roleSwitcherDropdown')?.classList.add('hidden');
 
         // Re-render
         _renderRoles();
@@ -1402,7 +1402,7 @@ const RoleSwitcher = (() => {
 
         window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role: AppState.currentUser.role, mode: 'reset' } }));
 
-        document.getElementById('roleSwitcherDropdown').classList.add('hidden');
+        document.getElementById('roleSwitcherDropdown')?.classList.add('hidden');
         _renderRoles();
         _updateBadge();
 

@@ -49,8 +49,8 @@
             renderStatus(data);
         } catch (err) {
             console.error('Status load error:', err);
-            document.getElementById('overallText').textContent = 'Не вдалося завантажити статус';
-            document.getElementById('overallBanner').className = 'overall-banner major_outage';
+            document.getElementById('overallText')?.textContent = 'Не вдалося завантажити статус';
+            document.getElementById('overallBanner')?.className = 'overall-banner major_outage';
         }
     }
 
@@ -58,7 +58,7 @@
         // Overall banner
         const banner = document.getElementById('overallBanner');
         banner.className = 'overall-banner ' + data.overall_status;
-        document.getElementById('overallText').textContent = OVERALL_LABELS[data.overall_status] || data.overall_status;
+        document.getElementById('overallText')?.textContent = OVERALL_LABELS[data.overall_status] || data.overall_status;
 
         // Group components by category
         const groups = {};
@@ -133,7 +133,7 @@
         }
 
         // Checked at
-        document.getElementById('checkedAt').textContent =
+        document.getElementById('checkedAt')?.textContent =
             'Оновлено: ' + formatDate(data.checked_at);
     }
 

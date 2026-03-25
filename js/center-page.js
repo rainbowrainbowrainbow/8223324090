@@ -609,7 +609,7 @@ async function linkPriceToProduct(code) {
 
         overlay.querySelector('.btn-confirm-cancel').addEventListener('click', () => overlay.remove());
         overlay.querySelector('.btn-confirm-save').addEventListener('click', async () => {
-            const productId = document.getElementById('linkProductSelect').value;
+            const productId = document.getElementById('linkProductSelect')?.value;
             if (!productId) { showNotification('Оберіть програму', 'error'); return; }
             const result = await apiUpdatePrice(code, { productId });
             overlay.remove();
@@ -627,11 +627,11 @@ async function linkPriceToProduct(code) {
 }
 
 async function addNewPrice() {
-    const code = document.getElementById('newPriceCode').value.trim();
-    const name = document.getElementById('newPriceName').value.trim();
-    const value = parseInt(document.getElementById('newPriceValue').value);
-    const unit = document.getElementById('newPriceUnit').value.trim();
-    const category = document.getElementById('newPriceCategory').value.trim();
+    const code = document.getElementById('newPriceCode')?.value.trim();
+    const name = document.getElementById('newPriceName')?.value.trim();
+    const value = parseInt(document.getElementById('newPriceValue')?.value);
+    const unit = document.getElementById('newPriceUnit')?.value.trim();
+    const category = document.getElementById('newPriceCategory')?.value.trim();
 
     if (!code || !name || isNaN(value)) {
         showNotification("Заповніть код, назву і ціну", 'error');
@@ -975,21 +975,21 @@ function showAddDiscountForm() {
         </div>
         <div class="discount-form-actions">
             <button onclick="submitNewDiscount()" style="background:var(--primary);color:#fff">Створити</button>
-            <button onclick="document.getElementById('addDiscountForm').classList.add('hidden')" style="background:var(--gray-100);color:var(--gray-600)">Скасувати</button>
+            <button onclick="document.getElementById('addDiscountForm')?.classList.add('hidden')" style="background:var(--gray-100);color:var(--gray-600)">Скасувати</button>
         </div>
     `;
 }
 
 async function submitNewDiscount() {
-    const code = document.getElementById('dcCode').value.trim();
-    const name = document.getElementById('dcName').value.trim();
-    const type = document.getElementById('dcType').value;
-    const value = parseInt(document.getElementById('dcValue').value);
-    const min_order = parseInt(document.getElementById('dcMinOrder').value) || 0;
-    const max_uses = parseInt(document.getElementById('dcMaxUses').value) || null;
-    const valid_from = document.getElementById('dcFrom').value || null;
-    const valid_until = document.getElementById('dcUntil').value || null;
-    const category = document.getElementById('dcCategory').value.trim() || null;
+    const code = document.getElementById('dcCode')?.value.trim();
+    const name = document.getElementById('dcName')?.value.trim();
+    const type = document.getElementById('dcType')?.value;
+    const value = parseInt(document.getElementById('dcValue')?.value);
+    const min_order = parseInt(document.getElementById('dcMinOrder')?.value) || 0;
+    const max_uses = parseInt(document.getElementById('dcMaxUses')?.value) || null;
+    const valid_from = document.getElementById('dcFrom')?.value || null;
+    const valid_until = document.getElementById('dcUntil')?.value || null;
+    const category = document.getElementById('dcCategory')?.value.trim() || null;
 
     if (!code || !name || isNaN(value)) {
         showNotification('Заповніть код, назву та значення', 'error');
@@ -999,7 +999,7 @@ async function submitNewDiscount() {
     const result = await apiCreateDiscount({ code, name, type, value, min_order, max_uses, valid_from, valid_until, category });
     if (result.id) {
         showNotification(`Промокод ${code.toUpperCase()} створено`, 'success');
-        document.getElementById('addDiscountForm').classList.add('hidden');
+        document.getElementById('addDiscountForm')?.classList.add('hidden');
         loadDiscounts();
     } else {
         showNotification(result.error || 'Помилка створення', 'error');
@@ -1080,7 +1080,7 @@ function showAddProposalForm() {
 
     // Check if form already exists
     if (document.getElementById('proposalFormInline')) {
-        document.getElementById('proposalFormInline').remove();
+        document.getElementById('proposalFormInline')?.remove();
         return;
     }
 
@@ -1113,7 +1113,7 @@ function showAddProposalForm() {
         </div>
         <div class="discount-form-actions">
             <button onclick="submitNewProposal()" style="background:var(--primary);color:#fff">Створити</button>
-            <button onclick="document.getElementById('proposalFormInline').remove()" style="background:var(--gray-100);color:var(--gray-600)">Скасувати</button>
+            <button onclick="document.getElementById('proposalFormInline')?.remove()" style="background:var(--gray-100);color:var(--gray-600)">Скасувати</button>
         </div>
     </div>`;
 
@@ -1121,13 +1121,13 @@ function showAddProposalForm() {
 }
 
 async function submitNewProposal() {
-    const title = document.getElementById('propTitle').value.trim();
-    const description = document.getElementById('propDesc').value.trim() || null;
-    const discount_code_id = parseInt(document.getElementById('propCodeId').value) || null;
-    const target_segment = document.getElementById('propSegment').value;
-    const start_date = document.getElementById('propStart').value || null;
-    const end_date = document.getElementById('propEnd').value || null;
-    const banner_color = document.getElementById('propColor').value;
+    const title = document.getElementById('propTitle')?.value.trim();
+    const description = document.getElementById('propDesc')?.value.trim() || null;
+    const discount_code_id = parseInt(document.getElementById('propCodeId')?.value) || null;
+    const target_segment = document.getElementById('propSegment')?.value;
+    const start_date = document.getElementById('propStart')?.value || null;
+    const end_date = document.getElementById('propEnd')?.value || null;
+    const banner_color = document.getElementById('propColor')?.value;
 
     if (!title) {
         showNotification('Введіть назву пропозиції', 'error');
@@ -1307,7 +1307,7 @@ function showGoalsForm() {
         section.classList.remove('collapsed');
     }
     if (document.getElementById('goalsFormInline')) {
-        document.getElementById('goalsFormInline').remove();
+        document.getElementById('goalsFormInline')?.remove();
         return;
     }
     const html = `
@@ -1318,7 +1318,7 @@ function showGoalsForm() {
         <input type="number" id="goalMonthBook" placeholder="Бронювань/місяць">
         <div class="goals-form-actions">
             <button onclick="saveGoals()" style="background:var(--primary);color:#fff">Зберегти</button>
-            <button onclick="document.getElementById('goalsFormInline').remove()" style="background:var(--gray-100);color:var(--gray-600)">Скасувати</button>
+            <button onclick="document.getElementById('goalsFormInline')?.remove()" style="background:var(--gray-100);color:var(--gray-600)">Скасувати</button>
         </div>
     </div>`;
     el.insertAdjacentHTML('beforeend', html);
@@ -1326,10 +1326,10 @@ function showGoalsForm() {
 
 async function saveGoals() {
     const data = {
-        weeklyRevenue: parseInt(document.getElementById('goalWeekRev').value) || 0,
-        weeklyBookings: parseInt(document.getElementById('goalWeekBook').value) || 0,
-        monthlyRevenue: parseInt(document.getElementById('goalMonthRev').value) || 0,
-        monthlyBookings: parseInt(document.getElementById('goalMonthBook').value) || 0
+        weeklyRevenue: parseInt(document.getElementById('goalWeekRev')?.value) || 0,
+        weeklyBookings: parseInt(document.getElementById('goalWeekBook')?.value) || 0,
+        monthlyRevenue: parseInt(document.getElementById('goalMonthRev')?.value) || 0,
+        monthlyBookings: parseInt(document.getElementById('goalMonthBook')?.value) || 0
     };
     const result = await apiSaveGoals(data);
     if (result.success) {
@@ -2013,7 +2013,7 @@ async function sendReportToTelegram() {
 async function loadOverview() {
     const data = await apiCenterOverview();
     if (!data || !data.success) {
-        document.getElementById('kpiGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+        document.getElementById('kpiGrid')?.innerHTML = '<div class="center-empty">Помилка завантаження</div>';
         return;
     }
     centerData = data;
@@ -2029,18 +2029,18 @@ async function loadWorkers() {
         if (data.success) {
             renderWorkers(data.workers);
         } else {
-            document.getElementById('workersGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+            document.getElementById('workersGrid')?.innerHTML = '<div class="center-empty">Помилка завантаження</div>';
         }
     } catch (err) {
         console.error('Load workers error:', err);
-        document.getElementById('workersGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+        document.getElementById('workersGrid')?.innerHTML = '<div class="center-empty">Помилка завантаження</div>';
     }
 }
 
 async function loadPrices() {
     const data = await apiCenterPrices();
     if (!data || !data.success) {
-        document.getElementById('pricesContent').innerHTML = '<div class="center-empty">Помилка завантаження цін</div>';
+        document.getElementById('pricesContent')?.innerHTML = '<div class="center-empty">Помилка завантаження цін</div>';
         return;
     }
     pricesData = data.prices || [];
@@ -2050,7 +2050,7 @@ async function loadPrices() {
 async function loadTasks() {
     const data = await apiCenterTasks();
     if (!data || !data.success) {
-        document.getElementById('tasksList').innerHTML = '<div class="center-empty">Помилка завантаження задач</div>';
+        document.getElementById('tasksList')?.innerHTML = '<div class="center-empty">Помилка завантаження задач</div>';
         return;
     }
     tasksData = data.tasks || [];
@@ -2060,7 +2060,7 @@ async function loadTasks() {
 async function loadReport() {
     const data = await apiCenterReport();
     if (!data || !data.success) {
-        document.getElementById('reportContent').innerHTML = '<div class="center-empty">Помилка завантаження звіту</div>';
+        document.getElementById('reportContent')?.innerHTML = '<div class="center-empty">Помилка завантаження звіту</div>';
         return;
     }
     renderReport(data.report);
@@ -2115,7 +2115,7 @@ async function loadGoals() {
     if (data.success) {
         renderGoals(data.goals, centerData?.kpi);
     } else {
-        document.getElementById('goalsContent').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+        document.getElementById('goalsContent')?.innerHTML = '<div class="center-empty">Помилка завантаження</div>';
     }
 }
 
@@ -2124,7 +2124,7 @@ async function loadBriefing() {
     if (data.success) {
         renderBriefing(data.briefing);
     } else {
-        document.getElementById('briefingContent').innerHTML = '<div class="center-empty">Помилка</div>';
+        document.getElementById('briefingContent')?.innerHTML = '<div class="center-empty">Помилка</div>';
     }
 }
 
@@ -2138,7 +2138,7 @@ async function loadProgramPerformance() {
     if (data.success) {
         renderProgramPerformance(data);
     } else {
-        document.getElementById('perfContent').innerHTML = '<div class="center-empty">Помилка</div>';
+        document.getElementById('perfContent')?.innerHTML = '<div class="center-empty">Помилка</div>';
     }
 }
 
@@ -2147,7 +2147,7 @@ async function loadHeatmap() {
     if (data.success) {
         renderHeatmap(data);
     } else {
-        document.getElementById('heatmapContent').innerHTML = '<div class="center-empty">Помилка</div>';
+        document.getElementById('heatmapContent')?.innerHTML = '<div class="center-empty">Помилка</div>';
     }
 }
 
@@ -2156,7 +2156,7 @@ async function loadCrossSell() {
     if (data.success) {
         renderCrossSell(data);
     } else {
-        document.getElementById('crossSellContent').innerHTML = '<div class="center-empty">Помилка</div>';
+        document.getElementById('crossSellContent')?.innerHTML = '<div class="center-empty">Помилка</div>';
     }
 }
 

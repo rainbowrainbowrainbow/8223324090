@@ -693,7 +693,7 @@
                 <label>Примітка</label>
                 <input type="text" id="schNote" aria-label="Необов'язково" placeholder="Необов'язково">
             </div>
-            <div class="modal-actions">
+            <div class="modal-actions" role="dialog" aria-modal="true">
                 <button type="button" id="schSaveBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
                 <button type="button" id="schCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
             </div>
@@ -744,7 +744,7 @@
                 <label>Примітка</label>
                 <input type="text" id="fillNote" aria-label="Необов'язково" placeholder="Необов'язково">
             </div>
-            <div class="modal-actions">
+            <div class="modal-actions" role="dialog" aria-modal="true">
                 <button type="button" id="fillSaveBtn" class="btn-page-primary" style="flex:1">Заповнити</button>
                 <button type="button" id="fillCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
             </div>
@@ -753,7 +753,7 @@
 
     <!-- v10.4: Особистий кабінет -->
     <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
-        <div class="modal-content modal-medium">
+        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
             <span class="modal-close">&times;</span>
             <h3>Особистий кабінет</h3>
             <div id="profileContent" class="profile-content">

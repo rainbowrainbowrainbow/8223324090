@@ -24,7 +24,7 @@
 
     // ═══ Tabs ═══
     function initTabs() {
-        document.getElementById('trainingTabs').addEventListener('click', e => {
+        document.getElementById('trainingTabs')?.addEventListener('click', e => {
             const tab = e.target.closest('.training-tab');
             if (!tab) return;
             const tabName = tab.dataset.tab;
@@ -33,7 +33,7 @@
             tab.classList.add('active');
 
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            const target = document.getElementById('tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+            const target = document.getElementById('tab' + tabName.charAt(0)?.toUpperCase() + tabName.slice(1));
             if (target) target.classList.add('active');
 
             // Lazy load tab data
@@ -45,7 +45,7 @@
 
     // ═══ Role Filter ═══
     function initRoleFilter() {
-        document.getElementById('roleFilter').addEventListener('click', e => {
+        document.getElementById('roleFilter')?.addEventListener('click', e => {
             const pill = e.target.closest('.role-pill');
             if (!pill) return;
             document.querySelectorAll('.role-pill').forEach(p => p.classList.remove('active'));
@@ -61,10 +61,10 @@
             const res = await fetch(API + '/api/training/overview-stats', { headers });
             if (!res.ok) return;
             const data = await res.json();
-            document.getElementById('statArticles').textContent = data.totalArticles || 0;
-            document.getElementById('statTests').textContent = data.totalTests || 0;
-            document.getElementById('statRead').textContent = data.readByUser || 0;
-            document.getElementById('statPassed').textContent = data.passedByUser || 0;
+            document.getElementById('statArticles')?.textContent = data.totalArticles || 0;
+            document.getElementById('statTests')?.textContent = data.totalTests || 0;
+            document.getElementById('statRead')?.textContent = data.readByUser || 0;
+            document.getElementById('statPassed')?.textContent = data.passedByUser || 0;
         } catch (e) { console.error('Stats error', e); }
     }
 
@@ -259,11 +259,11 @@
                         modal.querySelectorAll('.quiz-option').forEach(o => o.style.pointerEvents = 'none');
                         opt.classList.add('selected');
 
-                        document.getElementById('quizNext').disabled = false;
+                        document.getElementById('quizNext')?.disabled = false;
                     });
                 });
 
-                document.getElementById('quizNext').addEventListener('click', () => {
+                document.getElementById('quizNext')?.addEventListener('click', () => {
                     currentQ++;
                     if (currentQ < questions.length) {
                         renderQuestion();
@@ -316,7 +316,7 @@
                 </div>
             `;
 
-            document.getElementById('quizClose').addEventListener('click', () => {
+            document.getElementById('quizClose')?.addEventListener('click', () => {
                 overlay.classList.remove('active');
                 loadOverviewStats();
                 if (testsData.length > 0) loadTests();

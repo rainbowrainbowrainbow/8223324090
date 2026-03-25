@@ -201,27 +201,27 @@ function initConnectionStatusListeners() {
 }
 
 function initAuthListeners() {
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const result = await login(document.getElementById('username').value, document.getElementById('password').value);
+        const result = await login(document.getElementById('username')?.value, document.getElementById('password')?.value);
         if (!result.success) {
-            document.getElementById('loginError').textContent = result.error || 'Невірний логін або пароль';
+            document.getElementById('loginError')?.textContent = result.error || 'Невірний логін або пароль';
         }
     });
-    document.getElementById('logoutBtn').addEventListener('click', logout);
+    document.getElementById('logoutBtn')?.addEventListener('click', logout);
 
     const changelogBtn = document.getElementById('changelogBtn');
     if (changelogBtn) {
         changelogBtn.addEventListener('click', () => {
-            document.getElementById('changelogModal').classList.remove('hidden');
+            document.getElementById('changelogModal')?.classList.remove('hidden');
         });
     }
 }
 
 function initTimelineListeners() {
-    document.getElementById('prevDay').addEventListener('click', () => changeDate(-1));
-    document.getElementById('nextDay').addEventListener('click', () => changeDate(1));
-    document.getElementById('timelineDate').addEventListener('change', (e) => {
+    document.getElementById('prevDay')?.addEventListener('click', () => changeDate(-1));
+    document.getElementById('nextDay')?.addEventListener('click', () => changeDate(1));
+    document.getElementById('timelineDate')?.addEventListener('change', (e) => {
         const newDate = new Date(e.target.value);
         // Skip if date hasn't actually changed (prevents double-render from programmatic .value set)
         if (formatDate(newDate) === formatDate(AppState.selectedDate)) return;
@@ -230,8 +230,8 @@ function initTimelineListeners() {
         renderTimeline();
     });
 
-    document.getElementById('addLineBtn').addEventListener('click', addNewLine);
-    document.getElementById('exportTimelineBtn').addEventListener('click', exportTimelineImage);
+    document.getElementById('addLineBtn')?.addEventListener('click', addNewLine);
+    document.getElementById('exportTimelineBtn')?.addEventListener('click', exportTimelineImage);
     // v30.3: PDF export
     const pdfBtn = document.getElementById('exportPdfBtn');
     if (pdfBtn) pdfBtn.addEventListener('click', exportTimelinePdf);
@@ -241,7 +241,7 @@ function initTimelineListeners() {
     if (todayBtn) {
         todayBtn.addEventListener('click', () => {
             AppState.selectedDate = new Date();
-            document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
+            document.getElementById('timelineDate')?.value = formatDate(AppState.selectedDate);
             renderTimeline();
         });
     }
@@ -305,10 +305,10 @@ function initTimelineListeners() {
     if (historyFilterApply) historyFilterApply.addEventListener('click', () => { historyCurrentOffset = 0; loadHistoryPage(); });
     const historyFilterReset = document.getElementById('historyFilterReset');
     if (historyFilterReset) historyFilterReset.addEventListener('click', () => {
-        document.getElementById('historyFilterAction').value = '';
-        document.getElementById('historyFilterUser').value = '';
-        document.getElementById('historyFilterFrom').value = '';
-        document.getElementById('historyFilterTo').value = '';
+        document.getElementById('historyFilterAction')?.value = '';
+        document.getElementById('historyFilterUser')?.value = '';
+        document.getElementById('historyFilterFrom')?.value = '';
+        document.getElementById('historyFilterTo')?.value = '';
         historyCurrentOffset = 0;
         loadHistoryPage();
     });
@@ -323,23 +323,23 @@ function initTimelineListeners() {
 }
 
 function initBookingFormListeners() {
-    document.getElementById('closePanel').addEventListener('click', closeBookingPanel);
+    document.getElementById('closePanel')?.addEventListener('click', closeBookingPanel);
     // v5.35: Close panel when clicking the backdrop overlay
     document.getElementById('panelBackdrop')?.addEventListener('click', closeBookingPanel);
-    document.getElementById('bookingForm').addEventListener('submit', handleBookingSubmit);
+    document.getElementById('bookingForm')?.addEventListener('submit', handleBookingSubmit);
 
-    document.getElementById('editLineForm').addEventListener('submit', handleEditLine);
-    document.getElementById('deleteLineBtn').addEventListener('click', deleteLine);
+    document.getElementById('editLineForm')?.addEventListener('submit', handleEditLine);
+    document.getElementById('deleteLineBtn')?.addEventListener('click', deleteLine);
 
     const editLineNameSelect = document.getElementById('editLineNameSelect');
     if (editLineNameSelect) {
         editLineNameSelect.addEventListener('change', (e) => {
-            if (e.target.value) document.getElementById('editLineName').value = e.target.value;
+            if (e.target.value) document.getElementById('editLineName')?.value = e.target.value;
         });
     }
 
-    document.getElementById('closeWarning').addEventListener('click', () => {
-        document.getElementById('warningBanner').classList.add('hidden');
+    document.getElementById('closeWarning')?.addEventListener('click', () => {
+        document.getElementById('warningBanner')?.classList.add('hidden');
     });
 
     const customDuration = document.getElementById('customDuration');

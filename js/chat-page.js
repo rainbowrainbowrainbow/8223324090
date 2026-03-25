@@ -195,7 +195,7 @@
         }
 
         // Show main app FIRST (prevent white page)
-        document.getElementById('mainApp').classList.remove('hidden');
+        document.getElementById('mainApp')?.classList.remove('hidden');
 
         // Connect WebSocket
         if (typeof ParkWS !== 'undefined') ParkWS.connect();
@@ -341,7 +341,7 @@
     async function _uploadFile() {
         if (!_pendingFile || !_currentChannel) return;
         var file = _pendingFile;
-        var caption = document.getElementById('chatInput').value.trim();
+        var caption = document.getElementById('chatInput')?.value.trim();
 
         var formData = new FormData();
         formData.append('file', file);
@@ -882,7 +882,7 @@
             if (!profile) return;
             _infoBtn.classList.remove('active');
             _pinBtn.classList.remove('active');
-            document.getElementById('chatInfoPanelTitle').textContent = 'Профіль';
+            document.getElementById('chatInfoPanelTitle')?.textContent = 'Профіль';
             var body = document.getElementById('chatInfoPanelBody');
             var isProfileBot = profile.username === 'openclaw';
             var isProfileGuardian = profile.username === 'guardian';
@@ -1015,13 +1015,13 @@
             });
         });
 
-        document.getElementById('avatarReset').addEventListener('click', function () {
+        document.getElementById('avatarReset')?.addEventListener('click', function () {
             selectedEmoji = null;
             selectedColor = null;
             body.querySelectorAll('.avatar-pick-emoji, .avatar-pick-color').forEach(function (b) { b.classList.remove('active'); });
         });
 
-        document.getElementById('avatarSave').addEventListener('click', async function () {
+        document.getElementById('avatarSave')?.addEventListener('click', async function () {
             try {
                 await _api('PATCH', '/users/me/avatar', { avatarEmoji: selectedEmoji, avatarColor: selectedColor });
                 _showUserProfile(profile.id);
@@ -1036,14 +1036,14 @@
     if (_pinBtn) {
         _pinBtn.addEventListener('click', async function () {
             if (!_currentChannel) return;
-            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle').textContent === 'Закріплені';
+            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle')?.textContent === 'Закріплені';
             if (isOpen) {
                 _infoPanel.classList.remove('open');
                 _pinBtn.classList.remove('active');
             } else {
                 _infoBtn.classList.remove('active');
                 _pinBtn.classList.add('active');
-                document.getElementById('chatInfoPanelTitle').textContent = 'Закріплені';
+                document.getElementById('chatInfoPanelTitle')?.textContent = 'Закріплені';
                 await _renderPinnedPanel();
                 _infoPanel.classList.add('open');
             }
@@ -1528,7 +1528,7 @@
             '<input type="datetime-local" id="remindCustomTime" style="flex:1;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:13px">' +
             '<button class="chat-modal-btn chat-modal-btn-primary" onclick="_doRemind(\'custom\')">✓</button>' +
             '</div>' +
-            '<button onclick="document.getElementById(\'chatRemindPicker\').remove()" style="width:100%;padding:7px;border:1px solid var(--border-color);border-radius:8px;background:none;cursor:pointer;font-size:13px">Скасувати</button>' +
+            '<button onclick="document.getElementById(\'chatRemindPicker\')?.remove()" style="width:100%;padding:7px;border:1px solid var(--border-color);border-radius:8px;background:none;cursor:pointer;font-size:13px">Скасувати</button>' +
             '</div>';
         document.body.appendChild(picker);
         picker.addEventListener('click', function(e) { if (e.target === picker) picker.remove(); });
@@ -1839,14 +1839,14 @@
     if (_infoBtn) {
         _infoBtn.addEventListener('click', function () {
             if (!_currentChannel) return;
-            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle').textContent === 'Учасники';
+            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle')?.textContent === 'Учасники';
             if (isOpen) {
                 _infoPanel.classList.remove('open');
                 _infoBtn.classList.remove('active');
             } else {
                 if (_pinBtn) _pinBtn.classList.remove('active');
                 _infoBtn.classList.add('active');
-                document.getElementById('chatInfoPanelTitle').textContent = _currentChannel ? _currentChannel.name : 'Канал';
+                document.getElementById('chatInfoPanelTitle')?.textContent = _currentChannel ? _currentChannel.name : 'Канал';
                 _renderInfoPanel();
                 _infoPanel.classList.add('open');
             }
@@ -1965,9 +1965,9 @@
                     });
                     _currentChannel.name = '#' + newName.trim();
                     _currentChannel.description = newDesc.trim();
-                    document.getElementById('chatHeaderName').textContent = '#' + newName.trim();
-                    document.getElementById('chatHeaderDesc').textContent = newDesc.trim();
-                    document.getElementById('chatInfoPanelTitle').textContent = '#' + newName.trim();
+                    document.getElementById('chatHeaderName')?.textContent = '#' + newName.trim();
+                    document.getElementById('chatHeaderDesc')?.textContent = newDesc.trim();
+                    document.getElementById('chatInfoPanelTitle')?.textContent = '#' + newName.trim();
                     _loadChannels();
                     if (typeof showNotification === 'function') showNotification('✅ Канал оновлено', 'success');
                 } catch(e) { if (typeof showNotification === 'function') showNotification('Помилка збереження', 'error'); }
@@ -2345,7 +2345,7 @@
                 is_shared: vis === 'shared',
                 channel_id: _currentChannel?.id || null
             });
-            document.getElementById('newNoteText').value = '';
+            document.getElementById('newNoteText')?.value = '';
             _loadNotes();
         } catch (e) { if (typeof showNotification === 'function') showNotification('Помилка', 'error'); }
     };
@@ -2583,8 +2583,8 @@
         _cancelReply();
 
         // Update header
-        document.getElementById('chatHeaderName').textContent = channel.name;
-        document.getElementById('chatHeaderDesc').textContent = channel.description || '';
+        document.getElementById('chatHeaderName')?.textContent = channel.name;
+        document.getElementById('chatHeaderDesc')?.textContent = channel.description || '';
 
         // Apply wallpaper
         _applyWallpaper();
@@ -5880,7 +5880,7 @@
                     tab.classList.add('active');
                     var tabName = tab.dataset.tab;
                     document.querySelectorAll('.guardian-analytics-tab-content').forEach(function (tc) { tc.classList.remove('active'); });
-                    var target = document.getElementById('guardianTab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+                    var target = document.getElementById('guardianTab' + tabName.charAt(0)?.toUpperCase() + tabName.slice(1));
                     if (target) target.classList.add('active');
                     _loadAnalyticsTab(tabName);
                 });
@@ -6401,7 +6401,7 @@
                     '<button class="chat-pinned-bar-close" id="chatPinnedClose">✕</button>';
                 header.after(bar);
 
-                document.getElementById('chatPinnedClose').addEventListener('click', function (e) {
+                document.getElementById('chatPinnedClose')?.addEventListener('click', function (e) {
                     e.stopPropagation();
                     bar.classList.remove('visible');
                 });
@@ -6411,7 +6411,7 @@
 
         // Check if channel has pinned message
         if (channel && channel.pinnedMessage) {
-            document.getElementById('chatPinnedText').textContent = channel.pinnedMessage;
+            document.getElementById('chatPinnedText')?.textContent = channel.pinnedMessage;
             bar.classList.add('visible');
         } else {
             bar.classList.remove('visible');

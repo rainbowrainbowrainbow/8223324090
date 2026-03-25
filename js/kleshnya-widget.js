@@ -57,15 +57,15 @@
 
         // --- Events ---
         fab.addEventListener('click', togglePanel);
-        document.getElementById('kwCloseBtn').addEventListener('click', closePanel);
-        document.getElementById('kwSendBtn').addEventListener('click', sendMessage);
-        document.getElementById('kwInput').addEventListener('keydown', (e) => {
+        document.getElementById('kwCloseBtn')?.addEventListener('click', closePanel);
+        document.getElementById('kwSendBtn')?.addEventListener('click', sendMessage);
+        document.getElementById('kwInput')?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
             }
         });
-        document.getElementById('kwVoiceBtn').addEventListener('click', toggleVoice);
+        document.getElementById('kwVoiceBtn')?.addEventListener('click', toggleVoice);
 
         // Close on Escape
         document.addEventListener('keydown', (e) => {
@@ -175,7 +175,7 @@
             chip.className = 'kw-chip';
             chip.textContent = text;
             chip.addEventListener('click', () => {
-                document.getElementById('kwInput').value = text;
+                document.getElementById('kwInput')?.value = text;
                 sendMessage();
             });
             container.appendChild(chip);
@@ -208,8 +208,8 @@
         if (!text) return;
 
         input.value = '';
-        document.getElementById('kwSendBtn').disabled = true;
-        document.getElementById('kwSuggestions').innerHTML = '';
+        document.getElementById('kwSendBtn')?.disabled = true;
+        document.getElementById('kwSuggestions')?.innerHTML = '';
         addMessage('user', text, new Date().toISOString());
         showTyping();
 
@@ -230,7 +230,7 @@
             addMessage('assistant', '🦀 Помилка з\'єднання!', new Date().toISOString());
         }
 
-        document.getElementById('kwSendBtn').disabled = false;
+        document.getElementById('kwSendBtn')?.disabled = false;
         input.focus();
     }
 

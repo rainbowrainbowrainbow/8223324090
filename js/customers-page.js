@@ -474,27 +474,27 @@ async function showCustomerDetail(id) {
 
 function openEditModal(customer) {
     CrmState.editingId = customer ? customer.id : null;
-    document.getElementById('customerEditTitle').textContent = customer ? 'Редагувати клієнта' : 'Новий клієнт';
+    document.getElementById('customerEditTitle')?.textContent = customer ? 'Редагувати клієнта' : 'Новий клієнт';
 
-    document.getElementById('editName').value = customer?.name || '';
-    document.getElementById('editPhone').value = customer?.phone || '';
-    document.getElementById('editInstagram').value = customer?.instagram || '';
-    document.getElementById('editChildName').value = customer?.childName || '';
-    document.getElementById('editChildBirthday').value = customer?.childBirthday ? customer.childBirthday.slice(0, 10) : '';
-    document.getElementById('editSource').value = customer?.source || '';
-    document.getElementById('editNotes').value = customer?.notes || '';
+    document.getElementById('editName')?.value = customer?.name || '';
+    document.getElementById('editPhone')?.value = customer?.phone || '';
+    document.getElementById('editInstagram')?.value = customer?.instagram || '';
+    document.getElementById('editChildName')?.value = customer?.childName || '';
+    document.getElementById('editChildBirthday')?.value = customer?.childBirthday ? customer.childBirthday.slice(0, 10) : '';
+    document.getElementById('editSource')?.value = customer?.source || '';
+    document.getElementById('editNotes')?.value = customer?.notes || '';
 
-    document.getElementById('customerEditModal').classList.remove('hidden');
-    document.getElementById('editName').focus();
+    document.getElementById('customerEditModal')?.classList.remove('hidden');
+    document.getElementById('editName')?.focus();
 }
 
 function closeEditModal() {
-    document.getElementById('customerEditModal').classList.add('hidden');
+    document.getElementById('customerEditModal')?.classList.add('hidden');
     CrmState.editingId = null;
 }
 
 async function handleSave() {
-    const name = document.getElementById('editName').value.trim();
+    const name = document.getElementById('editName')?.value.trim();
     if (!name) {
         showNotification("Ім'я клієнта обов'язкове", 'error');
         return;
@@ -502,12 +502,12 @@ async function handleSave() {
 
     const data = {
         name,
-        phone: document.getElementById('editPhone').value.trim() || null,
-        instagram: document.getElementById('editInstagram').value.trim().replace('@', '') || null,
-        childName: document.getElementById('editChildName').value.trim() || null,
-        childBirthday: document.getElementById('editChildBirthday').value || null,
-        source: document.getElementById('editSource').value || null,
-        notes: document.getElementById('editNotes').value.trim() || null
+        phone: document.getElementById('editPhone')?.value.trim() || null,
+        instagram: document.getElementById('editInstagram')?.value.trim().replace('@', '') || null,
+        childName: document.getElementById('editChildName')?.value.trim() || null,
+        childBirthday: document.getElementById('editChildBirthday')?.value || null,
+        source: document.getElementById('editSource')?.value || null,
+        notes: document.getElementById('editNotes')?.value.trim() || null
     };
 
     try {
@@ -527,7 +527,7 @@ async function handleSave() {
 // Global function called from detail modal
 window.editCustomer = async function(id) {
     const customer = await fetchCustomerDetail(id);
-    document.getElementById('customerDetailModal').classList.add('hidden');
+    document.getElementById('customerDetailModal')?.classList.add('hidden');
     openEditModal(customer);
 };
 
@@ -535,7 +535,7 @@ window.confirmDeleteCustomer = async function(id) {
     if (!await confirmModal('Видалити клієнта? Бронювання будуть відв\'язані.', { type: 'danger', okText: 'Видалити' })) return;
     try {
         await deleteCustomer(id);
-        document.getElementById('customerDetailModal').classList.add('hidden');
+        document.getElementById('customerDetailModal')?.classList.add('hidden');
         showNotification('Клієнта видалено');
         await refreshData();
     } catch (err) {
@@ -796,11 +796,11 @@ async function loadBulkTab() {
 window.previewBulk = async function() {
     const token = localStorage.getItem('pzp_token');
     const filters = {
-        tags: document.getElementById('bulkTagFilter').value ? [document.getElementById('bulkTagFilter').value] : [],
-        minVisits: parseInt(document.getElementById('bulkMinVisits').value) || 0,
-        source: document.getElementById('bulkSourceFilter').value || undefined
+        tags: document.getElementById('bulkTagFilter')?.value ? [document.getElementById('bulkTagFilter')?.value] : [],
+        minVisits: parseInt(document.getElementById('bulkMinVisits')?.value) || 0,
+        source: document.getElementById('bulkSourceFilter')?.value || undefined
     };
-    const template = document.getElementById('bulkTemplate').value;
+    const template = document.getElementById('bulkTemplate')?.value;
     if (!template.trim()) { showNotification('Введіть шаблон повідомлення', 'error'); return; }
     try {
         const res = await fetch('/api/customers/bulk-message', {
@@ -819,11 +819,11 @@ window.sendBulk = async function() {
     if (!await confirmModal('Надіслати повідомлення всім обраним клієнтам?', { type: 'warning', okText: 'Надіслати' })) return;
     const token = localStorage.getItem('pzp_token');
     const filters = {
-        tags: document.getElementById('bulkTagFilter').value ? [document.getElementById('bulkTagFilter').value] : [],
-        minVisits: parseInt(document.getElementById('bulkMinVisits').value) || 0,
-        source: document.getElementById('bulkSourceFilter').value || undefined
+        tags: document.getElementById('bulkTagFilter')?.value ? [document.getElementById('bulkTagFilter')?.value] : [],
+        minVisits: parseInt(document.getElementById('bulkMinVisits')?.value) || 0,
+        source: document.getElementById('bulkSourceFilter')?.value || undefined
     };
-    const template = document.getElementById('bulkTemplate').value;
+    const template = document.getElementById('bulkTemplate')?.value;
     if (!template.trim()) { showNotification('Введіть шаблон повідомлення', 'error'); return; }
     try {
         const res = await fetch('/api/customers/bulk-message', {
@@ -963,17 +963,17 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser').textContent = user.name;
+    document.getElementById('currentUser')?.textContent = user.name;
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     const canManage = MANAGE_ROLES.includes(user.role);
-    document.getElementById('addCustomerBtn').style.display = canManage ? '' : 'none';
-    document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';
-    document.getElementById('exportVcfBtn').style.display = canManage ? '' : 'none';
-    document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';
+    document.getElementById('addCustomerBtn')?.style.display = canManage ? '' : 'none';
+    document.getElementById('exportCsvBtn')?.style.display = canManage ? '' : 'none';
+    document.getElementById('exportVcfBtn')?.style.display = canManage ? '' : 'none';
+    document.getElementById('importVcfBtn')?.style.display = canManage ? '' : 'none';
 
     // Logout
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location = '/';
@@ -985,7 +985,7 @@ async function initPage() {
     });
 
     // Filters with debounce
-    document.getElementById('searchInput').addEventListener('input', (e) => {
+    document.getElementById('searchInput')?.addEventListener('input', (e) => {
         clearTimeout(searchTimeout);
         searchTimeout = setTimeout(async () => {
             CrmState.filters.search = e.target.value;
@@ -996,7 +996,7 @@ async function initPage() {
         }, 300);
     });
 
-    document.getElementById('sourceFilter').addEventListener('change', async (e) => {
+    document.getElementById('sourceFilter')?.addEventListener('change', async (e) => {
         CrmState.filters.source = e.target.value;
         CrmState.page = 1;
         await fetchCustomers();
@@ -1004,7 +1004,7 @@ async function initPage() {
         renderPagination();
     });
 
-    document.getElementById('sortFilter').addEventListener('change', async (e) => {
+    document.getElementById('sortFilter')?.addEventListener('change', async (e) => {
         CrmState.filters.sortBy = e.target.value;
         CrmState.page = 1;
         await fetchCustomers();
@@ -1012,7 +1012,7 @@ async function initPage() {
         renderPagination();
     });
 
-    document.getElementById('dateFromFilter').addEventListener('change', async (e) => {
+    document.getElementById('dateFromFilter')?.addEventListener('change', async (e) => {
         CrmState.filters.dateFrom = e.target.value;
         CrmState.page = 1;
         await fetchCustomers();
@@ -1020,7 +1020,7 @@ async function initPage() {
         renderPagination();
     });
 
-    document.getElementById('dateToFilter').addEventListener('change', async (e) => {
+    document.getElementById('dateToFilter')?.addEventListener('change', async (e) => {
         CrmState.filters.dateTo = e.target.value;
         CrmState.page = 1;
         await fetchCustomers();
@@ -1029,20 +1029,20 @@ async function initPage() {
     });
 
     // Add customer
-    document.getElementById('addCustomerBtn').addEventListener('click', () => openEditModal(null));
+    document.getElementById('addCustomerBtn')?.addEventListener('click', () => openEditModal(null));
 
     // Export
-    document.getElementById('exportCsvBtn').addEventListener('click', downloadCSV);
+    document.getElementById('exportCsvBtn')?.addEventListener('click', downloadCSV);
 
     // vCard
-    document.getElementById('exportVcfBtn').addEventListener('click', exportVcf);
-    document.getElementById('importVcfBtn').addEventListener('click', () => document.getElementById('vcfFileInput').click());
-    document.getElementById('vcfFileInput').addEventListener('change', (e) => {
+    document.getElementById('exportVcfBtn')?.addEventListener('click', exportVcf);
+    document.getElementById('importVcfBtn')?.addEventListener('click', () => document.getElementById('vcfFileInput')?.click());
+    document.getElementById('vcfFileInput')?.addEventListener('change', (e) => {
         if (e.target.files[0]) { importVcf(e.target.files[0]); e.target.value = ''; }
     });
 
     // Tag filter
-    document.getElementById('tagFilter').addEventListener('change', async (e) => {
+    document.getElementById('tagFilter')?.addEventListener('change', async (e) => {
         CrmState.filters.tag = e.target.value;
         CrmState.page = 1;
         await fetchCustomers();
@@ -1051,8 +1051,8 @@ async function initPage() {
     });
 
     // Save customer
-    document.getElementById('saveCustomerBtn').addEventListener('click', handleSave);
-    document.getElementById('cancelEditBtn').addEventListener('click', closeEditModal);
+    document.getElementById('saveCustomerBtn')?.addEventListener('click', handleSave);
+    document.getElementById('cancelEditBtn')?.addEventListener('click', closeEditModal);
 
     // Modal close buttons
     document.querySelectorAll('.modal-close').forEach(btn => {

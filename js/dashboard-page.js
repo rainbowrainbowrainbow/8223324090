@@ -654,7 +654,7 @@ const DashboardPage = (() => {
                 </div>
                 <div class="settings-widget-list" id="settingsWidgetList">${widgetItems}</div>
                 <div class="settings-modal-footer">
-                    <button class="dashboard-btn" onclick="document.getElementById('settingsOverlay').remove()">Скасувати</button>
+                    <button class="dashboard-btn" onclick="document.getElementById('settingsOverlay')?.remove()">Скасувати</button>
                     <button class="dashboard-btn primary" onclick="DashboardPage.saveSettings()">Зберегти</button>
                 </div>
             </div>
@@ -816,7 +816,7 @@ const DashboardPage = (() => {
         grid.insertBefore(devTools, grid.firstChild);
 
         if (currentTestRole) {
-            document.getElementById('testRoleSelect').value = currentTestRole;
+            document.getElementById('testRoleSelect')?.value = currentTestRole;
         }
 
         // Load users for impersonation dropdown
@@ -951,7 +951,7 @@ const DashboardPage = (() => {
         modal.setAttribute('role', 'dialog');
         modal.innerHTML = `
             <div class="modal-content">
-                <span class="modal-close" onclick="document.getElementById('dashTaskModal').remove()">&times;</span>
+                <span class="modal-close" onclick="document.getElementById('dashTaskModal')?.remove()">&times;</span>
                 <div class="task-modal-header">
                     <span class="task-modal-priority ${priorityCls}"></span>
                     <h3>${escapeHtml(t.title)}</h3>
@@ -969,7 +969,7 @@ const DashboardPage = (() => {
                 </div>
                 <div class="task-modal-footer">
                     <a href="/tasks" class="dashboard-btn primary">Відкрити на сторінці задач</a>
-                    <button class="dashboard-btn" onclick="document.getElementById('dashTaskModal').remove()">Закрити</button>
+                    <button class="dashboard-btn" onclick="document.getElementById('dashTaskModal')?.remove()">Закрити</button>
                 </div>
             </div>
         `;

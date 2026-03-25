@@ -101,10 +101,10 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser').textContent = user.name;
+    document.getElementById('currentUser')?.textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location = '/';
@@ -118,10 +118,10 @@ async function initPage() {
             currentView = tab.dataset.view;
 
             const isTemplates = currentView === 'templates';
-            document.getElementById('catFilters').style.display = isTemplates ? 'none' : '';
-            document.getElementById('quickAdd').style.display = isTemplates ? 'none' : '';
-            document.getElementById('boardContent').style.display = isTemplates ? 'none' : '';
-            document.getElementById('templatesSection').style.display = isTemplates ? '' : 'none';
+            document.getElementById('catFilters')?.style.display = isTemplates ? 'none' : '';
+            document.getElementById('quickAdd')?.style.display = isTemplates ? 'none' : '';
+            document.getElementById('boardContent')?.style.display = isTemplates ? 'none' : '';
+            document.getElementById('templatesSection')?.style.display = isTemplates ? '' : 'none';
 
             if (isTemplates) {
                 loadTemplates();
@@ -142,15 +142,15 @@ async function initPage() {
     });
 
     // Quick add task
-    document.getElementById('addTaskBtn').addEventListener('click', addTask);
-    document.getElementById('taskTitle').addEventListener('keydown', (e) => {
+    document.getElementById('addTaskBtn')?.addEventListener('click', addTask);
+    document.getElementById('taskTitle')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') addTask();
     });
 
     // Templates
-    document.getElementById('addTemplateBtn').addEventListener('click', addTemplate);
-    document.getElementById('tplPattern').addEventListener('change', (e) => {
-        document.getElementById('tplDays').style.display = e.target.value === 'custom' ? '' : 'none';
+    document.getElementById('addTemplateBtn')?.addEventListener('click', addTemplate);
+    document.getElementById('tplPattern')?.addEventListener('change', (e) => {
+        document.getElementById('tplDays')?.style.display = e.target.value === 'custom' ? '' : 'none';
     });
 
     // v20.9.16: Load permissions and apply UI restrictions
@@ -318,8 +318,8 @@ async function loadMyPoints() {
     const points = await apiGetMyPoints(username);
     const bar = document.getElementById('pointsBar');
     if (points && bar) {
-        document.getElementById('pointsPermanent').textContent = points.permanent_points || 0;
-        document.getElementById('pointsMonthly').textContent = points.monthly_points || 0;
+        document.getElementById('pointsPermanent')?.textContent = points.permanent_points || 0;
+        document.getElementById('pointsMonthly')?.textContent = points.monthly_points || 0;
         bar.style.display = '';
     }
 }
@@ -339,9 +339,9 @@ function updateCounts() {
     const weekTasks = active.filter(t => t.date >= week.from && t.date <= week.to);
     const myTasks = active.filter(t => t.assigned_to && t.assigned_to === username);
 
-    document.getElementById('countToday').textContent = todayTasks.length;
-    document.getElementById('countWeek').textContent = weekTasks.length;
-    document.getElementById('countMy').textContent = myTasks.length;
+    document.getElementById('countToday')?.textContent = todayTasks.length;
+    document.getElementById('countWeek')?.textContent = weekTasks.length;
+    document.getElementById('countMy')?.textContent = myTasks.length;
 }
 
 function renderBoard() {
@@ -539,14 +539,14 @@ function renderTaskCard(t) {
 // ==========================================
 
 async function addTask() {
-    const title = document.getElementById('taskTitle').value.trim();
+    const title = document.getElementById('taskTitle')?.value.trim();
     if (!title) {
         showNotification('Введіть назву задачі', 'error');
         return;
     }
 
-    const category = document.getElementById('taskCategory').value;
-    const priority = document.getElementById('taskPriority').value;
+    const category = document.getElementById('taskCategory')?.value;
+    const priority = document.getElementById('taskPriority')?.value;
     const taskType = document.getElementById('taskType')?.value || 'human';
     const deadlineTime = document.getElementById('taskDeadlineTime')?.value || '';
     const today = getTodayStr();
@@ -560,8 +560,8 @@ async function addTask() {
 
     const result = await apiCreateTask(data);
     if (result && result.success) {
-        document.getElementById('taskTitle').value = '';
-        if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime').value = '';
+        document.getElementById('taskTitle')?.value = '';
+        if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime')?.value = '';
         showNotification('Задачу додано', 'success');
         await loadAllTasks();
     } else {
@@ -636,17 +636,17 @@ function renderTemplates(templates) {
 }
 
 async function addTemplate() {
-    const title = document.getElementById('tplTitle').value.trim();
+    const title = document.getElementById('tplTitle')?.value.trim();
     if (!title) {
         showNotification('Введіть назву шаблону', 'error');
         return;
     }
 
-    const recurrencePattern = document.getElementById('tplPattern').value;
-    const recurrenceDays = document.getElementById('tplDays').value.trim() || null;
-    const priority = document.getElementById('tplPriority').value;
-    const assignedTo = document.getElementById('tplAssignedTo').value.trim() || null;
-    const category = document.getElementById('tplCategory').value;
+    const recurrencePattern = document.getElementById('tplPattern')?.value;
+    const recurrenceDays = document.getElementById('tplDays')?.value.trim() || null;
+    const priority = document.getElementById('tplPriority')?.value;
+    const assignedTo = document.getElementById('tplAssignedTo')?.value.trim() || null;
+    const category = document.getElementById('tplCategory')?.value;
 
     if (recurrencePattern === 'custom' && !recurrenceDays) {
         showNotification('Вкажіть дні для кастомного розкладу', 'error');
@@ -655,8 +655,8 @@ async function addTemplate() {
 
     const result = await apiCreateTemplate({ title, recurrencePattern, recurrenceDays, priority, assignedTo, category });
     if (result && result.success) {
-        document.getElementById('tplTitle').value = '';
-        document.getElementById('tplDays').value = '';
+        document.getElementById('tplTitle')?.value = '';
+        document.getElementById('tplDays')?.value = '';
         showNotification('Шаблон додано', 'success');
         await loadTemplates();
     } else {
@@ -689,7 +689,7 @@ function updateBulkSelection() {
     if (!toolbar) return;
     if (ids.length > 0) {
         toolbar.style.display = 'flex';
-        document.getElementById('bulkCount').textContent = ids.length + ' обрано';
+        document.getElementById('bulkCount')?.textContent = ids.length + ' обрано';
     } else {
         toolbar.style.display = 'none';
     }

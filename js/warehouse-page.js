@@ -69,7 +69,7 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser').textContent = user.name;
+    document.getElementById('currentUser')?.textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
@@ -77,7 +77,7 @@ async function initPage() {
     const addBtn = document.getElementById('addItemBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location = '/';
@@ -89,13 +89,13 @@ async function initPage() {
 }
 
 function setupEventListeners() {
-    document.getElementById('addItemBtn').addEventListener('click', () => openItemForm());
-    document.getElementById('saveItemBtn').addEventListener('click', saveItem);
-    document.getElementById('cancelItemBtn').addEventListener('click', closeItemForm);
+    document.getElementById('addItemBtn')?.addEventListener('click', () => openItemForm());
+    document.getElementById('saveItemBtn')?.addEventListener('click', saveItem);
+    document.getElementById('cancelItemBtn')?.addEventListener('click', closeItemForm);
 
     // Search with debounce
     let searchTimer;
-    document.getElementById('searchInput').addEventListener('input', (e) => {
+    document.getElementById('searchInput')?.addEventListener('input', (e) => {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => {
             searchQuery = e.target.value.trim().toLowerCase();
@@ -104,18 +104,18 @@ function setupEventListeners() {
     });
 
     // Low stock toggle
-    document.getElementById('lowStockToggle').addEventListener('click', () => {
+    document.getElementById('lowStockToggle')?.addEventListener('click', () => {
         lowStockFilter = !lowStockFilter;
-        document.getElementById('lowStockToggle').classList.toggle('active', lowStockFilter);
+        document.getElementById('lowStockToggle')?.classList.toggle('active', lowStockFilter);
         renderStock();
     });
 
     // Qty modal
-    document.getElementById('qtyModalCancel').addEventListener('click', closeQtyModal);
-    document.getElementById('qtyModalConfirm').addEventListener('click', confirmQtyModal);
+    document.getElementById('qtyModalCancel')?.addEventListener('click', closeQtyModal);
+    document.getElementById('qtyModalConfirm')?.addEventListener('click', confirmQtyModal);
 
     // Close modal on backdrop click
-    document.getElementById('qtyModal').addEventListener('click', (e) => {
+    document.getElementById('qtyModal')?.addEventListener('click', (e) => {
         if (e.target === document.getElementById('qtyModal')) closeQtyModal();
     });
 
@@ -261,44 +261,44 @@ function openItemForm(itemId = null) {
     if (itemId) {
         const item = allItems.find(x => x.id === itemId);
         if (!item) return;
-        document.getElementById('wf-id').value = item.id;
-        document.getElementById('wf-name').value = item.name || '';
-        document.getElementById('wf-category').value = item.category || 'consumable';
-        document.getElementById('wf-quantity').value = item.quantity || 0;
-        document.getElementById('wf-min').value = item.minQuantity || 0;
-        document.getElementById('wf-unit').value = item.unit || 'шт';
-        document.getElementById('wf-notes').value = item.notes || '';
+        document.getElementById('wf-id')?.value = item.id;
+        document.getElementById('wf-name')?.value = item.name || '';
+        document.getElementById('wf-category')?.value = item.category || 'consumable';
+        document.getElementById('wf-quantity')?.value = item.quantity || 0;
+        document.getElementById('wf-min')?.value = item.minQuantity || 0;
+        document.getElementById('wf-unit')?.value = item.unit || 'шт';
+        document.getElementById('wf-notes')?.value = item.notes || '';
         var ownerEl = document.getElementById('wf-owner');
         if (ownerEl) ownerEl.value = item.owner || 'park';
         // Disable quantity field for edit (use +/- buttons instead)
-        document.getElementById('wf-quantity').disabled = true;
+        document.getElementById('wf-quantity')?.disabled = true;
     } else {
-        document.getElementById('wf-id').value = '';
-        document.getElementById('wf-name').value = '';
-        document.getElementById('wf-category').value = currentCategory !== 'all' ? currentCategory : 'consumable';
-        document.getElementById('wf-quantity').value = 0;
-        document.getElementById('wf-min').value = 0;
-        document.getElementById('wf-unit').value = 'шт';
-        document.getElementById('wf-notes').value = '';
-        document.getElementById('wf-quantity').disabled = false;
+        document.getElementById('wf-id')?.value = '';
+        document.getElementById('wf-name')?.value = '';
+        document.getElementById('wf-category')?.value = currentCategory !== 'all' ? currentCategory : 'consumable';
+        document.getElementById('wf-quantity')?.value = 0;
+        document.getElementById('wf-min')?.value = 0;
+        document.getElementById('wf-unit')?.value = 'шт';
+        document.getElementById('wf-notes')?.value = '';
+        document.getElementById('wf-quantity')?.disabled = false;
     }
 
     form.scrollIntoView({ behavior: 'smooth' });
 }
 
 function closeItemForm() {
-    document.getElementById('itemForm').style.display = 'none';
+    document.getElementById('itemForm')?.style.display = 'none';
 }
 
 async function saveItem() {
-    const id = document.getElementById('wf-id').value;
+    const id = document.getElementById('wf-id')?.value;
     const item = {
-        name: document.getElementById('wf-name').value.trim(),
-        category: document.getElementById('wf-category').value,
-        quantity: parseInt(document.getElementById('wf-quantity').value) || 0,
-        minQuantity: parseInt(document.getElementById('wf-min').value) || 0,
-        unit: document.getElementById('wf-unit').value,
-        notes: document.getElementById('wf-notes').value.trim() || null,
+        name: document.getElementById('wf-name')?.value.trim(),
+        category: document.getElementById('wf-category')?.value,
+        quantity: parseInt(document.getElementById('wf-quantity')?.value) || 0,
+        minQuantity: parseInt(document.getElementById('wf-min')?.value) || 0,
+        unit: document.getElementById('wf-unit')?.value,
+        notes: document.getElementById('wf-notes')?.value.trim() || null,
         owner: document.getElementById('wf-owner')?.value || 'park'
     };
 
@@ -342,43 +342,43 @@ function openUseModal(itemId) {
     qtyModalMode = 'use';
     qtyModalItemId = itemId;
     const item = allItems.find(x => x.id === itemId);
-    document.getElementById('qtyModalTitle').textContent = `Списати: ${item ? item.name : ''}`;
-    document.getElementById('qtyModalAmount').value = 1;
-    document.getElementById('qtyModalAmount').max = item ? item.quantity : 999;
-    document.getElementById('qtyModalReason').value = '';
-    document.getElementById('qtyModalReason').placeholder = 'Щоденне використання';
-    document.getElementById('qtyModalConfirm').textContent = 'Списати';
-    document.getElementById('qtyModalConfirm').className = 'btn-page-primary';
-    document.getElementById('qtyModalConfirm').style.background = document.body.classList.contains('dark-mode') ? 'rgba(239,68,68,0.8)' : '#EF4444';
-    document.getElementById('qtyModal').style.display = '';
-    document.getElementById('qtyModalAmount').focus();
+    document.getElementById('qtyModalTitle')?.textContent = `Списати: ${item ? item.name : ''}`;
+    document.getElementById('qtyModalAmount')?.value = 1;
+    document.getElementById('qtyModalAmount')?.max = item ? item.quantity : 999;
+    document.getElementById('qtyModalReason')?.value = '';
+    document.getElementById('qtyModalReason')?.placeholder = 'Щоденне використання';
+    document.getElementById('qtyModalConfirm')?.textContent = 'Списати';
+    document.getElementById('qtyModalConfirm')?.className = 'btn-page-primary';
+    document.getElementById('qtyModalConfirm')?.style.background = document.body.classList.contains('dark-mode') ? 'rgba(239,68,68,0.8)' : '#EF4444';
+    document.getElementById('qtyModal')?.style.display = '';
+    document.getElementById('qtyModalAmount')?.focus();
 }
 
 function openRestockModal(itemId) {
     qtyModalMode = 'restock';
     qtyModalItemId = itemId;
     const item = allItems.find(x => x.id === itemId);
-    document.getElementById('qtyModalTitle').textContent = `Поповнити: ${item ? item.name : ''}`;
-    document.getElementById('qtyModalAmount').value = 1;
-    document.getElementById('qtyModalAmount').removeAttribute('max');
-    document.getElementById('qtyModalReason').value = '';
-    document.getElementById('qtyModalReason').placeholder = 'Закупка, доставка...';
-    document.getElementById('qtyModalConfirm').textContent = 'Поповнити';
-    document.getElementById('qtyModalConfirm').className = 'btn-page-primary';
-    document.getElementById('qtyModalConfirm').style.background = '';
-    document.getElementById('qtyModal').style.display = '';
-    document.getElementById('qtyModalAmount').focus();
+    document.getElementById('qtyModalTitle')?.textContent = `Поповнити: ${item ? item.name : ''}`;
+    document.getElementById('qtyModalAmount')?.value = 1;
+    document.getElementById('qtyModalAmount')?.removeAttribute('max');
+    document.getElementById('qtyModalReason')?.value = '';
+    document.getElementById('qtyModalReason')?.placeholder = 'Закупка, доставка...';
+    document.getElementById('qtyModalConfirm')?.textContent = 'Поповнити';
+    document.getElementById('qtyModalConfirm')?.className = 'btn-page-primary';
+    document.getElementById('qtyModalConfirm')?.style.background = '';
+    document.getElementById('qtyModal')?.style.display = '';
+    document.getElementById('qtyModalAmount')?.focus();
 }
 
 function closeQtyModal() {
-    document.getElementById('qtyModal').style.display = 'none';
+    document.getElementById('qtyModal')?.style.display = 'none';
     qtyModalMode = null;
     qtyModalItemId = null;
 }
 
 async function confirmQtyModal() {
-    const amount = parseInt(document.getElementById('qtyModalAmount').value);
-    const reason = document.getElementById('qtyModalReason').value.trim();
+    const amount = parseInt(document.getElementById('qtyModalAmount')?.value);
+    const reason = document.getElementById('qtyModalReason')?.value.trim();
 
     if (!amount || amount <= 0) {
         showNotification('Вкажіть кількість', 'error');
@@ -442,8 +442,8 @@ function renderHistory(items) {
 
 function switchPageTab(tab) {
     document.querySelectorAll('.wh-page-tab').forEach(t => t.classList.toggle('active', t.dataset.pageTab === tab));
-    document.getElementById('stockTab').style.display = tab === 'stock' ? '' : 'none';
-    document.getElementById('procurementTab').style.display = tab === 'procurement' ? '' : 'none';
+    document.getElementById('stockTab')?.style.display = tab === 'stock' ? '' : 'none';
+    document.getElementById('procurementTab')?.style.display = tab === 'procurement' ? '' : 'none';
     var pinataEl = document.getElementById('pinataTab');
     if (pinataEl) pinataEl.style.display = tab === 'pinata' ? '' : 'none';
     if (tab === 'procurement' && procLists.length === 0) loadProcLists();
@@ -503,38 +503,38 @@ function renderProcLists() {
 }
 
 function openProcForm(listId = null) {
-    document.getElementById('pf-id').value = '';
-    document.getElementById('pf-title').value = '';
-    document.getElementById('pf-department').value = document.getElementById('procDeptFilter')?.value || 'animators';
-    document.getElementById('pf-date').value = '';
-    document.getElementById('pf-notes').value = '';
-    document.getElementById('procFormTitle').textContent = 'Новий список закупок';
+    document.getElementById('pf-id')?.value = '';
+    document.getElementById('pf-title')?.value = '';
+    document.getElementById('pf-department')?.value = document.getElementById('procDeptFilter')?.value || 'animators';
+    document.getElementById('pf-date')?.value = '';
+    document.getElementById('pf-notes')?.value = '';
+    document.getElementById('procFormTitle')?.textContent = 'Новий список закупок';
 
     if (listId) {
         const list = procLists.find(l => l.id === listId);
         if (list) {
-            document.getElementById('pf-id').value = list.id;
-            document.getElementById('pf-title').value = list.title;
-            document.getElementById('pf-department').value = list.department;
-            document.getElementById('pf-date').value = list.plannedDate || '';
-            document.getElementById('pf-notes').value = list.notes || '';
-            document.getElementById('procFormTitle').textContent = 'Редагувати список';
+            document.getElementById('pf-id')?.value = list.id;
+            document.getElementById('pf-title')?.value = list.title;
+            document.getElementById('pf-department')?.value = list.department;
+            document.getElementById('pf-date')?.value = list.plannedDate || '';
+            document.getElementById('pf-notes')?.value = list.notes || '';
+            document.getElementById('procFormTitle')?.textContent = 'Редагувати список';
         }
     }
-    document.getElementById('procFormModal').style.display = '';
+    document.getElementById('procFormModal')?.style.display = '';
 }
 
 function closeProcForm() {
-    document.getElementById('procFormModal').style.display = 'none';
+    document.getElementById('procFormModal')?.style.display = 'none';
 }
 
 async function saveProcList() {
-    const id = document.getElementById('pf-id').value;
+    const id = document.getElementById('pf-id')?.value;
     const data = {
-        title: document.getElementById('pf-title').value.trim(),
-        department: document.getElementById('pf-department').value,
-        plannedDate: document.getElementById('pf-date').value || null,
-        notes: document.getElementById('pf-notes').value.trim() || null
+        title: document.getElementById('pf-title')?.value.trim(),
+        department: document.getElementById('pf-department')?.value,
+        plannedDate: document.getElementById('pf-date')?.value || null,
+        notes: document.getElementById('pf-notes')?.value.trim() || null
     };
 
     if (!data.title) {
@@ -565,10 +565,10 @@ async function openProcDetail(listId) {
     if (!data) return;
     currentProcDetail = data;
 
-    document.getElementById('procDetailTitle').textContent = data.title;
+    document.getElementById('procDetailTitle')?.textContent = data.title;
 
     const statusBadge = `<span class="proc-status-badge proc-status-${data.status}">${escapeHtml(data.statusLabel)}</span>`;
-    document.getElementById('procDetailMeta').innerHTML =
+    document.getElementById('procDetailMeta')?.innerHTML =
         `${data.departmentLabel} ${statusBadge} ${data.plannedDate ? `· 📅 ${data.plannedDate}` : ''} ${data.assignedName ? `· 👤 ${escapeHtml(data.assignedName)}` : ''}`;
 
     renderProcDetailItems(data.items || []);
@@ -576,7 +576,7 @@ async function openProcDetail(listId) {
     const complBtn = document.getElementById('procCompleteBtn');
     complBtn.style.display = (data.status === 'draft' || data.status === 'approved' || data.status === 'in_progress') ? '' : 'none';
 
-    document.getElementById('procDetailModal').style.display = '';
+    document.getElementById('procDetailModal')?.style.display = '';
 }
 
 function renderProcDetailItems(items) {
@@ -602,16 +602,16 @@ function renderProcDetailItems(items) {
 }
 
 function closeProcDetail() {
-    document.getElementById('procDetailModal').style.display = 'none';
+    document.getElementById('procDetailModal')?.style.display = 'none';
     currentProcListId = null;
     currentProcDetail = null;
 }
 
 async function addProcItem() {
     if (!currentProcListId) return;
-    const name = document.getElementById('pd-item-name').value.trim();
-    const qty = parseInt(document.getElementById('pd-item-qty').value) || 1;
-    const price = parseInt(document.getElementById('pd-item-price').value) || 0;
+    const name = document.getElementById('pd-item-name')?.value.trim();
+    const qty = parseInt(document.getElementById('pd-item-qty')?.value) || 1;
+    const price = parseInt(document.getElementById('pd-item-price')?.value) || 0;
 
     if (!name) {
         showNotification('Вкажіть назву позиції', 'error');
@@ -623,9 +623,9 @@ async function addProcItem() {
     });
 
     if (result && result.success) {
-        document.getElementById('pd-item-name').value = '';
-        document.getElementById('pd-item-qty').value = 1;
-        document.getElementById('pd-item-price').value = 0;
+        document.getElementById('pd-item-name')?.value = '';
+        document.getElementById('pd-item-qty')?.value = 1;
+        document.getElementById('pd-item-price')?.value = 0;
         await openProcDetail(currentProcListId);
     } else {
         showNotification(result?.error || 'Помилка', 'error');

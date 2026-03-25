@@ -195,7 +195,7 @@ function lazyLoadIframe(tabName) {
 async function loadOverview() {
     const data = await apiGet('/overview');
     if (!data || !data.success) {
-        document.getElementById('overviewStats').innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
+        document.getElementById('overviewStats')?.innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
         return;
     }
     overviewData = data;
@@ -279,7 +279,7 @@ async function loadPipeline() {
 
     const data = await apiGet(`/content${query}`);
     if (!data || !data.success) {
-        document.getElementById('pipelineKanban').innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
+        document.getElementById('pipelineKanban')?.innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
         return;
     }
     contentItems = data.items || [];
@@ -383,7 +383,7 @@ async function openContentDetail(id) {
     const history = historyData?.history || [];
 
     const modal = document.getElementById('detailModal');
-    document.getElementById('detailModalTitle').textContent = detail.title;
+    document.getElementById('detailModalTitle')?.textContent = detail.title;
 
     const fieldValues = typeof detail.field_values === 'string'
         ? JSON.parse(detail.field_values || '{}')
@@ -421,7 +421,7 @@ async function openContentDetail(id) {
         </div>`;
     }
 
-    document.getElementById('detailContent').innerHTML = `
+    document.getElementById('detailContent')?.innerHTML = `
         <div style="display:flex; flex-direction:column; gap:8px;">
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
                 <span class="status-badge status-${detail.status}">${STATUS_EMOJIS[detail.status]} ${STATUS_LABELS[detail.status]}</span>
@@ -444,19 +444,19 @@ async function openContentDetail(id) {
             ${historyHtml}
 
             <div style="display:flex; gap:6px; margin-top:12px; flex-wrap:wrap">
-                ${NEXT_STATUS[detail.status] ? `<button onclick="changeStatus(${detail.id}, '${NEXT_STATUS[detail.status]}'); document.getElementById('detailModal').classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; font-family:inherit; cursor:pointer;">
+                ${NEXT_STATUS[detail.status] ? `<button onclick="changeStatus(${detail.id}, '${NEXT_STATUS[detail.status]}'); document.getElementById('detailModal')?.classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; font-family:inherit; cursor:pointer;">
                     → ${STATUS_LABELS[NEXT_STATUS[detail.status]]}
                 </button>` : ''}
-                ${detail.status === 'in_review' ? `<button onclick="changeStatus(${detail.id}, 'rejected'); document.getElementById('detailModal').classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:#FFEBEE; color:#C62828; font-weight:700; font-family:inherit; cursor:pointer;">
+                ${detail.status === 'in_review' ? `<button onclick="changeStatus(${detail.id}, 'rejected'); document.getElementById('detailModal')?.classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:#FFEBEE; color:#C62828; font-weight:700; font-family:inherit; cursor:pointer;">
                     ✕ Відхилити
                 </button>` : ''}
-                ${detail.status === 'rejected' ? `<button onclick="changeStatus(${detail.id}, 'draft'); document.getElementById('detailModal').classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--gray-100); color:var(--gray-600); font-weight:700; font-family:inherit; cursor:pointer;">
+                ${detail.status === 'rejected' ? `<button onclick="changeStatus(${detail.id}, 'draft'); document.getElementById('detailModal')?.classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--gray-100); color:var(--gray-600); font-weight:700; font-family:inherit; cursor:pointer;">
                     ↩ Повернути в чернетки
                 </button>` : ''}
-                <button onclick="openEditContent(${detail.id}); document.getElementById('detailModal').classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--gray-100); color:var(--gray-600); font-weight:700; font-family:inherit; cursor:pointer;">
+                <button onclick="openEditContent(${detail.id}); document.getElementById('detailModal')?.classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--gray-100); color:var(--gray-600); font-weight:700; font-family:inherit; cursor:pointer;">
                     ✎ Редагувати
                 </button>
-                ${isAdminUser ? `<button onclick="deleteContent(${detail.id}); document.getElementById('detailModal').classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:#FFEBEE; color:#C62828; font-weight:700; font-family:inherit; cursor:pointer;">
+                ${isAdminUser ? `<button onclick="deleteContent(${detail.id}); document.getElementById('detailModal')?.classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:#FFEBEE; color:#C62828; font-weight:700; font-family:inherit; cursor:pointer;">
                     🗑 Видалити
                 </button>` : ''}
             </div>
@@ -484,11 +484,11 @@ async function deleteContent(id) {
 
 function openCreateContent() {
     editingContentId = null;
-    document.getElementById('contentModalTitle').textContent = 'Новий контент';
-    document.getElementById('contentForm').reset();
-    document.getElementById('templateFieldsContainer').style.display = 'none';
+    document.getElementById('contentModalTitle')?.textContent = 'Новий контент';
+    document.getElementById('contentForm')?.reset();
+    document.getElementById('templateFieldsContainer')?.style.display = 'none';
     populateTemplateSelect();
-    document.getElementById('contentModal').classList.remove('hidden');
+    document.getElementById('contentModal')?.classList.remove('hidden');
 }
 
 function openEditContent(id) {
@@ -496,21 +496,21 @@ function openEditContent(id) {
     if (!item) return;
 
     editingContentId = id;
-    document.getElementById('contentModalTitle').textContent = 'Редагувати контент';
-    document.getElementById('contentTitle').value = item.title || '';
-    document.getElementById('contentCategory').value = item.category || 'poster';
-    document.getElementById('contentPriority').value = item.priority || 'normal';
-    document.getElementById('contentDueDate').value = item.due_date || '';
-    document.getElementById('contentAssignee').value = item.assigned_to || '';
-    document.getElementById('contentNotes').value = item.notes || '';
+    document.getElementById('contentModalTitle')?.textContent = 'Редагувати контент';
+    document.getElementById('contentTitle')?.value = item.title || '';
+    document.getElementById('contentCategory')?.value = item.category || 'poster';
+    document.getElementById('contentPriority')?.value = item.priority || 'normal';
+    document.getElementById('contentDueDate')?.value = item.due_date || '';
+    document.getElementById('contentAssignee')?.value = item.assigned_to || '';
+    document.getElementById('contentNotes')?.value = item.notes || '';
 
     populateTemplateSelect();
     if (item.template_id) {
-        document.getElementById('contentTemplate').value = item.template_id;
+        document.getElementById('contentTemplate')?.value = item.template_id;
         showTemplateFields(item.template_id, item.field_values);
     }
 
-    document.getElementById('contentModal').classList.remove('hidden');
+    document.getElementById('contentModal')?.classList.remove('hidden');
 }
 
 function populateTemplateSelect() {
@@ -556,13 +556,13 @@ function showTemplateFields(templateId, existingValues) {
 async function handleContentSubmit(e) {
     e.preventDefault();
 
-    const title = document.getElementById('contentTitle').value.trim();
-    const category = document.getElementById('contentCategory').value;
-    const priority = document.getElementById('contentPriority').value;
-    const template_id = document.getElementById('contentTemplate').value || null;
-    const due_date = document.getElementById('contentDueDate').value || null;
-    const assigned_to = document.getElementById('contentAssignee').value.trim() || null;
-    const notes = document.getElementById('contentNotes').value.trim() || null;
+    const title = document.getElementById('contentTitle')?.value.trim();
+    const category = document.getElementById('contentCategory')?.value;
+    const priority = document.getElementById('contentPriority')?.value;
+    const template_id = document.getElementById('contentTemplate')?.value || null;
+    const due_date = document.getElementById('contentDueDate')?.value || null;
+    const assigned_to = document.getElementById('contentAssignee')?.value.trim() || null;
+    const notes = document.getElementById('contentNotes')?.value.trim() || null;
 
     // Collect template field values
     const fieldValues = {};
@@ -586,7 +586,7 @@ async function handleContentSubmit(e) {
 
     if (result.success) {
         showNotification(editingContentId ? 'Контент оновлено' : 'Контент створено', 'success');
-        document.getElementById('contentModal').classList.add('hidden');
+        document.getElementById('contentModal')?.classList.add('hidden');
         editingContentId = null;
         loadPipeline();
         if (activeTab === 'overview') loadOverview();
@@ -603,7 +603,7 @@ async function loadTemplates() {
     const query = templateCategoryFilter ? `?category=${templateCategoryFilter}` : '';
     const data = await apiGet(`/templates${query}`);
     if (!data || !data.success) {
-        document.getElementById('templatesGrid').innerHTML = '<div class="artdir-empty">Помилка завантаження шаблонів</div>';
+        document.getElementById('templatesGrid')?.innerHTML = '<div class="artdir-empty">Помилка завантаження шаблонів</div>';
         return;
     }
     templates = data.templates || [];
@@ -642,15 +642,15 @@ function useTemplate(templateId) {
     const tpl = templates.find(t => t.id === templateId);
     if (!tpl) return;
 
-    document.getElementById('contentModalTitle').textContent = `Новий: ${tpl.name}`;
-    document.getElementById('contentForm').reset();
-    document.getElementById('contentCategory').value = tpl.category || 'poster';
+    document.getElementById('contentModalTitle')?.textContent = `Новий: ${tpl.name}`;
+    document.getElementById('contentForm')?.reset();
+    document.getElementById('contentCategory')?.value = tpl.category || 'poster';
 
     populateTemplateSelect();
-    document.getElementById('contentTemplate').value = templateId;
+    document.getElementById('contentTemplate')?.value = templateId;
     showTemplateFields(templateId, {});
 
-    document.getElementById('contentModal').classList.remove('hidden');
+    document.getElementById('contentModal')?.classList.remove('hidden');
 }
 
 // ==========================================
@@ -660,7 +660,7 @@ function useTemplate(templateId) {
 async function loadBrand() {
     const data = await apiGet('/brand');
     if (!data || !data.success) {
-        document.getElementById('brandContent').innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
+        document.getElementById('brandContent')?.innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
         return;
     }
     brandGuidelines = data.guidelines || [];
@@ -733,16 +733,16 @@ async function deleteBrandItem(id) {
 async function handleBrandSubmit(e) {
     e.preventDefault();
 
-    const category = document.getElementById('brandCategory').value;
-    const title = document.getElementById('brandTitle').value.trim();
-    const value = document.getElementById('brandValue').value.trim();
-    const description = document.getElementById('brandDescription').value.trim() || null;
+    const category = document.getElementById('brandCategory')?.value;
+    const title = document.getElementById('brandTitle')?.value.trim();
+    const value = document.getElementById('brandValue')?.value.trim();
+    const description = document.getElementById('brandDescription')?.value.trim() || null;
 
     const result = await apiPost('/brand', { category, title, value, description });
     if (result.success) {
         showNotification('Правило додано', 'success');
-        document.getElementById('brandModal').classList.add('hidden');
-        document.getElementById('brandForm').reset();
+        document.getElementById('brandModal')?.classList.add('hidden');
+        document.getElementById('brandForm')?.reset();
         loadBrand();
     } else {
         showNotification(result.error || 'Помилка', 'error');
@@ -816,7 +816,7 @@ async function initAuth() {
 function setupModals() {
     // Content modal
     document.getElementById('contentModalClose')?.addEventListener('click', () => {
-        document.getElementById('contentModal').classList.add('hidden');
+        document.getElementById('contentModal')?.classList.add('hidden');
     });
     document.getElementById('contentForm')?.addEventListener('submit', handleContentSubmit);
     document.getElementById('contentTemplate')?.addEventListener('change', (e) => {
@@ -825,16 +825,16 @@ function setupModals() {
 
     // Detail modal
     document.getElementById('detailModalClose')?.addEventListener('click', () => {
-        document.getElementById('detailModal').classList.add('hidden');
+        document.getElementById('detailModal')?.classList.add('hidden');
     });
 
     // Brand modal
     document.getElementById('brandModalClose')?.addEventListener('click', () => {
-        document.getElementById('brandModal').classList.add('hidden');
+        document.getElementById('brandModal')?.classList.add('hidden');
     });
     document.getElementById('brandForm')?.addEventListener('submit', handleBrandSubmit);
     document.getElementById('btnAddBrand')?.addEventListener('click', () => {
-        document.getElementById('brandModal').classList.remove('hidden');
+        document.getElementById('brandModal')?.classList.remove('hidden');
     });
 
     // Create content button

@@ -63,7 +63,7 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser').textContent = user.name;
+    document.getElementById('currentUser')?.textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     // v20.8.0: Embedded mode — read-only (no edit/delete/add)
@@ -77,7 +77,7 @@ async function initPage() {
     const addBtn = document.getElementById('addProductBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location = '/';
@@ -86,9 +86,9 @@ async function initPage() {
     renderCategoryTabs();
     await loadProducts();
 
-    document.getElementById('addProductBtn').addEventListener('click', () => openProductForm());
-    document.getElementById('saveProductBtn').addEventListener('click', saveProduct);
-    document.getElementById('cancelProductBtn').addEventListener('click', closeProductForm);
+    document.getElementById('addProductBtn')?.addEventListener('click', () => openProductForm());
+    document.getElementById('saveProductBtn')?.addEventListener('click', saveProduct);
+    document.getElementById('cancelProductBtn')?.addEventListener('click', closeProductForm);
 }
 
 // ==========================================
@@ -195,66 +195,66 @@ function openProductForm(productId = null) {
     if (productId) {
         const p = allProducts.find(x => x.id === productId);
         if (!p) return;
-        document.getElementById('pf-id').value = p.id;
-        document.getElementById('pf-code').value = p.code || '';
-        document.getElementById('pf-name').value = p.name || '';
-        document.getElementById('pf-label').value = p.label || '';
-        document.getElementById('pf-icon').value = p.icon || '';
-        document.getElementById('pf-category').value = p.category || 'quest';
-        document.getElementById('pf-duration').value = p.duration || 0;
-        document.getElementById('pf-price').value = p.price || 0;
-        document.getElementById('pf-hosts').value = p.hosts || 1;
-        document.getElementById('pf-age').value = p.ageRange || '';
-        document.getElementById('pf-kids').value = p.kidsCapacity || '';
-        document.getElementById('pf-description').value = p.description || '';
-        document.getElementById('pf-perchild').checked = !!p.isPerChild;
-        document.getElementById('pf-filler').checked = !!p.hasFiller;
-        document.getElementById('pf-active').checked = p.isActive !== false;
-        document.getElementById('pf-sort').value = p.sortOrder || 0;
+        document.getElementById('pf-id')?.value = p.id;
+        document.getElementById('pf-code')?.value = p.code || '';
+        document.getElementById('pf-name')?.value = p.name || '';
+        document.getElementById('pf-label')?.value = p.label || '';
+        document.getElementById('pf-icon')?.value = p.icon || '';
+        document.getElementById('pf-category')?.value = p.category || 'quest';
+        document.getElementById('pf-duration')?.value = p.duration || 0;
+        document.getElementById('pf-price')?.value = p.price || 0;
+        document.getElementById('pf-hosts')?.value = p.hosts || 1;
+        document.getElementById('pf-age')?.value = p.ageRange || '';
+        document.getElementById('pf-kids')?.value = p.kidsCapacity || '';
+        document.getElementById('pf-description')?.value = p.description || '';
+        document.getElementById('pf-perchild')?.checked = !!p.isPerChild;
+        document.getElementById('pf-filler')?.checked = !!p.hasFiller;
+        document.getElementById('pf-active')?.checked = p.isActive !== false;
+        document.getElementById('pf-sort')?.value = p.sortOrder || 0;
     } else {
-        document.getElementById('pf-id').value = '';
-        document.getElementById('pf-code').value = '';
-        document.getElementById('pf-name').value = '';
-        document.getElementById('pf-label').value = '';
-        document.getElementById('pf-icon').value = '';
-        document.getElementById('pf-category').value = currentCategory !== 'all' ? currentCategory : 'quest';
-        document.getElementById('pf-duration').value = 60;
-        document.getElementById('pf-price').value = 0;
-        document.getElementById('pf-hosts').value = 1;
-        document.getElementById('pf-age').value = '';
-        document.getElementById('pf-kids').value = '';
-        document.getElementById('pf-description').value = '';
-        document.getElementById('pf-perchild').checked = false;
-        document.getElementById('pf-filler').checked = false;
-        document.getElementById('pf-active').checked = true;
-        document.getElementById('pf-sort').value = 0;
+        document.getElementById('pf-id')?.value = '';
+        document.getElementById('pf-code')?.value = '';
+        document.getElementById('pf-name')?.value = '';
+        document.getElementById('pf-label')?.value = '';
+        document.getElementById('pf-icon')?.value = '';
+        document.getElementById('pf-category')?.value = currentCategory !== 'all' ? currentCategory : 'quest';
+        document.getElementById('pf-duration')?.value = 60;
+        document.getElementById('pf-price')?.value = 0;
+        document.getElementById('pf-hosts')?.value = 1;
+        document.getElementById('pf-age')?.value = '';
+        document.getElementById('pf-kids')?.value = '';
+        document.getElementById('pf-description')?.value = '';
+        document.getElementById('pf-perchild')?.checked = false;
+        document.getElementById('pf-filler')?.checked = false;
+        document.getElementById('pf-active')?.checked = true;
+        document.getElementById('pf-sort')?.value = 0;
     }
 
     form.scrollIntoView({ behavior: 'smooth' });
 }
 
 function closeProductForm() {
-    document.getElementById('productForm').style.display = 'none';
+    document.getElementById('productForm')?.style.display = 'none';
 }
 
 async function saveProduct() {
-    const id = document.getElementById('pf-id').value;
+    const id = document.getElementById('pf-id')?.value;
     const product = {
-        code: document.getElementById('pf-code').value.trim(),
-        name: document.getElementById('pf-name').value.trim(),
-        label: document.getElementById('pf-label').value.trim(),
-        icon: document.getElementById('pf-icon').value.trim(),
-        category: document.getElementById('pf-category').value,
-        duration: parseInt(document.getElementById('pf-duration').value) || 0,
-        price: parseInt(document.getElementById('pf-price').value) || 0,
-        hosts: parseInt(document.getElementById('pf-hosts').value) || 1,
-        ageRange: document.getElementById('pf-age').value.trim(),
-        kidsCapacity: document.getElementById('pf-kids').value.trim(),
-        description: document.getElementById('pf-description').value.trim(),
-        isPerChild: document.getElementById('pf-perchild').checked,
-        hasFiller: document.getElementById('pf-filler').checked,
-        isActive: document.getElementById('pf-active').checked,
-        sortOrder: parseInt(document.getElementById('pf-sort').value) || 0
+        code: document.getElementById('pf-code')?.value.trim(),
+        name: document.getElementById('pf-name')?.value.trim(),
+        label: document.getElementById('pf-label')?.value.trim(),
+        icon: document.getElementById('pf-icon')?.value.trim(),
+        category: document.getElementById('pf-category')?.value,
+        duration: parseInt(document.getElementById('pf-duration')?.value) || 0,
+        price: parseInt(document.getElementById('pf-price')?.value) || 0,
+        hosts: parseInt(document.getElementById('pf-hosts')?.value) || 1,
+        ageRange: document.getElementById('pf-age')?.value.trim(),
+        kidsCapacity: document.getElementById('pf-kids')?.value.trim(),
+        description: document.getElementById('pf-description')?.value.trim(),
+        isPerChild: document.getElementById('pf-perchild')?.checked,
+        hasFiller: document.getElementById('pf-filler')?.checked,
+        isActive: document.getElementById('pf-active')?.checked,
+        sortOrder: parseInt(document.getElementById('pf-sort')?.value) || 0
     };
 
     if (!product.code || !product.name) {

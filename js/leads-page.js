@@ -533,17 +533,17 @@ async function showCustomerCardModal(leadId) {
     overlay.dataset.leadId = leadId;
 
     // Pre-fill from lead data
-    document.getElementById('ccName').value = lead?.client_name || '';
-    document.getElementById('ccPhone').value = lead?.phone || '';
-    document.getElementById('ccEmail').value = '';
-    document.getElementById('ccChannel').value = lead?.source_channel || lead?.source || '';
-    document.getElementById('ccEventType').value = lead?.quality_category || '';
-    document.getElementById('ccEventDate').value = lead?.event_date ? lead.event_date.split('T')[0] : '';
-    document.getElementById('ccGuestCount').value = '';
-    document.getElementById('ccChildrenCount').value = lead?.children_count || '';
-    document.getElementById('ccBudget').value = '';
-    document.getElementById('ccHowFound').value = '';
-    document.getElementById('ccNotes').value = '';
+    document.getElementById('ccName')?.value = lead?.client_name || '';
+    document.getElementById('ccPhone')?.value = lead?.phone || '';
+    document.getElementById('ccEmail')?.value = '';
+    document.getElementById('ccChannel')?.value = lead?.source_channel || lead?.source || '';
+    document.getElementById('ccEventType')?.value = lead?.quality_category || '';
+    document.getElementById('ccEventDate')?.value = lead?.event_date ? lead.event_date.split('T')[0] : '';
+    document.getElementById('ccGuestCount')?.value = '';
+    document.getElementById('ccChildrenCount')?.value = lead?.children_count || '';
+    document.getElementById('ccBudget')?.value = '';
+    document.getElementById('ccHowFound')?.value = '';
+    document.getElementById('ccNotes')?.value = '';
 
     // Load existing card if any
     try {
@@ -551,15 +551,15 @@ async function showCustomerCardModal(leadId) {
         const data = await res.json();
         if (data.card) {
             const c = data.card;
-            if (c.email) document.getElementById('ccEmail').value = c.email;
-            if (c.channel) document.getElementById('ccChannel').value = c.channel;
-            if (c.event_type) document.getElementById('ccEventType').value = c.event_type;
-            if (c.event_date) document.getElementById('ccEventDate').value = c.event_date.split('T')[0];
-            if (c.guest_count) document.getElementById('ccGuestCount').value = c.guest_count;
-            if (c.children_count) document.getElementById('ccChildrenCount').value = c.children_count;
-            if (c.budget_approx) document.getElementById('ccBudget').value = c.budget_approx;
-            if (c.how_found) document.getElementById('ccHowFound').value = c.how_found;
-            if (c.notes) document.getElementById('ccNotes').value = c.notes;
+            if (c.email) document.getElementById('ccEmail')?.value = c.email;
+            if (c.channel) document.getElementById('ccChannel')?.value = c.channel;
+            if (c.event_type) document.getElementById('ccEventType')?.value = c.event_type;
+            if (c.event_date) document.getElementById('ccEventDate')?.value = c.event_date.split('T')[0];
+            if (c.guest_count) document.getElementById('ccGuestCount')?.value = c.guest_count;
+            if (c.children_count) document.getElementById('ccChildrenCount')?.value = c.children_count;
+            if (c.budget_approx) document.getElementById('ccBudget')?.value = c.budget_approx;
+            if (c.how_found) document.getElementById('ccHowFound')?.value = c.how_found;
+            if (c.notes) document.getElementById('ccNotes')?.value = c.notes;
         }
     } catch(e) { /* ok */ }
 
@@ -571,20 +571,20 @@ async function saveCustomerCard() {
     const leadId = parseInt(overlay.dataset.leadId);
 
     const body = {
-        event_type: document.getElementById('ccEventType').value || null,
-        event_date: document.getElementById('ccEventDate').value || null,
-        guest_count: parseInt(document.getElementById('ccGuestCount').value) || null,
-        children_count: parseInt(document.getElementById('ccChildrenCount').value) || null,
-        budget_approx: parseInt(document.getElementById('ccBudget').value) || null,
-        how_found: document.getElementById('ccHowFound').value || null,
-        email: document.getElementById('ccEmail').value || null,
-        channel: document.getElementById('ccChannel').value || null,
-        notes: document.getElementById('ccNotes').value || null
+        event_type: document.getElementById('ccEventType')?.value || null,
+        event_date: document.getElementById('ccEventDate')?.value || null,
+        guest_count: parseInt(document.getElementById('ccGuestCount')?.value) || null,
+        children_count: parseInt(document.getElementById('ccChildrenCount')?.value) || null,
+        budget_approx: parseInt(document.getElementById('ccBudget')?.value) || null,
+        how_found: document.getElementById('ccHowFound')?.value || null,
+        email: document.getElementById('ccEmail')?.value || null,
+        channel: document.getElementById('ccChannel')?.value || null,
+        notes: document.getElementById('ccNotes')?.value || null
     };
 
     // Also update lead name/phone if changed
-    const name = document.getElementById('ccName').value.trim();
-    const phone = document.getElementById('ccPhone').value.trim();
+    const name = document.getElementById('ccName')?.value.trim();
+    const phone = document.getElementById('ccPhone')?.value.trim();
     if (name || phone) {
         try {
             const leadBody = {};
@@ -618,16 +618,16 @@ function showLostReasonModal(leadId, stage) {
     if (!overlay) return;
     overlay.dataset.leadId = leadId;
     overlay.dataset.stage = stage;
-    document.getElementById('lostReasonSelect').value = '';
-    document.getElementById('lostReasonNotes').value = '';
+    document.getElementById('lostReasonSelect')?.value = '';
+    document.getElementById('lostReasonNotes')?.value = '';
     overlay.classList.add('active');
 }
 
 async function saveLostReason() {
     const overlay = document.getElementById('lostReasonModal');
     const leadId = parseInt(overlay.dataset.leadId);
-    const reason = document.getElementById('lostReasonSelect').value;
-    const notes = document.getElementById('lostReasonNotes').value;
+    const reason = document.getElementById('lostReasonSelect')?.value;
+    const notes = document.getElementById('lostReasonNotes')?.value;
     overlay.classList.remove('active');
 
     await updateLeadStage(leadId, 'lost', {
@@ -685,18 +685,18 @@ async function loadMailing() {
 function showAddMailingModal() {
     const overlay = document.getElementById('addMailingModal');
     if (!overlay) return;
-    document.getElementById('mailingName').value = '';
-    document.getElementById('mailingPhone').value = '';
-    document.getElementById('mailingEmail').value = '';
-    document.getElementById('mailingChannel').value = '';
-    document.getElementById('mailingNotes').value = '';
+    document.getElementById('mailingName')?.value = '';
+    document.getElementById('mailingPhone')?.value = '';
+    document.getElementById('mailingEmail')?.value = '';
+    document.getElementById('mailingChannel')?.value = '';
+    document.getElementById('mailingNotes')?.value = '';
     overlay.classList.add('active');
 }
 
 async function saveMailingEntry() {
     const overlay = document.getElementById('addMailingModal');
-    const name = document.getElementById('mailingName').value.trim();
-    const phone = document.getElementById('mailingPhone').value.trim();
+    const name = document.getElementById('mailingName')?.value.trim();
+    const phone = document.getElementById('mailingPhone')?.value.trim();
     if (!name && !phone) {
         if (typeof showNotification === 'function') showNotification("Ім'я або телефон обов'язкові", 'error');
         return;
@@ -705,9 +705,9 @@ async function saveMailingEntry() {
         const body = {
             name: name || null,
             phone: phone || null,
-            email: document.getElementById('mailingEmail').value.trim() || null,
-            source_channel: document.getElementById('mailingChannel').value || null,
-            notes: document.getElementById('mailingNotes').value.trim() || null
+            email: document.getElementById('mailingEmail')?.value.trim() || null,
+            source_channel: document.getElementById('mailingChannel')?.value || null,
+            notes: document.getElementById('mailingNotes')?.value.trim() || null
         };
         await apiFetch('/api/leads/mailing', { method: 'POST', body: JSON.stringify(body) });
         overlay.classList.remove('active');
@@ -804,50 +804,50 @@ function setupEvents() {
 }
 
 function openAddModal() {
-    document.getElementById('leadModalTitle').textContent = 'Новий лід';
-    document.getElementById('leadEditId').value = '';
-    document.getElementById('leadName').value = '';
-    document.getElementById('leadPhone').value = '';
-    document.getElementById('leadInstagram').value = '';
-    document.getElementById('leadSource').value = '';
-    document.getElementById('leadEventDate').value = '';
-    document.getElementById('leadChildrenCount').value = '';
-    document.getElementById('leadNotes').value = '';
-    document.getElementById('leadAssignedTo').value = '';
+    document.getElementById('leadModalTitle')?.textContent = 'Новий лід';
+    document.getElementById('leadEditId')?.value = '';
+    document.getElementById('leadName')?.value = '';
+    document.getElementById('leadPhone')?.value = '';
+    document.getElementById('leadInstagram')?.value = '';
+    document.getElementById('leadSource')?.value = '';
+    document.getElementById('leadEventDate')?.value = '';
+    document.getElementById('leadChildrenCount')?.value = '';
+    document.getElementById('leadNotes')?.value = '';
+    document.getElementById('leadAssignedTo')?.value = '';
 
     // Hide pipeline/type fields for new lead
     const stageGroup = document.getElementById('leadStageGroup');
     if (stageGroup) stageGroup.style.display = 'none';
 
     modalInitialState = getModalState();
-    document.getElementById('leadModal').classList.add('active');
+    document.getElementById('leadModal')?.classList.add('active');
 }
 
 function editLead(id) {
     const lead = leadsData.find(l => l.id === id);
     if (!lead) return;
 
-    document.getElementById('leadModalTitle').textContent = 'Редагування ліду';
-    document.getElementById('leadEditId').value = id;
-    document.getElementById('leadName').value = lead.client_name || '';
-    document.getElementById('leadPhone').value = lead.phone || '';
-    document.getElementById('leadInstagram').value = lead.instagram || '';
-    document.getElementById('leadSource').value = lead.source || '';
-    document.getElementById('leadEventDate').value = lead.event_date ? lead.event_date.split('T')[0] : '';
-    document.getElementById('leadChildrenCount').value = lead.children_count || '';
-    document.getElementById('leadNotes').value = lead.notes || '';
-    document.getElementById('leadAssignedTo').value = lead.assigned_to || '';
+    document.getElementById('leadModalTitle')?.textContent = 'Редагування ліду';
+    document.getElementById('leadEditId')?.value = id;
+    document.getElementById('leadName')?.value = lead.client_name || '';
+    document.getElementById('leadPhone')?.value = lead.phone || '';
+    document.getElementById('leadInstagram')?.value = lead.instagram || '';
+    document.getElementById('leadSource')?.value = lead.source || '';
+    document.getElementById('leadEventDate')?.value = lead.event_date ? lead.event_date.split('T')[0] : '';
+    document.getElementById('leadChildrenCount')?.value = lead.children_count || '';
+    document.getElementById('leadNotes')?.value = lead.notes || '';
+    document.getElementById('leadAssignedTo')?.value = lead.assigned_to || '';
 
     // Show pipeline/type fields for existing lead
     const stageGroup = document.getElementById('leadStageGroup');
     if (stageGroup) {
         stageGroup.style.display = '';
-        document.getElementById('leadPipelineStage').value = lead.pipeline_stage || 'new';
-        document.getElementById('leadLeadType').value = lead.lead_type || 'quality';
+        document.getElementById('leadPipelineStage')?.value = lead.pipeline_stage || 'new';
+        document.getElementById('leadLeadType')?.value = lead.lead_type || 'quality';
     }
 
     modalInitialState = getModalState();
-    document.getElementById('leadModal').classList.add('active');
+    document.getElementById('leadModal')?.classList.add('active');
 }
 
 function getModalState() {
@@ -868,23 +868,23 @@ async function closeModal(force = false) {
             if (!await confirmModal('Є незбережені дані. Закрити?', { type: 'warning', okText: 'Закрити' })) return;
         }
     }
-    document.getElementById('leadModal').classList.remove('active');
+    document.getElementById('leadModal')?.classList.remove('active');
 }
 
 async function saveLead() {
-    const editId = document.getElementById('leadEditId').value;
-    const name = document.getElementById('leadName').value.trim();
+    const editId = document.getElementById('leadEditId')?.value;
+    const name = document.getElementById('leadName')?.value.trim();
     if (!name) { if (typeof showNotification === 'function') showNotification("Ім'я обов'язкове", 'error'); return; }
 
     const body = {
         client_name: name,
-        phone: document.getElementById('leadPhone').value.trim() || null,
-        instagram: document.getElementById('leadInstagram').value.trim() || null,
-        source: document.getElementById('leadSource').value || null,
-        event_date: document.getElementById('leadEventDate').value || null,
-        children_count: parseInt(document.getElementById('leadChildrenCount').value) || null,
-        notes: document.getElementById('leadNotes').value.trim() || null,
-        assigned_to: parseInt(document.getElementById('leadAssignedTo').value) || null
+        phone: document.getElementById('leadPhone')?.value.trim() || null,
+        instagram: document.getElementById('leadInstagram')?.value.trim() || null,
+        source: document.getElementById('leadSource')?.value || null,
+        event_date: document.getElementById('leadEventDate')?.value || null,
+        children_count: parseInt(document.getElementById('leadChildrenCount')?.value) || null,
+        notes: document.getElementById('leadNotes')?.value.trim() || null,
+        assigned_to: parseInt(document.getElementById('leadAssignedTo')?.value) || null
     };
 
     // Add pipeline/type if editing

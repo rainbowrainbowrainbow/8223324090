@@ -65,7 +65,7 @@ let editTags = [];
         const data = await res.json();
         const user = data.user || data;
         AppState.currentUser = user;
-        document.getElementById('currentUser').textContent = user.name || user.username;
+        document.getElementById('currentUser')?.textContent = user.name || user.username;
     } catch {
         if (isEmbedded) {
             // In embed mode, still show content — API calls use token from localStorage
@@ -76,7 +76,7 @@ let editTags = [];
         throw new Error('Unauthorized');
     }
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location.href = '/';
@@ -165,10 +165,10 @@ async function loadDesigns(append = false) {
     params.set('limit', PAGE_SIZE);
     params.set('offset', append ? currentOffset : 0);
 
-    const search = document.getElementById('searchInput').value.trim();
+    const search = document.getElementById('searchInput')?.value.trim();
     if (search) params.set('search', search);
 
-    const col = document.getElementById('collectionFilter').value;
+    const col = document.getElementById('collectionFilter')?.value;
     if (col) params.set('collection', col);
 
     if (activePinFilter) params.set('pinned', 'true');
@@ -188,15 +188,15 @@ async function loadDesigns(append = false) {
     currentOffset = designs.length;
 
     renderDesignGrid();
-    document.getElementById('countDesigns').textContent = totalDesigns;
-    document.getElementById('loadMore').style.display = currentOffset < totalDesigns ? '' : 'none';
+    document.getElementById('countDesigns')?.textContent = totalDesigns;
+    document.getElementById('loadMore')?.style.display = currentOffset < totalDesigns ? '' : 'none';
 }
 
 async function loadCollections() {
     const res = await apiFetch(`${API}/collections`);
     if (!res) return;
     collections = await res.json();
-    document.getElementById('countCollections').textContent = collections.length;
+    document.getElementById('countCollections')?.textContent = collections.length;
 }
 
 async function loadTags() {
@@ -287,7 +287,7 @@ function setupDropZone() {
     });
 
     // Load more button
-    document.getElementById('loadMoreBtn').addEventListener('click', () => loadDesigns(true));
+    document.getElementById('loadMoreBtn')?.addEventListener('click', () => loadDesigns(true));
 }
 
 async function uploadFiles(files) {
@@ -385,16 +385,16 @@ async function sendToTelegram(id) {
 // ==========================================
 function setupFilters() {
     let searchTimer;
-    document.getElementById('searchInput').addEventListener('input', () => {
+    document.getElementById('searchInput')?.addEventListener('input', () => {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => loadDesigns(), 300);
     });
 
-    document.getElementById('collectionFilter').addEventListener('change', () => loadDesigns());
+    document.getElementById('collectionFilter')?.addEventListener('change', () => loadDesigns());
 
-    document.getElementById('pinFilter').addEventListener('click', () => {
+    document.getElementById('pinFilter')?.addEventListener('click', () => {
         activePinFilter = !activePinFilter;
-        document.getElementById('pinFilter').classList.toggle('active', activePinFilter);
+        document.getElementById('pinFilter')?.classList.toggle('active', activePinFilter);
         loadDesigns();
     });
 }
@@ -453,7 +453,7 @@ function openLightbox(id) {
     const img = document.getElementById('lightboxImg');
     img.onerror = () => { img.src = '/images/favicon-512.png'; };
     img.src = `/uploads/designs/${d.filename}`;
-    document.getElementById('lightboxInfo').textContent = d.title || d.originalName;
+    document.getElementById('lightboxInfo')?.textContent = d.title || d.originalName;
     lb.classList.add('visible');
 }
 window.openLightbox = openLightbox;
@@ -462,11 +462,11 @@ window.openLightbox = openLightbox;
 // EDIT MODAL
 // ==========================================
 function setupEditModal() {
-    document.getElementById('editCancel').addEventListener('click', closeEditModal);
-    document.getElementById('editOverlay').addEventListener('click', (e) => {
+    document.getElementById('editCancel')?.addEventListener('click', closeEditModal);
+    document.getElementById('editOverlay')?.addEventListener('click', (e) => {
         if (e.target.id === 'editOverlay') closeEditModal();
     });
-    document.getElementById('editSave').addEventListener('click', saveEdit);
+    document.getElementById('editSave')?.addEventListener('click', saveEdit);
 
     // Tag input
     const tagInput = document.getElementById('editTagInput');
@@ -496,7 +496,7 @@ function setupEditModal() {
         }
     });
 
-    document.getElementById('editTagContainer').addEventListener('click', () => tagInput.focus());
+    document.getElementById('editTagContainer')?.addEventListener('click', () => tagInput.focus());
 }
 
 function addEditTag(val) {
@@ -530,13 +530,13 @@ function renderEditTags() {
 function showTagAutocomplete(matches) {
     const ac = document.getElementById('tagAutocomplete');
     ac.innerHTML = matches.map(m =>
-        `<div class="tag-autocomplete-item" onmousedown="addEditTag('${esc(m.tag)}'); document.getElementById('editTagInput').value=''; hideTagAutocomplete();">#${esc(m.tag)} (${m.count})</div>`
+        `<div class="tag-autocomplete-item" onmousedown="addEditTag('${esc(m.tag)}'); document.getElementById('editTagInput')?.value=''; hideTagAutocomplete();">#${esc(m.tag)} (${m.count})</div>`
     ).join('');
     ac.classList.add('visible');
 }
 
 function hideTagAutocomplete() {
-    document.getElementById('tagAutocomplete').classList.remove('visible');
+    document.getElementById('tagAutocomplete')?.classList.remove('visible');
 }
 window.hideTagAutocomplete = hideTagAutocomplete;
 window.addEditTag = addEditTag;
@@ -545,28 +545,28 @@ function openEditModal(id) {
     const d = designs.find(x => x.id === id);
     if (!d) return;
     editingDesignId = id;
-    document.getElementById('editTitle').value = d.title || '';
-    document.getElementById('editDescription').value = d.description || '';
-    document.getElementById('editCollection').value = d.collectionId || '';
-    document.getElementById('editPublishDate').value = d.publishDate || '';
+    document.getElementById('editTitle')?.value = d.title || '';
+    document.getElementById('editDescription')?.value = d.description || '';
+    document.getElementById('editCollection')?.value = d.collectionId || '';
+    document.getElementById('editPublishDate')?.value = d.publishDate || '';
     editTags = [...(d.tags || [])];
     renderEditTags();
-    document.getElementById('editOverlay').classList.add('visible');
+    document.getElementById('editOverlay')?.classList.add('visible');
 }
 window.openEditModal = openEditModal;
 
 function closeEditModal() {
-    document.getElementById('editOverlay').classList.remove('visible');
+    document.getElementById('editOverlay')?.classList.remove('visible');
     editingDesignId = null;
 }
 
 async function saveEdit() {
     if (!editingDesignId) return;
     const body = {
-        title: document.getElementById('editTitle').value.trim(),
-        description: document.getElementById('editDescription').value.trim(),
-        collection_id: document.getElementById('editCollection').value || null,
-        publish_date: document.getElementById('editPublishDate').value || null,
+        title: document.getElementById('editTitle')?.value.trim(),
+        description: document.getElementById('editDescription')?.value.trim(),
+        collection_id: document.getElementById('editCollection')?.value || null,
+        publish_date: document.getElementById('editPublishDate')?.value || null,
         tags: editTags
     };
 
@@ -598,9 +598,9 @@ async function generateDesignImage() {
     const title = document.getElementById('editTitle')?.value || '';
     const fullPrompt = `Festive event poster for Ukrainian children's park. ${prompt}. Title: "${title}". Colorful, joyful, bright cartoon style.`;
 
-    document.getElementById('genProgress').style.display = 'block';
-    document.getElementById('genImageBtn').disabled = true;
-    document.getElementById('genPreview').style.display = 'none';
+    document.getElementById('genProgress')?.style.display = 'block';
+    document.getElementById('genImageBtn')?.disabled = true;
+    document.getElementById('genPreview')?.style.display = 'none';
 
     try {
         const res = await apiFetch(`${location.origin}/api/kleshnya/generate-image`, {
@@ -609,8 +609,8 @@ async function generateDesignImage() {
         });
         if (!res || !res.ok) {
             showNotification('Помилка генерації', 'error');
-            document.getElementById('genProgress').style.display = 'none';
-            document.getElementById('genImageBtn').disabled = false;
+            document.getElementById('genProgress')?.style.display = 'none';
+            document.getElementById('genImageBtn')?.disabled = false;
             return;
         }
         const data = await res.json();
@@ -619,13 +619,13 @@ async function generateDesignImage() {
             pollImageStatus(data.taskId);
         } else {
             showNotification('Не вдалося створити задачу генерації', 'error');
-            document.getElementById('genProgress').style.display = 'none';
-            document.getElementById('genImageBtn').disabled = false;
+            document.getElementById('genProgress')?.style.display = 'none';
+            document.getElementById('genImageBtn')?.disabled = false;
         }
     } catch (e) {
         showNotification('Помилка: ' + e.message, 'error');
-        document.getElementById('genProgress').style.display = 'none';
-        document.getElementById('genImageBtn').disabled = false;
+        document.getElementById('genProgress')?.style.display = 'none';
+        document.getElementById('genImageBtn')?.disabled = false;
     }
 }
 window.generateDesignImage = generateDesignImage;
@@ -633,8 +633,8 @@ window.generateDesignImage = generateDesignImage;
 function pollImageStatus(taskId, attempt) {
     attempt = attempt || 0;
     if (attempt > 30) {
-        document.getElementById('genProgress').textContent = 'Таймаут генерації. Спробуйте знову.';
-        document.getElementById('genImageBtn').disabled = false;
+        document.getElementById('genProgress')?.textContent = 'Таймаут генерації. Спробуйте знову.';
+        document.getElementById('genImageBtn')?.disabled = false;
         return;
     }
     genPollingTimer = setTimeout(async () => {
@@ -644,15 +644,15 @@ function pollImageStatus(taskId, attempt) {
             const data = await res.json();
             if (data.status === 'completed' || data.output?.image_url) {
                 const imgUrl = data.output?.image_url || data.imageUrl || '';
-                document.getElementById('genProgress').style.display = 'none';
-                document.getElementById('genImageBtn').disabled = false;
+                document.getElementById('genProgress')?.style.display = 'none';
+                document.getElementById('genImageBtn')?.disabled = false;
                 if (imgUrl) {
-                    document.getElementById('genPreview').src = imgUrl;
-                    document.getElementById('genPreview').style.display = 'block';
+                    document.getElementById('genPreview')?.src = imgUrl;
+                    document.getElementById('genPreview')?.style.display = 'block';
                 }
                 showNotification('Зображення згенеровано!');
             } else {
-                document.getElementById('genProgress').textContent = `⏳ Генеруємо... (${attempt + 1}/30)`;
+                document.getElementById('genProgress')?.textContent = `⏳ Генеруємо... (${attempt + 1}/30)`;
                 pollImageStatus(taskId, attempt + 1);
             }
         } catch (e) { pollImageStatus(taskId, attempt + 1); }
@@ -663,17 +663,17 @@ function pollImageStatus(taskId, attempt) {
 // COLLECTIONS
 // ==========================================
 function setupCollections() {
-    document.getElementById('addCollectionBtn').addEventListener('click', async () => {
-        const name = document.getElementById('newCollectionName').value.trim();
+    document.getElementById('addCollectionBtn')?.addEventListener('click', async () => {
+        const name = document.getElementById('newCollectionName')?.value.trim();
         if (!name) return;
-        const color = document.getElementById('newCollectionColor').value;
+        const color = document.getElementById('newCollectionColor')?.value;
         try {
             const res = await apiFetch(`${API}/collections`, {
                 method: 'POST',
                 body: JSON.stringify({ name, color })
             });
             if (res && res.ok) {
-                document.getElementById('newCollectionName').value = '';
+                document.getElementById('newCollectionName')?.value = '';
                 await loadCollections();
                 renderCollections();
                 updateCollectionFilters();
@@ -702,15 +702,15 @@ function renderCollections() {
 
 function filterCollection(id) {
     // Switch to gallery tab filtered by collection
-    document.getElementById('collectionFilter').value = id;
+    document.getElementById('collectionFilter')?.value = id;
     document.querySelectorAll('.design-tab').forEach(t => t.classList.remove('active'));
     const galleryTab = document.querySelector('[data-tab="gallery"]');
     if (galleryTab) galleryTab.classList.add('active');
     activeTab = 'gallery';
-    document.getElementById('tabGallery').style.display = '';
-    document.getElementById('tabCollections').style.display = 'none';
-    document.getElementById('tabPrice').style.display = 'none';
-    document.getElementById('tabCalendar').style.display = 'none';
+    document.getElementById('tabGallery')?.style.display = '';
+    document.getElementById('tabCollections')?.style.display = 'none';
+    document.getElementById('tabPrice')?.style.display = 'none';
+    document.getElementById('tabCalendar')?.style.display = 'none';
     loadDesigns();
 }
 window.filterCollection = filterCollection;
@@ -796,15 +796,15 @@ async function loadPriceList() {
 // CALENDAR
 // ==========================================
 function setupCalendarNav() {
-    document.getElementById('calPrev').addEventListener('click', () => {
+    document.getElementById('calPrev')?.addEventListener('click', () => {
         calendarDate.setMonth(calendarDate.getMonth() - 1);
         renderCalendar();
     });
-    document.getElementById('calNext').addEventListener('click', () => {
+    document.getElementById('calNext')?.addEventListener('click', () => {
         calendarDate.setMonth(calendarDate.getMonth() + 1);
         renderCalendar();
     });
-    document.getElementById('calToday').addEventListener('click', () => {
+    document.getElementById('calToday')?.addEventListener('click', () => {
         calendarDate = new Date();
         renderCalendar();
     });
@@ -817,7 +817,7 @@ async function renderCalendar() {
 
     const monthNames = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень',
                         'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
-    document.getElementById('calTitle').textContent = `${monthNames[month]} ${year}`;
+    document.getElementById('calTitle')?.textContent = `${monthNames[month]} ${year}`;
 
     // Load calendar data
     const res = await apiFetch(`${API}/calendar?month=${monthStr}`);
@@ -1077,8 +1077,8 @@ function renderCatalogViewer() {
 function renderCurrentPage() {
     const pkg = catalogPackages[currentCatalogPage];
     if (!pkg) return;
-    document.getElementById('catalogPages').innerHTML = buildCatalogPageHtml(pkg);
-    document.getElementById('catalogPageIndicator').textContent =
+    document.getElementById('catalogPages')?.innerHTML = buildCatalogPageHtml(pkg);
+    document.getElementById('catalogPageIndicator')?.textContent =
         `${currentCatalogPage + 1} / ${catalogPackages.length}`;
 }
 

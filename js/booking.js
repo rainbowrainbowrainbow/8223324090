@@ -26,32 +26,32 @@ async function openBookingPanel(time, lineId) {
         const d = AppState.selectedDate;
         dateDisplay.textContent = `${formatDate(d)} (${DAYS[d.getDay()]})`;
     }
-    document.getElementById('selectedTimeDisplay').textContent = time;
-    document.getElementById('selectedLineDisplay').textContent = line ? line.name : '-';
-    document.getElementById('bookingTime').value = time;
-    document.getElementById('bookingLine').value = lineId;
+    document.getElementById('selectedTimeDisplay')?.textContent = time;
+    document.getElementById('selectedLineDisplay')?.textContent = line ? line.name : '-';
+    document.getElementById('bookingTime')?.value = time;
+    document.getElementById('bookingLine')?.value = lineId;
 
     // Скинути форму
-    document.getElementById('roomSelect').value = '';
-    document.getElementById('selectedProgram').value = '';
-    document.getElementById('bookingNotes').value = '';
+    document.getElementById('roomSelect')?.value = '';
+    document.getElementById('selectedProgram')?.value = '';
+    document.getElementById('bookingNotes')?.value = '';
     const groupInput = document.getElementById('bookingGroupName');
     if (groupInput) groupInput.value = '';
     document.querySelectorAll('.program-icon').forEach(i => i.classList.remove('selected'));
     // v5.49: Reset program search
     const programSearch = document.getElementById('programSearch');
     if (programSearch) { programSearch.value = ''; filterPrograms(); }
-    document.getElementById('programDetails').classList.add('hidden');
-    document.getElementById('hostsWarning').classList.add('hidden');
-    document.getElementById('customProgramSection').classList.add('hidden');
-    document.getElementById('secondAnimatorSection').classList.add('hidden');
-    document.getElementById('pinataFillerSection').classList.add('hidden');
+    document.getElementById('programDetails')?.classList.add('hidden');
+    document.getElementById('hostsWarning')?.classList.add('hidden');
+    document.getElementById('customProgramSection')?.classList.add('hidden');
+    document.getElementById('secondAnimatorSection')?.classList.add('hidden');
+    document.getElementById('pinataFillerSection')?.classList.add('hidden');
 
     // Скинути toggle додаткового ведучого
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle) {
         extraHostToggle.checked = false;
-        document.getElementById('extraHostAnimatorSection').classList.add('hidden');
+        document.getElementById('extraHostAnimatorSection')?.classList.add('hidden');
     }
 
     // Скинути костюм
@@ -80,7 +80,7 @@ async function openBookingPanel(time, lineId) {
     if (customerToggle) customerToggle.checked = false;
     document.getElementById('customerDataSection')?.classList.add('hidden');
 
-    document.getElementById('bookingPanel').classList.remove('hidden');
+    document.getElementById('bookingPanel')?.classList.remove('hidden');
     document.querySelector('.main-content').classList.add('panel-open');
     // v5.33: Lock body scroll on mobile when panel is open
     document.body.classList.add('panel-open');
@@ -107,14 +107,14 @@ function clearCustomerFields() {
 }
 
 function selectCustomerFromSearch(customer) {
-    document.getElementById('selectedCustomerId').value = customer.id;
-    document.getElementById('customerName').value = customer.name || '';
-    document.getElementById('customerPhone').value = customer.phone || '';
-    document.getElementById('customerInstagram').value = customer.instagram || '';
-    document.getElementById('customerChildName').value = customer.childName || '';
-    document.getElementById('customerChildBirthday').value = customer.childBirthday ? customer.childBirthday.split('T')[0] : '';
-    document.getElementById('customerSearch').value = customer.name || '';
-    document.getElementById('customerSearchResults').classList.add('hidden');
+    document.getElementById('selectedCustomerId')?.value = customer.id;
+    document.getElementById('customerName')?.value = customer.name || '';
+    document.getElementById('customerPhone')?.value = customer.phone || '';
+    document.getElementById('customerInstagram')?.value = customer.instagram || '';
+    document.getElementById('customerChildName')?.value = customer.childName || '';
+    document.getElementById('customerChildBirthday')?.value = customer.childBirthday ? customer.childBirthday.split('T')[0] : '';
+    document.getElementById('customerSearch')?.value = customer.name || '';
+    document.getElementById('customerSearchResults')?.classList.add('hidden');
 
     // Show visit badge
     if (customer.totalBookings > 0) {
@@ -217,7 +217,7 @@ async function showFreeRooms() {
 
         if (data.free && data.free.length > 0) {
             panel.innerHTML = data.free.map(room =>
-                `<span class="free-room-chip" onclick="document.getElementById('roomSelect').value='${escapeHtml(room)}';document.getElementById('freeRoomsPanel').classList.add('hidden')">${escapeHtml(room)}</span>`
+                `<span class="free-room-chip" onclick="document.getElementById('roomSelect')?.value='${escapeHtml(room)}';document.getElementById('freeRoomsPanel')?.classList.add('hidden')">${escapeHtml(room)}</span>`
             ).join('') +
             (data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті: ${data.occupied.map(r => escapeHtml(r)).join(', ')}</div>` : '');
         } else {
@@ -274,7 +274,7 @@ async function openBookingChat(bookingId) {
 }
 
 function closeBookingPanel() {
-    document.getElementById('bookingPanel').classList.add('hidden');
+    document.getElementById('bookingPanel')?.classList.add('hidden');
     document.querySelector('.main-content').classList.remove('panel-open');
     // v5.33: Unlock body scroll
     document.body.classList.remove('panel-open');
@@ -379,41 +379,41 @@ function selectProgram(programId) {
     document.querySelectorAll('.program-icon').forEach(i => i.classList.remove('selected'));
     const selectedEl = document.querySelector(`[data-program-id="${programId}"]`);
     if (selectedEl) selectedEl.classList.add('selected');
-    document.getElementById('selectedProgram').value = programId;
+    document.getElementById('selectedProgram')?.value = programId;
 
     const priceText = program.perChild ? `${formatPrice(program.price)}/дит` : formatPrice(program.price);
-    document.getElementById('detailDuration').textContent = program.duration > 0 ? `${program.duration} хв` : '—';
-    document.getElementById('detailHosts').textContent = program.hosts;
-    document.getElementById('detailPrice').textContent = priceText;
+    document.getElementById('detailDuration')?.textContent = program.duration > 0 ? `${program.duration} хв` : '—';
+    document.getElementById('detailHosts')?.textContent = program.hosts;
+    document.getElementById('detailPrice')?.textContent = priceText;
 
     const ageEl = document.getElementById('detailAge');
     const kidsEl = document.getElementById('detailKids');
     if (ageEl) ageEl.textContent = program.age || '—';
     if (kidsEl) kidsEl.textContent = program.kids || '—';
 
-    document.getElementById('programDetails').classList.remove('hidden');
+    document.getElementById('programDetails')?.classList.remove('hidden');
 
     if (program.isCustom) {
-        document.getElementById('customProgramSection').classList.remove('hidden');
+        document.getElementById('customProgramSection')?.classList.remove('hidden');
     } else {
-        document.getElementById('customProgramSection').classList.add('hidden');
+        document.getElementById('customProgramSection')?.classList.add('hidden');
     }
 
     if (program.hasFiller) {
-        document.getElementById('pinataFillerSection').classList.remove('hidden');
-        document.getElementById('pinataFillerSelect').value = '';
+        document.getElementById('pinataFillerSection')?.classList.remove('hidden');
+        document.getElementById('pinataFillerSelect')?.value = '';
         _loadPinataStockBadge();
     } else {
-        document.getElementById('pinataFillerSection').classList.add('hidden');
+        document.getElementById('pinataFillerSection')?.classList.add('hidden');
     }
 
     if (program.hosts > 1) {
-        document.getElementById('hostsWarning').classList.remove('hidden');
-        document.getElementById('secondAnimatorSection').classList.remove('hidden');
+        document.getElementById('hostsWarning')?.classList.remove('hidden');
+        document.getElementById('secondAnimatorSection')?.classList.remove('hidden');
         populateSecondAnimatorSelect();
     } else {
-        document.getElementById('hostsWarning').classList.add('hidden');
-        document.getElementById('secondAnimatorSection').classList.add('hidden');
+        document.getElementById('hostsWarning')?.classList.add('hidden');
+        document.getElementById('secondAnimatorSection')?.classList.add('hidden');
     }
 
     // v20.9.14: Banquet fields visibility
@@ -463,7 +463,7 @@ function selectProgram(programId) {
                 kidsInput.oninput = () => {
                     const count = parseInt(kidsInput.value) || 0;
                     const total = count * program.price;
-                    document.getElementById('detailPrice').textContent = count > 0
+                    document.getElementById('detailPrice')?.textContent = count > 0
                         ? `${formatPrice(program.price)} x ${count} = ${formatPrice(total)}`
                         : `${formatPrice(program.price)}/дит`;
                 };
@@ -521,7 +521,7 @@ function showAgeRecommendations() {
     const products = typeof getProductsSync === 'function' ? getProductsSync() : [];
     const matching = products.filter(p => recs.some(r => (p.label || p.name || '').toLowerCase().includes(r.toLowerCase())));
 
-    document.getElementById('ageRecoText').textContent = `Вік: ${age} р. → Рекомендовані:`;
+    document.getElementById('ageRecoText')?.textContent = `Вік: ${age} р. → Рекомендовані:`;
     const container = document.getElementById('ageRecoPrograms');
     container.innerHTML = matching.length
         ? matching.map(p => `<button type="button" class="age-reco-btn" onclick="selectProgram(${typeof p.id === 'number' ? p.id : "'" + p.id + "'"})">
@@ -590,7 +590,7 @@ async function populateAnimatorSelectById(selectId, placeholder) {
     const select = document.getElementById(selectId);
     if (!select) return;
     const lines = await getLinesForDate(AppState.selectedDate);
-    const currentLineId = document.getElementById('bookingLine').value;
+    const currentLineId = document.getElementById('bookingLine')?.value;
 
     select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
 
@@ -642,8 +642,8 @@ async function resolveSecondAnimatorSelect(storedName, bookingId) {
 }
 
 function updateCustomDuration() {
-    const duration = parseInt(document.getElementById('customDuration').value) || 30;
-    document.getElementById('detailDuration').textContent = `${duration} хв`;
+    const duration = parseInt(document.getElementById('customDuration')?.value) || 30;
+    document.getElementById('detailDuration')?.textContent = `${duration} хв`;
 }
 
 // ==========================================
@@ -651,29 +651,29 @@ function updateCustomDuration() {
 // ==========================================
 
 function getBookingFormData() {
-    const programId = document.getElementById('selectedProgram').value;
-    const room = document.getElementById('roomSelect').value;
+    const programId = document.getElementById('selectedProgram')?.value;
+    const room = document.getElementById('roomSelect')?.value;
     const program = programId ? getProductsSync().find(p => p.id === programId) : null;
-    const time = document.getElementById('bookingTime').value;
-    const lineId = document.getElementById('bookingLine').value;
+    const time = document.getElementById('bookingTime')?.value;
+    const lineId = document.getElementById('bookingLine')?.value;
 
     let duration = program ? program.duration : 0;
     let label = program ? program.label : '';
 
     if (program && program.isCustom) {
-        duration = parseInt(document.getElementById('customDuration').value) || 30;
-        const customName = document.getElementById('customName').value || 'Інше';
+        duration = parseInt(document.getElementById('customDuration')?.value) || 30;
+        const customName = document.getElementById('customName')?.value || 'Інше';
         label = `${customName}(${duration})`;
     }
 
     let pinataFiller = '';
     if (program && program.hasFiller) {
-        pinataFiller = document.getElementById('pinataFillerSelect').value;
+        pinataFiller = document.getElementById('pinataFillerSelect')?.value;
         if (pinataFiller) label = `Пін+${pinataFiller}`;
     }
 
     const secondAnimator = program && program.hosts > 1
-        ? document.getElementById('secondAnimatorSelect').value : null;
+        ? document.getElementById('secondAnimatorSelect')?.value : null;
 
     return { programId, room, program, time, lineId, duration, label, pinataFiller, secondAnimator };
 }
@@ -732,7 +732,7 @@ async function checkDuplicateProgram(programId, program, time, duration, exclude
 }
 
 function buildBookingObject(formData, program) {
-    const costume = document.getElementById('costumeSelect').value;
+    const costume = document.getElementById('costumeSelect')?.value;
     const statusEl = document.querySelector('input[name="bookingStatus"]:checked');
     const status = statusEl ? statusEl.value : 'confirmed';
     const kidsCountInput = document.getElementById('kidsCountInput');
@@ -746,7 +746,7 @@ function buildBookingObject(formData, program) {
         programId: formData.programId,
         programCode: program.code,
         label: formData.label,
-        programName: program.isCustom ? (document.getElementById('customName').value || 'Інше') : program.name,
+        programName: program.isCustom ? (document.getElementById('customName')?.value || 'Інше') : program.name,
         category: program.category,
         duration: formData.duration,
         price: finalPrice,
@@ -755,7 +755,7 @@ function buildBookingObject(formData, program) {
         pinataFiller: formData.pinataFiller,
         costume: costume,
         room: formData.room,
-        notes: document.getElementById('bookingNotes').value,
+        notes: document.getElementById('bookingNotes')?.value,
         createdBy: AppState.currentUser ? AppState.currentUser.username : '',
         createdAt: new Date().toISOString(),
         status: status,
@@ -852,7 +852,7 @@ async function buildLinkedBookings(booking, program) {
     // Додатковий ведучий (700 ₴/год)
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle && extraHostToggle.checked) {
-        const extraHostAnimator = document.getElementById('extraHostAnimatorSelect').value;
+        const extraHostAnimator = document.getElementById('extraHostAnimatorSelect')?.value;
         if (extraHostAnimator) {
             const extraLine = lines.find(l => l.name === extraHostAnimator);
             if (extraLine) {
@@ -1253,7 +1253,7 @@ async function showBookingDetails(bookingId) {
     const categoryIcon = getCategoryIcon(booking.category);
     const uniqueCode = booking.id ? String(booking.id).slice(-4).toUpperCase() : '----';
 
-    document.getElementById('bookingDetails').innerHTML = `
+    document.getElementById('bookingDetails')?.innerHTML = `
         <div class="booking-detail-header booking-detail-header--unique" style="background:${headerGradient};color:#fff;padding:16px 20px;border-radius:12px 12px 0 0;margin:-20px -20px 16px -20px;">
             <div style="display:flex;align-items:center;gap:10px;">
                 <span style="font-size:28px;">${categoryIcon}</span>
@@ -1310,7 +1310,7 @@ async function showBookingDetails(bookingId) {
         ${editControls}
     `;
 
-    document.getElementById('bookingModal').classList.remove('hidden');
+    document.getElementById('bookingModal')?.classList.remove('hidden');
 
     // v24.3.1: Copy buttons on detail rows
     document.querySelectorAll('.detail-copy-btn').forEach(btn => {
@@ -1432,9 +1432,9 @@ async function editBooking(bookingId) {
     if (editBtn) editBtn.textContent = 'Зберегти зміни';
 
     // Заповнити форму
-    document.getElementById('roomSelect').value = booking.room || '';
-    document.getElementById('costumeSelect').value = booking.costume || '';
-    document.getElementById('bookingNotes').value = booking.notes || '';
+    document.getElementById('roomSelect')?.value = booking.room || '';
+    document.getElementById('costumeSelect')?.value = booking.costume || '';
+    document.getElementById('bookingNotes')?.value = booking.notes || '';
     const groupEditInput = document.getElementById('bookingGroupName');
     if (groupEditInput) groupEditInput.value = booking.groupName || '';
 
@@ -1453,7 +1453,7 @@ async function editBooking(bookingId) {
 
         // Піньята наповнювач
         if (program && program.hasFiller && booking.pinataFiller) {
-            document.getElementById('pinataFillerSelect').value = booking.pinataFiller;
+            document.getElementById('pinataFillerSelect')?.value = booking.pinataFiller;
         }
 
         // К-кість дітей (МК)
@@ -1482,17 +1482,17 @@ async function editBooking(bookingId) {
             customerToggle.checked = true;
             document.getElementById('customerDataSection')?.classList.remove('hidden');
         }
-        document.getElementById('selectedCustomerId').value = booking.customerId;
+        document.getElementById('selectedCustomerId')?.value = booking.customerId;
         // Load customer data from API
         apiGetCustomer(booking.customerId).then(customer => {
             if (customer) {
-                document.getElementById('customerName').value = customer.name || '';
-                document.getElementById('customerPhone').value = customer.phone || '';
-                document.getElementById('customerInstagram').value = customer.instagram || '';
-                document.getElementById('customerChildName').value = customer.childName || '';
-                document.getElementById('customerChildBirthday').value = customer.childBirthday ? customer.childBirthday.split('T')[0] : '';
-                document.getElementById('customerSource').value = customer.source || '';
-                document.getElementById('customerSearch').value = customer.name || '';
+                document.getElementById('customerName')?.value = customer.name || '';
+                document.getElementById('customerPhone')?.value = customer.phone || '';
+                document.getElementById('customerInstagram')?.value = customer.instagram || '';
+                document.getElementById('customerChildName')?.value = customer.childName || '';
+                document.getElementById('customerChildBirthday')?.value = customer.childBirthday ? customer.childBirthday.split('T')[0] : '';
+                document.getElementById('customerSource')?.value = customer.source || '';
+                document.getElementById('customerSearch')?.value = customer.name || '';
                 if (customer.totalBookings > 0) {
                     const info = document.getElementById('customerInfo');
                     const badge = document.getElementById('customerVisitBadge');
@@ -1538,9 +1538,9 @@ async function duplicateBooking(bookingId) {
     document.querySelector('#bookingForm .btn-submit').textContent = 'Створити копію';
 
     // Pre-fill форму (ідентично editBooking)
-    document.getElementById('roomSelect').value = booking.room || '';
-    document.getElementById('costumeSelect').value = booking.costume || '';
-    document.getElementById('bookingNotes').value = booking.notes || '';
+    document.getElementById('roomSelect')?.value = booking.room || '';
+    document.getElementById('costumeSelect')?.value = booking.costume || '';
+    document.getElementById('bookingNotes')?.value = booking.notes || '';
     const groupInput = document.getElementById('bookingGroupName');
     if (groupInput) groupInput.value = booking.groupName || '';
 
@@ -1556,7 +1556,7 @@ async function duplicateBooking(bookingId) {
         }
 
         if (program && program.hasFiller && booking.pinataFiller) {
-            document.getElementById('pinataFillerSelect').value = booking.pinataFiller;
+            document.getElementById('pinataFillerSelect')?.value = booking.pinataFiller;
         }
 
         if (program && program.perChild && booking.kidsCount) {
@@ -1840,12 +1840,12 @@ async function showRecurringModal(bookingId) {
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
 
-    document.getElementById('recurringBookingId').value = bookingId;
+    document.getElementById('recurringBookingId')?.value = bookingId;
 
     // Set default end date to 3 months from now
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + 3);
-    document.getElementById('recurringEndDate').value = formatDate(endDate);
+    document.getElementById('recurringEndDate')?.value = formatDate(endDate);
 
     // Pre-check current day of week
     const bookingDate = new Date(booking.date);
@@ -1865,7 +1865,7 @@ async function showRecurringModal(bookingId) {
     updateDaysVisibility();
 
     closeAllModals();
-    document.getElementById('recurringModal').classList.remove('hidden');
+    document.getElementById('recurringModal')?.classList.remove('hidden');
 }
 
 // Form submit handler
@@ -1874,13 +1874,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (form) {
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const bookingId = document.getElementById('recurringBookingId').value;
+            const bookingId = document.getElementById('recurringBookingId')?.value;
             const bookings = await getBookingsForDate(AppState.selectedDate);
             const booking = bookings.find(b => b.id === bookingId);
             if (!booking) return;
 
-            const pattern = document.getElementById('recurringPattern').value;
-            const endDate = document.getElementById('recurringEndDate').value;
+            const pattern = document.getElementById('recurringPattern')?.value;
+            const endDate = document.getElementById('recurringEndDate')?.value;
             const daysOfWeek = Array.from(document.querySelectorAll('input[name="recurringDay"]:checked'))
                 .map(cb => parseInt(cb.value));
 
@@ -1918,7 +1918,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (res.ok) {
                     const result = await res.json();
-                    document.getElementById('recurringModal').classList.add('hidden');
+                    document.getElementById('recurringModal')?.classList.add('hidden');
                     AppState.cachedBookings = {};
                     await renderTimeline();
                     const count = result.generated || 0;

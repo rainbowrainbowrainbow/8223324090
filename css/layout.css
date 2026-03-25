@@ -1012,7 +1012,7 @@ input[type="date"] {
     border-radius: 12px;
     box-shadow: var(--shadow-md);
     min-width: 210px;
-    z-index: 100;
+    z-index: var(--z-dropdown, 50);
     overflow: hidden;
     padding: 6px;
     animation: dropdownIn 0.2s var(--ease-out-expo);

@@ -888,7 +888,7 @@ const CopilotPage = (() => {
                     <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Швидкі запити:</div>
                     <div class="flex-wrap">
                         ${quickQuestions.map(q => `
-                            <button class="btn-ghost" style="font-size:12px;" onclick="document.getElementById('academyQuestion').value=${JSON.stringify(q)}">${escHtml(q)}</button>
+                            <button class="btn-ghost" style="font-size:12px;" onclick="document.getElementById('academyQuestion')?.value=${JSON.stringify(q)}">${escHtml(q)}</button>
                         `).join('')}
                     </div>
                 </div>
@@ -977,7 +977,7 @@ const CopilotPage = (() => {
                 </div>
                 <div class="flex-row">
                     <button class="btn-gold" onclick="CopilotPage.addManualInteraction()">Зберегти</button>
-                    <button class="btn-ghost" onclick="document.getElementById('addInteractionForm').classList.add('hidden')">Скасувати</button>
+                    <button class="btn-ghost" onclick="document.getElementById('addInteractionForm')?.classList.add('hidden')">Скасувати</button>
                 </div>
             </div>
         </div>`;

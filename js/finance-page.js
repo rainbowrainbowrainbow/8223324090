@@ -188,12 +188,12 @@ async function fetchSalaryReport() {
 }
 
 async function saveTransaction() {
-    const type = document.getElementById('editType').value;
-    const categoryId = document.getElementById('editCategory').value;
-    const amount = parseInt(document.getElementById('editAmount').value);
-    const date = document.getElementById('editDate').value;
-    const paymentMethod = document.getElementById('editPayment').value;
-    const description = document.getElementById('editDescription').value.trim();
+    const type = document.getElementById('editType')?.value;
+    const categoryId = document.getElementById('editCategory')?.value;
+    const amount = parseInt(document.getElementById('editAmount')?.value);
+    const date = document.getElementById('editDate')?.value;
+    const paymentMethod = document.getElementById('editPayment')?.value;
+    const description = document.getElementById('editDescription')?.value.trim();
 
     if (!amount || amount <= 0) {
         showNotification('Вкажіть суму', 'error');
@@ -461,31 +461,31 @@ function openTransModal(id) {
         title.textContent = 'Редагувати транзакцію';
         const tx = FinState.transactions.find(t => t.id === id);
         if (tx) {
-            document.getElementById('editType').value = tx.type;
+            document.getElementById('editType')?.value = tx.type;
             updateCategoryOptions(tx.type);
-            document.getElementById('editCategory').value = tx.categoryId || '';
-            document.getElementById('editAmount').value = tx.amount;
-            document.getElementById('editDate').value = tx.date;
-            document.getElementById('editPayment').value = tx.paymentMethod || '';
-            document.getElementById('editDescription').value = tx.description || '';
+            document.getElementById('editCategory')?.value = tx.categoryId || '';
+            document.getElementById('editAmount')?.value = tx.amount;
+            document.getElementById('editDate')?.value = tx.date;
+            document.getElementById('editPayment')?.value = tx.paymentMethod || '';
+            document.getElementById('editDescription')?.value = tx.description || '';
         }
     } else {
         title.textContent = 'Нова транзакція';
-        document.getElementById('editType').value = 'income';
+        document.getElementById('editType')?.value = 'income';
         updateCategoryOptions('income');
-        document.getElementById('editAmount').value = '';
+        document.getElementById('editAmount')?.value = '';
         // Default date: today
         const now = new Date();
-        document.getElementById('editDate').value = now.toISOString().split('T')[0];
-        document.getElementById('editPayment').value = '';
-        document.getElementById('editDescription').value = '';
+        document.getElementById('editDate')?.value = now.toISOString().split('T')[0];
+        document.getElementById('editPayment')?.value = '';
+        document.getElementById('editDescription')?.value = '';
     }
 
     modal.classList.remove('hidden');
 }
 
 function closeTransModal() {
-    document.getElementById('transEditModal').classList.add('hidden');
+    document.getElementById('transEditModal')?.classList.add('hidden');
     FinState.editingId = null;
 }
 
@@ -741,7 +741,7 @@ async function saveBudgetPlan() {
     const result = await apiSaveBudget({ year, month, categoryId, plannedAmount });
     if (result && result.success) {
         showNotification('Бюджет збережено');
-        document.getElementById('budgetAmountInput').value = '';
+        document.getElementById('budgetAmountInput')?.value = '';
         loadBudgetComparison();
     } else {
         showNotification(result?.error || 'Помилка', 'error');
@@ -776,7 +776,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const token = localStorage.getItem('pzp_token');
     if (!token) {
         window.location.href = '/';
-        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('mainApp')?.style.display = 'none';
         return;
     }
 
@@ -785,7 +785,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!user) throw new Error('Invalid token');
 
         AppState.currentUser = user;
-        document.getElementById('currentUser').textContent = user.name || user.username;
+        document.getElementById('currentUser')?.textContent = user.name || user.username;
 
         // Role-based visibility
         const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
@@ -801,7 +801,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     } catch {
         window.location.href = '/';
-        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('mainApp')?.style.display = 'none';
         return;
     }
 
@@ -852,7 +852,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // v33.3: Quick-add expense button
     document.getElementById('addExpenseBtn')?.addEventListener('click', () => {
         openTransModal();
-        document.getElementById('editType').value = 'expense';
+        document.getElementById('editType')?.value = 'expense';
         updateCategoryOptions('expense');
     });
 
@@ -942,9 +942,9 @@ async function loadShiftData() {
                     </div>
                 </div>
             `;
-            document.getElementById('openShiftBtn').style.display = 'none';
-            document.getElementById('closeShiftBtn').style.display = '';
-            document.getElementById('closeShiftSection').style.display = '';
+            document.getElementById('openShiftBtn')?.style.display = 'none';
+            document.getElementById('closeShiftBtn')?.style.display = '';
+            document.getElementById('closeShiftSection')?.style.display = '';
         } else {
             container.innerHTML = `
                 <div class="fin-stat-card" style="border-left:4px solid #9CA3AF">
@@ -952,9 +952,9 @@ async function loadShiftData() {
                     <div style="font-size:13px;margin-top:4px">Відкрийте нову зміну для обліку готівки</div>
                 </div>
             `;
-            document.getElementById('openShiftBtn').style.display = '';
-            document.getElementById('closeShiftBtn').style.display = 'none';
-            document.getElementById('closeShiftSection').style.display = 'none';
+            document.getElementById('openShiftBtn')?.style.display = '';
+            document.getElementById('closeShiftBtn')?.style.display = 'none';
+            document.getElementById('closeShiftSection')?.style.display = 'none';
         }
 
         // Load history
@@ -1371,24 +1371,24 @@ async function loadAccounts() {
 }
 
 function openAddAccountModal() {
-    document.getElementById('accName').value = '';
-    document.getElementById('accEmoji').value = '💳';
-    document.getElementById('accType').value = 'cash';
-    document.getElementById('accDescription').value = '';
-    document.getElementById('addAccountModal').classList.remove('hidden');
+    document.getElementById('accName')?.value = '';
+    document.getElementById('accEmoji')?.value = '💳';
+    document.getElementById('accType')?.value = 'cash';
+    document.getElementById('accDescription')?.value = '';
+    document.getElementById('addAccountModal')?.classList.remove('hidden');
 }
 
 async function saveAccount() {
-    const name = document.getElementById('accName').value?.trim();
+    const name = document.getElementById('accName')?.value?.trim();
     if (!name) { showNotification('Введи назву', 'error'); return; }
     try {
         await apiRequest('POST', '/api/finance/accounts', {
             name,
-            emoji: document.getElementById('accEmoji').value || '💳',
-            type: document.getElementById('accType').value,
-            description: document.getElementById('accDescription').value?.trim() || null
+            emoji: document.getElementById('accEmoji')?.value || '💳',
+            type: document.getElementById('accType')?.value,
+            description: document.getElementById('accDescription')?.value?.trim() || null
         });
-        document.getElementById('addAccountModal').classList.add('hidden');
+        document.getElementById('addAccountModal')?.classList.add('hidden');
         showNotification('Рахунок додано!');
         loadAccounts();
     } catch (err) {

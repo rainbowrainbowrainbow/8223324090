@@ -86,7 +86,7 @@ function renderShop() {
         </div>`;
     }).join('');
 
-    document.getElementById('mainApp').innerHTML = `
+    document.getElementById('mainApp')?.innerHTML = `
     <div class="shop-page">
         <div style="margin-bottom:16px">
             <a href="/profile" style="color:var(--primary);text-decoration:none;font-weight:600">← Профіль</a>

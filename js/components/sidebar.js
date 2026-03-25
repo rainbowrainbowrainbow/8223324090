@@ -12,7 +12,7 @@ const Sidebar = (() => {
         { href: '/tasks',        icon: '✅', label: 'Задачі',         access: 'all',            group: 'crm' },
         { href: '/chat',         icon: '💬', label: 'Чат',            access: 'all',            group: 'crm' },
         { href: '/warehouse',    icon: '📦', label: 'Склад',          access: 'all',            group: 'crm' },
-        { href: '/center',       icon: '💲', label: 'Центр цін',      access: 'center',         group: 'crm' },
+        { href: '/center',       icon: '🎛️', label: 'Центр керування', access: 'center',         group: 'crm' },
 
         // ─── GROUP: Управління ───────────────────────────────────
         { type: 'group', key: 'mgmt', label: 'Управління', icon: '👔', defaultOpen: true },

@@ -1580,3 +1580,24 @@ body.page-exiting .main-content {
         animation: none !important;
     }
 }
+
+/* ══════════════════════════════════════
+   EMBED MODE — hide sidebar, header, nav when embedded in iframe
+   v38.8.0
+   ══════════════════════════════════════ */
+body.embed-mode .sidebar-nav,
+body.embed-mode .sidebar-overlay,
+body.embed-mode .top-header,
+body.embed-mode .main-header,
+body.embed-mode #sidebarToggle {
+    display: none !important;
+}
+body.embed-mode .page-container,
+body.embed-mode .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding-top: 0 !important;
+}
+body.embed-mode {
+    background: transparent !important;
+}

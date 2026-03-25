@@ -2,7 +2,6 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const logger = createLogger('Decisions');
 

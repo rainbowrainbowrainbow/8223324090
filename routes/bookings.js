@@ -98,6 +98,13 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         if (b.groupName && b.groupName.length > 200) { return res.status(400).json({ error: 'Група: макс. 200 символів' }); }
         const dur = parseInt(b.duration) || 0;
         if (dur < 0 || dur > 1440) { return res.status(400).json({ error: 'Тривалість: 0-1440 хвилин' }); }
+        // v38.5.0: Prevent bookings spanning midnight
+        if (b.time && dur > 0) {
+            const [_hh, _mm] = b.time.split(':').map(Number);
+            if (_hh * 60 + _mm + dur > 1440) {
+                return res.status(400).json({ error: `Бронювання не може перевищувати опівніч. Макс: ${1440 - _hh * 60 - _mm} хв` });
+            }
+        }
 
         // [FIX] Заборона бронювання в минулому
         if (!b.linkedTo) {
@@ -706,6 +713,13 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         if (b.groupName && b.groupName.length > 200) { return res.status(400).json({ error: 'Група: макс. 200 символів' }); }
         const dur = parseInt(b.duration) || 0;
         if (dur < 0 || dur > 1440) { return res.status(400).json({ error: 'Тривалість: 0-1440 хвилин' }); }
+        // v38.5.0: Prevent bookings spanning midnight
+        if (b.time && dur > 0) {
+            const [_hh, _mm] = b.time.split(':').map(Number);
+            if (_hh * 60 + _mm + dur > 1440) {
+                return res.status(400).json({ error: `Бронювання не може перевищувати опівніч. Макс: ${1440 - _hh * 60 - _mm} хв` });
+            }
+        }
 
         await client.query('BEGIN');
 
@@ -790,7 +804,14 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             }
         }
 
-        const newStatus = b.status || 'confirmed';
+        // v38.5.0: Status whitelist — prevent invalid status values and transitions
+        const VALID_STATUSES = ['confirmed', 'preliminary', 'cancelled'];
+        const newStatus = VALID_STATUSES.includes(b.status) ? b.status : (oldBooking.status || 'confirmed');
+        // Prevent cancelled → confirmed/preliminary (must create new booking)
+        if (oldBooking.status === 'cancelled' && newStatus !== 'cancelled') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Скасоване бронювання не можна відновити. Створіть нове.' });
+        }
 
         // CRM: resolve customer_id for update
         const updateCustomerId = b.customerId ? parseInt(b.customerId) : (oldBooking.customer_id || null);
@@ -1002,7 +1023,7 @@ router.patch('/:id/payment', requireAction('edit_booking'), async (req, res) => 
             return res.status(404).json({ error: 'Booking not found' });
         }
 
-        res.json({ success: true, booking: result.rows[0] });
+        res.json({ success: true, booking: mapBookingRow(result.rows[0]) });
     } catch (err) {
         log.error('PATCH /bookings/:id/payment error', err);
         res.status(500).json({ error: 'Internal server error' });

@@ -59,9 +59,19 @@ router.post('/daily-login', requireRole(...ANY_ROLE), async (req, res) => {
         const w = wallet.rows[0];
         const today = new Date().toISOString().split('T')[0];
 
-        if (w.last_login_reward === today) {
+        if (w.last_login_reward === today || String(w.last_login_reward) === today) {
             await client.query('ROLLBACK');
             return res.json({ alreadyClaimed: true, loginStreak: w.login_streak, reward: 0 });
+        }
+
+        // Double-check via coin_transactions to prevent duplicate claims
+        const alreadyClaimed = await client.query(
+            "SELECT 1 FROM coin_transactions WHERE user_id = $1 AND type = 'daily_login' AND created_at::date = CURRENT_DATE LIMIT 1",
+            [req.user.id]
+        );
+        if (alreadyClaimed.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return res.json({ alreadyClaimed: true, loginStreak: w.login_streak || 0, reward: 0 });
         }
 
         // Check if streak continues (yesterday) or resets
@@ -165,21 +175,35 @@ router.post('/transfer', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Check sender balance
-        const sender = await client.query(
-            'SELECT coins FROM game_wallets WHERE user_id = $1 FOR UPDATE',
-            [req.user.id]
-        );
-        if (sender.rows.length === 0 || sender.rows[0].coins < amount) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'Недостатньо монет' });
-        }
-
         // Check recipient exists
         const recipient = await client.query('SELECT id, name FROM users WHERE id = $1', [to_user_id]);
         if (recipient.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Користувача не знайдено' });
+        }
+
+        // Lock both wallets in consistent order (lower id first) to prevent deadlocks
+        const [firstId, secondId] = req.user.id < to_user_id
+            ? [req.user.id, to_user_id]
+            : [to_user_id, req.user.id];
+
+        await client.query(
+            'SELECT 1 FROM game_wallets WHERE user_id = $1 FOR UPDATE',
+            [firstId]
+        );
+        await client.query(
+            'SELECT 1 FROM game_wallets WHERE user_id = $1 FOR UPDATE',
+            [secondId]
+        );
+
+        // Check sender balance (re-read after lock)
+        const sender = await client.query(
+            'SELECT coins FROM game_wallets WHERE user_id = $1',
+            [req.user.id]
+        );
+        if (sender.rows.length === 0 || sender.rows[0].coins < amount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Недостатньо монет' });
         }
 
         // Deduct from sender

@@ -8,7 +8,6 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
 const { sendTelegramPhoto, getConfiguredChatId } = require('../services/telegram');
 const { createLogger } = require('../utils/logger');
 

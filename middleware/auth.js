@@ -273,16 +273,13 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
     // Issue new pair
     const { accessToken, refreshToken: newRefreshToken, expiresAt } = await createTokenPair(user, { deviceInfo, ipAddress });
 
-    // Get the new token ID for the replaced_by reference
-    const newTokenResult = await pool.query(
-        'SELECT id FROM refresh_tokens WHERE token_hash = $1',
-        [hashRefreshToken(newRefreshToken)]
-    );
-
-    // Revoke old token and link to new
+    // Revoke old token and link to new via hash lookup (atomic)
+    const newHash = hashRefreshToken(newRefreshToken);
     await pool.query(
-        'UPDATE refresh_tokens SET revoked_at = NOW(), replaced_by = $1 WHERE id = $2',
-        [newTokenResult.rows[0]?.id || null, oldToken.id]
+        `UPDATE refresh_tokens SET revoked_at = NOW(),
+                replaced_by = (SELECT id FROM refresh_tokens WHERE token_hash = $1)
+         WHERE id = $2`,
+        [newHash, oldToken.id]
     );
 
     return { accessToken, refreshToken: newRefreshToken, expiresAt, user };

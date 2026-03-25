@@ -787,9 +787,15 @@ router.post('/refresh', async (req, res) => {
 });
 
 // v38.4.0: Logout — revoke refresh token
+// Note: revoking a single refresh token without auth is safe — the 96-char token
+// itself is a bearer credential; knowing it already proves possession.
 router.post('/logout', async (req, res) => {
     try {
         const { refreshToken, allDevices } = req.body;
+
+        if (!refreshToken && !allDevices) {
+            return res.status(400).json({ error: 'refreshToken or allDevices required' });
+        }
 
         if (allDevices) {
             // Need auth to logout all devices

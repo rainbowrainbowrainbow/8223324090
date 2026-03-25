@@ -118,10 +118,10 @@ async function initPage() {
             currentView = tab.dataset.view;
 
             const isTemplates = currentView === 'templates';
-            document.getElementById('catFilters')?.style.display = isTemplates ? 'none' : '';
-            document.getElementById('quickAdd')?.style.display = isTemplates ? 'none' : '';
-            document.getElementById('boardContent')?.style.display = isTemplates ? 'none' : '';
-            document.getElementById('templatesSection')?.style.display = isTemplates ? '' : 'none';
+            document.getElementById('catFilters').style.display = isTemplates ? 'none' : '';
+            document.getElementById('quickAdd').style.display = isTemplates ? 'none' : '';
+            document.getElementById('boardContent').style.display = isTemplates ? 'none' : '';
+            document.getElementById('templatesSection').style.display = isTemplates ? '' : 'none';
 
             if (isTemplates) {
                 loadTemplates();
@@ -150,7 +150,7 @@ async function initPage() {
     // Templates
     document.getElementById('addTemplateBtn')?.addEventListener('click', addTemplate);
     document.getElementById('tplPattern')?.addEventListener('change', (e) => {
-        document.getElementById('tplDays')?.style.display = e.target.value === 'custom' ? '' : 'none';
+        document.getElementById('tplDays').style.display = e.target.value === 'custom' ? '' : 'none';
     });
 
     // v20.9.16: Load permissions and apply UI restrictions

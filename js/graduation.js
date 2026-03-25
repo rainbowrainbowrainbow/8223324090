@@ -1047,7 +1047,7 @@
         modalContent.innerHTML = `
         <div class="grad-modal-header">
             <h3>📊 Порівняння пакетів</h3>
-            <button class="grad-modal-close" onclick="document.getElementById('gradInfoModal')?.style.display='none'">&times;</button>
+            <button class="grad-modal-close" onclick="document.getElementById('gradInfoModal').style.display='none'">&times;</button>
         </div>
         <div class="grad-modal-body" style="overflow-x:auto">
             <table class="grad-compare-table">
@@ -1542,7 +1542,7 @@
         modalContent2.innerHTML = `
         <div class="grad-modal-header">
             <h3 style="color:${colors.text}">${getServiceIcon(svc)} ${_esc(svc.name)}</h3>
-            <button class="grad-modal-close" onclick="document.getElementById('gradInfoModal')?.style.display='none'">&times;</button>
+            <button class="grad-modal-close" onclick="document.getElementById('gradInfoModal').style.display='none'">&times;</button>
         </div>
         <div class="grad-modal-body">
             <p class="grad-modal-desc">${_esc(svc.description) || 'Без опису'}</p>
@@ -1585,7 +1585,7 @@
             services = await gradApi('GET', '/graduation/services');
             recalc();
             showNotification('Ціну оновлено', 'success');
-            document.getElementById('gradInfoModal')?.style.display = 'none';
+            document.getElementById('gradInfoModal').style.display = 'none';
         } catch (err) {
             showNotification('Помилка оновлення ціни', 'error');
         }

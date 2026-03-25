@@ -401,7 +401,7 @@ function openCorrectionModal(staffId) {
     document.getElementById('corrClockIn').value = item.record.clock_in ? fmtTimeFromISO(item.record.clock_in) : '';
     document.getElementById('corrClockOut').value = item.record.clock_out ? fmtTimeFromISO(item.record.clock_out) : '';
     document.getElementById('corrNotes').value = '';
-    document.getElementById('correctionModal')?.style.display = 'flex';
+    document.getElementById('correctionModal').style.display = 'flex';
 }
 
 // ==========================================
@@ -564,7 +564,7 @@ function openShiftModal(staffId, date) {
         document.getElementById('shiftType').value = existing.shift_type || 'regular';
         document.getElementById('shiftBreak').value = existing.break_minutes || 30;
         document.getElementById('shiftNotes').value = existing.notes || '';
-        document.getElementById('shiftDelete')?.style.display = '';
+        document.getElementById('shiftDelete').style.display = '';
     } else {
         // Use selected template
         const tplId = document.getElementById('templateSelect')?.value;
@@ -574,10 +574,10 @@ function openShiftModal(staffId, date) {
         document.getElementById('shiftType').value = tpl ? tpl.shift_type : 'regular';
         document.getElementById('shiftBreak').value = tpl ? tpl.break_minutes : 30;
         document.getElementById('shiftNotes').value = '';
-        document.getElementById('shiftDelete')?.style.display = 'none';
+        document.getElementById('shiftDelete').style.display = 'none';
     }
 
-    document.getElementById('shiftModal')?.style.display = 'flex';
+    document.getElementById('shiftModal').style.display = 'flex';
 }
 
 async function saveShift() {
@@ -612,7 +612,7 @@ async function saveShift() {
 
     if (data && data.success) {
         showNotification('Зміну збережено', 'success');
-        document.getElementById('shiftModal')?.style.display = 'none';
+        document.getElementById('shiftModal').style.display = 'none';
         await loadSchedule();
     } else {
         showNotification(data?.error || 'Помилка', 'error');
@@ -625,7 +625,7 @@ async function deleteShift() {
     const data = await hrFetch(`/shifts/${editingShift.existing.id}`, { method: 'DELETE' });
     if (data && data.success) {
         showNotification('Зміну видалено', 'success');
-        document.getElementById('shiftModal')?.style.display = 'none';
+        document.getElementById('shiftModal').style.display = 'none';
         await loadSchedule();
     } else {
         showNotification(data?.error || 'Помилка', 'error');
@@ -754,7 +754,7 @@ function openStaffEdit(staffId) {
     document.getElementById('editSkills').value = (s.skills || []).join(', ');
     document.getElementById('editNotes').value = s.notes || '';
 
-    document.getElementById('staffEditModal')?.style.display = 'flex';
+    document.getElementById('staffEditModal').style.display = 'flex';
 }
 
 async function saveStaffEdit() {
@@ -779,7 +779,7 @@ async function saveStaffEdit() {
     });
     if (data && data.success) {
         showNotification('Профіль оновлено', 'success');
-        document.getElementById('staffEditModal')?.style.display = 'none';
+        document.getElementById('staffEditModal').style.display = 'none';
         await loadTeam();
     } else {
         showNotification(data?.error || 'Помилка', 'error');
@@ -882,19 +882,19 @@ function initModals() {
     document.getElementById('shiftSave')?.addEventListener('click', saveShift);
     document.getElementById('shiftDelete')?.addEventListener('click', deleteShift);
     document.getElementById('shiftCancel')?.addEventListener('click', () => {
-        document.getElementById('shiftModal')?.style.display = 'none';
+        document.getElementById('shiftModal').style.display = 'none';
     });
 
     // Staff edit modal
     document.getElementById('editSave')?.addEventListener('click', saveStaffEdit);
     document.getElementById('editCancel')?.addEventListener('click', () => {
-        document.getElementById('staffEditModal')?.style.display = 'none';
+        document.getElementById('staffEditModal').style.display = 'none';
     });
 
     // Correction modal
     document.getElementById('corrSave')?.addEventListener('click', saveCorrection);
     document.getElementById('corrCancel')?.addEventListener('click', () => {
-        document.getElementById('correctionModal')?.style.display = 'none';
+        document.getElementById('correctionModal').style.display = 'none';
     });
 
     // Close modals on overlay click
@@ -927,7 +927,7 @@ async function saveCorrection() {
     });
     if (data && data.success) {
         showNotification('Час виправлено', 'success');
-        document.getElementById('correctionModal')?.style.display = 'none';
+        document.getElementById('correctionModal').style.display = 'none';
         await loadToday();
     } else {
         showNotification(data?.error || 'Помилка', 'error');
@@ -1577,7 +1577,7 @@ async function patchVacancy(id, status) {
 async function openCandidates(vacancyId, title) {
     currentVacancyId = vacancyId;
     document.getElementById('candidatesTitle').textContent = `Кандидати: ${title}`;
-    document.getElementById('candidatesSection')?.style.display = 'block';
+    document.getElementById('candidatesSection').style.display = 'block';
     document.getElementById('candidatesSection')?.scrollIntoView({ behavior: 'smooth' });
     await refreshCandidates();
     document.getElementById('btnAddCandidate').onclick = () => addCandidatePrompt(vacancyId);

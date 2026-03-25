@@ -776,7 +776,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const token = localStorage.getItem('pzp_token');
     if (!token) {
         window.location.href = '/';
-        document.getElementById('mainApp')?.style.display = 'none';
+        document.getElementById('mainApp').style.display = 'none';
         return;
     }
 
@@ -801,7 +801,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     } catch {
         window.location.href = '/';
-        document.getElementById('mainApp')?.style.display = 'none';
+        document.getElementById('mainApp').style.display = 'none';
         return;
     }
 
@@ -942,9 +942,9 @@ async function loadShiftData() {
                     </div>
                 </div>
             `;
-            document.getElementById('openShiftBtn')?.style.display = 'none';
-            document.getElementById('closeShiftBtn')?.style.display = '';
-            document.getElementById('closeShiftSection')?.style.display = '';
+            document.getElementById('openShiftBtn').style.display = 'none';
+            document.getElementById('closeShiftBtn').style.display = '';
+            document.getElementById('closeShiftSection').style.display = '';
         } else {
             container.innerHTML = `
                 <div class="fin-stat-card" style="border-left:4px solid #9CA3AF">
@@ -952,9 +952,9 @@ async function loadShiftData() {
                     <div style="font-size:13px;margin-top:4px">Відкрийте нову зміну для обліку готівки</div>
                 </div>
             `;
-            document.getElementById('openShiftBtn')?.style.display = '';
-            document.getElementById('closeShiftBtn')?.style.display = 'none';
-            document.getElementById('closeShiftSection')?.style.display = 'none';
+            document.getElementById('openShiftBtn').style.display = '';
+            document.getElementById('closeShiftBtn').style.display = 'none';
+            document.getElementById('closeShiftSection').style.display = 'none';
         }
 
         // Load history

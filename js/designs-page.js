@@ -189,7 +189,7 @@ async function loadDesigns(append = false) {
 
     renderDesignGrid();
     document.getElementById('countDesigns').textContent = totalDesigns;
-    document.getElementById('loadMore')?.style.display = currentOffset < totalDesigns ? '' : 'none';
+    document.getElementById('loadMore').style.display = currentOffset < totalDesigns ? '' : 'none';
 }
 
 async function loadCollections() {
@@ -598,9 +598,9 @@ async function generateDesignImage() {
     const title = document.getElementById('editTitle')?.value || '';
     const fullPrompt = `Festive event poster for Ukrainian children's park. ${prompt}. Title: "${title}". Colorful, joyful, bright cartoon style.`;
 
-    document.getElementById('genProgress')?.style.display = 'block';
+    document.getElementById('genProgress').style.display = 'block';
     document.getElementById('genImageBtn').disabled = true;
-    document.getElementById('genPreview')?.style.display = 'none';
+    document.getElementById('genPreview').style.display = 'none';
 
     try {
         const res = await apiFetch(`${location.origin}/api/kleshnya/generate-image`, {
@@ -609,7 +609,7 @@ async function generateDesignImage() {
         });
         if (!res || !res.ok) {
             showNotification('Помилка генерації', 'error');
-            document.getElementById('genProgress')?.style.display = 'none';
+            document.getElementById('genProgress').style.display = 'none';
             document.getElementById('genImageBtn').disabled = false;
             return;
         }
@@ -619,12 +619,12 @@ async function generateDesignImage() {
             pollImageStatus(data.taskId);
         } else {
             showNotification('Не вдалося створити задачу генерації', 'error');
-            document.getElementById('genProgress')?.style.display = 'none';
+            document.getElementById('genProgress').style.display = 'none';
             document.getElementById('genImageBtn').disabled = false;
         }
     } catch (e) {
         showNotification('Помилка: ' + e.message, 'error');
-        document.getElementById('genProgress')?.style.display = 'none';
+        document.getElementById('genProgress').style.display = 'none';
         document.getElementById('genImageBtn').disabled = false;
     }
 }
@@ -644,11 +644,11 @@ function pollImageStatus(taskId, attempt) {
             const data = await res.json();
             if (data.status === 'completed' || data.output?.image_url) {
                 const imgUrl = data.output?.image_url || data.imageUrl || '';
-                document.getElementById('genProgress')?.style.display = 'none';
+                document.getElementById('genProgress').style.display = 'none';
                 document.getElementById('genImageBtn').disabled = false;
                 if (imgUrl) {
                     document.getElementById('genPreview').src = imgUrl;
-                    document.getElementById('genPreview')?.style.display = 'block';
+                    document.getElementById('genPreview').style.display = 'block';
                 }
                 showNotification('Зображення згенеровано!');
             } else {
@@ -707,10 +707,10 @@ function filterCollection(id) {
     const galleryTab = document.querySelector('[data-tab="gallery"]');
     if (galleryTab) galleryTab.classList.add('active');
     activeTab = 'gallery';
-    document.getElementById('tabGallery')?.style.display = '';
-    document.getElementById('tabCollections')?.style.display = 'none';
-    document.getElementById('tabPrice')?.style.display = 'none';
-    document.getElementById('tabCalendar')?.style.display = 'none';
+    document.getElementById('tabGallery').style.display = '';
+    document.getElementById('tabCollections').style.display = 'none';
+    document.getElementById('tabPrice').style.display = 'none';
+    document.getElementById('tabCalendar').style.display = 'none';
     loadDesigns();
 }
 window.filterCollection = filterCollection;

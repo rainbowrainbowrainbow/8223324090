@@ -234,7 +234,7 @@ function openProductForm(productId = null) {
 }
 
 function closeProductForm() {
-    document.getElementById('productForm')?.style.display = 'none';
+    document.getElementById('productForm').style.display = 'none';
 }
 
 async function saveProduct() {

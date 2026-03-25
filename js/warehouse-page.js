@@ -287,7 +287,7 @@ function openItemForm(itemId = null) {
 }
 
 function closeItemForm() {
-    document.getElementById('itemForm')?.style.display = 'none';
+    document.getElementById('itemForm').style.display = 'none';
 }
 
 async function saveItem() {
@@ -349,8 +349,8 @@ function openUseModal(itemId) {
     document.getElementById('qtyModalReason').placeholder = 'Щоденне використання';
     document.getElementById('qtyModalConfirm').textContent = 'Списати';
     document.getElementById('qtyModalConfirm').className = 'btn-page-primary';
-    document.getElementById('qtyModalConfirm')?.style.background = document.body.classList.contains('dark-mode') ? 'rgba(239,68,68,0.8)' : '#EF4444';
-    document.getElementById('qtyModal')?.style.display = '';
+    document.getElementById('qtyModalConfirm').style.background = document.body.classList.contains('dark-mode') ? 'rgba(239,68,68,0.8)' : '#EF4444';
+    document.getElementById('qtyModal').style.display = '';
     document.getElementById('qtyModalAmount')?.focus();
 }
 
@@ -365,13 +365,13 @@ function openRestockModal(itemId) {
     document.getElementById('qtyModalReason').placeholder = 'Закупка, доставка...';
     document.getElementById('qtyModalConfirm').textContent = 'Поповнити';
     document.getElementById('qtyModalConfirm').className = 'btn-page-primary';
-    document.getElementById('qtyModalConfirm')?.style.background = '';
-    document.getElementById('qtyModal')?.style.display = '';
+    document.getElementById('qtyModalConfirm').style.background = '';
+    document.getElementById('qtyModal').style.display = '';
     document.getElementById('qtyModalAmount')?.focus();
 }
 
 function closeQtyModal() {
-    document.getElementById('qtyModal')?.style.display = 'none';
+    document.getElementById('qtyModal').style.display = 'none';
     qtyModalMode = null;
     qtyModalItemId = null;
 }
@@ -442,8 +442,8 @@ function renderHistory(items) {
 
 function switchPageTab(tab) {
     document.querySelectorAll('.wh-page-tab').forEach(t => t.classList.toggle('active', t.dataset.pageTab === tab));
-    document.getElementById('stockTab')?.style.display = tab === 'stock' ? '' : 'none';
-    document.getElementById('procurementTab')?.style.display = tab === 'procurement' ? '' : 'none';
+    document.getElementById('stockTab').style.display = tab === 'stock' ? '' : 'none';
+    document.getElementById('procurementTab').style.display = tab === 'procurement' ? '' : 'none';
     var pinataEl = document.getElementById('pinataTab');
     if (pinataEl) pinataEl.style.display = tab === 'pinata' ? '' : 'none';
     if (tab === 'procurement' && procLists.length === 0) loadProcLists();
@@ -521,11 +521,11 @@ function openProcForm(listId = null) {
             document.getElementById('procFormTitle').textContent = 'Редагувати список';
         }
     }
-    document.getElementById('procFormModal')?.style.display = '';
+    document.getElementById('procFormModal').style.display = '';
 }
 
 function closeProcForm() {
-    document.getElementById('procFormModal')?.style.display = 'none';
+    document.getElementById('procFormModal').style.display = 'none';
 }
 
 async function saveProcList() {
@@ -575,7 +575,7 @@ async function openProcDetail(listId) {
     const complBtn = document.getElementById('procCompleteBtn');
     complBtn.style.display = (data.status === 'draft' || data.status === 'approved' || data.status === 'in_progress') ? '' : 'none';
 
-    document.getElementById('procDetailModal')?.style.display = '';
+    document.getElementById('procDetailModal').style.display = '';
 }
 
 function renderProcDetailItems(items) {
@@ -601,7 +601,7 @@ function renderProcDetailItems(items) {
 }
 
 function closeProcDetail() {
-    document.getElementById('procDetailModal')?.style.display = 'none';
+    document.getElementById('procDetailModal').style.display = 'none';
     currentProcListId = null;
     currentProcDetail = null;
 }

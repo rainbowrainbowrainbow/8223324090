@@ -440,7 +440,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const token = localStorage.getItem('pzp_token');
     if (!token) {
         window.location.href = '/';
-        document.getElementById('mainApp')?.style.display = 'none';
+        document.getElementById('mainApp').style.display = 'none';
         return;
     }
 
@@ -451,7 +451,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('currentUser').textContent = user.name || user.username;
     } catch {
         window.location.href = '/';
-        document.getElementById('mainApp')?.style.display = 'none';
+        document.getElementById('mainApp').style.display = 'none';
         return;
     }
 

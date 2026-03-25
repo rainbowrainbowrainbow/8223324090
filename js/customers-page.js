@@ -967,10 +967,10 @@ async function initPage() {
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     const canManage = MANAGE_ROLES.includes(user.role);
-    document.getElementById('addCustomerBtn')?.style.display = canManage ? '' : 'none';
-    document.getElementById('exportCsvBtn')?.style.display = canManage ? '' : 'none';
-    document.getElementById('exportVcfBtn')?.style.display = canManage ? '' : 'none';
-    document.getElementById('importVcfBtn')?.style.display = canManage ? '' : 'none';
+    document.getElementById('addCustomerBtn').style.display = canManage ? '' : 'none';
+    document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';
+    document.getElementById('exportVcfBtn').style.display = canManage ? '' : 'none';
+    document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';
 
     // Logout
     document.getElementById('logoutBtn')?.addEventListener('click', () => {

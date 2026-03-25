@@ -369,7 +369,7 @@ function closeEditModal() {
 
 function toggleTimeFields() {
     const status = document.getElementById('schStatus')?.value;
-    document.getElementById('schTimeFields')?.style.display = (status === 'working' || status === 'remote') ? '' : 'none';
+    document.getElementById('schTimeFields').style.display = (status === 'working' || status === 'remote') ? '' : 'none';
 }
 
 async function handleSave() {
@@ -449,7 +449,7 @@ function closeFillWeekModal() {
 
 function toggleFillTimeFields() {
     const status = document.getElementById('fillStatus')?.value;
-    document.getElementById('fillTimeFields')?.style.display = (status === 'working' || status === 'remote') ? '' : 'none';
+    document.getElementById('fillTimeFields').style.display = (status === 'working' || status === 'remote') ? '' : 'none';
 }
 
 async function handleFillWeekSave() {

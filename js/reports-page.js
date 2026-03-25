@@ -133,8 +133,8 @@ const ReportsPage = (() => {
         if (periodFilter) {
             periodFilter.addEventListener('change', () => {
                 const custom = periodFilter.value === 'custom';
-                document.getElementById('dateFromFilter')?.style.display = custom ? '' : 'none';
-                document.getElementById('dateToFilter')?.style.display = custom ? '' : 'none';
+                document.getElementById('dateFromFilter').style.display = custom ? '' : 'none';
+                document.getElementById('dateToFilter').style.display = custom ? '' : 'none';
             });
         }
 
@@ -783,8 +783,8 @@ const ReportsPage = (() => {
 
     function resetFilters() {
         document.getElementById('periodFilter').value = 'month';
-        document.getElementById('dateFromFilter')?.style.display = 'none';
-        document.getElementById('dateToFilter')?.style.display = 'none';
+        document.getElementById('dateFromFilter').style.display = 'none';
+        document.getElementById('dateToFilter').style.display = 'none';
         document.getElementById('dateFromFilter').value = '';
         document.getElementById('dateToFilter').value = '';
         document.getElementById('typeFilter').value = '';

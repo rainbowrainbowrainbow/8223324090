@@ -486,7 +486,7 @@ function openCreateContent() {
     editingContentId = null;
     document.getElementById('contentModalTitle').textContent = 'Новий контент';
     document.getElementById('contentForm')?.reset();
-    document.getElementById('templateFieldsContainer')?.style.display = 'none';
+    document.getElementById('templateFieldsContainer').style.display = 'none';
     populateTemplateSelect();
     document.getElementById('contentModal')?.classList.remove('hidden');
 }

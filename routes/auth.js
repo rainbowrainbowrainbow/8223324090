@@ -65,7 +65,7 @@ router.post('/login', async (req, res) => {
         log.info(`User "${username}" logged in (role: ${user.role})`);
 
         // v22.10.0: Update login streak (fire-and-forget)
-        try { require('./streaks').updateStreak(user.id, 'login'); } catch (e) {}
+        try { require('./streaks').updateStreak(user.id, 'login'); } catch (e) { log.warn('Streak update failed', e.message); }
 
         res.json({
             token, // legacy: 24h access token (backward compat)

@@ -151,7 +151,7 @@ router.post('/announcements/:id/play-in', async (req, res) => {
 
 router.get('/playlists', async (req, res) => {
     try {
-        const r = await pool.query('SELECT * FROM playlists ORDER BY category, name');
+        const r = await pool.query('SELECT * FROM playlists ORDER BY category, name LIMIT 500');
         res.json({ success: true, playlists: r.rows });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -312,7 +312,7 @@ router.get('/library', async (req, res) => {
         const { category } = req.query;
         const q = category
             ? 'SELECT * FROM sounds WHERE category=$1 ORDER BY created_at DESC'
-            : 'SELECT * FROM sounds ORDER BY created_at DESC';
+            : 'SELECT * FROM sounds ORDER BY created_at DESC LIMIT 500';
         const r = await pool.query(q, category ? [category] : []);
         res.json({ sounds: r.rows });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -351,7 +351,7 @@ router.delete('/library/:id', requireRole('admin', 'director'), async (req, res)
 
 router.get('/projects', async (req, res) => {
     try {
-        const projects = await pool.query('SELECT * FROM sound_projects ORDER BY created_at DESC');
+        const projects = await pool.query('SELECT * FROM sound_projects ORDER BY created_at DESC LIMIT 200');
         const result = [];
         for (const p of projects.rows) {
             const tracks = await pool.query(

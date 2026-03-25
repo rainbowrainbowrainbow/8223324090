@@ -971,7 +971,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 });
 
 // v29.1.0: Checkbox MVP — update payment method
-router.patch('/:id/payment', async (req, res) => {
+router.patch('/:id/payment', requireAction('edit_booking'), async (req, res) => {
     try {
         const { id } = req.params;
         const { payment_method, fiscal_required } = req.body;

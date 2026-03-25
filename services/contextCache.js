@@ -60,4 +60,20 @@ function stats() {
     return { size: _cache.size, expired };
 }
 
+// v38.4.0: Periodic cleanup of expired entries to prevent memory leak
+const CLEANUP_INTERVAL = 10 * 60 * 1000; // 10 min
+const MAX_CACHE_SIZE = 500;
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, v] of _cache) {
+        if (now - v.ts > 300000) _cache.delete(key); // expired (>5min)
+    }
+    // Hard cap: evict oldest if too large
+    if (_cache.size > MAX_CACHE_SIZE) {
+        const entries = [..._cache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+        const toDelete = entries.slice(0, _cache.size - MAX_CACHE_SIZE);
+        for (const [key] of toDelete) _cache.delete(key);
+    }
+}, CLEANUP_INTERVAL).unref();
+
 module.exports = { getCached, invalidate, invalidatePrefix, clearAll, stats };

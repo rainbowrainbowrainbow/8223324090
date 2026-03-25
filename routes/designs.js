@@ -330,7 +330,9 @@ router.get('/:id/download', async (req, res) => {
         }
         res.setHeader('Content-Type', mime_type || 'application/octet-stream');
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(original_name || filename)}"`);
-        fs.createReadStream(filePath).pipe(res);
+        const stream = fs.createReadStream(filePath);
+        stream.on('error', (err) => { log.error('Stream error', err); if (!res.headersSent) res.status(500).json({ error: 'File read error' }); });
+        stream.pipe(res);
     } catch (err) {
         log.error('Error downloading design', err);
         res.status(500).json({ error: 'Internal server error' });

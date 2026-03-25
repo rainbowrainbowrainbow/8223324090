@@ -37,48 +37,30 @@ async function updateStreak(userId, streakType) {
     try {
         const today = new Date().toISOString().split('T')[0];
 
-        // Get current streak
+        // v38.4.0: Upsert with atomic streak logic to prevent race conditions
         const { rows } = await pool.query(
-            'SELECT * FROM game_streaks WHERE user_id = $1 AND streak_type = $2',
-            [userId, streakType]
+            `INSERT INTO game_streaks (user_id, streak_type, current_count, best_count, last_date)
+             VALUES ($1, $2, 1, 1, $3)
+             ON CONFLICT (user_id, streak_type) DO UPDATE SET
+                current_count = CASE
+                    WHEN game_streaks.last_date::date = $3::date THEN game_streaks.current_count
+                    WHEN game_streaks.last_date::date = ($3::date - 1) THEN game_streaks.current_count + 1
+                    ELSE 1
+                END,
+                best_count = GREATEST(game_streaks.best_count, CASE
+                    WHEN game_streaks.last_date::date = $3::date THEN game_streaks.current_count
+                    WHEN game_streaks.last_date::date = ($3::date - 1) THEN game_streaks.current_count + 1
+                    ELSE 1
+                END),
+                last_date = $3,
+                updated_at = NOW()
+             RETURNING current_count, best_count, (xmax = 0) AS was_insert`,
+            [userId, streakType, today]
         );
 
-        let current = 1;
-        let best = 1;
+        const current = rows[0]?.current_count || 1;
+        const best = rows[0]?.best_count || 1;
         let milestone = null;
-
-        if (rows.length === 0) {
-            // First time
-            await pool.query(
-                'INSERT INTO game_streaks (user_id, streak_type, current_count, best_count, last_date) VALUES ($1, $2, 1, 1, $3)',
-                [userId, streakType, today]
-            );
-        } else {
-            const streak = rows[0];
-            const lastDate = streak.last_date ? new Date(streak.last_date).toISOString().split('T')[0] : null;
-
-            if (lastDate === today) {
-                // Already updated today
-                return { current: streak.current_count, best: streak.best_count, milestone: null };
-            }
-
-            // Check if yesterday (continuing streak) or gap (reset)
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-            if (lastDate === yesterdayStr) {
-                current = streak.current_count + 1;
-            } else {
-                current = 1; // Streak broken
-            }
-            best = Math.max(current, streak.best_count);
-
-            await pool.query(
-                'UPDATE game_streaks SET current_count = $1, best_count = $2, last_date = $3, updated_at = NOW() WHERE user_id = $4 AND streak_type = $5',
-                [current, best, today, userId, streakType]
-            );
-        }
 
         // Check milestones
         for (const m of STREAK_MILESTONES) {

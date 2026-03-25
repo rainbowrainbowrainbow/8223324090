@@ -65,8 +65,8 @@ router.get('/', async (req, res) => {
     try {
         const activeOnly = req.query.active === 'true';
         const query = activeOnly
-            ? 'SELECT * FROM products WHERE is_active = true ORDER BY category, sort_order'
-            : 'SELECT * FROM products ORDER BY category, sort_order';
+            ? 'SELECT * FROM products WHERE is_active = true ORDER BY category, sort_order LIMIT 1000'
+            : 'SELECT * FROM products ORDER BY category, sort_order LIMIT 1000';
         const result = await pool.query(query);
         res.json(result.rows.map(mapProductRow));
     } catch (err) {

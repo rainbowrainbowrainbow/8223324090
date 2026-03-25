@@ -165,7 +165,7 @@ router.get('/channels/:id/messages', async (req, res) => {
         }
 
         const before = req.query.before ? parseInt(req.query.before, 10) : undefined;
-        const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;
+        const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
 
         const messages = await chat.getChannelMessages(channelId, userId, { before, limit });
         res.json(messages);

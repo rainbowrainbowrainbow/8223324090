@@ -221,24 +221,25 @@ async function awardXP(username, amount) {
 
     await ensureProfile(username);
 
-    const oldProfile = await pool.query(
-        'SELECT xp, level FROM user_profiles_ext WHERE username = $1',
-        [username]
+    // v38.4.0: Atomic XP update to prevent race conditions
+    const updated = await pool.query(
+        `UPDATE user_profiles_ext
+         SET xp = xp + $1, updated_at = NOW()
+         WHERE username = $2
+         RETURNING xp, level`,
+        [amount, username]
     );
-    const oldXP = oldProfile.rows[0]?.xp || 0;
-    const newXP = oldXP + amount;
+    if (!updated.rows[0]) return { leveledUp: false };
 
+    const newXP = updated.rows[0].xp;
+    const oldLevel = updated.rows[0].level || 1;
     const newLevel = await getCurrentLevel(newXP);
 
-    await pool.query(
-        `UPDATE user_profiles_ext
-         SET xp = $1, level = $2, title = $3, updated_at = NOW()
-         WHERE username = $4`,
-        [newXP, newLevel.level, newLevel.title, username]
-    );
-
-    const oldLevel = oldProfile.rows[0]?.level || 1;
     if (newLevel.level > oldLevel) {
+        await pool.query(
+            `UPDATE user_profiles_ext SET level = $1, title = $2 WHERE username = $3`,
+            [newLevel.level, newLevel.title, username]
+        );
         log.info(`${username} leveled up: ${oldLevel} → ${newLevel.level} (${newLevel.title})`);
         return { leveledUp: true, oldLevel, newLevel: newLevel.level, title: newLevel.title };
     }
@@ -377,45 +378,52 @@ async function unlockAchievement(username, achievement) {
  * Purchase an item from the shop.
  */
 async function purchaseShopItem(username, shopItemId) {
-    const { rows: items } = await pool.query(
-        `SELECT si.*, ci.id as char_item_id
-         FROM shop_items si
-         LEFT JOIN character_items ci ON si.item_id = ci.id
-         WHERE si.id = $1 AND si.is_active = true`,
-        [shopItemId]
-    );
-
-    if (items.length === 0) {
-        return { success: false, error: 'Товар не знайдено' };
-    }
-
-    const item = items[0];
-
-    // Check stock
-    if (item.stock === 0) {
-        return { success: false, error: 'Товар закінчився' };
-    }
-
-    // Check if user already owns this digital item
-    if (item.char_item_id) {
-        const { rows: owned } = await pool.query(
-            'SELECT id FROM user_inventory WHERE username = $1 AND item_id = $2',
-            [username, item.char_item_id]
-        );
-        if (owned.length > 0) {
-            return { success: false, error: 'Ви вже маєте цей предмет' };
-        }
-    }
-
-    // Spend coins
-    const spent = await spendCoins(username, item.price_coins, `Покупка: ${item.name}`, 'shop', shopItemId);
-    if (!spent) {
-        return { success: false, error: 'Недостатньо монет' };
-    }
-
+    // v38.4.0: All checks + spend + stock decrement inside single transaction to prevent oversell
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+
+        // Lock item row to prevent concurrent oversell
+        const { rows: items } = await client.query(
+            `SELECT si.*, ci.id as char_item_id
+             FROM shop_items si
+             LEFT JOIN character_items ci ON si.item_id = ci.id
+             WHERE si.id = $1 AND si.is_active = true
+             FOR UPDATE OF si`,
+            [shopItemId]
+        );
+
+        if (items.length === 0) {
+            await client.query('ROLLBACK');
+            return { success: false, error: 'Товар не знайдено' };
+        }
+
+        const item = items[0];
+
+        // Check stock (under lock)
+        if (item.stock === 0) {
+            await client.query('ROLLBACK');
+            return { success: false, error: 'Товар закінчився' };
+        }
+
+        // Check if user already owns this digital item
+        if (item.char_item_id) {
+            const { rows: owned } = await client.query(
+                'SELECT id FROM user_inventory WHERE username = $1 AND item_id = $2',
+                [username, item.char_item_id]
+            );
+            if (owned.length > 0) {
+                await client.query('ROLLBACK');
+                return { success: false, error: 'Ви вже маєте цей предмет' };
+            }
+        }
+
+        // Spend coins (still uses pool — safe, separate balance check)
+        const spent = await spendCoins(username, item.price_coins, `Покупка: ${item.name}`, 'shop', shopItemId);
+        if (!spent) {
+            await client.query('ROLLBACK');
+            return { success: false, error: 'Недостатньо монет' };
+        }
 
         // Add to inventory if digital item
         if (item.char_item_id) {
@@ -438,7 +446,7 @@ async function purchaseShopItem(username, shopItemId) {
         // Decrease stock if limited
         if (item.stock > 0) {
             await client.query(
-                'UPDATE shop_items SET stock = stock - 1 WHERE id = $1',
+                'UPDATE shop_items SET stock = stock - 1 WHERE id = $1 AND stock > 0',
                 [shopItemId]
             );
         }

@@ -43,7 +43,7 @@ router.post('/all', async (req, res) => {
 // GET /api/summary/history — recent summaries
 router.get('/history', async (req, res) => {
     try {
-        const limit = parseInt(req.query.limit, 10) || 20;
+        const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
         const summaries = await summaryAgent.getRecentSummaries(limit);
         res.json(summaries);
     } catch (err) {
@@ -55,7 +55,7 @@ router.get('/history', async (req, res) => {
 // GET /api/summary/usage — LLM usage stats
 router.get('/usage', async (req, res) => {
     try {
-        const days = parseInt(req.query.days, 10) || 30;
+        const days = Math.min(parseInt(req.query.days, 10) || 30, 365);
         const stats = await summaryAgent.getUsageStats(days);
         res.json(stats);
     } catch (err) {

@@ -218,7 +218,7 @@ router.get('/export', exportLimiter, async (req, res) => {
             if (error) throw error;
             customerRows = data || [];
         } else {
-            const result = await pool.query('SELECT * FROM customers ORDER BY name');
+            const result = await pool.query('SELECT * FROM customers ORDER BY name LIMIT 5000');
             customerRows = result.rows;
         }
 
@@ -274,7 +274,7 @@ router.get('/export-xlsx', exportLimiter, async (req, res) => {
             if (error) throw error;
             customerRows = data || [];
         } else {
-            const result = await pool.query('SELECT * FROM customers ORDER BY name');
+            const result = await pool.query('SELECT * FROM customers ORDER BY name LIMIT 5000');
             customerRows = result.rows;
         }
 
@@ -704,7 +704,7 @@ router.post('/:id/communications', async (req, res) => {
 
 router.get('/export-vcf', exportLimiter, async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM customers ORDER BY name');
+        const result = await pool.query('SELECT * FROM customers ORDER BY name LIMIT 5000');
         const vcards = result.rows.map(r => {
             const lines = [
                 'BEGIN:VCARD',
@@ -1165,7 +1165,7 @@ router.post('/migrate-to-supabase', requireMinRole('director'), async (req, res)
         const sb = getSupabase();
         if (!sb) return res.status(400).json({ error: 'Supabase not configured' });
 
-        const result = await pool.query('SELECT * FROM customers ORDER BY id');
+        const result = await pool.query('SELECT * FROM customers ORDER BY id LIMIT 5000');
         if (result.rows.length === 0) return res.json({ success: true, migrated: 0 });
 
         let migrated = 0;

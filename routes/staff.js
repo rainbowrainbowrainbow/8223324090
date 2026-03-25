@@ -551,7 +551,7 @@ router.get('/payroll', async (req, res) => {
         const mFrom = req.query.from || `${month}-01`;
         const mTo = req.query.to || `${month}-31`;
 
-        const staff = await pool.query('SELECT * FROM staff WHERE is_active = true ORDER BY department, name');
+        const staff = await pool.query('SELECT * FROM staff WHERE is_active = true ORDER BY department, name LIMIT 1000');
         const payroll = [];
 
         for (const s of staff.rows) {

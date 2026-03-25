@@ -65,13 +65,14 @@ function isCronDue(cronExpr, nowDate = new Date()) {
             return parseInt(pat, 10) === val;
         };
 
-        // Kyiv UTC+3 (simplified)
-        const kyiv = new Date(nowDate.getTime() + 3 * 60 * 60000);
-        return matchPart(minPat, kyiv.getUTCMinutes()) &&
-               matchPart(hourPat, kyiv.getUTCHours()) &&
-               matchPart(domPat, kyiv.getUTCDate()) &&
-               matchPart(monPat, kyiv.getUTCMonth() + 1) &&
-               matchPart(dowPat, kyiv.getUTCDay());
+        // v38.4.0: DST-aware Kyiv time (was hardcoded UTC+3)
+        const kyivStr = nowDate.toLocaleString('en-US', { timeZone: 'Europe/Kyiv' });
+        const kyiv = new Date(kyivStr);
+        return matchPart(minPat, kyiv.getMinutes()) &&
+               matchPart(hourPat, kyiv.getHours()) &&
+               matchPart(domPat, kyiv.getDate()) &&
+               matchPart(monPat, kyiv.getMonth() + 1) &&
+               matchPart(dowPat, kyiv.getDay());
     } catch { return false; }
 }
 

@@ -393,6 +393,11 @@ app.get('/sound', (req, res) => {
     res.sendFile(path.join(__dirname, 'sound.html'));
 });
 
+// v38.4.0: API 404 handler — return JSON instead of HTML for unknown API routes
+app.use('/api', (req, res) => {
+    res.status(404).json({ error: 'Not found' });
+});
+
 // SPA fallback (must be last)
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));

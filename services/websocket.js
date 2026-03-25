@@ -486,14 +486,16 @@ function sendToUsername(username, eventType, data) {
 function _heartbeat() {
     if (!_wss) return;
 
-    for (const [userId, connections] of _clients) {
+    // v38.4.0: Snapshot entries to prevent iterator invalidation during cleanup
+    const snapshot = Array.from(_clients.entries());
+    for (const [userId, connections] of snapshot) {
+        const deadClients = [];
         for (const ws of connections) {
             if (!ws._pzp.alive) {
                 ws._pzp.missedPongs++;
                 if (ws._pzp.missedPongs >= MAX_MISSED_PONGS) {
                     log.info(`Client ${ws._pzp.username} missed ${MAX_MISSED_PONGS} pongs, disconnecting`);
-                    ws.terminate();
-                    connections.delete(ws);
+                    deadClients.push(ws);
                     continue;
                 }
             }
@@ -502,14 +504,13 @@ function _heartbeat() {
             try {
                 ws.ping();
             } catch (err) {
-                // Connection already dead
-                connections.delete(ws);
+                deadClients.push(ws);
             }
         }
-
-        // Clean up empty user entries
-        if (connections.size === 0) {
-            _clients.delete(userId);
+        // Clean up dead clients after iteration
+        for (const ws of deadClients) {
+            ws.terminate();
+            _removeClient(ws);
         }
     }
 }

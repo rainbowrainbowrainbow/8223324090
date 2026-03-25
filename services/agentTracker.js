@@ -200,7 +200,14 @@ async function generateSummary(period = 'today', agentTag = null) {
     let since;
     const now = new Date();
     if (period === 'today') {
-        since = new Date(now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' }) + 'T00:00:00+02:00');
+        // v38.4.0: DST-aware — derive offset dynamically instead of hardcoded +02:00
+        const kyivDateStr = now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
+        const kyivMidnight = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', ''));
+        kyivMidnight.setHours(0, 0, 0, 0);
+        since = new Date(kyivDateStr + 'T00:00:00.000Z');
+        // Adjust for Kyiv offset
+        const kyivOffset = now.getTime() - new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Kyiv' })).getTime();
+        since = new Date(since.getTime() + kyivOffset);
     } else if (period === 'week') {
         since = new Date(now.getTime() - 7 * 86400000);
     } else if (period === 'session') {

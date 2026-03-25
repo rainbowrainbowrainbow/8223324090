@@ -1074,8 +1074,10 @@
         if (!container) return;
         try {
             const r = await apiFetch('/api/catalogs/definitions');
+            if (!r) return;
             const { catalogs = [] } = await r.json();
             const itemsR = await apiFetch('/api/catalogs/items');
+            if (!itemsR) return;
             const { items: allItems = [] } = await itemsR.json();
             const countMap = {};
             allItems.forEach(it => { countMap[it.catalog_id] = (countMap[it.catalog_id] || 0) + 1; });
@@ -1114,6 +1116,7 @@
     async function openCatalogView(catalogId) {
         try {
             const r = await apiFetch('/api/catalogs/items?catalogId=' + catalogId);
+            if (!r) return;
             const { items = [] } = await r.json();
             const viewer = document.getElementById('catalogPages');
             if (!viewer) return;
@@ -1144,6 +1147,7 @@
     async function printCatalogItems(catalogId) {
         try {
             const r = await apiFetch('/api/catalogs/items?catalogId=' + catalogId);
+            if (!r) return;
             const { items = [] } = await r.json();
             if (!items.length) { showNotification('Немає позицій для друку'); return; }
             const w = window.open('', '_blank');

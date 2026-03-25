@@ -569,7 +569,7 @@ async function getStats() {
 
 async function getQuickReplies() {
   const result = await pool.query(
-    'SELECT * FROM quick_replies ORDER BY sort_order ASC, created_at ASC'
+    'SELECT * FROM quick_replies ORDER BY sort_order ASC, created_at ASC LIMIT 500'
   );
 
   return result.rows.map((r) => ({

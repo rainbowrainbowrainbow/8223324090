@@ -413,6 +413,8 @@ app.use((err, req, res, next) => {
 // Process-level error handlers
 process.on('unhandledRejection', (reason) => {
     log.error('Unhandled promise rejection', reason);
+    // v38.4.0: Exit on unhandled rejection to prevent corrupted state
+    process.exit(1);
 });
 process.on('uncaughtException', (err) => {
     log.error('Uncaught exception', err);

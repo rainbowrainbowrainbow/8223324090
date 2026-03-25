@@ -272,7 +272,7 @@ router.put('/jobs/:id/status', async (req, res) => {
 // GET /api/print/routing — list routing rules
 router.get('/routing', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM print_routing_rules ORDER BY priority DESC');
+        const result = await pool.query('SELECT * FROM print_routing_rules ORDER BY priority DESC LIMIT 200');
         res.json(result.rows);
     } catch (err) {
         log.error('List routing error', err);

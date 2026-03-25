@@ -105,10 +105,10 @@ async function handleCertVerify(chatId, threadId, code) {
         };
 
         const validDate = cert.valid_until
-            ? new Date(cert.valid_until).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            ? new Date(cert.valid_until).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Kyiv' })
             : '—';
         const issuedDate = cert.issued_at
-            ? new Date(cert.issued_at).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            ? new Date(cert.issued_at).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Kyiv' })
             : '—';
 
         let text = `📄 <b>Сертифікат ${cert.cert_code}</b>\n\n`;
@@ -119,7 +119,7 @@ async function handleCertVerify(chatId, threadId, code) {
         text += `⏳ Дійсний до: ${validDate}\n`;
 
         if (cert.status === 'used' && cert.used_at) {
-            const usedDate = new Date(cert.used_at).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const usedDate = new Date(cert.used_at).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Kyiv' });
             text += `\n✅ Використано: ${usedDate}`;
         }
         if (cert.status === 'revoked' || cert.status === 'blocked') {

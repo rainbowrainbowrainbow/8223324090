@@ -268,6 +268,53 @@ const LEARN_INTERVAL_MS = 5 * 60 * 1000; // 5 min
 const _conversationTracker = {}; // channelId -> [{ username, content, ts }]
 const CONVERSATION_MAX_PER_CHANNEL = 200;
 
+// v38.4.0: Periodic cleanup of all in-memory caches to prevent memory leaks
+setInterval(() => {
+    const now = Date.now();
+    // _channelSettingsCache — remove expired entries
+    for (const k in _channelSettingsCache) {
+        if (now - (_channelSettingsCache[k]?.ts || 0) > CACHE_TTL_MS) delete _channelSettingsCache[k];
+    }
+    // _telegramAlertCooldowns — remove expired
+    for (const k in _telegramAlertCooldowns) {
+        if (now - _telegramAlertCooldowns[k] > TELEGRAM_COOLDOWN_MS * 2) delete _telegramAlertCooldowns[k];
+    }
+    // _repeatOffenders — remove old offenders
+    for (const k in _repeatOffenders) {
+        if (_repeatOffenders[k]?.lastIncident && now - _repeatOffenders[k].lastIncident > REPEAT_OFFENDER_WINDOW_MS) delete _repeatOffenders[k];
+    }
+    // _spamTracker — remove empty/stale entries
+    for (const k in _spamTracker) {
+        if (!_spamTracker[k]?.length) { delete _spamTracker[k]; continue; }
+        _spamTracker[k] = _spamTracker[k].filter(ts => now - ts < SPAM_WINDOW_MS * 2);
+        if (!_spamTracker[k].length) delete _spamTracker[k];
+    }
+    // _hourlyBlocks — remove old hour keys
+    const currentHour = new Date().toISOString().substring(0, 13);
+    for (const k in _hourlyBlocks) {
+        if (!k.includes(currentHour.substring(5))) delete _hourlyBlocks[k]; // different hour
+    }
+    // _guardianMemory — cap events per channel
+    for (const k in _guardianMemory) {
+        if (_guardianMemory[k]?.events?.length > 100) {
+            _guardianMemory[k].events = _guardianMemory[k].events.slice(-100);
+        }
+    }
+    // _conversationTracker — remove stale channels (>24h)
+    for (const k in _conversationTracker) {
+        const tracker = _conversationTracker[k];
+        if (!tracker?.length) { delete _conversationTracker[k]; continue; }
+        const lastTs = tracker[tracker.length - 1]?.ts || 0;
+        if (now - lastTs > 24 * 60 * 60 * 1000) delete _conversationTracker[k];
+    }
+    // _channelHealth — remove stale channels (>7d)
+    for (const k in _channelHealth) {
+        if (_channelHealth[k]?.lastIncident && now - _channelHealth[k].lastIncident > 7 * 24 * 60 * 60 * 1000) delete _channelHealth[k];
+    }
+    // _moodHistory — cap at 20
+    if (_moodHistory.length > 20) _moodHistory = _moodHistory.slice(-20);
+}, 5 * 60 * 1000).unref(); // every 5 min, doesn't prevent shutdown
+
 // Director user ID cache
 let _directorUserId = null;
 

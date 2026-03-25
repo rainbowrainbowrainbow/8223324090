@@ -175,7 +175,7 @@ router.get('/health', async (req, res) => {
 // v8.3: Automation rules CRUD
 router.get('/automation-rules', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM automation_rules ORDER BY created_at DESC');
+        const result = await pool.query('SELECT * FROM automation_rules ORDER BY created_at DESC LIMIT 500');
         res.json(result.rows);
     } catch (err) {
         if (err.message.includes('does not exist')) return res.json([]);

@@ -14,9 +14,9 @@ router.get('/', async (req, res) => {
         const { category } = req.query;
         let result;
         if (category) {
-            result = await pool.query('SELECT * FROM sounds WHERE category = $1 ORDER BY created_at DESC', [category]);
+            result = await pool.query('SELECT * FROM sounds WHERE category = $1 ORDER BY created_at DESC LIMIT 500', [category]);
         } else {
-            result = await pool.query('SELECT * FROM sounds ORDER BY created_at DESC');
+            result = await pool.query('SELECT * FROM sounds ORDER BY created_at DESC LIMIT 500');
         }
         res.json({ sounds: result.rows });
     } catch (err) {

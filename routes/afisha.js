@@ -53,7 +53,7 @@ router.get('/', async (req, res) => {
 // v8.0: Recurring afisha templates CRUD (MUST be before /:date to avoid param capture)
 router.get('/templates/list', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM afisha_templates ORDER BY created_at DESC');
+        const result = await pool.query('SELECT * FROM afisha_templates ORDER BY created_at DESC LIMIT 500');
         res.json(result.rows);
     } catch (err) {
         if (err.message.includes('does not exist')) return res.json([]);
